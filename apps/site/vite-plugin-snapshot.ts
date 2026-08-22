@@ -586,7 +586,12 @@ interface AssembledTestCase {
   // resolves the inputs the run itself was given rather than the latest version's.
   // The latest version's variants are `variants` above; keeping them out of this
   // map is what stops the bundle carrying them twice.
-  variantsByVersion: Record<string, AssembledVariant[]>;
+  priorVariantsByVersion: Record<string, AssembledVariant[]>;
+  // Every version's variant identities (slug + name), latest included — the
+  // frame the detail header's variant selector is built from. Identities only,
+  // so nothing heavy is carried twice. `collapseCases` merges one entry per
+  // version into this map.
+  variantsByVersion: Record<string, { slug: string; name: string }[]>;
   // The engines each published version's inputs can be read under, keyed by
   // version — the engineless rendering plus every engine the snapshot carries a
   // rendering for. `collapseCases` merges one entry per version into this map.
@@ -898,7 +903,12 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     variants,
     // Filled by `collapseCases`, which is where a slug's other versions are in
     // hand; one mapped file knows only its own.
-    variantsByVersion: {},
+    priorVariantsByVersion: {},
+    // This version's own entry; `collapseCases` merges the slug's versions into
+    // one map.
+    variantsByVersion: {
+      [file.version]: variants.map((v) => ({ slug: v.slug, name: v.name })),
+    },
     // This version's own entry; `collapseCases` merges the slug's versions into
     // one map. Derived from the renderings this snapshot actually carries rather
     // than from the case's declared `engines` (which it does not publish), so the
@@ -942,19 +952,26 @@ function collapseCases(
     // Every version but the newest, keyed by version, so a run of an older version
     // resolves the inputs it was itself given. The newest version's variants stay on
     // `variants`, so nothing is carried twice.
-    const variantsByVersion: Record<string, AssembledVariant[]> = {};
+    const priorVariantsByVersion: Record<string, AssembledVariant[]> = {};
     for (const version of versions.slice(1)) {
-      variantsByVersion[version.latestVersion] = version.variants;
+      priorVariantsByVersion[version.latestVersion] = version.variants;
     }
-    // Unlike the variants, every version's engines are kept — including the
-    // newest's — because the Inputs tab looks the selected version up here
-    // whichever one it is, and a list of slugs costs nothing to carry twice.
+    // Unlike the full variants, every version's engines and variant identities
+    // are kept — including the newest's — because the detail header looks the
+    // selected version up here whichever one it is, and a list of slugs costs
+    // nothing to carry twice.
     const enginesByVersion: Record<string, string[]> = {};
+    const variantsByVersion: Record<
+      string,
+      { slug: string; name: string }[]
+    > = {};
     for (const version of versions) {
       Object.assign(enginesByVersion, version.enginesByVersion);
+      Object.assign(variantsByVersion, version.variantsByVersion);
     }
     result.push({
       ...newest,
+      priorVariantsByVersion,
       variantsByVersion,
       enginesByVersion,
       versions: versions.map((v) => v.latestVersion),

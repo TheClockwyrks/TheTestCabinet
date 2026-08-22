@@ -52,15 +52,26 @@ export interface RunQuery {
    * {@link testCase}; on its own it is a plain equality filter and selects that
    * version of every case. */
   version?: string;
+  /** Filter to a list of exact test-case versions (empty/omitted is ignored) —
+   * the case-detail Runs tab's anchored version scope, which the catalog resolves
+   * into the concrete versions of the anchored `major.minor` or major line. Like
+   * {@link version}, an explicit list is the more specific instruction, so it
+   * silences {@link latestVersions}. */
+  versions?: string[];
+  /** Filter to one engine slug (an empty string is ignored). Matches the engine
+   * the run was launched under; the engineless run records the slug `none`, and a
+   * card from before the engine dimension existed reads as `none` too. */
+  engine?: string;
   /** Restrict every run to its case's **current** version — the greatest
    * `major.minor` that case has a run for within this query's {@link state} slice.
    * A case version is frozen once it has runs, so an older minor is a different
    * spec whose runs are not comparable with the current one's; the console
    * listings default this on.
    *
-   * Ignored when {@link version} names an exact version: an explicit version is
-   * the more specific instruction, and AND'ing the two would silently empty the
-   * listing whenever the picked version is not the current one. */
+   * Ignored when {@link version} (or a non-empty {@link versions}) names exact
+   * versions: an explicit version is the more specific instruction, and AND'ing
+   * the two would silently empty the listing whenever the picked version is not
+   * the current one. */
   latestVersions?: boolean;
   /** Case-insensitive substring across testCase/model/harness/variant, plus a gg
    * run's configuration name (what its row shows in place of a model). */
@@ -128,6 +139,16 @@ function matches(summary: RunSummary, query: RunQuery): boolean {
   if (query.harness && subject.harnessSlug !== query.harness) return false;
   if (query.variant && subject.variant !== query.variant) return false;
   if (query.version && subject.testCaseVersion !== query.version) return false;
+  if (
+    query.versions?.length &&
+    !query.versions.includes(subject.testCaseVersion)
+  )
+    return false;
+  // A card recorded before the engine dimension existed carries no engineSlug;
+  // it is an engineless-era run, so it reads as `none` — the same defaulting the
+  // backend's deserializer and backfill apply.
+  if (query.engine && (subject.engineSlug ?? "none") !== query.engine)
+    return false;
   const q = query.q?.trim().toLowerCase();
   if (q) {
     const haystack = [
@@ -147,13 +168,15 @@ function matches(summary: RunSummary, query: RunQuery): boolean {
 // The `latestVersions` scope: each case's current `major.minor`, resolved from the
 // runs in the state slice (never from the narrowed set, so which cohort is
 // "current" does not shift as other filters are applied). Null when the query did
-// not ask for it, or when an exact `version` overrides it — see
-// {@link RunQuery.latestVersions}. Mirrors the backend's `current_case_versions`.
+// not ask for it, or when an exact `version` (or `versions` list) overrides it —
+// see {@link RunQuery.latestVersions}. Mirrors the backend's
+// `current_case_versions`.
 function currentVersionScope(
   inSlice: readonly RunSummary[],
   query: RunQuery,
 ): ReadonlyMap<string, string> | null {
-  if (!query.latestVersions || query.version) return null;
+  if (!query.latestVersions || query.version || query.versions?.length)
+    return null;
   const versions = new Map<string, string[]>();
   for (const { subject } of inSlice) {
     const seen = versions.get(subject.testCaseSlug);

@@ -1,8 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import { describe, expect, it, vi } from "vitest";
-import type { Erratum, TestCaseDetail } from "../../../data/testCases";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  Erratum,
+  TestCaseDetail,
+  VariantSummary,
+} from "../../../data/testCases";
 import { routePatterns, routes } from "../../../routes";
 import { TestCaseErrataPage } from "./TestCaseErrataPage";
 
@@ -22,8 +26,9 @@ vi.mock("../../../data/useTestCase", () => ({
     return { testCase: testCases.find((c) => c.slug === slug), status };
   },
 }));
+const galleryData = vi.fn();
 vi.mock("../../../data/galleryContext", () => ({
-  useGalleryData: () => ({ canExecute: false, arena: undefined }),
+  useGalleryData: () => galleryData(),
 }));
 
 function erratum(extra: Partial<Erratum> = {}): Erratum {
@@ -53,6 +58,8 @@ function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
     versions: ["v1.0.0"],
     latestVersion: "v1.0.0",
     variants: [{ slug: "base", name: "Base", referenceBuilds: {} }],
+    variantsByVersion: { "v1.0.0": [{ slug: "base", name: "Base" }] },
+    enginesByVersion: { "v1.0.0": ["none"] },
     changelog: [],
     errata: [],
     ...extra,
@@ -73,7 +80,23 @@ function renderErrata(slug = "carom") {
 }
 
 describe("TestCaseErrataPage", () => {
-  it("lists a version's errata with their badges", () => {
+  beforeEach(() => {
+    // A NEW resolver per test: the layout's coordinate resolution is cached per
+    // resolver identity, so sharing one across tests would leak resolutions.
+    galleryData.mockReturnValue({
+      canExecute: false,
+      arena: undefined,
+      fetchCaseVariant: () =>
+        Promise.resolve({
+          slug: "base",
+          name: "Base",
+          referenceBuilds: {},
+          referenceSheet: null,
+        } as VariantSummary),
+    });
+  });
+
+  it("lists a version's errata with their badges", async () => {
     catalog.mockReturnValue({
       testCases: [
         testCase({
@@ -84,7 +107,7 @@ describe("TestCaseErrataPage", () => {
     });
     renderErrata();
     expect(
-      screen.getByRole("heading", { level: 2, name: "v1.0.0" }),
+      await screen.findByRole("heading", { level: 2, name: "v1.0.0" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Cue ball clips the rail")).toBeInTheDocument();
     expect(screen.getByText("Major")).toBeInTheDocument();
@@ -95,14 +118,14 @@ describe("TestCaseErrataPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows an empty state when no errata are recorded", () => {
+  it("shows an empty state when no errata are recorded", async () => {
     catalog.mockReturnValue({
       testCases: [testCase({ errata: [] })],
       status: "ready",
     });
     renderErrata();
     expect(
-      screen.getByText(/No errata have been recorded for Carom/),
+      await screen.findByText(/No errata have been recorded for Carom/),
     ).toBeInTheDocument();
   });
 });

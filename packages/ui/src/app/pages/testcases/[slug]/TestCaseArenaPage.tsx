@@ -19,8 +19,8 @@ import styles from "./TestCaseArenaPage.module.scss";
 export function TestCaseArenaPage() {
   return (
     <TestCaseDetailLayout tab="arena">
-      {({ testCase, variant }) => (
-        <ArenaContent testCase={testCase} variant={variant} />
+      {({ testCase, variant, isLatest }) => (
+        <ArenaContent testCase={testCase} variant={variant} isLatest={isLatest} />
       )}
     </TestCaseDetailLayout>
   );
@@ -29,9 +29,14 @@ export function TestCaseArenaPage() {
 function ArenaContent({
   testCase,
   variant,
+  isLatest,
 }: {
   testCase: TestCaseSummary;
   variant: VariantSummary;
+  /** Whether the page is anchored to the case's latest version. The arena is
+   * pinned to latest regardless (see the note in {@link ArenaPanels}), so an
+   * older anchor only changes what is said, not what runs. */
+  isLatest: boolean;
 }) {
   const { canExecute, arena } = useGalleryData();
 
@@ -50,17 +55,26 @@ function ArenaContent({
     );
   }
 
-  return <ArenaPanels arena={arena} testCase={testCase} variant={variant} />;
+  return (
+    <ArenaPanels
+      arena={arena}
+      testCase={testCase}
+      variant={variant}
+      isLatest={isLatest}
+    />
+  );
 }
 
 function ArenaPanels({
   arena,
   testCase,
   variant,
+  isLatest,
 }: {
   arena: ArenaApi;
   testCase: TestCaseSummary;
   variant: VariantSummary;
+  isLatest: boolean;
 }) {
   const [controllers, setControllers] = useState<ControllerRef[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -96,6 +110,17 @@ function ArenaPanels({
 
   return (
     <section className={styles.section}>
+      {/* The arena is pinned to the case's LATEST version — every match and
+          tournament below launches `testCase.latestVersion`, because that is
+          the deliverable controllers are pushed against. Anchoring the page to
+          an older version therefore changes nothing here; say so rather than
+          letting the header's anchor imply the matches would replay history. */}
+      {!isLatest && (
+        <p className={styles.muted}>
+          Matches and tournaments always run the latest version (
+          {testCase.latestVersion}), whichever version the page is anchored to.
+        </p>
+      )}
       {workers.length > 1 && (
         <Panel>
           <label className={styles.field}>

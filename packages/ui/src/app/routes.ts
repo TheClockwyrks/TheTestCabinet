@@ -177,11 +177,13 @@ export const routes = {
     slug?: string;
     version?: string;
     variant?: string;
+    engine?: string;
   }): string => {
     const params = new URLSearchParams();
     if (preselect?.slug) params.set("slug", preselect.slug);
     if (preselect?.version) params.set("version", preselect.version);
     if (preselect?.variant) params.set("variant", preselect.variant);
+    if (preselect?.engine) params.set("engine", preselect.engine);
     const query = params.toString();
     return query ? `/runs/new?${query}` : "/runs/new";
   },

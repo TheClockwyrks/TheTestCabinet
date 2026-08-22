@@ -132,6 +132,16 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping run code-analyzer-version backfill"),
     }
 
+    // The engine slug, lifted out of records stored before the `engine_slug` column
+    // existed (pre-engine-era records deserialize to `none`, which is lifted too — it
+    // is what the engineless filter matches). Same contract as the two above:
+    // idempotent, best-effort, never blocks startup.
+    match db.backfill_engine_slug().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run engine slugs"),
+        Err(err) => tracing::warn!(error = %err, "skipping run engine-slug backfill"),
+    }
+
     let db = Arc::new(db);
 
     // Reconcile orphaned in-flight jobs before serving — but only single-box,

@@ -79,6 +79,13 @@ function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
       "v2.0.0": ["none", "simple-2d"],
       "v1.0.0": ["none"],
     },
+    // The frame the header's selectors are built from: every version's variant
+    // identities. Both versions declare the one Base variant, so the version
+    // switch below re-resolves the same variant rather than dropping it.
+    variantsByVersion: {
+      "v2.0.0": [{ slug: "base", name: "Base" }],
+      "v1.0.0": [{ slug: "base", name: "Base" }],
+    },
     variants: [{ slug: "base", name: "Base", referenceBuilds: {} }],
     changelog: [],
     errata: [],
@@ -175,10 +182,11 @@ describe("TestCaseInputsPage", () => {
     expect(screen.queryByLabelText("Engine")).toBeNull();
   });
 
-  // The header's variant is a variant of the CASE, so a version that predates it
-  // genuinely has no such rendering. Say so rather than showing an empty list,
-  // which would read as "this run was given nothing".
-  it("reports a rendering this host cannot resolve", async () => {
+  // A coordinate the host resolves null for — a static snapshot without that
+  // rendering, or a failed fetch — surfaces the layout's "cannot show" panel
+  // rather than an empty input list, which would read as "this run was given
+  // nothing". The header stays so the visitor can select their way back out.
+  it("shows the layout's cannot-show panel when the host resolves null", async () => {
     catalog.mockReturnValue({
       testCases: [
         testCase({
@@ -194,7 +202,10 @@ describe("TestCaseInputsPage", () => {
     renderInputs("wireworm");
 
     expect(
-      await screen.findByText("No inputs for Base at v1.0.0 on None."),
+      await screen.findByText("This host cannot show Base at v1.0.0 on None."),
     ).toBeInTheDocument();
+    // The version badge (a single-version case renders no select) stays in the
+    // header above the panel.
+    expect(screen.getByText("v1.0.0")).toBeInTheDocument();
   });
 });

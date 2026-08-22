@@ -116,9 +116,10 @@ export function NewRunPage() {
   const { active: worker } = useWorkers();
   const { token } = useAuth();
   const runtime = useRunsRuntime();
-  // A test case's Run button links here with `?slug=…&version=…&variant=…` so the
-  // form opens with that case pre-selected; absent the params the catalog leads
-  // with its first case as before.
+  // A test case's Run button links here with `?slug=…&version=…&variant=…`
+  // (plus `?engine=…` for a non-default engine) so the form opens with that
+  // whole coordinate pre-selected; absent the params the catalog leads with its
+  // first case as before.
   const [params] = useSearchParams();
   // The case (if any) the form was navigated to with — a case's or jam's Run
   // button links here with `?slug=…`. Its presence is what distinguishes
@@ -154,8 +155,14 @@ export function NewRunPage() {
   // The engine the produced build is written against. It is a run dimension the
   // *case* gates: a version declares the engines it supports and a run naming one
   // outside that set is refused, so the picker offers the resolved version's set
-  // and the selection is held to it rather than trusted.
-  const [engineChoice, setEngineChoice] = useState(DEFAULT_ENGINE_SLUG);
+  // and the selection is held to it rather than trusted. Seeded from `?engine=`
+  // — a case detail page's Run action carries its whole anchored coordinate, so
+  // the form opens on exactly the rendering that was being viewed; the derived
+  // `engine` below already holds an unsupported (or absent) param to what the
+  // resolved version actually offers.
+  const [engineChoice, setEngineChoice] = useState(
+    () => params.get("engine") ?? DEFAULT_ENGINE_SLUG,
+  );
   const [maxRuntime, setMaxRuntime] = useState("");
   // The harness/model combinations to launch. The form starts with one empty row
   // so the single-run path is unchanged in feel; "Add combination" fans out.

@@ -62,6 +62,13 @@ const QUERY_PARAM = "q";
 export interface FixedFacets {
   testCase?: string;
   model?: string;
+  /** Pin the version facet out of the bar's hands. The case-detail Runs tab
+   * passes `""`: on that page the `?version=` param is the anchored
+   * coordinate's, not a facet — the tab scopes versions relative to the anchor
+   * instead — so the facet must read as unset, never count as active, and
+   * `clear` must leave the param alone (deleting it would silently re-anchor
+   * the whole page to the latest version). */
+  version?: string;
 }
 
 export interface RunFilterState extends PagedSearchParams {
@@ -100,7 +107,11 @@ export interface RunFilterState extends PagedSearchParams {
  * query, and `clear` leaves them alone.
  */
 export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
-  const { testCase: fixedCase, model: fixedModel } = fixed;
+  const {
+    testCase: fixedCase,
+    model: fixedModel,
+    version: fixedVersion,
+  } = fixed;
   const paged = usePagedSearchParams();
   const { setQuery, committedQuery } = paged;
   const [params, setParams] = useSearchParams();
@@ -108,11 +119,11 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
   const facets = useMemo<RunFacetValues>(
     () => ({
       testCase: fixedCase ?? params.get(FACET_PARAMS.testCase) ?? "",
-      version: params.get(FACET_PARAMS.version) ?? "",
+      version: fixedVersion ?? params.get(FACET_PARAMS.version) ?? "",
       harness: params.get(FACET_PARAMS.harness) ?? "",
       model: fixedModel ?? params.get(FACET_PARAMS.model) ?? "",
     }),
-    [params, fixedCase, fixedModel],
+    [params, fixedCase, fixedModel, fixedVersion],
   );
 
   const latestVersions = params.get(LATEST_PARAM) !== LATEST_OFF;
@@ -150,18 +161,28 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
     setQuery("");
     setParams((prev) => {
       const next = new URLSearchParams(prev);
-      for (const key of Object.values(FACET_PARAMS)) next.delete(key);
+      // Only the facets this state owns: a route-fixed facet's param is not the
+      // bar's to touch (on the case-detail Runs tab, `version` is the anchored
+      // coordinate's param).
+      for (const name of RUN_FACETS) {
+        if (!isFixed(name, fixed)) next.delete(FACET_PARAMS[name]);
+      }
       next.delete(LATEST_PARAM);
       next.delete(QUERY_PARAM);
       next.delete(PAGE_PARAM);
       return next;
     });
-  }, [setQuery, setParams]);
+  }, [setQuery, setParams, fixed]);
 
   const activeCount =
     (committedQuery.trim() ? 1 : 0) +
     RUN_FACETS.filter((name) => !isFixed(name, fixed) && facets[name]).length +
-    (latestVersions ? 0 : 1);
+    // The current-versions toggle counts only where the version dimension is
+    // the bar's to offer: a route that pins the version facet (the case-detail
+    // Runs tab, which scopes versions through its anchored coordinate) ignores
+    // the toggle entirely, so a stale `?latest=0` deep link must not read as an
+    // active filter there.
+    (isFixed("version", fixed) || latestVersions ? 0 : 1);
 
   return {
     ...paged,
@@ -178,7 +199,8 @@ export function useRunFilters(fixed: FixedFacets = {}): RunFilterState {
 export function isFixed(name: RunFacetName, fixed: FixedFacets): boolean {
   return (
     (name === "testCase" && fixed.testCase !== undefined) ||
-    (name === "model" && fixed.model !== undefined)
+    (name === "model" && fixed.model !== undefined) ||
+    (name === "version" && fixed.version !== undefined)
   );
 }
 

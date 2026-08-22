@@ -11,8 +11,9 @@ import { ReferenceSheetView } from "./ReferenceSheetView";
 //     but where a run's build is unedited model code shown behind a caveat, a
 //     reference implementation is the correct build (already redacted at publish),
 //     so it loads inline with a fullscreen toggle and no caveat. A variant has one
-//     such build per engine, so the embed carries a switch when more than one is
-//     published.
+//     such build per engine; which one is shown follows the page's ANCHORED engine
+//     (switched in the header, like every other tab), and an anchored engine with
+//     no published build degrades to a placeholder naming the ones that have one.
 //   • An asset-generation variant's reference is *data*, not a page: the rendered
 //     frames plus the action log each was drawn from, published to the snapshot
 //     bucket. There is nothing to embed, so they are rendered natively — see
@@ -29,11 +30,12 @@ import { ReferenceSheetView } from "./ReferenceSheetView";
 export function TestCaseReferencePage() {
   return (
     <TestCaseDetailLayout tab="reference">
-      {({ testCase, variant }) =>
+      {({ testCase, variant, version, engine }) =>
         Object.keys(variant.referenceBuilds).length === 0 &&
         variant.referenceSheet ? (
           <ReferenceSheetView
             testCase={testCase}
+            version={version}
             variant={variant}
             referenceSheet={variant.referenceSheet}
           />
@@ -41,6 +43,8 @@ export function TestCaseReferencePage() {
           <ReferencePlayable
             referenceBuilds={variant.referenceBuilds}
             variantName={variant.name}
+            engine={engine}
+            version={version}
           />
         )
       }

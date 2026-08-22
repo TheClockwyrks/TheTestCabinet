@@ -58,7 +58,7 @@ declare module "virtual:tcab-snapshot" {
    */
   export interface SnapshotTestCase extends Omit<TestCaseDetail, "variants"> {
     variants: SnapshotVariant[];
-    variantsByVersion: Record<string, SnapshotVariant[]>;
+    priorVariantsByVersion: Record<string, SnapshotVariant[]>;
   }
   /** The composed model catalog (wire `Model` shape); mapped via `toModelSummary`. */
   export const models: Model[];

@@ -1,14 +1,20 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
+import { Panel } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCase } from "../../data/useTestCase";
 import { tabOf } from "../../data/testCaseTabs";
+import { DEFAULT_ENGINE_SLUG, engineName } from "../../data/engines";
 import type { TestCaseDetail, VariantSummary } from "../../data/testCases";
+import { useCaseVariant } from "../../data/useRunVariant";
 import { routes } from "../../routes";
-import { useSelectedVariant } from "../../pages/testcases/[slug]/useSelectedVariant";
+import {
+  useSelectedCoordinate,
+  type SelectedCoordinate,
+} from "../../pages/testcases/[slug]/useSelectedCoordinate";
 import styles from "./TestCaseDetailLayout.module.scss";
 
 // The detail page's tabs. Each is a distinct route; this drives which tab link
@@ -25,40 +31,74 @@ export type DetailTab =
   | "arena"
   | "reference";
 
+/** What the layout hands the active tab's body: the case, the anchored
+ * coordinate, and the coordinate's resolved variant. */
+export interface DetailTabContext {
+  testCase: TestCaseDetail;
+  /** The anchored version — what every tab describes. */
+  version: string;
+  /** The anchored engine (`none` for the engineless rendering). */
+  engine: string;
+  /** Whether the anchored version is the case's latest. */
+  isLatest: boolean;
+  /** The anchored variant of the anchored version, rendered for the anchored
+   * engine — resolved through the same `fetchCaseVariant` a run's Inputs tab
+   * uses, so its prompt, seeded inputs, checklist and reference belong to
+   * exactly the selected coordinate. */
+  variant: VariantSummary;
+}
+
+/** {@link DetailTabContext} without the resolved variant — what a
+ * coordinate-free tab (Overview, Changelog, Errata) renders from. */
+export type CoordinateFreeTabContext = Omit<DetailTabContext, "variant">;
+
 interface TestCaseDetailLayoutProps {
   /** Which tab the rendering page represents. */
   tab: DetailTab;
-  /** The tab body, given the resolved case and the selected variant. */
-  children: (ctx: {
-    testCase: TestCaseDetail;
-    variant: VariantSummary;
-  }) => ReactNode;
+  /** The tab body, given the resolved case and the anchored coordinate. */
+  children: (ctx: DetailTabContext) => ReactNode;
+  /** For a tab whose content does not depend on the resolved coordinate
+   * (Overview, Changelog, Errata cover every version regardless of the anchor):
+   * the same body, rendered even when this host cannot resolve the coordinate —
+   * whole-history data must not become unreachable behind a rendering the host
+   * does not carry. */
+  fallback?: (ctx: CoordinateFreeTabContext) => ReactNode;
 }
 
 // Shared chrome for every test-case detail tab: the title and metadata, the
-// page-level variant selector that drives all tabs at once, and the tab
-// navigation. It resolves the case from the URL slug and the variant from the
-// query string, then hands both to the active tab's body. Resolving (and the
-// not-found state) lives here so the three tab pages stay thin and never
-// duplicate it.
+// page-level coordinate selectors (version, variant, engine) that anchor all
+// tabs at once, and the tab navigation. It resolves the case from the URL slug,
+// the coordinate from the query string, and the coordinate's variant through the
+// shared per-(version, variant, engine) resolver, then hands all of it to the
+// active tab's body. Resolving (and the not-found state) lives here so the tab
+// pages stay thin and never duplicate it.
 export function TestCaseDetailLayout({
   tab,
   children,
+  fallback,
 }: TestCaseDetailLayoutProps) {
   const { slug } = useParams<{ slug: string }>();
   const { search } = useLocation();
   const { canExecute, arena } = useGalleryData();
-  // The detail tabs need the whole case — its variants, description, changelog,
-  // and errata — which the catalog listing deliberately does not carry. Fetch the
-  // one case this route is about rather than making every listing pay for all of
-  // them.
+  // The detail tabs need the whole case — its versions, variants, description,
+  // changelog, and errata — which the catalog listing deliberately does not
+  // carry. Fetch the one case this route is about rather than making every
+  // listing pay for all of them.
   const { testCase, status } = useTestCase(slug);
   // Called unconditionally (hook rules); it tolerates an undefined case and
-  // simply resolves no variant, which the guard below turns into the loading or
-  // not-found state.
-  const [variant, setVariant] = useSelectedVariant(testCase);
+  // simply resolves no coordinate, which the guard below turns into the loading
+  // or not-found state.
+  const coordinate = useSelectedCoordinate(testCase);
+  // The anchored coordinate's variant in full. While the case itself is still
+  // resolving the coordinate is blank and this stays `loading`.
+  const resolved = useCaseVariant(
+    testCase?.slug ?? "",
+    coordinate.version,
+    coordinate.variant?.slug ?? "",
+    coordinate.engine,
+  );
 
-  if (!testCase || !variant) {
+  if (!testCase || !coordinate.variant) {
     // While the case is still being fetched it simply isn't resolvable yet, so
     // show the branded full-body loading state (the topbar stays) rather than
     // the not-found text. "No test case found" is reserved for a case that is
@@ -77,7 +117,7 @@ export function TestCaseDetailLayout({
   }
 
   // Tab links carry the current query string so switching tabs preserves the
-  // selected variant.
+  // anchored coordinate (and any scope widening) across the page.
   const tabs: { key: DetailTab; label: string; to: string }[] = [
     {
       key: "overview",
@@ -132,24 +172,24 @@ export function TestCaseDetailLayout({
       to: routes.testCaseArena(testCase.slug),
     });
   }
-  // The Reference tab is shown for any case whose selected variant has a published
-  // reference implementation, in either of the two shapes one takes — so no
-  // test-type check is needed here, and neither signal is a superset of the other:
+  // The Reference tab is shown when the ANCHORED coordinate's variant has a
+  // published reference implementation, in either of the two shapes one takes:
   //
   //   • `referenceBuilds` — the deployed static sites (end-to-end and full-stack
-  //     cases), one per engine, which the tab iframes behind an engine switch.
-  //   • `referenceSheet`  — the published reference FRAMES (asset-generation cases),
-  //     which have no page to embed and so are rendered natively from the snapshot
-  //     bucket.
+  //     cases), one per engine of the anchored version.
+  //   • `referenceSheet`  — the published reference FRAMES (asset-generation
+  //     cases), which have no page to embed and so are rendered natively from the
+  //     snapshot bucket.
   //
-  // In practice a variant carries at most one: a case is a single test type, and
-  // each type produces only one shape of reference. A variant with neither (the
-  // common case, and any host or backend that predates a field) shows no tab at all.
-  // It keys off the selected variant (not the case) because a reference is
-  // per-variant, so switching variants adds or removes the tab; every host that
-  // carries these fields (live catalog and static snapshot alike) can show it — no
-  // console-only capability is required.
-  if (Object.keys(variant.referenceBuilds).length > 0 || variant.referenceSheet) {
+  // A reference is published per (version, variant), so switching either adds or
+  // removes the tab; a coordinate with neither (the common case) shows no tab at
+  // all. While the coordinate is still resolving the tab is simply not offered
+  // yet — the strip below renders only once the resolution settles.
+  const referenceable =
+    resolved.variant &&
+    (Object.keys(resolved.variant.referenceBuilds).length > 0 ||
+      resolved.variant.referenceSheet);
+  if (referenceable) {
     tabs.push({
       key: "reference",
       label: "Reference",
@@ -159,9 +199,9 @@ export function TestCaseDetailLayout({
 
   return (
     <PageLayout>
-      {/* Two rows spanning the content width: the title (with the version sat
-          immediately after it) against the difficulty rating, then the tags
-          against the page-level actions. */}
+      {/* Two rows spanning the content width: the title (with the version
+          selector sat immediately after it) against the difficulty rating, then
+          the tags against the page-level actions. */}
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
@@ -178,7 +218,7 @@ export function TestCaseDetailLayout({
               label="All test cases"
             />
             <h1 className={styles.title}>{testCase.name}</h1>
-            <span className={styles.version}>{testCase.latestVersion}</span>
+            <VersionControl coordinate={coordinate} />
           </div>
           <span className={styles.difficulty} data-level={testCase.difficulty}>
             {testCase.difficulty}
@@ -193,36 +233,59 @@ export function TestCaseDetailLayout({
             ))}
           </div>
           {/* Page-level actions live in the header (not the tab strip): the
-              variant selector drives every tab at once, and the Run action
-              carries the viewed case + variant into the new-run form. Keeping
-              them here leaves the tab strip a clean single row that reads like
-              the run and model detail strips, and a long variant name can no
-              longer shove the Run action onto its own line. */}
+              variant and engine selectors anchor every tab at once, and the Run
+              action carries the whole viewed coordinate into the new-run form.
+              Keeping them here leaves the tab strip a clean single row that
+              reads like the run and model detail strips. */}
           <div className={styles.actionRow}>
             <label className={styles.variant}>
               <span className={styles.variantLabel}>Variant</span>
               <select
                 className={styles.variantSelect}
-                value={variant.slug}
-                onChange={(event) => setVariant(event.target.value)}
+                value={coordinate.variant.slug}
+                onChange={(event) => coordinate.setVariant(event.target.value)}
               >
-                {testCase.variants.map((entry) => (
+                {coordinate.variants.map((entry) => (
                   <option key={entry.slug} value={entry.slug}>
                     {entry.name}
                   </option>
                 ))}
               </select>
             </label>
+            {/* The engine selector appears only when the anchored version
+                supports a choice — most cases are engineless and read as they
+                would without the dimension. */}
+            {coordinate.engines.length > 1 && (
+              <label className={styles.variant}>
+                <span className={styles.variantLabel}>Engine</span>
+                <select
+                  className={styles.variantSelect}
+                  value={coordinate.engine}
+                  onChange={(event) => coordinate.setEngine(event.target.value)}
+                >
+                  {coordinate.engines.map((entry) => (
+                    <option key={entry} value={entry}>
+                      {engineName(entry)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {/* Only the consoles can launch runs; the static site omits this and
-                has no new-run form to land on. The selected variant carries
-                through so the run form opens on exactly what is being viewed. */}
+                has no new-run form to land on. The whole anchored coordinate
+                carries through so the run form opens on exactly what is being
+                viewed. */}
             {canExecute && (
               <Link
                 className={styles.run}
                 to={routes.runNew({
                   slug: testCase.slug,
-                  version: testCase.latestVersion,
-                  variant: variant.slug,
+                  version: coordinate.version,
+                  variant: coordinate.variant.slug,
+                  engine:
+                    coordinate.engine === DEFAULT_ENGINE_SLUG
+                      ? undefined
+                      : coordinate.engine,
                 })}
               >
                 Run ▸
@@ -232,25 +295,126 @@ export function TestCaseDetailLayout({
         </div>
       </header>
 
-      <div className={styles.controls}>
-        <nav className={styles.tabs} aria-label="Test case sections">
-          {tabs.map((entry) => (
-            <NavLink
-              key={entry.key}
-              to={{ pathname: entry.to, search }}
-              className={
-                entry.key === tab
-                  ? `${styles.tab} ${styles.tabActive}`
-                  : styles.tab
-              }
-            >
-              {entry.label}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
-
-      {children({ testCase, variant })}
+      {resolved.status === "loading" ? (
+        // The tab strip waits with the body: which tabs exist (Reference) is a
+        // fact about the resolved coordinate, and the resolution is one cached
+        // fetch — a settled state follows promptly.
+        <LoadingState size="section" label="Loading test case…" />
+      ) : (
+        <>
+          <div className={styles.controls}>
+            <nav className={styles.tabs} aria-label="Test case sections">
+              {tabs.map((entry) => (
+                <NavLink
+                  key={entry.key}
+                  to={{ pathname: entry.to, search }}
+                  className={
+                    entry.key === tab
+                      ? `${styles.tab} ${styles.tabActive}`
+                      : styles.tab
+                  }
+                >
+                  {entry.label}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+          {resolved.variant ? (
+            children({
+              testCase,
+              version: coordinate.version,
+              engine: coordinate.engine,
+              isLatest: coordinate.isLatest,
+              variant: resolved.variant,
+            })
+          ) : fallback ? (
+            // A coordinate-free tab covers every version regardless of the
+            // anchor, so an unresolvable coordinate must not take it hostage.
+            fallback({
+              testCase,
+              version: coordinate.version,
+              engine: coordinate.engine,
+              isLatest: coordinate.isLatest,
+            })
+          ) : (
+            <CoordinateUnavailable
+              name={coordinate.variant.name}
+              version={coordinate.version}
+              engine={coordinate.engine}
+              failed={resolved.status === "error"}
+              retry={resolved.retry}
+            />
+          )}
+        </>
+      )}
     </PageLayout>
+  );
+}
+
+// The body shown when the anchored coordinate has no resolution behind it. A
+// failed fetch and a host that genuinely lacks the rendering are different
+// facts: only the failure offers a retry, and only the miss is stated as one.
+// The header above stays interactive either way, so the visitor can also
+// select their way back out.
+function CoordinateUnavailable({
+  name,
+  version,
+  engine,
+  failed,
+  retry,
+}: {
+  name: string;
+  version: string;
+  engine: string;
+  failed: boolean;
+  retry: () => void;
+}) {
+  return (
+    <Panel>
+      <p className={styles.notFound}>
+        {failed
+          ? `Couldn't load ${name} at ${version} on ${engineName(engine)}.`
+          : `This host cannot show ${name} at ${version} on ${engineName(engine)}.`}
+      </p>
+      {failed && (
+        <button type="button" className={styles.retry} onClick={retry}>
+          Retry
+        </button>
+      )}
+    </Panel>
+  );
+}
+
+// The version beside the title: a selector when the case has more than one
+// published version, the plain badge otherwise. A superseded selection is
+// marked so reading an old deliverable never masquerades as the current one.
+// Shared with the game-jam detail layout, which mirrors this header.
+export function VersionControl({
+  coordinate,
+}: {
+  coordinate: SelectedCoordinate;
+}) {
+  if (coordinate.versions.length < 2) {
+    return <span className={styles.version}>{coordinate.version}</span>;
+  }
+  return (
+    <span className={styles.versionControl}>
+      <select
+        className={styles.versionSelect}
+        aria-label="Version"
+        value={coordinate.version}
+        data-superseded={coordinate.isLatest ? undefined : true}
+        onChange={(event) => coordinate.setVersion(event.target.value)}
+      >
+        {coordinate.versions.map((entry) => (
+          <option key={entry} value={entry}>
+            {entry}
+          </option>
+        ))}
+      </select>
+      {!coordinate.isLatest && (
+        <span className={styles.superseded}>superseded</span>
+      )}
+    </span>
   );
 }

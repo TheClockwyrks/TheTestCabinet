@@ -262,9 +262,12 @@ function renderPage(
   launchGgRun?: WorkerClient["launchGgRun"],
   ggConfigs?: ReadonlyArray<unknown>,
   launchRunBatch?: WorkerClient["launchRunBatch"],
+  // A case detail page's Run action arrives with the anchored coordinate in the
+  // query string; tests covering that seed pass the full entry here.
+  initialEntry = "/runs/new",
 ) {
   return render(
-    <MemoryRouter initialEntries={["/runs/new"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <BackendProvider value={backendValue(ggConfigs)}>
         <WorkersProvider value={workersValue(launchGgRun, launchRunBatch)}>
           <Routes>
@@ -396,6 +399,40 @@ describe("NewRunPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Launch run" }));
     await waitFor(() => expect(launchGgRun).toHaveBeenCalledTimes(1));
     expect(launchGgRun.mock.calls[0]![0].engine).toBe("simple-2d");
+  });
+
+  it("seeds the engine choice from the ?engine= param", async () => {
+    // A case detail page's Run action carries its whole anchored coordinate,
+    // engine included, so the form must open on exactly the rendering that was
+    // being viewed rather than the engineless default.
+    supportedEngines.current = ["none", "simple-2d"];
+    renderPage(
+      undefined,
+      undefined,
+      undefined,
+      "/runs/new?slug=carom&version=v1.0.0&variant=base&engine=simple-2d",
+    );
+
+    expect((screen.getByLabelText("Engine") as HTMLSelectElement).value).toBe(
+      "simple-2d",
+    );
+  });
+
+  it("holds an unsupported ?engine= param to what the version offers", async () => {
+    // A stale link may name an engine the resolved version does not support; the
+    // existing derived-engine guard resolves it to a supported one, so the seed
+    // must never let the form launch what the case would refuse.
+    supportedEngines.current = ["none", "simple-2d"];
+    renderPage(
+      undefined,
+      undefined,
+      undefined,
+      "/runs/new?slug=carom&version=v1.0.0&variant=base&engine=voxel-3d",
+    );
+
+    expect((screen.getByLabelText("Engine") as HTMLSelectElement).value).toBe(
+      "none",
+    );
   });
 
   it("falls back to an engine the resolved version supports", async () => {

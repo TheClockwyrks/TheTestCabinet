@@ -81,6 +81,14 @@ model pair, folded across every scored run that pair produced of this case and
 variant. Splitting by harness as well as model keeps a model's results under two
 harnesses from merging into one rank.
 
+The board draws its cohort from the page's [anchored
+coordinate](/components/ui/overview/#the-case-detail-coordinate): by default the
+anchored version's `major.minor` line under the anchored engine, widenable to
+the major line or every version, and to every engine. A board widened across
+engines lists each engine's rows separately, because runs under different
+engines measure different work. The Metrics tab shares the same scope, so the
+board and the charts describe the same cohort.
+
 Rows are ranked by average [score](/components/core/results/#reviews),
 descending, then by the better best overall rating, then by recency. Beside the
 rank and the model, the board offers highest, average and lowest score, best and
@@ -99,8 +107,8 @@ correct engine burned. Its leaderboard ranks by lowest total fuel instead, over
 models with a correct run, each shown once at its best run with its run count.
 Fuel is [deterministic](/testing/performance/evaluation/#fuel), so folding each
 model to its best keeps a re-run model from flooding the board, and the board is
-scoped to the case's version and variant because fuel compares only within one
-scored scenario set. A single run's [Results
+scoped to the exact anchored version and variant because fuel compares only
+within one scored scenario set. A single run's [Results
 tab](/testing/performance/evaluation/#no-human-review) shows that run's
 placement and percentile against this field.
 

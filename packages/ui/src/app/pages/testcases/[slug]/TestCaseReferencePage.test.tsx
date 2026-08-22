@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -13,9 +13,11 @@ vi.mock("../../../components/PageLayout", () => ({
 }));
 
 // The catalog is injected through `useTestCase`; mock it so each test seeds an
-// exact fixture. The gallery data is read by both the layout (run/arena
-// affordances) and the sheet view (the reference-media resolver), so it is stubbed
-// per test — a host with no resolver at all is a case the view must handle.
+// exact fixture. The gallery data is read by the layout (run/arena affordances
+// and the coordinate resolver) and the sheet view (the reference-media
+// resolver), so it is stubbed per test — a host with no media resolver at all is
+// a case the view must handle, and a NEW `fetchCaseVariant` per test keeps the
+// layout's per-resolver resolution cache from leaking between tests.
 const catalog = vi.fn<() => { testCases: TestCaseDetail[]; status: string }>();
 // The layout resolves the case it is about through `useTestCase` (a per-slug
 // fetch), so the stub answers from the fixture catalog each test seeds — the same
@@ -51,6 +53,21 @@ function variant(extra: Partial<VariantSummary> = {}): VariantSummary {
   } as VariantSummary;
 }
 
+// The gallery-data stub for one test: the affordance flags, a fresh coordinate
+// resolver answering with exactly the given variant, and (optionally) the
+// media resolver.
+function seedGalleryData(
+  resolved: VariantSummary,
+  extra: Record<string, unknown> = {},
+) {
+  galleryData.mockReturnValue({
+    canExecute: false,
+    arena: undefined,
+    fetchCaseVariant: () => Promise.resolve(resolved),
+    ...extra,
+  });
+}
+
 // A catalog entry carrying only the fields the Reference tab and its layout read.
 function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
   return {
@@ -64,6 +81,8 @@ function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
     versions: ["v1.0.0"],
     latestVersion: "v1.0.0",
     variants: [variant()],
+    variantsByVersion: { "v1.0.0": [{ slug: "base", name: "Base" }] },
+    enginesByVersion: { "v1.0.0": ["none"] },
     changelog: [],
     errata: [],
     sheet: {
@@ -76,9 +95,9 @@ function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
   } as TestCaseDetail;
 }
 
-function renderReference(slug = "lattice-belt") {
+function renderReference(search = "", slug = "lattice-belt") {
   return render(
-    <MemoryRouter initialEntries={[routes.testCaseReference(slug)]}>
+    <MemoryRouter initialEntries={[routes.testCaseReference(slug) + search]}>
       <Routes>
         <Route
           path={routePatterns.testCaseReference}
@@ -90,24 +109,17 @@ function renderReference(slug = "lattice-belt") {
 }
 
 describe("TestCaseReferencePage", () => {
-  it("renders the published frames and their action logs for an asset case", () => {
-    catalog.mockReturnValue({
-      testCases: [
-        testCase({
-          variants: [variant({ referenceSheet: { frames: [0, 1] } })],
-        }),
-      ],
-      status: "ready",
-    });
-    galleryData.mockReturnValue({
-      canExecute: false,
-      arena: undefined,
+  it("renders the published frames and their action logs for an asset case", async () => {
+    catalog.mockReturnValue({ testCases: [testCase()], status: "ready" });
+    seedGalleryData(variant({ referenceSheet: { frames: [0, 1] } }), {
       referenceMediaUrl,
     });
     renderReference();
 
     // One image per published frame, at the deterministic key.
-    const frame0 = screen.getByAltText("Reference frame 0") as HTMLImageElement;
+    const frame0 = (await screen.findByAltText(
+      "Reference frame 0",
+    )) as HTMLImageElement;
     expect(frame0.src).toBe(
       "https://snap.example/media/references/lattice-belt/v1.0.0/base/frames/0.png",
     );
@@ -131,119 +143,156 @@ describe("TestCaseReferencePage", () => {
     expect(screen.getByRole("link", { name: "Reference" })).toBeTruthy();
   });
 
-  it("degrades to a placeholder when the host serves no reference media", () => {
-    catalog.mockReturnValue({
-      testCases: [
-        testCase({ variants: [variant({ referenceSheet: { frames: [0] } })] }),
-      ],
-      status: "ready",
-    });
-    // A host with no snapshot bucket wired up supplies no resolver at all.
-    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
-    renderReference();
-
-    expect(screen.getByText(/not available here/)).toBeTruthy();
-    expect(screen.queryByAltText("Reference frame 0")).toBeNull();
-  });
-
-  it("shows the frames without animations when the host omits the sheet spec", () => {
-    // The static snapshot may not carry the case's `[sheet]`; the frames still
-    // stand on their own, they just cannot be played as sequences.
+  it("resolves the frames under the ANCHORED version, not the latest", async () => {
+    // A reference is published per case version, so anchoring an older version
+    // must fetch that version's objects — the latest version's frames belong to
+    // a different deliverable.
     catalog.mockReturnValue({
       testCases: [
         testCase({
-          sheet: null,
-          variants: [variant({ referenceSheet: { frames: [0, 1] } })],
+          versions: ["v1.1.0", "v1.0.0"],
+          latestVersion: "v1.1.0",
+          variantsByVersion: {
+            "v1.1.0": [{ slug: "base", name: "Base" }],
+            "v1.0.0": [{ slug: "base", name: "Base" }],
+          },
+          enginesByVersion: { "v1.1.0": ["none"], "v1.0.0": ["none"] },
         }),
       ],
       status: "ready",
     });
-    galleryData.mockReturnValue({
-      canExecute: false,
-      arena: undefined,
+    seedGalleryData(variant({ referenceSheet: { frames: [0] } }), {
+      referenceMediaUrl,
+    });
+    renderReference("?version=v1.0.0");
+
+    const frame0 = (await screen.findByAltText(
+      "Reference frame 0",
+    )) as HTMLImageElement;
+    expect(frame0.src).toBe(
+      "https://snap.example/media/references/lattice-belt/v1.0.0/base/frames/0.png",
+    );
+  });
+
+  it("degrades to a placeholder when the host serves no reference media", async () => {
+    catalog.mockReturnValue({ testCases: [testCase()], status: "ready" });
+    // A host with no snapshot bucket wired up supplies no resolver at all.
+    seedGalleryData(variant({ referenceSheet: { frames: [0] } }));
+    renderReference();
+
+    expect(await screen.findByText(/not available here/)).toBeTruthy();
+    expect(screen.queryByAltText("Reference frame 0")).toBeNull();
+  });
+
+  it("shows the frames without animations when the host omits the sheet spec", async () => {
+    // The static snapshot may not carry the case's `[sheet]`; the frames still
+    // stand on their own, they just cannot be played as sequences.
+    catalog.mockReturnValue({
+      testCases: [testCase({ sheet: null })],
+      status: "ready",
+    });
+    seedGalleryData(variant({ referenceSheet: { frames: [0, 1] } }), {
       referenceMediaUrl,
     });
     renderReference();
 
-    expect(screen.getByAltText("Reference frame 0")).toBeTruthy();
+    expect(await screen.findByAltText("Reference frame 0")).toBeTruthy();
     expect(screen.queryByText("Animated sequences")).toBeNull();
   });
 
-  it("still embeds a deployed reference build for an end-to-end variant", () => {
+  it("still embeds a deployed reference build for an end-to-end variant", async () => {
     catalog.mockReturnValue({
-      testCases: [
-        testCase({
-          testType: "end-to-end",
-          sheet: null,
-          variants: [
-            variant({
-              referenceBuilds: { none: "https://ref.example/carom/base/" },
-            }),
-          ],
-        }),
-      ],
+      testCases: [testCase({ testType: "end-to-end", sheet: null })],
       status: "ready",
     });
-    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
+    seedGalleryData(
+      variant({
+        referenceBuilds: { none: "https://ref.example/carom/base/" },
+      }),
+    );
     renderReference();
 
-    const frame = screen.getByTitle("Reference implementation for Base on None");
+    const frame = await screen.findByTitle(
+      "Reference implementation for Base on None",
+    );
     expect(frame.getAttribute("src")).toBe("https://ref.example/carom/base/");
-    // One published build is nothing to choose between, so no switch is offered.
+    // The engine follows the page header's anchor; the embed carries no switch
+    // of its own.
     expect(screen.queryByRole("radiogroup")).toBeNull();
   });
 
-  it("switches between the reference builds of two engines", () => {
+  it("embeds the build of the anchored engine", async () => {
     // A variant has one reference build per engine, because the build a reference
-    // demonstrates differs under each. Both are published here, so the tab offers
-    // the switch and the embed follows it.
+    // demonstrates differs under each. Which one is shown follows the page's
+    // anchored engine — selected in the header, carried in `?engine=` — so the
+    // Reference tab always shows the same rendering every other tab describes.
     catalog.mockReturnValue({
       testCases: [
         testCase({
           testType: "end-to-end",
           sheet: null,
-          variants: [
-            variant({
-              referenceBuilds: {
-                none: "https://ref.example/carom/base/none/",
-                "simple-2d": "https://ref.example/carom/base/simple-2d/",
-              },
-            }),
-          ],
+          enginesByVersion: { "v1.0.0": ["none", "simple-2d"] },
         }),
       ],
       status: "ready",
     });
-    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
-    renderReference();
-
-    // The catalog order leads with the engineless build, so that is what loads.
-    expect(
-      screen
-        .getByTitle("Reference implementation for Base on None")
-        .getAttribute("src"),
-    ).toBe("https://ref.example/carom/base/none/");
-
-    fireEvent.click(screen.getByRole("radio", { name: "Simple 2D" }));
+    seedGalleryData(
+      variant({
+        referenceBuilds: {
+          none: "https://ref.example/carom/base/none/",
+          "simple-2d": "https://ref.example/carom/base/simple-2d/",
+        },
+      }),
+    );
+    renderReference("?engine=simple-2d");
 
     expect(
-      screen
-        .getByTitle("Reference implementation for Base on Simple 2D")
-        .getAttribute("src"),
+      (
+        await screen.findByTitle(
+          "Reference implementation for Base on Simple 2D",
+        )
+      ).getAttribute("src"),
     ).toBe("https://ref.example/carom/base/simple-2d/");
   });
 
-  it("shows the no-reference placeholder when the variant declares neither", () => {
-    // Only reachable by hand-typed URL (the layout hides the tab), but it must not
-    // render an empty embed.
+  it("names the engines with builds when the anchored engine has none", async () => {
+    // The version supports both engines but only one build is published; the
+    // anchored engine without one gets a placeholder pointing at the header
+    // rather than a blank embed or another engine's build.
     catalog.mockReturnValue({
-      testCases: [testCase({ variants: [variant()] })],
+      testCases: [
+        testCase({
+          testType: "end-to-end",
+          sheet: null,
+          enginesByVersion: { "v1.0.0": ["none", "simple-2d"] },
+        }),
+      ],
       status: "ready",
     });
-    galleryData.mockReturnValue({ canExecute: false, arena: undefined });
+    seedGalleryData(
+      variant({
+        referenceBuilds: {
+          "simple-2d": "https://ref.example/carom/base/simple-2d/",
+        },
+      }),
+    );
     renderReference();
 
-    expect(screen.getByText(/No reference implementation/)).toBeTruthy();
+    expect(
+      await screen.findByText(/No reference build for None at v1\.0\.0/),
+    ).toBeTruthy();
+    expect(screen.getByText(/published for Simple 2D/)).toBeTruthy();
+    expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  it("shows the no-reference placeholder when the variant declares neither", async () => {
+    // Only reachable by hand-typed URL (the layout hides the tab), but it must not
+    // render an empty embed.
+    catalog.mockReturnValue({ testCases: [testCase()], status: "ready" });
+    seedGalleryData(variant());
+    renderReference();
+
+    expect(await screen.findByText(/No reference implementation/)).toBeTruthy();
     // …and the layout offers no tab to reach it by — which is also what a backend
     // old enough to send no `referenceSheet` at all produces.
     expect(screen.queryByRole("link", { name: "Reference" })).toBeNull();

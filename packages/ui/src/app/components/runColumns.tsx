@@ -36,10 +36,13 @@ import styles from "./RunLog.module.scss";
  * - `"global"` offers every column for cross-case listings (the home page).
  * - `"variant"` drops the test and variant columns for pages already scoped to
  *   a single test case and variant, where they would be constant.
+ * - `"case"` drops only the test column: the case-detail Runs tab widened to all
+ *   variants is still one case per row, but its variant (and engine) now differ
+ *   row to row and must stay visible.
  * - `"model"` drops the model column for the model detail page, where every row
  *   is the same model; it keeps the test and variant columns.
  */
-export type RunScope = "global" | "variant" | "model";
+export type RunScope = "global" | "variant" | "case" | "model";
 
 /**
  * A finished run resolved for the table: the summary card plus the values a cell
@@ -569,6 +572,7 @@ const COLUMN_BY_ID = new Map(RUN_COLUMNS.map((column) => [column.id, column]));
 const SCOPE_EXCLUDES: Record<RunScope, ReadonlySet<string>> = {
   global: new Set(),
   variant: new Set(["test", "variant"]),
+  case: new Set(["test"]),
   model: new Set(["model"]),
 };
 

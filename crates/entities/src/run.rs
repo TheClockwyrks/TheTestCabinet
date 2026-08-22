@@ -22,6 +22,18 @@ pub struct Model {
     pub test_case_slug: String,
     pub test_case_version: String,
     pub variant: String,
+    /// The slug of the engine the produced build was written against, lifted from
+    /// `record.subject.engine_slug` (`none` = the build supplied its own runtime).
+    /// The engine is a run dimension — the same case version can run on several
+    /// engines and results are only comparable within one — so the case Runs tab
+    /// filters on this column in SQL.
+    ///
+    /// `NULL` only for a row written before the column existed whose record no
+    /// longer deserializes: every readable record carries a slug (pre-engine-era
+    /// records deserialize to the default `none`), and the startup backfill
+    /// (`Db::backfill_engine_slug`) lifts it into the column.
+    #[sea_orm(nullable)]
+    pub engine_slug: Option<String>,
     pub harness_slug: String,
     pub harness_version: Option<String>,
     pub model_id: String,

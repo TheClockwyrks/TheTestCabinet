@@ -300,9 +300,10 @@ this exact rather than approximate: the templates the rendering reads cannot hav
 moved since the run.
 
 A surface showing a case rather than a run defaults to the engineless rendering,
-because nothing has selected an engine. A case's Inputs tab offers the version and
-the engine as selections, so every rendering a version supports is readable, and a
-selection is carried in the URL.
+because nothing has selected an engine. A case's detail page offers the version
+and the engine as header selections beside the variant, so every rendering a
+version supports is readable. The selection is carried in the URL and every tab
+of the page shows the same selected coordinate.
 
 A run's engine is part of what makes its result comparable. Runs of one case
 under different engines measure different work and carry different available

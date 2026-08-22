@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { RunSubject } from "@test-cabinet/run-record";
 import type {
   CaseVariantRef,
@@ -20,6 +20,13 @@ export interface RunVariantState {
   status: CatalogStatus;
 }
 
+/** {@link RunVariantState} plus a way to re-run a failed resolution. */
+export interface RetryableRunVariantState extends RunVariantState {
+  /** Re-run the resolution. Meaningful after `status === "error"`: the failed
+   * fetch was evicted from the cache, so this refetches. */
+  retry: () => void;
+}
+
 // Resolve the inputs a run was actually given, so the run's Inputs tab can render
 // the same prompt, specs, and references its harness received. A run record only
 // records its subject's identity — not the text — so the variant is resolved from
@@ -38,7 +45,7 @@ export interface RunVariantState {
 // cases are not the same thing: while the fetch is in flight nothing is
 // resolvable *yet*, and reporting that as "unavailable" makes a wait read as a
 // dead end. Only a settled fetch with no match is genuinely unavailable.
-export function useRunVariant(subject: RunSubject): RunVariantState {
+export function useRunVariant(subject: RunSubject): RetryableRunVariantState {
   const { testCaseSlug, testCaseVersion, variant, engineSlug } = subject;
   return useCaseVariant(testCaseSlug, testCaseVersion, variant, engineSlug);
 }
@@ -61,16 +68,25 @@ export function useCaseVariant(
   version: string,
   variant: string,
   engine: string,
-): RunVariantState {
+): RetryableRunVariantState {
   const { fetchCaseVariant } = useGalleryData();
   const [state, setState] = useState<RunVariantState>({
     variant: undefined,
     status: "loading",
   });
+  // Bumped by `retry` to re-run the effect. A rejected fetch was evicted from
+  // the cache (see `resolveCached`), so the re-run genuinely refetches rather
+  // than replaying the failure.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let active = true;
     setState({ variant: undefined, status: "loading" });
+    // An empty coordinate is a caller whose own inputs are still resolving (the
+    // detail layout before its case fetch settles). Nothing is resolvable *yet*,
+    // which is exactly the `loading` state — asking the host for a blank
+    // coordinate would only cache a miss.
+    if (!slug || !version || !variant || !engine) return;
     resolveCached(fetchCaseVariant, { slug, version, variant, engine })
       .then((resolved) => {
         if (!active) return;
@@ -83,9 +99,10 @@ export function useCaseVariant(
     return () => {
       active = false;
     };
-  }, [fetchCaseVariant, slug, version, variant, engine]);
+  }, [fetchCaseVariant, slug, version, variant, engine, attempt]);
 
-  return state;
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  return { ...state, retry };
 }
 
 /** The host's resolver, as the cache keys on it. */

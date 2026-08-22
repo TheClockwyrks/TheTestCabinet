@@ -266,3 +266,75 @@
   color: t.$color-text-muted;
   @include h.halo;
 }
+
+// The version selector sits where the plain version badge otherwise does: in the
+// title group, on the title's baseline, paired with a "superseded" marker when
+// the selection is not the latest.
+.versionControl {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// Reads like the version badge (tabular numerals, muted) but is a real selector,
+// styled as the header's other selectors so the family is obvious.
+.versionSelect {
+  font: inherit;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text-muted;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  // A superseded selection reads in the warning accent so an old deliverable
+  // never masquerades as the current one.
+  &[data-superseded] {
+    color: t.$color-accent-2;
+    border-color: t.$color-accent-2;
+  }
+}
+
+// The retry action beneath a failed coordinate resolution. Reads like the
+// header's Run action but in the panel's muted register — an inline recovery,
+// not a primary call to action.
+.retry {
+  margin-top: t.$space-sm;
+  padding: t.$space-xs t.$space-md;
+  font: inherit;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text;
+  background: transparent;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+// The marker beside a superseded version selection.
+.superseded {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-accent-2;
+  @include h.halo;
+}

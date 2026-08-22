@@ -66,10 +66,14 @@ export function RunFilters({
             options={options[facet]}
           />
         ))}
-        {/* The toggle is moot once an exact version is picked — that version is
-            either current or deliberately not — so it steps aside rather than
-            sitting there contradicting the version beside it. */}
-        {!state.facets.version && (
+        {/* The toggle belongs to the pages that filter by version here: a page
+            that scopes versions some other way (the case-detail Runs tab scopes
+            them relative to its anchored coordinate) leaves the facet out and
+            gets no toggle either. It is also moot once an exact version is
+            picked — that version is either current or deliberately not — so it
+            steps aside rather than sitting there contradicting the version
+            beside it. */}
+        {facets.includes("version") && !state.facets.version && (
           <label className={styles.toggle}>
             <input
               type="checkbox"

@@ -154,6 +154,15 @@ export interface ReferenceScreenshot {
   url: string;
 }
 
+/** A variant's identity alone — what a selector offers before the selected
+ * coordinate is resolved in full. */
+export interface VariantRef {
+  /** The stable slug naming the variant (e.g. `base`). */
+  slug: string;
+  /** Human-readable display name (defaults to the humanized slug). */
+  name: string;
+}
+
 /** One variant of a test case, as the catalog records it. */
 export interface VariantSummary {
   /** The stable slug naming this variant (e.g. `base`). */
@@ -272,6 +281,13 @@ export interface TestCaseDetail extends TestCaseSummary {
   /** The variants the latest version offers, in declared order (default first).
    * Each carries the inputs a run of that variant is seeded with. */
   variants: VariantSummary[];
+  /** Each published version's variants — identity only, in declared order
+   * (default first), keyed by version and covering every version including the
+   * latest. This is the frame the detail header's variant selector is built
+   * from, so picking a version offers exactly the variants that version
+   * declares; the selected coordinate's full {@link VariantSummary} is resolved
+   * separately through the gallery's `fetchCaseVariant`. */
+  variantsByVersion: Record<string, VariantRef[]>;
   /** The engine slugs each published version supports, keyed by version — the set
    * a run of that version may select, and therefore the set of renderings its
    * inputs exist in. Never empty for a version this host carries.

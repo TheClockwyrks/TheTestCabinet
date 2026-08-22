@@ -3,12 +3,10 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { GradeBadge, RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import {
-  useVersionPick,
-  useVersionScope,
-  versionInScope,
-  VersionPicker,
-  VersionScopeControl,
-} from "../../../components/VersionScope";
+  AnchoredScopeControls,
+  useAnchoredScope,
+} from "../../../components/anchoredScope";
+import { engineName } from "../../../data/engines";
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindReview } from "../../../data/writeups";
 import { useFindModel } from "../../../data/useModels";
@@ -26,8 +24,11 @@ import {
   type ParsedWriteup,
   type Rating,
 } from "../../../data/ratings";
-import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
-import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
+import type { VariantSummary } from "../../../data/testCases";
+import {
+  TestCaseDetailLayout,
+  type DetailTabContext,
+} from "../../../layouts/testcases/TestCaseDetailLayout";
 import {
   ColumnMenu,
   type ColumnMenuHandle,
@@ -37,10 +38,10 @@ import { LoadingState } from "../../../components/LoadingState";
 import { formatCompact, formatUsd, totalTokens } from "../../../format";
 import styles from "./TestCaseLeaderboardPage.module.scss";
 
-// The `Map` key separator for a `(harness, model)` pair: NUL, the one character
-// neither a harness slug nor a model id can contain, so no two legal pairs can
-// collide on it. Spelled as an escape rather than written as a byte, which would
-// make the line unsearchable.
+// The `Map` key separator for a fold key's parts: NUL, the one character none
+// of a harness slug, a model id, or an engine slug can contain, so no two legal
+// keys can collide on it. Spelled as an escape rather than written as a byte,
+// which would make the line unsearchable.
 const PAIR_SEP = "\u0000";
 
 // One `(harness, model)` pair's aggregate result on this case + variant, folded
@@ -48,14 +49,20 @@ const PAIR_SEP = "\u0000";
 // score/rating extremes and the cost/token means are what the configurable
 // columns render. The board splits by harness as well as model — the same model
 // under two harnesses is two rows, never one merged rank (see
-// docs/comparisons/metrics-split).
+// docs/comparisons/metrics-split). A board widened across engines splits by the
+// run's engine too: runs under different engines measure different work, so
+// they are never folded into one row.
 interface Entry {
-  /** The composite `(harness, model)` key; also the React row key. */
+  /** The composite `(harness, model[, engine])` key; also the React row key. */
   rowKey: string;
   modelId: string;
   modelName: string;
   /** The harness that produced this pair's runs, shown beside the model name. */
   harnessSlug: string;
+  /** The engine's display name, shown beside the harness — only on a board
+   * widened across engines; null in the (common) anchored-engine view, where
+   * every row shares the page's anchored engine. */
+  engineLabel: string | null;
   /** The points available — the same across every run of this variant. */
   total: number;
   /** Max points earned across the model's runs. */
@@ -229,55 +236,53 @@ const FIXED_TRACKS = ["2.5rem", "1fr"];
 export function TestCaseLeaderboardPage() {
   return (
     <TestCaseDetailLayout tab="leaderboard">
-      {({ testCase, variant }) => (
-        <LeaderboardContent testCase={testCase} variant={variant} />
-      )}
+      {(ctx) => <LeaderboardContent ctx={ctx} />}
     </TestCaseDetailLayout>
   );
 }
 
-// The leaderboard body, given the resolved case and variant. Exported so the
+// The leaderboard body, given the page's anchored coordinate. Exported so the
 // game-jam detail's Leaderboard tab renders the identical board under its own
 // layout — the ranking (average points) and the badge cell (a grade for a jam, a
 // rating otherwise) are already case-agnostic.
-export function LeaderboardContent({
-  testCase,
-  variant,
-}: {
-  testCase: TestCaseSummary;
-  variant: VariantSummary;
-}) {
+export function LeaderboardContent({ ctx }: { ctx: DetailTabContext }) {
   // A performance case carries no reviewer score to rank on — it is graded by the
   // harness (correctness, then fuel) — so it ranks by fuel instead, on its own
   // board. Branch before any hook so the review board's hooks never run for it.
-  if (testCase.testType === "performance") {
-    return <PerformanceLeaderboard testCase={testCase} variant={variant} />;
+  if (ctx.testCase.testType === "performance") {
+    return <PerformanceLeaderboard ctx={ctx} />;
   }
-  return <ReviewLeaderboard testCase={testCase} variant={variant} />;
+  return <ReviewLeaderboard ctx={ctx} />;
 }
 
 // The review-score leaderboard: the original board, ranking each model by the
 // average points its runs earned across the variant's checklist. Used for every
 // human-reviewed case type (a performance case uses the fuel board instead).
-function ReviewLeaderboard({
-  testCase,
-  variant,
-}: {
-  testCase: TestCaseSummary;
-  variant: VariantSummary;
-}) {
+function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
+  const { testCase, version, engine, variant } = ctx;
   const { summaries, localWriteups, loading } = useCaseRunSummaries(
     testCase.slug,
   );
   const findReview = useFindReview();
   const findModel = useFindModel();
 
-  // Which versions of the case the board ranks over — the same control the
-  // Metrics tab carries. Without it a revised case ranks models against each
-  // other that were never set the same task; the `current` default keeps the
-  // board to the version in play, and widening it is the visitor's call.
-  const versionScope = useVersionScope(testCase);
-  const { scope, specificVersion } = versionScope;
+  // Which runs the board ranks over, relative to the page's anchored coordinate
+  // — the same control (and the same query params) the Runs and Metrics tabs
+  // carry, so the three tabs describe one cohort. Without a version scope a
+  // revised case would rank models against each other that were never set the
+  // same task; the anchored `major.minor` default keeps the board to the spec
+  // in play, and widening it is the visitor's call.
+  // The engine widener is offered only when the anchored version supports more
+  // than one engine — with one engine there is nothing to widen into, and the
+  // hook then reads the anchored scope regardless of a stale `?engines=all`.
+  const multiEngine = (testCase.enginesByVersion[version] ?? []).length > 1;
+  const anchoredScope = useAnchoredScope({
+    version,
+    versions: testCase.versions,
+    engineWidenable: multiEngine,
+  });
+  const { versionScope, engineScope } = anchoredScope;
+  const engineWidened = engineScope === "all";
 
   const { isVisible, toggle } = useColumnVisibility(
     "ttc:leaderboard:visible",
@@ -306,6 +311,7 @@ function ReviewLeaderboard({
       modelId: string;
       modelName: string;
       harnessSlug: string;
+      engineLabel: string | null;
       total: number;
       earned: number[];
       ratings: Rating[];
@@ -329,17 +335,19 @@ function ReviewLeaderboard({
       // models, so it has no single model to rank on a per-model board (see
       // docs/comparisons/metrics-split). Its results live in gg's own views.
       if (isGgRun(run.subject.harnessSlug)) continue;
-      // Only runs of the versions the visitor scoped to.
-      if (
-        !versionInScope(
-          run.subject.testCaseVersion,
-          scope,
-          testCase.latestVersion,
-          specificVersion,
-        )
-      ) {
+      // Only runs of the versions the visitor scoped to. Membership comes from
+      // the scope's catalog-version list — the same list the Runs tab's server
+      // query sends — so the board and the run list count one cohort.
+      if (!anchoredScope.inVersionScope(run.subject.testCaseVersion)) {
         continue;
       }
+      // Runs under a different engine measure different work: the anchored
+      // engine scope keeps them off the board entirely, and the widened scope
+      // splits them into per-engine rows below rather than folding them
+      // together. A summary from before engine selection existed reads as the
+      // engineless "none".
+      const runEngine = run.subject.engineSlug ?? "none";
+      if (!engineWidened && runEngine !== engine) continue;
       // The run's earned/total points and overall rating, read from whichever
       // source this host populated: a published run arrives as a summary card the
       // backend/snapshot already enriched with its aggregate score + rating (the
@@ -354,8 +362,11 @@ function ReviewLeaderboard({
       // run and its base form fold into one model, not two rows.
       const modelId = canonicalModelId(run.subject.modelId, harnessSlug);
       // The board splits by harness as well as model, so the pair — not the model
-      // alone — is the fold key.
-      const key = `${harnessSlug}${PAIR_SEP}${modelId}`;
+      // alone — is the fold key; widened across engines it splits by the run's
+      // engine too, so two engines' runs never merge into one rank.
+      const key = engineWidened
+        ? `${harnessSlug}${PAIR_SEP}${modelId}${PAIR_SEP}${runEngine}`
+        : `${harnessSlug}${PAIR_SEP}${modelId}`;
       // Null when the run's comparable cost / token total is unknown; such runs
       // are excluded from the respective mean rather than folded in as zero.
       const cost = run.metrics.cost.comparable;
@@ -368,6 +379,7 @@ function ReviewLeaderboard({
           modelName:
             findModel(run.subject.modelId, harnessSlug)?.name ?? modelId,
           harnessSlug,
+          engineLabel: engineWidened ? engineName(runEngine) : null,
           total,
           earned: [],
           ratings: [],
@@ -396,6 +408,7 @@ function ReviewLeaderboard({
         modelId: acc.modelId,
         modelName: acc.modelName,
         harnessSlug: acc.harnessSlug,
+        engineLabel: acc.engineLabel,
         total: acc.total,
         highestScore: Math.max(...acc.earned),
         averageScore: mean(acc.earned) ?? 0,
@@ -416,11 +429,13 @@ function ReviewLeaderboard({
     findReview,
     findModel,
     testCase.slug,
-    testCase.latestVersion,
     variant.slug,
     variant.reviewItems,
-    scope,
-    specificVersion,
+    versionScope,
+    version,
+    testCase.versions,
+    engineWidened,
+    engine,
   ]);
 
   // The case's runs drain over several requests, so an unqualified empty board
@@ -434,19 +449,33 @@ function ReviewLeaderboard({
     );
   }
 
-  // The control stays mounted alongside the empty state: a scope that filtered
+  // The scope controls the board renders: the version segments, plus the engine
+  // widener when the anchored version has more than one engine to widen into.
+  const controls = (
+    <AnchoredScopeControls
+      state={anchoredScope}
+      engine={multiEngine ? { name: engineName(engine) } : undefined}
+    />
+  );
+  // Whether some narrowing is in effect that widening could undo — what decides
+  // if the empty state should suggest widening the scope.
+  const narrowed =
+    (anchoredScope.showVersions && versionScope !== "all") ||
+    (multiEngine && !engineWidened);
+
+  // The controls stay mounted alongside the empty state: a scope that filtered
   // every run away must still be adjustable, or the visitor is stuck on an empty
   // board with no way back.
   if (entries.length === 0) {
     return (
       <section className={styles.section}>
-        <VersionScopeControl state={versionScope} />
+        {controls}
         <Panel>
           <p className={styles.empty}>
-            {versionScope.show && scope !== "all" ? (
+            {narrowed ? (
               <>
-                No scored runs of {variant.name} in the selected versions —
-                widen the version scope, or review a run of this one.
+                No scored runs of {variant.name} in the selected scope — widen
+                the scope, or review a run of this one.
               </>
             ) : (
               <>
@@ -462,7 +491,7 @@ function ReviewLeaderboard({
 
   return (
     <section className={styles.section}>
-      <VersionScopeControl state={versionScope} />
+      {controls}
       <Panel>
         <div className={styles.wrap}>
           <div className={styles.menuAnchor}>
@@ -504,7 +533,10 @@ function ReviewLeaderboard({
                 <span className={styles.rank}>{index + 1}</span>
                 <span className={styles.model}>
                   {entry.modelName}{" "}
-                  <span className={styles.harness}>· {entry.harnessSlug}</span>
+                  <span className={styles.harness}>
+                    · {entry.harnessSlug}
+                    {entry.engineLabel ? ` · ${entry.engineLabel}` : ""}
+                  </span>
                 </span>
                 {visibleColumns.map((column) => (
                   // Each metric cell carries its column label so the board can
@@ -532,24 +564,14 @@ function ReviewLeaderboard({
 // of the selected variant, ranked by the fuel of its BEST correct engine (lower is
 // better). A model appears once — folding its runs to their best keeps a re-run
 // model from flooding the board, since deterministic fuel makes reruns identical.
-// Fuel is only comparable within one scored scenario set, so the board ranks ONE
-// version of the case at a time (the latest by default, any of them via the
-// picker) and the selected variant — never a mix, which would rank engines that
-// were never set the same scenarios against each other.
-function PerformanceLeaderboard({
-  testCase,
-  variant,
-}: {
-  testCase: TestCaseSummary;
-  variant: VariantSummary;
-}) {
+// Fuel is only comparable within one scored scenario set, so the board ignores
+// the widening scope controls the review board carries and pins to the EXACT
+// anchored version (picked in the page header) and variant — never a mix, which
+// would rank engines that were never set the same scenarios against each other.
+function PerformanceLeaderboard({ ctx }: { ctx: DetailTabContext }) {
+  const { testCase, version, variant } = ctx;
   const { summaries, loading } = useCaseRunSummaries(testCase.slug);
   const findModel = useFindModel();
-
-  // One exact version, not the review board's widening scope: a fuel cohort is
-  // only comparable within a single version.
-  const versionPick = useVersionPick(testCase);
-  const { version } = versionPick;
 
   const entries = useMemo(
     () =>
@@ -575,16 +597,16 @@ function PerformanceLeaderboard({
     );
   }
 
-  // As on the review board, the picker stays mounted alongside the empty state
-  // so a version with no correct runs is not a dead end. The empty state names
-  // the version only when there was a version to choose.
+  // A version with no correct runs is not a dead end: the version is anchored
+  // in the page header, so the empty state names it (when there was a version
+  // to choose) and the header is where another one is picked.
   if (entries.length === 0) {
-    const cohort = versionPick.show
-      ? `${variant.name} on ${version}`
-      : variant.name;
+    const cohort =
+      testCase.versions.length > 1
+        ? `${variant.name} on ${version}`
+        : variant.name;
     return (
       <section className={styles.section}>
-        <VersionPicker state={versionPick} />
         <Panel>
           <p className={styles.empty}>
             No correct runs of {cohort} yet — the leaderboard ranks models by
@@ -601,7 +623,6 @@ function PerformanceLeaderboard({
 
   return (
     <section className={styles.section}>
-      <VersionPicker state={versionPick} />
       <Panel>
         <p>
           Ranked by total fuel — lower is better. Each model counts once, at its

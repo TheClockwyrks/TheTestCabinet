@@ -7,9 +7,7 @@ import { MetricsContent } from "../../testcases/[slug]/TestCaseMetricsPage";
 export function JamMetricsPage() {
   return (
     <JamDetailLayout tab="metrics">
-      {({ testCase, variant }) => (
-        <MetricsContent testCase={testCase} variant={variant} />
-      )}
+      {(ctx) => <MetricsContent ctx={ctx} />}
     </JamDetailLayout>
   );
 }

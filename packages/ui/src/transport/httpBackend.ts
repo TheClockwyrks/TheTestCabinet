@@ -1235,6 +1235,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (opts?.harness) params.set("harness", opts.harness);
       if (opts?.variant) params.set("variant", opts.variant);
       if (opts?.version) params.set("version", opts.version);
+      // The list rides as one comma-separated param
+      // (`versions=v1.0.0,v1.1.0`), matching the backend's split-and-trim.
+      if (opts?.versions?.length)
+        params.set("versions", opts.versions.join(","));
+      if (opts?.engine) params.set("engine", opts.engine);
       // Only sent when on: the backend defaults it off, so the common URL stays
       // free of a redundant `latestVersions=false`.
       if (opts?.latestVersions) params.set("latestVersions", "true");

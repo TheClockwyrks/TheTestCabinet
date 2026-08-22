@@ -2961,6 +2961,152 @@ async fn list_summaries_exact_version_overrides_latest_versions() {
 }
 
 #[tokio::test]
+async fn list_summaries_filters_by_a_versions_list() {
+    // The case Runs tab's anchored version scope: the console computes the versions
+    // in the anchored line and sends the concrete list; any of them matches.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "pong", "v1.1.0").await;
+    seed_version(&db, "c", "pong", "v2.0.0").await;
+
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        versions: Some(vec!["v1.0.0".to_string(), "v1.1.0".to_string()]),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a", "b"]
+    );
+
+    // An empty list is no filter at all, like the other empty equality filters.
+    let filter = SummaryFilter {
+        versions: Some(Vec::new()),
+        ..unpublished_filter()
+    };
+    let (_, total) = db
+        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(total, 3);
+}
+
+#[tokio::test]
+async fn list_summaries_versions_list_overrides_latest_versions() {
+    // Scoping to an older line explicitly must show it — the concrete list is the
+    // more specific instruction, exactly as an exact `version` is.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "pong", "v2.0.0").await;
+
+    let filter = SummaryFilter {
+        versions: Some(vec!["v1.0.0".to_string()]),
+        latest_versions: true,
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a"]
+    );
+}
+
+/// Push an unpublished `pong` run recording the given engine slug, varying nothing
+/// else. For the engine-filter tests, whose ordering key is the id tiebreak.
+async fn seed_engine(db: &Db, id: &str, engine: &str) {
+    let mut r = record(id);
+    r.subject.test_case_slug = "pong".to_string();
+    r.subject.engine_slug = engine.to_string();
+    db.push(&r, &links(), None).await.unwrap();
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_engine_with_null_matching_only_none() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_engine(&db, "a", "none").await;
+    seed_engine(&db, "b", "simple-2d").await;
+    // Simulate a pre-column row the backfill could not lift (its record no longer
+    // deserializes, so the column stays NULL — the engine is unknown).
+    seed_engine(&db, "c", "simple-2d").await;
+    let mut active = lifted(&db, "c").await.into_active_model();
+    active.engine_slug = Set(None);
+    active.update(&db.connection()).await.unwrap();
+
+    // An engine filter matches the lifted slug — and NEVER a NULL row, whose engine
+    // is unknown even if its unreadable record happened to name one.
+    let filter = SummaryFilter {
+        engine: Some("simple-2d".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["b"]
+    );
+
+    // `none` is the one filter NULL matches: every pre-engine-era record
+    // deserializes to `none`, so an un-backfillable row can only be engineless-era.
+    let filter = SummaryFilter {
+        engine: Some("none".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a", "c"]
+    );
+
+    // An empty engine is ignored, like the other equality filters.
+    let filter = SummaryFilter {
+        engine: Some(String::new()),
+        ..unpublished_filter()
+    };
+    let (_, total) = db
+        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(total, 3);
+}
+
+#[tokio::test]
+async fn push_lifts_the_engine_slug() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_engine(&db, "r1", "simple-2d").await;
+    assert_eq!(
+        lifted(&db, "r1").await.engine_slug.as_deref(),
+        Some("simple-2d")
+    );
+    // The engineless run lifts the concrete `none`, not NULL — it is a real value
+    // the engine filter matches on, distinct from "unknown".
+    seed_engine(&db, "r2", "none").await;
+    assert_eq!(lifted(&db, "r2").await.engine_slug.as_deref(), Some("none"));
+}
+
+#[tokio::test]
+async fn backfill_engine_slug_lifts_the_recorded_engine() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_engine(&db, "r1", "simple-2d").await;
+    seed_engine(&db, "r2", "none").await;
+
+    // Simulate rows that predate the column: NULL the lifted value.
+    for id in ["r1", "r2"] {
+        let mut active = lifted(&db, id).await.into_active_model();
+        active.engine_slug = Set(None);
+        active.update(&db.connection()).await.unwrap();
+    }
+
+    let filled = db.backfill_engine_slug().await.unwrap();
+    assert_eq!(filled, 2);
+    assert_eq!(
+        lifted(&db, "r1").await.engine_slug.as_deref(),
+        Some("simple-2d")
+    );
+    // `none` is lifted too: the candidate set settles rather than re-parsing the
+    // whole engineless-era corpus on every boot.
+    assert_eq!(lifted(&db, "r2").await.engine_slug.as_deref(), Some("none"));
+
+    // Idempotent: a second pass finds nothing un-backfilled.
+    assert_eq!(db.backfill_engine_slug().await.unwrap(), 0);
+}
+
+#[tokio::test]
 async fn latest_versions_is_measured_within_the_state_slice() {
     // The current version is resolved from the slice the listing draws from, so a
     // published-only listing is not narrowed by a version only an unpublished run

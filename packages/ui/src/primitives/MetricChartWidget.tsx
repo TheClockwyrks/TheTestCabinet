@@ -32,9 +32,16 @@ const KEY_SEP = "\u0000";
 // The label a bar carries: the model's display name disambiguated by the harness
 // that produced it ("Anthropic Claude Opus 4.8 · pi"). The harness is always
 // shown because a `(harness, model)` pair is the unit these charts plot — the
-// whole point of the split is that which harness ran is never hidden.
-function pairLabel(modelName: string, harnessSlug: string): string {
-  return `${modelName} · ${harnessSlug}`;
+// whole point of the split is that which harness ran is never hidden. A caller
+// splitting on an extra axis (see `subgroup`) appends that axis's label the same
+// way ("… · pi · Simple 2D"), so a split bar names what it was split on.
+function pairLabel(
+  modelName: string,
+  harnessSlug: string,
+  subLabel?: string,
+): string {
+  const pair = `${modelName} · ${harnessSlug}`;
+  return subLabel ? `${pair} · ${subLabel}` : pair;
 }
 
 interface MetricChartWidgetProps {
@@ -87,6 +94,14 @@ interface MetricChartWidgetProps {
   betterIs?: BetterIs;
   /** Mean points per bar label, splitting `best`-order ties. */
   tieBreak?: ChartTieBreak;
+  /**
+   * An optional extra grouping axis appended to the `(harness, model)` fold —
+   * e.g. the engine a run selected, when a case's metrics are widened across
+   * engines. Runs whose subgroup keys differ are never folded into one bar
+   * (they measure different work), and each bar's label carries the subgroup's
+   * label after the harness. Omit for the plain pair fold.
+   */
+  subgroup?: (run: RunSummary) => { key: string; label: string };
   /** Controls for the widget header's trailing edge (e.g. the order control). */
   actions?: ReactNode;
   /**
@@ -116,13 +131,28 @@ export function MetricChartWidget({
   tieBreak,
   actions,
   empty,
+  subgroup,
 }: MetricChartWidgetProps) {
   const barPoints = useMemo<BarPoint[]>(
     () =>
       barMode === "meanByModel"
-        ? meanBars(runs, value, formatValue, colorForModel, labelForModel)
-        : runBars(runs, value, formatValue, colorForModel, labelForModel),
-    [runs, value, barMode, formatValue, colorForModel, labelForModel],
+        ? meanBars(
+            runs,
+            value,
+            formatValue,
+            colorForModel,
+            labelForModel,
+            subgroup,
+          )
+        : runBars(
+            runs,
+            value,
+            formatValue,
+            colorForModel,
+            labelForModel,
+            subgroup,
+          ),
+    [runs, value, barMode, formatValue, colorForModel, labelForModel, subgroup],
   );
 
   // The bars in the chosen order. Kept separate from building them so flipping
@@ -182,6 +212,7 @@ export function runBars(
   formatValue: (value: number) => string,
   colorForModel?: (modelId: string) => string | null | undefined,
   labelForModel?: (modelId: string) => string | null | undefined,
+  subgroup?: (run: RunSummary) => { key: string; label: string },
 ): BarPoint[] {
   return runs.flatMap((run) => {
     const v = value(run);
@@ -189,7 +220,7 @@ export function runBars(
     const harness = run.subject.harnessSlug;
     const modelId = canonicalModelId(run.subject.modelId, harness);
     const name = labelForModel?.(modelId) ?? modelId;
-    const label = pairLabel(name, harness);
+    const label = pairLabel(name, harness, subgroup?.(run).label);
     return [
       {
         label,
@@ -221,10 +252,12 @@ export function meanBars(
   formatValue: (value: number) => string,
   colorForModel?: (modelId: string) => string | null | undefined,
   labelForModel?: (modelId: string) => string | null | undefined,
+  subgroup?: (run: RunSummary) => { key: string; label: string },
 ): BarPoint[] {
   interface Group {
     modelId: string;
     harness: string;
+    subLabel: string | undefined;
     sum: number;
     count: number;
     min: number;
@@ -237,7 +270,11 @@ export function meanBars(
     if (v === null) continue;
     const harness = run.subject.harnessSlug;
     const modelId = canonicalModelId(run.subject.modelId, harness);
-    const key = `${harness}${KEY_SEP}${modelId}`;
+    const sub = subgroup?.(run);
+    // The subgroup key joins the fold key the same NUL-separated way, so two
+    // runs of one pair under different subgroups are two bars, never one mean.
+    const key =
+      `${harness}${KEY_SEP}${modelId}` + (sub ? `${KEY_SEP}${sub.key}` : "");
     const entry = totals.get(key);
     if (entry) {
       entry.sum += v;
@@ -245,14 +282,23 @@ export function meanBars(
       entry.min = Math.min(entry.min, v);
       entry.max = Math.max(entry.max, v);
     } else {
-      totals.set(key, { modelId, harness, sum: v, count: 1, min: v, max: v });
+      totals.set(key, {
+        modelId,
+        harness,
+        subLabel: sub?.label,
+        sum: v,
+        count: 1,
+        min: v,
+        max: v,
+      });
       order.push(key);
     }
   }
   return order.map((key) => {
-    const { modelId, harness, sum, count, min, max } = totals.get(key)!;
+    const { modelId, harness, subLabel, sum, count, min, max } =
+      totals.get(key)!;
     const name = labelForModel?.(modelId) ?? modelId;
-    const label = pairLabel(name, harness);
+    const label = pairLabel(name, harness, subLabel);
     // The bar height is the mean; the tooltip surfaces the spread it hides — the
     // max and min behind it — over however many runs it averages.
     const runsLine = `${count} ${count === 1 ? "run" : "runs"}`;

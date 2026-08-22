@@ -544,11 +544,18 @@ not a publishable failure, so the other selectors omit it.
 
 The offset mode additionally accepts:
 
-- Filters `testCase`, `model`, `harness`, `variant`, and `version`, each
-  narrowing to runs matching that lifted subject value. They AND together, so
-  `testCase=carom&model=…` is expressible, which the free-text `q` alone cannot
-  do. A variant slug is unique only within its case, so `variant` is paired with
-  `testCase`, the case-detail Runs tab's slice, as `version` normally is.
+- Filters `testCase`, `model`, `harness`, `variant`, `version`, and `engine`,
+  each narrowing to runs matching that lifted subject value. They AND together,
+  so `testCase=carom&model=…` is expressible, which the free-text `q` alone
+  cannot do. A variant slug is unique only within its case, so `variant` is
+  paired with `testCase`, the case-detail Runs tab's slice, as `version`
+  normally is. `engine` matches the engine slug the run was launched under, and
+  the engineless run records the slug `none`.
+- Filter `versions`, a comma-separated list of exact versions, narrowing to runs
+  matching any of them. This is the case-detail Runs tab's version scope: the
+  console computes the versions in the anchored `major.minor` or major line from
+  the catalog and sends the concrete list. Like `version`, it silences
+  `latestVersions`.
 - Current versions `latestVersions=true`, restricting every run to its case's
   current `major.minor`: the newest one that case has a run for within the
   selected `state` slice. A case version is frozen once it has runs, so an older

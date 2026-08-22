@@ -134,8 +134,9 @@ export function useStaticGallery(): GalleryDataInput {
 
   // The inputs one run was given: the variant of the run's OWN case version,
   // rendered for the run's OWN engine. The snapshot carries a document per
-  // published version, so an older version resolves out of `variantsByVersion`
-  // rather than the latest version's variants; and it carries each variant's
+  // published version, so an older version resolves out of
+  // `priorVariantsByVersion` rather than the latest version's variants; and it
+  // carries each variant's
   // prompt and specs re-rendered per engine, so a run on an engine reads that
   // engine's rendering. The engineless slug is the top-level pair, which is what a
   // run selecting no engine received. A version, variant, or engine this snapshot
@@ -149,7 +150,7 @@ export function useStaticGallery(): GalleryDataInput {
       const variants =
         ref.version === testCase.latestVersion
           ? testCase.variants
-          : testCase.variantsByVersion[ref.version];
+          : testCase.priorVariantsByVersion[ref.version];
       const variant = variants?.find((entry) => entry.slug === ref.variant);
       if (!variant) return null;
       if (ref.engine === DEFAULT_ENGINE_SLUG) return variant;

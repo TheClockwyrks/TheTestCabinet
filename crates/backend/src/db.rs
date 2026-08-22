@@ -400,6 +400,7 @@ impl Db {
             test_case_slug: Set(record.subject.test_case_slug.clone()),
             test_case_version: Set(record.subject.test_case_version.clone()),
             variant: Set(record.subject.variant.clone()),
+            engine_slug: Set(Some(record.subject.engine_slug.clone())),
             harness_slug: Set(record.subject.harness_slug.as_str().to_string()),
             harness_version: Set(record.subject.harness_version.clone()),
             model_id: Set(record.subject.model_id.clone()),
@@ -435,6 +436,7 @@ impl Db {
                     run::Column::TestCaseSlug,
                     run::Column::TestCaseVersion,
                     run::Column::Variant,
+                    run::Column::EngineSlug,
                     run::Column::HarnessSlug,
                     run::Column::HarnessVersion,
                     run::Column::ModelId,
@@ -948,13 +950,15 @@ impl Db {
     }
 
     /// The per-case current-version allowlist a filter asks for, or `None` when it
-    /// does not (the toggle is off, or an exact [`SummaryFilter::version`] overrides
-    /// it — see that field).
+    /// does not (the toggle is off, or an explicit version selection — an exact
+    /// [`SummaryFilter::version`] or a [`SummaryFilter::versions`] list — overrides
+    /// it; see those fields).
     async fn resolve_version_scope(
         &self,
         filter: &SummaryFilter,
     ) -> Result<Option<Vec<CaseVersions>>> {
-        let exact = filter.version.as_deref().is_some_and(|s| !s.is_empty());
+        let exact = filter.version.as_deref().is_some_and(|s| !s.is_empty())
+            || filter.versions.as_deref().is_some_and(|v| !v.is_empty());
         if !filter.latest_versions || exact {
             return Ok(None);
         }
@@ -4146,6 +4150,25 @@ pub struct SummaryFilter {
     /// [`Self::test_case`] — but it is a plain equality filter, so on its own it
     /// selects that version of *every* case.
     pub version: Option<String>,
+    /// Restrict to a list of exact test-case versions (`test_case_version` ∈ the
+    /// list). This is the case-detail Runs tab's anchored version scope: the
+    /// console computes the versions in the anchored `major.minor` or major line
+    /// from the catalog and sends the concrete list. Like [`Self::version`], it
+    /// silences [`Self::latest_versions`] — the explicit list is the more specific
+    /// instruction. An empty or absent list applies no filter.
+    pub versions: Option<Vec<String>>,
+    /// Restrict to one engine slug (`engine_slug`) — the runtime the produced
+    /// build was written against, with `none` naming the engineless run. Runs
+    /// under different engines are not comparable, so this is how the case-detail
+    /// tabs pin a listing to the anchored engine.
+    ///
+    /// A `NULL` column is a row written before the column existed whose record no
+    /// longer deserializes (the startup backfill lifts every readable record,
+    /// pre-engine-era ones included, to a concrete slug). Such a row's engine is
+    /// unknown, so it is excluded from any engine filter — except `"none"`, where
+    /// `NULL` matches: every pre-engine-era record deserializes to `none`, so an
+    /// un-backfillable row can only plausibly be an engineless-era one.
+    pub engine: Option<String>,
     /// Restrict every run to its case's **current** version — the greatest
     /// `major.minor` that case has a run for within this filter's
     /// [`state`](Self::state) slice (see [`Db::current_case_versions`]). This is
@@ -4269,6 +4292,25 @@ fn summary_query(filter: &SummaryFilter, scope: Option<&[CaseVersions]>) -> Sele
     }
     if let Some(version) = filter.version.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseVersion.eq(version));
+    }
+    if let Some(versions) = filter.versions.as_deref().filter(|v| !v.is_empty()) {
+        query =
+            query.filter(run::Column::TestCaseVersion.is_in(versions.iter().map(String::as_str)));
+    }
+    if let Some(engine) = filter.engine.as_deref().filter(|s| !s.is_empty()) {
+        // NULL is a row whose record could not be re-read (the backfill settles every
+        // readable row to a concrete slug), so its engine is unknown and it matches no
+        // engine filter — except `none`: every pre-engine-era record deserializes to
+        // `none`, so the only engine an un-backfillable row can plausibly have is none.
+        if engine == "none" {
+            query = query.filter(
+                Condition::any()
+                    .add(run::Column::EngineSlug.eq(engine))
+                    .add(run::Column::EngineSlug.is_null()),
+            );
+        } else {
+            query = query.filter(run::Column::EngineSlug.eq(engine));
+        }
     }
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));
@@ -5845,6 +5887,63 @@ impl Db {
             active.update(&self.conn()).await?;
             touch_run(&self.conn(), &id).await?;
             backfilled += 1;
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the lifted `engine_slug` column for rows stored before the column
+    /// existed: parse each `NULL` row's record and lift `record.subject.engine_slug`
+    /// into the column — `none` included, since the engineless run is a real value
+    /// the engine filter matches on, not an absence.
+    ///
+    /// Unlike [`Self::backfill_code_analyzer_version`], no record-blob pushdown is
+    /// needed for the candidate set to settle: every readable record carries a slug
+    /// (a pre-engine-era record deserializes to the default `none`), so one
+    /// successful pass leaves `NULL` only on rows whose record no longer
+    /// deserializes — a bounded residue, not the whole historical corpus.
+    ///
+    /// Best-effort per row: a record that no longer deserializes is left for a later
+    /// boot (and is the reason the engine filter treats `NULL` as unknown). Returns
+    /// how many rows were filled.
+    ///
+    /// The pass is paged by an `id` cursor because its first boot visits the ENTIRE
+    /// historical corpus — every pre-migration row is `NULL` — and each row carries
+    /// its multi-KB record (and event) blobs; one unpaged `.all()` would materialize
+    /// all of it in memory before the router is even built, on the single-replica
+    /// coordinator. An `id` cursor rather than offset paging (or re-querying the
+    /// first N `NULL`s) is load-bearing twice over: filled rows leave the `NULL`
+    /// predicate mid-pass, which would shift offset pages, and undeserializable rows
+    /// stay `NULL`, which would pin a "first N" loop in place forever.
+    pub async fn backfill_engine_slug(&self) -> Result<usize> {
+        const BATCH: u64 = 256;
+        let mut backfilled = 0usize;
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut query = run::Entity::find().filter(run::Column::EngineSlug.is_null());
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows = query
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .all(&self.conn())
+                .await?;
+            let Some(last) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.id.clone());
+
+            for row in rows {
+                let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                    continue;
+                };
+                let id = row.id.clone();
+                let mut active = row.into_active_model();
+                active.engine_slug = Set(Some(record.subject.engine_slug));
+                active.update(&self.conn()).await?;
+                touch_run(&self.conn(), &id).await?;
+                backfilled += 1;
+            }
         }
         Ok(backfilled)
     }

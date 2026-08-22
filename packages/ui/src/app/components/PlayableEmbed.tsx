@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { SegmentedControl, Spinner } from "@test-cabinet/ui";
-import { ENGINES, engineName, orderEngines } from "../data/engines";
+import { Spinner } from "@test-cabinet/ui";
+import { engineName, orderEngines } from "../data/engines";
 import styles from "./PlayableEmbed.module.scss";
 
 interface EmbeddedFrameProps {
@@ -200,6 +200,17 @@ interface ReferencePlayableProps {
   referenceBuilds: Record<string, string>;
   /** The variant's display name, used to label the embed and the empty state. */
   variantName: string;
+  /**
+   * The engine whose build is shown — the case detail page's ANCHORED engine.
+   * The page header is where the engine is switched (the anchor drives every
+   * tab at once), so this component carries no switch of its own: it shows the
+   * anchored engine's build, or a placeholder naming the engines that do have
+   * one when the anchored engine does not.
+   */
+  engine: string;
+  /** The anchored version, named in the missing-build placeholder so the reader
+   * knows exactly which deliverable lacks one. */
+  version: string;
 }
 
 /**
@@ -210,53 +221,47 @@ interface ReferencePlayableProps {
  * variant that declares no reference implementation renders a short placeholder
  * rather than an empty embed.
  *
- * A variant has one reference build per {@link ENGINES engine}, because the build
- * a reference demonstrates genuinely differs under each — an engineless one
- * carries its own runtime, an engine-backed one hands the same surfaces to the
- * runtime it vendors. So when more than one is published the embed carries a
- * switch, and the reader compares the same game under each runtime; with exactly
- * one there is nothing to choose between and the switch is left off.
+ * A variant has one reference build per engine, because the build a reference
+ * demonstrates genuinely differs under each — an engineless one carries its own
+ * runtime, an engine-backed one hands the same surfaces to the runtime it
+ * vendors. Which one is shown follows the page's anchored engine (selected in
+ * the header alongside the version and variant), so the embed always shows the
+ * same rendering every other tab describes; an engine with no published build
+ * degrades to a placeholder listing the ones that have one.
  */
 export function ReferencePlayable({
   referenceBuilds,
   variantName,
+  engine,
+  version,
 }: ReferencePlayableProps) {
-  const engines = orderEngines(Object.keys(referenceBuilds));
-  // The selection is held here rather than by the page, so switching variants
-  // resets it: a variant that published a different set must not inherit a choice
-  // that names an engine it has no build for. A stale value falls back to the
-  // first offered rather than blanking the embed.
-  const [selected, setSelected] = useState<string>(() => engines[0] ?? "");
-  const engine = engines.includes(selected) ? selected : (engines[0] ?? "");
+  const published = orderEngines(Object.keys(referenceBuilds));
   const src = referenceBuilds[engine];
 
   if (!src) {
+    // Nothing published for the anchored engine. Distinguish "this variant has
+    // no reference at all" from "not for THIS engine": the latter names the
+    // engines that do have builds, since the header is where one is picked.
+    if (published.length === 0) {
+      return (
+        <div className={styles.placeholder}>
+          No reference implementation for this variant.
+        </div>
+      );
+    }
     return (
       <div className={styles.placeholder}>
-        No reference implementation for this variant.
+        No reference build for {engineName(engine)} at {version}. Builds are
+        published for {published.map(engineName).join(", ")} — switch the engine
+        in the header to view one.
       </div>
     );
   }
   return (
-    <div className={styles.reference}>
-      {engines.length > 1 && (
-        <div className={styles.engineBar}>
-          <SegmentedControl
-            ariaLabel="Reference engine"
-            value={engine}
-            onChange={setSelected}
-            options={engines.map((slug) => ({
-              value: slug,
-              label: engineName(slug),
-            }))}
-          />
-        </div>
-      )}
-      <PlayableEmbed
-        src={src}
-        title={`Reference implementation for ${variantName} on ${engineName(engine)}`}
-        mode="inline"
-      />
-    </div>
+    <PlayableEmbed
+      src={src}
+      title={`Reference implementation for ${variantName} on ${engineName(engine)}`}
+      mode="inline"
+    />
   );
 }

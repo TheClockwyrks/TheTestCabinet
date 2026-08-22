@@ -126,6 +126,7 @@ fn run_summary_lifts_the_runs_display_identity() {
         test_case_slug: "carom".to_string(),
         test_case_version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        engine_slug: Some("none".to_string()),
         harness_slug: "claude-code".to_string(),
         harness_version: None,
         model_id: "claude-opus-4".to_string(),

@@ -72,13 +72,46 @@ variant of one exact case version rendered for one
 recorded version and engine, so it shows that run's prompt and specs rather than
 the latest version's. A console resolves it from the backend's version and specs
 routes; the site resolves it from the snapshot's case document for that version.
-The case pages keep reading `readTestCase`, which resolves the latest version
-engineless.
 
 Listing pages are answered through `queryRunSummaries`, a paged, filtered,
 sorted query the host implements. A console forwards it to the backend's offset
 endpoint; the site answers it from its in-memory summary index with the same
 semantics, so a numbered pager sizes identically on either host.
+
+## The case detail coordinate
+
+A test case's detail page is anchored to one selected coordinate: a version, a
+variant of that version, and an engine that version supports. The coordinate is
+selected in the page header, lives in the query string (`?version=`,
+`?variant=`, `?engine=`, each omitted at its default), and travels across the
+page's tabs, so every tab describes the same deliverable and any selection is
+linkable. Selection is canonical: an unknown version resolves to the latest, and
+a variant or engine the selected version does not declare resolves to that
+version's default. Picking a version re-derives the variant and engine choices
+from what that version declares.
+
+`readTestCase` supplies the frame the selectors are built from — every published
+version, each version's variant names, and each version's supported engines —
+and the layout resolves the selected coordinate through the same
+`readCaseVariant` a run's Inputs surface uses. The tabs that render the
+deliverable itself (Inputs, Reviewing, Reference) render exactly that resolved
+coordinate, and the header's Run action launches it.
+
+The tabs that aggregate runs (Runs, Leaderboard, Metrics) scope relative to the
+anchored coordinate rather than selecting one of their own. Each carries a
+version scope: the exact anchored version, its `major.minor` line (the default,
+since revisions of one minor are the same spec), its major line, or every
+version. Where the selected version declares engines beyond one, each also
+carries an engine scope, defaulting to the anchored engine because runs under
+different engines measure different work; a leaderboard or metrics view widened
+to all engines lists each engine's rows separately rather than folding them.
+The Runs tab additionally offers an all-variants widening. Scopes live in the
+query string (`?scope=`, `?engines=`, `?variants=`) and travel across tabs, so
+the run list and the boards describe the same cohort.
+
+The whole-history tabs (Changelog, Errata) cover every version regardless of the
+anchor, and the Overview tab shows the case's description with a note when the
+anchored version is not the one the description accompanies.
 
 ## Asset viewers
 

@@ -275,6 +275,8 @@ pub async fn list(
             harness: params.harness.clone(),
             variant: params.variant.clone(),
             version: params.version.clone(),
+            versions: parse_versions(params.versions.as_deref()),
+            engine: params.engine.clone(),
             latest_versions: params.latest_versions.unwrap_or(false),
             q: params.q.clone(),
         };
@@ -680,6 +682,15 @@ pub struct ListParams {
     /// Normally paired with `testCase`, since a version only means something
     /// within a case.
     version: Option<String>,
+    /// Filter to a comma-separated list of exact test-case versions (summary +
+    /// offset path only) — the case-detail Runs tab's version scope: the console
+    /// computes the versions in the anchored `major.minor` or major line from the
+    /// catalog and sends the concrete list. Like `version`, it silences
+    /// `latestVersions`.
+    versions: Option<String>,
+    /// Filter to one engine slug (summary + offset path only) — the slug the run
+    /// was launched under, with the engineless run recording the slug `none`.
+    engine: Option<String>,
     /// Restrict every run to its case's current `major.minor` — the newest one
     /// that case has a run for in the selected `state` slice (summary + offset
     /// path only). Ignored when `version` names an exact version. Wire:
@@ -718,6 +729,19 @@ pub struct SummaryListResponse {
     /// is unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     total: Option<usize>,
+}
+
+/// Split the comma-separated `versions` query param into the filter's list:
+/// entries are trimmed and empties dropped, so `v1.0.0, v1.1.0` and a trailing
+/// comma both parse. `None` (absent, or nothing but separators) applies no filter.
+fn parse_versions(versions: Option<&str>) -> Option<Vec<String>> {
+    let list: Vec<String> = versions?
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    if list.is_empty() { None } else { Some(list) }
 }
 
 /// Map the `state` query param to the summary listing's lifecycle slice, mirroring
@@ -885,3 +909,7 @@ struct RatingSlice {
     rating: Rating,
     count: usize,
 }
+
+#[cfg(test)]
+#[path = "runs.test.rs"]
+mod tests;

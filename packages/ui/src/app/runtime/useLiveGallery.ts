@@ -37,6 +37,7 @@ import type {
   SeededInput,
   TestCaseDetail,
   TestCaseSummary,
+  VariantRef,
   VariantSummary,
 } from "../data/testCases";
 import { useRunsRuntime } from "./runsRuntime";
@@ -223,6 +224,8 @@ async function toTestCaseDetail(
   errata: ErrataEntry[],
   /** The engines each version declares, keyed by version. */
   enginesByVersion: Record<string, string[]>,
+  /** Each version's variant identities, keyed by version. */
+  variantsByVersion: Record<string, VariantRef[]>,
 ): Promise<TestCaseDetail> {
   const variants = await Promise.all(
     info.variants.map((v) =>
@@ -247,9 +250,13 @@ async function toTestCaseDetail(
     variants,
     // The engines each version supports. Every version was resolved to build the
     // changelog, so the declared set for all of them is already in hand — which is
-    // what lets the Inputs tab offer an older version's engines rather than the
-    // latest version's.
+    // what lets the detail header offer an older version's engines rather than
+    // the latest version's.
     enginesByVersion,
+    // The variant identities each version declares, from the same per-version
+    // resolutions, so the header's variant selector offers exactly the selected
+    // version's variants.
+    variantsByVersion,
     domains: info.domains.map((d) => ({
       id: d.id,
       name: d.name,
@@ -342,6 +349,12 @@ async function fetchTestCase(
   const enginesByVersion = Object.fromEntries(
     infos.map((info) => [info.version, info.engines]),
   );
+  const variantsByVersion = Object.fromEntries(
+    infos.map((info) => [
+      info.version,
+      info.variants.map((v) => ({ slug: v.slug, name: v.name })),
+    ]),
+  );
   return toTestCaseDetail(
     backend,
     versions,
@@ -349,6 +362,7 @@ async function fetchTestCase(
     changelog,
     errata,
     enginesByVersion,
+    variantsByVersion,
   );
 }
 

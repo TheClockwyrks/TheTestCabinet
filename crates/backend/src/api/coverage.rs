@@ -1936,6 +1936,8 @@ pub(super) async fn collect_queue(
             harness: Some(cell.combo.harness.as_str().to_string()),
             variant: Some(cell.case.variant.clone()),
             version: Some(cell.case.version.clone()),
+            versions: None,
+            engine: None,
             latest_versions: false,
             q: None,
         };
