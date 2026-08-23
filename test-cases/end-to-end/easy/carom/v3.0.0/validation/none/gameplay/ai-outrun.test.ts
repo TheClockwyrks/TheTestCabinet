@@ -1,9 +1,11 @@
-// gameplay/ai-outrun — the Solo opponent is beatable, not superhuman.
+// gameplay/ai-outrun — the Solo opponent is outrun by a shot out of reach.
 //
-// The REAL AI starts pinned at the bottom bound and faces a fast, low shot
-// arriving near the top. The ball reaches the goal line before a paddle moving at
-// the AI's speed could cover the distance, so a correctly-paced opponent misses
-// it. An AI that moves faster than it should blocks it and fails here.
+// specs/modes/single-player.md caps the AI at `AI_SPEED` (560 units per
+// second). The REAL AI starts pinned at the bottom bound and faces a fast, low
+// shot arriving near the top: the ball covers the 505 units to the paddle's
+// face in 0.54 s, in which the paddle climbs 300 of the 490 it needs, so under
+// the rule the shot gets past and player one scores. An AI that moves faster
+// than the rule allows blocks it and fails here.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { PADDLE_MAX_CY, SPEED_CAP } from "../constants";

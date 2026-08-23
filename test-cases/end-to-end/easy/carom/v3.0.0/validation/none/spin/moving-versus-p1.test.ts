@@ -1,18 +1,22 @@
-// spin/moving-versus-p1 — player one's paddle, swung upward, imparts spin the
-// other way.
+// spin/moving-versus-p1 — player one's paddle, moving upward as it strikes, imparts negative spin (Versus).
 //
-// The left paddle is posed moving UPWARD as the ball arrives. An upward swing
-// curves the ball the opposite way from a downward one (negative spin), so this
-// and its downward siblings together show up and down curving opposite ways.
+// specs/balls.md: on a paddle hit, `spin = clamp(spin + paddleVy *
+// SPIN_FROM_PADDLE, -SPIN_CLAMP, SPIN_CLAMP)`, with `paddleVy` the paddle's
+// integrated velocity for the frame. A spinless ball struck by a paddle moving
+// at `PADDLE_SPEED` therefore leaves with spin `-PADDLE_SPEED * SPIN_FROM_PADDLE`
+// (-612), and five percent is rounding room on that. The ball approaches at
+// `FACE_SHOT_SPEED`, one sub-step per frame, so the frame of the contact ends
+// with exactly the spin the formula produced.
+//
+// The paddle is posed moving at the full speed and led upstream by the run-up,
+// so it is travelling at `PADDLE_SPEED`, clear of both bounds, as it strikes.
 //
 // The contact sits above mid-field so the swing has room: over the run-up a
-// full-speed paddle covers 360 px, and it starts that far DOWNstream to arrive as
-// the ball does. Aimed at mid-field that start would fall below the field edge,
-// where the clamp would pin it still.
-
+// full-speed paddle covers 360 units, and it starts that far downstream.
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import {
+  FACE_SHOT_SPEED,
   LEAD_TICKS,
   arrangePaddleHit,
   captureReplay,
@@ -24,22 +28,10 @@ import {
 
 const CONTACT_CY = 240;
 const CONTACT_BALL_Y = 220;
-const SPIN_FLOOR = PADDLE_SPEED * SPIN_FROM_PADDLE * 0.65;
+const EXPECTED_SPIN = -PADDLE_SPEED * SPIN_FROM_PADDLE;
+const SPIN_TOLERANCE = Math.abs(EXPECTED_SPIN) * 0.05;
 
-/**
- * Frames of the return flight recorded after the contact.
- *
- * `drivePaddleHit` stops on the frame the ball comes off the paddle, because that
- * is the instant the reading has to be taken at — a frame later and spin has
- * already begun to curve the flight this check is about. That makes it a bad
- * place to stop RECORDING: the clip would end on the contact and a reviewer would
- * never see the shot it produced.
- *
- * So the reading stays exactly where it was and the flight is driven after it,
- * inside the same recorded section. Three quarters of a second is long enough for
- * a curve to be a curve and a straight return to be visibly straight, and short
- * enough that the ball is still on the field at the end of it.
- */
+/** Frames of the return flight recorded after the contact, for the replay. */
 const RETURN_TICKS = 90; // 0.75 s
 
 let harness: Harness;
@@ -52,12 +44,13 @@ afterEach(async () => {
   await harness.dispose();
 });
 
-it("curves the ball the other way off an upward swing", async () => {
+it("imparts -PADDLE_SPEED * SPIN_FROM_PADDLE off an upward swing of player one's paddle", async () => {
   await startPlaying(harness, "versus");
   await arrangePaddleHit(harness, "left", {
     cy: CONTACT_CY,
     vy: -PADDLE_SPEED,
     ballY: CONTACT_BALL_Y,
+    approachSpeed: FACE_SHOT_SPEED,
     leadTicks: LEAD_TICKS,
   });
 
@@ -70,5 +63,8 @@ it("curves the ball the other way off an upward swing", async () => {
   });
 
   expect(contact.hit).toBe(true);
-  expect(contact.ball.spin).toBeLessThan(-SPIN_FLOOR);
+  expect(contact.paddle.vy).toBeCloseTo(-PADDLE_SPEED, 6);
+  expect(Math.abs(contact.ball.spin - EXPECTED_SPIN)).toBeLessThanOrEqual(
+    SPIN_TOLERANCE,
+  );
 });

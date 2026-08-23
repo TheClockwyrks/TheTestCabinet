@@ -8,9 +8,8 @@
 // gesture to fake, because a cue is announced whether or not anything could be
 // heard.
 //
-// That the event carries the cue's NAME is what makes this stronger than the
-// browser suite it replaces: that suite could only count the sounds a build
-// started, so a build that fired its scoring blip on every bounce passed. Here
+// The event carries the cue's NAME, so a build that fired its scoring blip on
+// every bounce is told apart from one that plays `paddle-hit` on a paddle hit:
 // the name and the frame are both read, and the frame is the collision's own.
 
 import { afterEach, beforeEach, expect, it } from "vitest";

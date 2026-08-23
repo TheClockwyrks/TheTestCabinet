@@ -25,7 +25,6 @@ import {
   HOLD_TIME,
 } from "../constants";
 import {
-  SPARE_PARKS,
   TICK_HZ,
   allBalls,
   type BallView,
@@ -39,18 +38,19 @@ export const HOLD_TICKS = HOLD_TIME * TICK_HZ;
 /**
  * The margin a measured hold is allowed, in frames.
  *
- * Three either side, the same margin the single-ball countdown is measured with:
- * enough to absorb the frame a pose or a menu confirm was delivered on, and
- * nothing like enough to hide a hold of the wrong length.
+ * One either side, the same margin the single-ball countdown is measured with:
+ * the frame a pose, a menu confirm or the point itself was delivered on also
+ * counts the hold down (specs/balls.md), and 120 subtractions of a
+ * hundred-and-twentieth round either side of zero.
  */
-export const HOLD_TOLERANCE_TICKS = 3;
+export const HOLD_TOLERANCE_TICKS = 1;
 
 /**
  * Where a scenario that drives a ball out of the LEFT goal parks the spares.
  *
- * {@link SPARE_PARKS} puts them in the left goal channel, which is the corner of
- * the field nothing crosses — until a check deliberately sends a ball out of that
- * goal. These are the same two corners on the other side.
+ * The shared harness's `SPARE_PARKS` puts them in the left goal channel, which
+ * is the corner of the field nothing crosses — until a check deliberately sends
+ * a ball out of that goal. These are the same two corners on the other side.
  */
 export const RIGHT_PARKS: readonly { x: number; y: number }[] = [
   { x: FIELD_W - BALL_R - 2, y: BALL_R + 2 },

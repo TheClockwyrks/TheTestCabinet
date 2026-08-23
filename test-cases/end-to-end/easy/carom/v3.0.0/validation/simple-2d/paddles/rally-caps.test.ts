@@ -16,9 +16,10 @@ import {
 
 /** Enough hits, from the 500 px/s launch, to reach the ceiling and sit on it. */
 const MIN_HITS = 12;
-/** Float margins: on the peak, and on the settled final speed. */
-const OVERSHOOT_TOLERANCE = 1;
-const PLATEAU_TOLERANCE = 1;
+/** "Never exceeds it": a float margin on the peak, in units per second. */
+const OVERSHOOT_TOLERANCE = 1e-6;
+/** The review item's margin on the plateau: one percent of SPEED_CAP. */
+const PLATEAU_TOLERANCE = SPEED_CAP * 0.01;
 
 let harness: Harness;
 

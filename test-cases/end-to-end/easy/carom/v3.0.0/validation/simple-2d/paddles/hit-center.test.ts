@@ -5,7 +5,8 @@
 // the paddle's centre returns level. The paddle is stationary, so the angle is
 // the contact point's doing alone with no spin from paddle motion mixed in. The
 // paddle pose and the contact height are the preconditions; the outgoing velocity
-// is what the real bounce produced. The steep case is the sibling `hit-edge`.
+// is what the real bounce produced. The steep cases are the siblings
+// `hit-top-edge` and `hit-bottom-edge`.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_CY } from "../../src/constants";
@@ -20,8 +21,12 @@ import {
   type Harness,
 } from "../harness";
 
-/** The old browser suite's margin for "straight", in degrees. */
-const STRAIGHT_MAX_DEG = 3;
+/**
+ * The review item's margin, in degrees. The contact is posed dead level with a
+ * still paddle and no spin, so the specified angle is exactly 0; a degree covers
+ * the frame's own sub-step drift.
+ */
+const STRAIGHT_MAX_DEG = 1;
 
 /**
  * Frames of the return flight recorded after the contact.
@@ -68,5 +73,5 @@ it("returns the ball level from the centre of a still paddle", async () => {
 
   expect(contact.hit).toBe(true);
   expect(contact.ball.vx).toBeGreaterThan(0);
-  expect(angleDeg(contact.ball)).toBeLessThan(STRAIGHT_MAX_DEG);
+  expect(angleDeg(contact.ball)).toBeLessThanOrEqual(STRAIGHT_MAX_DEG);
 });

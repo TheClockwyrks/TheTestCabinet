@@ -14,18 +14,23 @@
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { BALL_HOMES } from "../../src/constants";
-import { captureReplay, createHarness, type Harness } from "../harness";
-import { readBalls } from "./harness";
+import {
+  captureReplay,
+  createHarness,
+  seconds,
+  type Harness,
+} from "../harness";
+import { holdTimerOf, readBalls } from "./harness";
 
 /** Where the moving ball starts, and how fast it travels, in units per second. */
 const START_X = 400;
 const APPROACH = 420;
 
-/** How far the target may drift, in logical units, and still count as immovable. */
-const STILL_MAX = 1;
+/** A float margin on "keeps its home point": the waiting ball is never moved. */
+const STILL_MAX = 1e-6;
 
-/** How far the rebound speed may miss the approach, in units per second. */
-const SPEED_TOLERANCE = 20;
+/** The review item's margin: one percent of the arrival speed. */
+const SPEED_TOLERANCE = APPROACH * 0.01;
 
 /** Frames of the departure recorded after the contact. */
 const DEPARTURE_TICKS = 40; // 0.33 s
@@ -53,6 +58,7 @@ it("bounces a moving ball off a waiting one without moving it", async () => {
     spin: 0,
   });
 
+  const holdBefore = holdTimerOf(h, 1);
   const bounce = await captureReplay(h, "bounce", async () => {
     const met = await h.until((s) => readBalls(s)[0].vx < 0, {
       maxFrames: 100,
@@ -62,8 +68,9 @@ it("bounces a moving ball off a waiting one without moving it", async () => {
     // ball moved is a question about that instant, and its own hold runs out
     // shortly afterwards.
     const balls = readBalls(met.snapshot);
+    const hold = holdTimerOf(h, 1);
     await h.advance(DEPARTURE_TICKS);
-    return { met, balls };
+    return { met, balls, hold };
   });
 
   expect(bounce.met.hit).toBe(true);
@@ -75,9 +82,14 @@ it("bounces a moving ball off a waiting one without moving it", async () => {
   expect(Math.abs(waiting.x - BALL_HOMES[1].x)).toBeLessThanOrEqual(STILL_MAX);
   expect(Math.abs(waiting.y - BALL_HOMES[1].y)).toBeLessThanOrEqual(STILL_MAX);
   expect(Math.hypot(waiting.vx, waiting.vy)).toBeLessThanOrEqual(STILL_MAX);
+  // Its hold timer has counted down by exactly the frames that passed and
+  // nothing else: every countdown or playing frame subtracts `dt`
+  // (specs/balls.md), and the contact neither resets nor ends it.
+  expect(bounce.hold).toBeCloseTo(holdBefore - seconds(bounce.met.frames), 6);
 
-  // The moving ball reflected off it and kept the speed it arrived with: a ball
-  // bouncing off a waiting one is not a paddle hit.
+  // The moving ball reflected off it, `vx` reversed, and kept the speed it
+  // arrived with: a ball bouncing off a waiting one is not a paddle hit.
+  expect(Math.abs(moving.vx + APPROACH)).toBeLessThanOrEqual(SPEED_TOLERANCE);
   expect(Math.abs(moving.speed - APPROACH)).toBeLessThanOrEqual(
     SPEED_TOLERANCE,
   );

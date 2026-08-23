@@ -7,8 +7,12 @@
 // player takes is what makes the duration the build's.
 //
 // From there the real simulation is stepped ONE FRAME at a time until the ball
-// serves. At the harness's 120 Hz clock the hold is a whole number of frames, so
-// the count is the duration.
+// serves. specs/balls.md: every countdown frame subtracts `dt` from
+// `holdTimer`, and the ball is served on the first frame the result is `<= 0`.
+// At the harness's 120 Hz clock `HOLD_TIME` is 120 frames, and the frame that
+// delivers the confirm already counts: the match starts and its countdown
+// advances on the same update. One frame either side is the room allowed, for
+// that frame and for the rounding of 120 subtractions of a hundred-and-twentieth.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { HOLD_TIME } from "../constants";
@@ -23,12 +27,8 @@ import {
 
 /** The hold, in frames of the harness's clock. */
 const HOLD_TICKS = HOLD_TIME * TICK_HZ;
-/**
- * The old browser suite's margin: three ticks either side. Enough to absorb the
- * frame the menu confirm was delivered on, and nothing like enough to hide a
- * hold of the wrong length.
- */
-const TOLERANCE_TICKS = 3;
+/** One frame either side: the confirm's own frame, and the rounding of the count. */
+const TOLERANCE_TICKS = 1;
 /**
  * Frames of the served flight recorded after the launch.
  *

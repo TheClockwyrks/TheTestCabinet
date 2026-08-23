@@ -24,31 +24,25 @@ import {
   FIELD_W,
   HOLD_TIME,
 } from "../../src/constants";
-import {
-  SPARE_PARKS,
-  TICK_HZ,
-  allBalls,
-  type BallView,
-  type Harness,
-} from "../harness";
+import { TICK_HZ, allBalls, type BallView, type Harness } from "../harness";
 import type { CaromSnapshot } from "../surface";
 
 /** The hold, in frames of the harness's clock. */
 export const HOLD_TICKS = HOLD_TIME * TICK_HZ;
 
 /**
- * The margin a measured hold is allowed, in frames.
- *
- * Three either side, the same margin the single-ball countdown is measured with:
- * enough to absorb the frame a pose or a menu confirm was delivered on, and
- * nothing like enough to hide a hold of the wrong length.
+ * The margin a measured hold is allowed, in frames: one either side, the review
+ * items' "within one frame". It covers whether the frame that opened the hold
+ * also counted it down (a menu confirm does, specs/ui.md; the frame a point
+ * lands on does not, specs/balls.md) and the float rounding of
+ * `HOLD_TIME - n * dt`.
  */
-export const HOLD_TOLERANCE_TICKS = 3;
+export const HOLD_TOLERANCE_TICKS = 1;
 
 /**
  * Where a scenario that drives a ball out of the LEFT goal parks the spares.
  *
- * {@link SPARE_PARKS} puts them in the left goal channel, which is the corner of
+ * `SPARE_PARKS` in the shared harness puts them in the left goal channel, which is the corner of
  * the field nothing crosses — until a check deliberately sends a ball out of that
  * goal. These are the same two corners on the other side.
  */
@@ -56,6 +50,17 @@ export const RIGHT_PARKS: readonly { x: number; y: number }[] = [
   { x: FIELD_W - BALL_R - 2, y: BALL_R + 2 },
   { x: FIELD_W - BALL_R - 2, y: FIELD_H - BALL_R - 2 },
 ];
+
+/** Ball `index`'s own hold timer, read off the state the build declared. */
+export function holdTimerOf(h: Harness, index: number): number {
+  const balls = (h.state as unknown as { balls?: { holdTimer: number }[] })
+    .balls;
+  expect(
+    typeof balls?.[index]?.holdTimer,
+    "multi requires each ball's `holdTimer` on the state (specs/state.md)",
+  ).toBe("number");
+  return (balls as { holdTimer: number }[])[index].holdTimer;
+}
 
 /** Every ball a snapshot reports, checked for count before a check reads them. */
 export function readBalls(snapshot: CaromSnapshot): BallView[] {

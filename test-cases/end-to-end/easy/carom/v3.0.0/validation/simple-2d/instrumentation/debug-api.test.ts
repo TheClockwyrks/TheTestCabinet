@@ -18,12 +18,11 @@
 // is present and useless, and that is what a snapshot read off a real, driven
 // match catches.
 //
-// The clock, the keyboard, and the overlay are the runtime's under this runtime,
-// so the surface carries no operation for any of them (specs/instrumentation.md
-// strikes `step`, `setAutoStep`, `keyDown`, `keyUp` and `press`), and demanding
-// them here would fail a perfectly conformant build. What remains is the list in
-// `surface.ts`: the reads, and the control operations that pose a scenario in
-// the game's own world.
+// The clock, the keyboard, and the overlay are the engine's under this engine,
+// so the surface carries no operation for any of them (specs/instrumentation.md),
+// and demanding one here would fail a perfectly conformant build. What it does
+// carry is the list in `surface.ts`: the reads, and the control operations that
+// pose a scenario in the game's own world.
 //
 // Every other automated item drives this surface to pose its own scenario, so a
 // missing surface or a state the build reshaped also shows up as those items

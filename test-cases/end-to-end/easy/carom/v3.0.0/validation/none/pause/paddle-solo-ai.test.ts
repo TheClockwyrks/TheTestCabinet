@@ -72,7 +72,5 @@ it("holds the AI paddle still while paused", async () => {
 
   const after = await h.snapshot();
   expect(after.screen).toBe("paused");
-  expect(Math.abs(after.paddles.right.cy - held.paused)).toBeLessThan(
-    STILL_MAX,
-  );
+  expect(after.paddles.right.cy).toBeCloseTo(held.paused, 6);
 });

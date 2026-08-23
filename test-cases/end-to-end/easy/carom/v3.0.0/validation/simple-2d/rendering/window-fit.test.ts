@@ -13,20 +13,42 @@
 // requirement includes the state on load, before any input. The second poses a
 // known scene in an off-aspect window and confirms the pixels really are where
 // the map says: the paddle under its own logical coordinate, and nothing but the
-// background out in the letterbox bar.
+// field background out in the letterbox bar. The background is the build's own,
+// so the bar is compared against an empty patch of the field the same frame
+// painted (specs/overview.md: "the letterbox bars around the field are the
+// field's background color").
 
 import { afterEach, expect, it } from "vitest";
-import { COLOR, FIELD_H, FIELD_W } from "../../src/constants";
+import { FIELD_H, FIELD_W } from "../../src/constants";
 import {
   COLOR_POINTS,
+  FIELD_POINTS,
   captureStill,
   colorDistance,
   createHarness,
-  hexRgb,
   sampleColor,
+  sampleField,
   arrangeColorScene,
   type Harness,
 } from "../harness";
+
+/** The review item's distance: a body clearly apart from the field. */
+const APART_MIN = 50;
+
+/**
+ * How far a bar pixel may sit from the sampled field, in RGB distance: the
+ * review item's 8/441. The two are meant to be one colour, so this covers the
+ * rounding between a clear and a fill and a faint tint a build lays over its
+ * field, and nothing a person would read as a different colour.
+ *
+ * The bar is held against the nearest of the {@link FIELD_POINTS} patches rather
+ * than the darkest. The look is the build's (specs/overview.md), and a build
+ * that shades its field toward the edges, a vignette or a gradient, has no
+ * single field colour: the spec asks that the bars be the colour the field is
+ * cleared to, which is what an empty patch shows. The nearest patch reads that
+ * through a shading, and a patch a mode label covers simply is not the nearest.
+ */
+const SAME_MAX = 8;
 
 /** The surfaces the fit is read over. */
 const SURFACES = [
@@ -130,11 +152,7 @@ it("draws the field inside the fit, leaving the letterbox bars bare", async () =
   expect(h.device(0, 0)).toEqual({ x: 160, y: 0 });
   expect(h.device(FIELD_W, FIELD_H)).toEqual({ x: 1440, y: 720 });
 
-  const field = sampleColor(
-    h,
-    COLOR_POINTS.background.x,
-    COLOR_POINTS.background.y,
-  );
+  const field = sampleField(h);
   const paddle = sampleColor(
     h,
     COLOR_POINTS.leftPaddle.x,
@@ -142,15 +160,18 @@ it("draws the field inside the fit, leaving the letterbox bars bare", async () =
   );
 
   // The paddle is under its own logical coordinate, mapped through the fit.
-  expect(colorDistance(paddle, field)).toBeGreaterThan(50);
+  expect(colorDistance(paddle, field)).toBeGreaterThan(APART_MIN);
 
   // The bars either side carry nothing the game drew. They are outside the
   // logical space, so they are sampled in device pixels directly, and what is
-  // there is the runtime's own clear.
+  // there is the field background the build handed the runtime to clear to.
+  const patches = FIELD_POINTS.map((point) => sampleColor(h, point.x, point.y));
   for (const deviceX of [40, 1560]) {
     const bar = h.ctx.getImageData(deviceX, 360, 1, 1).data;
     const barColor = { r: bar[0], g: bar[1], b: bar[2] };
-    expect(barColor).toEqual(hexRgb(COLOR.bg));
-    expect(colorDistance(barColor, paddle)).toBeGreaterThan(50);
+    const nearest = Math.min(
+      ...patches.map((patch) => colorDistance(barColor, patch)),
+    );
+    expect(nearest).toBeLessThanOrEqual(SAME_MAX);
   }
 });

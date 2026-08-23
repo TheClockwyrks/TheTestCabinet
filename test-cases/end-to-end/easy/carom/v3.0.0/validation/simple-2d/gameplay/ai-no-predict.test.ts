@@ -1,10 +1,13 @@
 // gameplay/ai-no-predict — the Solo opponent tracks the ball, not its destination.
 //
-// The REAL AI faces a fast, steep shot fired up into the top wall: it banks there
-// and then comes down to the goal. A reasonable opponent chases the ball itself,
-// so it follows the ball up toward the wall and cannot recover to the
-// post-bounce arrival in time. An AI that predicts the reflected destination — or
-// that simply moves faster than it should — blocks it and fails here.
+// The REAL AI faces a fast, steep shot fired up into the top wall: it banks
+// there at 0.43 s and comes down to cross the paddle's face at about 553, at
+// 1.09 s. The rule's target is `ball.y - ball.vy * AI_REACT`, the ball's lagged
+// line, so the paddle first follows the ball up the field and only turns down
+// after the bank; from there it cannot cover the distance at AI_SPEED, and
+// under the rule it is over 120 units from the ball's line when the ball
+// passes, far more than the 66 a contact needs. An AI that predicts the
+// reflected destination, or that moves faster than it should, blocks it.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_CX, FIELD_CY } from "../../src/constants";

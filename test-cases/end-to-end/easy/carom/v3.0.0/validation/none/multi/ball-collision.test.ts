@@ -30,8 +30,12 @@ const APPROACH = 400;
 const LEFT_X = 520;
 const RIGHT_X = 760;
 
-/** How far a velocity may miss the exchange, in units per second. */
-const VELOCITY_TOLERANCE = 12;
+/**
+ * How far a velocity may miss the exchange: one percent of the approach speed.
+ * The exchange is arithmetic on the two posed velocities, so this is rounding
+ * room.
+ */
+const VELOCITY_TOLERANCE = APPROACH * 0.01;
 
 /** Frames of the departure recorded after the contact. */
 const DEPARTURE_TICKS = 45; // 0.375 s

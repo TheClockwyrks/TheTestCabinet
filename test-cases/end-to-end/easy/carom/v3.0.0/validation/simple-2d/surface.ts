@@ -26,12 +26,7 @@ export const DEFAULT_SEED = 1;
 
 /** The screens the state machine moves between. */
 export type Screen =
-  | "title"
-  | "howto"
-  | "countdown"
-  | "playing"
-  | "paused"
-  | "matchover";
+  "title" | "howto" | "countdown" | "playing" | "paused" | "matchover";
 
 /** The two ways a match is played. */
 export type Mode = "solo" | "versus";

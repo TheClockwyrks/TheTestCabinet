@@ -52,7 +52,6 @@ import type { Browser, BrowserContext, Page } from "playwright";
 import { connectChromium } from "./chromium";
 import {
   BALL_R,
-  COLOR,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
@@ -64,6 +63,7 @@ import {
   P2_X1,
   TRAIL_TIME,
   UNBOUND_KEY,
+  type Rect,
 } from "./constants";
 
 declare module "vitest" {
@@ -1056,6 +1056,16 @@ const STAGED_PROJECT_DIR = "validation";
  */
 const MAX_REPLAY_FRAMES = 300;
 
+/**
+ * The ground the console's player paints behind a recorded frame.
+ *
+ * The specification fixes no field colour: the build paints its own background
+ * each frame, and the recorded frames carry that paint. What the player needs is
+ * a colour for the canvas under them, and the page the build is served on is
+ * painted `#000` by the case's own `index.html`, so that is what a replay says.
+ */
+export const REPLAY_BACKGROUND = "#000";
+
 /** One frame of a recording, as the console's player reads it. */
 export interface RecordedFrame {
   count: number;
@@ -1444,7 +1454,7 @@ export async function captureReplay<T>(
       (
         window as unknown as { __caromRec: { arm(d: unknown): boolean } }
       ).__caromRec.arm(design),
-    { width: FIELD_W, height: FIELD_H, background: COLOR.bg },
+    { width: FIELD_W, height: FIELD_H, background: REPLAY_BACKGROUND },
   );
   try {
     return await scenario();
@@ -1594,8 +1604,31 @@ export async function parkSpares(
 }
 
 /**
- * Open a driven match, put every ball but the first out of the way, and run it up
- * to live play.
+ * Hold the obstacles upright at their base centers, where the build has an
+ * obstacle clock to hold.
+ *
+ * Under `gyre` the obstacles sway and rotate with the obstacle clock, so no
+ * mid-field lane stays clear and no face stays axis-aligned. `setObstacleClock`
+ * poses the clock and holds it there while the driver has the paddles
+ * (specs/instrumentation.md), and clock `0` is the upright pose at the base
+ * centers (specs/playfield.md): the field every shared scenario is written
+ * against. The operation exists only under `gyre`, so this probes for it and is
+ * a no-op under the other two variants, whose obstacles never move.
+ *
+ * The gyre-specific checks pose the clock themselves and never call this.
+ */
+export async function pinObstaclesUpright(h: Harness): Promise<void> {
+  if (h.surfaceFault !== null) return;
+  const { ops } = await h.probe(["setObstacleClock"]);
+  if (ops.setObstacleClock !== "function") return;
+  await (
+    h.debug as unknown as { setObstacleClock(seconds: number): Promise<void> }
+  ).setObstacleClock(0);
+}
+
+/**
+ * Open a driven match, put every ball but the first out of the way, hold the
+ * obstacles upright, and run it up to live play.
  *
  * `serve()` only expires the pre-serve hold; the LAUNCH is the build's own, on
  * the frame after. So this sweeps until the game reports live play, which is the
@@ -1612,6 +1645,7 @@ export async function startPlaying(
   await h.debug.reset();
   await h.debug.startMatch(mode);
   await parkSpares(h);
+  await pinObstaclesUpright(h);
   await h.debug.serve();
   return h.until((s) => s.screen === "playing", { maxFrames: 60, poll: 1 });
 }
@@ -1826,11 +1860,16 @@ export async function holdMove(
   h: Harness,
   side: Side,
   code: string,
-  options: { ticks?: number } = {},
+  options: { ticks?: number; leadTicks?: number } = {},
 ): Promise<MoveResult> {
   const ticks = options.ticks ?? 36; // 0.3 s
-  const before = (await h.snapshot()).paddles;
+  const lead = options.leadTicks ?? 0;
   await h.hold(code);
+  // With a lead, the key is already down for `lead` frames before the measured
+  // window opens, so the window reads a paddle in steady travel rather than the
+  // frame the press was first seen on.
+  if (lead > 0) await h.advance(lead);
+  const before = (await h.snapshot()).paddles;
   await h.advance(ticks);
   const after = (await h.snapshot()).paddles;
   await h.release(code);
@@ -1987,6 +2026,99 @@ export function driveObstacleBounce(
   });
 }
 
+/* ---- Per-face bank shots -------------------------------------------------- */
+
+/** One face of an axis-aligned obstacle. */
+export type Face = "left" | "right" | "top" | "bottom";
+
+/**
+ * How far short of the struck face a per-face shot starts, in logical units.
+ *
+ * Long enough for a real approach and short enough that every shot starts on
+ * the field: obstacle A's top face is 150 units below the top wall, so a shot at
+ * it starts `BALL_R` plus a little clear of that wall.
+ */
+export const FACE_RUN_UP = 120;
+
+/**
+ * The approach speed of a per-face shot, in units per second.
+ *
+ * Chosen so a frame of the suite's clock is ONE sub-step: `speed * dt` is under
+ * `MAX_SUBSTEP`, so `n = 1` (specs/balls.md) and the frame the reflection
+ * resolves on ends with the ball exactly where the rule placed it — `BALL_R` off
+ * the face — with nothing moving it on before the read.
+ */
+export const FACE_SHOT_SPEED = 400;
+
+/**
+ * Where a ball reflecting off `face` of `rect` is placed by the rule
+ * (specs/playfield.md): its center `BALL_R` off that face.
+ */
+export function restingOff(rect: Rect, face: Face): number {
+  switch (face) {
+    case "left":
+      return rect.x0 - BALL_R;
+    case "right":
+      return rect.x1 + BALL_R;
+    case "top":
+      return rect.y0 - BALL_R;
+    case "bottom":
+      return rect.y1 + BALL_R;
+  }
+}
+
+/**
+ * Line the ball up `FACE_RUN_UP` units off `face` of `rect`, at the midpoint of
+ * that face, travelling straight into it at `FACE_SHOT_SPEED`.
+ */
+export async function arrangeFaceShot(
+  h: Harness,
+  rect: Rect,
+  face: Face,
+): Promise<void> {
+  await clearPaddles(h);
+  const cx = (rect.x0 + rect.x1) / 2;
+  const cy = (rect.y0 + rect.y1) / 2;
+  const off = restingOff(rect, face);
+  const ball =
+    face === "left"
+      ? { x: off - FACE_RUN_UP, y: cy, vx: FACE_SHOT_SPEED, vy: 0 }
+      : face === "right"
+        ? { x: off + FACE_RUN_UP, y: cy, vx: -FACE_SHOT_SPEED, vy: 0 }
+        : face === "top"
+          ? { x: cx, y: off - FACE_RUN_UP, vx: 0, vy: FACE_SHOT_SPEED }
+          : { x: cx, y: off + FACE_RUN_UP, vx: 0, vy: -FACE_SHOT_SPEED };
+  await h.debug.setBall(0, { ...ball, spin: 0 });
+}
+
+/**
+ * Run the real collision until the velocity component normal to `face` has
+ * reversed, sampling every frame so the read is the frame of the reflection.
+ */
+export function driveFaceBounce(
+  h: Harness,
+  face: Face,
+  options: UntilOptions = {},
+): Promise<UntilResult> {
+  const reversed = (s: CaromSnapshot): boolean => {
+    const ball = ball0(s);
+    switch (face) {
+      case "left":
+        return ball.vx < 0;
+      case "right":
+        return ball.vx > 0;
+      case "top":
+        return ball.vy < 0;
+      case "bottom":
+        return ball.vy > 0;
+    }
+  };
+  return h.until(reversed, {
+    maxFrames: options.maxFrames ?? 240,
+    poll: options.poll ?? 1,
+  });
+}
+
 /* ---- A ball in open flight ------------------------------------------------ */
 
 /**
@@ -2025,6 +2157,14 @@ export const STILL_MAX = 6;
 
 /* ---- Colour --------------------------------------------------------------- */
 
+/**
+ * The RGB distance two sampled colours must exceed to count as "clearly
+ * apart" (specs/overview.md): 50 of the 441 the RGB cube spans. The
+ * specification fixes no palette, so distinguishability is the whole of what a
+ * visibility check reads.
+ */
+export const DISTINCT_MIN = 50;
+
 /** A sampled colour, each channel 0–255. */
 export interface Rgb {
   r: number;
@@ -2048,9 +2188,25 @@ export const COLOR_POINTS = {
   obstacle: OBSTACLE_CENTERS[0],
   /** A clean mid-field spot, clear of the paddles, both obstacles, and the net. */
   ball: { x: 300, y: FIELD_CY },
-  /** An empty patch of field, clear of every drawn element. */
-  background: { x: 500, y: 650 },
 } as const;
+
+/**
+ * Candidate patches of empty field, in logical units, clear of every element
+ * this specification places: the paddles, both obstacles at every gyre pose,
+ * the net, the parked ball, and the top of the field where the scores sit.
+ *
+ * The field is dark and every body on it is bright (specs/overview.md), but the
+ * mode label's copy and placement are the build's, so no single patch is
+ * guaranteed bare. The darkest of several is: a label is drawn to be read, so
+ * it is lighter than the field it sits on, and a patch it covers reads lighter
+ * than one it does not.
+ */
+export const FIELD_POINTS: readonly { x: number; y: number }[] = [
+  { x: 500, y: 650 },
+  { x: 200, y: 600 },
+  { x: 1000, y: 300 },
+  { x: 1100, y: 620 },
+];
 
 /** The five offsets a colour sample is averaged over, in logical px. */
 const SAMPLE_OFFSETS: readonly (readonly [number, number])[] = [
@@ -2087,25 +2243,34 @@ export async function sampleColor(
   return { r: r / read.length, g: g / read.length, b: b / read.length };
 }
 
-/** A `#rrggbb` colour from `constants.ts`, as channels to compare against. */
-export function hexRgb(hex: string): Rgb {
-  const value = Number.parseInt(hex.replace("#", ""), 16);
-  return {
-    r: (value >> 16) & 0xff,
-    g: (value >> 8) & 0xff,
-    b: value & 0xff,
-  };
-}
-
 /** Euclidean distance between two colours, 0 to about 441. */
 export function colorDistance(a: Rgb, b: Rgb): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
 
-/** Every point in `COLOR_POINTS`, sampled off the canvas as it stands. */
+/** A colour's luminance, the reading the field is darkest on. */
+function luminance(c: Rgb): number {
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+/**
+ * The bare field's colour: the darkest of the {@link FIELD_POINTS} patches,
+ * sampled off the canvas as it stands.
+ */
+export async function sampleField(h: Harness): Promise<Rgb> {
+  const samples: Rgb[] = [];
+  for (const point of FIELD_POINTS) {
+    samples.push(await sampleColor(h, point.x, point.y));
+  }
+  return samples.reduce((darkest, sample) =>
+    luminance(sample) < luminance(darkest) ? sample : darkest,
+  );
+}
+
+/** Every point in `COLOR_POINTS` and the bare field, sampled as they stand. */
 export async function sampleScene(
   h: Harness,
-): Promise<Record<keyof typeof COLOR_POINTS, Rgb>> {
+): Promise<Record<keyof typeof COLOR_POINTS | "background", Rgb>> {
   return {
     leftPaddle: await sampleColor(
       h,
@@ -2123,11 +2288,7 @@ export async function sampleScene(
       COLOR_POINTS.obstacle.y,
     ),
     ball: await sampleColor(h, COLOR_POINTS.ball.x, COLOR_POINTS.ball.y),
-    background: await sampleColor(
-      h,
-      COLOR_POINTS.background.x,
-      COLOR_POINTS.background.y,
-    ),
+    background: await sampleField(h),
   };
 }
 
@@ -2176,6 +2337,102 @@ export function drawnText(calls: readonly DrawCall[]): string[] {
 export function drewText(calls: readonly DrawCall[], text: string): boolean {
   const wanted = text.trim().toLowerCase();
   return drawnText(calls).some((drawn) => drawn.toLowerCase().includes(wanted));
+}
+
+/** One run of text a frame drew, and where it drew it in canvas pixels. */
+export interface TextDraw {
+  text: string;
+  /** The anchor the run was drawn at, mapped through the transform in force. */
+  x: number;
+  y: number;
+}
+
+/** A 2D affine transform, in the canvas's `[a, b, c, d, e, f]` order. */
+type Matrix = [number, number, number, number, number, number];
+
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0];
+
+function multiply(m: Matrix, n: Matrix): Matrix {
+  return [
+    m[0] * n[0] + m[2] * n[1],
+    m[1] * n[0] + m[3] * n[1],
+    m[0] * n[2] + m[2] * n[3],
+    m[1] * n[2] + m[3] * n[3],
+    m[0] * n[4] + m[2] * n[5] + m[4],
+    m[1] * n[4] + m[3] * n[5] + m[5],
+  ];
+}
+
+function numbers(args: unknown[], count: number): number[] | null {
+  const taken = args.slice(0, count);
+  return taken.length === count && taken.every((v) => typeof v === "number")
+    ? (taken as number[])
+    : null;
+}
+
+/**
+ * Every run of text the frame drew, with its anchor in canvas pixels.
+ *
+ * A build is free to draw under a transform — to translate to a HUD corner and
+ * draw at the origin, say — so the position a `fillText` names is only where the
+ * text landed once the transform in force at that call is applied. This walks
+ * the frame's operations and carries that transform: `save`/`restore`,
+ * `translate`, `scale`, `rotate`, `transform`, `setTransform` and
+ * `resetTransform`. At the harness's default shape the canvas is the field at
+ * one pixel per unit, so the result is in logical units as well.
+ */
+export function textDraws(calls: readonly DrawCall[]): TextDraw[] {
+  const draws: TextDraw[] = [];
+  const stack: Matrix[] = [];
+  let current: Matrix = IDENTITY;
+  for (const call of calls) {
+    if (call.kind !== "call") continue;
+    const { method, args } = call;
+    if (method === "save") {
+      stack.push(current);
+    } else if (method === "restore") {
+      current = stack.pop() ?? IDENTITY;
+    } else if (method === "translate") {
+      const v = numbers(args, 2);
+      if (v) current = multiply(current, [1, 0, 0, 1, v[0], v[1]]);
+    } else if (method === "scale") {
+      const v = numbers(args, 2);
+      if (v) current = multiply(current, [v[0], 0, 0, v[1], 0, 0]);
+    } else if (method === "rotate") {
+      const v = numbers(args, 1);
+      if (v) {
+        const c = Math.cos(v[0]);
+        const sn = Math.sin(v[0]);
+        current = multiply(current, [c, sn, -sn, c, 0, 0]);
+      }
+    } else if (method === "transform") {
+      const v = numbers(args, 6);
+      if (v) current = multiply(current, v as Matrix);
+    } else if (method === "setTransform") {
+      const v = numbers(args, 6);
+      if (v) current = v as Matrix;
+      else if (args.length === 0) current = IDENTITY;
+      else if (typeof args[0] === "object" && args[0] !== null) {
+        const m = args[0] as Record<string, unknown>;
+        const parts = [m.a, m.b, m.c, m.d, m.e, m.f];
+        if (parts.every((p) => typeof p === "number"))
+          current = parts as Matrix;
+      }
+    } else if (method === "resetTransform") {
+      current = IDENTITY;
+    } else if (method === "fillText" || method === "strokeText") {
+      const [text] = args;
+      const at = numbers(args.slice(1), 2);
+      if (typeof text !== "string" || at === null) continue;
+      const [x, y] = at;
+      draws.push({
+        text,
+        x: current[0] * x + current[2] * y + current[4],
+        y: current[1] * x + current[3] * y + current[5],
+      });
+    }
+  }
+  return draws;
 }
 
 /**

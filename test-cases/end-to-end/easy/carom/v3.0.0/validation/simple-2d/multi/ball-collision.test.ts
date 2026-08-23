@@ -30,8 +30,8 @@ const APPROACH = 400;
 const LEFT_X = 520;
 const RIGHT_X = 760;
 
-/** How far a velocity may miss the exchange, in units per second. */
-const VELOCITY_TOLERANCE = 12;
+/** The review item's margin: one percent of the speed each ball arrives at. */
+const VELOCITY_TOLERANCE = APPROACH * 0.01;
 
 /** Frames of the departure recorded after the contact. */
 const DEPARTURE_TICKS = 45; // 0.375 s
@@ -94,8 +94,9 @@ it("exchanges the two velocities head-on and separates the pair", async () => {
   expect(second.speed).toBeLessThanOrEqual(APPROACH + VELOCITY_TOLERANCE);
 
   // And they are apart rather than overlapping: the pair is pushed clear along
-  // the line joining them.
+  // the line joining them "until they no longer overlap" (specs/balls.md), so
+  // the centers are at least BALL_COLLIDE_DIST apart to a float margin.
   expect(
     Math.hypot(first.x - second.x, first.y - second.y),
-  ).toBeGreaterThanOrEqual(BALL_COLLIDE_DIST - 1);
+  ).toBeGreaterThanOrEqual(BALL_COLLIDE_DIST - 1e-6);
 });

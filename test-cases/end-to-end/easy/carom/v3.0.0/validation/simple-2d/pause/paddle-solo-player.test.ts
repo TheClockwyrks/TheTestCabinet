@@ -16,7 +16,6 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   MOVE_MIN,
-  STILL_MAX,
   captureReplay,
   createHarness,
   startWithKeys,
@@ -82,7 +81,7 @@ it("holds the human's paddle still while paused", async () => {
   expect(held.screen).toBe("paused");
 
   expect(h.snapshot().screen).toBe("paused");
-  expect(Math.abs(h.snapshot().paddles.left.cy - held.paused)).toBeLessThan(
-    STILL_MAX,
-  );
+  // "Nothing advances" while paused (specs/ui.md): the center is exactly where
+  // the pause left it.
+  expect(h.snapshot().paddles.left.cy).toBe(held.paused);
 });

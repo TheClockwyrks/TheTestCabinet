@@ -1,18 +1,19 @@
 // Carom — pause/ball-continues: after unpausing, the ball carries on from exactly
-// where it was suspended.
+// where it was suspended, at the velocity it was suspended with.
 //
 // The fault this catches is a build that treats resuming as a fresh start: a
-// re-serve, or a jump back to the centre. So the ball is posed in mid-flight,
-// frozen, confirmed still, and then resumed — and where it ends up a known number
-// of frames later is compared against where its own preserved velocity would have
-// carried it from the paused position.
+// re-serve, or a jump back to the centre. The ball is posed in mid-flight,
+// frozen, confirmed still, and then resumed, and where it is a known number of
+// frames later is compared against where its own preserved velocity carries it
+// from the paused position: `x += vx * h` each sub-step (specs/balls.md), with
+// no spin and nothing to strike, is `vx * elapsed` over the whole span.
 //
-// The window is one frame wide, deliberately. Resuming is itself a frame, and
-// whether a build simulates the frame that consumed the resume or starts from the
-// next one is not something the specification fixes; either is a continuation. A
-// teleport is a hundred pixels out and misses the window by any measure.
+// The resume frame counts. Each update reads input first and then advances the
+// screen it left (specs/ui.md), so the frame that consumed the resume is a
+// frame of flight. The margin is one sub-step of travel, MAX_SUBSTEP units.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
+import { MAX_SUBSTEP } from "../../src/constants";
 import {
   arrangeLiveBall,
   ball0,
@@ -29,18 +30,10 @@ const RESUMED_TICKS = 24;
 const FROZEN_TICKS = 120; // 1 s
 
 /**
- * How much of the freeze is recorded, out of the whole of it.
- *
- * A recording that opened on the resume key would show a ball moving and nothing
- * to tell a reviewer it had ever stopped — the review item promises "the ball
- * resuming from where it was paused", and the "from where it was paused" half is
- * the still frames in front of it. The freeze still lasts exactly `FROZEN_TICKS`;
- * the split is only where the recorder is armed.
+ * How much of the freeze is recorded, out of the whole of it: enough still
+ * frames in front of the resume that the clip shows the ball had stopped.
  */
 const HANGING_TICKS = 48; // 0.4 s
-
-/** Float slop, in logical px. The window itself is a whole frame of travel. */
-const SLOP = 0.5;
 
 let h: Harness;
 
@@ -67,31 +60,27 @@ it("resumes the ball from its paused position at its preserved velocity", async 
     // The end of the freeze, read on exactly the frame it was read on before.
     const still = h.snapshot();
 
-    await h.tap("Escape"); // resume, which is itself one frame
+    await h.tap("Escape"); // resume, which is itself one frame of flight
     await h.advance(RESUMED_TICKS - 1);
     return still;
   });
-  expect(ball0(held).x).toBeCloseTo(ball0(paused).x, 1);
-  expect(ball0(held).y).toBeCloseTo(ball0(paused).y, 1);
+  expect(ball0(held).x).toBe(ball0(paused).x);
+  expect(ball0(held).y).toBe(ball0(paused).y);
 
   const resumed = h.snapshot();
-
   expect(resumed.screen).toBe("playing");
 
-  // Where the paused velocity carries the paused position over the resumed span.
-  // The window is one frame wide because the frame that consumed the resume may
-  // or may not have been simulated, and either reading is a continuation.
-  const travel = (from: number, v: number): [number, number] => {
-    const a = from + (v * (RESUMED_TICKS - 1)) / TICK_HZ;
-    const b = from + (v * RESUMED_TICKS) / TICK_HZ;
-    return [Math.min(a, b) - SLOP, Math.max(a, b) + SLOP];
-  };
-  const [xLow, xHigh] = travel(ball0(paused).x, ball0(paused).vx);
-  const [yLow, yHigh] = travel(ball0(paused).y, ball0(paused).vy);
-
-  expect(ball0(resumed).x).toBeGreaterThanOrEqual(xLow);
-  expect(ball0(resumed).x).toBeLessThanOrEqual(xHigh);
-  expect(ball0(resumed).y).toBeGreaterThanOrEqual(yLow);
-  expect(ball0(resumed).y).toBeLessThanOrEqual(yHigh);
-  expect(ball0(resumed).speed).toBeCloseTo(ball0(paused).speed, 1);
+  const elapsed = RESUMED_TICKS / TICK_HZ;
+  const expectedX = ball0(paused).x + ball0(paused).vx * elapsed;
+  const expectedY = ball0(paused).y + ball0(paused).vy * elapsed;
+  expect(Math.abs(ball0(resumed).x - expectedX)).toBeLessThanOrEqual(
+    MAX_SUBSTEP,
+  );
+  expect(Math.abs(ball0(resumed).y - expectedY)).toBeLessThanOrEqual(
+    MAX_SUBSTEP,
+  );
+  // Unchanged to a float margin: the flight integrates a spin of zero, and how
+  // a build rotates a velocity by zero radians is its own.
+  expect(ball0(resumed).vx).toBeCloseTo(ball0(paused).vx, 6);
+  expect(ball0(resumed).vy).toBeCloseTo(ball0(paused).vy, 6);
 });

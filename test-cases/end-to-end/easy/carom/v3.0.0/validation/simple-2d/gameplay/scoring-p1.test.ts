@@ -12,6 +12,7 @@ import {
   captureReplay,
   createHarness,
   driveGoal,
+  receiver0,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -52,6 +53,10 @@ it("gives player one the point when the ball leaves the right goal", async () =>
   });
 
   expect(point.hit).toBe(true);
+  // After a point the ball is parked, `receiver` becomes the side scored on,
+  // and the screen returns to the countdown (specs/balls.md).
+  expect(point.snapshot.screen).toBe("countdown");
+  expect(receiver0(harness)).toBe("right");
   expect(point.snapshot.score.p1).toBe(1);
   expect(point.snapshot.score.p2).toBe(0);
 });

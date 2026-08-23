@@ -9,25 +9,19 @@
 // must still be `playing` — the whole of what makes multi's scoring different
 // from a single ball's.
 //
-// Then the sweep runs on until the respawned ball leaves again, which is the hold
-// it took for itself while the other two carried on.
+// The clip then runs on until the respawned ball leaves again; how long that
+// hold lasts is `multi/hold-length`'s point, not this one's.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { BALL_HOMES } from "../../src/constants";
 import {
   arrangeGoal,
-  ball0,
   captureReplay,
   createHarness,
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  HOLD_TICKS,
-  HOLD_TOLERANCE_TICKS,
-  driveLaunch,
-  readBalls,
-} from "./harness";
+import { driveLaunch, readBalls } from "./harness";
 
 /**
  * The two lanes the balls this point is not about are set bouncing in.
@@ -75,8 +69,8 @@ it("returns the scored ball to its own home while the other two play on", async 
     // doing at that instant is the question, and a frame later they would have
     // moved on whatever the build did.
     const atPoint = readBalls(scored.snapshot);
-    const relaunch = await driveLaunch(h, 0);
-    return { scored, atPoint, relaunch };
+    await driveLaunch(h, 0);
+    return { scored, atPoint };
   });
 
   expect(point.scored.hit).toBe(true);
@@ -90,16 +84,12 @@ it("returns the scored ball to its own home while the other two play on", async 
   expect(scoredBall.x).toBeCloseTo(BALL_HOMES[0].x, 0);
   expect(scoredBall.y).toBeCloseTo(BALL_HOMES[0].y, 0);
 
-  // The other two carried straight on, still in flight and still moving.
-  for (const ball of others) {
+  // The other two carried straight on: still in flight, and, having reached no
+  // wall in the time the point took, on exactly the velocities they were posed.
+  for (const [index, ball] of others.entries()) {
     expect(ball.held).toBe(false);
-    expect(ball.speed).toBeGreaterThan(1);
+    // Unchanged to a float margin: each keeps flying its lane under zero spin.
+    expect(ball.vx).toBeCloseTo(0, 6);
+    expect(ball.vy).toBeCloseTo(LANES[index].vy, 6);
   }
-
-  // And the respawn took a hold of its own before it launched again.
-  expect(point.relaunch.hit).toBe(true);
-  expect(Math.abs(point.relaunch.frames - HOLD_TICKS)).toBeLessThanOrEqual(
-    HOLD_TOLERANCE_TICKS,
-  );
-  expect(ball0(point.relaunch.snapshot).speed).toBeGreaterThan(1);
 });

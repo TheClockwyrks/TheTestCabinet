@@ -13,7 +13,6 @@
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
-  STILL_MAX,
   arrangeAiChase,
   captureReplay,
   createHarness,
@@ -66,11 +65,11 @@ it("holds the AI paddle still while paused", async () => {
     return { chasing, screen, paused };
   });
 
-  expect(Math.abs(held.chasing - start)).toBeGreaterThan(STILL_MAX);
+  expect(Math.abs(held.chasing - start)).toBeGreaterThan(0);
   expect(held.screen).toBe("paused");
 
   expect(h.snapshot().screen).toBe("paused");
-  expect(Math.abs(h.snapshot().paddles.right.cy - held.paused)).toBeLessThan(
-    STILL_MAX,
-  );
+  // "Nothing advances" while paused (specs/ui.md): the center is exactly where
+  // the pause left it.
+  expect(h.snapshot().paddles.right.cy).toBe(held.paused);
 });

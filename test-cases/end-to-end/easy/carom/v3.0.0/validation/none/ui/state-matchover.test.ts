@@ -1,15 +1,16 @@
-// Carom — ui/state-matchover: winning a match opens the match-over screen, which
-// names a winner and offers a way on.
+// ui/state-matchover — winning a match opens the match-over screen, which
+// offers its menu and shows the final score.
 //
-// The match is ended for real. The score is posed at 10-0 as a precondition and a
-// ball is then driven out of the right goal, so the eleventh point — and the win
-// rule that resolves on it (first to WIN_SCORE, by at least WIN_LEAD) — runs
+// The match is ended for real. The score is posed at 10-0 as a precondition and
+// a ball is then driven out of the right goal, so the eleventh point, and the
+// win rule that resolves on it (first to WIN_SCORE, by at least WIN_LEAD), run
 // through the build's own scoring code. Nothing assigns the end state.
 //
-// The two entries are the case's copy, from the specification. Matching is by
-// substring, because a selected entry is commonly drawn with a marker beside it.
-// Whether the screen presents the result well is the reviewer's, from the
-// capture.
+// The two entries are the case's copy (`MATCHOVER_ITEMS`, specs/ui.md), matched
+// by substring because a selected entry is commonly drawn with a marker beside
+// it. The final score is read as the two numbers drawn: `11` somewhere in the
+// frame's text, and `0` as a number of its own. How the screen presents them is
+// the build's.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../constants";
@@ -17,6 +18,7 @@ import {
   arrangeGoal,
   captureStill,
   createHarness,
+  drawnText,
   driveGoal,
   drewText,
   startPlaying,
@@ -51,4 +53,7 @@ it("ends the match on the winning point and draws the match-over screen", async 
   for (const item of MATCHOVER_ITEMS) {
     expect(drewText(calls, item)).toBe(true);
   }
+  const text = drawnText(calls).join(" ");
+  expect(text).toMatch(new RegExp(`\\b${WIN_SCORE}\\b`));
+  expect(text).toMatch(/\b0\b/);
 });

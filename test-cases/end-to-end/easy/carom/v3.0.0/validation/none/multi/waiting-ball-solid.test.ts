@@ -24,8 +24,8 @@ const APPROACH = 420;
 /** How far the target may drift, in logical units, and still count as immovable. */
 const STILL_MAX = 1;
 
-/** How far the rebound speed may miss the approach, in units per second. */
-const SPEED_TOLERANCE = 20;
+/** How far the rebound speed may miss the approach: one percent, rounding room. */
+const SPEED_TOLERANCE = APPROACH * 0.01;
 
 /** Frames of the departure recorded after the contact. */
 const DEPARTURE_TICKS = 40; // 0.33 s
@@ -76,8 +76,10 @@ it("bounces a moving ball off a waiting one without moving it", async () => {
   expect(Math.abs(waiting.y - BALL_HOMES[1].y)).toBeLessThanOrEqual(STILL_MAX);
   expect(Math.hypot(waiting.vx, waiting.vy)).toBeLessThanOrEqual(STILL_MAX);
 
-  // The moving ball reflected off it and kept the speed it arrived with: a ball
-  // bouncing off a waiting one is not a paddle hit.
+  // The moving ball reflected off it, head on so `vx` simply reversed, and kept
+  // the speed it arrived with: a ball bouncing off a waiting one is not a
+  // paddle hit.
+  expect(Math.abs(moving.vx + APPROACH)).toBeLessThanOrEqual(SPEED_TOLERANCE);
   expect(Math.abs(moving.speed - APPROACH)).toBeLessThanOrEqual(
     SPEED_TOLERANCE,
   );

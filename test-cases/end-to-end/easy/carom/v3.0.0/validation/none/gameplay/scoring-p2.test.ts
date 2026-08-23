@@ -51,4 +51,7 @@ it("gives player two the point when the ball leaves the left goal", async () => 
   expect(point.hit).toBe(true);
   expect(point.snapshot.score.p2).toBe(1);
   expect(point.snapshot.score.p1).toBe(0);
+  // And the point did not end the match: the screen returns to the countdown
+  // for the next serve (specs/balls.md).
+  expect(point.snapshot.screen).toBe("countdown");
 });

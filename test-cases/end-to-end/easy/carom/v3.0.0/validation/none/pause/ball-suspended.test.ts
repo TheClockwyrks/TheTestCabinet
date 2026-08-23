@@ -7,9 +7,10 @@
 // than the flight took. A build that kept integrating behind the pause menu
 // drifts; a build that froze the field does not move at all.
 //
-// The tolerance is a single logical pixel, because "suspended" admits no drift:
+// specs/ui.md: on `paused` nothing advances but `simTime` and input, so the
+// ball's `x`, `y`, `vx`, `vy` and `spin` are read back unchanged to rounding;
 // at the posed speed one frame of leaked simulation is already more than three
-// pixels.
+// units.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
@@ -63,6 +64,7 @@ it("suspends a ball in flight for as long as the game is paused", async () => {
   const later = await h.snapshot();
 
   expect(later.screen).toBe("paused");
-  expect(ball0(later).x).toBeCloseTo(ball0(paused).x, 1);
-  expect(ball0(later).y).toBeCloseTo(ball0(paused).y, 1);
+  for (const field of ["x", "y", "vx", "vy", "spin"] as const) {
+    expect(ball0(later)[field], field).toBeCloseTo(ball0(paused)[field], 6);
+  }
 });

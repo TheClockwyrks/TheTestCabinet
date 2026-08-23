@@ -22,8 +22,8 @@ import {
 const FACE_X = OBSTACLES[0].x0;
 const LANE_Y = OBSTACLE_CENTERS[0].y;
 const APPROACH_SPEED = 600;
-/** The reflection only rotates the velocity, so this is float noise, not slack. */
-const SPEED_TOLERANCE = 0.5;
+/** The review item's margin: a tenth of a percent of the approach speed. */
+const SPEED_TOLERANCE = APPROACH_SPEED * 0.001;
 
 /**
  * Frames of the departing flight recorded after the rebound.

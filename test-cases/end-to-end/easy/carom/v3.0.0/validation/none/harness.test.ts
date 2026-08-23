@@ -33,10 +33,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { FIELD_H, FIELD_W, COLOR } from "./constants";
+import { FIELD_H, FIELD_W } from "./constants";
 import {
   captureReplay,
   createHarness,
+  REPLAY_BACKGROUND,
   retable,
   startPlaying,
   thinReplay,
@@ -181,7 +182,7 @@ it("writes a captured section as gzip, under both extensions", async () => {
   // The design size and background the console's player opens the canvas at.
   expect(recording.width).toBe(FIELD_W);
   expect(recording.height).toBe(FIELD_H);
-  expect(recording.background).toBe(COLOR.bg);
+  expect(recording.background).toBe(REPLAY_BACKGROUND);
 });
 
 it("keeps one recorded frame per frame the game ran", async () => {
@@ -310,7 +311,7 @@ function synthetic(length: number): Recording {
     format: 1,
     width: FIELD_W,
     height: FIELD_H,
-    background: COLOR.bg,
+    background: REPLAY_BACKGROUND,
     images: [],
     resources: [],
     // One operation of its own per frame, so what the tables are rebuilt out of is
@@ -322,7 +323,7 @@ function synthetic(length: number): Recording {
     })),
     states: [
       {
-        properties: { fillStyle: COLOR.ball },
+        properties: { fillStyle: "#f2f5f7" },
         transform: null,
         lineDash: null,
         clip: [],

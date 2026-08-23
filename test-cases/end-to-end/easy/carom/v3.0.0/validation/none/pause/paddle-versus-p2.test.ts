@@ -17,7 +17,6 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   MOVE_MIN,
-  STILL_MAX,
   captureReplay,
   createHarness,
   startWithKeys,
@@ -86,7 +85,5 @@ it("holds player two's paddle still while paused", async () => {
 
   const after = await h.snapshot();
   expect(after.screen).toBe("paused");
-  expect(Math.abs(after.paddles.right.cy - held.paused)).toBeLessThan(
-    STILL_MAX,
-  );
+  expect(after.paddles.right.cy).toBeCloseTo(held.paused, 6);
 });

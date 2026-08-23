@@ -2,19 +2,16 @@
 //
 // A paddle held into the top or bottom edge cannot move, so it is stationary and
 // adds no spin even while the movement input is still applied: the spin mechanic
-// reads the paddle's ACTUAL velocity, which the clamp has taken to zero. A build
-// that drives spin off the held input rather than the real motion fails here.
+// reads the paddle's integrated `vy`, which the clamp has taken to zero
+// (specs/playfield.md, specs/balls.md). A build that drives spin off the held
+// input rather than the real motion fails here.
 //
 // DISCRIMINATING. The same held velocity clear of the bound, where the paddle
 // really does move, must impart spin — so passing proves the build reads real
 // motion, not merely that it never adds spin at all.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import {
-  PADDLE_MAX_CY,
-  PADDLE_SPEED,
-  SPIN_FROM_PADDLE,
-} from "../../src/constants";
+import { PADDLE_MAX_CY, PADDLE_SPEED } from "../../src/constants";
 import {
   arrangePaddleHit,
   captureReplay,
@@ -39,14 +36,14 @@ const APPROACH_SPEED = 400;
  */
 const BOUND_START_X = nearBallX("left") + APPROACH_SPEED * seconds(LEAD_TICKS);
 /**
- * The floor a real swing must clear. A full-speed swing imparts
- * `PADDLE_SPEED * SPIN_FROM_PADDLE`; two thirds of that is comfortably clear of
- * zero and comfortably below what the mechanic actually produces.
+ * The control must impart spin: the item says only that it does, and how much a
+ * full swing imparts is `moving-solo-player`'s point, so the floor is a float
+ * margin above zero.
  */
-const SPIN_FLOOR = PADDLE_SPEED * SPIN_FROM_PADDLE * 0.65;
-/** A paddle the clamp has stopped reports zero velocity, to a float margin. */
-const STILL_TOLERANCE = 1;
-const SPIN_TOLERANCE = 0.5;
+const SPIN_FLOOR = 1e-6;
+/** A paddle the clamp has stopped reports exactly zero velocity, to a float margin. */
+const STILL_TOLERANCE = 1e-6;
+const SPIN_TOLERANCE = 1e-6;
 
 /** A contact clear of the bound, where a full-speed swing has room to travel. */
 const FREE_CONTACT_CY = 480;

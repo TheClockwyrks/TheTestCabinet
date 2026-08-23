@@ -19,7 +19,6 @@
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   MOVE_MIN,
-  STILL_MAX,
   captureReplay,
   createHarness,
   holdMove,
@@ -74,6 +73,6 @@ it("moves player two's right paddle down while ArrowDown is held, and stops on r
   expect(moved.delta).toBeGreaterThan(MOVE_MIN);
 
   // The other player's paddle is not this key's to move.
-  expect(Math.abs(moved.otherDelta.left)).toBeLessThan(STILL_MAX);
+  expect(moved.otherDelta.left).toBe(0);
   expect(h.snapshot().paddles.right.cy).toBeCloseTo(moved.stopped, 6);
 });

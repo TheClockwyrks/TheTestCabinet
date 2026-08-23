@@ -62,7 +62,10 @@ it("suspends a ball in flight for as long as the game is paused", async () => {
 
   const later = h.snapshot();
 
+  // "Nothing advances" while paused (specs/ui.md): position, velocity and spin
+  // are exactly what the pause left.
   expect(later.screen).toBe("paused");
-  expect(ball0(later).x).toBeCloseTo(ball0(paused).x, 1);
-  expect(ball0(later).y).toBeCloseTo(ball0(paused).y, 1);
+  for (const field of ["x", "y", "vx", "vy", "spin"] as const) {
+    expect(ball0(later)[field]).toBe(ball0(paused)[field]);
+  }
 });

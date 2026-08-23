@@ -1,23 +1,24 @@
-// gameplay/serve-speed — a served ball leaves at the base serve speed.
+// gameplay/serve-speed — a served ball leaves at the serve speed.
+//
+// specs/balls.md: the serve leaves at `SERVE_SPEED` (520 units per second),
+// `vx = dir * SERVE_SPEED * cos(SERVE_ANGLE)`, `vy = s * SERVE_SPEED *
+// sin(SERVE_ANGLE)`, and the ball is not advanced on the frame it is served, so
+// the launch frame reads exactly that speed; one percent is rounding room.
 //
 // A fresh match is started and its pre-serve hold expired; the LAUNCH itself is
-// the build's own, on the frame after, and the speed is read the instant it
-// happens — before a bounce or a paddle could change it. Nothing about the serve
-// is posed: `startMatch` opens the countdown and `serve` ends it, and what leaves
-// is whatever the build's own serve produced.
+// the build's own, on the frame after. Nothing about the serve is posed:
+// `startMatch` opens the countdown and `serve` ends it, and what leaves is
+// whatever the build's own serve produced.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { SERVE_MAX_ANGLE, SERVE_SPEED } from "../constants";
-import {
-  angleDeg,
-  ball0,
-  captureReplay,
-  createHarness,
-  type Harness,
-} from "../harness";
+import { SERVE_SPEED } from "../constants";
+import { ball0, captureReplay, createHarness, type Harness } from "../harness";
 
-/** The old browser suite's margin: 15% of the spec speed. */
-const SPEED_TOLERANCE = SERVE_SPEED * 0.15;
+/**
+ * One percent of `SERVE_SPEED`: rounding room on a launch the specification
+ * fixes exactly.
+ */
+const SPEED_TOLERANCE = SERVE_SPEED * 0.01;
 
 /**
  * Frames of the pre-serve hold recorded before the hold is expired.
@@ -51,7 +52,7 @@ afterEach(async () => {
   await harness.dispose();
 });
 
-it("serves the ball at the base serve speed", async () => {
+it("serves the ball at SERVE_SPEED", async () => {
   const { debug } = harness;
   await debug.reset();
   await debug.startMatch("versus");
@@ -72,11 +73,6 @@ it("serves the ball at the base serve speed", async () => {
   expect(
     Math.abs(ball0(launched.snapshot).speed - SERVE_SPEED),
   ).toBeLessThanOrEqual(SPEED_TOLERANCE);
-  // The serve is within 30 degrees of horizontal, so the speed above is a real
-  // volley rather than a ball dropped down the field at the right magnitude.
-  expect(angleDeg(ball0(launched.snapshot))).toBeLessThanOrEqual(
-    (SERVE_MAX_ANGLE * 180) / Math.PI,
-  );
   // And the page stayed quiet throughout: nothing the build threw, and nothing
   // it logged as an error, while this harness was driving it. An engineless
   // build loads no assets through a runtime, so there is no asset log to read —

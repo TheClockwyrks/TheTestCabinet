@@ -19,8 +19,9 @@ import {
 
 /** Enough hits for the ratio to be read many times over below the ceiling. */
 const MIN_HITS = 12;
-/** The old browser suite's margins: on the ratio, and on a decrease in px/s. */
-const RATIO_TOLERANCE = 0.01;
+/** The review item's margin on the per-hit ratio: one percent of SPEED_MULT. */
+const RATIO_TOLERANCE = SPEED_MULT * 0.01;
+/** A float margin on "never decreases", in units per second. */
 const DECREASE_TOLERANCE = 0.5;
 
 let harness: Harness;

@@ -17,7 +17,13 @@ import {
   type Harness,
 } from "../harness";
 
-const SPEED_TOLERANCE = PADDLE_SPEED * 0.2;
+/**
+ * The review item's margin: two percent of PADDLE_SPEED. A held key moves the
+ * paddle at exactly PADDLE_SPEED while it is clear of the bounds
+ * (specs/playfield.md), and the span below starts at FIELD_CY and ends well
+ * short of either bound.
+ */
+const SPEED_TOLERANCE = PADDLE_SPEED * 0.02;
 const TICKS = 36; // 0.3 s
 /** A paddle a key must not touch should barely budge, in logical px. */
 const STILL_MAX = 6;

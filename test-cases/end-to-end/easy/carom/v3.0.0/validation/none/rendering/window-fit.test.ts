@@ -1,13 +1,14 @@
-// Carom — rendering/window-fit: the whole 1280x720 field stays visible, fitted,
-// and centred whatever shape the window is.
+// rendering/window-fit — the whole 1280x720 field stays visible, fitted, and
+// centered whatever shape the window is.
 //
 // UNDER AN ENGINE THIS IS THE ENGINE'S WORK; HERE IT IS THE BUILD'S. That is the
 // difference this suite has to be written around. `specs/overview.md` fixes the
-// fit — one uniform scale, the whole field inside, centred, at the device pixel
-// ratio — and an engineless build derives it itself, so there is no viewport map
-// to ask for. Asking the build what it derived would be asking it to grade
-// itself; so the harness computes the fit the SPECIFICATION requires
-// (`fitViewport`) and the checks read the canvas against that.
+// fit — one uniform scale, the whole field inside, centered, at the device pixel
+// ratio, with the letterbox bars the field's background color — and an
+// engineless build derives it itself, so there is no viewport map to ask for.
+// Asking the build what it derived would be asking it to grade itself; so the
+// harness computes the fit the SPECIFICATION requires (`fitViewport`) and the
+// checks read the canvas against that.
 //
 // TWO READINGS, OVER SIX WINDOWS. The first is arithmetic the build cannot argue
 // with: the backing store has to be the window at the device pixel ratio, which
@@ -15,9 +16,9 @@
 // picture: over each shape, a known scene is posed and the pixels are sampled at
 // the device coordinates the specified fit puts each element at — the paddles
 // under their own logical coordinates, the field's own background between them,
-// and nothing but the page's own ground out in the letterbox bars. A build that
-// scaled non-uniformly, that cropped, that ignored the pixel ratio, or that drew
-// in device pixels puts something other than a paddle at those points.
+// and the same background out in the letterbox bars. A build that scaled
+// non-uniformly, that cropped, that ignored the pixel ratio, or that drew in
+// device pixels puts something other than a paddle at those points.
 //
 // EACH SHAPE IS A WINDOW OF ITS OWN. A device pixel ratio belongs to a browser
 // context rather than to a page, so `createHarness` opens one per shape and the
@@ -25,19 +26,20 @@
 // about: the fit is right on load, before any input.
 
 import { afterEach, expect, it } from "vitest";
-import { COLOR, FIELD_H, FIELD_W } from "../constants";
+import { FIELD_H, FIELD_W } from "../constants";
 import {
   COLOR_POINTS,
+  DISTINCT_MIN,
   arrangeColorScene,
   captureStill,
   colorDistance,
   createHarness,
-  hexRgb,
   sampleColor,
+  FIELD_POINTS,
+  sampleField,
   type Harness,
 } from "../harness";
 
-/** The surfaces the fit is read over. */
 const SURFACES = [
   {
     name: "a surface the size of the field",
@@ -72,8 +74,17 @@ const SURFACES = [
   { name: "a portrait window", cssWidth: 600, cssHeight: 900, dpr: 1 },
 ];
 
-/** How far two colours must sit apart to be different things on the field. */
-const DISTINCT_MIN = 50;
+/**
+ * How far a letterbox bar's color may sit from the sampled field background.
+ *
+ * The specification makes the two the same color, so this is rounding room
+ * rather than slack: a few levels in one channel, against a difference of at
+ * least DISTINCT_MIN between any body and the field. The bar is held against
+ * the nearest of the FIELD_POINTS patches rather than the darkest, because a
+ * build that shades its field toward the edges has no single field color, and
+ * the nearest empty patch reads the cleared color through that shading.
+ */
+const BAR_MATCH_MAX = 8;
 
 let harnesses: Harness[] = [];
 
@@ -93,7 +104,7 @@ async function surface(options: {
 }
 
 it.each(SURFACES)(
-  "fits the whole field into $name, centred",
+  "fits the whole field into $name, centered",
   async ({ cssWidth, cssHeight, dpr }) => {
     const h = await surface({ cssWidth, cssHeight, dpr });
 
@@ -111,7 +122,7 @@ it.each(SURFACES)(
     expect(view.width).toBe(FIELD_W);
     expect(view.height).toBe(FIELD_H);
     expect(view.scale).toBeCloseTo(uniform, 9);
-    // The whole field is inside the surface, on both axes, and it is centred:
+    // The whole field is inside the surface, on both axes, and it is centered:
     // the leftover on each axis is split evenly into two bars, and one axis is
     // filled exactly, so the letterboxing is on the other alone.
     expect(FIELD_W * view.scale).toBeLessThanOrEqual(store.width + 1e-6);
@@ -126,11 +137,7 @@ it.each(SURFACES)(
     // And the build really drew into that map: a posed scene puts each element
     // under its own logical coordinate, mapped through the specified fit.
     await arrangeColorScene(h);
-    const field = await sampleColor(
-      h,
-      COLOR_POINTS.background.x,
-      COLOR_POINTS.background.y,
-    );
+    const field = await sampleField(h);
     const left = await sampleColor(
       h,
       COLOR_POINTS.leftPaddle.x,
@@ -146,23 +153,19 @@ it.each(SURFACES)(
   },
 );
 
-it("draws the field inside the fit, leaving the letterbox bars bare", async () => {
+it("draws the field inside the fit, with the bars the field's background", async () => {
   // 1600 wide against a 1280-wide field: an 80 CSS pixel bar on each side.
   const h = await surface({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
   await arrangeColorScene(h);
   // The off-aspect surface is the one worth looking at: the whole field fitted
-  // inside it with a bare bar either side is what this point is about, and it is
-  // not visible on a surface the size of the field.
+  // inside it with a bar either side is what this point is about, and it is not
+  // visible on a surface the size of the field.
   await captureStill(h, "fit");
 
   expect(h.device(0, 0)).toEqual({ x: 160, y: 0 });
   expect(h.device(FIELD_W, FIELD_H)).toEqual({ x: 1440, y: 720 });
 
-  const field = await sampleColor(
-    h,
-    COLOR_POINTS.background.x,
-    COLOR_POINTS.background.y,
-  );
+  const field = await sampleField(h);
   const paddle = await sampleColor(
     h,
     COLOR_POINTS.leftPaddle.x,
@@ -172,15 +175,22 @@ it("draws the field inside the fit, leaving the letterbox bars bare", async () =
   // The paddle is under its own logical coordinate, mapped through the fit.
   expect(colorDistance(paddle, field)).toBeGreaterThan(DISTINCT_MIN);
 
-  // The bars either side carry nothing the game drew. They are outside the
-  // logical space, so they are sampled in device pixels directly, and what is
-  // there is the field's own background — the page and the canvas are both
-  // painted it, and a build that let the field spill into the bar would put
-  // something else there.
+  // The bars either side are the field's background color (specs/overview.md).
+  // They are outside the logical space, so they are sampled in device pixels
+  // directly, against the NEAREST of the empty field patches: the look is the
+  // build's, and a field shaded toward its edges has no single colour, but every
+  // empty patch shows the colour it was cleared to through that shading. A build
+  // that let the field spill into a bar, or painted the bars some other ground,
+  // puts something else there.
+  const patches = await Promise.all(
+    FIELD_POINTS.map((point) => sampleColor(h, point.x, point.y)),
+  );
   for (const deviceX of [40, 1560]) {
     const bar = await h.devicePixel(deviceX, 360);
     const barColor = { r: bar[0], g: bar[1], b: bar[2] };
-    expect(barColor).toEqual(hexRgb(COLOR.bg));
-    expect(colorDistance(barColor, paddle)).toBeGreaterThan(DISTINCT_MIN);
+    const nearest = Math.min(
+      ...patches.map((patch) => colorDistance(barColor, patch)),
+    );
+    expect(nearest).toBeLessThanOrEqual(BAR_MATCH_MAX);
   }
 });

@@ -1,15 +1,15 @@
-// Carom — ui/state-howto: How to Play is reachable from the menu and draws a
-// screen of its own.
+// Carom — ui/state-howto: How to Play is reachable from the menu, and it names
+// the movement keys.
 //
-// The menu is navigated with real key events — two moves down to the third entry,
-// then confirm — so what opens the screen is the build's own menu handling
-// through the actions the case binds, not a state assignment.
+// The menu is navigated with real key events — two moves down to the third
+// entry, then confirm — so what opens the screen is the build's own menu
+// handling through the actions the case binds, not a state assignment.
 //
-// What is asserted about the screen itself is deliberately narrow. The
-// specification fixes no copy for it ("a simple screen describing the controls
-// and the spin and obstacle mechanics"), so this asserts that it is a real screen
-// — a meaningful amount of text, and not simply the title menu redrawn — and
-// leaves whether it reads well to the reviewer looking at the capture.
+// The specification fixes no copy for the screen beyond that it "names the
+// controls" (specs/ui.md, specs/overview.md), so what is read is that the
+// frame's text names the movement keys the case binds: `W` and `S` as keys of
+// their own, and the arrow keys by name or glyph. How the screen reads is the
+// reviewer's, from the capture.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
@@ -18,9 +18,6 @@ import {
   drawnText,
   type Harness,
 } from "../harness";
-
-/** Enough text that the screen explains something rather than being a stub. */
-const MIN_CHARACTERS = 40;
 
 let h: Harness;
 
@@ -32,11 +29,8 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("opens the how-to-play screen from the menu", async () => {
-  h.calls.length = 0;
-  await h.advance(1);
-  const title = drawnText(h.calls).join(" ");
-
+it("opens the how-to-play screen from the menu and names the movement keys", async () => {
+  h.debug.reset();
   await h.tap("ArrowDown"); // SOLO -> VERSUS
   await h.tap("ArrowDown"); // VERSUS -> HOW TO PLAY
   await h.tap("Enter");
@@ -47,7 +41,8 @@ it("opens the how-to-play screen from the menu", async () => {
 
   expect(h.snapshot().screen).toBe("howto");
 
-  const howto = drawnText(h.calls);
-  expect(howto.join("").length).toBeGreaterThanOrEqual(MIN_CHARACTERS);
-  expect(howto.join(" ")).not.toBe(title);
+  const copy = drawnText(h.calls).join(" ");
+  expect(copy).toMatch(/\bW\b/i);
+  expect(copy).toMatch(/\bS\b/i);
+  expect(copy).toMatch(/arrow|\bup\b|\bdown\b|\u2191|\u2193/i);
 });

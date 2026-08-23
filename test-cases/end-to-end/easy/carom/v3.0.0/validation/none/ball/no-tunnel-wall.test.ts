@@ -1,0 +1,55 @@
+// ball/no-tunnel-wall — at the ceiling speed the ball still reflects off a
+// wall, never leaving the field.
+//
+// The ball is fired straight up the field's center line at the top wall at
+// `SPEED_CAP` and the frame of the rebound is read: the ball is travelling back
+// down and its center is inside the field. With the sub-step rule
+// (specs/balls.md, and `./no-tunnel.ts`) the ball is never outside; a build
+// that integrates a whole coarse frame at once puts it there. Every frame is
+// sampled, so the earliest frame the ball was travelling back is the one read.
+
+import { afterEach, expect, it } from "vitest";
+import { BALL_R, FIELD_CX, FIELD_H, SPEED_CAP } from "../constants";
+import { ball0, captureReplay, clearPaddles, type Harness } from "../harness";
+import { DEPARTURE_MS, framesFor, harnessAt, STEPS_MS } from "./no-tunnel";
+
+const START_Y = 600;
+
+const live: Harness[] = [];
+
+afterEach(async () => {
+  for (const harness of live.splice(0)) await harness.dispose();
+});
+
+it("rebounds off a wall at the ceiling speed and stays on the field", async () => {
+  for (const stepMs of STEPS_MS) {
+    const harness = await harnessAt(stepMs, live);
+    await clearPaddles(harness);
+    await harness.debug.setBall(0, {
+      x: FIELD_CX,
+      y: START_Y,
+      vx: 0,
+      vy: -SPEED_CAP,
+      spin: 0,
+    });
+
+    const rebound = await captureReplay(harness, "fast", async () => {
+      const swept = await harness.until((s) => ball0(s).vy > 0, {
+        maxFrames: framesFor(START_Y, stepMs),
+        poll: 1,
+      });
+      await harness.advance(Math.ceil(DEPARTURE_MS / stepMs));
+      return swept;
+    });
+
+    expect(rebound.hit, `${stepMs} ms frames: rebounds`).toBe(true);
+    expect(
+      ball0(rebound.snapshot).y,
+      `${stepMs} ms frames: inside the top wall`,
+    ).toBeGreaterThanOrEqual(BALL_R - 1e-6);
+    expect(
+      ball0(rebound.snapshot).y,
+      `${stepMs} ms frames: inside the bottom wall`,
+    ).toBeLessThanOrEqual(FIELD_H - BALL_R + 1e-6);
+  }
+});

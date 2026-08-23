@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import {
   captureStill,
   createHarness,
+  resumeScreen0,
   startWithKeys,
   type Harness,
 } from "../harness";
@@ -33,4 +34,6 @@ it("pauses when the pause key is pressed during the countdown", async () => {
   captureStill(harness, "paused");
 
   expect(harness.snapshot().screen).toBe("paused");
+  // `pause` sets `resumeScreen` to the screen it left (specs/ui.md).
+  expect(resumeScreen0(harness)).toBe("countdown");
 });

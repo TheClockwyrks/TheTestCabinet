@@ -13,6 +13,7 @@ import {
   ball0,
   captureReplay,
   createHarness,
+  holdTimer0,
   startWithKeys,
   TICK_HZ,
   type Harness,
@@ -52,11 +53,16 @@ it("freezes the countdown while paused and resumes it where it stopped", async (
 
     await harness.tap("Escape");
     expect(harness.snapshot().screen).toBe("paused");
+    const heldAt = holdTimer0(harness);
+    expect(heldAt).toBeGreaterThan(0);
 
     await harness.advance(PAUSED_TICKS);
     const whilePaused = harness.snapshot();
 
+    // "Paddles, ball, and holdTimer are all frozen" (specs/ui.md).
     expect(whilePaused.screen).toBe("paused");
+    expect(holdTimer0(harness)).toBe(heldAt);
+    expect(ball0(whilePaused).held).toBe(true);
     expect(Math.abs(ball0(whilePaused).x - ball0(mid).x)).toBeLessThanOrEqual(
       1,
     );

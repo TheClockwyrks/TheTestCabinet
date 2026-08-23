@@ -5,13 +5,13 @@
 // speed is measured back into a speed. Nothing poses the AI's motion: its own
 // tracking, at its own pace, is what is measured.
 //
-// The bound is a band rather than a figure. The AI eases off as it nears its
-// target and its speed is deliberately below the human's so it stays beatable, so
-// what a check can honestly require is that it chases at a competent,
-// non-trivial rate AND stays slower than a player.
+// The rate follows from the AI rule (specs/modes/single-player.md): with the
+// ball far from the paddle, `|diff|` is far past AI_DEADZONE and `|diff| / dt`
+// is far past AI_SPEED, so `vy = sign(diff) * AI_SPEED` on every frame of the
+// window and the paddle covers exactly AI_SPEED units per second.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_SPEED } from "../../src/constants";
+import { AI_SPEED } from "../../src/constants";
 import {
   arrangeAiChase,
   captureReplay,
@@ -20,8 +20,8 @@ import {
   type Harness,
 } from "../harness";
 
-/** The old browser suite's floor: a competent, non-trivial chase, in px/s. */
-const CHASE_FLOOR = 250;
+/** The review item's margin: two percent of AI_SPEED. */
+const SPEED_TOLERANCE = AI_SPEED * 0.02;
 
 /**
  * Frames of the chase recorded after the measured window.
@@ -46,7 +46,7 @@ afterEach(() => {
   harness?.dispose();
 });
 
-it("chases the ball competently, and slower than a human paddle", async () => {
+it("chases the ball at AI_SPEED", async () => {
   await arrangeAiChase(harness);
 
   const chase = await captureReplay(harness, "move", async () => {
@@ -55,6 +55,6 @@ it("chases the ball competently, and slower than a human paddle", async () => {
     return measured;
   });
 
-  expect(chase.speed).toBeGreaterThan(CHASE_FLOOR);
-  expect(chase.speed).toBeLessThan(PADDLE_SPEED);
+  expect(chase.delta).toBeGreaterThan(0); // toward the ball, down the field
+  expect(Math.abs(chase.speed - AI_SPEED)).toBeLessThanOrEqual(SPEED_TOLERANCE);
 });

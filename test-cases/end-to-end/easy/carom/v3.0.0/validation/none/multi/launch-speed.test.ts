@@ -1,4 +1,4 @@
-// multi/launch-speed — a launched ball leaves at the base launch speed.
+// multi/launch-speed — a launched ball leaves at SERVE_SPEED (specs/balls.md).
 //
 // A fresh match is opened and its hold cut short; the LAUNCH itself is the
 // build's own, on the frame after, and the speed of every ball is read the
@@ -16,8 +16,11 @@ import { SERVE_SPEED } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { readBalls } from "./harness";
 
-/** The margin the speed is allowed: 15% of the specified speed. */
-const SPEED_TOLERANCE = SERVE_SPEED * 0.15;
+/**
+ * The margin the speed is allowed: one percent of `SERVE_SPEED`, rounding room
+ * on a launch the specification fixes exactly.
+ */
+const SPEED_TOLERANCE = SERVE_SPEED * 0.01;
 
 /** Frames of the hold recorded before it is cut short. */
 const HELD_TICKS = 24; // 0.2 s

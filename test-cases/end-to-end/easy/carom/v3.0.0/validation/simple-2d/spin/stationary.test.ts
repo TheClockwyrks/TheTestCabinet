@@ -16,8 +16,11 @@ import {
   type Harness,
 } from "../harness";
 
-/** The old browser suite's margin: spin is either imparted or it is not. */
-const SPIN_TOLERANCE = 0.5;
+/**
+ * A float margin. `spin = clamp(spin + paddleVy * SPIN_FROM_PADDLE, ...)` with
+ * both terms zero is exactly zero (specs/balls.md).
+ */
+const SPIN_TOLERANCE = 1e-6;
 
 /**
  * Frames of the return flight recorded after the contact.

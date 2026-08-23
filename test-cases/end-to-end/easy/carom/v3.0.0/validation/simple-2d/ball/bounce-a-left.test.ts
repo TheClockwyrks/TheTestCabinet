@@ -1,38 +1,41 @@
 // ball/bounce-a-left — the ball reflects off obstacle A's left face.
 //
-// The ball is fired level with the obstacle, straight at that face; the build's
-// own collision code reflects it. It must reverse its horizontal direction and
-// stay on the near (left) side of the struck face — a reflection, not a pass
-// through. The other three faces are the sibling checks, so a build that resolves
-// only some of them fails exactly the ones it gets wrong.
+// The ball is fired level at the midpoint of that face; the build's own
+// collision code reflects it. specs/playfield.md fixes the result exactly: the
+// struck face is the left one, so `vx` is reversed, `vy` is left as it
+// is, and the ball's center is placed `BALL_R` off the face, at `x0 - BALL_R`. The other
+// three faces are the sibling checks, so a build that resolves only some of them
+// fails exactly the ones it gets wrong.
+//
+// Placement is read at the end of the frame of the contact. The frame is cut
+// into sub-steps (specs/balls.md), and a sub-step that follows the one that
+// struck carries the ball on from the face, so the center is read within one
+// frame of travel of the face, on the near side of it.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { BALL_R, OBSTACLES } from "../../src/constants";
 import {
-  arrangeObstacleBounce,
+  arrangeFaceShot,
   ball0,
   captureReplay,
   createHarness,
-  driveObstacleBounce,
+  driveFaceShot,
   startPlaying,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
-const FACE_X = OBSTACLES[0].x0;
-const LANE_Y = OBSTACLE_CENTERS[0].y;
+const RECT = OBSTACLES[0];
+/** Where the center lands off the struck face. */
+const PLACED = RECT.x0 - BALL_R;
+/** The approach, in units per second; one frame of it bounds the placement. */
+const SPEED = 600;
+const FRAME_TRAVEL = SPEED / TICK_HZ;
 
 /**
- * Frames of the departing flight recorded after the rebound.
- *
- * The sweep that drives the bank stops on the frame the ball's horizontal
- * velocity reverses — the frame of the contact itself. A recording that ended
- * there would show the ball arriving and nothing more, and the review item
- * promises a reviewer a BANK: the leg that leaves the face is half of what the
- * clip is for. Half a second of it is enough to read the outgoing angle off and
- * short enough that the ball is still on the field at the end.
- *
- * These frames are driven AFTER the sweep, inside the same recorded section, so
- * the rebound the assertions read is still the sweep's own frame.
+ * Frames of the departing flight recorded after the rebound, inside the same
+ * recorded section, so the rebound the assertions read is still the sweep's own
+ * frame while the clip shows the bank leaving the face.
  */
 const DEPARTURE_TICKS = 60; // 0.5 s
 
@@ -48,14 +51,18 @@ afterEach(() => {
 
 it("banks the ball off obstacle A's left face", async () => {
   await startPlaying(harness);
-  arrangeObstacleBounce(harness, { faceX: FACE_X, y: LANE_Y, from: "left" });
+  const shot = arrangeFaceShot(harness, RECT, "left", { speed: SPEED });
 
   const bank = await captureReplay(harness, "bank", async () => {
-    const rebound = await driveObstacleBounce(harness, "left");
+    const rebound = await driveFaceShot(harness, "left");
     await harness.advance(DEPARTURE_TICKS);
     return rebound;
   });
 
   expect(bank.hit).toBe(true);
-  expect(ball0(bank.snapshot).x).toBeLessThan(FACE_X);
+  const ball = ball0(bank.snapshot);
+  expect(ball.vx).toBeCloseTo(-shot.vx, 6);
+  expect(ball.vy).toBeCloseTo(shot.vy, 6);
+  expect(ball.x).toBeLessThanOrEqual(PLACED + 1e-6);
+  expect(ball.x).toBeGreaterThanOrEqual(PLACED - FRAME_TRAVEL);
 });

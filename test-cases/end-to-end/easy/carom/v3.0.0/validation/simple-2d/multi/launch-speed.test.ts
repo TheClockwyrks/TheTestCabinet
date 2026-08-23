@@ -17,7 +17,7 @@ import { captureReplay, createHarness, type Harness } from "../harness";
 import { readBalls } from "./harness";
 
 /** The margin the speed is allowed: 15% of the specified speed. */
-const SPEED_TOLERANCE = SERVE_SPEED * 0.15;
+const SPEED_TOLERANCE = SERVE_SPEED * 0.01;
 
 /** Frames of the hold recorded before it is cut short. */
 const HELD_TICKS = 24; // 0.2 s

@@ -19,7 +19,10 @@ import {
 
 /** Enough hits for the ratio to be read many times over below the ceiling. */
 const MIN_HITS = 12;
-/** The old browser suite's margins: on the ratio, and on a decrease in px/s. */
+/**
+ * One percent on the ratio, rounding room on `SPEED_MULT`, and half a unit per
+ * second on a decrease.
+ */
 const RATIO_TOLERANCE = 0.01;
 const DECREASE_TOLERANCE = 0.5;
 

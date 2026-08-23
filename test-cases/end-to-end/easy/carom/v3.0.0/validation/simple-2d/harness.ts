@@ -31,8 +31,8 @@
 // reach the game through it. See `readDebugSurface`.
 //
 // THE CLOCK. `ConstantClock(TICK_MS)` is the default, so one frame is one
-// 120 Hz tick and every duration below is a whole number of them — which is the
-// unit the tolerances in this suite were established in. A check that is
+// 120 Hz tick and every duration below is a whole number of them, which is the
+// unit a suite's frame-counted tolerance is stated in. A check that is
 // specifically about the step size (gameplay/delta-time-independent) builds its
 // own harnesses with clocks of its own.
 
@@ -61,7 +61,6 @@ import {
 } from "@test-cabinet/simple-2d";
 import {
   BALL_R,
-  COLOR,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
@@ -70,7 +69,7 @@ import {
   P1_X1,
   P2_X0,
 } from "../src/constants";
-import { game as build, type CaromState } from "../src/game";
+import { BACKGROUND, game as build, type CaromState } from "../src/game";
 import type {
   BallSnapshot,
   CaromDebugApi,
@@ -166,8 +165,32 @@ export interface TrailPoint {
 /** The two shapes a seeded `src/game.ts` holds the hold and the trail in. */
 interface StateShapes {
   holdTimer?: number;
+  receiver?: Side;
   trail?: TrailPoint[];
   balls?: { holdTimer: number; trail: TrailPoint[] }[];
+}
+
+/** The highlighted menu item, read off the state the build declared. */
+export function menuIndex0(h: Harness): number {
+  return h.state.menuIndex;
+}
+
+/** The screen the pause menu resumes to, read off the state the build declared. */
+export function resumeScreen0(h: Harness): string {
+  return h.state.resumeScreen;
+}
+
+/**
+ * The side the next serve travels toward: `base` and `gyre` only, where the
+ * state declares `receiver` (specs/state.md).
+ */
+export function receiver0(h: Harness): Side {
+  const value = (h.state as unknown as StateShapes).receiver;
+  expect(
+    value,
+    "the state must hold the next serve's side as `receiver`; see specs/state.md",
+  ).toBeDefined();
+  return value as Side;
 }
 
 /**
@@ -205,9 +228,29 @@ export function trail0(h: Harness): TrailPoint[] {
 /* The harness                                                                */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Where a `fillText`/`strokeText` call put its text, read off the real context
+ * at the moment of the call: the current transform, so the anchor can be mapped
+ * to logical units whatever `translate`/`scale` the build applied, the measured
+ * width under the current font, and the alignment that places the run about
+ * its anchor.
+ */
+export interface TextGeometry {
+  transform: {
+    a: number;
+    b: number;
+    c: number;
+    d: number;
+    e: number;
+    f: number;
+  };
+  width: number;
+  textAlign: string;
+}
+
 /** One recorded operation on the 2D context, in the order the render made it. */
 export type DrawCall =
-  | { kind: "call"; method: string; args: unknown[] }
+  | { kind: "call"; method: string; args: unknown[]; text?: TextGeometry }
   | { kind: "set"; property: string; value: unknown };
 
 /** One cue the build played, as the runtime announced it. */
@@ -342,7 +385,20 @@ function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
       const value = Reflect.get(object, property, object) as unknown;
       if (typeof value !== "function") return value;
       return (...args: unknown[]): unknown => {
-        calls.push({ kind: "call", method: String(property), args });
+        const method = String(property);
+        const call: DrawCall = { kind: "call", method, args };
+        if (
+          (method === "fillText" || method === "strokeText") &&
+          typeof args[0] === "string"
+        ) {
+          const m = object.getTransform();
+          call.text = {
+            transform: { a: m.a, b: m.b, c: m.c, d: m.d, e: m.e, f: m.f },
+            width: object.measureText(args[0]).width,
+            textAlign: object.textAlign,
+          };
+        }
+        calls.push(call);
         return (value as (...rest: unknown[]) => unknown).apply(object, args);
       };
     },
@@ -454,10 +510,10 @@ function missingSurface(reason: string): CaromDebugApi {
  * Build a runtime over a canvas of the harness's own, initialize the build's
  * game, and hand back everything a check reads.
  *
- * The options passed to the factory are the ones the specification fixes — the
- * design size, the background, and the touch layout — so one harness serves every
- * build of this case. Everything else the build decided lives inside
- * `src/game.ts`.
+ * The options passed to the factory are the ones the seeded `src/main.ts`
+ * passes — the design size, the build's exported `BACKGROUND`, and the touch
+ * layout — so one harness serves every build of this case. Everything else the
+ * build decided lives inside `src/game.ts`.
  */
 export async function createHarness(
   options: HarnessOptions = {},
@@ -491,7 +547,9 @@ export async function createHarness(
     width: FIELD_W,
     height: FIELD_H,
     game,
-    background: COLOR.bg,
+    // The build's own field background, handed to the engine exactly as the
+    // seeded `src/main.ts` hands it (specs/overview.md).
+    background: BACKGROUND,
     layout: LAYOUT,
     clock: options.clock ?? new ConstantClock(TICK_MS),
     surface,
@@ -1014,9 +1072,9 @@ export function captureStill(h: Harness, outputId: string): void {
 /* -------------------------------------------------------------------------- */
 //
 // Each of these poses a situation through the debug surface and then lets the real
-// simulation run. They are the in-process descendants of the old browser suite's
-// `validation/_helpers.mjs`, and the geometry and the tolerances they encode are
-// the same ones that suite established.
+// simulation run. They fix only geometry: where a ball or a paddle is put. Every
+// threshold a check asserts is stated in the check itself, derived from the
+// figure or rule specs/ states for it.
 
 /** Off-lane parking height for a paddle a scenario must keep out of the way. */
 export const PARKED_CY = 150;
@@ -1034,10 +1092,22 @@ export const CLEAR_LANE_Y = FIELD_CY;
  */
 export const LEAD_TICKS = 60; // 0.5 s at 120 Hz
 
-/** Park both paddles out of the mid-field lane so a shot down it is unobstructed. */
+/**
+ * Park both paddles out of the mid-field lane so a shot down it is unobstructed,
+ * and hold the obstacles upright.
+ *
+ * Under `gyre` the obstacles sway and turn with a clock that runs during the
+ * countdown, so by the time a scenario is posed they are a fraction of a degree
+ * off upright. `setObstacleClock(0)` puts them at their base centres, upright,
+ * and holds them there (specs/instrumentation.md), which is the pose at which
+ * gyre's oriented rule "reduces to the upright case" (specs/playfield.md) and a
+ * shared check about an obstacle face means the same thing in every variant.
+ * The operation is gyre's alone; the other variants' obstacles never move.
+ */
 export function clearPaddles(h: Harness): void {
   h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
   h.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
+  h.debug.setObstacleClock?.(0);
 }
 
 /**
@@ -1094,6 +1164,11 @@ export function parkSpares(
  *
  * The spares are parked between the match opening and the hold expiring, so under
  * `multi` the one ball that launches is the one the scenario is about.
+ *
+ * Under `gyre` the obstacle clock is posed at `0` before the hold expires, so a
+ * scenario opens on upright obstacles at their base centres rather than on
+ * whatever fraction of a turn the countdown's frames happened to run; see
+ * {@link clearPaddles}. The operation is gyre's alone.
  */
 export async function startPlaying(
   h: Harness,
@@ -1102,6 +1177,7 @@ export async function startPlaying(
   h.debug.reset();
   h.debug.startMatch(mode);
   parkSpares(h);
+  h.debug.setObstacleClock?.(0);
   h.debug.serve();
   return h.until((s) => s.screen === "playing", { maxFrames: 60, poll: 1 });
 }
@@ -1496,7 +1572,9 @@ export async function arrangeLiveBall(
 // PLAYED, and what the keyboard did — needs three things the scenario helpers
 // above do not provide: a cue record stamped with the frame each cue fired on,
 // a colour sampler over the rendered canvas, and a way to ask what a single
-// frame's render actually asked the context for. They are gathered here rather
+// frame's render actually asked the context for. The palette is the build's
+// own (specs/overview.md), so nothing here knows a colour: the samplers compare
+// what was painted against what else was painted. They are gathered here rather
 // than folded in above so the two halves of this file stay separable.
 
 import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
@@ -1504,18 +1582,16 @@ import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
 /* ---- Controls tolerances -------------------------------------------------- */
 
 /**
- * A clearly non-trivial paddle displacement, in logical px.
+ * A clearly non-trivial paddle displacement, in logical units.
  *
  * The controls checks are about which paddle a key moves and which way, not how
- * fast — the speed is the `paddle-movement` category's point, and stating it in
- * both places would fail one build twice for one fault. At the specified 720 px/s
- * the 36-frame hold below travels 216 px, so this bound is crossed several times
- * over by any build in the right ballpark and never by one that did not move.
+ * fast: the speed is the `paddle-movement` category's point, and stating it in
+ * both places would fail one build twice for one fault. At PADDLE_SPEED the
+ * 36-frame hold `holdMove` defaults to travels 216 units, so this bound is
+ * crossed several times over by a build moving the right paddle the right way
+ * and never by one that did not move it.
  */
 export const MOVE_MIN = 40;
-
-/** How far a paddle a key must NOT touch may drift, in logical px. */
-export const STILL_MAX = 6;
 
 /* ---- Cues ----------------------------------------------------------------- */
 
@@ -1558,8 +1634,8 @@ export interface Rgb {
 }
 
 /**
- * The on-field points the colour checks sample, in logical px, valid on the
- * scene `arrangeColorScene` poses.
+ * The on-field points the visibility checks sample, in logical units, valid on
+ * the scene `arrangeColorScene` poses.
  *
  * Each sits well inside the shape it names — a paddle is 16 wide and an obstacle
  * 20, so a point on the centre line is 8 px from the nearest edge and the 4 px
@@ -1573,9 +1649,25 @@ export const COLOR_POINTS = {
   obstacle: OBSTACLE_CENTERS[0],
   /** A clean mid-field spot, clear of the paddles, both obstacles, and the net. */
   ball: { x: 300, y: FIELD_CY },
-  /** An empty patch of field, clear of every drawn element. */
-  background: { x: 500, y: 650 },
 } as const;
+
+/**
+ * Candidate patches of empty field, in logical units, clear of every element
+ * this specification places: the paddles, both obstacles at every gyre pose,
+ * the net, the parked ball, and the top of the field where the scores sit.
+ *
+ * The field is dark and every body on it is bright (specs/overview.md), but the
+ * mode label's copy and placement are the build's, so no single patch is
+ * guaranteed bare. The darkest of several is: a label is drawn to be read, so
+ * it is lighter than the field it sits on, and a patch it covers reads lighter
+ * than one it does not.
+ */
+export const FIELD_POINTS: readonly { x: number; y: number }[] = [
+  { x: 500, y: 650 },
+  { x: 200, y: 600 },
+  { x: 1000, y: 300 },
+  { x: 1100, y: 620 },
+];
 
 /**
  * The rendered colour at a logical point, averaged over a small cluster.
@@ -1608,25 +1700,31 @@ export function sampleColor(h: Harness, x: number, y: number): Rgb {
   };
 }
 
-/** A `#rrggbb` colour from `src/constants.ts`, as channels to compare against. */
-export function hexRgb(hex: string): Rgb {
-  const value = Number.parseInt(hex.replace("#", ""), 16);
-  return {
-    r: (value >> 16) & 0xff,
-    g: (value >> 8) & 0xff,
-    b: value & 0xff,
-  };
-}
-
 /** Euclidean distance between two colours, 0 to about 441. */
 export function colorDistance(a: Rgb, b: Rgb): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
 
-/** Every point in `COLOR_POINTS`, sampled off the canvas as it stands. */
+/** A colour's luminance, the reading the field is darkest on. */
+function luminance(c: Rgb): number {
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+/**
+ * The bare field's colour: the darkest of the {@link FIELD_POINTS} patches,
+ * sampled off the canvas as it stands.
+ */
+export function sampleField(h: Harness): Rgb {
+  const samples = FIELD_POINTS.map((point) => sampleColor(h, point.x, point.y));
+  return samples.reduce((darkest, sample) =>
+    luminance(sample) < luminance(darkest) ? sample : darkest,
+  );
+}
+
+/** Every point in `COLOR_POINTS` and the bare field, sampled as they stand. */
 export function sampleScene(
   h: Harness,
-): Record<keyof typeof COLOR_POINTS, Rgb> {
+): Record<keyof typeof COLOR_POINTS | "background", Rgb> {
   return {
     leftPaddle: sampleColor(
       h,
@@ -1640,11 +1738,7 @@ export function sampleScene(
     ),
     obstacle: sampleColor(h, COLOR_POINTS.obstacle.x, COLOR_POINTS.obstacle.y),
     ball: sampleColor(h, COLOR_POINTS.ball.x, COLOR_POINTS.ball.y),
-    background: sampleColor(
-      h,
-      COLOR_POINTS.background.x,
-      COLOR_POINTS.background.y,
-    ),
+    background: sampleField(h),
   };
 }
 
@@ -1767,4 +1861,230 @@ export function drawnPoints(
     }
   }
   return points;
+}
+
+/* ---- Where a frame put its text ------------------------------------------- */
+
+/** One run of text a frame drew, and the logical x range its glyphs span. */
+export interface TextSpan {
+  text: string;
+  /** The anchor, in logical units. */
+  x: number;
+  y: number;
+  /** The horizontal extent of the glyphs, in logical units. */
+  left: number;
+  right: number;
+}
+
+/**
+ * Every run of text the frame drew, placed in logical units.
+ *
+ * A build may anchor its text through any `translate`/`scale` it likes and
+ * align it any way it likes, so the anchor is mapped through the transform the
+ * context held at the call and the run is extended about it by its measured
+ * width and `textAlign`. Which way a `start`/`end` alignment reads is the
+ * page's direction; this game draws no right-to-left text, so they are left and
+ * right.
+ */
+export function drawnTextSpans(h: Harness): TextSpan[] {
+  const view = h.engine.viewport();
+  const spans: TextSpan[] = [];
+  for (const call of h.calls) {
+    if (call.kind !== "call" || call.text === undefined) continue;
+    const [text, ax, ay] = call.args;
+    if (typeof text !== "string" || typeof ax !== "number") continue;
+    if (typeof ay !== "number") continue;
+    const { transform: m, width, textAlign } = call.text;
+    // Device-space anchor, then back through the engine's fit to logical units.
+    const deviceX = m.a * ax + m.c * ay + m.e;
+    const deviceY = m.b * ax + m.d * ay + m.f;
+    const x = (deviceX - view.offsetX) / view.scale;
+    const y = (deviceY - view.offsetY) / view.scale;
+    // The run's width under the same horizontal scale the anchor took.
+    const w = (width * Math.hypot(m.a, m.b)) / view.scale;
+    const before =
+      textAlign === "center"
+        ? w / 2
+        : textAlign === "right" || textAlign === "end"
+          ? w
+          : 0;
+    spans.push({ text, x, y, left: x - before, right: x - before + w });
+  }
+  return spans;
+}
+
+/* ---- The AI with nothing to defend ---------------------------------------- */
+
+/**
+ * A live Solo match with the ball travelling AWAY from the AI paddle, posed far
+ * from anything it could strike, and the AI paddle posed well off its home
+ * height, so what the real opponent does from here is governed by the homing
+ * rule alone (specs/modes/single-player.md).
+ */
+export async function arrangeAiHome(
+  h: Harness,
+  options: { paddleCy: number },
+): Promise<void> {
+  await startPlaying(h, "solo");
+  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  h.debug.setPaddle("right", { cy: options.paddleCy, vy: 0 });
+  h.debug.setBall(0, { x: 1100, y: 200, vx: -300, vy: 0, spin: 0 });
+  h.debug.setAiControl(true);
+}
+
+/* ---- A shot at one obstacle face ------------------------------------------ */
+
+/** Which face of an axis-aligned obstacle a shot is aimed at. */
+export type Face = "left" | "right" | "top" | "bottom";
+
+/**
+ * Pose a straight shot at the midpoint of `face` of the axis-aligned obstacle
+ * `rect`, starting `runUp` units short of it and travelling at `speed`, with
+ * both paddles parked out of the way.
+ */
+export function arrangeFaceShot(
+  h: Harness,
+  rect: { x0: number; y0: number; x1: number; y1: number },
+  face: Face,
+  options: { runUp?: number; speed?: number } = {},
+): { vx: number; vy: number } {
+  const runUp = options.runUp ?? 180;
+  const speed = options.speed ?? 600;
+  const cx = (rect.x0 + rect.x1) / 2;
+  const cy = (rect.y0 + rect.y1) / 2;
+  const shot =
+    face === "left"
+      ? { x: rect.x0 - runUp, y: cy, vx: speed, vy: 0 }
+      : face === "right"
+        ? { x: rect.x1 + runUp, y: cy, vx: -speed, vy: 0 }
+        : face === "top"
+          ? { x: cx, y: rect.y0 - runUp, vx: 0, vy: speed }
+          : { x: cx, y: rect.y1 + runUp, vx: 0, vy: -speed };
+  clearPaddles(h);
+  h.debug.setBall(0, { ...shot, spin: 0 });
+  return { vx: shot.vx, vy: shot.vy };
+}
+
+/** Run the real collision until the component normal to `face` reverses. */
+export function driveFaceShot(
+  h: Harness,
+  face: Face,
+  options: UntilOptions = {},
+): Promise<UntilResult> {
+  const reversed: Record<Face, (s: CaromSnapshot) => boolean> = {
+    left: (s) => ball0(s).vx < 0,
+    right: (s) => ball0(s).vx > 0,
+    top: (s) => ball0(s).vy < 0,
+    bottom: (s) => ball0(s).vy > 0,
+  };
+  return h.until(reversed[face], {
+    maxFrames: options.maxFrames ?? 240,
+    poll: options.poll ?? 1,
+  });
+}
+
+/* ---- The trail, read off the canvas ------------------------------------- */
+
+/** An empty lane: below both obstacles, clear of the paddles and the net. */
+export const TRAIL_LANE_Y = 650;
+
+/** Where a trail drive poses the ball, and an empty patch of the same lane. */
+export const TRAIL_START_X = 300;
+export const TRAIL_BARE_X = 1100;
+
+/** Frames of flight before the frame that is read: longer than the trail's life. */
+export const TRAIL_FILL_TICKS = 24;
+
+/** How far a pixel must sit from the bare field to count as lit. */
+const LIT_MIN = 10;
+
+/**
+ * The widest run of bare field a streak may contain and still be one streak.
+ *
+ * A trail drawn from samples may be drawn sample by sample, and at the speed
+ * cap consecutive samples on the suite's clock are `SPEED_CAP / TICK_HZ`, about
+ * eight units, apart; a gap a little wider than that is still the same trail.
+ */
+const GAP_MAX = 12;
+
+/** How far behind the ball the lane is read, in logical units. */
+const TRAIL_SCAN = 240;
+
+/** The lane's bare pixels, by logical x, read with nothing drawn on it. */
+export type BareLane = Map<number, Rgb>;
+
+/** Where the lane scan starts behind the ball's center, and where it ends. */
+const TRAIL_SCAN_FROM = BALL_R + 3;
+const LANE_X0 = 20;
+
+/**
+ * Pose the ball in the empty lane at `speed`, fly it long enough to fill the
+ * trail, then record exactly one frame. The ball is returned as it was when that
+ * frame was drawn, along with the lane as it looked with nothing on it.
+ *
+ * The bare lane is read first, pixel by pixel, with the ball parked out of the
+ * scan at `TRAIL_BARE_X` for longer than the trail's life. Whatever the build
+ * draws on the field that is NOT the trail — a mode label whose copy and place
+ * are its own, a texture, a vignette — is in that reading too, so a lit pixel
+ * is one the flight changed, and nothing static can read as trail.
+ */
+export async function driveTrail(
+  h: Harness,
+  speed: number,
+): Promise<{ x: number; y: number; bare: BareLane }> {
+  await arrangeLiveBall(h, {
+    x: TRAIL_BARE_X,
+    y: TRAIL_LANE_Y,
+    vx: 0,
+    vy: 0,
+  });
+  await h.advance(TRAIL_FILL_TICKS);
+  const bare: BareLane = new Map();
+  for (let x = LANE_X0; x < TRAIL_BARE_X - 2 * BALL_R; x += 1) {
+    const [r, g, b] = h.pixel(x, TRAIL_LANE_Y);
+    bare.set(x, { r, g, b });
+  }
+  h.debug.setBall(0, {
+    x: TRAIL_START_X,
+    y: TRAIL_LANE_Y,
+    vx: speed,
+    vy: 0,
+    spin: 0,
+  });
+  await h.advance(TRAIL_FILL_TICKS);
+  h.calls.length = 0;
+  await h.advance(1);
+  const ball = ball0(h.snapshot());
+  return { x: ball.x, y: ball.y, bare };
+}
+
+/**
+ * How far behind the ball the unbroken run of lit pixels reaches along its lane,
+ * in logical units, measured from the ball's center.
+ *
+ * Each pixel is read against the same pixel of the bare lane, so whatever the
+ * build's palette and whatever else it draws there, a lit pixel is one the
+ * flight changed.
+ */
+export function trailReach(
+  h: Harness,
+  ball: { x: number; y: number; bare: BareLane },
+): number {
+  const ballX = Math.round(ball.x);
+  let reach = 0;
+  let gap = 0;
+  for (let d = TRAIL_SCAN_FROM; d <= TRAIL_SCAN; d += 1) {
+    const x = ballX - d;
+    const bare = ball.bare.get(x);
+    if (bare === undefined) break;
+    const [r, g, b] = h.pixel(x, TRAIL_LANE_Y);
+    if (colorDistance({ r, g, b }, bare) > LIT_MIN) {
+      reach = d;
+      gap = 0;
+    } else {
+      gap += 1;
+      if (gap > GAP_MAX) break;
+    }
+  }
+  return reach;
 }

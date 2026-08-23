@@ -48,7 +48,7 @@ it("plays on at a one-point lead and ends at two", async () => {
   });
 
   expect(oneClear.hit).toBe(true);
-  expect(oneClear.snapshot.screen).not.toBe("matchover");
+  expect(oneClear.snapshot.screen).toBe("playing");
   expect(oneClear.snapshot.winner).toBeNull();
   expect(oneClear.snapshot.score.p1).toBe(TIED_AT + 1);
   expect(oneClear.snapshot.score.p2).toBe(TIED_AT);
