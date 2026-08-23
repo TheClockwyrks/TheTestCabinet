@@ -1,4 +1,5 @@
 use super::*;
+use crate::store::CaseNames;
 use test_cabinet_core::metrics::RunMetrics;
 use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
@@ -2758,7 +2759,10 @@ async fn summary_ids(
     sort: SummarySort,
     dir: SortDir,
 ) -> Vec<String> {
-    let (runs, _) = db.list_summaries(filter, sort, dir, 50, 0).await.unwrap();
+    let (runs, _) = db
+        .list_summaries(filter, sort, dir, &CaseNames::new(), 50, 0)
+        .await
+        .unwrap();
     run_ids(&runs)
 }
 
@@ -2776,7 +2780,14 @@ async fn list_summaries_filters_by_test_case_model_and_harness() {
         ..unpublished_filter()
     };
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Tokens,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&runs), ["a", "b"]);
@@ -2901,7 +2912,14 @@ async fn list_summaries_filters_by_exact_version() {
         ..unpublished_filter()
     };
     let (_, total) = db
-        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(total, 3);
@@ -2922,7 +2940,14 @@ async fn list_summaries_latest_versions_narrows_per_case() {
         ..unpublished_filter()
     };
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&runs), ["b", "c", "e"]);
@@ -2985,7 +3010,14 @@ async fn list_summaries_filters_by_a_versions_list() {
         ..unpublished_filter()
     };
     let (_, total) = db
-        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(total, 3);
@@ -3059,7 +3091,14 @@ async fn list_summaries_filters_by_engine_with_null_matching_only_none() {
         ..unpublished_filter()
     };
     let (_, total) = db
-        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(total, 3);
@@ -3276,7 +3315,14 @@ async fn list_summaries_any_slice_covers_every_recorded_run() {
         ..SummaryFilter::default()
     };
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     let mut ids = run_ids(&runs);
@@ -3402,6 +3448,89 @@ async fn list_summaries_sorts_model_by_the_configuration_where_there_is_one() {
 }
 
 #[tokio::test]
+async fn list_summaries_sorts_test_case_by_display_name_not_slug() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Chosen so slug order and name order disagree: by slug `arc-foundry` <
+    // `pong` < `zz-unknown`; by name Arc Foundry < Carom < `zz-unknown` still, but
+    // `pong` (Carom) must file under "c" ahead of `valence` (Valence), which by
+    // slug trails it.
+    seed_ident(
+        &db,
+        "a",
+        "valence",
+        "sonnet",
+        HarnessSlug::Claude,
+        "base",
+        10,
+    )
+    .await;
+    seed_ident(&db, "b", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;
+    seed_ident(
+        &db,
+        "c",
+        "arc-foundry",
+        "sonnet",
+        HarnessSlug::Claude,
+        "base",
+        10,
+    )
+    .await;
+    seed_ident(
+        &db,
+        "d",
+        "zz-unknown",
+        "sonnet",
+        HarnessSlug::Claude,
+        "base",
+        10,
+    )
+    .await;
+    let names: CaseNames = [
+        ("arc-foundry", "Arc Foundry"),
+        ("pong", "Carom"),
+        ("valence", "Valence"),
+    ]
+    .into_iter()
+    .map(|(slug, name)| (slug.to_string(), name.to_string()))
+    .collect();
+
+    let ids = |dir| {
+        let (db, names) = (&db, &names);
+        async move {
+            let (runs, _) = db
+                .list_summaries(
+                    &unpublished_filter(),
+                    SummarySort::TestCase,
+                    dir,
+                    names,
+                    50,
+                    0,
+                )
+                .await
+                .unwrap();
+            run_ids(&runs)
+        }
+    };
+    // Arc Foundry, Carom, Valence, then the nameless slug on its own.
+    assert_eq!(ids(SortDir::Asc).await, ["c", "b", "a", "d"]);
+    assert_eq!(ids(SortDir::Desc).await, ["d", "a", "b", "c"]);
+
+    // Without a name map the key degrades to the slug itself.
+    let (runs, _) = db
+        .list_summaries(
+            &unpublished_filter(),
+            SummarySort::TestCase,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&runs), ["c", "b", "a", "d"]);
+}
+
+#[tokio::test]
 async fn list_summaries_sorts_by_tokens_and_reverses_with_dir() {
     let db = Db::connect_in_memory().await.unwrap();
     seed_metric(&db, "a", 10, Some(1.0), None).await;
@@ -3477,6 +3606,7 @@ async fn list_summaries_windows_by_offset_and_limit_with_a_full_total() {
             &unpublished_filter(),
             SummarySort::Tokens,
             SortDir::Asc,
+            &CaseNames::new(),
             2,
             2,
         )
@@ -3491,6 +3621,7 @@ async fn list_summaries_windows_by_offset_and_limit_with_a_full_total() {
             &unpublished_filter(),
             SummarySort::Tokens,
             SortDir::Asc,
+            &CaseNames::new(),
             2,
             4,
         )
@@ -3535,7 +3666,14 @@ async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
         ..unpublished_filter()
     };
     let (page, total) = db
-        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 2, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Tokens,
+            SortDir::Asc,
+            &CaseNames::new(),
+            2,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(page.len(), 2);
@@ -3566,7 +3704,14 @@ async fn list_summaries_filters_by_variant_within_a_case() {
         ..unpublished_filter()
     };
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Tokens,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&runs), ["a"]);
@@ -3592,7 +3737,14 @@ async fn list_summaries_any_slice_orders_unpublished_runs_among_the_published_on
     // The unpublished run sorts strictly between the two published ones by tokens —
     // in both directions — and the total counts every stored run.
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Tokens,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&runs), ["pub-lo", "unpub-mid", "pub-hi"]);
@@ -4283,6 +4435,7 @@ async fn unreviewed_excludes_the_auto_graded_performance_type() {
             },
             SummarySort::Date,
             SortDir::Desc,
+            &CaseNames::new(),
             50,
             0,
         )

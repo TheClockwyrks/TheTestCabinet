@@ -45,6 +45,7 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::coverage::gate::{Gate, GateOutcome, GateThreshold, RungRun};
 use crate::error::{BackendError, Result};
+use crate::store::CaseNames;
 
 /// The non-terminal job states — a run the queue still owns, from enqueue through
 /// execution. A job in one of these is "in flight": it appears in the active-run
@@ -915,11 +916,16 @@ impl Db {
     /// `assemble` preserves the input row order (it maps rows
     /// one-for-one, only skipping any that no longer deserialize), so the returned
     /// page stays in the sorted order.
+    ///
+    /// `case_names` is consulted only by [`SummarySort::TestCase`], which orders by
+    /// the case's display name rather than its slug (see `case_name_expr`); every
+    /// other sort may pass an empty map.
     pub async fn list_summaries(
         &self,
         filter: &SummaryFilter,
         sort: SummarySort,
         dir: SortDir,
+        case_names: &CaseNames,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredRun>, usize)> {
@@ -936,7 +942,7 @@ impl Db {
             SortDir::Asc => Order::Asc,
             SortDir::Desc => Order::Desc,
         };
-        let rows = apply_summary_sort(summary_query(filter, scope), sort, order.clone())
+        let rows = apply_summary_sort(summary_query(filter, scope), sort, order.clone(), case_names)
             // A stable final tiebreak on the primary key so paging is deterministic
             // even when the sort column ties.
             .order_by(run::Column::Id, order)
@@ -4217,7 +4223,9 @@ pub enum SummarySort {
     Rating,
     /// By test type (`test_type`).
     TestType,
-    /// By test-case slug (`test_case_slug`).
+    /// By the test case's **display name** — what the listing's column shows — with
+    /// the slug standing in for a case the store has no name for (see
+    /// `case_name_expr`).
     TestCase,
     /// By harness slug (`harness_slug`).
     Harness,
@@ -4403,18 +4411,21 @@ fn current_versions(pairs: Vec<(String, String)>) -> Vec<CaseVersions> {
 
 /// Apply the primary sort key (in `order`) to a summary query. The caller appends
 /// the `id` tiebreak. Cost/rating lead with a null-group key so NULLs always sort
-/// last regardless of `order`.
+/// last regardless of `order`. `case_names` feeds the test-case key alone.
 fn apply_summary_sort(
     query: Select<run::Entity>,
     sort: SummarySort,
     order: Order,
+    case_names: &CaseNames,
 ) -> Select<run::Entity> {
     match sort {
         SummarySort::Date => query.order_by(run::Column::StartedAt, order),
         SummarySort::Runtime => query.order_by(run::Column::RunTimeSeconds, order),
         SummarySort::Tokens => query.order_by(run::Column::TotalTokens, order),
         SummarySort::TestType => query.order_by(run::Column::TestType, order),
-        SummarySort::TestCase => query.order_by(run::Column::TestCaseSlug, order),
+        // The TEST column shows the case's display name, so it sorts by it: a run
+        // of `pong` (shown as Carom) files under "c", not "p".
+        SummarySort::TestCase => query.order_by(case_name_expr(case_names), order),
         SummarySort::Harness => query.order_by(run::Column::HarnessSlug, order),
         // The MODEL / CONFIG column sorts by what it displays: a gg run's
         // configuration name, falling back to the model id for every other run (and
@@ -4445,6 +4456,23 @@ fn apply_summary_sort(
 /// This is the value the console's MODEL / CONFIG cell renders, so ordering by it
 /// puts a server-ordered page in the order its own header claims. Safe as a bare
 /// COALESCE because [`lifted_gg_preset`] only ever writes the column for a gg run.
+/// The display name of a run's case as a SQL expression: a `CASE` over
+/// `test_case_slug` mapping every slug in `names` to its name, with the slug itself
+/// for any other. The catalog is not in the database — the definition store holds
+/// it — so the lookup is spelled out per query rather than joined; a catalog's
+/// worth of branches is a few hundred at most. An empty map degrades to the bare
+/// slug column, which is also what a slug nobody knows sorts by.
+fn case_name_expr(names: &CaseNames) -> SimpleExpr {
+    if names.is_empty() {
+        return run::Column::TestCaseSlug.into_expr().into();
+    }
+    let mut case = CaseStatement::new();
+    for (slug, name) in names {
+        case = case.case(run::Column::TestCaseSlug.eq(slug.as_str()), name.as_str());
+    }
+    case.finally(run::Column::TestCaseSlug.into_expr()).into()
+}
+
 fn model_identity_expr() -> SimpleExpr {
     Func::coalesce([
         run::Column::GgPreset.into_expr().into(),

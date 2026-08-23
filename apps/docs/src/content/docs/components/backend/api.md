@@ -575,7 +575,13 @@ The offset mode additionally accepts:
   `rating`, `testType`, `testCase`, `harness`, `model`, or `variant`, with `dir`
   (`asc` or `desc`), tie-broken by run id. `model` orders by the run's model or
   configuration identity: a gg run sorts by the configuration it was launched
-  from, and everything else by its model id.
+  from, and everything else by its model id. `testCase` orders by the case's
+  **display name** — the name the listing shows, not the recorded slug — resolved
+  the same way each card's `caseName` is: the latest ingested manifest's `name`,
+  a case renamed on disk since the run was recorded (say a `pong` run, shown as
+  Carom) by its current name, and a slug the store does not know at all by the
+  slug itself. A column that displays names sorting by slugs would file Carom
+  under "p".
 
 `limit` defaults to 50 and is clamped to 200.
 

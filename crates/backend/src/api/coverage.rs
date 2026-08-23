@@ -65,6 +65,7 @@ use crate::db::{
     SortDir, SummaryFilter, SummarySort, SummaryState,
 };
 use crate::error::ApiError;
+use crate::store::CaseNames;
 
 use super::AppState;
 
@@ -1947,6 +1948,7 @@ pub(super) async fn collect_queue(
                 &filter,
                 SummarySort::Date,
                 SortDir::Desc,
+                &CaseNames::new(),
                 QUEUE_CELL_SCAN,
                 0,
             )

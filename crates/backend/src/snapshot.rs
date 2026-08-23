@@ -763,9 +763,15 @@ impl SnapshotBuilder {
                 record.subject.test_case_version.as_str(),
             ))
             .copied();
-        let case_name = manifest
-            .map(|c| c.name.clone())
-            .unwrap_or_else(|| record.subject.test_case_slug.clone());
+        // A run of a case renamed on disk since (`pong` → Carom) has no entry in
+        // the ingested set under its recorded slug; it still shows its current name.
+        let case_name = manifest.map(|c| c.name.clone()).unwrap_or_else(|| {
+            let slug = record.subject.test_case_slug.as_str();
+            crate::store::RENAMED_SLUG_NAMES
+                .iter()
+                .find(|(old, _)| *old == slug)
+                .map_or_else(|| slug.to_string(), |(_, name)| name.to_string())
+        });
         // Score from the same catalog entry that names the case; both are absent
         // for a run whose case isn't in the ingested set.
         let score = manifest.and_then(|m| run_summary_score(m, record, &run.reviews));
@@ -2004,9 +2010,8 @@ impl RunSummary {
     ///
     /// `rating` is the aggregate across the run's reviews, or `None` when the run
     /// carries no reviews yet (an unrated console run). `case_name` falls back to
-    /// the test-case slug — a backend-connected console resolves display names
-    /// itself; only the static snapshot substitutes the real catalog name (see
-    /// `SnapshotBuilder::summary`).
+    /// the test-case slug; both callers substitute the real catalog name (the
+    /// listing via `case_display_name`, the snapshot in `SnapshotBuilder::summary`).
     pub fn from_stored(run: &StoredRun) -> Self {
         let record = &run.record;
         Self {

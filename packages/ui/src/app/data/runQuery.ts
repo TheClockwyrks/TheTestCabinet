@@ -238,7 +238,11 @@ function primaryCompare(
     case "testType":
       return cmpStr(a.subject.testType, b.subject.testType) * order;
     case "testCase":
-      return cmpStr(a.subject.testCaseSlug, b.subject.testCaseSlug) * order;
+      // The TEST column shows the case's display name, so the order is by it: a
+      // `pong` run (shown as Carom) files under "c", as the backend's name-keyed
+      // sort places it. The snapshot resolves `caseName` from the catalog, with a
+      // renamed slug's current name and, failing both, the slug itself.
+      return cmpStr(a.caseName, b.caseName) * order;
     case "harness":
       return cmpStr(a.subject.harnessSlug, b.subject.harnessSlug) * order;
     case "model":

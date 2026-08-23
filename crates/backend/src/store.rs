@@ -75,6 +75,34 @@ pub struct DefinitionStore {
     root: PathBuf,
 }
 
+/// Display names by case slug, as [`DefinitionStore::case_names`] builds them.
+pub type CaseNames = BTreeMap<String, String>;
+
+/// Test cases renamed on disk from their original inspired-by slug to their Test
+/// Cabinet name (`pong` → Carom). A run recorded under the OLD slug — historical,
+/// or already published — can no longer be found in the catalog by that slug, so
+/// its display name resolves through this table instead of degrading to the slug.
+///
+/// The console keeps the same table (`useTestCaseName.ts`, `RENAMED_SLUG_NAMES`)
+/// for the names it resolves on its own; a rename lands in both.
+pub const RENAMED_SLUG_NAMES: &[(&str, &str)] = &[
+    ("adversarial-pacman", "Foray"),
+    ("desktop-td", "Meltdown"),
+    ("galaga", "Spectra"),
+    ("klondike", "Cascade"),
+    ("pacman", "Fathom"),
+    ("performance-factorio", "Lattice"),
+    ("pong", "Carom"),
+    ("snake", "Coil"),
+];
+
+/// The display name a listing shows for a run of `slug`: the name
+/// [`DefinitionStore::case_names`] resolved, else the slug itself — a slug the
+/// store does not know degrades to the slug rather than to nothing.
+pub fn case_display_name(names: &CaseNames, slug: &str) -> String {
+    names.get(slug).cloned().unwrap_or_else(|| slug.to_string())
+}
+
 /// The resolved, store-relative manifest persisted alongside a copied test-case
 /// version. Paths in here are relative to the version's store directory (not host
 /// paths), so it can be served to a runner that has no checkout.
@@ -940,6 +968,46 @@ impl DefinitionStore {
             }
         }
         Ok(out)
+    }
+
+    /// The display name of every ingested case, keyed by slug — what a listing
+    /// shows for a run's case, and what a name-ordered listing sorts by (see
+    /// [`case_display_name`]).
+    ///
+    /// Each case's name is read from its **latest** ingested version, experimental
+    /// or not: a run exists for whatever version it ran, and its row shows that
+    /// case's current name either way. The renamed-slug fallbacks are folded in
+    /// under their old slugs so one lookup answers for a historical run too. A case
+    /// whose latest manifest cannot be read is left out (its runs then show and
+    /// sort by the slug) rather than failing the whole map, matching the catalog
+    /// listing.
+    ///
+    /// Walks the catalog and reads one manifest per case; call it once per request
+    /// that needs it, not per row.
+    pub fn case_names(&self) -> Result<CaseNames> {
+        let mut names: CaseNames = RENAMED_SLUG_NAMES
+            .iter()
+            .map(|(slug, name)| (slug.to_string(), name.to_string()))
+            .collect();
+        for (slug, versions) in self.list_cases()? {
+            let Some(latest) = versions.last() else {
+                continue;
+            };
+            match self.read_manifest(&slug, latest) {
+                Ok(manifest) => {
+                    names.insert(slug, manifest.name);
+                }
+                Err(error) => {
+                    tracing::error!(
+                        %slug,
+                        version = %latest,
+                        %error,
+                        "skipping case in the name map: its latest manifest could not be read"
+                    );
+                }
+            }
+        }
+        Ok(names)
     }
 
     /// Whether the store holds at least one ingested test-case version.

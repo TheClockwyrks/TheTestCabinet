@@ -25,7 +25,7 @@ use crate::db::{
 };
 use crate::error::ApiError;
 use crate::snapshot::{RunSummary, run_summary_score};
-use crate::store::{DefinitionStore, StoredManifest};
+use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
 
 use super::AppState;
 
@@ -282,13 +282,16 @@ pub async fn list(
         };
         let sort = parse_sort(params.sort.as_deref());
         let dir = parse_dir(params.dir.as_deref());
+        // The cards name their case, so every listing resolves the name map once;
+        // the test-case sort orders by the same names the cards show.
+        let case_names = state.store.case_names().map_err(ApiError::from)?;
         let (runs, total) = state
             .db
-            .list_summaries(&filter, sort, dir, limit, offset)
+            .list_summaries(&filter, sort, dir, &case_names, limit, offset)
             .await
             .map_err(ApiError::from)?;
         return Ok(Json(SummaryListResponse {
-            runs: summary_cards(&state.store, &runs),
+            runs: summary_cards(&state.store, &case_names, &runs),
             next_before: None,
             total: Some(total),
         })
@@ -323,8 +326,9 @@ pub async fn list(
             .map_err(ApiError::from)?,
     };
     if params.fields.as_deref() == Some("summary") {
+        let case_names = state.store.case_names().map_err(ApiError::from)?;
         Ok(Json(SummaryListResponse {
-            runs: summary_cards(&state.store, &runs),
+            runs: summary_cards(&state.store, &case_names, &runs),
             next_before,
             total: None,
         })
@@ -338,21 +342,28 @@ pub async fn list(
     }
 }
 
-/// Build the summary cards for a page of runs, enriching each with its aggregate
-/// reviewer `score` — the one field [`RunSummary::from_stored`] leaves `None`
-/// because the checklist weights live only in the case catalog, not the run.
+/// Build the summary cards for a page of runs, enriching each with the two fields
+/// [`RunSummary::from_stored`] cannot fill without the case catalog: its case's
+/// display `case_name` (from `case_names`, the same map the `testCase` sort orders
+/// by) and its aggregate reviewer `score` (the checklist weights live only in the
+/// catalog, not the run).
 ///
 /// Each run's manifest is resolved from the definition store and its reviews
 /// scored against that case's declared weights (see [`run_summary_score`]). The
 /// resolved manifest is cached per `(slug, version)` so a case is read once per
 /// page rather than once per run; a run whose case isn't ingested keeps
 /// `score = None`.
-fn summary_cards(store: &DefinitionStore, runs: &[StoredRun]) -> Vec<RunSummary> {
+fn summary_cards(
+    store: &DefinitionStore,
+    case_names: &CaseNames,
+    runs: &[StoredRun],
+) -> Vec<RunSummary> {
     let mut manifests: HashMap<(String, String), Option<StoredManifest>> = HashMap::new();
     runs.iter()
         .map(|run| {
             let mut card = RunSummary::from_stored(run);
             let subject = &run.record.subject;
+            card.case_name = case_display_name(case_names, &subject.test_case_slug);
             let key = (
                 subject.test_case_slug.clone(),
                 subject.test_case_version.clone(),
