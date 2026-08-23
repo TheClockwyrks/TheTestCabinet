@@ -7,69 +7,138 @@ it.
 
 ## Scoring and match flow
 
-- A point is scored when a ball fully passes a goal edge (`x < 0` or
-  `x > FIELD_W`). The point goes to the player on the opposite side and increments
-  their score.
+- A point is scored when a ball fully passes a goal edge (`x + BALL_R < 0` or
+  `x - BALL_R > FIELD_W`). The point goes to the player on the opposite side and
+  increments their score.
 - First to `WIN_SCORE` (`11`) points wins, and the winner leads by at least
-  `WIN_LEAD` (`2`). At `10-10` play continues until one player is two points
-  ahead. `state.winner` holds the winning side once a match is over, and is `null`
-  until then.
+  `WIN_LEAD` (`2`): the match is over when `p1 >= WIN_SCORE` and
+  `p1 - p2 >= WIN_LEAD` (player one wins) or `p2 >= WIN_SCORE` and
+  `p2 - p1 >= WIN_LEAD` (player two wins). At `10-10` play continues until one
+  player is two points ahead. `state.winner` holds the winning side once a match
+  is over, and is `null` until then.
 
-## Screens and navigation
+## Screens
 
 The game is a small state machine, and `state.screen` names the state it is in.
-Each state has its own screen, and the player moves between them as below.
+Each state has its own screen.
 
-1. `title`, the main menu. It shows the title `TITLE_TEXT` (`CAROM`), the tagline
-   `TAGLINE_TEXT` (`NEON PADDLE DUEL`), and a vertical menu of `TITLE_ITEMS`
-   (`SOLO`, `VERSUS`, `HOW TO PLAY`) in that order. The item at `state.menuIndex`
-   is highlighted, drawn distinctly from the others. The field furniture (paddles,
+1. `title`, the main menu. It shows the title `TITLE_TEXT` (`CAROM`) and a
+   vertical menu of `TITLE_ITEMS` (`SOLO`, `VERSUS`, `HOW TO PLAY`) in that
+   order. The item at `state.menuIndex` is highlighted, drawn distinctly from the
+   others. The field furniture (paddles,
 {{#if (eq variant.slug "multi")}}
-   balls, obstacles, net) may show dimmed behind the menu. `SOLO` starts a
+   balls, obstacles, net) may show dimmed behind the menu.
 {{else}}
-   ball, obstacles, net) may show dimmed behind the menu. `SOLO` starts a
+   ball, obstacles, net) may show dimmed behind the menu.
 {{/if}}
-   single-player match; `VERSUS` starts a two-player match; `HOW TO PLAY` opens
-   the how-to-play screen.
 2. `howto`, how to play. It names the controls and describes the spin and obstacle
-   mechanics. `back` returns to the title.
+   mechanics.
 {{#if (eq variant.slug "multi")}}
 3. `playing`, the live game: both paddles, the three balls each with its own
-   trail, both obstacles, the net, the two scores near the top, and a small mode
+   trail, both obstacles, the net, the two scores near the top, and the mode
    label.
 4. `countdown`, the hold before the three balls launch at the start of a match,
    rendered over the live field with the same furniture. It becomes `playing`
    when they launch. A ball that takes its home point again during a rally holds
    and relaunches on its own, leaving the screen on `playing`.
 5. `paused`, reachable from `countdown` or `playing`. It offers `PAUSE_ITEMS`
-   (`RESUME`, `RESTART`, `QUIT TO MENU`) in that order. The field is visible and
-   frozen behind the pause menu, with the balls, both paddles, and every hold
-   timer all held still. `RESUME` returns to `state.resumeScreen`, the screen the
-   pause interrupted; `RESTART` starts the same mode over; `QUIT TO MENU` returns
-   to `title`.
+   (`RESUME`, `RESTART`, `QUIT TO MENU`) in that order, with the item at
+   `state.menuIndex` drawn distinctly. The field is visible and frozen behind the
+   pause menu.
 {{else}}
 3. `playing`, the live game: both paddles, the ball with its trail, both
-   obstacles, the net, the two scores near the top, and a small mode label.
-4. `countdown`, the pre-serve hold before a ball is launched, rendered over the
-   live field with the same furniture. It becomes `playing` when the ball
-   launches.
+   obstacles, the net, the two scores near the top, and the mode label.
+4. `countdown`, the pre-serve hold before the ball is served, rendered over the
+   live field with the same furniture. It becomes `playing` when the ball is
+   served.
 5. `paused`, reachable from `countdown` or `playing`. It offers `PAUSE_ITEMS`
-   (`RESUME`, `RESTART`, `QUIT TO MENU`) in that order. The field is visible and
-   frozen behind the pause menu, with the ball, both paddles, and the countdown
-   all held still. `RESUME` returns to `state.resumeScreen`, the screen the pause
-   interrupted; `RESTART` starts the same mode over; `QUIT TO MENU` returns to
-   `title`.
+   (`RESUME`, `RESTART`, `QUIT TO MENU`) in that order, with the item at
+   `state.menuIndex` drawn distinctly. The field is visible and frozen behind the
+   pause menu.
 {{/if}}
 6. `matchover`, shown when a player wins. It displays the winning side and the
-   final score, and offers `MATCHOVER_ITEMS` (`PLAY AGAIN`, `MENU`) in that order.
+   final score, and offers `MATCHOVER_ITEMS` (`PLAY AGAIN`, `MENU`) in that
+   order, with the item at `state.menuIndex` drawn distinctly.
+
+## What advances on each screen
+
+`state.simTime` accumulates `dt` on every update, whatever the screen. Input is
+read on every screen. Beyond that:
+
+| Screen | What advances |
+| --- | --- |
+| `title`, `howto`, `matchover` | Nothing. |
+{{#if (eq variant.slug "multi")}}
+| `countdown` | Both paddles (input and the AI alike), every hold timer, the balls, the trails. |
+| `playing` | Both paddles, every hold timer, the balls, the trails, scoring. |
+| `paused` | Nothing. Paddles, balls, and hold timers are all frozen. |
+{{else if (eq variant.slug "gyre")}}
+| `countdown` | Both paddles (input and the AI alike), `holdTimer`, the trail, the obstacle clock. The ball sits parked. |
+| `playing` | Both paddles, the ball, the trail, the obstacle clock, scoring. |
+| `paused` | Nothing. Paddles, ball, `holdTimer`, and the obstacle clock are all frozen. |
+{{else}}
+| `countdown` | Both paddles (input and the AI alike), `holdTimer`, the trail. The ball sits parked. |
+| `playing` | Both paddles, the ball, the trail, scoring. |
+| `paused` | Nothing. Paddles, ball, and `holdTimer` are all frozen. |
+{{/if}}
+
+Each update reads input first, then advances the screen the input left it on.
+
+## Starting a match
+
+`SOLO` and `VERSUS` on the title, `RESTART` on the pause menu, and `PLAY AGAIN`
+on the match-over screen all start a match the same way:
+
+- `mode` is set (`solo` or `versus` from the title; the current `mode` from the
+  pause and match-over menus).
+- `screen = countdown`, `resumeScreen = playing`, `menuIndex = 0`.
+- Both scores are `0` and `winner` is `null`.
+{{#if (eq variant.slug "multi")}}
+- Every ball is parked at its own home point, held, with `holdTimer = HOLD_TIME`
+  and an empty trail.
+{{else}}
+- `receiver = left`, `holdTimer = HOLD_TIME`, the ball is parked at the center,
+  and the trail is empty.
+{{/if}}
+- Both paddles have `cy = FIELD_CY` and `vy = 0`.
+{{#if (eq variant.slug "gyre")}}
+- The obstacle clock is `0`, so both obstacles are upright at their base centers.
+{{/if}}
+
+Returning to the title (`QUIT TO MENU`, `MENU`, leaving the how-to screen, or
+`back` on the match-over screen) restores every declared field of the state to
+its title-screen value, except `simTime`, `muted`, `rngState`, and `driver`,
+which keep their values.
 
 ## Menu navigation
 
-Keyboard only, through the same registered actions a match uses. On the title, the
-how-to-play screen, the pause menu, and the match-over screen: either side's up
-and down actions (`p1-up`/`p1-down` or `p2-up`/`p2-down`) move `state.menuIndex`,
-`confirm` accepts the highlighted item, and `back` goes back. Those actions, and
-the keys bound to them, are held in `ACTIONS` and `BINDINGS`.
+Keyboard only, through the same registered actions a match uses. Those actions,
+and the keys bound to them, are held in `ACTIONS` and `BINDINGS`. Each action
+below is read once per frame as a press edge.
+
+| Screen | Action | Effect |
+| --- | --- | --- |
+| `title` | `p1-up` or `p2-up` | `menuIndex` moves up one, wrapping from `0` to the last item. |
+| `title` | `p1-down` or `p2-down` | `menuIndex` moves down one, wrapping from the last item to `0`. |
+| `title` | `confirm` | `SOLO` starts a Solo match; `VERSUS` starts a Versus match; `HOW TO PLAY` sets `screen = howto` and `menuIndex = 0`. |
+| `title` | `back` | Nothing. |
+| `howto` | `confirm` or `back` | Returns to the title with `menuIndex = 0`. |
+| `countdown`, `playing` | `pause` | `resumeScreen` becomes the current screen, `screen = paused`, `menuIndex = 0`. |
+| `paused` | `back` | Resumes: `screen = resumeScreen`. |
+| `paused` | `p1-up`, `p2-up`, `p1-down`, `p2-down` | Moves `menuIndex` over `PAUSE_ITEMS`, wrapping both ways. |
+| `paused` | `confirm` | `RESUME` sets `screen = resumeScreen`; `RESTART` starts a match in the current mode; `QUIT TO MENU` returns to the title. |
+| `matchover` | `p1-up`, `p2-up`, `p1-down`, `p2-down` | Moves `menuIndex` over `MATCHOVER_ITEMS`, wrapping both ways. |
+| `matchover` | `confirm` | `PLAY AGAIN` starts a match in the current mode; `MENU` returns to the title. |
+| `matchover` | `back` | Returns to the title. |
+| every screen | `mute` | Toggles the runtime's mute bit. |
+
+`pause` is read only on `countdown` and `playing`; `back` is read only on
+`title`, `howto`, `paused`, and `matchover`. When several of a menu's edges
+arrive on one frame, up is applied before down, and movement before `confirm`:
+a frame carrying both an up edge and a down edge moves up only, and a frame
+carrying a movement edge and a `confirm` edge moves only. On `paused`, `back` is
+read before the menu edges, and a frame carrying `back` resumes and does nothing
+else.
 
 ## Audio
 
@@ -79,29 +148,31 @@ in `CUES`, under exactly these names, one per event:
 
 | Cue | Constant | Played when |
 | --- | --- | --- |
-| `paddle-hit` | `CUES.paddleHit` | A ball strikes a paddle. |
-| `wall-bounce` | `CUES.wallBounce` | A ball reflects off the top or bottom wall. |
+| `paddle-hit` | `CUES.paddleHit` | A ball hits a paddle's left or right face. |
+| `wall-bounce` | `CUES.wallBounce` | A ball reflects off the top or bottom wall, or off a paddle's end cap. |
 | `obstacle-bounce` | `CUES.obstacleBounce` | A ball bounces off an obstacle. |
 | `ball-bounce` | `CUES.ballBounce` | Two balls bounce off each other. |
 | `score` | `CUES.score` | A point is scored. |
 
 Each is a distinct short blip, so the five events are told apart by ear. Each is
-played on the frame its event happens, from `update`. A collision is one event
-between two balls, so a frame in which a pair meets plays `ball-bounce` once for
-the pair rather than once for each ball.
+played on the frame its event happens, from `update`, once per frame however
+many sub-steps or balls raised it. A collision is one event between two balls,
+so a frame in which a pair meets plays `ball-bounce` once for the pair rather
+than once for each ball.
 {{else}}
 Audio plays through the runtime's cue bus. Define and play exactly the four cues
 in `CUES`, under exactly these names, one per event:
 
 | Cue | Constant | Played when |
 | --- | --- | --- |
-| `paddle-hit` | `CUES.paddleHit` | A ball strikes a paddle. |
-| `wall-bounce` | `CUES.wallBounce` | A ball reflects off the top or bottom wall. |
-| `obstacle-bounce` | `CUES.obstacleBounce` | A ball bounces off an obstacle. |
+| `paddle-hit` | `CUES.paddleHit` | The ball hits a paddle's left or right face. |
+| `wall-bounce` | `CUES.wallBounce` | The ball reflects off the top or bottom wall, or off a paddle's end cap. |
+| `obstacle-bounce` | `CUES.obstacleBounce` | The ball bounces off an obstacle. |
 | `score` | `CUES.score` | A point is scored. |
 
 Each is a distinct short blip, so the four events are told apart by ear. Each is
-played on the frame its event happens, from `update`.
+played on the frame its event happens, from `update`, once per frame however
+many sub-steps raised it.
 {{/if}}
 
 Muting and the first-interaction unlock belong to the runtime. The game binds the
@@ -112,6 +183,6 @@ with sound muted.
 ## Out of scope
 
 - Network or online multiplayer.
-- Touch or gamepad input. This version is keyboard only.
+- Touch or gamepad input. The game is keyboard only.
 - Destructible obstacles. The obstacles persist for the whole match.
 - Persistence of scores or settings between sessions.

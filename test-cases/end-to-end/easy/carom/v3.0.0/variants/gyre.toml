@@ -40,8 +40,8 @@ none = "workspaces/none"
 # The gyre-specific category, worth one point per item. It applies to the whole
 # game (both Solo and Versus). Its points pose the obstacles through the
 # `setObstacleClock` operation this variant's branch of the specs adds, then read
-# their live pose back: that they sway vertically, that they rotate, and that the ball's
-# bounce tracks their tilt. The `format` is inherited from the case manifest
+# their live pose back against the sway and rotation formulas, and fire the same shot
+# at an upright and a tilted obstacle to read the oriented reflection. The `format` is inherited from the case manifest
 # (`[review] format = 2`).
 [[review.categories]]
 id = "gyre"
@@ -49,7 +49,7 @@ title = "Gyre"
 [[review.categories.items]]
 id = "obstacles-sway"
 title = "Obstacles sway"
-description = "The two obstacles move — each sways vertically about its base center as time passes, and they sway in opposite directions so the field stays balanced."
+description = "With the obstacle clock posed at two times a quarter period apart, each obstacle's center y differs from its base y by OBSTACLE_SWAY_AMP * sin(2*pi*t / OBSTACLE_SWAY_PERIOD) within 1 unit, with opposite signs for the two obstacles."
 # Automated validation: pose the obstacle clock at two times and read each obstacle's
 # center back — both move well off their base y, in opposite directions. See
 # validation/<engine>/gyre/obstacles-sway.test.ts.
@@ -59,17 +59,40 @@ validation = { script = "gyre/obstacles-sway.test.ts", outputs = [
 [[review.categories.items]]
 id = "obstacles-spin"
 title = "Obstacles spin"
-description = "The two obstacles rotate — each spins about its own center as time passes, presenting continuously tilting faces."
+description = "With the obstacle clock posed at 0, 0.5 and 1.0 s, each obstacle's theta is OBSTACLE_SPIN_RATE * t within 0.01 radians."
 # Automated validation: pose the obstacle clock at three times and read each
 # obstacle's rotation back — upright at the start, then rotating further as time
 # advances. See validation/<engine>/gyre/obstacles-spin.test.ts.
 validation = { script = "gyre/obstacles-spin.test.ts", outputs = [
   { id = "spin", name = "The obstacles rotating about their centers", kind = "replay" },
 ] }
+# The obstacle clock is checked as two separate points: that it runs through the
+# pre-serve countdown, and that it freezes with the game. Both start the match
+# with the menu keys and never pose the clock, because posing it holds it still.
+[[review.categories.items]]
+id = "clock-runs-countdown"
+title = "Obstacle clock runs during the countdown"
+description = "Across a span of countdown frames in a match started from the title, each obstacle's theta advances by OBSTACLE_SPIN_RATE times the elapsed game time, within 0.01 radians."
+# Automated validation: start a match with the menu keys, read both obstacles'
+# rotation on two countdown frames a known span apart, and hold the turn between
+# them to the rate. See validation/<engine>/gyre/clock-runs-countdown.test.ts.
+validation = { script = "gyre/clock-runs-countdown.test.ts", outputs = [
+  { id = "countdown", name = "The obstacles turning through the countdown", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "clock-frozen-paused"
+title = "Obstacle clock freezes while paused"
+description = "While paused, each obstacle's cx, cy and theta are unchanged across a paused stretch of 1.5 s of game time."
+# Automated validation: start a match with the menu keys, pause it with a real
+# key, and read both obstacles' pose on the paused frame and again 180 frames
+# later. See validation/<engine>/gyre/clock-frozen-paused.test.ts.
+validation = { script = "gyre/clock-frozen-paused.test.ts", outputs = [
+  { id = "paused", name = "The obstacles held still behind the pause menu", kind = "replay" },
+] }
 [[review.categories.items]]
 id = "oriented-bounce"
 title = "Oriented bounces"
-description = "The ball bounces off the obstacles' tilted faces at oriented angles that track each obstacle's current orientation rather than axis-aligned reflections."
+description = "The same level shot fired at an obstacle posed upright returns level, and fired at the obstacle posed at 45 degrees leaves along the reflection about the tilted face's normal, within 3 degrees."
 # Automated validation: pose an obstacle upright then tilted ~45deg and fire the same
 # horizontal shot — the tilted face deflects it well off-axis while the upright face
 # returns it straight, proving the bounce tracks orientation. See
@@ -89,41 +112,58 @@ title = "Gameplay"
 [[review.categories.items]]
 id = "serve-initial"
 title = "Initial serve direction"
-description = "The very first serve of a match always travels toward player one."
+description = "The first serve of a match leaves with vx < 0, toward player one."
+# Automated validation: start fresh matches and read the first serve's horizontal
+# direction (toward player one). See validation/<engine>/gameplay/serve-initial.test.ts.
 validation = { script = "gameplay/serve-initial.test.ts", outputs = [
   { id = "serve", name = "First serve toward player one", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "serve-after-p1"
 title = "Serve after scoring on player one"
-description = "After a point is scored on player one (player two scores), the next serve travels toward player one, the receiver."
+description = "After player two scores, the next serve leaves with vx < 0, toward player one."
+# Automated validation: drive a real point out the left goal, then read the next
+# serve's horizontal direction (toward player one). See
+# validation/<engine>/gameplay/serve-after-p1.test.ts.
 validation = { script = "gameplay/serve-after-p1.test.ts", outputs = [
   { id = "serve", name = "Serve toward player one after a point on player one", kind = "replay" },
 ] }
 [[review.categories.items]]
 id = "serve-after-p2"
 title = "Serve after scoring on player two"
-description = "After a point is scored on player two (player one scores), the next serve travels toward player two, the receiver."
+description = "After player one scores, the next serve leaves with vx > 0, toward player two."
+# Automated validation: drive a real point out the right goal, then read the next
+# serve's horizontal direction (toward player two). See
+# validation/<engine>/gameplay/serve-after-p2.test.ts.
 validation = { script = "gameplay/serve-after-p2.test.ts", outputs = [
   { id = "serve", name = "Serve toward player two after a point on player two", kind = "replay" },
 ] }
 
-# The ball serves at a fixed speed after a fixed pre-serve countdown.
+# The ball serves at a fixed speed and angle after a fixed pre-serve countdown.
 [[review.categories.items]]
 id = "serve-speed"
 title = "Serve speed"
-description = "A served ball leaves at the base serve speed of 520 units per second."
-# Automated validation: start a fresh match, serve, and read the ball's launch speed
-# (~520 units per second). See validation/<engine>/gameplay/serve-speed.test.ts.
+description = "A served ball leaves at SERVE_SPEED (520 units per second), within 1 percent."
+# Automated validation: start a fresh match, serve, and read the ball's launch speed.
+# See validation/<engine>/gameplay/serve-speed.test.ts.
 validation = { script = "gameplay/serve-speed.test.ts", outputs = [
   { id = "serve", name = "A ball leaving at the serve speed", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "serve-angle"
+title = "Serve angle"
+description = "A served ball leaves at an angle from horizontal whose magnitude is SERVE_ANGLE (12 degrees), within 2 degrees."
+# Automated validation: start a fresh match, serve, and read the launch velocity's
+# angle from horizontal. See validation/<engine>/gameplay/serve-angle.test.ts.
+validation = { script = "gameplay/serve-angle.test.ts", outputs = [
+  { id = "serve", name = "A ball leaving at the serve angle", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "countdown-length"
 title = "Countdown length"
-description = "The pre-serve countdown lasts a fixed 1.0 s at match start and after each point before the ball serves."
+description = "From match start, the ball is served on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed, within one frame."
 # Automated validation: start a match and advance until the ball serves, confirming
-# the hold lasts ~1.0 s of simulated time on the validator's own clock. See
+# the hold lasts HOLD_TIME of simulated time on the validator's own clock. See
 # validation/<engine>/gameplay/countdown-length.test.ts.
 validation = { script = "gameplay/countdown-length.test.ts", outputs = [
   { id = "countdown", name = "The pre-serve countdown running out", kind = "replay" },
@@ -133,7 +173,7 @@ validation = { script = "gameplay/countdown-length.test.ts", outputs = [
 [[review.categories.items]]
 id = "scoring-p1"
 title = "Player one scores past the right goal"
-description = "A ball crossing the right goal edge scores a point for player one (the left player)."
+description = "A ball driven past the right goal edge increments player one's score by 1 and leaves player two's unchanged, and the screen returns to countdown with receiver right."
 # Automated validation: drive a real ball out the right goal and confirm player one's
 # score increments and player two's does not. See validation/<engine>/gameplay/scoring-p1.test.ts.
 validation = { script = "gameplay/scoring-p1.test.ts", outputs = [
@@ -142,7 +182,7 @@ validation = { script = "gameplay/scoring-p1.test.ts", outputs = [
 [[review.categories.items]]
 id = "scoring-p2"
 title = "Player two scores past the left goal"
-description = "A ball crossing the left goal edge scores a point for player two (the right player)."
+description = "A ball driven past the left goal edge increments player two's score by 1 and leaves player one's unchanged, and the screen returns to countdown with receiver left."
 # Automated validation: drive a real ball out the left goal and confirm player two's
 # score increments and player one's does not. See validation/<engine>/gameplay/scoring-p2.test.ts.
 validation = { script = "gameplay/scoring-p2.test.ts", outputs = [
@@ -151,7 +191,7 @@ validation = { script = "gameplay/scoring-p2.test.ts", outputs = [
 [[review.categories.items]]
 id = "match-win"
 title = "Match win at 11, lead by 2"
-description = "The match is first to 11 and must be won by two clear points."
+description = "From 10-9, a point to 11-9 sets winner to left, screen to matchover, and leaves the score at 11-9."
 # Automated validation: from 10-9, drive a real point across the goal to 11-9 and
 # confirm the match ends with the correct winner and final score. See
 # validation/<engine>/gameplay/match-win.test.ts.
@@ -161,7 +201,7 @@ validation = { script = "gameplay/match-win.test.ts", outputs = [
 [[review.categories.items]]
 id = "deuce"
 title = "Deuce past 10-10"
-description = "Any tie at or above 10-10 keeps playing until one player leads by two."
+description = "From 10-10, a point to 11-10 leaves winner null and the screen on countdown, and a further point to 12-10 sets winner and screen to matchover."
 # Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
 # a further point to 12-10 must. See validation/<engine>/gameplay/deuce.test.ts.
 validation = { script = "gameplay/deuce.test.ts", outputs = [

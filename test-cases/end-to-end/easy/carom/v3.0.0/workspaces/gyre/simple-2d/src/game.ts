@@ -1,7 +1,7 @@
 // Carom (Gyre) — the game. THIS IS THE FILE YOU IMPLEMENT.
 //
 // `src/main.ts`, `src/constants.ts` and the project's configuration are supplied
-// by the case and must not be edited. What is missing is the game: the state it
+// with the project and stay as they are. What is missing is the game: the state it
 // holds, the debug surface that poses and reads that state, and the three
 // functions below.
 //
@@ -20,7 +20,7 @@
 // you start.
 //
 // The engine returns the surface from `engine.debug`, exactly as `initialize`
-// handed it over, which is how a check reaches this build
+// handed it over, which is how the game is driven from code
 // (`specs/instrumentation.md`). Where its implementation lives under `src/` is
 // your call; the only fixed point is that `initialize` returns it.
 
@@ -30,6 +30,14 @@ import type {
   RenderApi,
   UpdateApi,
 } from "@test-cabinet/simple-2d";
+
+/**
+ * The field background, a CSS color string. `src/main.ts` hands it to the engine
+ * as the color the canvas is cleared to each frame, so the letterbox bars around
+ * the field match the field itself. This placeholder is replaced by the build
+ * with the color its field uses.
+ */
+export const BACKGROUND = "#000";
 
 const NOT_IMPLEMENTED = "Carom (Gyre): src/game.ts is not implemented yet";
 

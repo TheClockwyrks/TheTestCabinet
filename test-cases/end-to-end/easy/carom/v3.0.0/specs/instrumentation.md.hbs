@@ -7,8 +7,8 @@ waiting on real time.
 
 You implement it. Every operation this file specifies is a deliverable, and the
 build installs the finished surface on `window.__carom` as soon as the game has
-initialized. A surface that is missing, or that departs from what is specified
-here, fails every point whose check reaches the game through it.
+initialized. Every scenario driven from code reaches the game through it, so it
+is present and exactly as specified here.
 
 Each operation is a read or a pose of the game's state. It arranges the world,
 and the game's own update runs the real collision, the real serve, and the real
@@ -24,8 +24,8 @@ You implement it. Every operation this file specifies is a deliverable, and the
 build's `initialize` returns the finished surface beside the state it built, as
 the pair `[state, debug]`. The engine returns that same value from
 `engine.debug`, and it is reached that way alone: nothing is installed on the
-page. A surface that is missing, or that departs from what is specified here,
-fails every point whose check reaches the game through it.
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
 
 Each operation is a read or a pose of `CaromState`. It arranges the world, and
 the game's own `update` runs the real collision, the real serve, and the real AI
@@ -65,8 +65,7 @@ toggles the debug overlay.
 
 The clock is the exception, because nothing outside this build owns it. The
 surface is what takes the game off real time and advances it, through
-`setAutoStep` and `advance` below. Without them a scenario could only be driven by
-waiting, and a check that waits measures the machine it ran on.
+`setAutoStep` and `advance` below.
 {{else}}
 The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
 which documents them in the `engine/` directory, and the surface carries no
@@ -75,7 +74,7 @@ take it off real time, it drives the actions the game registers, and it draws an
 toggles the debug overlay.
 {{/if}}
 
-What the overlay shows is Carom's, under [Diagnostics](#diagnostics) below.
+What the overlay shows is Carom's, under Diagnostics below.
 
 ## The driver
 
@@ -91,9 +90,8 @@ it is the one behavior the whole surface depends on.
   is. The input actions and the AI leave the paddles alone while it is `true`.
 - `snapshot` and `reset` leave the driver as they found it.
 {{#if (eq engine.slug "none")}}
-- `setAutoStep` and `advance` leave it alone as well. Moving the clock is not
-  posing the world, and a check that presses a key and then steps the game needs
-  the paddles left with whoever had them.
+- `setAutoStep` and `advance` leave it alone as well: moving the clock is not
+  posing the world.
 {{/if}}
 - The exception is `driver.ai`. In Solo, while `driver.paddles` and `driver.ai`
   are both `true`, the right paddle is driven by the real AI opponent while the
@@ -164,8 +162,8 @@ frame depends on is derivable from them.
 
 ### `snapshot()`
 
-A pure read of the state, returned as the plain object under
-[Snapshot shape](#snapshot-shape). It changes nothing.
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
 
 ### `startMatch(mode)`
 
@@ -308,13 +306,12 @@ what the game holds. Two are derived rather than stored: `speed` is
 running, which stays true through a pause.
 {{/if}}
 
-Three fields need the game to keep them honest every frame:
+The game refreshes the following every frame:
 
 - `muted` mirrors the runtime's mute bit. Refresh it from the runtime in every
   update, since the runtime owns muting and this is the game's readable copy of
   it.
-- `simTime` accumulates the delta time of every frame the match simulation
-  advances.
+- `simTime` accumulates the delta time of every update, whatever the screen.
 {{#if (eq variant.slug "multi")}}
 - each ball's `holdTimer` counts down from `HOLD_TIME` to `0` while that ball is
   `held`, and sits at `0` once it is in flight.

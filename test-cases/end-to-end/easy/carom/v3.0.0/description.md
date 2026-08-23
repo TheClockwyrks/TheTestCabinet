@@ -1,6 +1,6 @@
 ## Overview
 
-**Carom** is a neon, top-down paddle duel for the browser, and one of the
+**Carom** is a top-down paddle duel for the browser, and one of the
 simplest cases in The Test Cabinet's catalog. Two paddles face each other across
 a dark field while a ball ricochets between them, bouncing off the top and
 bottom walls and off a pair of obstacles planted in the middle of the arena. A
@@ -34,5 +34,8 @@ selects. On an engine run the project also carries the runtime and the case-owne
 modules that name every figure the specification fixes and stand the engine up,
 and the run writes the game and its debug surface against them; on an engineless run the
 project carries no source at all, and the run writes the runtime as well as the
-game. There are no assets and no visual targets: the look is rebuilt from the
-palette and measurements the specification fixes, drawn entirely in code.
+game. There are no assets and no visual targets: the specification fixes the
+geometry, the physics, the AI and the match rules exactly, and leaves the look to
+the build, drawn entirely in code. Every review point is decided by a validator
+derived from those rules; the reviewer's judgement goes into the per-mode
+ratings of visuals, polish and feel.

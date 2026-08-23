@@ -1,4 +1,4 @@
-// Carom — bootstrap. CASE-PROVIDED. Do not edit.
+// Carom — bootstrap. Supplied with the project. Do not edit.
 //
 // This is the build's fixed entry point, and it is deliberately the whole of the
 // wiring. Everything that is the same in every browser game is the engine's: the
@@ -11,8 +11,8 @@
 // What is left is `src/game.ts`.
 
 import { createEngine } from "@test-cabinet/simple-2d";
-import { COLOR, FIELD_H, FIELD_W, LAYOUT } from "./constants";
-import { game } from "./game";
+import { FIELD_H, FIELD_W, LAYOUT } from "./constants";
+import { BACKGROUND, game } from "./game";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement | null;
 if (!canvas)
@@ -28,7 +28,9 @@ const engine = createEngine({
   width: FIELD_W,
   height: FIELD_H,
   game,
-  background: COLOR.bg,
+  // The field background, which the engine clears the canvas to each frame so
+  // the letterbox bars match the field. The game owns the color.
+  background: BACKGROUND,
   // Two paddles facing each other across the field: one vertical slider per side.
   layout: LAYOUT,
 });

@@ -20,11 +20,10 @@ fixed logical field onto the canvas, keyboard input, audio, and the diagnostics
 overlay — and you write the game itself on top of it.
 
 You also write the `window.__carom` debugging and automation API that
-`specs/instrumentation.md` specifies. It is a required deliverable: a build that
-does not expose it, or exposes it incorrectly, fails every check that reaches the
-game through it.
+`specs/instrumentation.md` specifies. It is a required deliverable: it is how the
+game is driven from code, so it is present and exactly as specified.
 
-Every figure the specification fixes — geometry, colors, speeds, spin, the match
+Every figure the specification fixes — geometry, speeds, spin, the match
 rules, the action names, the cue names — is stated in `specs/`. Name them once in
 your own module and read from it, rather than restating a number at each use.
 
@@ -59,8 +58,7 @@ entries and scripts alone.
 - `npm run build` produces `dist/` with `index.html` at its root, and that
   directory runs as-is on any static host.
 - `npm run typecheck`, `npm run lint`, `npm run format`, and `npm test` all pass.
-  The same four commands are run over the repository you leave behind, and the
-  type check gates: code that does not compile scores zero.
+  The same four commands are run over the repository you leave behind.
 - **Replace this file** with the `README.md` `specs/overview.md` asks the
   finished build to ship: what the game is, how to install it, how to run it in
   development, how to produce the production build, and the controls.

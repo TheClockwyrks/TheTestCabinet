@@ -37,16 +37,19 @@ deliverable differs.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                                        |
-| ---------------- | -------------- | ------------------------------------------------------------------------------ |
-| `workspaces/`    | **Yes**        | The starter TypeScript project, `<variant>/<engine>/`, seeded at the run root. |
-| `specs/`         | **Yes**        | The spec handed to the model, by concern.                                      |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                                  |
-| `validation/`    | No             | The case's Vitest validators, one project per engine (`<engine>/`).            |
-| `references/`    | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.              |
-| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.        |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).                              |
-| `README.md`      | No             | This overview.                                                                 |
+| Path                   | Seeded to run? | Purpose                                                                                            |
+| ---------------------- | -------------- | -------------------------------------------------------------------------------------------------- |
+| `workspaces/`          | **Yes**        | The starter TypeScript project, `<variant>/<engine>/`, seeded at the run root.                     |
+| `specs/`               | **Yes**        | The spec handed to the model, by concern.                                                          |
+| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                                                      |
+| `validation/`          | No             | The case's Vitest validators, one project per engine (`<engine>/`).                                |
+| `references/`          | No             | The authored, correct build, `<engine>/<variant>/`. Never seeded.                                  |
+| `validation-baseline/` | No             | The validators' media captured against the reference, `<engine>/<variant>/`, shown beside a run's. |
+| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items.                            |
+| `variants/`            | No             | One TOML file per variant (listed in `variants`).                                                  |
+| `description.md`       | No             | The site-facing introduction on the case's detail page.                                            |
+| `changelog.md`         | No             | What changed from `v2.1.0`.                                                                        |
+| `README.md`            | No             | This overview.                                                                                     |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every variant: `overview.md`, `playfield.md` (the field, paddles, ball, and
@@ -97,20 +100,25 @@ no game code for a variant to differ in, so every variant shares
 
 The checklist is common to every variant apart from the points where the variants
 genuinely disagree, which each variant then states for itself. `base` and `gyre`
-carry the single served ball's points — its direction, its speed, the length of
-the pre-serve countdown, and the scoring, match-end and deuce rules that freeze
-the field on a point. `multi` carries its own versions of the same, worded for a
-launch drawn over the full circle, a hold that belongs to a ball, and a point that
-takes one ball out of play while the rest of the game runs on; `gyre` adds its
+carry the single served ball's points — its direction, its speed, its angle, the
+length of the pre-serve countdown, and the scoring, match-end and deuce rules that
+freeze the field on a point. `multi` carries its own versions of the same, worded
+for a launch drawn over the full circle, a hold that belongs to a ball, and a point
+that takes one ball out of play while the rest of the game runs on; `gyre` adds its
 three obstacle-motion points, and `multi` its six multi-ball ones and its fifth
 cue.
+
+Every point on the checklist is one observable behavior with a validator whose
+thresholds follow from the specs, so a build fails exactly the rule it breaks. The
+reviewer's judgement lives in the per-domain ratings, not in the checklist.
 
 ## Assets and media
 
 This version has **no assets** and declares no reference mockups or proof
-captures: every screen is left to the model's design, guided by the palette and
-measurements the specs name, and graded by a person. The objective points are
-decided by the validators under `validation/`.
+captures. The specs fix behavior exactly and leave the look to the build: the
+palette, type, glow, HUD layout and trail styling are the model's, and a reviewer
+rates them through the domains. Every checklist point is decided by the
+validators under `validation/`.
 
 The media a reviewer looks at is produced by those same validators, from
 scenarios the case controls, rather than asked of the build. Most points declare
@@ -121,8 +129,8 @@ re-shoot of it. A suite arms the recorder around the section its point is about
 and disarms it the moment that section ends, so a replay is the contact, the
 point played out, or the paddle held still while paused, and never the
 arrangement that got there. A few points declare a single **image** instead,
-where the thing being judged is one frame: a screen's layout, a color, the fit
-of the field in its window.
+where the thing being checked is one frame: a screen's copy, a body's
+visibility, the fit of the field in its window.
 
 Capture never decides anything. A point passes or fails on its assertions, and
 the replay is what a reviewer looks at afterwards to see what the build actually

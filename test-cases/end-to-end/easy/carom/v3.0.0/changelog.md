@@ -57,29 +57,31 @@ is installed: `npx tsc --noEmit`, `npx eslint .`, `npx prettier --check .`, and
 `npx vitest run --coverage`. They run against the code the model wrote, and their
 results are carried on the run.
 
-## Objective points are decided by validators, not by a browser
+## Every review point is decided by a validator
 
-Every one of this version's objective review points names a **validator**: a
-TypeScript test file under `validation/`, run by Vitest **in process** against the
-game the build produced. A validator imports the runtime and the build's own
-modules, stands the runtime up over an `@napi-rs/canvas` canvas with a clock of
-its own, and steps it an exact number of frames. It reads behavior from the
-game's state, audio from the runtime's `cue:played` event, and drawing from either
-pixel readback or a recording wrapper around the 2D context.
+Every one of this version's review points names a **validator**: a TypeScript
+test file under `validation/<engine>/`, one suite per engine for the same
+scenario. Under `simple-2d` the suite runs by Vitest **in process**: it imports
+the runtime and the build's own modules, stands the runtime up over an
+`@napi-rs/canvas` canvas with a clock of its own, and steps it an exact number of
+frames, reading behavior from the game's state, audio from the runtime's
+`cue:played` event, and drawing from either pixel readback or a recording wrapper
+around the 2D context. Under `none` the same scenario drives the built site in
+headless Chromium through `window.__carom`, taking the game off real time with
+`setAutoStep(false)` and stepping it with `advance`.
 
-Nothing drives a browser and no wall-clock time passes, so a scenario is
-synchronous and reproducible: a check asks for a number of frames and gets exactly
-that number, at exactly the deltas its clock supplied. The `tick_hz` key is gone
-with the browser driver that read it — each validator states its own step by
-constructing its own clock, so a single case-wide rate could only ever be wrong
-for some of them.
+Either way a scenario asks for a number of frames and gets exactly that number, at
+exactly the deltas it supplied. The `tick_hz` key is gone: each validator states
+its own step by constructing its own clock, so a single case-wide rate could only
+ever be wrong for some of them.
 
 The debugging surface keeps `reset`, `snapshot`, and the control operations that
 pose a scenario: `startMatch`, `serve`, `setScore`, `setPaddle`, `setBall`,
 `setAiControl`, and gyre's `setObstacleClock`. Each speaks about Carom's own
-world, which no runtime can know. What they no longer sit beside are `step`,
-`setAutoStep`, `keyDown`, `keyUp` and `press`: the runtime owns the clock and the
-actions, so the build is not asked for them twice.
+world, which no runtime can know. `step`, `keyDown`, `keyUp` and `press` are gone
+under both engines, since the runtime owns the actions. Under `simple-2d` the
+engine owns the clock too, so `setAutoStep` is gone there; under `none` the build
+still owns its clock, so the surface keeps `setAutoStep` and gains `advance`.
 
 The build writes that surface under either engine; how it is reached is the
 engine's. Under `simple-2d` the game's `initialize` returns it beside the state,
@@ -112,43 +114,68 @@ replay is worth the most. The handful of points where the thing being judged is 
 single frame — a screen's layout, a color, the fit of the field in its window —
 declare an image instead.
 
-## Reference mockups and proof captures are retired
+## Appearance is the build's; behavior is exact
 
 This version declares no `[[reference]]` views, no `[[proof]]` artifacts and no
-`[[check]]` comparisons, and seeds no `specs/proof.md`. Every screen is left to
-the model's design and graded by a person; the objective points are decided by the
-validators above, which reach the state a check would have had to drive a browser
-into and assert on it directly. Media for a reviewer is captured by the validators
-from a scenario the case controls, rather than requested from the build — as
-replays of the frames the build drew, and as single images where one frame is what
-is being judged.
+`[[check]]` comparisons, and seeds no `specs/proof.md`. The fixed palette, the
+monospace stack, the HUD coordinates, the tagline and the mode-label copy that
+earlier versions fixed are gone from the specs and from the seeded
+`src/constants.ts`: the overview now states only what must be visible — a dark
+field, solid bodies that stand apart from it and from each other, a net, the two
+scores and a mode label, a trail whose length is `speed * TRAIL_TIME`, and the
+fixed title and menu copy. Under `simple-2d`, `src/game.ts` additionally exports
+`BACKGROUND`, the field color `src/main.ts` hands the engine, so the build owns
+the letterbox color too.
 
-## The third variant, and the points it moved
+In exchange, every behavior a validator reads is stated exactly. The physics loop
+is written out as the sub-step integration it is (`MAX_SUBSTEP`), with the spin
+rotation, the decay, the wall rule, the circle-versus-rectangle rule with its
+face-selection order, and the paddle's front-face placement. The paddle integrator
+with its bound clamp, the human axis, the AI's target and deadzone rule
+(`AI_HOME_DEADZONE` is now a named constant), the serve formula, the goal test,
+the frame order on every screen, the menu edge order, the exact effect of every
+menu item, and what starting a match and returning to the title reset are all
+stated as rules. `SERVE_MAX_ANGLE` is gone, because the serve angle is exactly
+`SERVE_ANGLE`. The overview also requires clean, maintainable code, written as for
+a codebase shared with human developers.
 
-`v3.0.0` offers three variants: `base`, `gyre`, and `multi`, which returns with
-three balls on the field at once. Each is its own contest — its own hold, its own
-launch at a fresh angle drawn over the whole circle, and its own respawn onto a
-field that never stops for it — and the balls now collide with each other, which
-is a mechanic `base` does not have rather than a count that changed. A collision
-between two balls is an event the other variants do not have, so `multi` declares
-a fifth cue, `ball-bounce`, and plays it once for the pair.
+## Every point is one behavior with a validator
 
-Carrying it forward meant changing how the case is graded, because `multi`
-contradicts points the case used to grade **commonly**. A scored point does not
-return it to a pre-serve countdown, since the other two balls carry on and the
-field is never frozen; a hold belongs to a ball rather than to the match; and a
-launch is aimed at nothing, so it has no direction to check. A variant may only
-**add** to a common review item, never replace the validator behind one, so six
-points left the common set: serve speed, countdown length, the two scoring points,
-the match win and the deuce. `base` and `gyre` now declare them, unchanged, in
-their own files; `multi` declares its own versions of the same six, worded for the
-rules it actually has. The serve-direction points had already moved this way, and
-this is the same move for the same reason.
+Every review item carries a validation script, and descriptions state the
+mechanically checked claim. Items that bundled several behaviors are split so a
+build fails exactly the rule it breaks: `hit-edge` into `hit-top-edge` and
+`hit-bottom-edge`, `no-tunnel` into `no-tunnel-obstacle`, `no-tunnel-paddle` and
+`no-tunnel-wall`, `ui.trail` into `trail-length` and `trail-scales`. New points
+cover what the rules already implied: `ai-homes`, `serve-angle`, the paddle
+bounds, the obstacles' top and bottom faces, the two wall bounces, the sign of
+spin's curve, spin surviving wall and obstacle bounces, a `navigation` category
+for every menu transition, and a `hud` category for the two scores. `color` is
+renamed `visibility`, since it checks a color distance rather than a palette.
+The reviewer's judgement is the domain ratings; overriding a verdict is the
+exception.
 
-`multi` also brings a category of its own, `multi-ball`, worth a point each for
-the three balls on their own home points, the per-ball hold, the independent
-respawn, the ball-to-ball collision, a waiting ball being solid and immovable, and
-the launch angle being drawn over the full circle.
+## The points `multi` moved
+
+`v3.0.0` keeps the three variants: `base`, `gyre`, and `multi`, with three balls
+on the field at once. In `multi` each ball is its own contest — its own hold, its
+own launch at a fresh angle drawn over the whole circle, and its own respawn onto
+a field that never stops for it — and the balls collide with each other, so
+`multi` declares a fifth cue, `ball-bounce`, played once for the pair.
+
+Those rules contradict points the case grades **commonly**. A scored point does
+not return `multi` to a pre-serve countdown, since the other two balls carry on
+and the field is never frozen; a hold belongs to a ball rather than to the match;
+and a launch is aimed at nothing, so it has no direction to check. A variant may
+only **add** to a common review item, never replace the validator behind one, so
+six points left the common set: serve speed, countdown length, the two scoring
+points, the match win and the deuce. `base` and `gyre` declare them in their own
+files, beside the serve-direction points and the new `serve-angle`; `multi`
+declares its own versions of the same six, worded for the rules it actually has.
+
+`multi` keeps its own category, `multi-ball`, worth a point each for the three
+balls on their own home points, the per-ball hold, the independent respawn, the
+ball-to-ball collision, a waiting ball being solid and immovable, and the launch
+angle being drawn over the full circle.
 
 Only the engine-backed project differs by variant, so `multi` ships
 `workspaces/multi/simple-2d` and shares `workspaces/none/` with the other two: the
@@ -156,16 +183,10 @@ engineless project holds no game code for a variant to differ in.
 
 ## Scoring
 
-The common checklist is unchanged in shape from `v2.1.0` where it is still
-common, and no domain was added, removed or renumbered. What moved, moved without
-changing what a variant is worth: the serve-direction points, and then the six
-launch, hold and match-decision points above, left the common set for `base` and
-`gyre`'s own files, and each variant still carries exactly the points it carried
-before. `gyre` keeps its own three-point `gyre` category, and `multi` — which is
-new here rather than carried over — is worth the common set plus its own six
-multi-ball points, its own six gameplay points, and its `ball-bounce` cue. A score
-recorded against `base` or `gyre` is therefore computed against the same checklist
-that variant had before. What a reviewer sees beside a point has changed — the
-reference mockups and the build's own proof captures are gone, and in their place
-is the replay or the frame the point's own validator captured — but what the point
-is worth, and what decides it, has not.
+No domain was added, removed or renumbered. The checklist is larger than
+`v2.1.0`'s and differently shaped: the points that moved out of the common set
+for `multi` (serve direction and speed, countdown length, scoring, match win and
+deuce) live in each variant's own file, `base` and `gyre` add `serve-angle`,
+and the common set gains the split and new points above. Every point is decided
+by its validator, and what a reviewer sees beside it is the replay or the frame
+that validator captured.

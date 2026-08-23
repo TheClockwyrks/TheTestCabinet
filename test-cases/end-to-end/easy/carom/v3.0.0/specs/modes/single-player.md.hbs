@@ -33,36 +33,51 @@ The AI drives the right paddle in Solo.
 
 ## HUD
 
-- The two scores sit near the top of the field in monospace digits `SCORE_FONT_PX`
-  (`76`) tall, drawn in `COLOR.text`: player one's score centered on
-  `x = SCORE_P1_X` (`520`) and player two's on `x = SCORE_P2_X` (`760`), with
-  their tops at `y = SCORE_TOP_Y` (`40`).
-- The mode label `MODE_LABEL.solo` (`SOLO`) sits small and dim, in
-  `COLOR.textDim`, in the top-left of the field during a match.
+During a match the two scores are drawn near the top of the field, player one's
+left of center and player two's right of center, and a label naming Solo is drawn
+on the field. The label's copy, and the placement and type of all three, are
+yours.
+
+## Input
+
+- With `up` being `1` while `p1-up` or `p2-up` is held and `0` otherwise, and
+  `down` being `1` while `p1-down` or `p2-down` is held and `0` otherwise, the
+  human's paddle takes `vy = (down - up) * PADDLE_SPEED` and is then integrated
+  and clamped as the playfield specification states.
+- Both paddles move on every `countdown` and `playing` frame, the human's from
+  input and the right paddle from the AI.
 
 ## AI opponent
 
-The AI controls the right paddle in Solo. It is a competent but beatable opponent.
+The AI controls the right paddle in Solo. It holds no state of its own: each
+frame it computes its velocity from the state below and integrates the paddle
+exactly as a human-controlled paddle is integrated.
 
-- The AI moves its paddle vertically at a maximum of `AI_SPEED` (`560`) units per
-  second, below the human's `PADDLE_SPEED` (`720`), so a well-placed or
-  well-curved shot can beat it.
+| Name | Value | Role |
+| --- | --- | --- |
+| `AI_SPEED` | `560` | Top speed, in units per second. |
+| `AI_REACT` | `0.12` | Reaction lag, in seconds. |
+| `AI_DEADZONE` | `10` | Stop distance while defending, in units. |
+| `AI_HOME_Y` | `360` | Rest position, the vertical center. |
+| `AI_HOME_DEADZONE` | `18` | Stop distance while returning home, in units. |
+
 {{#if (eq variant.slug "multi")}}
-- The AI defends one ball at a time: of the balls in flight moving toward its
-  goal, the one that reaches its paddle soonest. It leaves the other two alone.
-- While it has a ball to defend, it tracks that ball's current `y`, reacting with
-  the lag time constant `AI_REACT` (`0.12` seconds) and stopping when the paddle
-  center is within `AI_DEADZONE` (`10`) units of the target. It tracks the ball's
-  present position rather than a predicted one, so a curving shot can get past
-  it.
-- With no ball flying toward its goal, the AI eases back toward `AI_HOME_Y`
-  (`360`, the vertical center).
+Each frame the AI defends at most one ball: among the balls in flight with
+`vx > 0` and `x < P2_X0`, the one with the smallest `(P2_X0 - x) / vx`. There is
+no defended ball when no ball qualifies.
+
+1. `target = AI_HOME_Y` and `deadzone = AI_HOME_DEADZONE`. If `screen` is
+   `playing` and there is a defended ball, then
+   `target = ball.y - ball.vy * AI_REACT` and `deadzone = AI_DEADZONE`.
 {{else}}
-- When the ball is moving toward the AI, it tracks the ball's current `y`,
-  reacting with the lag time constant `AI_REACT` (`0.12` seconds) and stopping
-  when the paddle center is within `AI_DEADZONE` (`10`) units of the target. It
-  tracks the ball's present position rather than a predicted one, so a curving
-  shot can get past it.
-- When the ball is moving away, the AI eases back toward `AI_HOME_Y` (`360`, the
-  vertical center).
+1. `target = AI_HOME_Y` and `deadzone = AI_HOME_DEADZONE`. If `screen` is
+   `playing` and the ball has `vx > 0`, then
+   `target = ball.y - ball.vy * AI_REACT` and `deadzone = AI_DEADZONE`.
 {{/if}}
+2. `diff = target - cy`. If `|diff| <= deadzone` then `vy = 0`; otherwise
+   `vy = sign(diff) * min(AI_SPEED, |diff| / dt)`.
+3. Integrate and clamp the paddle as the playfield specification states.
+
+`AI_SPEED` is below the human's `PADDLE_SPEED` (`720`), and the target is the
+ball's present position offset by its present velocity rather than where a
+curving or banking flight will arrive.

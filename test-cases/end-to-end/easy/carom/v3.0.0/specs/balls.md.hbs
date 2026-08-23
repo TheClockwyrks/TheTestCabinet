@@ -35,169 +35,259 @@ multiplier per paddle hit up to the `SPEED_CAP` cap, and the spin mechanic below
 
 The runtime hands the game the real elapsed time for each frame and imposes no
 timestep of its own. Every rate in this specification is integrated against that
-delta time: the speeds in units per second, the spin acceleration in units per
-second squared, the spin decay per second, and the countdown in seconds.
+delta time: the speeds in units per second, the spin in units per second squared,
+the spin decay per second, and the hold in seconds.
 
 The outcome of a scenario is independent of how the elapsed time was divided into
-frames. The same interval delivered as one long step, as many short ones, or as an
-uneven mixture reaches the same state.
+frames, beyond the drift a change in step size explains. The core is render-free:
+state advances purely from the elapsed time it is handed, independent of the
+canvas, of wall-clock time, and of the renderer. Any randomness runs off the
+generator seeded from `state.rngState`.
 
-The core is render-free: state advances purely from the elapsed time it is handed,
-independent of the canvas, of wall-clock time, and of the renderer. Any randomness
-runs off the generator seeded from `state.rngState`.
+### Sub-steps
 
 {{#if (eq variant.slug "multi")}}
-Each frame, for each ball:
+On every `countdown` or `playing` frame the balls in flight are advanced together
+in `n` sub-steps of `h = dt / n` seconds each, where
+`n = max(1, ceil(fastest * dt / MAX_SUBSTEP))`, `fastest` is the highest speed
+among the balls in flight, and `MAX_SUBSTEP` (`4`) is the most units a ball's
+center travels in one sub-step. Every ball takes the same `n`. A waiting ball
+takes no sub-steps.
 
-1. Apply the spin acceleration (below) to the velocity.
-2. Advance position by `velocity * dt`.
-3. Resolve collisions with walls, paddles, obstacles, and the other balls.
+In each sub-step, every ball in flight takes the following in order, one ball
+after another:
+
+1. Spin turns the velocity. With `speed = hypot(vx, vy)` and `speed > 0`, rotate
+   `(vx, vy)` by `(spin / speed) * h` radians. A positive angle turns the
+   direction of travel from `+x` toward `+y`, clockwise on screen. Speed is
+   unchanged. A ball with `speed = 0` skips this.
+2. Spin decays: `spin *= 0.5 ^ (h / SPIN_HALFLIFE)`.
+3. Advance: `x += vx * h`, `y += vy * h`.
+4. Resolve collisions in this order: the walls, the left paddle, the right
+   paddle, obstacle A, obstacle B.
+
+After every ball has taken the sub-step, resolve every ball pair in contact
+(Ball-to-ball collision, below). The sub-step is then complete.
 {{else}}
-Each frame, for the ball:
+On every `playing` frame the ball is advanced in `n` sub-steps of `h = dt / n`
+seconds each, where `n = max(1, ceil(speed * dt / MAX_SUBSTEP))`, `speed` is
+the ball's speed at the start of the frame, and `MAX_SUBSTEP` (`4`) is the most
+units the ball's center travels in one sub-step.
 
-1. Apply the spin acceleration (below) to the velocity.
-2. Advance position by `velocity * dt`.
-3. Resolve collisions with walls, paddles, and obstacles.
+Each sub-step does the following, in order:
+
+1. Spin turns the velocity. With `speed = hypot(vx, vy)` and `speed > 0`, rotate
+   `(vx, vy)` by `(spin / speed) * h` radians. A positive angle turns the
+   direction of travel from `+x` toward `+y`, clockwise on screen. Speed is
+   unchanged. A ball with `speed = 0` skips this.
+2. Spin decays: `spin *= 0.5 ^ (h / SPIN_HALFLIFE)`.
+3. Advance: `x += vx * h`, `y += vy * h`.
+4. Resolve collisions in this order: the walls, the left paddle, the right
+   paddle, obstacle A, obstacle B.
 {{/if}}
+
+Rotating the velocity by `(spin / speed) * h` is the exact integration of a
+lateral acceleration of magnitude `|spin|`, so the ball's path is an arc whose
+curvature is set by `spin` and `speed`.
 
 ## Collision
 
 {{#if (eq variant.slug "multi")}}
-Resolve each ball against the top and bottom walls, the two paddles, the two
-obstacles, and the other two balls. Treat each ball as a circle of radius
-`BALL_R` and each paddle as an axis-aligned rectangle `PADDLE_W` by `PADDLE_H`.
+Every ball is a circle of radius `BALL_R`. Each paddle is the axis-aligned
+rectangle `PADDLE_W` by `PADDLE_H` centered vertically on `cy`, spanning
+`[P1_X0, P1_X1]` or `[P2_X0, P2_X1]` horizontally.
 {{else}}
-Resolve the ball against the top and bottom walls, the two paddles, and the two
-obstacles. Treat the ball as a circle of radius `BALL_R` and each paddle as an
-axis-aligned rectangle `PADDLE_W` by `PADDLE_H`.
+The ball is a circle of radius `BALL_R`. Each paddle is the axis-aligned
+rectangle `PADDLE_W` by `PADDLE_H` centered vertically on `cy`, spanning
+`[P1_X0, P1_X1]` or `[P2_X0, P2_X1]` horizontally.
 {{/if}}
 
-- Top and bottom wall: reflect the vertical velocity (`vy -> -vy`) and push the
-  ball back inside the field. Speed is unchanged.
-- Obstacle: an obstacle bounce leaves speed unchanged and preserves spin, so the
-  spin keeps curving the ball after the bounce.
-- Paddle: the next section. A paddle hit is the only collision that changes speed
-  and imparts spin.
-{{#if (eq variant.slug "multi")}}
-- Another ball: the Ball-to-ball collision section below.
+### Walls
 
+The walls are resolved first in every sub-step:
+
+- If `y - BALL_R < 0` and `vy < 0`: `y = BALL_R` and `vy = -vy`.
+- Otherwise, if `y + BALL_R > FIELD_H` and `vy > 0`: `y = FIELD_H - BALL_R` and
+  `vy = -vy`.
+
+A wall bounce leaves speed and spin unchanged and plays the `wall-bounce` cue.
+
+### Circle against an axis-aligned rectangle
+
+A paddle is resolved by the following rule, and an obstacle by the rule the
+playfield specification states for it.
+
+1. Expand the rectangle `[x0, x1] x [y0, y1]` by `BALL_R` on every side. The ball
+   overlaps the rectangle when its center is strictly inside the expanded
+   rectangle.
+2. Compute the four penetration depths: `left = x - (x0 - BALL_R)`,
+   `right = (x1 + BALL_R) - x`, `top = y - (y0 - BALL_R)`,
+   `bottom = (y1 + BALL_R) - y`. The struck face is the one with the smallest
+   depth; on a tie the first of left, right, top, bottom wins.
+3. Place the ball with its center `BALL_R` off the struck face.
+4. Reverse the velocity component normal to the struck face if it points into the
+   face; otherwise leave the velocity as it is.
+
+### Paddles
+
+A contact whose struck face is the paddle's left or right face is a paddle hit,
+resolved by the paddle bounce below. A contact whose struck face is the paddle's
+top or bottom face (an end cap) is resolved like a wall: the ball is placed
+`BALL_R` off that face, `vy` is reversed if it points into the face, speed and
+spin are unchanged, and the `wall-bounce` cue plays.
+
+{{#if (eq variant.slug "multi")}}
 Every ball stays inside the field and on the outside of every paddle, obstacle,
 and other ball at every speed up to `SPEED_CAP`.
 {{else}}
-
-The ball stays inside the field and on the outside of every paddle and obstacle at
-every speed up to `SPEED_CAP`.
+The ball stays inside the field and on the outside of every paddle and obstacle
+at every speed up to `SPEED_CAP`.
 {{/if}}
 
 ## Paddle bounce and spin
 
 {{#if (eq variant.slug "multi")}}
-When a ball strikes a paddle:
+When a ball hits a paddle:
 {{else}}
-When the ball strikes a paddle:
+When the ball hits a paddle:
 {{/if}}
 
 1. Reflection angle from contact point. Let
    `offset = (ballCenterY - paddleCenterY) / PADDLE_HALF`, clamped to `[-1, 1]`.
    The outgoing angle from horizontal is `theta = offset * MAX_BOUNCE_ANGLE`
    (`55deg`). Hitting the paddle center sends the ball straight across; hitting
-   the top or bottom edge sends it off at `MAX_BOUNCE_ANGLE`.
-2. Speed. `speed = min(speed * SPEED_MULT, SPEED_CAP)`. The horizontal direction
-   flips to point toward the opposing goal, giving new velocity
-   `vx = +/- speed * cos(theta)` (sign toward the opponent) and
-   `vy = speed * sin(theta)`.
-3. Spin from paddle motion. The paddle's vertical velocity at contact adds spin:
-   `spin += paddleVy * SPIN_FROM_PADDLE` (`0.85`), then clamp `spin` to
-   `[-SPIN_CLAMP, SPIN_CLAMP]` (`+/-900`). A paddle moving downward as it strikes
-   curves the ball one way, a paddle moving upward curves it the other, and a
-   stationary paddle leaves the spin as it was.
+   the top edge sends it upward at `-MAX_BOUNCE_ANGLE` and the bottom edge
+   downward at `+MAX_BOUNCE_ANGLE`.
+2. Speed. `speed = min(speed * SPEED_MULT, SPEED_CAP)`, with `speed` the ball's
+   speed at contact. The new velocity is `vx = dir * speed * cos(theta)` and
+   `vy = speed * sin(theta)`, with `dir = +1` off the left paddle and `-1` off
+   the right, so the ball travels toward the opponent.
+3. Spin from paddle motion. `spin = clamp(spin + paddleVy * SPIN_FROM_PADDLE,
+   -SPIN_CLAMP, SPIN_CLAMP)` (`0.85`, `+/-900`), with `paddleVy` the paddle's
+   integrated `vy` for the frame. A paddle moving downward as it strikes adds
+   positive spin, a paddle moving upward adds negative spin, and a stationary
+   paddle leaves the spin as it was.
+4. Placement. The ball's center is placed `BALL_R` beyond the paddle's front face:
+   `x = P1_X1 + BALL_R` off the left paddle, `x = P2_X0 - BALL_R` off the right.
+
+A paddle hit plays the `paddle-hit` cue. It is the only collision that changes
+speed or spin.
+
+## Spin
 
 {{#if (eq variant.slug "multi")}}
-Spin is a signed scalar carried by each ball. Each frame it applies a lateral
-acceleration perpendicular to that ball's direction of travel, of magnitude
-`|spin|` in units per second squared, curving the path toward the side the sign of
-`spin` selects. Spin decays toward zero exponentially, losing half its magnitude
-every `SPIN_HALFLIFE` (`0.8`) seconds (`spin *= 0.5 ^ (dt / SPIN_HALFLIFE)` per
-frame). It persists across wall, obstacle, and ball-to-ball bounces, and changes
-through paddle hits and this decay alone. Each ball's spin is its own.
+Spin is a signed scalar carried by each ball, whose magnitude is the lateral
+acceleration in units per second squared. It turns the velocity every sub-step as
+the physics section states, decays by half every `SPIN_HALFLIFE` (`0.8`) seconds,
+and persists across wall, obstacle, and ball-to-ball bounces. Paddle hits and the
+decay are the only things that change it. Each ball's spin is its own.
 
 ## Ball-to-ball collision
 
 The balls collide with each other as elastic circles of equal mass. Two balls are
 in contact when the distance between their centers is less than
-`BALL_COLLIDE_DIST` (`22`), the sum of their radii. Resolve every pair in contact
-each frame, a moving ball against a ball waiting at its home point included.
+`BALL_COLLIDE_DIST` (`22`), the sum of their radii. At the end of every sub-step,
+after every ball has moved and resolved the field, resolve every pair in contact,
+a moving ball against a ball waiting at its home point included. A pair of two
+waiting balls is skipped.
 
 - Between two moving balls, exchange the velocity components along the line
   joining the two centers, leave the components across that line as they are, and
-  push the two balls apart along that line until they no longer overlap.
+  push the two balls apart along that line by half the overlap each, until they
+  no longer overlap.
 - A ball waiting to launch is immovable. A moving ball that reaches it reflects
-  its own velocity about the contact normal and is pushed clear, while the
-  waiting ball keeps both its place and its hold timer.
+  its own velocity about the contact normal (when moving into the waiting ball)
+  and is pushed clear by the full overlap, while the waiting ball keeps both its
+  place and its hold timer.
 - A ball-to-ball collision leaves both spins as they are and redistributes the
   velocities the two balls already carry, so a paddle hit remains the only
   collision that changes a ball's speed.
-- A pair that meets plays the `ball-bounce` cue (`specs/ui.md`), once for the
-  pair rather than once for each ball.
+- A pair that meets plays the `ball-bounce` cue, once for the pair rather than
+  once for each ball.
 
 ## Home points
 
 Each ball has a fixed home point on the centerline `x = FIELD_CX`, and always
 returns to its own. `BALL_HOMES` holds the three, in play order:
 
-- `BALL_HOMES[0]` is `(640, 180)`.
-- `BALL_HOMES[1]` is `(640, 360)`, the field center.
-- `BALL_HOMES[2]` is `(640, 540)`.
+| Ball | Home point |
+| --- | --- |
+| `BALL_HOMES[0]` | `(640, 180)` |
+| `BALL_HOMES[1]` | `(640, 360)`, the field center |
+| `BALL_HOMES[2]` | `(640, 540)` |
+
+Parking a ball puts it at its home point with zero velocity and zero spin and
+clears its trail.
 
 ## The hold and the launch
 
 A ball is either waiting at its home point (`held`) or in flight, and each
 carries its own hold timer, independent of the other two.
 
-- A waiting ball sits motionless at its home point while its hold timer counts
-  down from `HOLD_TIME` (`1.0` second) to `0`. At the start of a match all three
-  balls wait at their home points with a full hold timer, so all three launch
+- A waiting ball sits parked at its home point while its hold timer counts down
+  from `HOLD_TIME` (`1.0` second). Every `countdown` or `playing` frame subtracts
+  `dt` from each waiting ball's timer. At the start of a match all three balls
+  wait at their home points with a full hold timer, so all three launch
   together.
 - A waiting ball is solid: it is an immovable round body a moving ball bounces
   off, and it launches when its own hold timer elapses and at no other moment.
-- On the first frame a waiting ball's hold timer reaches `0`, that ball launches
-  at `SERVE_SPEED` along a uniformly random angle over the full circle, drawn
-  from the generator seeded by `state.rngState`. Every launch draws a fresh
-  angle, the first launch of a match and every relaunch alike.
+- On the first frame a waiting ball's timer, after subtracting `dt`, is `<= 0`,
+  that ball launches on that same frame: its timer becomes `0`, `held` becomes
+  `false`, its trail is cleared, its spin is `0`, and it leaves at `SERVE_SPEED`
+  along an angle drawn uniformly over the full circle from the generator seeded
+  by `state.rngState`. Every launch draws a fresh angle, the first launch of a
+  match and every relaunch alike.
+- The ball launched on a frame is advanced on that same frame.
+- The screen becomes `playing` on the first `countdown` frame on which no ball is
+  held, after the balls have been advanced.
 
 ## After a point
 
-A point is scored the moment a ball fully passes a goal edge, and only the ball
-that crossed is affected: it returns to its own home point, takes a full
-`HOLD_TIME` hold timer, and relaunches when that timer elapses. The other two
-balls carry on through that respawn, on a field that keeps running. Points from
-all three balls accumulate into the same two scores.
+A point is scored on the frame, after the balls have been advanced and resolved,
+on which a ball in flight has `x - BALL_R > FIELD_W` (player one scores) or
+`x + BALL_R < 0` (player two scores). The scorer's score increments and the
+`score` cue plays. If the win rule then holds, `winner` is set to the scorer,
+`screen` becomes `matchover`, `menuIndex` becomes `0`, and every ball is left
+where it is. Otherwise only the ball that crossed is affected: it is parked at
+its own home point, becomes `held` with a full `HOLD_TIME` timer, and relaunches
+when that timer elapses. The other two balls carry on through that respawn, on a
+field that keeps running. Points from all three balls accumulate into the same
+two scores.
 {{else}}
-Spin is a signed scalar carried by the ball, `state.ball.spin`. Each frame it
-applies a lateral acceleration perpendicular to the ball's direction of travel, of
-magnitude `|spin|` in units per second squared, curving the path toward the side
-the sign of `spin` selects. Spin decays toward zero exponentially, losing half its
-magnitude every `SPIN_HALFLIFE` (`0.8`) seconds
-(`spin *= 0.5 ^ (dt / SPIN_HALFLIFE)` per frame). It persists across wall and
-obstacle bounces, and changes through paddle hits and this decay alone.
+Spin is a signed scalar carried by the ball, `state.ball.spin`, whose magnitude
+is the lateral acceleration in units per second squared. It turns the velocity
+every sub-step as the physics section states, decays by half every
+`SPIN_HALFLIFE` (`0.8`) seconds, and persists across wall and obstacle bounces.
+Paddle hits and the decay are the only things that change it.
 
 ## Serving
 
-At the start of the match and after each point, the ball spawns at the field
-center `(FIELD_CX, FIELD_CY)` and holds there while `state.holdTimer` counts down
-from `HOLD_TIME` (`1.0` second) to `0`. On the first frame the timer reaches `0`,
-the ball is served at `SERVE_SPEED`:
+At the start of the match and after each point, the ball is parked at the field
+center `(FIELD_CX, FIELD_CY)` with zero velocity and zero spin, the trail is
+cleared, and `state.holdTimer` is set to `HOLD_TIME` (`1.0` second). The screen
+is `countdown` while the ball waits. Every `countdown` frame subtracts `dt` from
+`holdTimer`; on the first frame on which the result is `<= 0`, the ball is served
+on that same frame:
 
+- `holdTimer` becomes `0`, the trail is cleared, and `screen` becomes `playing`.
 - The serve travels toward `state.receiver`, the player who was just scored on.
   The first serve of a match travels toward player one (`"left"`).
-- The serve leaves at `SERVE_ANGLE` (`12deg`) from horizontal. Whether that angle
-  points up or down the field is yours; either way the serve is within
-  `SERVE_MAX_ANGLE` (`30deg`) of horizontal.
+- The serve leaves at `SERVE_SPEED` (`520`) at `SERVE_ANGLE` (`12deg`) from
+  horizontal: `vx = dir * SERVE_SPEED * cos(SERVE_ANGLE)` with `dir = -1` toward
+  `"left"` and `+1` toward `"right"`, and
+  `vy = s * SERVE_SPEED * sin(SERVE_ANGLE)` with `s` either `+1` or `-1`. Whether
+  `s` is fixed or drawn from the seeded generator is yours.
 
-An elapsed `holdTimer` is the one thing that launches the ball.
+The ball is not advanced on the frame it is served. An elapsed `holdTimer` is the
+one thing that serves the ball.
 
 ## After a point
 
-When a point is scored, the rally ends. The field holds through the countdown at
-the center, then the ball is re-served toward the player who was just scored on.
+A point is scored on the frame, after the ball has been advanced and resolved,
+on which `x - BALL_R > FIELD_W` (player one scores) or `x + BALL_R < 0` (player
+two scores). The scorer's score increments and the `score` cue plays. If the win
+rule then holds, `winner` is set to the scorer, `screen` becomes `matchover`, and
+`menuIndex` becomes `0`; the ball is left where it is. Otherwise the ball is
+parked at the center, the trail is cleared, `receiver` becomes the side that was
+scored on, `holdTimer` becomes `HOLD_TIME`, and `screen` becomes `countdown`.
 {{/if}}

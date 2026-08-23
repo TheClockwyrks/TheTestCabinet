@@ -10,6 +10,29 @@ pose of the running game, so the state holds what those operations read, honors
 what they write, and returns to its title-screen values when the surface's
 `reset` is called. Beyond satisfying that surface, how the state is organized is
 yours to decide.
+
+Whatever its shape, the state carries the following, because the rest of this
+specification is written against them:
+
+- The simulation time, in seconds, which every update adds its `dt` to whatever
+  the screen, the paused screen and the menus included. The snapshot reports it
+  as `simTime`.
+- Each paddle's center `cy` and its integrated vertical velocity `vy` for the
+  frame, the velocity after the clamp to `[PADDLE_MIN_CY, PADDLE_MAX_CY]`.
+{{#if (eq variant.slug "multi")}}
+- For each ball: `x`, `y`, `vx`, `vy`, `spin`, whether it is held, its hold
+  timer, and its trail samples. On every `countdown` or `playing` frame, after
+  the balls have been advanced, each ball's `(x, y)` and the simulation time are
+  appended as a sample and every sample older than `TRAIL_TIME` is dropped.
+  Parking a ball clears its trail.
+{{else}}
+- The ball's `x`, `y`, `vx`, `vy`, and `spin`, the receiver, the hold timer,
+  and the trail samples. On every `countdown` or `playing` frame, after the
+  ball has been advanced, the ball's `(x, y)` and the simulation time are
+  appended as a sample and every sample older than `TRAIL_TIME` is dropped.
+  Parking the ball clears the trail.
+{{/if}}
+- The state of the seeded random generator, if the build draws from it.
 {{else}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands
@@ -116,9 +139,11 @@ state.
 
 - `cy` — center y, in logical units, clamped to
   `[PADDLE_MIN_CY, PADDLE_MAX_CY]`.
-- `vy` — the paddle's actual vertical velocity for the frame, in units per
-  second. This is what the spin mechanic reads at contact, so a paddle pinned
-  against a bound reports `0` while a movement action is held.
+- `vy` — the paddle's integrated vertical velocity for the frame, in units per
+  second: the velocity after the clamp to `[PADDLE_MIN_CY, PADDLE_MAX_CY]` has
+  been applied. This is what the spin mechanic reads at contact, so a paddle
+  pinned against a bound holds `0` while a movement action is held into the
+  bound.
 
 {{#if (eq variant.slug "multi")}}
 ## `BallState`
@@ -127,17 +152,20 @@ One ball. Every field is that ball's own, so the three balls share nothing.
 
 - `x`, `y` — the ball's center, in logical units.
 - `vx`, `vy` — the ball's velocity, in units per second.
-- `spin` — the signed lateral-curvature scalar, with a magnitude in units per
-  second squared. Positive and negative curve the flight opposite ways; it
-  decays by half every `SPIN_HALFLIFE` seconds and changes otherwise only on a
-  paddle hit.
+- `spin` — the signed spin scalar, with a magnitude in units per second
+  squared. Positive spin turns the direction of travel clockwise on screen and
+  negative spin counterclockwise; it decays by half every `SPIN_HALFLIFE`
+  seconds and changes otherwise only on a paddle hit.
 - `held` — `true` while the ball waits at its home point rather than flying. A
   waiting ball is motionless and solid, and it launches when its hold timer
   elapses.
 - `holdTimer` — seconds remaining of that wait. It is `HOLD_TIME` when the ball
   takes its home point, counts down to `0`, at which point the ball launches, and
   sits at `0` while the ball is in flight.
-- `trail` — this ball's recent positions, oldest first, for its motion trail.
+- `trail` — this ball's trail samples, oldest first. On every `countdown` or
+  `playing` frame, after the balls have been advanced, the ball's `(x, y)` and
+  `simTime` are appended as a sample and every sample older than `TRAIL_TIME`
+  is dropped. Parking the ball clears its trail.
 
 Speed is `hypot(vx, vy)`, derived rather than stored.
 {{else}}
@@ -145,10 +173,10 @@ Speed is `hypot(vx, vy)`, derived rather than stored.
 
 - `x`, `y` — the ball's center, in logical units.
 - `vx`, `vy` — the ball's velocity, in units per second.
-- `spin` — the signed lateral-curvature scalar, with a magnitude in units per
-  second squared. Positive and negative curve the flight opposite ways; it
-  decays by half every `SPIN_HALFLIFE` seconds and changes otherwise only on a
-  paddle hit.
+- `spin` — the signed spin scalar, with a magnitude in units per second
+  squared. Positive spin turns the direction of travel clockwise on screen and
+  negative spin counterclockwise; it decays by half every `SPIN_HALFLIFE`
+  seconds and changes otherwise only on a paddle hit.
 
 Speed is `hypot(vx, vy)`, derived rather than stored.
 {{/if}}
@@ -219,7 +247,10 @@ of them, so a scenario is posed by assignment and read back the same way.
   the ball is served, and sits at `0` during a live rally.
 - `paddles` — the two paddles.
 - `ball` — the single ball in play.
-- `trail` — recent ball positions, oldest first, for the motion trail.
+- `trail` — the ball's trail samples, oldest first. On every `countdown` or
+  `playing` frame, after the ball has been advanced, the ball's `(x, y)` and
+  `simTime` are appended as a sample and every sample older than `TRAIL_TIME`
+  is dropped. Parking the ball clears the trail.
 {{/if}}
 {{#if (eq variant.slug "gyre")}}
 - `obstacleClock` — the obstacle clock, in seconds, and the sole input to both
@@ -230,7 +261,8 @@ of them, so a scenario is posed by assignment and read back the same way.
   scenario face a chosen, known orientation.
 - `obstacles` — both obstacles' live poses, in the order of `OBSTACLE_CENTERS`.
 {{/if}}
-- `simTime` — accumulated simulation time, in seconds.
+- `simTime` — accumulated simulation time, in seconds. Every `update` adds its
+  `dt`, whatever the screen, the paused screen and the menus included.
 - `muted` — the game's readable copy of the engine's mute bit, refreshed every
   `update`. The engine owns muting, and this field is what the debug surface
   reports.
@@ -241,8 +273,7 @@ of them, so a scenario is posed by assignment and read back the same way.
 
 ## The contract
 
-The declaration above is what the debug surface reads and poses, and what this
-case's checks read back.
+The declaration above is what the debug surface reads and poses.
 
 - Keep every field under its declared name, type, and meaning.
 - `initialize` builds the whole state in one go, so every field is present by

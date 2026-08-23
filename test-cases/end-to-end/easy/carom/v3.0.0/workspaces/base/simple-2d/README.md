@@ -27,10 +27,9 @@ new modules under `src/` however you like — physics, rendering, the AI, the de
 surface, and so on.
 
 The debug surface is a required deliverable. The engine returns it from
-`engine.debug` exactly as `initialize` handed it over, and that is how a check
-reaches this build: a surface that is missing, or that departs from
-`specs/instrumentation.md`, fails every check that reaches the game through it.
-Nothing is published to the page.
+`engine.debug` exactly as `initialize` handed it over, and that is how the game
+is driven from code, so it is present and exactly as `specs/instrumentation.md`
+specifies. Nothing is published to the page.
 
 `CaromState` **is a contract**. Keep every field, under the name, type, and
 meaning `specs/state.md` gives it. You may add fields, but only for data you can
@@ -46,7 +45,7 @@ carries a complete worked example of testing a game this way.
 - **`src/main.ts`** — the fixed entry point. It creates the engine over the
   page's canvas, binds `game` to it, and runs.
 - **`src/constants.ts`** — every figure the specification fixes: geometry,
-  colors, speeds, spin, the match rules, the action names, the cue names. Read
+  speeds, spin, the match rules, the action names, the cue names. Read
   from it, and never restate a number it already names.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
