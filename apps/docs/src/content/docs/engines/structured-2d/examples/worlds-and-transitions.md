@@ -62,7 +62,7 @@ import { MatchMode } from "./levels/match-mode";
 import { MenuMode } from "./levels/menu-mode";
 import { ResultsMode } from "./levels/results-mode";
 
-export const relay: GameDefinition = {
+export const relay: GameDefinition<null> = {
   instance: RelayInstance,
   levels: {
     [LEVELS.menu]: { mode: MenuMode },
@@ -89,15 +89,16 @@ export function instance(): RelayInstance {
   return built;
 }
 
-export class RelayInstance extends GameInstance {
+export class RelayInstance extends GameInstance<null> {
   bestScore = 0;
 
-  override initialize(api: InitApi): void {
+  override initialize(api: InitApi): null {
     built = this;
     for (const [name, binding] of Object.entries(ACTIONS)) {
       api.input.register(name, binding);
     }
     api.diagnostics.register("best", () => this.bestScore);
+    return null;
   }
 }
 ```

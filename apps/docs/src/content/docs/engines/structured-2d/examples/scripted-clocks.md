@@ -7,9 +7,10 @@ a constant, a repeating list, or a seeded draw. Under `engine.advance` a frame
 therefore costs exactly what the clock says and no real time is involved, so a
 validator chooses the shape of time a scenario runs under.
 
-Every example below uses the harness and the scenario operations from
-[Validating a Game](/engines/structured-2d/examples/validating-a-game/), which
-takes the clock as an option and installs it at construction.
+Every example below uses the harness and the debug surface from
+[Validating a Game](/engines/structured-2d/examples/validating-a-game/). The
+harness takes the clock as an option and installs it at construction, and the
+surface is read off `engine.debug`.
 
 ## The three clocks
 
@@ -115,7 +116,7 @@ is one scenario rather than two.
 ```ts
 const harness = await createHarness({ clock: new ConstantClock(1000 / 120) });
 const { engine } = harness;
-placeRunner(harness.world(), { x: 120, y: 60 });
+engine.debug.placeRunner({ x: 120, y: 60 });
 await engine.advance(60);
 
 engine.setClock(new JitterClock(4, 40, 20260819));
@@ -140,7 +141,6 @@ import {
 } from "@test-cabinet/structured-2d";
 import { expect, it } from "vitest";
 import { ORB_POINTS, TAGS } from "../src/constants";
-import { keepOrbs, placeOrb, placeRunner, scoreOf } from "../src/scenarios";
 import { advanceMs } from "./advance-ms";
 import { createHarness } from "./harness";
 
@@ -165,11 +165,11 @@ async function runScenario(clock: Clock): Promise<Outcome> {
   const { engine } = harness;
   const world = harness.world();
 
-  const [target, parked] = keepOrbs(world, 2);
+  engine.debug.keepOrbs(2);
   await engine.advance(1);
-  placeOrb(target, TARGET);
-  placeOrb(parked, PARKED);
-  const runner = placeRunner(world, START);
+  engine.debug.placeOrb(0, TARGET);
+  engine.debug.placeOrb(1, PARKED);
+  engine.debug.placeRunner(START);
 
   const collected: number[] = [];
   engine.events.on("cue:played", ({ cue, t }) => {
@@ -182,14 +182,15 @@ async function runScenario(clock: Clock): Promise<Outcome> {
   await advanceMs(engine, TRAVEL_MS);
   harness.release("right");
 
+  const snapshot = engine.debug.snapshot();
   const outcome: Outcome = {
     frames: engine.frame().count - startFrames,
     travelMs: engine.frame().timeMs - startMs,
     collects: collected.length,
     collectedAtMs: (collected[0] ?? Number.NaN) - startMs,
-    score: scoreOf(world),
+    score: snapshot.score,
     remaining: world.byTag(TAGS.orb).length,
-    x: runner.transform.x,
+    x: snapshot.runner.x,
   };
   harness.dispose();
   return outcome;

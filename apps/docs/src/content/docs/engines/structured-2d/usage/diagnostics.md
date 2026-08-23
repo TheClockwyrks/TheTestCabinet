@@ -13,13 +13,14 @@ levels is registered on the game instance, in `initialize`.
 ```ts
 import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
 
-export class ArcadeGame extends GameInstance {
+export class ArcadeGame extends GameInstance<null> {
   highScore = 0;
   levelsCleared = 0;
 
-  initialize(api: InitApi): void {
+  override initialize(api: InitApi): null {
     api.diagnostics.register("high-score", () => this.highScore);
     api.diagnostics.register("levels-cleared", () => this.levelsCleared);
+    return null;
   }
 }
 ```
@@ -105,17 +106,17 @@ a position.
 
 ## What a case's checks read
 
-A reader outside the page reaches these values through the
-[host interface](/engines/structured-2d/apis/host/), which reduces each source's
-value through a JSON round trip. A source therefore returns plain data: a
-string, a number, a boolean, or a small object of those. A framework object such
-as an actor is not plain data, so report its position, its tag, or its count in
-its place.
+A case's checks read the world and the build's
+[debug surface](/engines/structured-2d/usage/debug/), and the overlay is for a
+person watching the build play. A source still returns plain data, a string, a
+number, a boolean, or a small object of those, because the panel formats each
+value as one line. A framework object such as an actor is not plain data, so
+report its position, its tag, or its count in its place.
 
 Name a source after the vocabulary a case fixes. A count over a tag the case
 declares, the level names it declares, and the figures its specification states
-are the values a reviewer reads without inferring them from pixels, and they
-read the same way in every build of the case.
+are the values a reviewer reads off the panel without inferring them from
+pixels, and they read the same way in every build of the case.
 
 ```ts
 world.diagnostics.register("bricks", () => world.byTag(TAG_BRICK).length);

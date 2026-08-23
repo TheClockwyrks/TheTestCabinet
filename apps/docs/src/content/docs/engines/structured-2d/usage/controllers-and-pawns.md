@@ -37,11 +37,12 @@ bindings survive every level transition.
 import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
 import { KEYS } from "./constants";
 
-export class Rally extends GameInstance {
-  initialize(api: InitApi): void {
+export class Rally extends GameInstance<null> {
+  override initialize(api: InitApi): null {
     for (const action of api.input.layout()?.actions ?? []) {
       api.input.register(action, { keys: KEYS[action] ?? [] });
     }
+    return null;
   }
 }
 ```

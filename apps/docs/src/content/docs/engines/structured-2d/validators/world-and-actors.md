@@ -15,7 +15,6 @@ always agree and a check reads either one.
 
 ```ts
 import { LEVELS } from "../../src/constants";
-import { startMatch } from "../../src/scenarios";
 import { createHarness } from "../harness";
 
 it("the title level waits before a match starts", async () => {
@@ -26,7 +25,7 @@ it("the title level waits before a match starts", async () => {
   expect(world.level).toBe(LEVELS.title);
   expect(world.state.phase).toBe("waiting");
 
-  startMatch(world, "versus");
+  engine.debug.startMatch("versus");
   await engine.advance(1);
 
   expect(world.state.phase).toBe("playing");

@@ -42,8 +42,7 @@ interface FrameInfo {
 | `timeMs` | Accumulated simulated time, in milliseconds. |
 | `lastDeltaMs` | The most recent frame's delta, in milliseconds. |
 
-`engine.frame()` and `world.frame()` both return it, as does the published host
-interface.
+`engine.frame()` and `world.frame()` both return it.
 
 ## Frame order
 

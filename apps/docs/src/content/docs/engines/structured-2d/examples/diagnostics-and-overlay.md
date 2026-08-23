@@ -5,8 +5,7 @@ title: Diagnostics and Overlay
 A build named Patrol that names the values a reviewer would otherwise read off
 the pixels. Two of them belong to the whole game and are registered by the game
 instance; four belong to one match and are registered by the game mode. Both
-registries are readable while the game runs, on the overlay and from outside the
-page.
+registries are drawn on the overlay while the game runs.
 
 ## src/main.ts
 
@@ -40,12 +39,13 @@ import type { InitApi } from "@test-cabinet/structured-2d";
 
 const BUILD = "patrol 1.4.0";
 
-export class PatrolInstance extends GameInstance {
+export class PatrolInstance extends GameInstance<null> {
   opens = 0;
 
-  override initialize(api: InitApi): void {
+  override initialize(api: InitApi): null {
     api.diagnostics.register("build", () => BUILD);
     api.diagnostics.register("opens", () => this.opens);
+    return null;
   }
 
   override worldOpened(): void {
@@ -55,7 +55,8 @@ export class PatrolInstance extends GameInstance {
 ```
 
 `initialize` runs once, before the start level opens, and a source registered
-from `InitApi` belongs to the whole game. `build` and `opens` therefore survive
+from `InitApi` belongs to the whole game. Patrol offers no debug surface, so
+`initialize` returns `null`. `build` and `opens` therefore survive
 every transition, and `opens` counts them because `worldOpened` runs after each
 world's game mode has begun play.
 
@@ -81,7 +82,7 @@ const drones = Array.from({ length: 6 }, (_, i) => ({
   },
 }));
 
-export const patrol: GameDefinition = {
+export const patrol: GameDefinition<null> = {
   instance: PatrolInstance,
   levels: { patrol: { mode: PatrolMode, actors: drones } },
   startLevel: "patrol",
@@ -156,31 +157,3 @@ places, and an object prints as JSON. The metrics line reads the mean, the 95th,
 and the 99th percentile of the wall time spent in the frame's ticks, its
 collision pass, its render, and the overlay, over a window of the last 10
 seconds of simulated time. The percentiles are nearest-rank.
-
-## Reading the same values from a console
-
-The engine publishes the [host handle](/engines/structured-2d/apis/host/) at
-construction, and its `diagnostics` evaluates every registered source at the
-moment of the call, instance sources first and world sources after them.
-
-```js
-window.__tcabEngine.diagnostics();
-// { build: "patrol 1.4.0", opens: 1, wave: 3, drones: 6,
-//   lead: { x: 217.375, y: 120 }, pace: 74.75 }
-
-window.__tcabEngine.world();
-// { level: "patrol", phase: "playing", time: 12.5, actors: 6, players: [] }
-```
-
-Every value crosses as plain data: `diagnostics` reduces each source through a
-JSON round trip, and `world` reports counts and names rather than the live
-objects. A source that throws contributes its error message as a string, and the
-read itself never throws.
-
-The read is independent of whether the overlay is drawn, so a post-run check and
-a devtools console both see the values while the panel is hidden. `setOverlay`
-brings the panel up without touching the toggle key.
-
-```js
-window.__tcabEngine.setOverlay(true);
-```

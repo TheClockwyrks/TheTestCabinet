@@ -642,7 +642,7 @@ export default defineConfig({
                     "engines/structured-2d/apis/audio",
                     "engines/structured-2d/apis/assets",
                     "engines/structured-2d/apis/diagnostics",
-                    "engines/structured-2d/apis/host",
+                    "engines/structured-2d/apis/recording",
                   ],
                 },
                 {
@@ -662,7 +662,8 @@ export default defineConfig({
                     "engines/structured-2d/concepts/audio",
                     "engines/structured-2d/concepts/assets",
                     "engines/structured-2d/concepts/diagnostics",
-                    "engines/structured-2d/concepts/host",
+                    "engines/structured-2d/concepts/debug",
+                    "engines/structured-2d/concepts/recording",
                   ],
                 },
                 {
@@ -695,6 +696,7 @@ export default defineConfig({
                     "engines/structured-2d/usage/collision",
                     "engines/structured-2d/usage/audio-and-assets",
                     "engines/structured-2d/usage/diagnostics",
+                    "engines/structured-2d/usage/debug",
                   ],
                 },
                 {
@@ -707,6 +709,7 @@ export default defineConfig({
                     "engines/structured-2d/validators/world-and-actors",
                     "engines/structured-2d/validators/rendering",
                     "engines/structured-2d/validators/input-and-audio",
+                    "engines/structured-2d/validators/recording",
                   ],
                 },
               ],

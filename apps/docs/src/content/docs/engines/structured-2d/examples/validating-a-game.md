@@ -3,12 +3,13 @@ title: Validating a Game
 ---
 
 A case's validators are vitest suites that run in the same process as the build.
-A suite imports the engine, the case's own constants and scenarios, and the
-build's game definition, creates an engine over a canvas it owns and a clock it
-scripts, and steps the game with `engine.advance`. Everything a check reads is
+A suite imports the engine, the case's own constants, and the build's game
+definition, creates an engine over a canvas it owns and a clock it scripts, and
+steps the game with `engine.advance`. A check poses its scenario through the
+build's debug surface, read off `engine.debug`, and everything else it reads is
 an engine surface: the world and the actors in it, the match the game mode
 holds, the events the engine broadcast, and the pixels or the draw calls the
-render produced.
+pipeline produced.
 
 ## The case under test
 
@@ -93,81 +94,59 @@ The two layer numbers are part of the specification because a check reads the
 draw order off them. The pipeline sorts by `layer` ascending, so the orbs are
 drawn before the runner and the runner's operations are the last in the stream.
 
-## The case's scenarios
+## The debug surface
 
-A scenario poses a situation through the same systems play uses. Each is a
-function over a `World`, so a scenario finds actors by tag, moves a transform,
-destroys an actor, and reads the match off the game state, and none of it
-reaches past the engine into a build's own classes.
+The case's instrumentation spec fixes the operations a build offers for posing
+and reading the arena, and the suite declares its own type for them from that
+spec. A pose takes only its own arguments and returns nothing, and a reading
+takes nothing and returns plain data.
 
 ```ts
-// src/scenarios.ts
-import type { Actor, ActorClass, Pawn, Vec2, World } from "@test-cabinet/structured-2d";
-import { TAGS } from "./constants";
+// validation/debug.ts
+import type { Vec2 } from "@test-cabinet/structured-2d";
 
-export function runnerOf(world: World): Pawn {
-  const [player] = world.players();
-  const pawn = player?.pawn ?? null;
-  if (pawn === null) throw new Error("no player controller holds a runner");
-  return pawn;
+export interface Snapshot {
+  level: string;
+  phase: string;
+  runner: { x: number; y: number };
+  orbs: { x: number; y: number }[];
+  score: number;
 }
 
-export function orbsOf(world: World): readonly Actor[] {
-  return world.byTag(TAGS.orb);
-}
-
-export function placeRunner(world: World, at: Vec2): Pawn {
-  const pawn = runnerOf(world);
-  pawn.transform.x = at.x;
-  pawn.transform.y = at.y;
-  return pawn;
-}
-
-export function placeOrb(orb: Actor, at: Vec2): void {
-  orb.transform.x = at.x;
-  orb.transform.y = at.y;
-}
-
-export function keepOrbs(world: World, count: number): readonly Actor[] {
-  const orbs = orbsOf(world);
-  if (orbs.length < count) throw new Error(`the arena holds ${orbs.length} orbs`);
-  for (const orb of orbs.slice(count)) orb.destroy();
-  return orbs.slice(0, count);
-}
-
-export function addOrb(world: World, at: Vec2): Actor {
-  const [first] = orbsOf(world);
-  if (first === undefined) throw new Error("the arena declared no orbs");
-  const type = first.constructor as ActorClass;
-  return world.spawn(type, { transform: at, tags: [TAGS.orb] });
-}
-
-export function scoreOf(world: World, index = 0): number {
-  return world.state.players[index]?.score ?? 0;
+export interface Debug {
+  placeRunner(at: Vec2): void;
+  placeOrb(index: number, at: Vec2): void;
+  keepOrbs(count: number): void;
+  snapshot(): Snapshot;
 }
 ```
 
+Orbs are indexed in the order `world.byTag` lists them, which is spawn order.
 `keepOrbs` destroys the surplus. A destroyed actor stops ticking and stops
 rendering at once and leaves `byTag` at once, and it leaves the world at the end
-of the frame, so a scenario that destroys is followed by one `engine.advance(1)`
+of the frame, so a pose that destroys is followed by one `engine.advance(1)`
 before a check counts what remains.
-
-`addOrb` spawns through the class of an orb the level already declared, so the
-case adds an orb without importing a build class. `world.spawn` runs the actor's
-`beginPlay` before it returns and the actor's first tick is the next frame.
 
 ## The build under test
 
 The build supplies the game definition, and the case's specification fixes the
-module it comes from.
+module it comes from. The instance's `initialize` returns the debug surface, and
+each operation acts on the world the engine holds at the moment of the call,
+through the same systems play uses: a pose finds actors by tag, moves a
+transform, or destroys an actor, and a reading reads the match off the game
+state. The build declares the surface's type itself, from the same spec the
+suite declares its own from.
 
 ```ts
 // src/game.ts
 import {
   GameInstance,
+  type Actor,
   type ActorSpec,
   type GameDefinition,
   type InitApi,
+  type Pawn,
+  type Vec2,
 } from "@test-cabinet/structured-2d";
 import { Orb } from "./actors/orb";
 import { Wall } from "./actors/wall";
@@ -186,10 +165,25 @@ import { SummaryMode } from "./modes/summary-mode";
 const WALL_THICKNESS = 16;
 const HALF = WALL_THICKNESS / 2;
 
-class Collector extends GameInstance {
+export interface Snapshot {
+  level: string;
+  phase: string;
+  runner: { x: number; y: number };
+  orbs: { x: number; y: number }[];
+  score: number;
+}
+
+export interface Debug {
+  placeRunner(at: Vec2): void;
+  placeOrb(index: number, at: Vec2): void;
+  keepOrbs(count: number): void;
+  snapshot(): Snapshot;
+}
+
+class Collector extends GameInstance<Debug> {
   best = 0;
 
-  override initialize(api: InitApi): void {
+  override initialize(api: InitApi): Debug {
     for (const [name, binding] of Object.entries(ACTIONS)) {
       api.input.register(name, { keys: [...binding.keys] });
     }
@@ -197,6 +191,47 @@ class Collector extends GameInstance {
       api.audio.define(cue, spec);
     }
     api.diagnostics.register("best", () => this.best);
+
+    return {
+      placeRunner: (at) => {
+        const runner = this.runner();
+        runner.transform.x = at.x;
+        runner.transform.y = at.y;
+      },
+      placeOrb: (index, at) => {
+        const orb = this.orbs()[index];
+        if (orb === undefined) throw new Error(`the arena holds no orb ${index}`);
+        orb.transform.x = at.x;
+        orb.transform.y = at.y;
+      },
+      keepOrbs: (count) => {
+        const orbs = this.orbs();
+        if (orbs.length < count) throw new Error(`the arena holds ${orbs.length} orbs`);
+        for (const orb of orbs.slice(count)) orb.destroy();
+      },
+      snapshot: () => {
+        const world = this.engine.world;
+        const runner = this.runner();
+        return {
+          level: world.level,
+          phase: world.state.phase,
+          runner: { x: runner.transform.x, y: runner.transform.y },
+          orbs: this.orbs().map((orb) => ({ x: orb.transform.x, y: orb.transform.y })),
+          score: world.state.players[0]?.score ?? 0,
+        };
+      },
+    };
+  }
+
+  private runner(): Pawn {
+    const [player] = this.engine.world.players();
+    const pawn = player?.pawn ?? null;
+    if (pawn === null) throw new Error("no player controller holds a runner");
+    return pawn;
+  }
+
+  private orbs(): readonly Actor[] {
+    return this.engine.world.byTag(TAGS.orb);
   }
 }
 
@@ -221,7 +256,7 @@ const orbs: readonly ActorSpec<Orb>[] = Array.from({ length: ORB_COUNT }, (_, i)
   };
 });
 
-export const game: GameDefinition = {
+export const game: GameDefinition<Debug> = {
   instance: Collector,
   levels: {
     [LEVELS.arena]: {
@@ -245,6 +280,11 @@ which is what spawns the runner and possesses it. The walls and the orbs are
 declared actors, so they are built before the mode begins play and their ids are
 lower than the runner's.
 
+Every operation reads `this.engine.world` when it is called rather than holding
+a world, so the surface follows a transition and the summary level answers a
+`snapshot` as readily as the arena. The engine holds the returned object and
+reads no member of it, and nothing on it runs until a caller drives it.
+
 ## Layout
 
 The build owns `src/`, and the case's validators live beside it in
@@ -258,7 +298,6 @@ tsconfig.json
 vitest.config.ts
 src/
   constants.ts
-  scenarios.ts
   game.ts
   main.ts
   actors/
@@ -266,6 +305,7 @@ src/
 validation/
   vitest.config.ts
   tsconfig.json
+  debug.ts
   harness.ts
   simulation.test.ts
   world-and-actors.test.ts
@@ -331,7 +371,8 @@ Every validator builds its engine through one helper. It creates a canvas with
 `@napi-rs/canvas`, supplies a `SurfaceMetrics` so the engine takes every
 measurement from the harness instead of from a document, wraps the 2D context in
 a recording proxy, subscribes to `asset:failed` before any game code runs, and
-then initializes.
+then initializes. The engine is parameterized with the suite's own `Debug`
+type, so `engine.debug` is typed by the spec rather than by the build.
 
 ```ts
 // validation/harness.ts
@@ -341,6 +382,7 @@ import {
   createEngine,
   type Clock,
   type Engine,
+  type GameDefinition,
   type GameInstance,
   type SurfaceMetrics,
   type Vec2,
@@ -354,6 +396,7 @@ import {
   type ActionName,
 } from "../src/constants";
 import { game } from "../src/game";
+import type { Debug } from "./debug";
 
 export type DrawCall =
   | { kind: "call"; method: string; args: unknown[] }
@@ -367,8 +410,8 @@ export interface HarnessOptions {
 }
 
 export interface Harness {
-  readonly engine: Engine;
-  readonly instance: GameInstance;
+  readonly engine: Engine<Debug>;
+  readonly instance: GameInstance<Debug>;
   readonly ctx: SKRSContext2D;
   readonly calls: DrawCall[];
   readonly assetFailures: string[];
@@ -457,11 +500,11 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     events: () => events,
   };
 
-  const engine = createEngine({
+  const engine = createEngine<Debug>({
     canvas: element,
     width: DESIGN_WIDTH,
     height: DESIGN_HEIGHT,
-    game,
+    game: game as GameDefinition<Debug>,
     background: BACKGROUND,
     clock: options.clock ?? new ConstantClock(1000 / 60),
     surface,
@@ -502,12 +545,17 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 }
 ```
 
-Five details carry the harness.
+Six details carry the harness.
 
 The options handed to `createEngine` are the ones the case fixes: the design
 size and the background. Everything else the build decided is inside the game
 definition, which is what makes one validator suite serve every build of the
 case.
+
+The cast to `GameDefinition<Debug>` states that the build's surface is the one
+the spec names. The suite's `Debug` is declared in `validation/debug.ts` from
+the instrumentation spec, and a build whose surface departs from it fails the
+checks that drive it.
 
 `SurfaceMetrics` supplies the element size, the device pixel ratio, and the
 event target the engine attaches its key listeners to. Handing it a plain
@@ -517,7 +565,9 @@ the simulation through the player controller.
 
 `world()` reads `engine.world` on every call. A transition rebuilds the world,
 so a check that travels holds the engine and asks for the world again rather
-than holding a world across the transition.
+than holding a world across the transition. `engine.debug` is the object the
+build's `initialize` returned, and a check drives it directly:
+`engine.debug.placeRunner(at)` poses, and `engine.debug.snapshot()` reads.
 
 `toDevice` converts through the camera and then the viewport. `worldToLogical`
 applies the camera's position, zoom, and rotation, and the viewport applies the
@@ -533,7 +583,7 @@ the instance's own initialization and the start level's `load`.
 A [`ConstantClock`](/engines/structured-2d/apis/clocks/) makes each frame
 worth a known step, so a duration is a frame count and the arithmetic a check
 asserts is the arithmetic the specification states. The validator poses the
-scenario through the case's own operations, advances, and reads the world back.
+scenario through the debug surface, advances, and reads a snapshot back.
 
 ```ts
 // validation/simulation.test.ts
@@ -547,7 +597,6 @@ import {
   RUNNER_SPEED,
   TAGS,
 } from "../src/constants";
-import { placeRunner } from "../src/scenarios";
 import { createHarness, type Harness } from "./harness";
 
 const probe = await createHarness();
@@ -566,21 +615,22 @@ afterEach(() => {
 
 it("carries the runner at its stated speed", async () => {
   const { engine } = harness;
-  const runner = placeRunner(harness.world(), { x: 320, y: 180 });
+  engine.debug.placeRunner({ x: 320, y: 180 });
 
   harness.hold("right");
   await engine.advance(60);
 
+  const { runner } = engine.debug.snapshot();
   expect(engine.frame().count).toBe(60);
   expect(engine.frame().timeMs).toBeCloseTo(1000, 6);
-  expect(runner.transform.x).toBeCloseTo(320 + RUNNER_SPEED, 2);
-  expect(runner.transform.y).toBeCloseTo(180, 6);
+  expect(runner.x).toBeCloseTo(320 + RUNNER_SPEED, 2);
+  expect(runner.y).toBeCloseTo(180, 6);
   expect(harness.assetFailures).toEqual([]);
 });
 
 it("spends the dash over its stated duration", async () => {
   const { engine } = harness;
-  const runner = placeRunner(harness.world(), { x: 320, y: 180 });
+  engine.debug.placeRunner({ x: 320, y: 180 });
 
   harness.hold("right");
   harness.tap("dash");
@@ -588,12 +638,12 @@ it("spends the dash over its stated duration", async () => {
 
   const dashed = DASH_SPEED * DASH_SECONDS;
   const walked = RUNNER_SPEED * (1 - DASH_SECONDS);
-  expect(runner.transform.x).toBeCloseTo(320 + dashed + walked, 2);
+  expect(engine.debug.snapshot().runner.x).toBeCloseTo(320 + dashed + walked, 2);
 });
 
 it.skipIf(!declaresWalls)("is blocked by the arena wall", async () => {
   const { engine } = harness;
-  const runner = placeRunner(harness.world(), { x: 320, y: 180 });
+  engine.debug.placeRunner({ x: 320, y: 180 });
 
   const hits: { wall: boolean; normal: Vec2 }[] = [];
   engine.events.on("hit", ({ a, manifold }) => {
@@ -609,12 +659,14 @@ it.skipIf(!declaresWalls)("is blocked by the arena wall", async () => {
   expect(hits.length).toBeGreaterThan(0);
   expect(hits[0].wall).toBe(true);
   expect(hits[0].normal.x).toBeCloseTo(-1, 6);
-  expect(runner.transform.x).toBeLessThan(DESIGN_WIDTH - RUNNER_RADIUS);
+  expect(engine.debug.snapshot().runner.x).toBeLessThan(DESIGN_WIDTH - RUNNER_RADIUS);
 });
 ```
 
 Sixty frames of `1000 / 60` milliseconds are one second exactly, so the runner
-covers 180 units and the frame counter reads 60. The dash costs a quarter of
+covers 180 units and the frame counter reads 60. Each snapshot is taken after
+the advance, so it reads the world the frame left rather than the one the pose
+built. The dash costs a quarter of
 that second at 480 units per second and the remaining three quarters run at the
 walking speed, which is 120 units plus 135.
 
@@ -632,13 +684,12 @@ the manifold's normal points from the wall toward the runner.
 
 The engine's own object model is what a check reads. A suite finds actors by
 tag, reads the match off the game state, and observes a transition on
-`engine.events`.
+`engine.events`, and the debug surface poses the situation each check reads.
 
 ```ts
 // validation/world-and-actors.test.ts
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { LEVELS, ORB_COUNT, ORB_POINTS, TAGS } from "../src/constants";
-import { keepOrbs, placeOrb, placeRunner, runnerOf } from "../src/scenarios";
 import { createHarness, type Harness } from "./harness";
 
 let harness: Harness;
@@ -652,6 +703,7 @@ afterEach(() => {
 });
 
 it("opens the arena with its orbs and one possessed runner", () => {
+  const { engine } = harness;
   const world = harness.world();
 
   expect(world.level).toBe(LEVELS.arena);
@@ -661,9 +713,16 @@ it("opens the arena with its orbs and one possessed runner", () => {
 
   const [player] = world.players();
   expect(player.index).toBe(0);
-  expect(player.pawn).toBe(runnerOf(world));
   expect(player.pawn?.hasTag(TAGS.runner)).toBe(true);
   expect(world.state.players).toHaveLength(1);
+
+  const snapshot = engine.debug.snapshot();
+  expect(snapshot.level).toBe(LEVELS.arena);
+  expect(snapshot.orbs).toHaveLength(ORB_COUNT);
+  expect(snapshot.runner).toEqual({
+    x: player.pawn?.transform.x,
+    y: player.pawn?.transform.y,
+  });
 
   const ids = world.actors().map((actor) => actor.id);
   expect(ids).toEqual([...ids].sort((a, b) => a - b));
@@ -676,13 +735,14 @@ it("removes a destroyed orb from the world at the end of the frame", async () =>
   const destroyed: number[] = [];
   engine.events.on("actor:destroyed", ({ actor }) => destroyed.push(actor.id));
 
-  const kept = keepOrbs(world, 1);
-  expect(world.byTag(TAGS.orb)).toEqual(kept);
+  const [kept] = world.byTag(TAGS.orb);
+  engine.debug.keepOrbs(1);
+  expect(world.byTag(TAGS.orb)).toEqual([kept]);
 
   await engine.advance(1);
 
   expect(destroyed).toHaveLength(ORB_COUNT - 1);
-  expect(world.actors().filter((actor) => actor.hasTag(TAGS.orb))).toEqual(kept);
+  expect(world.actors().filter((actor) => actor.hasTag(TAGS.orb))).toEqual([kept]);
 });
 
 it("travels to the summary level when the last orb is collected", async () => {
@@ -693,10 +753,10 @@ it("travels to the summary level when the last orb is collected", async () => {
   engine.events.on("world:opening", ({ from, to }) => travel.push(`${from} -> ${to}`));
   engine.events.on("world:opened", ({ level }) => travel.push(`opened ${level}`));
 
-  const [orb] = keepOrbs(arena, 1);
+  engine.debug.keepOrbs(1);
   await engine.advance(1);
-  placeOrb(orb, { x: 320, y: 180 });
-  placeRunner(arena, { x: 320, y: 180 });
+  engine.debug.placeOrb(0, { x: 320, y: 180 });
+  engine.debug.placeRunner({ x: 320, y: 180 });
   await engine.advance(1);
 
   const summary = harness.world();
@@ -705,8 +765,10 @@ it("travels to the summary level when the last orb is collected", async () => {
     `opened ${LEVELS.summary}`,
   ]);
   expect(summary.level).toBe(LEVELS.summary);
+  expect(summary).not.toBe(arena);
   expect(summary.mode.options.score).toBe(ORB_POINTS);
   expect(summary.time).toBeCloseTo(0, 6);
+  expect(engine.debug.snapshot().level).toBe(LEVELS.summary);
   expect(engine.instance).toBe(harness.instance);
   expect(engine.frame().count).toBe(2);
 });
@@ -723,7 +785,9 @@ The transition check reads what survives it. The frame counter carries across,
 `world.time` restarts at zero, and the game instance is the same object, which
 is the one framework object that outlives a level. The options the mode was
 opened with are what `world.open` was given, so the summary reads the score the
-arena finished on.
+arena finished on. The debug surface survives too, and `snapshot` reports the
+summary level because each operation reads the world off the engine when it is
+called.
 
 One frame is advanced after the orb is placed. The collision pass finds the
 overlap, the mode ticks after it and requests the transition, and the engine
@@ -756,7 +820,6 @@ import {
   RUNNER_COLOR,
   RUNNER_RADIUS,
 } from "../src/constants";
-import { keepOrbs, placeOrb, placeRunner } from "../src/scenarios";
 import { callsTo, createHarness, rgba, setsOf, type Harness } from "./harness";
 
 let harness: Harness;
@@ -771,10 +834,9 @@ afterEach(() => {
 
 it("draws the runner and an orb in the colors the case fixes", async () => {
   const { engine } = harness;
-  const world = harness.world();
-  const [orb] = keepOrbs(world, 1);
-  placeOrb(orb, { x: 480, y: 180 });
-  placeRunner(world, { x: 320, y: 180 });
+  engine.debug.keepOrbs(1);
+  engine.debug.placeOrb(0, { x: 480, y: 180 });
+  engine.debug.placeRunner({ x: 320, y: 180 });
 
   await engine.advance(1);
 
@@ -786,7 +848,7 @@ it("draws the runner and an orb in the colors the case fixes", async () => {
 
 it("draws the orbs beneath the runner", async () => {
   const { engine, calls } = harness;
-  placeRunner(harness.world(), { x: 320, y: 180 });
+  engine.debug.placeRunner({ x: 320, y: 180 });
 
   calls.length = 0;
   await engine.advance(1);
@@ -843,7 +905,6 @@ subscribes, runs the scenario, and asserts against what the handler collected.
 // validation/input-and-audio.test.ts
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { ORB_POINTS, TAGS } from "../src/constants";
-import { keepOrbs, placeOrb, placeRunner, scoreOf } from "../src/scenarios";
 import { createHarness, type Harness } from "./harness";
 
 let harness: Harness;
@@ -858,7 +919,7 @@ afterEach(() => {
 
 it("plays the dash cue once per press", async () => {
   const { engine } = harness;
-  placeRunner(harness.world(), { x: 320, y: 180 });
+  engine.debug.placeRunner({ x: 320, y: 180 });
 
   const played: { cue: string; t: number; gain: number }[] = [];
   const off = engine.events.on("cue:played", (event) => played.push(event));
@@ -877,10 +938,10 @@ it("plays the dash cue once per press", async () => {
 it("plays the collect cue and scores the orb it removed", async () => {
   const { engine } = harness;
   const world = harness.world();
-  const [first] = keepOrbs(world, 2);
+  engine.debug.keepOrbs(2);
   await engine.advance(1);
-  placeOrb(first, { x: 200, y: 180 });
-  placeRunner(world, { x: 200, y: 180 });
+  engine.debug.placeOrb(0, { x: 200, y: 180 });
+  engine.debug.placeRunner({ x: 200, y: 180 });
 
   const collected: number[] = [];
   const off = engine.events.on("cue:played", ({ cue, gain }) => {
@@ -891,7 +952,7 @@ it("plays the collect cue and scores the orb it removed", async () => {
   off();
 
   expect(collected).toHaveLength(1);
-  expect(scoreOf(world)).toBe(ORB_POINTS);
+  expect(engine.debug.snapshot().score).toBe(ORB_POINTS);
   expect(world.byTag(TAGS.orb)).toHaveLength(1);
 });
 

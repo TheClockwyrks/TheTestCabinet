@@ -133,7 +133,7 @@ phase is `"playing"`.
 
 The phases are what the rest of the game reads to decide whether it is running.
 A mode's `tick` gates its scoring on the phase, an actor gates its behavior on
-it, and the debug overlay and the host interface both report it.
+it, and the debug overlay's world line reports it.
 
 ## Building inside the framework
 

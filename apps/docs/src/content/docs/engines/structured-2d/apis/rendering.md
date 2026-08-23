@@ -42,10 +42,8 @@ interface Renderer {
 | `collisionOverlay` | Whether the collision overlay draws. |
 | `setCollisionOverlay` | Turns the collision overlay on or off. |
 
-The renderer is reached as `engine.renderer` and is available from construction.
-The [host interface](/engines/structured-2d/apis/host/) publishes
-`setRenderMode` and `setCollisionOverlay`, so a page evaluation drives both
-switches from outside the build.
+The renderer is reached as `engine.renderer` and is available from
+construction, so whoever holds the engine drives both switches.
 
 The collision overlay draws every enabled collider's shape over the finished
 picture, in a color per response, and is independent of the mode.

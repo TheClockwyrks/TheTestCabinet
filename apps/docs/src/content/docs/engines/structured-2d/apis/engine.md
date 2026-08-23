@@ -14,8 +14,12 @@ the engine hands those objects back rather than a value the game returned.
 ## `createEngine`
 
 ```ts
-function createEngine(options: EngineOptions): Engine;
+function createEngine<D = unknown>(options: EngineOptions<D>): Engine<D>;
 ```
+
+`D` is the game's [debug surface](/engines/structured-2d/apis/game-instance/),
+the value the instance's `initialize` returns. It is inferred from the instance
+class the `game` definition names.
 
 Construction performs no loading and runs no game code. An engine therefore
 exists in a state where its clock can be replaced and its events can be
@@ -25,11 +29,11 @@ caller watch the start level being built.
 ## `EngineOptions`
 
 ```ts
-interface EngineOptions {
+interface EngineOptions<D = unknown> {
   canvas: HTMLCanvasElement;
   width: number;
   height: number;
-  game: GameDefinition;
+  game: GameDefinition<D>;
   background?: string;
   layout?: string;
   clock?: Clock;
@@ -72,17 +76,21 @@ device pixel ratio, and listens on the canvas's owning document.
 ## `Engine`
 
 ```ts
-interface Engine {
+interface Engine<D = unknown> {
   readonly events: EngineEvents;
-  readonly instance: GameInstance;
+  readonly instance: GameInstance<D>;
   readonly world: World;
   readonly renderer: Renderer;
-  initialize(): Promise<GameInstance>;
+  readonly debug: D;
+  initialize(): Promise<GameInstance<D>>;
   run(options?: RunOptions): Promise<void>;
   advance(frames: number): Promise<void>;
   setClock(clock: Clock): void;
   frame(): FrameInfo;
   viewport(): Viewport;
+  recording(): boolean;
+  startRecording(): void;
+  stopRecording(): Recording;
   destroy(): void;
 }
 
@@ -97,20 +105,25 @@ interface RunOptions {
 | `instance` | The [game instance](/engines/structured-2d/apis/game-instance/), live. |
 | `world` | The world currently open, live. |
 | `renderer` | The [rendering pipeline](/engines/structured-2d/apis/rendering/): its mode and its collision overlay. |
+| `debug` | The [debug surface](/engines/structured-2d/apis/game-instance/) the instance's `initialize` returned. |
 | `initialize` | Construct the game instance, run its `initialize`, open `startLevel`, and resolve to the instance. |
 | `run` | Drive the game off the host's frame callback until the supplied signal aborts. |
 | `advance` | Tick the clock `frames` times, running a frame for each tick the clock accepts. |
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
 | `frame` | The frame counter, the accumulated simulated time, and the most recent delta. |
 | `viewport` | The current logical-to-device fit, as a snapshot the caller owns. |
-| `destroy` | Close the world, halt the loop, drop every listener, and unpublish the host interface. |
+| `recording` | Whether draw-command [recording](/engines/structured-2d/apis/recording/) is currently capturing. |
+| `startRecording` | Arm the recorder. Capture begins at the next frame. |
+| `stopRecording` | Disarm the recorder and return everything captured since `startRecording`. |
+| `destroy` | Close the world, halt the loop, and drop every listener. |
 
 `instance` and `world` are live references rather than copies, so a reader
 observes the current frame's values. `world` follows each transition, so a
 caller that holds the reference across one reads the world that replaced it.
 
-Reading `instance` or `world` before `initialize` resolves throws, naming the
-ordering. That keeps a contract violation loud at the point of the mistake.
+Reading `instance`, `world`, or `debug` before `initialize` resolves throws,
+naming the ordering. That keeps a contract violation loud at the point of the
+mistake.
 
 ### `initialize`
 
@@ -124,6 +137,17 @@ that cannot easily tell whether initialization has happened may ask again.
 
 The engine runs no frame before this resolves, so no tick observes a
 half-constructed world.
+
+### `debug`
+
+The value the instance's `initialize` returned, unchanged. The engine holds it
+and reads no member of it, so its shape is whatever the instance declared as
+`D`. A game with no surface returns `null` there, and `engine.debug` hands that
+`null` back.
+
+A surface operation acts on the live world through the instance that holds the
+engine, so a caller drives one directly: `engine.debug.startMatch("versus")`
+poses the world, and `engine.debug.snapshot()` reads it back.
 
 ### `run`
 
@@ -180,9 +204,9 @@ interface FrameInfo {
 | `timeMs` | Accumulated simulated time, in milliseconds. |
 | `lastDeltaMs` | The most recent frame's delta, in milliseconds. |
 
-`world.frame()`, a `DrawComponent`'s `api.frame()`, and the published host
-interface return the same shape. The counter and the accumulated time belong to
-the loop, so both carry across a level transition.
+`world.frame()` and a `DrawComponent`'s `api.frame()` return the same shape.
+The counter and the accumulated time belong to the loop, so both carry across a
+level transition.
 
 ### `viewport`
 
@@ -194,9 +218,8 @@ frames.
 ### `destroy`
 
 Closes the world, which ends play for its controllers, actors, and game mode,
-then runs the instance's `shutdown`. It halts the loop, detaches every listener,
-and removes the host interface handle while it still belongs to this engine.
-Idempotent, because teardown races.
+then runs the instance's `shutdown`. It halts the loop and detaches every
+listener. Idempotent, because teardown races.
 
 Destroying resolves any promise `run` returned. Aborting a run's signal halts
 the loop and leaves the engine usable, so the two are separate acts.
@@ -285,8 +308,10 @@ observes the start level being built and every transition after it.
 | `levels` with no entries | `Error` |
 | `startLevel` naming no entry of `levels` | `Error` naming every registered level |
 | The instance's `initialize`, a level's `load`, or a `beginPlay` throws | `initialize` rejects with the cause |
-| `world`, `instance`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
+| `world`, `instance`, `debug`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
+| The instance's `initialize` returns `undefined` | `initialize` rejects with an `Error` naming the debug surface |
 | `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
+| `startRecording` while already recording, or `stopRecording` while not | `Error` naming the unbalanced call |
 
 Each construction failure otherwise presents as a build that runs and draws
 nothing, which is the most expensive kind to trace, so each is refused where it
@@ -297,4 +322,5 @@ happens.
 `createEngine` is exported as a function from `@test-cabinet/structured-2d`.
 `EngineOptions`, `SurfaceMetrics`, `Engine`, `RunOptions`, `FrameInfo`,
 `EngineEvents`, and `EngineEventMap` are exported as types from the same
-specifier.
+specifier, as is `Recording` with the rest of the
+[recording](/engines/structured-2d/apis/recording/) format's types.
