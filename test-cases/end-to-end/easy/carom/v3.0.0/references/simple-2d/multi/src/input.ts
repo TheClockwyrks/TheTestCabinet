@@ -17,7 +17,6 @@
 // lists them in the layout's order.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import { clamp } from "./entities";
 import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
 
 /**
@@ -61,11 +60,13 @@ export function p2Axis(api: UpdateApi): number {
 /**
  * Solo has no player two, so both sliders drive the one human paddle — which is
  * what makes `W`/`S` and the arrow keys interchangeable there
- * (specs/modes/single-player.md). Summing and clamping keeps opposite inputs
- * cancelling, so holding up on one side and down on the other stands still.
+ * (specs/modes/single-player.md): `up` is held while either side's up action is,
+ * `down` likewise, and the axis is `down - up`.
  */
 export function soloAxis(api: UpdateApi): number {
-  return clamp(p1Axis(api) + p2Axis(api), -1, 1);
+  const up = Math.max(api.input.value("p1-up"), api.input.value("p2-up"));
+  const down = Math.max(api.input.value("p1-down"), api.input.value("p2-down"));
+  return down - up;
 }
 
 /**

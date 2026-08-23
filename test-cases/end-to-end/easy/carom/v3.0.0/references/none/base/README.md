@@ -28,6 +28,14 @@ This is a self-contained static web app — plain **TypeScript** drawing to an
 dependency at all. No backend, accounts, network calls, or API keys; everything
 needed to play is in the built bundle.
 
+The look is this build's own. The specs fix what must be visible — a dark field,
+paddles and obstacles and ball each bright and distinguishable, the scores near
+the top, a trail behind the moving ball — and leave the palette, the type, and
+the layout to the build. This build chose neon on charcoal: a teal left paddle,
+a pink right paddle, an amber pair of obstacles, and a white ball, all in a
+system monospace face. Those choices live in `src/theme.ts`, apart from the
+figures the specs fix in `src/constants.ts`.
+
 ## Modes
 
 - **Solo** — you (player one, left) versus a competent but beatable AI.
@@ -49,10 +57,11 @@ Every control is a **named action** bound to physical keys
 | `pause`             | `P` or `Esc`       | Pauses during a match.                                                  |
 | `mute`              | `M`                | Toggles mute, on any screen.                                            |
 
-Either side's up/down action moves a menu selection, so the menus answer to
-`W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
-and the game reads whichever the current screen calls for, so it pauses in a
-match and steps back on a menu.
+Either side's up/down action moves a menu selection (wrapping at both ends), so
+the menus answer to `W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions —
+`pause` and `back` — and the game reads whichever the current screen calls for,
+so it pauses in a match and steps back on a menu: it resumes from the pause
+menu, and returns to the title from the how-to and match-over screens.
 
 The **backtick** key (`` ` ``) toggles the diagnostics overlay. That key belongs
 to the runtime (`src/overlay.ts`), not to the game.
@@ -189,7 +198,8 @@ src/
   keyboard.ts         Named actions over key codes, with edge detection
   audio-bus.ts        Web Audio cues and the first-gesture unlock
   overlay.ts          The diagnostics panel and the backtick key
-  constants.ts        Palette, geometry, physics constants (logical 1280x720)
+  constants.ts        Every figure the specs fix (logical 1280x720)
+  theme.ts            This build's own look: palette, type, HUD layout, tagline
   debug.ts            The window.__carom surface over CaromState
   game.ts             The state contract, the state machine, and the three
                       functions the runtime drives
@@ -198,7 +208,7 @@ src/
   trail.ts            The ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision, the spin mechanic
   ai.ts               The beatable AI opponent
-  render.ts           All canvas drawing (neon-on-charcoal), in logical space
+  render.ts           All canvas drawing, in logical space, over the theme
   diagnostics.ts      The values the overlay shows
   audio.ts            The four audio cues
   *.test.ts           The build's own tests, beside the code they cover

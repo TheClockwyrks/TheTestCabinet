@@ -14,7 +14,6 @@
 //     to make that obvious.
 
 import { ACTIONS, BINDINGS, type ActionName } from "./constants";
-import { clamp } from "./entities";
 import type { InitApi, UpdateApi } from "./runtime";
 
 /** Register every action Carom speaks, bound to the keys `BINDINGS` gives it. */
@@ -24,9 +23,14 @@ export function registerActions(api: InitApi): void {
   }
 }
 
-/** A held axis in `[-1, 1]`. Negative is up, matching the y-down field. */
+/** A held axis in `[-1, 1]`: `down - up`. Negative is up, matching the y-down field. */
 function axis(api: UpdateApi, up: ActionName, down: ActionName): number {
   return api.input.value(down) - api.input.value(up);
+}
+
+/** `1` while either of two actions is held, `0` otherwise. */
+function either(api: UpdateApi, a: ActionName, b: ActionName): number {
+  return api.input.value(a) || api.input.value(b) ? 1 : 0;
 }
 
 /** Player one's slider: the left paddle in Versus, the human's in Solo. */
@@ -41,12 +45,13 @@ export function p2Axis(api: UpdateApi): number {
 
 /**
  * Solo has no player two, so both sliders drive the one human paddle — which is
- * what makes `W`/`S` and the arrow keys interchangeable there
- * (specs/modes/single-player.md). Summing and clamping keeps opposite inputs
- * cancelling, so holding up on one side and down on the other stands still.
+ * what makes `W`/`S` and the arrow keys interchangeable there: `up` is held
+ * while either up action is, `down` while either down action is, and the axis
+ * is `down - up` (specs/modes/single-player.md). Opposite inputs cancel, so
+ * holding up on one side and down on the other stands still.
  */
 export function soloAxis(api: UpdateApi): number {
-  return clamp(p1Axis(api) + p2Axis(api), -1, 1);
+  return either(api, "p1-down", "p2-down") - either(api, "p1-up", "p2-up");
 }
 
 /**

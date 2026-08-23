@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from "vitest";
 import { registerDiagnostics } from "./diagnostics";
-import { createInitialState } from "./game";
+import { createInitialState } from "./flow";
 import type { InitApi } from "@test-cabinet/simple-2d";
 
 /** Just enough of an `InitApi` to collect the sources a game registers. */

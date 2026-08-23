@@ -35,12 +35,12 @@ describe("recordTrail", () => {
     }
   });
 
-  it("caps what it retains however fast the frames arrive", () => {
+  it("keeps every sample inside the window however fast the frames arrive", () => {
     const ball = createBalls()[0];
     for (let i = 0; i < 1000; i++) {
       recordTrail(ball, i * 0.0001); // 10 kHz: the whole run fits the window
     }
-    expect(ball.trail.length).toBeLessThanOrEqual(256);
+    expect(ball.trail).toHaveLength(1000);
   });
 
   it("keeps each ball's trail to itself", () => {

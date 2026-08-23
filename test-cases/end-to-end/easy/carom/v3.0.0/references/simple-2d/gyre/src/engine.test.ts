@@ -20,7 +20,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BALL_R,
-  COLOR,
   CUES,
   FIELD_CX,
   FIELD_CY,
@@ -31,13 +30,13 @@ import {
   P1_X0,
   PADDLE_SPEED,
   PADDLE_W,
-  SERVE_MAX_ANGLE,
+  SERVE_ANGLE,
   SERVE_SPEED,
   SPIN_FROM_PADDLE,
   WIN_SCORE,
 } from "./constants";
 import type { CaromDebugApi } from "./debug";
-import { game, type CaromState } from "./game";
+import { BACKGROUND, game, type CaromState } from "./game";
 
 // ---- The harness --------------------------------------------------------
 
@@ -139,7 +138,7 @@ async function createHarness(clock?: Clock): Promise<Harness> {
     width: FIELD_W,
     height: FIELD_H,
     game,
-    background: COLOR.bg,
+    background: BACKGROUND,
     layout: LAYOUT,
     clock: clock ?? new ConstantClock(FRAME_MS),
     surface,
@@ -389,6 +388,26 @@ describe("the paddles", () => {
     expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
   });
 
+  it("reads both up actions as one up in Solo", async () => {
+    harness.tap("Enter");
+    await harness.engine.advance(1);
+
+    // Two ups and one down is up = 1, down = 1: the paddle stands still rather
+    // than summing the sliders.
+    harness.hold("KeyW");
+    harness.hold("ArrowUp");
+    harness.hold("KeyS");
+    await harness.engine.advance(30);
+    expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
+
+    harness.release("KeyS");
+    await harness.engine.advance(frames(0.1));
+    expect(harness.state.paddles.left.cy).toBeCloseTo(
+      FIELD_CY - PADDLE_SPEED * 0.1,
+      6,
+    );
+  });
+
   it("gives the second slider its own paddle in Versus", async () => {
     harness.tap("ArrowDown");
     await harness.engine.advance(1);
@@ -427,16 +446,25 @@ describe("serving", () => {
     expect(ball.speed).toBeCloseTo(SERVE_SPEED, 6);
   });
 
-  it("keeps the serve within 30deg of horizontal, and never flat", async () => {
+  it("leaves at exactly SERVE_ANGLE from horizontal", async () => {
     harness.debug.startMatch("versus");
     harness.debug.serve();
     await harness.engine.advance(1);
     const { ball } = harness.debug.snapshot();
-    expect(Math.abs(ball.vy)).toBeGreaterThan(0);
     // The deviation from horizontal, whichever way the serve is travelling.
-    expect(Math.abs(Math.atan2(ball.vy, Math.abs(ball.vx)))).toBeLessThan(
-      SERVE_MAX_ANGLE,
+    expect(Math.abs(Math.atan2(ball.vy, Math.abs(ball.vx)))).toBeCloseTo(
+      SERVE_ANGLE,
+      9,
     );
+  });
+
+  it("does not advance the ball on the frame it is served", async () => {
+    harness.debug.startMatch("versus");
+    harness.debug.serve();
+    await harness.engine.advance(1);
+    expect(harness.state.screen).toBe("playing");
+    expect(harness.state.ball.x).toBe(FIELD_CX);
+    expect(harness.state.ball.y).toBe(FIELD_CY);
   });
 
   it("replays the same serve from the same seed", async () => {
@@ -595,6 +623,24 @@ describe("scoring", () => {
     expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
     expect(harness.state.winner).toBeNull();
   });
+
+  it("returns to the title from the match-over screen on Escape", async () => {
+    await rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
+    harness.debug.setScore(WIN_SCORE - 1, WIN_SCORE - 2);
+    await harness.engine.advance(4);
+    expect(harness.state.screen).toBe("matchover");
+    const simTime = harness.state.simTime;
+
+    harness.tap("Escape");
+    await harness.engine.advance(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(0);
+    expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
+    expect(harness.state.winner).toBeNull();
+    expect(harness.state.obstacleClock).toBe(0);
+    // Time carries on across the transition.
+    expect(harness.state.simTime).toBeCloseTo(simTime + 1 / 60, 9);
+  });
 });
 
 // ---- Pause and mute -----------------------------------------------------
@@ -718,6 +764,21 @@ describe("rendering", () => {
     expect(harness.pixel(FIELD_W - P1_X0 - PADDLE_W / 2, FIELD_CY)).toEqual([
       255, 92, 138, 255,
     ]);
+  });
+
+  it("draws each score as its own number near the top", async () => {
+    harness.debug.startMatch("versus");
+    harness.debug.setScore(7, 9);
+    harness.calls.length = 0;
+    await harness.engine.advance(1);
+
+    const texts = callsTo(harness.calls, "fillText");
+    const seven = texts.find((args) => args[0] === "7");
+    const nine = texts.find((args) => args[0] === "9");
+    expect(seven).toBeDefined();
+    expect(nine).toBeDefined();
+    expect(seven?.[1]).toBeLessThan(FIELD_CX);
+    expect(nine?.[1]).toBeGreaterThan(FIELD_CX);
   });
 
   it("draws the ball as one arc at its own position", async () => {

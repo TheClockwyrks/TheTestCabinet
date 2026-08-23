@@ -2,38 +2,40 @@
 // is the whole story: the context the engine hands `render` is already cleared to
 // the background color and already carries the letterboxed, device-pixel-ratio
 // aware transform for the fixed design size, so nothing here scales, translates,
-// letterboxes, or looks at the canvas element. The look is neon-on-charcoal,
-// matching the palette in specs/overview.md.
+// letterboxes, or looks at the canvas element. The look is this build's own,
+// neon-on-charcoal, held in `src/theme.ts`.
 //
 // Rendering is a pure read of `CaromState`: nothing below writes to it.
 
 import {
   BALL_R,
-  COLOR,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
   FIELD_W,
   HOLD_TIME,
   MATCHOVER_ITEMS,
-  MODE_LABEL,
-  MONO,
   NET_X,
   OBSTACLE_HH,
   OBSTACLE_HW,
   PADDLE_HALF,
   PADDLE_W,
   PAUSE_ITEMS,
-  SCORE_FONT_PX,
-  SCORE_P1_X,
-  SCORE_P2_X,
-  SCORE_TOP_Y,
-  TAGLINE_TEXT,
   TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
 import { paddleBounds } from "./entities";
 import type { CaromState } from "./game";
+import {
+  COLOR,
+  MODE_LABEL,
+  MONO,
+  SCORE_FONT_PX,
+  SCORE_P1_X,
+  SCORE_P2_X,
+  SCORE_TOP_Y,
+  TAGLINE_TEXT,
+} from "./theme";
 import { ribbon } from "./trail";
 
 /**
@@ -308,10 +310,6 @@ function drawField(
 
 // ---- HUD ----------------------------------------------------------------
 
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
-}
-
 function drawHud(ctx: Ctx, state: CaromState): void {
   const scoreOpts: TextOpts = {
     size: SCORE_FONT_PX,
@@ -321,8 +319,8 @@ function drawHud(ctx: Ctx, state: CaromState): void {
     align: "center",
     baseline: "top",
   };
-  drawText(ctx, pad2(state.score.p1), SCORE_P1_X, SCORE_TOP_Y, scoreOpts);
-  drawText(ctx, pad2(state.score.p2), SCORE_P2_X, SCORE_TOP_Y, scoreOpts);
+  drawText(ctx, `${state.score.p1}`, SCORE_P1_X, SCORE_TOP_Y, scoreOpts);
+  drawText(ctx, `${state.score.p2}`, SCORE_P2_X, SCORE_TOP_Y, scoreOpts);
 
   drawText(ctx, MODE_LABEL[state.mode], 32, 28, {
     size: 18,

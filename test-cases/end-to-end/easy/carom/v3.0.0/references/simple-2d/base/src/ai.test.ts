@@ -4,6 +4,7 @@
 import { expect, it } from "vitest";
 import {
   AI_DEADZONE,
+  AI_HOME_DEADZONE,
   AI_HOME_Y,
   AI_REACT,
   AI_SPEED,
@@ -64,7 +65,8 @@ it("eases back toward the center while the ball travels away", () => {
   for (let i = 0; i < 120; i++) {
     updateAi(paddle, ball({ y: 660, vx: -300 }), true, FRAME);
   }
-  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThan(20);
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
+  expect(paddle.vy).toBe(0);
 });
 
 it("eases home during the pre-serve hold too", () => {
@@ -72,7 +74,7 @@ it("eases home during the pre-serve hold too", () => {
   for (let i = 0; i < 120; i++) {
     updateAi(paddle, ball({ y: 660, vx: 0 }), false, FRAME);
   }
-  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThan(20);
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
 });
 
 it("keeps its paddle fully on the field", () => {

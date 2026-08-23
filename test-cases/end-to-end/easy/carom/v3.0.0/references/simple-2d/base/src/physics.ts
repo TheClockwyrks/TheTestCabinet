@@ -7,7 +7,7 @@
 // frames — which is the property the debug API in `src/debug.ts` leans on.
 //
 // To guarantee the ball never tunnels through a paddle, wall, or obstacle at high
-// speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP px
+// speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP units
 // of travel) that the ball's center can never skip past an object in one move, and
 // collisions are resolved after each sub-step.
 
@@ -15,6 +15,7 @@ import {
   BALL_R,
   FIELD_H,
   MAX_BOUNCE_ANGLE,
+  MAX_SUBSTEP,
   OBSTACLES,
   PADDLE_HALF,
   SPEED_CAP,
@@ -26,9 +27,6 @@ import {
 } from "./constants";
 import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
 import type { BallState, PaddleState, Side } from "./game";
-
-/** Px of travel per collision sub-step. Below the smallest object half-extent. */
-const MAX_SUBSTEP = 4;
 
 /** What one step's collisions did, so the caller can play a cue per event. */
 export interface StepEvents {

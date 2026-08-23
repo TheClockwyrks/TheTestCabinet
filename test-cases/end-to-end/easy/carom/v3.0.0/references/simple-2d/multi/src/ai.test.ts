@@ -4,6 +4,7 @@
 import { expect, it } from "vitest";
 import {
   AI_DEADZONE,
+  AI_HOME_DEADZONE,
   AI_HOME_Y,
   AI_REACT,
   AI_SPEED,
@@ -74,7 +75,7 @@ it("eases back toward the center while the ball travels away", () => {
   for (let i = 0; i < 120; i++) {
     updateAi(paddle, ball({ y: 660, vx: -300 }), true, FRAME);
   }
-  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThan(20);
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
 });
 
 it("eases home while the balls are waiting on their home points", () => {
@@ -82,13 +83,13 @@ it("eases home while the balls are waiting on their home points", () => {
   for (let i = 0; i < 120; i++) {
     updateAi(paddle, ball({ y: 660, vx: 0 }), false, FRAME);
   }
-  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThan(20);
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
 });
 
 it("eases home when no ball is threatening its goal at all", () => {
   const paddle: PaddleState = { cy: 600, vy: 0 };
   for (let i = 0; i < 120; i++) updateAi(paddle, null, true, FRAME);
-  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThan(20);
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
 });
 
 it("keeps its paddle fully on the field", () => {

@@ -4,7 +4,8 @@
 // slower than the human, reacts to the ball with a short delay, keeps a small
 // deadzone so it never jitters onto a perfect line, and does not compensate for
 // spin curvature — so a well-placed or well-curved shot gets past it. When the
-// ball travels away it eases back toward the vertical center.
+// ball travels away it returns toward AI_HOME_Y and stops within the wider
+// AI_HOME_DEADZONE of it, so it never twitches around the center line.
 //
 // It holds NO state of its own. The reaction delay is expressed as WHERE THE BALL
 // WAS AI_REACT seconds ago — `ball.y - ball.vy * AI_REACT` — rather than as a
@@ -13,18 +14,15 @@
 // fields and knows nothing about a filter, so a remembered perception would
 // survive a reset and stop a scenario replaying identically.
 
-import { AI_DEADZONE, AI_HOME_Y, AI_REACT, AI_SPEED } from "./constants";
+import {
+  AI_DEADZONE,
+  AI_HOME_DEADZONE,
+  AI_HOME_Y,
+  AI_REACT,
+  AI_SPEED,
+} from "./constants";
 import { integratePaddle } from "./entities";
 import type { BallState, PaddleState } from "./game";
-
-/**
- * The deadzone used while easing home.
- *
- * Wider than AI_DEADZONE on purpose: returning to the middle is a drift rather
- * than a defence, and a tight deadzone there would have the paddle twitch around
- * the center line for the whole of a rally played at the far end.
- */
-const AI_HOME_DEADZONE = 18;
 
 /**
  * Move the AI's paddle for one frame.

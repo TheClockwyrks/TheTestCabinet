@@ -13,24 +13,22 @@
 // fields and knows nothing about a filter, so a remembered perception would
 // survive a reset and stop a scenario replaying identically.
 
-import { AI_DEADZONE, AI_HOME_Y, AI_REACT, AI_SPEED } from "./constants";
+import {
+  AI_DEADZONE,
+  AI_HOME_DEADZONE,
+  AI_HOME_Y,
+  AI_REACT,
+  AI_SPEED,
+} from "./constants";
 import { integratePaddle } from "./entities";
 import type { BallState, PaddleState } from "./game";
 
 /**
- * The deadzone used while easing home.
- *
- * Wider than AI_DEADZONE on purpose: returning to the middle is a drift rather
- * than a defence, and a tight deadzone there would have the paddle twitch around
- * the center line for the whole of a rally played at the far end.
- */
-const AI_HOME_DEADZONE = 18;
-
-/**
  * Move the AI's paddle for one frame.
  *
- * `active` is true only while the ball is live — during the pre-serve hold there
- * is nothing to track, so the paddle eases home.
+ * `active` is true only while the screen is `playing`: during the pre-serve
+ * hold there is nothing to defend, so the paddle returns home, stopping within
+ * the wider AI_HOME_DEADZONE of the center.
  */
 export function updateAi(
   paddle: PaddleState,

@@ -17,7 +17,6 @@
 // lists them in the layout's order.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import { clamp } from "./entities";
 import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
 
 /**
@@ -43,29 +42,37 @@ export function registerActions(api: InitApi): void {
   }
 }
 
-/** A held axis in `[-1, 1]`. Negative is up, matching the y-down field. */
-function axis(api: UpdateApi, up: ActionName, down: ActionName): number {
-  return api.input.value(down) - api.input.value(up);
+/** Whether any of the given actions is held: `1` if so, `0` otherwise. */
+function held(api: UpdateApi, ...actions: ActionName[]): number {
+  return actions.some((action) => api.input.value(action) > 0) ? 1 : 0;
+}
+
+/**
+ * A held axis, `down - up`, in `{-1, 0, 1}`. Negative is up, matching the
+ * y-down field, and opposite actions held together stand still.
+ */
+function axis(api: UpdateApi, up: ActionName[], down: ActionName[]): number {
+  return held(api, ...down) - held(api, ...up);
 }
 
 /** Player one's slider: the left paddle in Versus, the human's in Solo. */
 export function p1Axis(api: UpdateApi): number {
-  return axis(api, "p1-up", "p1-down");
+  return axis(api, ["p1-up"], ["p1-down"]);
 }
 
 /** Player two's slider: the right paddle in Versus. */
 export function p2Axis(api: UpdateApi): number {
-  return axis(api, "p2-up", "p2-down");
+  return axis(api, ["p2-up"], ["p2-down"]);
 }
 
 /**
  * Solo has no player two, so both sliders drive the one human paddle — which is
  * what makes `W`/`S` and the arrow keys interchangeable there
- * (specs/modes/single-player.md). Summing and clamping keeps opposite inputs
- * cancelling, so holding up on one side and down on the other stands still.
+ * (specs/modes/single-player.md): `up` is held while either side's up action
+ * is, `down` likewise, and the axis is `down - up`.
  */
 export function soloAxis(api: UpdateApi): number {
-  return clamp(p1Axis(api) + p2Axis(api), -1, 1);
+  return axis(api, ["p1-up", "p2-up"], ["p1-down", "p2-down"]);
 }
 
 /**

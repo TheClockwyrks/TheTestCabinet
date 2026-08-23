@@ -7,14 +7,15 @@
 // frames — which is the property the debug API in `src/debug.ts` leans on.
 //
 // To guarantee the ball never tunnels through a paddle, wall, or obstacle at high
-// speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP px
-// of travel) that the ball's center can never skip past an object in one move, and
+// speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP
+// units of travel) that the ball's center can never skip past an object in one move, and
 // collisions are resolved after each sub-step.
 
 import {
   BALL_R,
   FIELD_H,
   MAX_BOUNCE_ANGLE,
+  MAX_SUBSTEP,
   OBSTACLE_HH,
   OBSTACLE_HW,
   PADDLE_HALF,
@@ -27,9 +28,6 @@ import {
 } from "./constants";
 import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
 import type { BallState, ObstacleState, PaddleState, Side } from "./game";
-
-/** Px of travel per collision sub-step. Below the smallest object half-extent. */
-const MAX_SUBSTEP = 4;
 
 /** What one step's collisions did, so the caller can play a cue per event. */
 export interface StepEvents {
@@ -234,7 +232,8 @@ export function step(
   // integration, and the collisions — happens per SUB-step rather than per frame,
   // so the curve the ball actually travels is resolved to MAX_SUBSTEP px however
   // long the frame was. That is what keeps a rally on a 30 Hz display and the same
-  // rally on a 240 Hz one landing in the same place.
+  // rally on a 240 Hz one landing in the same place. `n` is computed from the
+  // speed at the start of the frame (specs/balls.md).
   const substeps = Math.max(1, Math.ceil((ballSpeed(ball) * dt) / MAX_SUBSTEP));
   const h = dt / substeps;
   // Half the magnitude every SPIN_HALFLIFE seconds. Compounding this per sub-step
@@ -245,9 +244,10 @@ export function step(
   for (let i = 0; i < substeps; i++) {
     // 1. Spin curves the flight. Rotating the velocity vector at an angular rate
     //    of `spin / speed` turns the path without changing the speed, which is
-    //    exactly what a lateral acceleration of magnitude |spin| does.
+    //    exactly what a lateral acceleration of magnitude |spin| does. A ball at
+    //    rest has no direction to turn.
     const speed = ballSpeed(ball);
-    if (speed > 1e-6 && ball.spin !== 0) {
+    if (speed > 0) {
       const dTheta = (ball.spin / speed) * h;
       const c = Math.cos(dTheta);
       const s = Math.sin(dTheta);

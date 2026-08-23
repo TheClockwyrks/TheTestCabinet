@@ -9,11 +9,12 @@
 // and the four modules under it, the game in `src/game.ts`, the surface in
 // `src/debug.ts`.
 
-import { COLOR, FIELD_H, FIELD_W } from "./constants";
+import { FIELD_H, FIELD_W } from "./constants";
 import { installDebugApi } from "./debug";
 import { game } from "./game";
 import type { CaromState } from "./game";
 import { createRuntime } from "./runtime";
+import { BACKGROUND } from "./theme";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement | null;
 if (!canvas) {
@@ -28,7 +29,8 @@ const runtime = createRuntime<CaromState>({
   width: FIELD_W,
   height: FIELD_H,
   game,
-  background: COLOR.bg,
+  // The field background, which the letterbox bars around the field share.
+  background: BACKGROUND,
 });
 
 // The state is complete before anything can observe it: `initialize` builds it in

@@ -25,7 +25,7 @@ import {
   P1_X0,
   PADDLE_SPEED,
   PADDLE_W,
-  SERVE_MAX_ANGLE,
+  SERVE_ANGLE,
   SERVE_SPEED,
   SPIN_FROM_PADDLE,
   WIN_SCORE,
@@ -343,6 +343,11 @@ describe("the paddles", () => {
     harness.hold("ArrowDown");
     harness.run(30);
     expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
+
+    // A second up action adds nothing: up is held or it is not.
+    harness.hold("ArrowUp");
+    harness.run(30);
+    expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
   });
 
   it("gives the second slider its own paddle in Versus", () => {
@@ -383,14 +388,14 @@ describe("serving", () => {
     expect(ball.speed).toBeCloseTo(SERVE_SPEED, 6);
   });
 
-  it("keeps the serve within 30deg of horizontal, and never flat", () => {
+  it("serves at exactly SERVE_ANGLE from horizontal, up or down", () => {
     harness.debug.startMatch("versus");
     harness.debug.serve();
     harness.run(1);
     const { ball } = harness.debug.snapshot();
-    expect(Math.abs(ball.vy)).toBeGreaterThan(0);
-    expect(Math.abs(Math.atan2(ball.vy, Math.abs(ball.vx)))).toBeLessThan(
-      SERVE_MAX_ANGLE,
+    expect(Math.abs(Math.atan2(ball.vy, Math.abs(ball.vx)))).toBeCloseTo(
+      SERVE_ANGLE,
+      9,
     );
   });
 
@@ -529,6 +534,20 @@ describe("scoring", () => {
     expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
     expect(harness.state.winner).toBeNull();
   });
+
+  it("returns to the title from the match-over screen on Escape", () => {
+    rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
+    harness.debug.setScore(WIN_SCORE - 1, WIN_SCORE - 2);
+    harness.run(4);
+    expect(harness.state.screen).toBe("matchover");
+
+    harness.tap("Escape");
+    harness.run(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(0);
+    expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
+    expect(harness.state.winner).toBeNull();
+  });
 });
 
 // ---- Pause and mute -----------------------------------------------------
@@ -551,11 +570,18 @@ describe("pause", () => {
     expect(harness.state.screen).toBe("playing");
   });
 
-  it("quits to the title from the pause menu", () => {
+  it("quits to the title from the pause menu, restoring the title's field", () => {
     rally(harness, "versus", { x: 300, y: FIELD_CY, vx: 400, vy: 0 });
+    harness.debug.reset();
+    harness.tap("ArrowDown");
+    harness.run(1);
+    harness.tap("Enter");
+    harness.run(frames(2));
+    expect(harness.state.obstacleClock).toBeGreaterThan(0);
+    const simTime = harness.state.simTime;
+
     harness.tap("KeyP");
     harness.run(1);
-
     harness.tap("ArrowDown");
     harness.run(1);
     harness.tap("ArrowDown");
@@ -564,6 +590,9 @@ describe("pause", () => {
     harness.run(1);
 
     expect(harness.state.screen).toBe("title");
+    expect(harness.state.obstacleClock).toBe(0);
+    expect(harness.state.obstacles[0]).toEqual(obstaclePose(0, 0));
+    expect(harness.state.simTime).toBeGreaterThan(simTime);
   });
 });
 

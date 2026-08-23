@@ -3,36 +3,38 @@
 // the background color and already carries the letterboxed, device-pixel-ratio
 // aware transform for the fixed design size, so nothing here scales, translates,
 // letterboxes, or looks at the canvas element. The look is neon-on-charcoal,
-// matching the palette in specs/overview.md.
+// this build's own, from `src/theme.ts`.
 //
 // Rendering is a pure read of `CaromState`: nothing below writes to it.
 
 import {
   BALL_R,
-  COLOR,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
   FIELD_W,
   HOLD_TIME,
   MATCHOVER_ITEMS,
-  MODE_LABEL,
-  MONO,
   NET_X,
   OBSTACLES,
   PADDLE_HALF,
   PADDLE_W,
   PAUSE_ITEMS,
-  SCORE_FONT_PX,
-  SCORE_P1_X,
-  SCORE_P2_X,
-  SCORE_TOP_Y,
-  TAGLINE_TEXT,
   TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
 import { paddleBounds } from "./entities";
 import type { CaromState } from "./game";
+import {
+  COLOR,
+  MODE_LABEL,
+  MONO,
+  SCORE_FONT_PX,
+  SCORE_P1_X,
+  SCORE_P2_X,
+  SCORE_TOP_Y,
+  TAGLINE_TEXT,
+} from "./theme";
 import { ribbon } from "./trail";
 
 /**
@@ -256,48 +258,20 @@ function drawBall(ctx: Ctx, x: number, y: number): void {
   ctx.restore();
 }
 
-function drawVignette(ctx: Ctx): void {
-  const g = ctx.createRadialGradient(
-    FIELD_CX,
-    FIELD_CY,
-    FIELD_H * 0.35,
-    FIELD_CX,
-    FIELD_CY,
-    FIELD_H * 0.75,
-  );
-  g.addColorStop(0, "rgba(0, 0, 0, 0)");
-  g.addColorStop(1, "rgba(0, 0, 0, 0.45)");
-  ctx.save();
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, FIELD_W, FIELD_H);
-  ctx.restore();
-}
-
 /**
  * The field furniture (net, obstacles, paddles). `alpha` dims it behind a menu
- * overlay. `includePaddles` can be turned off so the match scene can lift the
- * paddles above the vignette (see drawMatchScene) rather than let the vignette
- * darken them at the field edges where they live.
+ * overlay.
  */
-function drawField(
-  ctx: Ctx,
-  state: CaromState,
-  alpha = 1,
-  includePaddles = true,
-): void {
+function drawField(ctx: Ctx, state: CaromState, alpha = 1): void {
   ctx.save();
   ctx.globalAlpha = alpha;
   drawNet(ctx);
   drawObstacles(ctx);
-  if (includePaddles) drawPaddles(ctx, state);
+  drawPaddles(ctx, state);
   ctx.restore();
 }
 
 // ---- HUD ----------------------------------------------------------------
-
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
-}
 
 function drawHud(ctx: Ctx, state: CaromState): void {
   const scoreOpts: TextOpts = {
@@ -308,8 +282,8 @@ function drawHud(ctx: Ctx, state: CaromState): void {
     align: "center",
     baseline: "top",
   };
-  drawText(ctx, pad2(state.score.p1), SCORE_P1_X, SCORE_TOP_Y, scoreOpts);
-  drawText(ctx, pad2(state.score.p2), SCORE_P2_X, SCORE_TOP_Y, scoreOpts);
+  drawText(ctx, `${state.score.p1}`, SCORE_P1_X, SCORE_TOP_Y, scoreOpts);
+  drawText(ctx, `${state.score.p2}`, SCORE_P2_X, SCORE_TOP_Y, scoreOpts);
 
   drawText(ctx, MODE_LABEL[state.mode], 32, 28, {
     size: 18,
@@ -372,7 +346,6 @@ function drawTitle(ctx: Ctx, state: CaromState): void {
   // A posed decorative ball, off in the open field to the lower right so it clears
   // the title, the tagline, and the menu text.
   drawBall(ctx, 968, 470);
-  drawVignette(ctx);
 
   drawText(ctx, TITLE_TEXT, FIELD_CX, 246, {
     size: 132,
@@ -411,7 +384,6 @@ function drawTitle(ctx: Ctx, state: CaromState): void {
 
 function drawHowTo(ctx: Ctx, state: CaromState): void {
   drawField(ctx, state, 0.16);
-  drawVignette(ctx);
 
   drawText(ctx, "HOW TO PLAY", FIELD_CX, 96, {
     size: 46,
@@ -467,14 +439,11 @@ function drawHowTo(ctx: Ctx, state: CaromState): void {
 }
 
 function drawMatchScene(ctx: Ctx, state: CaromState): void {
-  // The net and the obstacles sit under the vignette (atmospheric edge
-  // darkening); the ball, its trail, and the paddles are drawn on top of it so the
-  // moving pieces keep full neon brightness everywhere on the field.
-  drawField(ctx, state, 1, false);
-  drawVignette(ctx);
+  // The field background is the engine's clear, so the field edges are the same
+  // color as the letterbox bars around it (specs/overview.md).
+  drawField(ctx, state);
   drawTrail(ctx, state);
   drawBall(ctx, state.ball.x, state.ball.y);
-  drawPaddles(ctx, state);
   drawHud(ctx, state);
 }
 
@@ -578,7 +547,6 @@ function drawPause(ctx: Ctx, state: CaromState): void {
 
 function drawMatchOver(ctx: Ctx, state: CaromState): void {
   drawField(ctx, state, 0.32);
-  drawVignette(ctx);
   drawOverlay(ctx, 0.72);
 
   const { y } = drawPanel(ctx, 560, 420);

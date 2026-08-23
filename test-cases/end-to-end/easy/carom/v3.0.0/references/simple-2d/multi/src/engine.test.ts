@@ -23,7 +23,6 @@ import {
   BALL_COUNT,
   BALL_HOMES,
   BALL_R,
-  COLOR,
   CUES,
   FIELD_CX,
   FIELD_CY,
@@ -39,7 +38,7 @@ import {
   WIN_SCORE,
 } from "./constants";
 import type { CaromDebugApi, CaromSnapshot } from "./debug";
-import { game, type CaromState } from "./game";
+import { BACKGROUND, game, type CaromState } from "./game";
 
 // ---- The harness --------------------------------------------------------
 
@@ -141,7 +140,7 @@ async function createHarness(clock?: Clock): Promise<Harness> {
     width: FIELD_W,
     height: FIELD_H,
     game,
-    background: COLOR.bg,
+    background: BACKGROUND,
     layout: LAYOUT,
     clock: clock ?? new ConstantClock(FRAME_MS),
     surface,
@@ -418,6 +417,18 @@ describe("the paddles", () => {
     expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
   });
 
+  it("reads each Solo direction as held once however many keys hold it", async () => {
+    harness.tap("Enter");
+    await harness.engine.advance(1);
+
+    // Two keys up against one key down is still up against down: a standstill.
+    harness.hold("KeyW");
+    harness.hold("ArrowUp");
+    harness.hold("ArrowDown");
+    await harness.engine.advance(30);
+    expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
+  });
+
   it("gives the second slider its own paddle in Versus", async () => {
     harness.tap("ArrowDown");
     await harness.engine.advance(1);
@@ -650,6 +661,20 @@ describe("scoring", () => {
     expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
     expect(harness.state.winner).toBeNull();
   });
+
+  it("returns to the title from the match-over screen on back", async () => {
+    await rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
+    harness.debug.setScore(WIN_SCORE - 1, WIN_SCORE - 2);
+    await harness.engine.advance(4);
+    expect(harness.state.screen).toBe("matchover");
+
+    harness.tap("Escape");
+    await harness.engine.advance(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(0);
+    expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
+    expect(harness.state.winner).toBeNull();
+  });
 });
 
 // ---- Pause and mute -----------------------------------------------------
@@ -801,6 +826,21 @@ describe("rendering", () => {
     ]);
     expect(harness.pixel(400, 300)).toEqual([242, 245, 247, 255]);
     expect(harness.pixel(IDLE[0].x, IDLE[0].y)).toEqual([242, 245, 247, 255]);
+  });
+
+  it("draws each score as its own digits, one each side of center", async () => {
+    harness.debug.startMatch("versus");
+    harness.debug.setScore(7, 9);
+    harness.calls.length = 0;
+    await harness.engine.advance(1);
+
+    const texts = callsTo(harness.calls, "fillText");
+    const p1 = texts.find((args) => args[0] === "7");
+    const p2 = texts.find((args) => args[0] === "9");
+    expect(p1).toBeDefined();
+    expect(p2).toBeDefined();
+    expect(p1?.[1] as number).toBeLessThan(FIELD_CX);
+    expect(p2?.[1] as number).toBeGreaterThan(FIELD_CX);
   });
 
   it("draws in logical coordinates whatever size the surface is", async () => {

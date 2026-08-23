@@ -28,7 +28,7 @@ one chosen, known orientation.
 
 ---
 
-**Carom** is a neon, top-down paddle duel for the browser. Two paddles face each
+**Carom** is a top-down paddle duel for the browser. Two paddles face each
 other across a dark field; a ball ricochets between them, off the top and bottom
 walls, and off a pair of swaying, spinning mid-field obstacles. A player scores when the ball
 passes the far edge behind their opponent's paddle.
@@ -41,6 +41,11 @@ open field into a bank-shot puzzle whose angles change as you line the shot up.
 This is a self-contained static web app — plain **TypeScript** over the engine,
 drawing to an **HTML5 canvas**, bundled with **Vite**. No backend, accounts,
 network calls, or API keys; everything needed to play is in the built bundle.
+
+The look — a neon-on-charcoal palette, a system monospace stack, where the HUD
+sits, and the tagline — is this build's own choice, held in `src/theme.ts`. The
+specification fixes only what must be visible; every figure it does fix comes
+from `src/constants.ts`, which is the case's seeded file, unedited.
 
 ## Modes
 
@@ -66,7 +71,8 @@ layout, bound to these keys:
 Either side's up/down action moves a menu selection, so the menus answer to
 `W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
 and the game reads whichever the current screen calls for, so it pauses in a
-match and steps back on a menu.
+match, resumes from the pause menu, and returns to the title from the how-to
+and match-over screens.
 
 The **backtick** key (`` ` ``) toggles the engine's debug overlay. That key
 belongs to the engine, not to this game.
@@ -196,17 +202,20 @@ vitest.config.ts      The build's own test suite, over src/
 .tcab/engine/         The vendored, prebuilt @test-cabinet/simple-2d
 src/
   main.ts             Bootstrap: create the engine, initialize it, and run
-  constants.ts        Palette, geometry, physics constants (logical 1280x720)
+  constants.ts        Every figure the specification fixes (case-provided)
+  theme.ts            This build's own look: palette, type, HUD layout, copy
   debug.ts            The debug surface over CaromState, returned beside the
                       state by game.ts's initialize
-  game.ts             The state contract, the state machine, and the three
-                      functions the engine drives
+  game.ts             The state contract, the state machine, the field
+                      background, and the three functions the engine drives
+  match.ts            The title and match-opening poses the menus and the
+                      debug surface share
   rng.ts              The seeded generator, over CaromState.rngState
   entities.ts         Paddle and ball arithmetic and geometry
   trail.ts            The ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision, the spin mechanic
   ai.ts               The beatable AI opponent
-  render.ts           All canvas drawing (neon-on-charcoal), in logical space
+  render.ts           All canvas drawing, in logical space
   diagnostics.ts      The values the engine's overlay shows
   audio.ts            The four engine cues
   *.test.ts           The build's own tests, beside the code they cover

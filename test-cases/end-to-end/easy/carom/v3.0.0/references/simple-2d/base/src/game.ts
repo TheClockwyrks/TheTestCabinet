@@ -31,11 +31,7 @@
 import {
   BALL_R,
   CUES,
-  DEFAULT_SEED,
-  FIELD_CX,
-  FIELD_CY,
   FIELD_W,
-  HOLD_TIME,
   MATCHOVER_ITEMS,
   PADDLE_SPEED,
   PAUSE_ITEMS,
@@ -63,8 +59,10 @@ import {
   soloAxis,
 } from "./input";
 import { step } from "./physics";
+import { createInitialState, respawn, startMatch, toTitle } from "./match";
 import { renderGame } from "./render";
 import { nextSign } from "./rng";
+import { COLOR } from "./theme";
 import { recordTrail } from "./trail";
 import type {
   Game,
@@ -76,6 +74,12 @@ import type {
 // The surface is part of the module contract and is declared beside the game
 // it types, so the type is exported from here whichever module implements it.
 export type { CaromDebugApi };
+
+/**
+ * The field background. `src/main.ts` hands it to the engine as the color the
+ * canvas is cleared to each frame, so the letterbox bars match the field.
+ */
+export const BACKGROUND: string = COLOR.bg;
 
 /**
  * The top-level state machine (specs/ui.md). `countdown` and `playing` both
@@ -205,107 +209,14 @@ export interface CaromState {
   driver: DriverState;
 }
 
-// ---- Building and posing the state --------------------------------------
-
-/** Put both paddles at the vertical center, stationary. */
-function centerPaddles(state: CaromState): void {
-  state.paddles.left.cy = FIELD_CY;
-  state.paddles.left.vy = 0;
-  state.paddles.right.cy = FIELD_CY;
-  state.paddles.right.vy = 0;
-}
-
-/**
- * The complete initial state: the title screen, with every field present.
- *
- * Exported so this build's own tests can construct a state without standing an
- * engine up around it.
- *
- * These are the same values `reset()` restores in `src/debug.ts`, deliberately —
- * quitting to the menu and resetting from the debug API must not leave the game
- * looking at two different title screens.
- */
-export function createInitialState(): CaromState {
-  return {
-    screen: "title",
-    mode: "solo",
-    menuIndex: 0,
-    resumeScreen: "playing",
-    score: { p1: 0, p2: 0 },
-    winner: null,
-    receiver: "left",
-    holdTimer: 0,
-    paddles: {
-      left: { cy: FIELD_CY, vy: 0 },
-      right: { cy: FIELD_CY, vy: 0 },
-    },
-    ball: { x: FIELD_CX, y: FIELD_CY, vx: 0, vy: 0, spin: 0 },
-    trail: [],
-    simTime: 0,
-    muted: false,
-    rngState: DEFAULT_SEED,
-    driver: { paddles: false, ai: false, vy: { left: 0, right: 0 } },
-  };
-}
-
-// ---- Screen transitions -------------------------------------------------
-
-/**
- * Return to the title screen.
- *
- * `simTime` is deliberately untouched: it is accumulated simulation time, not a
- * property of the screen, and only a `reset()` starts it over.
- */
-function toTitle(state: CaromState): void {
-  state.screen = "title";
-  state.mode = "solo";
-  state.menuIndex = 0;
-  state.resumeScreen = "playing";
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  state.receiver = "left";
-  state.holdTimer = 0;
-  centerPaddles(state);
-  parkBall(state.ball);
-  state.trail.length = 0;
-}
-
-/**
- * Start a match. The match opens on the pre-serve countdown, with the first serve
- * of the match always aimed at player one, so it opens consistently
- * (specs/balls.md).
- */
-function startMatch(state: CaromState, mode: Mode): void {
-  state.mode = mode;
-  state.screen = "countdown";
-  state.resumeScreen = "playing";
-  state.menuIndex = 0;
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  state.receiver = "left";
-  state.holdTimer = HOLD_TIME;
-  centerPaddles(state);
-  parkBall(state.ball);
-  state.trail.length = 0;
-}
-
-/** Park the ball and begin the pre-serve hold, aimed at `receiver`. */
-function respawn(state: CaromState, receiver: Side): void {
-  state.receiver = receiver;
-  parkBall(state.ball);
-  state.trail.length = 0;
-  state.holdTimer = HOLD_TIME;
-  state.screen = "countdown";
-}
+// ---- Serving ------------------------------------------------------------
 
 /**
  * Launch the ball toward the receiver at SERVE_SPEED.
  *
- * The vertical component is small and fixed in magnitude — SERVE_ANGLE, well
- * inside the +/-30deg specs/balls.md allows — so the volley is never perfectly
- * flat, and its SIGN is the one draw this game makes from its seeded generator.
+ * The serve leaves at exactly SERVE_ANGLE from horizontal (specs/balls.md); the
+ * SIGN of its vertical component is the one draw this game makes from its
+ * seeded generator.
  */
 function serve(state: CaromState): void {
   const dir = state.receiver === "left" ? -1 : 1;
@@ -363,9 +274,12 @@ function handleInput(state: CaromState, api: UpdateApi): void {
         menuInput(state, api, PAUSE_ITEMS.length, (i) => selectPause(state, i));
       break;
     case "matchover":
-      menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
-        selectMatchOver(state, i),
-      );
+      // A menu is up, so Escape means `back` — which here is "to the title".
+      if (back(api)) toTitle(state);
+      else
+        menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
+          selectMatchOver(state, i),
+        );
       break;
   }
 }

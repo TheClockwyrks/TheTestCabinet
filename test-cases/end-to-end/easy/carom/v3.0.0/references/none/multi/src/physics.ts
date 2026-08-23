@@ -9,16 +9,17 @@
 //
 // To guarantee no ball tunnels through a paddle, wall, obstacle, or another ball
 // at high speed, the integration is split into sub-steps short enough
-// (<= MAX_SUBSTEP px of travel) that a ball's center can never skip past an object
-// in one move. The three balls advance in LOCK STEP through those sub-steps, so a
-// pair closing head-on is resolved at the sub-step they meet rather than after one
-// of them has crossed the other.
+// (<= MAX_SUBSTEP units of travel) that a ball's center can never skip past an
+// object in one move. The three balls advance in LOCK STEP through those
+// sub-steps, so a pair closing head-on is resolved at the sub-step they meet
+// rather than after one of them has crossed the other.
 
 import {
   BALL_COLLIDE_DIST,
   BALL_R,
   FIELD_H,
   MAX_BOUNCE_ANGLE,
+  MAX_SUBSTEP,
   OBSTACLES,
   PADDLE_HALF,
   SPEED_CAP,
@@ -30,9 +31,6 @@ import {
 } from "./constants";
 import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
 import type { BallState, PaddleState, Side } from "./game";
-
-/** Px of travel per collision sub-step. Below the smallest object half-extent. */
-const MAX_SUBSTEP = 4;
 
 /** What one step's collisions did, so the caller can play a cue per event. */
 export interface StepEvents {
@@ -270,7 +268,7 @@ export function step(
   // past an object in one move, sized by the FASTEST ball so every ball shares the
   // same sub-step clock. Every part of the step below — the spin, the integration,
   // and the collisions — happens per SUB-step rather than per frame, so the curve
-  // each ball actually travels is resolved to MAX_SUBSTEP px however long the
+  // each ball actually travels is resolved to MAX_SUBSTEP units however long the
   // frame was. That is what keeps a rally on a 30 Hz display and the same rally on
   // a 240 Hz one landing in the same place.
   let fastest = 0;

@@ -22,7 +22,7 @@ import {
   P1_X0,
   PADDLE_SPEED,
   PADDLE_W,
-  SERVE_MAX_ANGLE,
+  SERVE_ANGLE,
   SERVE_SPEED,
   SPIN_FROM_PADDLE,
   WIN_SCORE,
@@ -35,6 +35,7 @@ import {
 } from "./debug";
 import { game, type CaromState } from "./game";
 import { createRuntime, type Game, type Runtime } from "./runtime";
+import { COLOR } from "./theme";
 import type { Surface, Viewport } from "./viewport";
 
 // ---- The harness --------------------------------------------------------
@@ -102,6 +103,12 @@ function callsTo(calls: readonly DrawCall[], method: string): unknown[][] {
   );
 }
 
+/** A `#rrggbb` theme color as the opaque pixel `getImageData` reads back. */
+function rgba(hex: string): [number, number, number, number] {
+  const value = parseInt(hex.slice(1), 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255, 255];
+}
+
 function toDevice(view: Viewport, x: number, y: number): [number, number] {
   return [
     Math.round(view.offsetX + x * view.scale),
@@ -156,7 +163,7 @@ function createHarness(): Harness {
     width: FIELD_W,
     height: FIELD_H,
     game: observed,
-    background: "#0b0e14",
+    background: COLOR.bg,
     surface,
     // Node has no Web Audio. The bus stays silent; the cues above still record.
     audioContext: () => null,
@@ -290,6 +297,31 @@ describe("the menus", () => {
     expect(harness.state.screen).toBe("title");
   });
 
+  it("wraps the selection in both directions", () => {
+    harness.tap("ArrowUp");
+    harness.run(1);
+    expect(harness.state.menuIndex).toBe(2);
+
+    harness.tap("ArrowDown");
+    harness.run(1);
+    expect(harness.state.menuIndex).toBe(0);
+  });
+
+  it("reads up before down, and movement before confirm, on one frame", () => {
+    harness.tap("ArrowUp");
+    harness.tap("ArrowDown");
+    harness.tap("Enter");
+    harness.run(1);
+    expect(harness.state.menuIndex).toBe(2);
+    expect(harness.state.screen).toBe("title");
+  });
+
+  it("ignores back on the title", () => {
+    harness.tap("Escape");
+    harness.run(1);
+    expect(harness.state.screen).toBe("title");
+  });
+
   it("consumes a press exactly once", () => {
     harness.tap("ArrowDown");
     harness.run(10);
@@ -339,6 +371,11 @@ describe("the paddles", () => {
     harness.hold("ArrowDown");
     harness.run(30);
     expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
+
+    // Up is held on both sides and down on one: `up` and `down` are each 1.
+    harness.hold("ArrowUp");
+    harness.run(30);
+    expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
   });
 
   it("gives the second slider its own paddle in Versus", () => {
@@ -379,14 +416,15 @@ describe("serving", () => {
     expect(ball.speed).toBeCloseTo(SERVE_SPEED, 6);
   });
 
-  it("keeps the serve within 30deg of horizontal, and never flat", () => {
+  it("leaves at SERVE_ANGLE from horizontal, up or down", () => {
     harness.debug.startMatch("versus");
     harness.debug.serve();
     harness.run(1);
     const { ball } = harness.debug.snapshot();
     expect(Math.abs(ball.vy)).toBeGreaterThan(0);
-    expect(Math.abs(Math.atan2(ball.vy, Math.abs(ball.vx)))).toBeLessThan(
-      SERVE_MAX_ANGLE,
+    expect(Math.abs(Math.atan2(ball.vy, Math.abs(ball.vx)))).toBeCloseTo(
+      SERVE_ANGLE,
+      9,
     );
   });
 
@@ -520,8 +558,39 @@ describe("scoring", () => {
     harness.tap("Enter");
     harness.run(1);
     expect(harness.state.screen).toBe("countdown");
+    expect(harness.state.mode).toBe("versus");
     expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
     expect(harness.state.winner).toBeNull();
+  });
+
+  it("returns to the title from MENU on the match-over screen", () => {
+    rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
+    harness.debug.setScore(WIN_SCORE - 1, WIN_SCORE - 2);
+    harness.run(4);
+    expect(harness.state.screen).toBe("matchover");
+
+    harness.tap("ArrowDown");
+    harness.run(1);
+    harness.tap("Enter");
+    harness.run(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(0);
+    expect(harness.state.winner).toBeNull();
+  });
+
+  it("returns to the title from back on the match-over screen", () => {
+    rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
+    harness.debug.setScore(WIN_SCORE - 1, WIN_SCORE - 2);
+    harness.run(4);
+    expect(harness.state.screen).toBe("matchover");
+    const elapsed = harness.state.simTime;
+
+    harness.tap("Escape");
+    harness.run(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(0);
+    expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
+    expect(harness.state.simTime).toBeCloseTo(elapsed + TICK, 9);
   });
 });
 
@@ -730,12 +799,23 @@ describe("rendering", () => {
     harness.debug.startMatch("versus");
     harness.run(1);
 
-    expect(harness.pixel(P1_X0 + PADDLE_W / 2, FIELD_CY)).toEqual([
-      58, 231, 196, 255,
-    ]);
-    expect(harness.pixel(FIELD_W - P1_X0 - PADDLE_W / 2, FIELD_CY)).toEqual([
-      255, 92, 138, 255,
-    ]);
+    expect(harness.pixel(P1_X0 + PADDLE_W / 2, FIELD_CY)).toEqual(
+      rgba(COLOR.p1),
+    );
+    expect(harness.pixel(FIELD_W - P1_X0 - PADDLE_W / 2, FIELD_CY)).toEqual(
+      rgba(COLOR.p2),
+    );
+  });
+
+  it("draws each score as its own number", () => {
+    harness.debug.startMatch("versus");
+    harness.debug.setScore(7, 9);
+    harness.calls.length = 0;
+    harness.run(1);
+
+    const drawn = callsTo(harness.calls, "fillText").map(([text]) => text);
+    expect(drawn).toContain("7");
+    expect(drawn).toContain("9");
   });
 
   it("draws the ball as one arc at its own position", () => {
@@ -746,7 +826,7 @@ describe("rendering", () => {
     const arcs = callsTo(harness.calls, "arc");
     expect(arcs).toHaveLength(1);
     expect(arcs[0].slice(0, 3)).toEqual([400, 300, BALL_R]);
-    expect(harness.pixel(400, 300)).toEqual([242, 245, 247, 255]);
+    expect(harness.pixel(400, 300)).toEqual(rgba(COLOR.ball));
   });
 
   it("draws in logical coordinates whatever size the surface is", () => {

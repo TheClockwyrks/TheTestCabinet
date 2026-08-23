@@ -369,6 +369,11 @@ describe("the paddles", () => {
     harness.hold("ArrowDown");
     harness.run(30);
     expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
+
+    // Both ups against one down is still "up held, down held": `down - up` is 0.
+    harness.hold("ArrowUp");
+    harness.run(30);
+    expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
   });
 
   it("gives the second slider its own paddle in Versus", () => {
@@ -577,6 +582,20 @@ describe("scoring", () => {
     harness.tap("Enter");
     harness.run(1);
     expect(harness.state.screen).toBe("countdown");
+    expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
+    expect(harness.state.winner).toBeNull();
+  });
+
+  it("returns to the title from the match-over screen on Escape", () => {
+    rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
+    harness.debug.setScore(WIN_SCORE - 1, WIN_SCORE - 2);
+    harness.run(4);
+    expect(harness.state.screen).toBe("matchover");
+
+    harness.tap("Escape");
+    harness.run(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(0);
     expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
     expect(harness.state.winner).toBeNull();
   });
@@ -821,6 +840,21 @@ describe("rendering", () => {
     ]);
     expect(harness.pixel(400, 300)).toEqual([242, 245, 247, 255]);
     expect(harness.pixel(IDLE[0].x, IDLE[0].y)).toEqual([242, 245, 247, 255]);
+  });
+
+  it("draws each score as its own number, player one's left of center", () => {
+    harness.debug.startMatch("versus");
+    harness.debug.setScore(7, 9);
+    harness.calls.length = 0;
+    harness.run(1);
+
+    const texts = callsTo(harness.calls, "fillText");
+    const p1 = texts.find((args) => args[0] === "7");
+    const p2 = texts.find((args) => args[0] === "9");
+    expect(p1).toBeDefined();
+    expect(p2).toBeDefined();
+    expect(p1?.[1]).toBeLessThan(FIELD_CX);
+    expect(p2?.[1]).toBeGreaterThan(FIELD_CX);
   });
 
   it("draws in logical coordinates whatever size the surface is", () => {

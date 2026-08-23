@@ -29,7 +29,9 @@
 //     restores exactly these fields, so a scenario replays identically.
 
 import {
-  FIELD_CY,
+  BALL_R,
+  CUES,
+  FIELD_W,
   HOLD_TIME,
   MATCHOVER_ITEMS,
   P2_X0,
@@ -39,15 +41,12 @@ import {
   TITLE_ITEMS,
   WIN_LEAD,
   WIN_SCORE,
-  BALL_R,
-  CUES,
-  DEFAULT_SEED,
-  FIELD_W,
 } from "./constants";
 import { defineCues } from "./audio";
 import { createDebugApi, type CaromDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
-import { createBalls, integratePaddle, parkBall } from "./entities";
+import { integratePaddle, parkBall } from "./entities";
+import { createInitialState, startMatch, toTitle } from "./flow";
 import { updateAi } from "./ai";
 import {
   back,
@@ -64,6 +63,7 @@ import {
 import { step } from "./physics";
 import { renderGame } from "./render";
 import { nextAngle } from "./rng";
+import { COLOR } from "./theme";
 import { recordTrail } from "./trail";
 import type {
   Game,
@@ -75,6 +75,13 @@ import type {
 // The surface is part of the module contract and is declared beside the game
 // it types, so the type is exported from here whichever module implements it.
 export type { CaromDebugApi };
+
+/**
+ * The field background, a CSS color string. `src/main.ts` hands it to the engine
+ * as the color the canvas is cleared to each frame, so the letterbox bars around
+ * the field match the field itself.
+ */
+export const BACKGROUND: string = COLOR.bg;
 
 /**
  * The top-level state machine (specs/ui.md). `countdown` and `playing` both
@@ -186,10 +193,7 @@ export interface CaromState {
   /** The winning side once the match is over, and null until then. */
   winner: Side | null;
 
-  /**
-   * The side the next serve travels toward: the player who was just scored on.
-   * The first serve of a match always travels toward player one ("left").
-   */
+  /** The two paddles. */
   paddles: { left: PaddleState; right: PaddleState };
   /**
    * The three balls in play, in play order (specs/balls.md). They never start,
@@ -217,91 +221,7 @@ export interface CaromState {
   driver: DriverState;
 }
 
-// ---- Building and posing the state --------------------------------------
-
-/** Put both paddles at the vertical center, stationary. */
-function centerPaddles(state: CaromState): void {
-  state.paddles.left.cy = FIELD_CY;
-  state.paddles.left.vy = 0;
-  state.paddles.right.cy = FIELD_CY;
-  state.paddles.right.vy = 0;
-}
-
-/**
- * The complete initial state: the title screen, with every field present.
- *
- * Exported so this build's own tests can construct a state without standing an
- * engine up around it.
- *
- * These are the same values `reset()` restores in `src/debug.ts`, deliberately —
- * quitting to the menu and resetting from the debug API must not leave the game
- * looking at two different title screens.
- */
-export function createInitialState(): CaromState {
-  return {
-    screen: "title",
-    mode: "solo",
-    menuIndex: 0,
-    resumeScreen: "playing",
-    score: { p1: 0, p2: 0 },
-    winner: null,
-    paddles: {
-      left: { cy: FIELD_CY, vy: 0 },
-      right: { cy: FIELD_CY, vy: 0 },
-    },
-    balls: createBalls(),
-    simTime: 0,
-    muted: false,
-    rngState: DEFAULT_SEED,
-    driver: { paddles: false, ai: false, vy: { left: 0, right: 0 } },
-  };
-}
-
 // ---- Screen transitions -------------------------------------------------
-
-/**
- * Return to the title screen.
- *
- * `simTime` is deliberately untouched: it is accumulated simulation time, not a
- * property of the screen, and only a `reset()` starts it over.
- */
-function toTitle(state: CaromState): void {
-  state.screen = "title";
-  state.mode = "solo";
-  state.menuIndex = 0;
-  state.resumeScreen = "playing";
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  centerPaddles(state);
-  parkBalls(state, 0);
-}
-
-/**
- * Put every ball back on its own home point with the same wait ahead of it.
- *
- * A `hold` of 0 is the title screen's pose: parked, and no part of a live match.
- */
-function parkBalls(state: CaromState, hold: number): void {
-  for (let i = 0; i < state.balls.length; i++)
-    parkBall(state.balls[i], i, hold);
-}
-
-/**
- * Start a match. All three balls take their home points with a full hold, so the
- * match opens on the countdown screen and they launch together (specs/balls.md).
- */
-function startMatch(state: CaromState, mode: Mode): void {
-  state.mode = mode;
-  state.screen = "countdown";
-  state.resumeScreen = "playing";
-  state.menuIndex = 0;
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  centerPaddles(state);
-  parkBalls(state, HOLD_TIME);
-}
 
 /**
  * Launch one ball from its home point at SERVE_SPEED.
@@ -393,9 +313,12 @@ function handleInput(state: CaromState, api: UpdateApi): void {
         menuInput(state, api, PAUSE_ITEMS.length, (i) => selectPause(state, i));
       break;
     case "matchover":
-      menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
-        selectMatchOver(state, i),
-      );
+      // A menu is up, so Escape means `back` — which here is "to the title".
+      if (back(api)) toTitle(state);
+      else
+        menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
+          selectMatchOver(state, i),
+        );
       break;
   }
 }

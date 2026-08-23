@@ -14,10 +14,13 @@ here is exactly what a run on this engine is asked to produce.
 
 ---
 
-**Carom** is a neon, top-down paddle duel for the browser. Two paddles face each
-other across a dark field; a ball ricochets between them, off the top and bottom
+**Carom** is a top-down paddle duel for the browser. Two paddles face each other
+across a dark field; a ball ricochets between them, off the top and bottom
 walls, and off a pair of fixed mid-field obstacles. A player scores when the ball
-passes the far edge behind their opponent's paddle.
+passes the far edge behind their opponent's paddle. The neon-on-charcoal look is
+this build's own choice: the specification fixes the rules and leaves the
+palette, type, and layout to the build, so they live in `src/theme.ts` rather
+than beside the case-fixed figures in `src/constants.ts`.
 
 Carom's defining mechanic is **spin**: the motion of a paddle at the moment it
 strikes the ball curves the ball's flight afterward, so skilled play is about
@@ -40,14 +43,14 @@ Matches are first to **11 points**, win by **2** (deuce continues past 10-10).
 Every control is a **registered engine action** on the `dual-vertical` touch
 layout, bound to these keys:
 
-| Action              | Keys               | Does                                                                    |
-| ------------------- | ------------------ | ----------------------------------------------------------------------- |
-| `p1-up` / `p1-down` | `W` / `S`          | Moves player one's (left) paddle.                                       |
-| `p2-up` / `p2-down` | `↑` / `↓`          | Moves player two's (right) paddle — and, in Solo, player one's as well. |
-| `confirm`           | `Enter` or `Space` | Accepts the selected menu item.                                         |
-| `back`              | `Esc`              | Goes back a screen.                                                     |
-| `pause`             | `P` or `Esc`       | Pauses during a match.                                                  |
-| `mute`              | `M`                | Toggles mute, on any screen.                                            |
+| Action              | Keys               | Does                                                                                                                      |
+| ------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `p1-up` / `p1-down` | `W` / `S`          | Moves player one's (left) paddle.                                                                                         |
+| `p2-up` / `p2-down` | `↑` / `↓`          | Moves player two's (right) paddle — and, in Solo, player one's as well.                                                   |
+| `confirm`           | `Enter` or `Space` | Accepts the selected menu item.                                                                                           |
+| `back`              | `Esc`              | Goes back a screen: leaves how-to-play, resumes from the pause menu, and returns to the title from the match-over screen. |
+| `pause`             | `P` or `Esc`       | Pauses during a match.                                                                                                    |
+| `mute`              | `M`                | Toggles mute, on any screen.                                                                                              |
 
 Either side's up/down action moves a menu selection, so the menus answer to
 `W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
@@ -182,17 +185,21 @@ vitest.config.ts      The build's own test suite, over src/
 .tcab/engine/         The vendored, prebuilt @test-cabinet/simple-2d
 src/
   main.ts             Bootstrap: create the engine, initialize it, and run
-  constants.ts        Palette, geometry, physics constants (logical 1280x720)
+  constants.ts        Every figure the specification fixes (logical 1280x720);
+                      seeded by the case and not edited
+  theme.ts            This build's own look: palette, type, HUD layout, copy
   debug.ts            The debug surface over CaromState, returned beside the
                       state by game.ts's initialize
   game.ts             The state contract, the state machine, and the three
                       functions the engine drives
+  match.ts            Building the state and moving it between screens, shared
+                      by the menus and the debug surface
   rng.ts              The seeded generator, over CaromState.rngState
   entities.ts         Paddle and ball arithmetic and geometry
   trail.ts            The ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision, the spin mechanic
   ai.ts               The beatable AI opponent
-  render.ts           All canvas drawing (neon-on-charcoal), in logical space
+  render.ts           All canvas drawing, in logical space
   diagnostics.ts      The values the engine's overlay shows
   audio.ts            The four engine cues
   *.test.ts           The build's own tests, beside the code they cover

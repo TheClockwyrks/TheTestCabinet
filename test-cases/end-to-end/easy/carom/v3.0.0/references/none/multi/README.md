@@ -66,10 +66,11 @@ Every control is a **named action** bound to physical keys
 | `pause`             | `P` or `Esc`       | Pauses during a match.                                                  |
 | `mute`              | `M`                | Toggles mute, on any screen.                                            |
 
-Either side's up/down action moves a menu selection, so the menus answer to
-`W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
-and the game reads whichever the current screen calls for, so it pauses in a
-match and steps back on a menu.
+Either side's up/down action moves a menu selection, wrapping at both ends, so
+the menus answer to `W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions —
+`pause` and `back` — and the game reads whichever the current screen calls for:
+it pauses in a match, resumes from the pause menu, and returns to the title from
+the how-to and match-over screens.
 
 The **backtick** key (`` ` ``) toggles the diagnostics overlay. That key belongs
 to the runtime (`src/overlay.ts`), not to the game.
@@ -88,11 +89,12 @@ asset loader, because Carom loads nothing — and it is five files:
 
 - **`src/runtime.ts`** — the frame loop and the wiring. It measures each frame's
   delta in **seconds** (clamping the gap a backgrounded tab resumes with), clears
-  the canvas, installs the logical transform, and calls `update` then `render`.
-  There is no fixed timestep and no accumulator: every rate in
-  `src/constants.ts` is per second and is integrated against the delta, so the
-  same second of play reaches the same state however it was divided into frames.
-  It also owns the **manual clock** (below).
+  the canvas to the field background (so the letterbox bars match the field),
+  installs the logical transform, and calls `update` then `render`. There is no
+  fixed timestep and no accumulator: every rate in `src/constants.ts` is per
+  second and is integrated against the delta, so the same second of play reaches
+  the same state however it was divided into frames. It also owns the **manual
+  clock** (below).
 - **`src/viewport.ts`** — the canvas fit: one uniform scale, a centered
   letterbox, and the device pixel ratio, re-derived at the top of every frame so
   no resize handler is needed. `src/render.ts` draws in logical `1280x720`
@@ -209,7 +211,10 @@ src/
   keyboard.ts         Named actions over key codes, with edge detection
   audio-bus.ts        Web Audio cues and the first-gesture unlock
   overlay.ts          The diagnostics panel and the backtick key
-  constants.ts        Palette, geometry, physics constants (logical 1280x720)
+  constants.ts        Every figure the specification fixes: geometry, physics,
+                      AI, match rules, bindings, cues, copy (logical 1280x720)
+  theme.ts            This build's own look: the neon palette, the type, the
+                      HUD layout, the tagline and the mode labels
   debug.ts            The window.__carom surface over CaromState
   game.ts             The state contract, the state machine, and the three
                       functions the runtime drives
@@ -219,7 +224,7 @@ src/
   physics.ts          Delta-time integration, collision (walls, paddles,
                       obstacles, and ball against ball), the spin mechanic
   ai.ts               The beatable AI opponent, defending one ball at a time
-  render.ts           All canvas drawing (neon-on-charcoal), in logical space
+  render.ts           All canvas drawing, in logical space
   diagnostics.ts      The values the overlay shows
   audio.ts            The five audio cues
   *.test.ts           The build's own tests, beside the code they cover

@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { TRAIL_TIME } from "./constants";
-import { createInitialState } from "./game";
+import { createInitialState } from "./match";
 import { pruneTrail, recordTrail, ribbon } from "./trail";
 import type { TrailSample } from "./game";
 

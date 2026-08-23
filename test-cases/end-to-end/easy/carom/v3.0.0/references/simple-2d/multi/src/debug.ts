@@ -21,15 +21,9 @@
 // (the runtime's registered actions are driven directly), and no overlay drawing
 // or toggle (the runtime draws the panel and owns the backtick key).
 
-import {
-  BALL_COUNT,
-  BALL_HOMES,
-  CAROM_DEBUG_VERSION,
-  DEFAULT_SEED,
-  FIELD_CY,
-  HOLD_TIME,
-} from "./constants";
-import type { BallState, CaromState, Mode, Screen, Side } from "./game";
+import { BALL_COUNT, CAROM_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
+import { startMatch, toTitle } from "./flow";
+import type { CaromState, Mode, Screen, Side } from "./game";
 
 /** The fields `setPaddle` may set. Anything omitted is left as it is. */
 export interface PaddlePatch {
@@ -104,46 +98,14 @@ function takeControl(state: CaromState): void {
 }
 
 /**
- * Put one ball back on its own home point: motionless, spinless, and with an
- * empty trail. `hold` is the wait it starts, `0` leaving it parked and unheld,
- * which is the title screen's pose.
- */
-function parkBall(ball: BallState, index: number, hold: number): void {
-  const home = BALL_HOMES[index];
-  ball.x = home.x;
-  ball.y = home.y;
-  ball.vx = 0;
-  ball.vy = 0;
-  ball.spin = 0;
-  ball.held = hold > 0;
-  ball.holdTimer = hold;
-  ball.trail.length = 0;
-}
-
-/** Put every ball back on its own home point. */
-function parkBalls(state: CaromState, hold: number): void {
-  for (let i = 0; i < BALL_COUNT; i++) parkBall(state.balls[i], i, hold);
-}
-
-/**
- * Restore every declared field of the state to its title-screen value.
+ * Restore every declared field of the state to its title-screen value, the clock
+ * and the driver included, and reseed the generator.
  *
  * `muted` is deliberately untouched: muting is a player preference the runtime
  * owns, and a reset is not a reason to start making noise again.
  */
 function poseTitle(state: CaromState, seed: number): void {
-  state.screen = "title";
-  state.mode = "solo";
-  state.menuIndex = 0;
-  state.resumeScreen = "playing";
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  state.paddles.left.cy = FIELD_CY;
-  state.paddles.left.vy = 0;
-  state.paddles.right.cy = FIELD_CY;
-  state.paddles.right.vy = 0;
-  parkBalls(state, 0);
+  toTitle(state);
   state.simTime = 0;
   state.rngState = seed;
   state.driver.paddles = false;
@@ -208,18 +170,7 @@ export function createDebugApi(state: CaromState): CaromDebugApi {
      */
     startMatch(mode) {
       takeControl(state);
-      state.mode = mode;
-      state.screen = "countdown";
-      state.resumeScreen = "playing";
-      state.menuIndex = 0;
-      state.score.p1 = 0;
-      state.score.p2 = 0;
-      state.winner = null;
-      state.paddles.left.cy = FIELD_CY;
-      state.paddles.left.vy = 0;
-      state.paddles.right.cy = FIELD_CY;
-      state.paddles.right.vy = 0;
-      parkBalls(state, HOLD_TIME);
+      startMatch(state, mode);
     },
 
     /**

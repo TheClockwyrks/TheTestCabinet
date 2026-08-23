@@ -28,7 +28,11 @@
 //     restores exactly these fields, so a scenario replays identically.
 
 import {
+  BALL_R,
+  CUES,
+  DEFAULT_SEED,
   FIELD_CY,
+  FIELD_W,
   HOLD_TIME,
   MATCHOVER_ITEMS,
   P2_X0,
@@ -38,12 +42,8 @@ import {
   TITLE_ITEMS,
   WIN_LEAD,
   WIN_SCORE,
-  BALL_R,
-  CUES,
-  FIELD_W,
 } from "./constants";
 import { defineCues } from "./audio";
-import { DEFAULT_SEED } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { createBalls, integratePaddle, parkBall } from "./entities";
 import { updateAi } from "./ai";
@@ -175,10 +175,7 @@ export interface CaromState {
   /** The winning side once the match is over, and null until then. */
   winner: Side | null;
 
-  /**
-   * The side the next serve travels toward: the player who was just scored on.
-   * The first serve of a match always travels toward player one ("left").
-   */
+  /** The two paddles. */
   paddles: { left: PaddleState; right: PaddleState };
   /**
    * The three balls in play, in play order (specs/balls.md). They never start,
@@ -219,12 +216,10 @@ function centerPaddles(state: CaromState): void {
 /**
  * The complete initial state: the title screen, with every field present.
  *
- * Exported so this build's own tests can construct a state without standing an
- * runtime up around it.
- *
- * These are the same values `reset()` restores in `src/debug.ts`, deliberately —
- * quitting to the menu and resetting from the debug API must not leave the game
- * looking at two different title screens.
+ * Exported so this build's own tests can construct a state without standing a
+ * runtime up around it. `toTitle` below restores the same values, so quitting to
+ * the menu and resetting from the debug API never leave the game looking at two
+ * different title screens.
  */
 export function createInitialState(): CaromState {
   return {
@@ -249,12 +244,12 @@ export function createInitialState(): CaromState {
 // ---- Screen transitions -------------------------------------------------
 
 /**
- * Return to the title screen.
- *
- * `simTime` is deliberately untouched: it is accumulated simulation time, not a
- * property of the screen, and only a `reset()` starts it over.
+ * Return to the title screen: every declared field takes its title-screen value
+ * except `simTime`, `muted`, `rngState`, and `driver`, which keep theirs
+ * (specs/ui.md). `reset()` on the debug surface builds on this and additionally
+ * starts the clock over, reseeds the generator, and clears the driver.
  */
-function toTitle(state: CaromState): void {
+export function toTitle(state: CaromState): void {
   state.screen = "title";
   state.mode = "solo";
   state.menuIndex = 0;
@@ -279,8 +274,10 @@ function parkBalls(state: CaromState, hold: number): void {
 /**
  * Start a match. All three balls take their home points with a full hold, so the
  * match opens on the countdown screen and they launch together (specs/balls.md).
+ * SOLO and VERSUS on the title, RESTART on the pause menu, PLAY AGAIN on the
+ * match-over screen, and `startMatch` on the debug surface all come here.
  */
-function startMatch(state: CaromState, mode: Mode): void {
+export function startMatch(state: CaromState, mode: Mode): void {
   state.mode = mode;
   state.screen = "countdown";
   state.resumeScreen = "playing";
@@ -382,9 +379,12 @@ function handleInput(state: CaromState, api: UpdateApi): void {
         menuInput(state, api, PAUSE_ITEMS.length, (i) => selectPause(state, i));
       break;
     case "matchover":
-      menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
-        selectMatchOver(state, i),
-      );
+      // Escape on the match-over screen is `back` to the title.
+      if (back(api)) toTitle(state);
+      else
+        menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
+          selectMatchOver(state, i),
+        );
       break;
   }
 }

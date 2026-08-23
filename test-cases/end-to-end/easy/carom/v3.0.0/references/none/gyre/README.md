@@ -41,19 +41,20 @@ Matches are first to **11 points**, win by **2** (deuce continues past 10-10).
 Every control is a **named action** bound to physical keys
 (`KeyboardEvent.code`), so the bindings survive a non-QWERTY layout:
 
-| Action              | Keys               | Does                                                                    |
-| ------------------- | ------------------ | ----------------------------------------------------------------------- |
-| `p1-up` / `p1-down` | `W` / `S`          | Moves player one's (left) paddle.                                       |
-| `p2-up` / `p2-down` | `↑` / `↓`          | Moves player two's (right) paddle — and, in Solo, player one's as well. |
-| `confirm`           | `Enter` or `Space` | Accepts the selected menu item.                                         |
-| `back`              | `Esc`              | Goes back a screen.                                                     |
-| `pause`             | `P` or `Esc`       | Pauses during a match.                                                  |
-| `mute`              | `M`                | Toggles mute, on any screen.                                            |
+| Action              | Keys               | Does                                                                      |
+| ------------------- | ------------------ | ------------------------------------------------------------------------- |
+| `p1-up` / `p1-down` | `W` / `S`          | Moves player one's (left) paddle.                                         |
+| `p2-up` / `p2-down` | `↑` / `↓`          | Moves player two's (right) paddle — and, in Solo, player one's as well.   |
+| `confirm`           | `Enter` or `Space` | Accepts the selected menu item.                                           |
+| `back`              | `Esc`              | Goes back a screen: leaves how-to, resumes from pause, leaves match-over. |
+| `pause`             | `P` or `Esc`       | Pauses during a match.                                                    |
+| `mute`              | `M`                | Toggles mute, on any screen.                                              |
 
 Either side's up/down action moves a menu selection, so the menus answer to
 `W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
 and the game reads whichever the current screen calls for, so it pauses in a
-match and steps back on a menu.
+match and steps back on a menu: it resumes from the pause menu and returns to
+the title from the match-over screen.
 
 The **backtick** key (`` ` ``) toggles the diagnostics overlay. That key belongs
 to the runtime (`src/overlay.ts`), not to the game.
@@ -63,6 +64,12 @@ the shot. Up and down swings curve it opposite ways; a stationary paddle imparts
 no spin, and imparted spin fades within a couple of seconds. Where on the paddle
 you make contact sets the angle: the center sends the ball straight across, the
 top or bottom edge sends it off at up to ~55°.
+
+**The look** — neon on charcoal, a system monospace, the scores either side of
+the net — is this build's own choice. The specification fixes the geometry, the
+physics, the controls, the cue names and the screen copy, and leaves the palette
+and layout to the build; `src/theme.ts` holds the former and `src/constants.ts`
+the latter, kept apart so the two are never confused.
 
 ## The runtime this project carries
 
@@ -200,7 +207,8 @@ src/
   keyboard.ts         Named actions over key codes, with edge detection
   audio-bus.ts        Web Audio cues and the first-gesture unlock
   overlay.ts          The diagnostics panel and the backtick key
-  constants.ts        Palette, geometry, physics constants (logical 1280x720)
+  constants.ts        Every figure the specification fixes (logical 1280x720)
+  theme.ts            This build's own look: palette, type, HUD layout, tagline
   debug.ts            The window.__carom surface over CaromState
   game.ts             The state contract, the state machine, and the three
                       functions the runtime drives
@@ -210,7 +218,7 @@ src/
   physics.ts          Delta-time integration, collision, the spin mechanic
   ai.ts               The beatable AI opponent
   obstacles.ts        The obstacle poses, as pure functions of the clock
-  render.ts           All canvas drawing (neon-on-charcoal), in logical space
+  render.ts           All canvas drawing, in logical space
   diagnostics.ts      The values the overlay shows
   audio.ts            The four audio cues
   *.test.ts           The build's own tests, beside the code they cover

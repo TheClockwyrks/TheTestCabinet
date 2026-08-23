@@ -20,17 +20,19 @@
 // events at the page) and no overlay drawing or toggle (the runtime draws the
 // panel and owns the backtick key).
 
-import { FIELD_CX, FIELD_CY, HOLD_TIME } from "./constants";
-import type { BallState, CaromState, Mode, Screen, Side } from "./game";
+import { CAROM_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
+import { parkBall } from "./entities";
+import {
+  startMatch,
+  toTitle,
+  type CaromState,
+  type Mode,
+  type Screen,
+  type Side,
+} from "./game";
 
 /** The `window` property the API is installed on. */
 export const CAROM_HANDLE = "__carom";
-
-/** The surface's version, reported as `version` and bumped when it changes. */
-export const CAROM_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
 
 /**
  * The runtime's clock, as the surface reaches it.
@@ -118,37 +120,16 @@ function takeControl(state: CaromState): void {
   state.driver.paddles = true;
 }
 
-/** Park the ball at its spawn point: motionless, and with no spin. */
-function parkBall(ball: BallState): void {
-  ball.x = FIELD_CX;
-  ball.y = FIELD_CY;
-  ball.vx = 0;
-  ball.vy = 0;
-  ball.spin = 0;
-}
-
 /**
  * Restore every declared field of the state to its title-screen value.
  *
+ * The game's own return to the title does most of it; a reset additionally
+ * starts the clock over, reseeds the generator, and hands the paddles back.
  * `muted` is deliberately untouched: muting is a player preference the runtime
  * owns, and a reset is not a reason to start making noise again.
  */
 function poseTitle(state: CaromState, seed: number): void {
-  state.screen = "title";
-  state.mode = "solo";
-  state.menuIndex = 0;
-  state.resumeScreen = "playing";
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  state.receiver = "left";
-  state.holdTimer = 0;
-  state.paddles.left.cy = FIELD_CY;
-  state.paddles.left.vy = 0;
-  state.paddles.right.cy = FIELD_CY;
-  state.paddles.right.vy = 0;
-  parkBall(state.ball);
-  state.trail.length = 0;
+  toTitle(state);
   state.simTime = 0;
   state.rngState = seed;
   state.driver.paddles = false;
@@ -251,21 +232,7 @@ export function createDebugApi(
      */
     startMatch(mode) {
       takeControl(state);
-      state.mode = mode;
-      state.screen = "countdown";
-      state.resumeScreen = "playing";
-      state.menuIndex = 0;
-      state.score.p1 = 0;
-      state.score.p2 = 0;
-      state.winner = null;
-      state.receiver = "left";
-      state.holdTimer = HOLD_TIME;
-      state.paddles.left.cy = FIELD_CY;
-      state.paddles.left.vy = 0;
-      state.paddles.right.cy = FIELD_CY;
-      state.paddles.right.vy = 0;
-      parkBall(state.ball);
-      state.trail.length = 0;
+      startMatch(state, mode);
     },
 
     /**

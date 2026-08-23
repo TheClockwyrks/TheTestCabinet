@@ -9,11 +9,12 @@
 // and the four modules under it, the game in `src/game.ts`, the surface in
 // `src/debug.ts`.
 
-import { COLOR, FIELD_H, FIELD_W } from "./constants";
+import { FIELD_H, FIELD_W } from "./constants";
 import { installDebugApi } from "./debug";
 import { game } from "./game";
 import type { CaromState } from "./game";
 import { createRuntime } from "./runtime";
+import { COLOR } from "./theme";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement | null;
 if (!canvas) {
@@ -28,6 +29,8 @@ const runtime = createRuntime<CaromState>({
   width: FIELD_W,
   height: FIELD_H,
   game,
+  // The field background, which the runtime clears the whole canvas to, so the
+  // letterbox bars match the field (specs/overview.md).
   background: COLOR.bg,
 });
 
