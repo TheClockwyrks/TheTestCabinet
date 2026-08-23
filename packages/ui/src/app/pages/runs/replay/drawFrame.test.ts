@@ -1525,6 +1525,57 @@ describe("an assignment the player will not perform", () => {
     expect("letterSpacing" in (real as unknown as object)).toBe(false);
   });
 
+  it("does not report a property this context has not got when the recorded value is its default", () => {
+    // A recording carries a frame's whole inherited state, so a property the build
+    // never touched still travels at its default — `imageSmoothingQuality: "low"`
+    // on every Chromium frame — and a browser without the property (Firefox)
+    // refuses the name on every frame. Refusing a default loses nothing: the
+    // context was blanked to its defaults already. Reporting it made the notice
+    // appear on every frame of every replay, which is a notice nobody reads.
+    const { ctx, real } = prototypeContext();
+    const report = drawFrame(
+      ctx,
+      recordingOf({
+        states: [
+          state({
+            properties: { imageSmoothingQuality: "low", fillStyle: "#abcdef" },
+          }),
+        ],
+        ops: [
+          { op: "set", property: "imageSmoothingQuality", value: "low" },
+          { op: "call", method: "fillRect", args: [0, 0, 4, 4] },
+        ],
+        frames: [frame([0, 1])],
+      }),
+      NO_IMAGES,
+      0,
+    );
+    expect(report).toMatchObject({ skipped: 0, unreproducible: [] });
+    expect(real.fillStyle).toBe("#abcdef");
+    expect(real.log).toContain("fillRect(0,0,4,4)");
+    expect("imageSmoothingQuality" in (real as unknown as object)).toBe(false);
+  });
+
+  it("still reports a property this context has not got when the recorded value is not its default", () => {
+    // The silence is for a no-op, not for the property: a build that asked for
+    // high-quality smoothing and was drawn without it is drawn differently.
+    const { ctx } = prototypeContext();
+    const report = drawFrame(
+      ctx,
+      recordingOf({
+        states: [state({ properties: { imageSmoothingQuality: "high" } })],
+        ops: [{ op: "set", property: "imageSmoothingQuality", value: "high" }],
+        frames: [frame([0])],
+      }),
+      NO_IMAGES,
+      0,
+    );
+    expect(report).toMatchObject({
+      skipped: 2,
+      unreproducible: ["the imageSmoothingQuality property"],
+    });
+  });
+
   it("performs an assignment to a property the context carries on its prototype", () => {
     // The guard has to let a real canvas property through, and on a real canvas
     // every one of them is an accessor on the prototype rather than a field of the

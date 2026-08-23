@@ -199,6 +199,62 @@ function assignable(subject: object, property: string): boolean {
   return false;
 }
 
+/**
+ * The value each context property holds on a freshly reset context — the canvas
+ * specification's initial values, for every property the recorder snapshots.
+ *
+ * A recording carries a frame's WHOLE inherited state, so a property the build
+ * never touched still travels, at the value it had: `imageSmoothingQuality: "low"`
+ * on every frame of every recording taken on Chromium. A context that has not got
+ * the property refuses the name, and refusing it loses nothing — `blank` had
+ * already put the context at its defaults, which is exactly where the assignment
+ * would have left it. Without this table every such frame was reported as missing
+ * a part, on every browser that lacks any one property (Firefox has never carried
+ * `imageSmoothingQuality`), which made the report mean nothing. It is consulted
+ * only once an assignment has already failed to land, so a property that does take
+ * is never compared against it.
+ */
+const PROPERTY_DEFAULTS: Readonly<Record<string, unknown>> = {
+  globalAlpha: 1,
+  globalCompositeOperation: "source-over",
+  filter: "none",
+  imageSmoothingEnabled: true,
+  imageSmoothingQuality: "low",
+  strokeStyle: "#000000",
+  fillStyle: "#000000",
+  shadowOffsetX: 0,
+  shadowOffsetY: 0,
+  shadowBlur: 0,
+  shadowColor: "rgba(0, 0, 0, 0)",
+  lineWidth: 1,
+  lineCap: "butt",
+  lineJoin: "miter",
+  miterLimit: 10,
+  lineDashOffset: 0,
+  font: "10px sans-serif",
+  textAlign: "start",
+  textBaseline: "alphabetic",
+  direction: "ltr",
+  letterSpacing: "0px",
+  wordSpacing: "0px",
+  fontKerning: "auto",
+  fontStretch: "normal",
+  fontVariantCaps: "normal",
+  textRendering: "auto",
+};
+
+/**
+ * Whether an assignment of `value` to `property` that did not land cost the frame
+ * anything: it did not if the value is the property's default, because the context
+ * was blanked to its defaults before the frame was applied and is already there.
+ */
+function harmlessWhenRefused(property: string, value: unknown): boolean {
+  return (
+    Object.prototype.hasOwnProperty.call(PROPERTY_DEFAULTS, property) &&
+    PROPERTY_DEFAULTS[property] === value
+  );
+}
+
 /** A value resolved into something a context can be handed, or why it could not be. */
 type Resolution =
   | { readonly ok: true; readonly value: unknown }
@@ -605,8 +661,11 @@ function applyState(
     // means building whatever resources it names against this context for nothing.
     // A state block reaches the context by the same assignment a `set` operation
     // does and is guarded by the same rule; see `assignable`.
+    // An assignment that cannot land is reported only if it would have changed
+    // something; a default value refused by a context without the property is
+    // the state the context is already in. See `PROPERTY_DEFAULTS`.
     if (!assignable(scope.ctx, name)) {
-      skip(`the ${name} property`);
+      if (!harmlessWhenRefused(name, value)) skip(`the ${name} property`);
       continue;
     }
     const resolved = resolve(value, scope, 0);
@@ -620,7 +679,8 @@ function applyState(
       // A context that refuses a property it does not implement is telling us the
       // property does not apply to it. The recorder is equally forgiving on the way
       // in, so a recording taken on one context and drawn on another meets this.
-      skip(`the ${name} property`);
+      if (!harmlessWhenRefused(name, resolved.value))
+        skip(`the ${name} property`);
     }
   }
 
@@ -744,13 +804,17 @@ function perform(
     // does not carry as a writable property of its own is refused outright rather
     // than performed. Performing it is what a context does not survive — see
     // `assignable`.
-    if (!assignable(host, op.property)) return named;
+    // A refusal of a value the property already holds by default costs nothing
+    // and is not reported; see `PROPERTY_DEFAULTS`.
+    if (!assignable(host, op.property)) {
+      return harmlessWhenRefused(op.property, op.value) ? null : named;
+    }
     const value = resolve(op.value, scope, depth);
     if (!value.ok) return value.reason;
     try {
       host[op.property] = value.value;
     } catch {
-      return named;
+      return harmlessWhenRefused(op.property, value.value) ? null : named;
     }
     return null;
   }
