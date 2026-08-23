@@ -572,6 +572,7 @@ export default defineConfig({
                     "engines/simple-2d/concepts/audio",
                     "engines/simple-2d/concepts/assets",
                     "engines/simple-2d/concepts/diagnostics",
+                    "engines/simple-2d/concepts/debug",
                     "engines/simple-2d/concepts/recording",
                   ],
                 },
