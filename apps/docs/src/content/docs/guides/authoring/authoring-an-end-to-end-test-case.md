@@ -27,7 +27,7 @@ version is frozen. Revise a case by adding a new version.
 test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml         # manifest: specs, references, checks, domains, review items
   variants/              # one standalone TOML file per variant (listed in `variants`)
-  workspaces/            # starting files seeded to the run root (optional)
+  workspaces/            # starter project per engine, seeded to the run root (optional)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   changelog.md           # per-version site-facing entry (NOT seeded)
@@ -44,6 +44,13 @@ workspace files, and the rendered reference screenshots. The prompt is rendered
 and handed to the harness as its instruction; it is never written to the run's
 disk. The reference source is withheld so a model builds the UI from the spec
 rather than copying it.
+
+A workspace is one starter project per supported
+[engine](/components/core/engines/). An engine's workspace vendors the engine
+and the entry stub it requires. The engineless (`none`) workspace provides
+configuration only: a `package.json`, tool configuration, and an `index.html`,
+with no source code, so the model owns the code it is judged on. See
+[Engineless configurations](/guides/authoring/writing-case-specifications/#engineless-configurations).
 
 ## Procedure
 
@@ -70,7 +77,8 @@ title, and its version is a `vX.Y.Z` string.
 In the overview spec, fix the three things every other spec leans on:
 
 - the coordinate system: a fixed logical play area, origin, and axis directions;
-- the palette and type: canonical colors and a font stack;
+- what must be visible on the field and on each screen, leaving palette, type,
+  and layout to the build;
 - the states and screens the build must have.
 
 ### 3. Decompose the specification by concern
@@ -88,8 +96,10 @@ A few rules dominate this step.
 - Specify what rather than how. The language, framework, bundler, and rendering
   approach are the model's choices. Pin down observable behavior and exact
   values. The build-and-serve interface in step 6 is the exception.
-- Be precise and testable. Palette, layout, measurements, and screen contents are
-  written in real numbers. The screenshots illustrate the target.
+- Be precise and testable. Every behavior a validator checks is written as an
+  exact value or an explicit bound, and every validator is derived from the
+  spec. Appearance is stated as what must be present. See
+  [What is specified and what is validated](/guides/authoring/writing-case-specifications/#what-is-specified-and-what-is-validated).
 - State the simple requirements explicitly. When a requirement is one a model
   should get right but a real run got wrong, write it as a hard, observable
   requirement describing the end state to satisfy.
@@ -149,16 +159,19 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/).
   turned up and is non-empty. See
   [Proofs](/testing/end-to-end/evaluation/#proofs).
 - `[instrumentation]` declares the debug-API handle the build installs its
-  automation surface on. It is required as soon as any review point declares a
+  automation surface on. It is required because every review point declares a
   `validation` script.
-- The reviewer checklist uses exactly one of two grammars. The categories grammar
+- The checklist uses exactly one of two grammars. The categories grammar
   (`[review]` with `format = 2` and `[[review.categories]]`) groups each graded
   point under a named category; the top-level `[[review_item]]` arrays are the
-  alternative. Each point is a major, observable requirement a reviewer checks by
-  playing the build, and may pair an expected `reference` view with a submitted
-  `proof`. Checklist entries are reporter-side and stay out of the seeded set.
-- `[[domain]]` entries are the scoring domains a reviewer rates. The run's
-  overall rating is the worst across the effective set.
+  alternative. Each point is one observable behavior, stated in the spec exactly
+  or by explicit bounds, and carries a `validation` script for every engine the
+  case supports under `validation/<engine>/`. A point may pair an expected
+  `reference` view with a submitted `proof`. Checklist entries are reporter-side
+  and stay out of the seeded set.
+- `[[domain]]` entries are the scoring domains a reviewer rates: the build's
+  visuals, polish, and feel. The run's overall rating is the worst across the
+  effective set.
 
 ### 7. Write the non-seeded docs
 

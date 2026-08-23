@@ -75,8 +75,8 @@ to land in the second category, three ways.
   automatically. A model unreliable in a mechanic tends to be unreliable in
   reporting it, and the mismatch is the failure.
 
-Instrumentation attacks the objective half of a review, which is the half that
-is expensive to verify by hand. The subjective half stays with the reviewer (see
+Instrumentation decides the checklist, which is the part of a review that is
+expensive to verify by hand. The per-domain ratings stay with the reviewer (see
 [Human judgement](#human-judgement)).
 
 ## The debug API
@@ -296,10 +296,10 @@ and the debug API gives the model a way to verify its own build.
 
 ## Human judgement
 
-Instrumentation makes the objective half of a review cheap and leaves the
-subjective half alone. Whether the art direction is coherent, whether the motion
+Instrumentation decides every checklist item and leaves the subjective
+judgement alone. Whether the art direction is coherent, whether the motion
 and audio feel right, and whether the game is enjoyable remain a human
-judgement. They are the [scoring
+judgement; behavior is never something a reviewer is asked to decide. They are the [scoring
 domains](/testing/end-to-end/evaluation/#review) rated on the
 flawless-to-broken scale, and the review a person writes is what frames a
 published run. Instrumentation also cannot catch a bug living in a subsystem

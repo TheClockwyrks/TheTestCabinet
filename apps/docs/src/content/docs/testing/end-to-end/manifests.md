@@ -596,8 +596,9 @@ two are documented at [Validation](/components/core/validation/):
   [instrumentation](/testing/end-to-end/instrumentation/) in a browser, against
   the debug API the build installs on the case's `[instrumentation]` handle.
 
-A new case version decides its objective points with validators. The
-instrumentation path remains supported for the versions written against it.
+A new case version carries a validator on every review item, with every
+threshold derived from the spec. The instrumentation path remains supported for
+the versions written against it.
 
 Validation attaches to the graded unit. An item graded as a whole carries it
 directly; an item broken into sub-items is verdicted per sub-item, so its

@@ -7,10 +7,9 @@ title: Reviewing Test Run Results
 The Test Cabinet evaluates a run in two stages. Automated
 [validation](/components/core/validation/) catches gross failures cheaply and,
 through a case's [instrumentation](/testing/end-to-end/instrumentation/), drives
-the build to decide the objective, mechanically-checkable requirements. A
-person's review then judges how well the build plays and matches the spec's
-intent, producing the per-[domain](/terminology/#domain) rating and the checklist
-verdicts automation does not decide.
+the build to decide the checklist verdicts. A person's review then judges the
+build's visuals, polish, and feel, producing the per-[domain](/terminology/#domain)
+rating.
 
 A review is curatorial, authored by a person after playing the build, so it sits
 outside the [run record](/components/core/run-records/) contract. Every review is
@@ -42,17 +41,17 @@ dependency install, the static build, whether the implementation loaded in a
 headless browser, and a similarity signal for each declared
 [check](/components/core/validation/#checks).
 
-Validation also decides the objective checklist items a case marks as
-[automatically validated](/testing/end-to-end/instrumentation/), and fails any
-whose check the build's
+Validation also decides the checklist items through the case's
+[validators](/testing/end-to-end/instrumentation/), and fails any whose check
+the build's
 [debug API](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing)
-was too broken to answer. Those arrive pre-filled as failed. Override one where
-the build clearly does the right thing regardless.
+was too broken to answer. Those arrive pre-filled as failed. Overriding one is
+the exception, for a build that clearly does the right thing regardless.
 
-What is left to you is the subjective judgement: the per-domain ratings and the
-verdicts that turn on how the build plays. A run that fails to load, or arrives
-with most of its checks auto-failed, is a clear negative signal. A clean load
-says only that the page rendered.
+What is left to you is the subjective judgement: the per-domain ratings of how
+the build looks, how polished it is, and how it feels to play. A run that fails
+to load, or arrives with most of its checks auto-failed, is a clear negative
+signal. A clean load says only that the page rendered.
 
 ## Play the build
 
@@ -75,8 +74,8 @@ stays fully static and previewing publishes nothing.
 
 ## Work the checklist
 
-A test case version may declare a reviewer checklist: items the case author
-marked as things every reviewer must explicitly check (see the manifest's
+A test case version declares a checklist: one observable behavior per item,
+each decided by the case's validators (see the manifest's
 [`review_item`s](/testing/end-to-end/manifests/)). The checklist is
 reporter-side material and is never seeded into a run.
 
