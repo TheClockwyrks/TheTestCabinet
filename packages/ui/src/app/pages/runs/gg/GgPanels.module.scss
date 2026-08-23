@@ -2710,6 +2710,60 @@ details[open] > summary .reqCaret {
   }
 }
 
+// --- Programs view (each reply as a program, with its verdict) -------------------
+// Built on the Requests view's turn rows: the same hairline-divided `.reqTurn`,
+// the same header and body insets, so the two files read as one list seen at two
+// depths. What the header carries differs: the program's first line in place of the
+// turn's figures, and a status pill in place of the finish reason.
+
+// The program's opening line, taking the slack so the status pill sits at the
+// trailing edge; monospaced, because it is code.
+.progPreview {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: t.$color-text-muted;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The verdict as a small pill, tinted by status: green for a program that ran clean,
+// amber for one the compiler rejected (the model wrote something that never ran —
+// a cheaper mistake than a runtime one, and the one a reader triages first), red for
+// one that failed while running, and the plain muted pill for anything else.
+.progStatus {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  padding: 0.1rem t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+
+  &[data-status="success"] {
+    color: t.$color-positive;
+    border-color: color-mix(in srgb, t.$color-positive 40%, transparent);
+  }
+
+  &[data-status="compile"] {
+    color: t.$color-warning;
+    border-color: color-mix(in srgb, t.$color-warning 40%, transparent);
+  }
+
+  &[data-status="runtime"],
+  &[data-status="other"] {
+    color: t.$color-negative;
+    border-color: color-mix(in srgb, t.$color-negative 40%, transparent);
+  }
+}
+
+// The error block under a failed program — `.reqContent`'s framing with its leading
+// edge tinted, so the diagnostics read as the verdict rather than as a second program.
+.progError {
+  border-left: 3px solid t.$color-negative;
+}
+
 // The opened turn's contents. This carried a `border-top` when the turn was a card —
 // the card's internal divider between its header and its body — which now has nothing
 // to divide *within*: the only rule left in the list is the one *between* turns, and a

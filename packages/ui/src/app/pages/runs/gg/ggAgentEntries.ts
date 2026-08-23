@@ -35,6 +35,7 @@ import {
   MemoriesIcon,
   MetricsIcon,
   OverviewIcon,
+  ProgramsIcon,
   PromptIcon,
   RequestsIcon,
   TasksIcon,
@@ -62,6 +63,7 @@ export type AgentFileKind =
   | "activity"
   | "context"
   | "requests"
+  | "programs"
   | "metrics"
   | "compaction";
 
@@ -87,7 +89,9 @@ export function sameEntry(a: AgentEntry, b: AgentEntry): boolean {
 // brief its parent handed it) — and the offered surface follows it, because what an
 // agent could *call* is the other half of what it was given, and it has to be read
 // before its activity for that activity to mean anything. Requests sits beside Context
-// — it is the itemized, message-level companion to the stacked Context graph — then
+// — it is the itemized, message-level companion to the stacked Context graph — and
+// Programs sits right after it, the same turns read one level up: each reply as the
+// program it was, and whether it compiled and ran. Then
 // Metrics, the per-request over-time graphs (throughput, cost, cache-read and reasoning
 // share) that are the value-per-call companion to that same graph; Compaction follows,
 // the detail behind the Context graph's compaction markers.
@@ -98,6 +102,7 @@ const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
   "activity",
   "context",
   "requests",
+  "programs",
   "metrics",
   "compaction",
 ];
@@ -127,6 +132,11 @@ const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   // The message log and the breakdown graph are context visibility, which is intrinsic —
   // every run emits both — so the file is always offered.
   requests: [],
+  // Not capability-shaped either, and gated the same way the surface file is — on the
+  // INSTANCE: a program list is offered exactly when the instance has reported that it
+  // answers in code (see {@link filesFor}). A tool-calling agent writes no programs, and a
+  // file of all-green rows for it would be a statement about nothing.
+  programs: [],
   // The per-request metric graphs ride on the same intrinsic `prompt` stream the
   // Requests file does — every run makes model calls carrying tokens/cost — so the
   // file is always offered (its own graphs show an empty state until a metric has data).
@@ -147,6 +157,7 @@ const FILE_LABELS: Record<AgentFileKind, string> = {
   activity: "activity",
   context: "context",
   requests: "requests",
+  programs: "programs",
   metrics: "metrics",
   compaction: "compaction",
 };
@@ -163,6 +174,7 @@ const FILE_ICONS: Record<
   activity: ActivityIcon,
   context: ContextIcon,
   requests: RequestsIcon,
+  programs: ProgramsIcon,
   metrics: MetricsIcon,
   compaction: CompactionIcon,
 };
@@ -239,7 +251,8 @@ export const MODULE_ICONS: Record<
 //
 // The surface file is the exception, and takes the instance's own reported surface: it
 // is offered when that incarnation said what it was offered, and withheld — completely,
-// not as an empty list — until it has.
+// not as an empty list — until it has. The programs file reads the same surface one
+// step further: it is offered only once that surface says the instance answers in code.
 export function filesFor(
   set: GgCapabilitySet | null,
   agentId: string | null | undefined,
@@ -247,6 +260,7 @@ export function filesFor(
 ): AgentFileKind[] {
   return FILE_ORDER.filter((file) => {
     if (file === "surface") return surface != null;
+    if (file === "programs") return answersAsCode(surface);
     const needed = FILE_CAPABILITIES[file];
     if (needed.length === 0) return true;
     if (!set) return false;

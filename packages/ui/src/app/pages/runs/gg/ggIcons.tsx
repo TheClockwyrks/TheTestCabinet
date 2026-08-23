@@ -124,6 +124,17 @@ export function RequestsIcon({ className }: IconProps) {
   );
 }
 
+// Programs — a terminal prompt chevron with a run line beneath it: each reply as the
+// program it was, and whether it compiled and ran.
+export function ProgramsIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M4 6l5 5-5 5" />
+      <path d="M12 17h8" />
+    </Icon>
+  );
+}
+
 // Metrics — a line trending up across axes: the per-request metrics graphs
 // (throughput, cost, cache-read share, reasoning share) over the run.
 export function MetricsIcon({ className }: IconProps) {

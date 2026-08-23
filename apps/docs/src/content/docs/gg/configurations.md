@@ -497,12 +497,19 @@ justifies it rather than when data happens to have arrived. gg announces its
 configuration on the stream's first event, so a run with the tasks capability
 always has a `modules → tasks` file, empty until the model builds its list,
 while a run with compaction off has no compaction file. Overview, prompt,
-activity, context, requests, and metrics are offered for every agent. One file
-is gated on the instance rather than on the configuration: what the instance was
-[offered to call](/gg/telemetry/agent-surface/), named tools for a tool-calling
-agent and apis for a [code-shaped](/gg/responses-as-code/overview/) one. It
-appears only where that instance reported its resolved surface, because a file
-showing an empty toolset would assert the very thing it exists to distinguish.
+activity, context, requests, and metrics are offered for every agent. Two files
+are gated on the instance rather than on the configuration. The first is what
+the instance was [offered to call](/gg/telemetry/agent-surface/), named tools
+for a tool-calling agent and apis for a
+[code-shaped](/gg/responses-as-code/overview/) one; it appears only where that
+instance reported its resolved surface, because a file showing an empty toolset
+would assert the very thing it exists to distinguish. The second, programs,
+appears only for a code-shaped instance: one collapsed row per turn carrying the
+reply as the program it was, with a status of success, compile, or runtime, so
+the rows worth opening stand out, and each opens onto the program and the
+compiler or runtime error it met. It is the same turns the requests file shows,
+read one level up: requests lists every message of every turn; programs answers
+whether each response ran.
 
 The activity file is gg's telemetry rendered through the same feed every other
 harness's events render through, so it honors the layout picked in Settings →

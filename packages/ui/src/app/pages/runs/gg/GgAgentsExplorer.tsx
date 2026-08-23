@@ -81,6 +81,7 @@ import {
 import { ContextFillGraph } from "./ContextFillGraph";
 import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
+import { ProgramsView } from "./ProgramsView";
 import { RequestMetricsGraphs } from "./RequestMetricsGraphs";
 import { CompactionView } from "./CompactionView";
 import { LinkIcon, ModulesIcon } from "./ggIcons";
@@ -809,6 +810,16 @@ function FileContent({
         <div className={panels.panelBody}>
           <RequestsView
             prompts={state.prompts}
+            pool={state.messagePool}
+            live={live}
+          />
+        </div>
+      );
+    case "programs":
+      return (
+        <div className={panels.panelBody}>
+          <ProgramsView
+            programs={state.programs}
             pool={state.messagePool}
             live={live}
           />
