@@ -25,7 +25,7 @@ import { integratePaddle } from "./entities";
 import type { BallState, PaddleState } from "./game";
 
 /**
- * Move the AI's paddle for one frame.
+ * The AI's paddle after one frame of play.
  *
  * `ball` is the one ball the AI is defending, `null` when nothing threatens its
  * goal. `active` is true only while the field is live — while the balls are
@@ -37,7 +37,7 @@ export function updateAi(
   ball: BallState | null,
   active: boolean,
   dt: number,
-): void {
+): PaddleState {
   let target = AI_HOME_Y;
   let deadzone = AI_HOME_DEADZONE;
   if (active && ball !== null && ball.vx > 0) {
@@ -47,12 +47,13 @@ export function updateAi(
   }
 
   const diff = target - paddle.cy;
+  let vy: number;
   if (Math.abs(diff) <= deadzone) {
-    paddle.vy = 0;
+    vy = 0;
   } else {
     // Never overshoot the target in a single step.
     const reach = dt > 0 ? Math.abs(diff) / dt : AI_SPEED;
-    paddle.vy = Math.sign(diff) * Math.min(AI_SPEED, reach);
+    vy = Math.sign(diff) * Math.min(AI_SPEED, reach);
   }
-  integratePaddle(paddle, dt);
+  return integratePaddle({ cy: paddle.cy, vy }, dt);
 }

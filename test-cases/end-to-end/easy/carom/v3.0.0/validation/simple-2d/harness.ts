@@ -30,6 +30,15 @@
 // returned no surface, or a surface missing an operation, fails the checks that
 // reach the game through it. See `readDebugSurface`.
 //
+// HOW THE SURFACE IS DRIVEN. The runtime holds the state by value and hands it
+// out read-only, so the surface is pure: a pose takes the current state and
+// returns the next, a reading takes the current state and returns what it read
+// (`surface.ts`). A check still writes `h.debug.serve()` and `h.debug.snapshot()`,
+// because `h.debug` is a {@link Driver} over the raw surface: it runs each pose
+// through `engine.apply` and hands each reading `engine.state`. Nothing a check
+// does holds a writable state — `h.state` is the runtime's current value, read
+// fresh on every access, and the only way to change it is a pose.
+//
 // THE CLOCK. `ConstantClock(TICK_MS)` is the default, so one frame is one
 // 120 Hz tick and every duration below is a whole number of them, which is the
 // unit a suite's frame-counted tolerance is stated in. A check that is
@@ -59,6 +68,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
 } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 import {
   BALL_R,
   FIELD_CX,
@@ -70,26 +80,58 @@ import {
   P2_X0,
 } from "../src/constants";
 import { BACKGROUND, game as build, type CaromState } from "../src/game";
-import type {
-  BallSnapshot,
-  CaromDebugApi,
-  CaromSnapshot,
-  Mode,
-  Side,
+import {
+  READINGS,
+  type BallSnapshot,
+  type CaromDebugApi,
+  type CaromSnapshot,
+  type Mode,
+  type Side,
 } from "./surface";
 
 export type { Mode, Side };
+
+/** The case's surface, bound to the state type the build declared. */
+export type CaromSurface = CaromDebugApi<CaromState>;
 
 /**
  * The build's game, typed against the surface the CASE specifies.
  *
  * The build declares its own type for the surface its `initialize` returns, and
  * that type is the build's: what a check holds it to is `surface.ts`, so the game
- * is cast to the case's `Game<CaromState, CaromDebugApi>` here and the runtime is
+ * is cast to the case's `Game<CaromState, CaromSurface>` here and the runtime is
  * parameterized with it. A surface that departs from the specification is caught
  * where a check reaches for the missing member, not by the build's own compiler.
  */
-const game = build as unknown as Game<CaromState, CaromDebugApi>;
+const game = build as unknown as Game<CaromState, CaromSurface>;
+
+/**
+ * A member of a pure surface, as a check calls it.
+ *
+ * A pose `(state, ...args) => S` becomes `(...args) => void`: the driver runs it
+ * through `engine.apply`, so the state it returns is the state the next frame
+ * receives. A reading `(state) => R` becomes `() => R`: the driver hands it
+ * `engine.state`. Anything else (`version`) is carried as it is.
+ */
+type Driven<S, M> = M extends (state: DeepReadonly<S>, ...args: infer A) => S
+  ? (...args: A) => void
+  : M extends (state: DeepReadonly<S>) => infer R
+    ? () => R
+    : M;
+
+/**
+ * The imperative reading of a pure surface: every member of `D`, minus its
+ * state argument, over the runtime that holds the state.
+ *
+ * Optional members stay optional, so a variant-only pose such as gyre's
+ * `setObstacleClock` is still `h.debug.setObstacleClock?.(t)`.
+ */
+export type Driver<S, D> = {
+  [K in keyof D]: Driven<S, NonNullable<D[K]>>;
+};
+
+/** The surface as every check drives it. */
+export type CaromDriver = Driver<CaromState, CaromSurface>;
 
 /**
  * The frame the suite steps in, in milliseconds.
@@ -292,15 +334,21 @@ export interface UntilResult {
 }
 
 export interface Harness {
-  readonly engine: Engine<CaromState, CaromDebugApi>;
-  /** The live state the game built. Read it, or pose it through `debug`. */
-  readonly state: CaromState;
+  readonly engine: Engine<CaromState, CaromSurface>;
   /**
-   * The debug surface the BUILD returned beside its state, as the runtime holds it.
-   *
-   * Read off `engine.debug` rather than built here — see {@link readDebugSurface}.
+   * The runtime's current state, read fresh on every access. Read it, or pose
+   * it through `debug`; nothing here can write to it.
    */
-  readonly debug: CaromDebugApi;
+  readonly state: DeepReadonly<CaromState>;
+  /**
+   * The debug surface the BUILD returned beside its state, driven over the
+   * runtime: each pose runs through `engine.apply`, each reading is handed
+   * `engine.state`.
+   *
+   * The raw surface is read off `engine.debug` rather than built here — see
+   * {@link readDebugSurface} — and {@link driveSurface} is the wrapper.
+   */
+  readonly debug: CaromDriver;
   /** The real 2D context, for `getImageData`. Draw calls also reach it. */
   readonly ctx: SKRSContext2D;
   /**
@@ -465,8 +513,8 @@ export function setsOf(
  * merits, and `instrumentation/debug-api` names the missing surface outright.
  */
 function readDebugSurface(
-  engine: Engine<CaromState, CaromDebugApi>,
-): CaromDebugApi {
+  engine: Engine<CaromState, CaromSurface>,
+): CaromSurface {
   const surface: unknown = engine.debug;
   if (typeof surface !== "object" || surface === null) {
     return missingSurface(
@@ -474,7 +522,7 @@ function readDebugSurface(
         `not an object`,
     );
   }
-  return surface as CaromDebugApi;
+  return surface as CaromSurface;
 }
 
 /**
@@ -491,17 +539,58 @@ function readDebugSurface(
  * formatting probes symbols and `constructor`. Failing those would replace the
  * verdict below with noise from the machinery that was trying to report it.
  */
-function missingSurface(reason: string): CaromDebugApi {
+function missingSurface(reason: string): CaromSurface {
   const message =
     `this build's debug surface is missing, so nothing can reach the game: ` +
     `src/game.ts's initialize must return [state, debug], its state beside the ` +
     `surface specs/instrumentation.md specifies, and the engine returns that ` +
     `surface from engine.debug. ${reason}`;
-  return new Proxy({} as CaromDebugApi, {
+  return new Proxy({} as CaromSurface, {
     get: (_target, property): unknown => {
       if (typeof property === "symbol") return undefined;
       if (property === "then" || property === "constructor") return undefined;
       return expect.fail(message);
+    },
+  });
+}
+
+/**
+ * The imperative reading of the raw surface, over the runtime that holds the
+ * state.
+ *
+ * A proxy, and a lazy one, for the same reason {@link missingSurface} is: the
+ * member is read off the raw surface at the moment a check reaches for it, so a
+ * missing surface or a missing operation fails the check that needed it and
+ * never the `beforeEach` that built the harness. A member that is not a
+ * function (`version`, or an operation the build left out) comes back as it
+ * is, which is what lets a variant slice test for its operation by `typeof`.
+ *
+ * A reading is called with `engine.state` and its result handed back. A pose is
+ * run through `engine.apply`, so the runtime stores what it returned and the
+ * next frame's `update` receives it; a pose that returns nothing is refused by
+ * the runtime with a message naming the rule.
+ */
+function driveSurface(
+  engine: Engine<CaromState, CaromSurface>,
+  raw: CaromSurface,
+): CaromDriver {
+  const readings: readonly string[] = READINGS;
+  return new Proxy({} as CaromDriver, {
+    get: (_target, property): unknown => {
+      if (typeof property === "symbol") return undefined;
+      if (property === "then" || property === "constructor") return undefined;
+      const member = (raw as unknown as Record<string, unknown>)[property];
+      if (typeof member !== "function") return member;
+      const op = member as (
+        state: DeepReadonly<CaromState>,
+        ...args: unknown[]
+      ) => unknown;
+      if (readings.includes(property)) {
+        return (): unknown => op.call(raw, engine.state);
+      }
+      return (...args: unknown[]): void => {
+        engine.apply((state) => op.call(raw, state, ...args) as CaromState);
+      };
     },
   });
 }
@@ -542,7 +631,7 @@ export async function createHarness(
     events: () => keys,
   };
 
-  const engine = createEngine<CaromState, CaromDebugApi>({
+  const engine = createEngine<CaromState, CaromSurface>({
     canvas: element,
     width: FIELD_W,
     height: FIELD_H,
@@ -566,8 +655,8 @@ export async function createHarness(
     cues.push(played);
   });
 
-  const state = await engine.initialize();
-  const debug = readDebugSurface(engine);
+  await engine.initialize();
+  const debug = driveSurface(engine, readDebugSurface(engine));
 
   const dispatch = (type: "keydown" | "keyup", code: string): void => {
     keys.dispatchEvent(new KeyEvent(type, code));
@@ -575,7 +664,9 @@ export async function createHarness(
 
   const harness: Harness = {
     engine,
-    state,
+    get state() {
+      return engine.state;
+    },
     debug,
     ctx,
     canvas,

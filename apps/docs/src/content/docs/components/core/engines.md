@@ -121,8 +121,8 @@ build they check. A validator imports the engine and the build's own game
 module, constructs the engine over a canvas and a clock of its own, and steps it
 an exact number of frames.
 
-Everything a check observes is therefore a live value it already holds: the game
-state the build returned, the frame counter and the accumulated simulated time,
+Everything a check observes is therefore a value it already holds: the current
+game state, the frame counter and the accumulated simulated time,
 the viewport, the events the engine broadcast, and the drawing context the game
 rendered through. A build reaches a check through the engine it was given, so a
 run under an engine publishes nothing to the page it is drawn on.

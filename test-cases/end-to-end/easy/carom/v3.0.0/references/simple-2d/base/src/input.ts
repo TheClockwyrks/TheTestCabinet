@@ -26,7 +26,7 @@ import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
  * action the layout speaks and Carom forgot is a hard failure at start-up rather
  * than a control that silently does nothing.
  */
-export function registerActions(api: InitApi): void {
+export function registerActions(api: Pick<InitApi, "input">): void {
   const layout = api.input.layout();
   if (layout === null) {
     throw new Error(`Carom: the engine was built without the ${LAYOUT} layout`);

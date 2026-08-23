@@ -36,8 +36,8 @@ read assets as plain values:
 
 ```ts
 interface State {
-  ship: ImageBitmap;
-  x: number;
+  readonly ship: ImageBitmap;
+  readonly x: number;
 }
 
 const game: Game<State, null> = {
@@ -45,8 +45,8 @@ const game: Game<State, null> = {
     const ship = await api.assets.loadImage("sprites/ship.png");
     return [{ ship, x: 320 }, null];
   },
-  update(state, api, dt) {
-    state.x += 60 * dt;
+  update(state, _api, dt) {
+    return { ...state, x: state.x + 60 * dt };
   },
   render(state, api) {
     api.ctx.drawImage(state.ship, state.x, 180);

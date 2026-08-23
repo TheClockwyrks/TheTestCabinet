@@ -26,6 +26,7 @@ workspace/
   src/            the build
   validation/     the case's suites
     harness.ts
+    debug.ts
     gameplay/scoring-p1.test.ts
 ```
 
@@ -91,12 +92,15 @@ import {
 } from "@test-cabinet/simple-2d";
 import { FIELD_H, FIELD_W } from "../src/constants";
 import { game, type State } from "../src/game";
-import type { Debug } from "./debug";
+import type { BallPatch, Debug, Mode, Snapshot } from "./debug";
 
 export interface Harness {
-  engine: Engine<State, Debug>;
-  canvas: Canvas;
-  keys: EventTarget;
+  readonly engine: Engine<State, Debug>;
+  readonly canvas: Canvas;
+  readonly keys: EventTarget;
+  startMatch(mode: Mode): void;
+  setBall(patch: BallPatch): void;
+  snapshot(): Snapshot;
 }
 
 export function createHarness(
@@ -121,7 +125,14 @@ export function createHarness(
     surface,
   });
 
-  return { engine, canvas, keys };
+  return {
+    engine,
+    canvas,
+    keys,
+    startMatch: (mode) => engine.apply((s) => engine.debug.startMatch(s, mode)),
+    setBall: (patch) => engine.apply((s) => engine.debug.setBall(s, patch)),
+    snapshot: () => engine.debug.snapshot(engine.state),
+  };
 }
 ```
 
@@ -130,6 +141,11 @@ export function createHarness(
 draws in a browser. The surface reports the logical design size at a device
 pixel ratio of `1` by default, which puts one device pixel on one logical unit
 and makes a sampled coordinate readable without arithmetic.
+
+The last three members wrap the debug surface over the engine. A pose on the
+surface takes the current state and returns the next, so the harness hands it
+to `engine.apply`; a reading takes the state, so the harness hands it
+`engine.state`. A check then names the operation and nothing else.
 
 ## Initialization order
 
@@ -142,15 +158,16 @@ const { engine } = createHarness();
 const failures: string[] = [];
 engine.events.on("asset:failed", ({ path }) => failures.push(path));
 
-const state = await engine.initialize();
+await engine.initialize();
 await engine.advance(120);
 
 expect(failures).toEqual([]);
 ```
 
-`initialize` resolves to the state the game built, and `engine.state` exposes
-the same live value. Every field of that state is present, so a check reads what
-it wants without testing for a value that has yet to load.
+`initialize` resolves to the opening state the game built, and `engine.state`
+reads the current one, the value the most recent frame left. Every field of
+that state is present, so a check reads what it wants without testing for a
+value that has yet to load.
 
 Call `engine.destroy()` when a suite is finished with an engine, which drops the
 listeners it attached and releases the canvas.
@@ -158,16 +175,18 @@ listeners it attached and releases the canvas.
 ## The debug surface
 
 A check poses its scenario through the surface the game returned beside its
-state, read off `engine.debug` of the engine the suite constructed.
+state, read off `engine.debug` of the engine the suite constructed. The surface
+holds no state: a pose is a transition the check drives through `engine.apply`,
+and a reading is a function of `engine.state`.
 
 ```ts
 const { engine } = createHarness();
 await engine.initialize();
 
-engine.debug.startMatch("solo");
+engine.apply((s) => engine.debug.startMatch(s, "solo"));
 await engine.advance(90);
 
-expect(engine.debug.snapshot().screen).toBe("playing");
+expect(engine.debug.snapshot(engine.state).screen).toBe("playing");
 ```
 
 The case's instrumentation spec states the surface's operations, so a scenario
@@ -176,6 +195,35 @@ that surface from the spec, under `validation/`, and parameterizes the engine
 with it, so `engine.debug` is the whole route from a check to the build's
 implementation. A build whose surface departs from the spec fails the points
 the checks decide.
+
+```ts
+// validation/debug.ts — the surface as the case specifies it
+import type { DeepReadonly } from "ts-essentials";
+import type { State } from "../src/game";
+
+export type Mode = "solo" | "versus";
+
+export interface BallPatch {
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+}
+
+export interface Snapshot {
+  screen: string;
+  score: { p1: number; p2: number };
+  paddles: { left: { cy: number; vy: number }; right: { cy: number; vy: number } };
+  ball: { x: number; y: number; vx: number; vy: number };
+}
+
+export interface Debug {
+  version: number;
+  startMatch(state: DeepReadonly<State>, mode: Mode): State;
+  setBall(state: DeepReadonly<State>, patch: BallPatch): State;
+  snapshot(state: DeepReadonly<State>): Snapshot;
+}
+```
 
 ## An unmet precondition
 
@@ -209,7 +257,8 @@ every build of the case the same shape to check.
 A suite imports `constants.ts` for the numbers and names its assertions are
 stated in and `game.ts` for the game it drives. `main.ts` belongs to the built
 page, and a suite constructs its own engine instead. The surface reaches a suite
-only through `engine.debug`, typed by the suite's own declaration of the spec.
+only through `engine.debug`, typed by the suite's own declaration of the spec,
+and is driven through `engine.apply` and `engine.state`.
 
 The build writes `game.ts` against the other two, and its `initialize` returns
 the surface beside the state. It is free in where it implements the surface and

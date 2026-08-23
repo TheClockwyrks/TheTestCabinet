@@ -72,13 +72,18 @@ both cancels out.
 
 ```ts
 import type { UpdateApi } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
-function update(state: Match, api: UpdateApi, dt: number): void {
+function update(state: DeepReadonly<Match>, api: UpdateApi, dt: number): Match {
   const p1 = api.input.value("p1-down") - api.input.value("p1-up");
-  state.left.cy = clamp(state.left.cy + p1 * PADDLE_SPEED * dt, MIN_Y, MAX_Y);
-
   const p2 = api.input.value("p2-down") - api.input.value("p2-up");
-  state.right.cy = clamp(state.right.cy + p2 * PADDLE_SPEED * dt, MIN_Y, MAX_Y);
+  const move = (cy: number, axis: number): number =>
+    clamp(cy + axis * PADDLE_SPEED * dt, MIN_Y, MAX_Y);
+  return {
+    ...state,
+    left: { ...state.left, cy: move(state.left.cy, p1) },
+    right: { ...state.right, cy: move(state.right.cy, p2) },
+  };
 }
 ```
 
@@ -89,13 +94,13 @@ however long the key is held. Use it for anything that happens a single time:
 confirming a menu entry, pausing, firing a shot, toggling mute.
 
 ```ts
-function update(state: Match, api: UpdateApi, dt: number): void {
-  if (api.input.pressed("pause")) state.paused = !state.paused;
+function update(state: DeepReadonly<Match>, api: UpdateApi, dt: number): Match {
+  const paused = api.input.pressed("pause") ? !state.paused : state.paused;
   if (api.input.pressed("mute")) api.audio.setMuted(!api.audio.muted());
 
-  if (state.paused) return;
-  if (api.input.pressed("confirm")) serve(state);
-  step(state, dt);
+  if (paused) return { ...state, paused };
+  const served = api.input.pressed("confirm") ? serve(state) : state;
+  return step({ ...served, paused }, dt);
 }
 ```
 
@@ -111,7 +116,7 @@ the input for the frame being simulated.
 
 `render` receives a context, the frame counter, and the viewport, which keeps a
 frame's response to the player decided entirely by `update`. A value the drawing
-depends on is computed in `update` and stored in the state.
+depends on is computed in `update` and carried in the state it returns.
 
 A game that wants a key the engine has no action for registers an action for it.
 Everything the game reads then comes from one registry, and a validator drives

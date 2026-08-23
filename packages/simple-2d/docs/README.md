@@ -43,21 +43,39 @@ import { createEngine, ConstantClock, TOUCH_LAYOUTS } from "@test-cabinet/simple
 import type { CueSpec, Engine, EngineOptions, Game } from "@test-cabinet/simple-2d";
 ```
 
+`DeepReadonly`, the view every reader of a game's state is handed, is the
+`ts-essentials` type of that name. A game imports it from `ts-essentials`
+directly; the engine re-exports it as well.
+
+```ts
+import type { DeepReadonly } from "ts-essentials";
+```
+
 ## A game is three functions and two types
 
 ```ts
 interface Game<S, D = unknown> {
-  initialize(api: InitApi): [S, D] | Promise<[S, D]>;
-  update(state: S, api: UpdateApi, dt: number): void;
-  render(state: S, api: RenderApi): void;
+  initialize(api: InitApi<S>): [S, D] | Promise<[S, D]>;
+  update(state: DeepReadonly<S>, api: UpdateApi, dt: number): S;
+  render(state: DeepReadonly<S>, api: RenderApi): void;
 }
 ```
 
-`S` is the game's own state. `initialize` returns it as the first element of
-the pair, and every `update` and `render` receives it back, so it is the only
-channel between the three functions. `initialize` may return a promise, and no
-frame runs until it resolves, so every field of the state is present by the
-time a frame can read it.
+`S` is the game's own state, held by the engine as a value. `initialize`
+returns the opening state as the first element of the pair. Every frame is a
+transition over it: `update` receives the current state as a `DeepReadonly<S>`
+view and returns the next state, and `render` receives that next state, as the
+same read-only view, and draws it. The state is the only channel between the
+three functions. `initialize` may return a promise, and no frame runs until it
+resolves, so every field of the state is present by the time a frame can read
+it.
+
+The value `update` returns is the state the frame leaves behind: what `render`
+draws, what `engine.state` reads, and what the next `update` receives. Build it
+as a new value, with spread, `map`, and small helpers, rather than by assigning
+into the one handed over; the view is read-only, so the compiler refuses an
+assignment. An `update` that returns `undefined` is refused with an `Error`, and
+the engine keeps the state it had.
 
 `D` is the game's debug surface, the second element of the pair and the value
 the engine returns from `engine.debug`. A game with no surface declares
@@ -67,7 +85,7 @@ Everything a game declares once belongs to `InitApi`: its action bindings, its
 cue definitions, the assets it needs, and the values it wants on the overlay.
 
 ```ts
-interface InitApi {
+interface InitApi<S> {
   readonly input: {
     register(name: string, binding: ActionBinding): void;
     layout(): TouchLayout | null;
@@ -83,7 +101,7 @@ interface InitApi {
     resolve(path: string): string;
   };
   readonly diagnostics: {
-    register(name: string, source: () => unknown): void;
+    register(name: string, source: (state: DeepReadonly<S>) => unknown): void;
   };
   readonly events: EngineEvents;
   viewport(): Viewport;
@@ -92,8 +110,9 @@ interface InitApi {
 
 Each function receives only the part of the engine it may use. `update` reads
 input and plays cues but cannot draw; `render` draws but cannot read input or
-play a cue. A frame's audible and observable behavior is therefore decided
-entirely by `update`.
+play a cue, and holds only a read-only view, so it cannot change the state
+either. A frame's audible and observable behavior is therefore decided entirely
+by `update`, and nothing but a transition advances the simulation.
 
 `dt` is **seconds**. Every speed a 2D game writes down is per second, and
 seconds are what the game multiplies by.
@@ -144,9 +163,10 @@ anything the game does is observable.
 ```ts
 interface Engine<S, D = unknown> {
   readonly events: EngineEvents;
-  readonly state: S;
+  readonly state: DeepReadonly<S>;
   readonly debug: D;
-  initialize(): Promise<S>;
+  initialize(): Promise<DeepReadonly<S>>;
+  apply(transition: Transition<S>): DeepReadonly<S>;
   run(options?: RunOptions): Promise<void>;
   advance(frames: number): Promise<void>;
   setClock(clock: Clock): void;
@@ -162,9 +182,10 @@ interface Engine<S, D = unknown> {
 | Member | Effect |
 | --- | --- |
 | `events` | Subscribe to engine events. Available from construction. |
-| `state` | The value `initialize` resolved to, live. Reading it before then throws. |
+| `state` | The current state, as a read-only view: the value the most recent transition left. Reading it before `initialize` resolves throws. |
 | `debug` | The debug surface the game returned beside its state. Reading it before `initialize` resolves throws. See `debug.md`. |
 | `initialize` | Run the game's `initialize` and resolve to the state it produced. |
+| `apply` | Replace the state with the one `transition` returns from the current one, and return the new state. See below. |
 | `run` | Drive frames off the host's frame callback until the signal aborts. |
 | `advance` | Tick the clock `frames` times, running a frame for each tick it accepts. |
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
@@ -178,21 +199,34 @@ interface Engine<S, D = unknown> {
 Calling `initialize` a second time resolves to the state already built, so a
 caller that cannot tell whether initialization has happened may ask again.
 
+`apply` is how a caller poses a game between frames. A `Transition<S>` has the
+shape of `update` minus the frame: the current state in, the next state out.
+
+```ts
+type Transition<S> = (state: DeepReadonly<S>) => S;
+```
+
+The next frame's `update` receives the state `apply` left, and a transition
+that returns `undefined` is refused exactly as `update` is. A debug surface's
+poses are written as transitions, so a caller drives one with
+`engine.apply((s) => engine.debug.serve(s))`. See `debug.md`.
+
 ## The shape of a build
 
 ```ts
 import { createEngine } from "@test-cabinet/simple-2d";
 import type { Game } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
 interface State {
-  x: number;
-  y: number;
-  vx: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
 }
 
 interface Debug {
-  place(x: number): void;
-  x(): number;
+  place(state: DeepReadonly<State>, x: number): State;
+  x(state: DeepReadonly<State>): number;
 }
 
 const game: Game<State, Debug> = {
@@ -202,13 +236,11 @@ const game: Game<State, Debug> = {
     api.input.register("left", { keys: ["ArrowLeft", "KeyA"] });
     api.input.register("right", { keys: ["ArrowRight", "KeyD"] });
     api.audio.define("bounce", { freq: 440, freqTo: 220, durationMs: 80 });
-    api.diagnostics.register("x", () => state.x);
+    api.diagnostics.register("x", (s) => s.x);
 
     const debug: Debug = {
-      place: (x) => {
-        state.x = x;
-      },
-      x: () => state.x,
+      place: (s, x) => ({ ...s, x }),
+      x: (s) => s.x,
     };
 
     return [state, debug];
@@ -216,13 +248,14 @@ const game: Game<State, Debug> = {
 
   update(state, api, dt) {
     const dir = api.input.value("right") - api.input.value("left");
-    state.vx = dir * 240;
-    state.x += state.vx * dt;
+    const vx = dir * 240;
+    const x = state.x + vx * dt;
 
-    if (state.x < 0 || state.x > 640) {
-      state.x = Math.max(0, Math.min(640, state.x));
+    if (x < 0 || x > 640) {
       api.audio.play("bounce");
+      return { ...state, vx, x: Math.max(0, Math.min(640, x)) };
     }
+    return { ...state, vx, x };
   },
 
   render(state, api) {
@@ -270,10 +303,11 @@ draws, so scaling never appears in the game's own code.
 | A canvas that yields no 2D context | `Error` |
 | A `layout` outside the catalogue | `Error` naming every valid layout |
 | The game's `initialize` throws or rejects | `initialize` rejects with the cause |
-| `state`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
+| `state`, `apply`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
 | `debug` read before `initialize` resolves | `Error` naming the ordering |
 | The game's `initialize` returns anything but `[state, debug]` | `initialize` rejects with an `Error` naming the pair |
 | `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
+| `update`, or a transition handed to `apply`, returns `undefined` | `Error` naming the transition; the engine keeps the state it had |
 
 ## The rest of these pages
 
@@ -284,5 +318,5 @@ draws, so scaling never appears in the game's own code.
 | `audio.md` | Cue definition, file-backed cues, playback, mute, and the unlock. |
 | `assets.md` | The asset root, the loaders, the path rules, and the load events. |
 | `diagnostics.md` | The overlay, frame metrics, and the display formatting. |
-| `debug.md` | Declaring a debug surface, returning it beside the state, and reading it back. |
+| `debug.md` | Declaring a debug surface, returning it beside the state, and driving it through `apply` and `state`. |
 | `recording.md` | Arming the recorder, the recording format, and replaying a frame. |

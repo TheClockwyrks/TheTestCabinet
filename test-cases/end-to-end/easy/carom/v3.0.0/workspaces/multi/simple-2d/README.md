@@ -28,16 +28,25 @@ project does not compile until they exist — a fresh workspace failing
 
 `src/game.ts` then exports `game`, a `Game<CaromState, CaromDebugApi>`: three
 functions over that state. `initialize` builds the state and the debug surface
-once and returns them together as `[state, debug]`, `update` advances the state
-against the frame's delta time in seconds, and `render` draws it. All three
-currently throw `"not implemented"`. Implement them, and split the work across
-new modules under `src/` however you like — physics, rendering, the AI, the debug
-surface, and so on.
+once and returns them together as `[state, debug]`; `update` takes the current
+state as a read-only view (`DeepReadonly<CaromState>`, from `ts-essentials`) and
+returns the next state, advanced against the frame's delta time in seconds; and
+`render` is handed that next state, read-only again, and draws it. The engine
+holds the state by value and replaces it with whatever `update` returns, so a
+frame builds the next state from the current one — spreading the parts that
+change — rather than writing into it, and the type is what guarantees that
+rendering changes nothing. All three currently throw `"not implemented"`.
+Implement them, and split the work across new modules under `src/` however you
+like — physics, rendering, the AI, the debug surface, and so on.
 
 The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as `initialize` handed it over, and that is how the game
 is driven from code, so it is present and exactly as `specs/instrumentation.md`
-specifies. Nothing is published to the page.
+specifies. Because nothing holds a writable state, its operations are written in
+the shape of `update`: a pose takes the current state and returns the next, and
+a caller applies it through `engine.apply((s) => debug.serve(s))`; a reading
+takes the state and returns what it read, as `debug.snapshot(engine.state)`.
+Nothing is published to the page.
 
 `CaromState` **is a contract**. Keep every field, under the name, type, and
 meaning `specs/state.md` gives it. You may add fields, but only for data you can

@@ -28,7 +28,7 @@ what the manifest's `[workspaces]` table is for:
 | Engine | What the seeded project supplies |
 | --- | --- |
 | `none` | The toolchain configuration and `index.html`, and nothing else. There is no `src/`: the model writes the runtime — the frame loop, canvas fit, input, audio, the overlay and the `window.__carom` surface — and the game on top of it. |
-| `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The model writes `src/game.ts` — the state, the debug surface `specs/instrumentation.md` specifies, and the three functions — and its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. |
+| `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The model writes `src/game.ts` — the state, the debug surface `specs/instrumentation.md` specifies, and the three functions — and its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. The engine holds the state by value: `update` is handed it read-only (`DeepReadonly<CaromState>`) and returns the next state, `render` is handed that state read-only, and the surface's operations take the state the same way — a pose returns the next state (driven through `engine.apply`), a reading returns what it read (`snapshot(engine.state)`). |
 
 The game both projects describe is the same one, so the review items are the same
 under either engine and a score recorded under one is comparable with a score

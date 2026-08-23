@@ -9,11 +9,16 @@ owns everything around them: the panel, the toggle key, and the frame metrics.
 
 ## Sources are pulled, not pushed
 
-A source is a function that returns the value to show. It is evaluated on every
-read rather than sampled at registration, so it reports whatever the game holds
-at that instant. A pushed value would be a second copy of the game's state kept
-current by the game remembering to update it, and a stale diagnostic is worse
-than no diagnostic.
+A source is a function from the game's state to the value to show. It is
+evaluated on every read rather than sampled at registration, and each read
+hands it the state current at that moment. The overlay reads after the render,
+so a source reports the state this frame's update returned. A pushed value would
+be a second copy of the game's state kept current by the game remembering to
+update it, and a stale diagnostic is worse than no diagnostic.
+
+The state is fed to the source rather than closed over because the state is a
+value each frame replaces. A source that closed over the object `initialize`
+built would report the opening state for the rest of the run.
 
 Registration order is the panel's order. Re-registering a name replaces its
 source and keeps its line where it was, so redefining one value mid-run leaves
@@ -43,8 +48,10 @@ what keeps the memory constant, so a build delivering frames faster than two
 hundred a second summarizes a shorter span of history in place of growing the
 buffer.
 
-The graph and the three figures occupy the top of the panel, above the registered
-lines, so a game's own values keep their order below them.
+The registered lines come first in the panel, in the order the game registered
+them, and the three figures follow as one more line beneath them; the graph sits
+beside the text, to its right. A game's own values therefore keep their place at
+the top whether or not the frame-time window has any samples yet.
 
 ## The toggle belongs to the engine
 

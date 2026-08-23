@@ -10,6 +10,22 @@
 // specification is held against the specification, not against its own idea of
 // what it wrote.
 //
+// HOW THE SURFACE IS DRIVEN. The engine holds the state by value and hands it
+// out read-only, so the surface holds no state of its own and nothing on it
+// mutates anything. Every operation is written in the shape of the game's
+// `update`: a POSE takes the current state and returns the next one
+// (`serve(state)`, `setBall(state, 0, { x })`), and a READING takes the current
+// state and returns what it read (`snapshot(state)`). A caller drives a pose
+// through `engine.apply((s) => debug.serve(s))` — the engine stores what the
+// pose returned, and the next frame's `update` receives it — and a reading
+// through `debug.snapshot(engine.state)`. `version` is a plain number.
+//
+// The surface is generic over the build's state type, because this module
+// imports nothing of the build: `harness.ts` binds it to the `CaromState` the
+// build declared, and the `Driver` there is what gives the checks the
+// imperative reading (`h.debug.serve()`, `h.debug.snapshot()`) over the pure
+// shape declared here.
+//
 // The three variants share one surface and differ in three members, all declared
 // here as optional so one harness serves every workspace: the single ball
 // (`snapshot().ball`, base and gyre) against the three balls (`snapshot().balls`,
@@ -17,6 +33,8 @@
 // shared harness reads a ball through `ball0`/`allBalls`, which accept either
 // shape, and the variant slices under `gyre/` and `multi/` require the member
 // their specification names before a check reads it.
+
+import type { DeepReadonly } from "ts-essentials";
 
 /** The surface's version, reported as `version`. */
 export const CAROM_DEBUG_VERSION = 1;
@@ -102,20 +120,37 @@ export interface CaromSnapshot {
   simTime: number;
 }
 
-/** The surface a build returns beside its state from `initialize`. */
-export interface CaromDebugApi {
+/**
+ * The surface a build returns beside its state from `initialize`, over the
+ * build's own state type `S`.
+ *
+ * Each pose is a transition — the current state in, the next state out — and
+ * `snapshot` is a reading of the current state. None of them touches the state
+ * it was handed: `DeepReadonly<S>` is the view the engine hands out, and the
+ * compiler is what says a pose returns a new value rather than mutating.
+ */
+export interface CaromDebugApi<S = unknown> {
   version: number;
-  reset(options?: { seed?: number }): void;
-  snapshot(): CaromSnapshot;
-  startMatch(mode: Mode): void;
-  serve(): void;
-  setScore(p1: number, p2: number): void;
-  setPaddle(side: Side, state?: PaddlePatch): void;
-  setBall(index: number, state?: BallPatch): void;
-  setAiControl(enabled: boolean): void;
+  reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
+  snapshot(state: DeepReadonly<S>): CaromSnapshot;
+  startMatch(state: DeepReadonly<S>, mode: Mode): S;
+  serve(state: DeepReadonly<S>): S;
+  setScore(state: DeepReadonly<S>, p1: number, p2: number): S;
+  setPaddle(state: DeepReadonly<S>, side: Side, patch?: PaddlePatch): S;
+  setBall(state: DeepReadonly<S>, index: number, patch?: BallPatch): S;
+  setAiControl(state: DeepReadonly<S>, enabled: boolean): S;
   /** Poses the obstacle clock at `t` seconds and holds it there: gyre. */
-  setObstacleClock?(t: number): void;
+  setObstacleClock?(state: DeepReadonly<S>, t: number): S;
 }
+
+/**
+ * The operations that READ the state rather than replace it.
+ *
+ * A driver over the surface needs to know which members to call with the
+ * current state and hand back, and which to run through `engine.apply`; the
+ * surface's shape alone cannot say at runtime, so the specification names them.
+ */
+export const READINGS = ["snapshot"] as const;
 
 /** Every operation the surface must carry in every variant. */
 export const REQUIRED_OPS = [

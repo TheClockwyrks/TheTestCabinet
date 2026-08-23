@@ -3,18 +3,24 @@
 
 import { describe, expect, it } from "vitest";
 import { FIELD_CX, FIELD_CY, HOLD_TIME } from "./constants";
+import type { CaromState } from "./game";
 import { createInitialState, respawn, startMatch, toTitle } from "./match";
 
 describe("startMatch", () => {
   it("opens on the countdown with everything at its opening value", () => {
-    const state = createInitialState();
-    state.score.p1 = 5;
-    state.winner = "left";
-    state.paddles.left.cy = 100;
-    state.ball.x = 20;
-    state.trail.push({ x: 20, y: 20, t: 1 });
+    const before: CaromState = {
+      ...createInitialState(),
+      score: { p1: 5, p2: 0 },
+      winner: "left",
+      paddles: {
+        left: { cy: 100, vy: 0 },
+        right: { cy: FIELD_CY, vy: 0 },
+      },
+      ball: { ...createInitialState().ball, x: 20 },
+      trail: [{ x: 20, y: 20, t: 1 }],
+    };
 
-    startMatch(state, "versus");
+    const state = startMatch(before, "versus");
 
     expect(state.mode).toBe("versus");
     expect(state.screen).toBe("countdown");
@@ -34,43 +40,43 @@ describe("startMatch", () => {
       spin: 0,
     });
     expect(state.trail).toHaveLength(0);
+    // The state it was given is untouched.
+    expect(before.score).toEqual({ p1: 5, p2: 0 });
+    expect(before.trail).toHaveLength(1);
   });
 });
 
 describe("toTitle", () => {
   it("restores every declared field except the clock, mute, seed and driver", () => {
-    const state = createInitialState();
-    startMatch(state, "versus");
-    state.simTime = 12;
-    state.muted = true;
-    state.rngState = 99;
-    state.driver.paddles = true;
-    state.driver.vy.left = 5;
+    const state: CaromState = {
+      ...startMatch(createInitialState(), "versus"),
+      simTime: 12,
+      muted: true,
+      rngState: 99,
+      driver: { paddles: true, ai: false, vy: { left: 5, right: 0 } },
+    };
 
-    toTitle(state);
-
-    const expected = createInitialState();
-    expected.simTime = 12;
-    expected.muted = true;
-    expected.rngState = 99;
-    expected.driver.paddles = true;
-    expected.driver.vy.left = 5;
-    expect(state).toEqual(expected);
+    expect(toTitle(state)).toEqual({
+      ...createInitialState(),
+      simTime: 12,
+      muted: true,
+      rngState: 99,
+      driver: { paddles: true, ai: false, vy: { left: 5, right: 0 } },
+    });
   });
 });
 
 describe("respawn", () => {
   it("parks the ball and opens a hold aimed at the receiver", () => {
-    const state = createInitialState();
-    startMatch(state, "solo");
-    state.screen = "playing";
-    state.ball.x = 5;
-    state.ball.vx = -300;
-    state.ball.spin = 40;
-    state.holdTimer = 0;
-    state.trail.push({ x: 5, y: 5, t: 1 });
+    const live: CaromState = {
+      ...startMatch(createInitialState(), "solo"),
+      screen: "playing",
+      ball: { x: 5, y: FIELD_CY, vx: -300, vy: 0, spin: 40 },
+      holdTimer: 0,
+      trail: [{ x: 5, y: 5, t: 1 }],
+    };
 
-    respawn(state, "right");
+    const state = respawn(live, "right");
 
     expect(state.receiver).toBe("right");
     expect(state.screen).toBe("countdown");

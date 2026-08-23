@@ -5,29 +5,65 @@ title: Validating a Game
 A case's validators are vitest suites that run in the same process as the build.
 A suite imports the engine and the build's own game module, creates an engine
 over a canvas it owns and a clock it chose, and steps the game with
-`engine.advance`. Everything a check reads is either the game's own state or an
-engine surface: the frame counter, the events the engine broadcast, and the
-pixels or the draw calls the render produced.
+`engine.advance`. A check poses its scenario through `engine.apply` and reads
+the outcome back through `engine.state`, both routed through the build's debug
+surface; everything else it reads is an engine surface: the frame counter, the
+events the engine broadcast, and the pixels or the draw calls the render
+produced.
 
 This page is one complete suite for a small game, written the way a case ships
 its validators.
 
 ## The build under test
 
-The case's specification fixes the module the build exports its game from and
-the fields of the state that game holds, which is what a validator imports and
-poses.
+The case's specification fixes the module the build exports its game from, the
+fields of the state that game holds, and the debug surface its `initialize`
+returns beside the state. The surface is written in the shape of `update`: each
+pose takes the current state and returns the next, and `snapshot` takes the
+state and returns a plain view of it.
 
 ```ts
 // src/game.ts, as a validator sees it
 import type { Game } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
-export interface State {
-  ball: { x: number; y: number; vx: number; vy: number };
-  paddle: { y: number };
+export interface Ball {
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
 }
 
-export declare const game: Game<State, null>;
+export interface State {
+  readonly ball: Ball;
+  readonly paddle: { readonly y: number };
+}
+
+export interface Snapshot {
+  readonly ball: Ball;
+  readonly paddle: { readonly y: number };
+}
+
+export interface Debug {
+  setBall(state: DeepReadonly<State>, ball: Partial<Ball>): State;
+  setPaddle(state: DeepReadonly<State>, y: number): State;
+  snapshot(state: DeepReadonly<State>): Snapshot;
+}
+
+export declare const game: Game<State, Debug>;
+```
+
+The build's own implementation of the surface is three pure functions.
+
+```ts
+// src/debug.ts, as the build writes it
+import type { Debug } from "./game";
+
+export const debug: Debug = {
+  setBall: (state, ball) => ({ ...state, ball: { ...state.ball, ...ball } }),
+  setPaddle: (state, y) => ({ ...state, paddle: { y } }),
+  snapshot: (state) => ({ ball: { ...state.ball }, paddle: { ...state.paddle } }),
+};
 ```
 
 | Figure | Value |
@@ -52,6 +88,7 @@ tsconfig.json
 vitest.config.ts
 src/
   game.ts
+  debug.ts
   main.ts
   physics.ts
   physics.test.ts
@@ -141,7 +178,9 @@ Every validator builds its engine through one helper. It creates a canvas with
 `@napi-rs/canvas`, supplies a `SurfaceMetrics` so the engine takes every
 measurement from the harness instead of from a document, wraps the 2D context in
 a recording proxy, subscribes to `asset:failed` before any game code runs, and
-then initializes.
+then initializes. It also wraps the build's pure surface over the engine, so a
+check writes `harness.setBall(…)` and `harness.snapshot()` and the harness
+routes the pose through `engine.apply` and the reading through `engine.state`.
 
 ```ts
 // validation/harness.ts
@@ -154,7 +193,7 @@ import {
   type SurfaceMetrics,
   type Viewport,
 } from "@test-cabinet/simple-2d";
-import { game, type State } from "../src/game";
+import { game, type Ball, type Debug, type Snapshot, type State } from "../src/game";
 
 // The figures the case's specification fixes.
 export const FIELD_WIDTH = 640;
@@ -179,11 +218,13 @@ export interface HarnessOptions {
 }
 
 export interface Harness {
-  readonly engine: Engine<State>;
-  readonly state: State;
+  readonly engine: Engine<State, Debug>;
   readonly ctx: SKRSContext2D;
   readonly calls: DrawCall[];
   readonly assetFailures: string[];
+  setBall(ball: Partial<Ball>): void;
+  setPaddle(y: number): void;
+  snapshot(): Snapshot;
   hold(code: string): void;
   release(code: string): void;
   tap(code: string): void;
@@ -261,7 +302,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     events: () => events,
   };
 
-  const engine = createEngine<State, null>({
+  const engine = createEngine<State, Debug>({
     canvas: element,
     width: FIELD_WIDTH,
     height: FIELD_HEIGHT,
@@ -276,7 +317,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     assetFailures.push(`${path}: ${reason}`);
   });
 
-  const state = await engine.initialize();
+  await engine.initialize();
 
   const dispatch = (type: "keydown" | "keyup", code: string): void => {
     events.dispatchEvent(new KeyEvent(type, code));
@@ -284,10 +325,12 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 
   return {
     engine,
-    state,
     ctx,
     calls,
     assetFailures,
+    setBall: (ball) => engine.apply((s) => engine.debug.setBall(s, ball)),
+    setPaddle: (y) => engine.apply((s) => engine.debug.setPaddle(s, y)),
+    snapshot: () => engine.debug.snapshot(engine.state),
     hold: (code) => dispatch("keydown", code),
     release: (code) => dispatch("keyup", code),
     tap: (code) => {
@@ -305,7 +348,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
 }
 ```
 
-Four details carry the harness.
+Five details carry the harness.
 
 The options the validator passes to `createEngine` are the ones the case's
 specification fixes: the design size and the background. Everything else the
@@ -322,6 +365,14 @@ recording proxy onto the canvas. The engine sizes the backing store and reads
 pixels through the real canvas, and every drawing operation lands in `calls` on
 its way to it.
 
+`setBall`, `setPaddle`, and `snapshot` are the surface wrapped over the engine.
+A pose is `engine.apply((s) => engine.debug.setBall(s, ball))`: the engine hands
+the current state to the transition, keeps the state it returns, and the next
+frame's `update` receives it. A reading is
+`engine.debug.snapshot(engine.state)`, a plain value taken from the state the
+most recent frame left. A check that wants the state itself reads
+`engine.state`, which is a `DeepReadonly` view of the same value.
+
 Subscribing before `engine.initialize()` is what makes an asset failure
 visible. Construction runs no game code, so the handler is attached in time to
 observe the game's own initialization, and a build whose assets never arrive
@@ -333,8 +384,8 @@ disk, so every path resolving under `assetRoot` arrives in process.
 
 A [`ConstantClock`](/engines/simple-2d/apis/clocks/) makes each frame worth a
 known step, so a duration is a frame count and the arithmetic a check asserts is
-the arithmetic the specification states. The validator writes the scenario into
-the game's own state, advances, and reads the same state back.
+the arithmetic the specification states. The validator poses the scenario
+through the surface, advances, and reads a snapshot back.
 
 ```ts
 // validation/simulation.test.ts
@@ -353,25 +404,27 @@ afterEach(() => {
 });
 
 it("carries the ball at 200 units per second", async () => {
-  const { engine, state } = harness;
-  state.ball = { x: 320, y: 180, vx: 200, vy: 0 };
+  const { engine } = harness;
+  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
 
   await engine.advance(30);
 
+  const { ball } = harness.snapshot();
   expect(engine.frame().count).toBe(30);
   expect(engine.frame().timeMs).toBeCloseTo(500, 6);
-  expect(state.ball.x).toBeCloseTo(420, 3);
-  expect(state.ball.y).toBeCloseTo(180, 6);
+  expect(ball.x).toBeCloseTo(420, 3);
+  expect(ball.y).toBeCloseTo(180, 6);
 });
 
 it("reflects the ball off the right wall", async () => {
-  const { engine, state } = harness;
-  state.ball = { x: 320, y: 180, vx: 200, vy: 0 };
+  const { engine } = harness;
+  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
 
   await engine.advance(120);
 
-  expect(state.ball.vx).toBe(-200);
-  expect(state.ball.x).toBeLessThanOrEqual(FIELD_WIDTH - BALL_RADIUS);
+  const { ball } = harness.snapshot();
+  expect(ball.vx).toBe(-200);
+  expect(ball.x).toBeLessThanOrEqual(FIELD_WIDTH - BALL_RADIUS);
   expect(harness.assetFailures).toEqual([]);
 });
 ```
@@ -380,7 +433,8 @@ Thirty frames of `1000 / 60` milliseconds are half a second exactly, so the ball
 travels 100 units and the frame counter reads 30. Two seconds is 120 frames, and
 the ball has 312 units to cover before its edge meets the wall at
 `640 - 8`, so the reflection has happened and the horizontal velocity has turned
-over.
+over. Each snapshot is taken after the advance, so it reads the state that
+frame left rather than the one the pose built.
 
 ## Asserting a cue played
 
@@ -404,13 +458,13 @@ afterEach(() => {
 });
 
 it("plays the bounce cue when the ball meets a wall", async () => {
-  const { engine, state } = harness;
+  const { engine } = harness;
   const bounces: { t: number; gain: number }[] = [];
   const off = engine.events.on("cue:played", ({ cue, t, gain }) => {
     if (cue === "bounce") bounces.push({ t, gain });
   });
 
-  state.ball = { x: 320, y: 180, vx: 200, vy: 0 };
+  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
   await engine.advance(120);
   off();
 
@@ -471,9 +525,9 @@ afterEach(() => {
 });
 
 it("fills the ball and the paddle in their own colors", async () => {
-  const { engine, state } = harness;
-  state.ball = { x: 320, y: 180, vx: 0, vy: 0 };
-  state.paddle.y = 180;
+  const { engine } = harness;
+  harness.setBall({ x: 320, y: 180, vx: 0, vy: 0 });
+  harness.setPaddle(180);
 
   await engine.advance(1);
 
@@ -485,9 +539,9 @@ it("fills the ball and the paddle in their own colors", async () => {
 });
 
 it("draws the paddle as one rect and the ball as one arc", async () => {
-  const { engine, state, calls } = harness;
-  state.ball = { x: 320, y: 180, vx: 0, vy: 0 };
-  state.paddle.y = 180;
+  const { engine, calls } = harness;
+  harness.setBall({ x: 320, y: 180, vx: 0, vy: 0 });
+  harness.setPaddle(180);
 
   calls.length = 0;
   await engine.advance(1);
@@ -541,31 +595,34 @@ afterEach(() => {
 });
 
 it("raises the paddle while the up action is held", async () => {
-  const { engine, state } = harness;
-  state.paddle.y = 180;
+  const { engine } = harness;
+  harness.setPaddle(180);
 
   harness.hold("KeyW");
   await engine.advance(30);
-  expect(state.paddle.y).toBeCloseTo(60, 3);
+  expect(engine.state.paddle.y).toBeCloseTo(60, 3);
 
   harness.release("KeyW");
   await engine.advance(30);
-  expect(state.paddle.y).toBeCloseTo(60, 3);
+  expect(engine.state.paddle.y).toBeCloseTo(60, 3);
 });
 
 it("clamps the paddle at the top of the field", async () => {
-  const { engine, state } = harness;
-  state.paddle.y = 180;
+  const { engine } = harness;
+  harness.setPaddle(180);
 
   harness.hold("ArrowUp");
   await engine.advance(120);
 
-  expect(state.paddle.y).toBeCloseTo(PADDLE_HEIGHT / 2, 6);
+  expect(engine.state.paddle.y).toBeCloseTo(PADDLE_HEIGHT / 2, 6);
 });
 ```
 
 Half a second at 240 units per second is 120 units, and releasing the key leaves
-the paddle where it stopped. Holding for two seconds asks for 480 units of
+the paddle where it stopped. These checks read `engine.state` directly, which
+is the route for a field the specification fixes on the state itself; each read
+is of the value the latest frame left, so the two reads in the first check are
+two different values. Holding for two seconds asks for 480 units of
 travel against a field that allows 150, so the second check reads the clamp
 rather than the speed.
 

@@ -56,10 +56,14 @@ things that happen once per press:
 update(state, api, dt) {
   // Held: applied every frame it is down.
   const dir = api.input.value("right") - api.input.value("left");
-  state.x += dir * SPEED * dt;
+  const x = state.x + dir * SPEED * dt;
 
   // Edge: fires once per press, however long the key is held.
-  if (api.input.pressed("fire")) state.bullets.push(spawn(state));
+  const bullets = api.input.pressed("fire")
+    ? [...state.bullets, spawn(state)]
+    : state.bullets;
+
+  return { ...state, x, bullets };
 }
 ```
 

@@ -25,7 +25,7 @@ import { integratePaddle } from "./entities";
 import type { BallState, PaddleState } from "./game";
 
 /**
- * Move the AI's paddle for one frame.
+ * The AI's paddle after one frame of its own play.
  *
  * `active` is true only while the ball is live — during the pre-serve hold there
  * is nothing to track, so the paddle eases home.
@@ -35,7 +35,7 @@ export function updateAi(
   ball: BallState,
   active: boolean,
   dt: number,
-): void {
+): PaddleState {
   // The lagged perception: the ball as it was AI_REACT seconds ago.
   const perceivedY = ball.y - ball.vy * AI_REACT;
 
@@ -44,12 +44,11 @@ export function updateAi(
   const deadzone = incoming ? AI_DEADZONE : AI_HOME_DEADZONE;
 
   const diff = target - paddle.cy;
-  if (Math.abs(diff) <= deadzone) {
-    paddle.vy = 0;
-  } else {
+  const vy = (): number => {
+    if (Math.abs(diff) <= deadzone) return 0;
     // Never overshoot the target in a single step.
     const reach = dt > 0 ? Math.abs(diff) / dt : AI_SPEED;
-    paddle.vy = Math.sign(diff) * Math.min(AI_SPEED, reach);
-  }
-  integratePaddle(paddle, dt);
+    return Math.sign(diff) * Math.min(AI_SPEED, reach);
+  };
+  return integratePaddle({ cy: paddle.cy, vy: vy() }, dt);
 }

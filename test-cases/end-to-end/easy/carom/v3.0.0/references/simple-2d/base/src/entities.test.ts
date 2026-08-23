@@ -20,9 +20,9 @@ import {
   paddleBounds,
   paddleFrontX,
   paddleRect,
-  parkBall,
+  parkedBall,
 } from "./entities";
-import type { BallState, PaddleState } from "./game";
+import type { PaddleState } from "./game";
 
 describe("clamp", () => {
   it("passes a value inside the range through", () => {
@@ -58,32 +58,35 @@ describe("paddle geometry", () => {
 
 describe("integratePaddle", () => {
   it("advances by the velocity over the elapsed time", () => {
-    const paddle: PaddleState = { cy: 360, vy: 720 };
-    integratePaddle(paddle, 0.25);
+    const paddle = integratePaddle({ cy: 360, vy: 720 }, 0.25);
     expect(paddle.cy).toBeCloseTo(540, 9);
     expect(paddle.vy).toBe(720);
   });
 
   it("clamps to the field and reports the velocity actually achieved", () => {
-    const paddle: PaddleState = { cy: PADDLE_MAX_CY - 6, vy: 720 };
-    integratePaddle(paddle, 1 / 60);
+    const paddle = integratePaddle({ cy: PADDLE_MAX_CY - 6, vy: 720 }, 1 / 60);
     expect(paddle.cy).toBe(PADDLE_MAX_CY);
     // 6 px of the 12 px it asked for, over 1/60 s.
     expect(paddle.vy).toBeCloseTo(360, 9);
   });
 
   it("reports zero for a paddle already pinned against a bound", () => {
-    const paddle: PaddleState = { cy: PADDLE_MIN_CY, vy: -720 };
-    integratePaddle(paddle, 1 / 60);
+    const paddle = integratePaddle({ cy: PADDLE_MIN_CY, vy: -720 }, 1 / 60);
     expect(paddle.cy).toBe(PADDLE_MIN_CY);
     expect(paddle.vy).toBe(0);
   });
 
   it("leaves the velocity alone across a zero-length frame", () => {
-    const paddle: PaddleState = { cy: PADDLE_MIN_CY, vy: -720 };
-    integratePaddle(paddle, 0);
+    const paddle = integratePaddle({ cy: PADDLE_MIN_CY, vy: -720 }, 0);
     expect(paddle.cy).toBe(PADDLE_MIN_CY);
     expect(paddle.vy).toBe(-720);
+  });
+
+  it("returns a new paddle and leaves the one it was given alone", () => {
+    const before: PaddleState = { cy: 360, vy: 720 };
+    const after = integratePaddle(before, 0.25);
+    expect(after).not.toBe(before);
+    expect(before).toEqual({ cy: 360, vy: 720 });
   });
 });
 
@@ -93,8 +96,6 @@ describe("the ball", () => {
   });
 
   it("parks at the field center with no motion and no spin", () => {
-    const ball: BallState = { x: 1, y: 2, vx: 3, vy: 4, spin: 5 };
-    parkBall(ball);
-    expect(ball).toEqual({ x: 640, y: 360, vx: 0, vy: 0, spin: 0 });
+    expect(parkedBall()).toEqual({ x: 640, y: 360, vx: 0, vy: 0, spin: 0 });
   });
 });

@@ -98,6 +98,10 @@ game, and none of it is written here:
   per second and is integrated against it. There is no fixed timestep and no
   accumulator — the same second of play reaches the same state however it was
   divided into frames.
+- **The state, held by value.** The engine hands `update` the current state as a
+  read-only view (`DeepReadonly<CaromState>`) and stores whatever it returns as
+  the next state; `render` is handed that next state under the same view, and
+  `engine.state` reads it. Nothing in this build holds a writable `CaromState`.
 - **The canvas fit.** The uniform scale, the centered letterbox, the device pixel
   ratio, and the resync when any of them changes. `src/render.ts` draws in logical
   `1280x720` coordinates and never reads the canvas element's size.
@@ -115,29 +119,45 @@ API poses.
 
 The game exposes a small debugging and automation API **through the engine**, so a
 scenario can be posed in Carom's own world from code. `src/debug.ts` builds the
-surface over a state, `initialize` returns it beside the state as
-`[state, createDebugApi(state)]`, and a caller reads that same object back off
-**`engine.debug`** — the engine returns it unchanged and reads no member of
-it. Nothing is published on the page, so a check reaches the surface through the
-engine it constructed rather than through the document the build is drawn on.
+surface, `initialize` returns it beside the state as
+`[createInitialState(), createDebugApi()]`, and a caller reads that same object
+back off **`engine.debug`** — the engine returns it unchanged and reads no member
+of it. Nothing is published on the page, so a check reaches the surface through
+the engine it constructed rather than through the document the build is drawn on.
+
+Because the state is a value and nothing holds a writable one, the surface is
+written in the shape of `update`: every operation is a function of the state it
+is handed. A **pose** takes the current state and returns the next, and a caller
+drives it through `engine.apply`, which stores what it returns as the state the
+next frame receives; a **reading** takes the state and returns what it read, and a
+caller hands it `engine.state`.
+
+```ts
+engine.apply((s) => engine.debug.startMatch(s, "versus"));
+engine.apply((s) => engine.debug.setBall(s, 0, { x: 300, vx: 400 }));
+await engine.advance(6);
+const { balls } = engine.debug.snapshot(engine.state);
+```
 
 The operations are:
 
-- `reset(options?)` and `snapshot()` — return to the title screen (seedable) and
-  read a JSON-serializable view of the full state.
-- `startMatch(mode)`, `serve()`, `setScore(p1, p2)`, `setPaddle(side, state)`, and
-  `setBall(index, state)` — set up a scenario through the game's own state;
-  calling any of them hands paddle control to the caller until `reset()`.
-  `setBall` addresses one of the three balls by its play-order index and takes it
-  into live play, so a scenario can drive one ball with the other two parked;
-  `serve()` ends the hold of every ball still waiting at its home point.
-- `setAiControl(enabled)` — in Solo, hand the AI's paddle back to the computer
-  opponent for the rest of a driven scenario, so a check can exercise the real AI
-  against a posed shot.
+- `reset(state, options?)` and `snapshot(state)` — the title screen (seedable),
+  and a JSON-serializable view of the full state.
+- `startMatch(state, mode)`, `serve(state)`, `setScore(state, p1, p2)`,
+  `setPaddle(state, side, patch)`, and `setBall(state, index, patch)` — set up a
+  scenario through the game's own state; each returns a state in which the driver
+  holds the paddles, until `reset`. `setBall` addresses one of the three balls by
+  its play-order index and takes it into live play, so a scenario can drive one
+  ball with the other two parked; `serve` ends the hold of every ball still
+  waiting at its home point.
+- `setAiControl(state, enabled)` — in Solo, hand the AI's paddle back to the
+  computer opponent for the rest of a driven scenario, so a check can exercise the
+  real AI against a posed shot.
+- `version` — a plain number.
 
 Every one of those is a read or a pose of `CaromState`: they arrange the world,
 and the game's own `update` is what runs from there when the engine advances a
-frame.
+frame. None of them writes to the state it is handed.
 
 Everything about _driving a browser game_ rather than about Carom is the
 engine's. The clock, the exact frames, and the registered actions are driven by
@@ -147,6 +167,25 @@ surface deliberately carries no `step`, `setAutoStep`, `keyDown`, `keyUp`, or
 draw-command recorder around that section and keeps the recording.
 
 Both surfaces are inert during normal play.
+
+## How the code is shaped
+
+Every module under `src/` is pure: a function takes a state, or a slice of one
+(a ball, a paddle, the generator's word), and returns a new value, built by
+spreading the parts that change over the parts that do not. There is no
+module-level game state and no closure over mutable data. So `step` in
+`src/physics.ts` returns `{ balls, events }` rather than writing the balls it was
+given, `updateAi` returns the paddle after the frame, `recordTrail` returns the
+ball with a longer trail, and a draw from `src/rng.ts` returns
+`[value, nextRngState]` for the caller to thread into the state it builds. The
+state type declares every field `readonly` and every array as a readonly array,
+so the `DeepReadonly<CaromState>` view the engine hands out and `CaromState` are
+the same shape, and a spread of one is the other with no cast.
+
+The diagnostic sources (`src/diagnostics.ts`) are registered once, in
+`initialize`, as functions of the state the engine hands them at each read — the
+state this frame's `update` returned — rather than as closures over the state
+`initialize` built, which would be the title screen forever.
 
 ## Requirements
 
@@ -215,11 +254,12 @@ src/
   theme.ts            This build's own look: palette, type, HUD layout, tagline
   flow.ts             The poses a match moves between: the title, the opening
                       of a match, and the parked balls
-  debug.ts            The debug surface over CaromState, returned beside the
-                      state by game.ts's initialize
+  debug.ts            The debug surface: poses and readings over CaromState,
+                      returned beside the state by game.ts's initialize
   game.ts             The state contract, the state machine, and the three
                       functions the engine drives
-  rng.ts              The seeded generator, over CaromState.rngState
+  rng.ts              The seeded generator: a draw from CaromState.rngState
+                      returns the value beside the next state
   entities.ts         Paddle and ball arithmetic, geometry, and the home points
   trail.ts            One ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision (walls, paddles,

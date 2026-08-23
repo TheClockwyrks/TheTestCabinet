@@ -92,10 +92,15 @@ match rules, and the AI.
 
 `src/game.ts` exports `game`, a `Game<CaromState, CaromDebugApi>`: `initialize`
 builds the state and the debug surface once and returns them together as
-`[state, debug]`, `update` advances the state against the frame's delta time in
-seconds, and `render` draws it. All three throw `"not implemented"` as they
-stand. Implement them, and split the work across new files under `src/` however
-suits you.
+`[state, debug]`, `update` takes the current state as a read-only view
+(`DeepReadonly<CaromState>`) and returns the next state, advanced against the
+frame's delta time in seconds, and `render` is handed that next state, read-only
+again, and draws it. The engine holds the state by value and replaces it with
+what each `update` returns, so a frame builds the next state from the current
+one rather than writing into it, and nothing but `update` and the debug
+surface's poses advances the game. All three functions throw `"not implemented"`
+as they stand. Implement them, and split the work across new files under `src/`
+however suits you.
 
 `src/game.ts` also declares and exports `CaromState` and the types it is built
 from, exactly as this specification states them, and `CaromDebugApi`, the debug

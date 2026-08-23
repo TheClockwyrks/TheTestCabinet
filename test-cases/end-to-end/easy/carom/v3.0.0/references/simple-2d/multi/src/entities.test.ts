@@ -1,7 +1,8 @@
 // The paddle integrator is the one piece of `entities.ts` with a rule behind it:
 // `PaddleState.vy` is the paddle's REAL velocity, so a paddle pinned against a
 // bound must report zero — that is what stops it imparting spin while a movement
-// action is held against the edge of the field.
+// action is held against the edge of the field. Every function returns a new
+// record; what it was handed is asserted untouched where that matters.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -60,30 +61,33 @@ describe("paddle geometry", () => {
 
 describe("integratePaddle", () => {
   it("advances by the velocity over the elapsed time", () => {
-    const paddle: PaddleState = { cy: 360, vy: 720 };
-    integratePaddle(paddle, 0.25);
+    const paddle = integratePaddle({ cy: 360, vy: 720 }, 0.25);
     expect(paddle.cy).toBeCloseTo(540, 9);
     expect(paddle.vy).toBe(720);
   });
 
+  it("returns a new paddle and leaves the one it was handed alone", () => {
+    const before: PaddleState = { cy: 360, vy: 720 };
+    const after = integratePaddle(before, 0.25);
+    expect(before).toEqual({ cy: 360, vy: 720 });
+    expect(after).not.toBe(before);
+  });
+
   it("clamps to the field and reports the velocity actually achieved", () => {
-    const paddle: PaddleState = { cy: PADDLE_MAX_CY - 6, vy: 720 };
-    integratePaddle(paddle, 1 / 60);
+    const paddle = integratePaddle({ cy: PADDLE_MAX_CY - 6, vy: 720 }, 1 / 60);
     expect(paddle.cy).toBe(PADDLE_MAX_CY);
     // 6 px of the 12 px it asked for, over 1/60 s.
     expect(paddle.vy).toBeCloseTo(360, 9);
   });
 
   it("reports zero for a paddle already pinned against a bound", () => {
-    const paddle: PaddleState = { cy: PADDLE_MIN_CY, vy: -720 };
-    integratePaddle(paddle, 1 / 60);
+    const paddle = integratePaddle({ cy: PADDLE_MIN_CY, vy: -720 }, 1 / 60);
     expect(paddle.cy).toBe(PADDLE_MIN_CY);
     expect(paddle.vy).toBe(0);
   });
 
   it("leaves the velocity alone across a zero-length frame", () => {
-    const paddle: PaddleState = { cy: PADDLE_MIN_CY, vy: -720 };
-    integratePaddle(paddle, 0);
+    const paddle = integratePaddle({ cy: PADDLE_MIN_CY, vy: -720 }, 0);
     expect(paddle.cy).toBe(PADDLE_MIN_CY);
     expect(paddle.vy).toBe(-720);
   });
@@ -92,10 +96,7 @@ describe("integratePaddle", () => {
 describe("the balls", () => {
   it("derives speed from the velocity", () => {
     expect(ballSpeed(createBalls()[0])).toBe(0);
-    const moving = createBalls()[0];
-    moving.vx = 3;
-    moving.vy = 4;
-    expect(ballSpeed(moving)).toBe(5);
+    expect(ballSpeed({ ...createBalls()[0], vx: 3, vy: 4 })).toBe(5);
   });
 
   it("builds one ball per home point, parked and unheld", () => {
@@ -115,14 +116,8 @@ describe("the balls", () => {
     });
   });
 
-  it("parks a ball back on its OWN home with the wait it is given", () => {
-    const ball = createBalls()[0];
-    Object.assign(ball, { x: 1, y: 2, vx: 3, vy: 4, spin: 5 });
-    ball.trail.push({ x: 1, y: 2, t: 0 });
-
-    parkBall(ball, 2, 1.0);
-
-    expect(ball).toEqual({
+  it("parks a ball on its OWN home with the wait it is given", () => {
+    expect(parkBall(2, 1.0)).toEqual({
       x: BALL_HOMES[2].x,
       y: BALL_HOMES[2].y,
       vx: 0,
@@ -135,9 +130,16 @@ describe("the balls", () => {
   });
 
   it("leaves a ball parked and unheld when the wait is zero", () => {
-    const ball = createBalls()[1];
-    parkBall(ball, 1, 0);
+    const ball = parkBall(1, 0);
     expect(ball.held).toBe(false);
     expect(ball.holdTimer).toBe(0);
+  });
+
+  it("builds a fresh ball on every call, sharing nothing between them", () => {
+    const one = parkBall(0, 1);
+    const two = parkBall(0, 1);
+    expect(one).toEqual(two);
+    expect(one).not.toBe(two);
+    expect(one.trail).not.toBe(two.trail);
   });
 });

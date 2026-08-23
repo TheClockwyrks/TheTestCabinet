@@ -23,6 +23,12 @@
  * - **The debug surface** — the object a game returns beside its state from
  *   `initialize`, held and returned off the engine, so a check poses a scenario
  *   through the engine it built rather than through the page the build is drawn on.
+ * - **The state, held by value** — the game's state is a value each frame replaces
+ *   rather than an object each frame writes into: `update` is handed a read-only
+ *   view and returns the next state, `render` is handed the same view and returns
+ *   nothing, and a caller poses the game through {@link Engine.apply}, a
+ *   transition of the same shape. Rendering cannot change the state and nothing
+ *   but a transition advances it, and the compiler is what says so.
  *
  * This module is the wiring and nothing else: every behaviour above belongs to a
  * subsystem beside it, and what is decided *here* is which subsystem talks to which,
@@ -222,7 +228,7 @@ export function createEngine(options) {
         return built.state;
     };
     /**
-     * The state, as a frame reads it.
+     * The box, as a frame reads it.
      *
      * Separate from {@link requireState} because it cannot fail: no frame runs before
      * `initialize` resolves, since both entry points that produce one refuse first.
@@ -230,11 +236,29 @@ export function createEngine(options) {
      * being asserted away, and its message says "engine bug" rather than blaming a
      * caller who did nothing wrong.
      */
-    const frameState = () => {
+    const frameBuilt = () => {
         if (built === null) {
             throw new Error("simple-2d: a frame ran before the game's state was built");
         }
-        return built.state;
+        return built;
+    };
+    /**
+     * Replace the state with what `transition` makes of the current one.
+     *
+     * The one place the held state changes, shared by the frame's update and by
+     * {@link Engine.apply}, so the rule about what a transition may return is stated
+     * once. `undefined` is refused rather than held: a game whose `update` mutated
+     * the state it was handed and returned nothing has advanced nothing the engine
+     * will ever read again, and holding `undefined` would turn that one mistake into
+     * a crash on an unrelated line of the next frame. `who` names the transition in
+     * the refusal, because the same mistake is made in both places.
+     */
+    const transition = (box, next, who) => {
+        if (next === undefined) {
+            throw new Error(`${who} must return the next state — the state is read-only where it is handed over, and the value returned is the state the engine holds from here on`);
+        }
+        box.state = next;
+        return next;
     };
     // Sized once up front, so `viewport()` and the game's own initialization see a
     // real fit rather than a zero one before the first frame runs.
@@ -287,7 +311,11 @@ export function createEngine(options) {
             resolve: (path) => assets.resolve(path),
         },
         diagnostics: {
-            register: (name, source) => diagnostics.register(name, source),
+            // The source is handed the state current at the read, because each frame
+            // replaces the value and a source that closed over the initial one would
+            // report the title screen forever. The registry itself knows nothing of
+            // state, so the binding happens here.
+            register: (name, source) => diagnostics.register(name, () => source(frameBuilt().state)),
         },
         events: bus,
         viewport: snapshot,
@@ -318,9 +346,11 @@ export function createEngine(options) {
      * canvas work has to happen inside the frame and before the game touches the
      * context, and wrapping is what keeps the loop ignorant of the canvas entirely.
      *
-     * Both read the state through `frameState`, which cannot fail here — no frame
+     * Both read the box through `frameBuilt`, which cannot fail here — no frame
      * runs before `initialize` resolves — but which keeps the invariant stated at the
-     * point that depends on it instead of leaving a non-null assertion behind.
+     * point that depends on it instead of leaving a non-null assertion behind. The
+     * update's return value is the state the frame leaves: `render` draws it, and
+     * the next frame receives it.
      */
     const callbacks = {
         update: (dt) => {
@@ -329,12 +359,13 @@ export function createEngine(options) {
             // page the original did.
             recorder.beginFrame();
             prepare();
-            game.update(frameState(), updateApi, dt);
+            const box = frameBuilt();
+            transition(box, game.update(box.state, updateApi, dt), "the game's update");
         },
         // The prepared context is `renderApi.ctx`, the same object the loop would hand
         // over, so the argument is left unnamed rather than shadowing it.
         render: () => {
-            game.render(frameState(), renderApi);
+            game.render(frameBuilt().state, renderApi);
             // Closed here rather than in the loop's after-frame hook, so the diagnostics
             // overlay drawn there stays out of the recording: the overlay is chrome laid
             // over the finished picture, and baking a debug panel into a reviewer's
@@ -393,6 +424,19 @@ export function createEngine(options) {
         events: bus,
         get state() {
             return requireState("state");
+        },
+        /**
+         * Pose the game between frames: replace the state with what `transition`
+         * returns from the current one, and hand the new state back.
+         *
+         * Goes through the same gate the frame's update does, so a transition that
+         * returns nothing is refused with the same words, and through the same
+         * ordering check every other entry point uses, so reaching it before
+         * `initialize` resolves reads like reaching `engine.state` early.
+         */
+        apply(fn) {
+            const current = requireState("apply");
+            return transition(frameBuilt(), fn(current), "a transition applied through engine.apply");
         },
         /**
          * The surface the game returned beside its state, or a refusal naming the

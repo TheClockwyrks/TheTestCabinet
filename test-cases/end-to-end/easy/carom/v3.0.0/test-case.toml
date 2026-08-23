@@ -201,9 +201,13 @@ test = "npx vitest run --coverage"
 # handle is what a person opening the console of such a build finds. An engine run
 # has no global at all — the build writes the surface, its `initialize` returns it
 # beside the state as `[state, debug]`, and a validator reads it back off
-# `engine.debug`. The seeded specification documents the surface independently as
-# an ordinary game debug feature (see specs/instrumentation.md); this entry is
-# reporter-side and never seeded.
+# `engine.debug`. Because the engine holds the state by value and hands every
+# reader a read-only view, that surface is written in the shape of `update`: a
+# pose takes the current state and returns the next, which a validator applies
+# through `engine.apply`, and a reading takes the state and returns what it read,
+# which a validator calls with `engine.state`. The seeded specification documents
+# the surface independently as an ordinary game debug feature (see
+# specs/instrumentation.md); this entry is reporter-side and never seeded.
 #
 # There is deliberately no `tick_hz`. It existed to tell the validation runtime what
 # one stepped tick was worth, because a driver stepped the build's own fixed
@@ -332,10 +336,11 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 #
 # A `simple-2d` suite imports the runtime and the build's own `src/game.ts`,
 # constructs it over a headless canvas with a clock it scripts, poses the scenario
-# through the surface `engine.debug` returns, and steps it with `advance`. It reads
-# behavior back from the game's state, audio from the runtime's `cue:played` event,
-# and drawing from the canvas — either the pixels or a recording proxy over the 2D
-# context.
+# by applying the poses of the surface `engine.debug` returns through
+# `engine.apply`, and steps it with `advance`. It reads behavior back from
+# `engine.state` (or the surface's `snapshot` over it), audio from the runtime's
+# `cue:played` event, and drawing from the canvas — either the pixels or a
+# recording proxy over the 2D context.
 #
 # THE MEDIA a point declares is produced by its own suite, from the scenario the
 # case controls. A `replay` output is a draw-command recording: the suite arms the
@@ -368,7 +373,7 @@ title = "Instrumentation"
 [[review.categories.items]]
 id = "debug-api"
 title = "Debug and automation API present"
-description = "Every operation specs/instrumentation.md names is present as a function on the debug surface, each runs against the live game, and snapshot() reports the full documented shape with live values."
+description = "Every operation specs/instrumentation.md names is present as a function on the debug surface, each poses or reads the running game, and snapshot reports the full documented shape with current values."
 # Automated validation: reflect that every required operation is installed as a
 # function and that a snapshot reports the full documented shape, then capture the
 # live match that was driven. See validation/<engine>/instrumentation/debug-api.test.ts.

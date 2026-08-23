@@ -88,6 +88,30 @@ engine's. Under `simple-2d` the game's `initialize` returns it beside the state,
 as `[state, debug]`, and the engine returns it from `engine.debug`. Under `none`
 the build installs it on `window.__carom`.
 
+## Under `simple-2d` the state is a value
+
+The engine holds the game's state by value rather than as one object every
+frame writes into. `update` is handed the current state as a read-only view,
+`DeepReadonly<CaromState>`, and returns the next state; the engine keeps what it
+returned, hands it to `render` read-only, and serves it from `engine.state`.
+`src/game.ts` imports `DeepReadonly` from `ts-essentials`, which the seeded
+`package.json` declares, and the state declaration in `specs/state.md` marks
+every field and every array `readonly`. A frame therefore builds the next state
+from the current one, and "rendering changes nothing" and "nothing but an update
+advances the game" are what the compiler checks rather than what a comment asks
+for. A diagnostic
+source is called with the state current at the read for the same reason: a
+source closing over the object `initialize` built would report the title screen
+forever.
+
+The debugging surface follows the same shape, since nothing may hold a writable
+state. A pose takes the current state and returns the next — `serve(state)`,
+`setBall(state, index, patch)` — and a caller applies it through the engine's
+new `apply`, as `engine.apply((s) => debug.serve(s))`; a reading takes the state
+and returns what it read, as `debug.snapshot(engine.state)`. `version` stays a
+plain number. The `none` surface is unchanged: with no engine holding the state,
+`window.__carom` still poses and reads the build's own.
+
 ## A reviewer's evidence is a replay of the build's own drawing
 
 Almost every objective point declares a **replay**, and its validator produces

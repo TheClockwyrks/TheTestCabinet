@@ -52,8 +52,11 @@ also carries a complete worked example of unit-testing a game built on it.
 
 Build the game on the engine rather than beside it. The engine owns the frame
 loop and the delta time it hands your update, the input actions, the audio, asset
-loading, and the on-screen debug overlay. Register what the game needs with the
-engine and use what it gives back. What remains yours is the game itself: its
+loading, and the on-screen debug overlay. It also holds the game's state, by
+value: each frame it hands `update` the current state read-only and keeps what
+`update` returns as the next, so a frame builds the next state from the current
+one rather than writing into it. Register what the game needs with the engine
+and use what it gives back. What remains yours is the game itself: its
 simulation and everything it draws.
 {{/if}}
 

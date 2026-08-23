@@ -64,7 +64,7 @@ engine.events.on("asset:failed", (event) => {
   console.error(`asset ${event.path} failed: ${event.reason}`);
 });
 
-const state = await engine.initialize();
+const opening = await engine.initialize();
 ```
 
 ## The remaining options

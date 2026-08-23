@@ -36,7 +36,10 @@ specification is written against them:
 {{else}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands
-here.
+here. The state is a value the engine holds and every frame replaces, so every
+field and every array is declared `readonly`: a frame builds the next state
+from the current one rather than writing into it, and every reader is handed
+the state as `DeepReadonly<CaromState>` in any case.
 
 ```ts
 export type Screen =
@@ -47,82 +50,82 @@ export type Mode = "solo" | "versus";
 export type Side = "left" | "right";
 
 export interface PaddleState {
-  cy: number;
-  vy: number;
+  readonly cy: number;
+  readonly vy: number;
 }
 
 {{#if (eq variant.slug "multi")}}
 export interface BallState {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  spin: number;
-  held: boolean;
-  holdTimer: number;
-  trail: TrailSample[];
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly spin: number;
+  readonly held: boolean;
+  readonly holdTimer: number;
+  readonly trail: readonly TrailSample[];
 }
 {{else}}
 export interface BallState {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  spin: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly spin: number;
 }
 {{/if}}
 
 export interface TrailSample {
-  x: number;
-  y: number;
-  t: number;
+  readonly x: number;
+  readonly y: number;
+  readonly t: number;
 }
 
 export interface DriverState {
-  paddles: boolean;
-  ai: boolean;
-  vy: { left: number; right: number };
+  readonly paddles: boolean;
+  readonly ai: boolean;
+  readonly vy: { readonly left: number; readonly right: number };
 }
 
 {{#if (eq variant.slug "gyre")}}
 export interface ObstacleState {
-  cx: number;
-  cy: number;
-  theta: number;
+  readonly cx: number;
+  readonly cy: number;
+  readonly theta: number;
 }
 
 {{/if}}
 export interface CaromState {
-  screen: Screen;
-  mode: Mode;
-  menuIndex: number;
-  resumeScreen: Screen;
+  readonly screen: Screen;
+  readonly mode: Mode;
+  readonly menuIndex: number;
+  readonly resumeScreen: Screen;
 
-  score: { p1: number; p2: number };
-  winner: Side | null;
+  readonly score: { readonly p1: number; readonly p2: number };
+  readonly winner: Side | null;
 
 {{#if (eq variant.slug "multi")}}
-  paddles: { left: PaddleState; right: PaddleState };
-  balls: BallState[];
+  readonly paddles: { readonly left: PaddleState; readonly right: PaddleState };
+  readonly balls: readonly BallState[];
 {{else}}
-  receiver: Side;
-  holdTimer: number;
+  readonly receiver: Side;
+  readonly holdTimer: number;
 
-  paddles: { left: PaddleState; right: PaddleState };
-  ball: BallState;
-  trail: TrailSample[];
+  readonly paddles: { readonly left: PaddleState; readonly right: PaddleState };
+  readonly ball: BallState;
+  readonly trail: readonly TrailSample[];
 {{/if}}
 
 {{#if (eq variant.slug "gyre")}}
-  obstacleClock: number;
-  obstacles: ObstacleState[];
+  readonly obstacleClock: number;
+  readonly obstacles: readonly ObstacleState[];
 
 {{/if}}
-  simTime: number;
-  muted: boolean;
-  rngState: number;
+  readonly simTime: number;
+  readonly muted: boolean;
+  readonly rngState: number;
 
-  driver: DriverState;
+  readonly driver: DriverState;
 }
 ```
 
@@ -225,7 +228,8 @@ poses the clock faces exactly the pose the formula names.
 
 The whole of Carom's state. Every field is present from the moment `initialize`
 returns, and every one is plain data: numbers, strings, booleans, and containers
-of them, so a scenario is posed by assignment and read back the same way.
+of them, so a scenario is posed by building a state that differs in the fields
+posed and read back by reading them.
 
 - `screen` — the screen currently shown.
 - `mode` — the mode the current or most recent match is played in.
@@ -263,9 +267,9 @@ of them, so a scenario is posed by assignment and read back the same way.
 {{/if}}
 - `simTime` — accumulated simulation time, in seconds. Every `update` adds its
   `dt`, whatever the screen, the paused screen and the menus included.
-- `muted` — the game's readable copy of the engine's mute bit, refreshed every
-  `update`. The engine owns muting, and this field is what the debug surface
-  reports.
+- `muted` — the game's readable copy of the engine's mute bit, which every
+  `update` carries into the state it returns. The engine owns muting, and this
+  field is what the debug surface reports.
 - `rngState` — the state of the game's seeded random generator. A `reset` with a
   seed sets it, so reseeding and replaying the same calls reproduces the same
   result. A build that uses no randomness never reads it.
@@ -281,6 +285,14 @@ The declaration above is what the debug surface reads and poses.
 - Fields you add hold derived data you can rebuild from the declared ones. A
   `reset` restores the declared fields to their title-screen values, so those
   fields are the whole of the authoritative state.
-- The state handed to `update` is the whole of the game. Every mutable value the
-  game carries from one frame to the next lives in it.
+- The state handed to `update` is the whole of the game, and the state `update`
+  returns is the whole of the next frame. Every value the game carries from one
+  frame to the next lives in it; nothing is kept in a module-level variable or a
+  closure.
+- The state is handed over read-only, as `DeepReadonly<CaromState>`, to
+  `update`, to `render`, to every diagnostic source, and to every operation of
+  the debug surface. `update` and the surface's poses return a new `CaromState`
+  built from the one they received; `render`, the sources, and `snapshot`
+  return no state. The type is what guarantees that rendering changes nothing
+  and that nothing but a transition advances the game.
 {{/if}}

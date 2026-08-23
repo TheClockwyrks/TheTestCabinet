@@ -43,17 +43,18 @@ import { createHarness } from "../harness";
 import { emitReplay } from "../replay";
 
 it("credits the left player when the ball crosses the right edge", async () => {
-  const { engine } = createHarness();
-  const state = await engine.initialize();
+  const h = createHarness();
+  const { engine } = h;
+  await engine.initialize();
 
-  engine.debug.placeBall({ x: 560, y: 180, vx: 240, vy: 0 });
+  h.setBall({ x: 560, y: 180, vx: 240, vy: 0 });
   await engine.advance(30);
 
   engine.startRecording();
   await engine.advance(60);
   emitReplay(import.meta.url, "goal", engine.stopRecording());
 
-  expect(state.score.left).toBe(1);
+  expect(h.snapshot().score.p1).toBe(1);
 });
 ```
 

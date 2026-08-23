@@ -75,11 +75,12 @@ function that advanced the simulation:
 
 ```ts
 update(state, api, dt) {
-  state.y += state.vy * dt;
-  if (state.y > FLOOR) {
-    state.vy = -state.vy;
+  const y = state.y + state.vy * dt;
+  if (y > FLOOR) {
     api.audio.play("bounce");
+    return { ...state, y, vy: -state.vy };
   }
+  return { ...state, y };
 }
 ```
 

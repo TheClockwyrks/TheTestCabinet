@@ -3,10 +3,10 @@ title: The Game Loop
 ---
 
 A build writes one [`Game<S, D>`](/engines/simple-2d/apis/game/): `initialize`
-returns the state beside the game's debug surface, `update` advances that state
-by the frame's delta, and `render` draws it. The engine owns the loop, runs
-`update` and then `render` once per frame, and hands each function only the
-part of itself that function may use.
+returns the state beside the game's debug surface, `update` returns the next
+state from the current one and the frame's delta, and `render` draws it. The
+engine owns the loop, runs `update` and then `render` once per frame, and hands
+each function only the part of itself that function may use.
 
 ```ts
 import type { Game } from "@test-cabinet/simple-2d";
@@ -16,9 +16,14 @@ const THRUST = 420;      // logical pixels per second squared
 const DRAG_PER_SECOND = 0.6;
 
 interface State {
-  ship: { x: number; y: number; vx: number; vy: number };
-  sprite: ImageBitmap;
-  score: number;
+  readonly ship: {
+    readonly x: number;
+    readonly y: number;
+    readonly vx: number;
+    readonly vy: number;
+  };
+  readonly sprite: ImageBitmap;
+  readonly score: number;
 }
 
 export const game: Game<State, null> = {
@@ -34,14 +39,16 @@ export const game: Game<State, null> = {
 
   update(state, api, dt) {
     const turn = api.input.value("right") - api.input.value("left");
-    state.ship.vx += turn * TURN_RATE * dt;
-    if (api.input.pressed("thrust")) {
-      state.ship.vy -= THRUST * dt;
-      api.audio.play("boost");
-    }
-    state.ship.vx *= Math.pow(DRAG_PER_SECOND, dt);
-    state.ship.x += state.ship.vx * dt;
-    state.ship.y += state.ship.vy * dt;
+    const thrusting = api.input.pressed("thrust");
+    if (thrusting) api.audio.play("boost");
+
+    const vx =
+      (state.ship.vx + turn * TURN_RATE * dt) * Math.pow(DRAG_PER_SECOND, dt);
+    const vy = state.ship.vy - (thrusting ? THRUST * dt : 0);
+    return {
+      ...state,
+      ship: { x: state.ship.x + vx * dt, y: state.ship.y + vy * dt, vx, vy },
+    };
   },
 
   render(state, api) {
@@ -50,10 +57,10 @@ export const game: Game<State, null> = {
 };
 ```
 
-`update` reads input and plays cues; `render` draws. Keep the halves separate in
-the way that split implies, so a frame's audible and observable behavior is
-decided entirely by `update` and the picture follows from the state `update`
-left behind.
+`update` reads input and plays cues; `render` draws. Both receive the state as
+a `DeepReadonly` view, so the only way a frame changes anything is the value
+`update` returns: a frame's audible and observable behavior is decided entirely
+by `update`, and the picture follows from the state it returned.
 
 The `ctx` handed to `render` is already cleared and already carries the logical
 viewport transform, so drawing is in the design size the engine was created
@@ -71,20 +78,35 @@ import { game } from "./game";
 
 const engine = createEngine({ canvas, width: 640, height: 360, game });
 
-const state = await engine.initialize();
+const opening = await engine.initialize();
 await engine.run();
 ```
 
-`engine.state` exposes that same live value, and reading it before
-`initialize` resolves throws. `run` and `advance` throw before it too, so the
-ordering is enforced where a mistake happens rather than several frames later.
+`engine.state` reads the current value, the one the most recent frame or
+[`engine.apply`](/engines/simple-2d/apis/engine/) left. Reading it before
+`initialize` resolves throws, and `apply`, `run`, and `advance` throw before it
+too, so the ordering is enforced where a mistake happens rather than several
+frames later.
 
-## The state is returned rather than held in module scope
+## The state is a value
 
-`initialize` returns the state as the first element of its pair, and the engine
-hands that one value to every `update` and `render`. Everything a frame needs
-is therefore reachable from a value the type system already checked, and every
-field of it is present the moment a frame can observe it.
+`initialize` returns the state as the first element of its pair. Each frame the
+engine hands the current value to `update`, keeps what `update` returns, and
+hands that to `render`. Everything a frame needs is therefore reachable from a
+value the type system already checked, every field of it is present the moment
+a frame can observe it, and a reader holds nothing a later frame writes to.
+
+`update` builds the next state from the current one with spread, `map`, and
+small helpers, and returns it. A frame that changes nothing returns the state
+it was given. Returning `undefined` is refused with an error naming the rule,
+and the engine keeps the state it had.
+
+```ts
+update(state, api, dt) {
+  if (state.phase !== "rally") return state;
+  return { ...state, ball: integrate(state.ball, dt) };
+}
+```
 
 A module-level variable belongs to the module, so every engine built from that
 module shares it and its values outlive the run that produced them. Returned
@@ -98,13 +120,13 @@ a build declares once.
 ## Loading in `initialize`
 
 `initialize` may return a promise, and the engine awaits it before running any
-frame. A game that needs assets loads them here and stores the results in the
+frame. A game that needs assets loads them here and places the results in the
 state, so `update` and `render` receive a state whose fields are all loaded.
 
 ```ts
 interface State {
-  sprites: { ship: ImageBitmap; rock: ImageBitmap };
-  score: number;
+  readonly sprites: { readonly ship: ImageBitmap; readonly rock: ImageBitmap };
+  readonly score: number;
 }
 
 async initialize(api) {
@@ -131,14 +153,13 @@ engine.events.on("asset:failed", (event) => {
 });
 ```
 
-A diagnostic source registered in `initialize` closes over the state object
-built there, which is why the state is assembled before it is returned.
+A diagnostic source registered in `initialize` is handed the state current at
+each read, so it reads the field off its argument.
 
 ```ts
 async initialize(api) {
-  const state: State = { sprites: await loadSprites(api), score: 0 };
-  api.diagnostics.register("score", () => state.score);
-  return [state, null];
+  api.diagnostics.register("score", (s) => s.score);
+  return [{ sprites: await loadSprites(api), score: 0 }, null];
 }
 ```
 
@@ -155,19 +176,19 @@ every frame rate.
 
 | Quantity | Unit | Applied as |
 | --- | --- | --- |
-| Velocity | Per second | `position += velocity * dt` |
-| Acceleration | Per second squared | `velocity += accel * dt` |
-| Decay | A per-second factor | `value *= Math.pow(factor, dt)` |
+| Velocity | Per second | `position + velocity * dt` |
+| Acceleration | Per second squared | `velocity + accel * dt` |
+| Decay | A per-second factor | `value * Math.pow(factor, dt)` |
 
 Timers, cooldowns, and animation clocks count in seconds the same way.
 
 ```ts
 update(state, api, dt) {
-  state.cooldown = Math.max(0, state.cooldown - dt);
-  if (api.input.pressed("fire") && state.cooldown === 0) {
-    fire(state);
-    state.cooldown = 0.25;   // seconds
+  const cooldown = Math.max(0, state.cooldown - dt);
+  if (api.input.pressed("fire") && cooldown === 0) {
+    return fire({ ...state, cooldown: 0.25 });   // seconds
   }
+  return { ...state, cooldown };
 }
 ```
 
@@ -179,9 +200,9 @@ suspended.
 
 ```ts
 update(state, api, dt) {
-  if (api.input.pressed("pause")) state.paused = !state.paused;
-  if (state.paused) return;
-  step(state, api, dt);
+  const paused = api.input.pressed("pause") ? !state.paused : state.paused;
+  if (paused) return { ...state, paused };
+  return step({ ...state, paused }, api, dt);
 },
 
 render(state, api) {
@@ -198,8 +219,8 @@ aborts, so the loop halts and the engine stays usable.
 
 ```ts
 interface State {
-  lives: number;
-  ended: AbortController;
+  readonly lives: number;
+  readonly ended: AbortController;
 }
 
 async initialize(api) {
@@ -208,19 +229,23 @@ async initialize(api) {
 
 update(state, api, dt) {
   if (state.lives === 0) state.ended.abort();
+  return state;
 }
 ```
 
-The caller passes that signal to `run` and waits on it.
+The controller is a handle the state carries rather than a field it changes, so
+aborting it is a call on a value the view hands back as it is. The caller passes
+that signal to `run` and waits on it.
 
 ```ts
-const state = await engine.initialize();
-await engine.run({ signal: state.ended.signal });
-showResults(state);
+const opening = await engine.initialize();
+await engine.run({ signal: opening.ended.signal });
+showResults(engine.state);
 ```
 
 Ending the game is then the game's own state, and the same signal composes with
-whatever else the page cancels on teardown.
+whatever else the page cancels on teardown. `engine.state` after `run` resolves
+is the value the final frame left, which is what the results screen reads.
 
 ## A fixed step on top
 
@@ -233,14 +258,15 @@ const STEP = 1 / 120;      // seconds
 const MAX_STEPS = 8;
 
 update(state, api, dt) {
-  state.accumulator += dt;
+  let next = state;
+  let accumulator = state.accumulator + dt;
   let steps = 0;
-  while (state.accumulator >= STEP && steps < MAX_STEPS) {
-    stepWorld(state, STEP);
-    state.accumulator -= STEP;
+  while (accumulator >= STEP && steps < MAX_STEPS) {
+    next = stepWorld(next, STEP);
+    accumulator -= STEP;
     steps += 1;
   }
-  state.accumulator = Math.min(state.accumulator, STEP);
+  return { ...next, accumulator: Math.min(accumulator, STEP) };
 }
 ```
 

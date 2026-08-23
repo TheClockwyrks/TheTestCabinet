@@ -1,6 +1,6 @@
 {
   "name": "@test-cabinet/simple-2d",
-  "version": "1.2.0",
+  "version": "1.0.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -30,5 +30,8 @@
     "jsdom": "^25",
     "typescript": "^5",
     "vitest": "^3"
+  },
+  "dependencies": {
+    "ts-essentials": "^10.2.1"
   }
 }

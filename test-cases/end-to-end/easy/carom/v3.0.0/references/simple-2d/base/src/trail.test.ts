@@ -5,30 +5,42 @@ import { describe, expect, it } from "vitest";
 import { TRAIL_TIME } from "./constants";
 import { createInitialState } from "./match";
 import { pruneTrail, recordTrail, ribbon } from "./trail";
-import type { TrailSample } from "./game";
+import type { CaromState, TrailSample } from "./game";
+
+/** The state with the ball moved and the clock set, as a frame would leave it. */
+function at(
+  state: CaromState,
+  patch: { x?: number; y?: number; simTime: number },
+): CaromState {
+  return {
+    ...state,
+    simTime: patch.simTime,
+    ball: {
+      ...state.ball,
+      x: patch.x ?? state.ball.x,
+      y: patch.y ?? state.ball.y,
+    },
+  };
+}
 
 describe("recordTrail", () => {
   it("appends the ball's position, oldest first", () => {
-    const state = createInitialState();
-    state.ball.x = 100;
-    state.ball.y = 200;
-    state.simTime = 1;
-    recordTrail(state);
-    state.ball.x = 110;
-    state.simTime = 1 + TRAIL_TIME / 2;
-    recordTrail(state);
+    const first = recordTrail(
+      at(createInitialState(), { x: 100, y: 200, simTime: 1 }),
+    );
+    const second = recordTrail(
+      at(first, { x: 110, simTime: 1 + TRAIL_TIME / 2 }),
+    );
 
-    expect(state.trail).toHaveLength(2);
-    expect(state.trail[0]).toEqual({ x: 100, y: 200, t: 1 });
-    expect(state.trail[1].x).toBe(110);
+    expect(second.trail).toHaveLength(2);
+    expect(second.trail[0]).toEqual({ x: 100, y: 200, t: 1 });
+    expect(second.trail[1].x).toBe(110);
   });
 
   it("drops samples older than the trail window", () => {
-    const state = createInitialState();
+    let state = createInitialState();
     for (let i = 0; i < 200; i++) {
-      state.simTime = i * (1 / 60);
-      state.ball.x = i;
-      recordTrail(state);
+      state = recordTrail(at(state, { x: i, simTime: i * (1 / 60) }));
     }
     expect(state.trail.length).toBeGreaterThan(1);
     for (const sample of state.trail) {
@@ -37,12 +49,19 @@ describe("recordTrail", () => {
   });
 
   it("caps what it retains however fast the frames arrive", () => {
-    const state = createInitialState();
+    let state = createInitialState();
     for (let i = 0; i < 1000; i++) {
-      state.simTime = i * 0.0001; // 10 kHz: the whole run fits the window
-      recordTrail(state);
+      // 10 kHz: the whole run fits the window.
+      state = recordTrail(at(state, { simTime: i * 0.0001 }));
     }
     expect(state.trail.length).toBeLessThanOrEqual(256);
+  });
+
+  it("leaves the state and the trail it was given alone", () => {
+    const before = at(createInitialState(), { x: 100, simTime: 1 });
+    const after = recordTrail(before);
+    expect(before.trail).toHaveLength(0);
+    expect(after.trail).toHaveLength(1);
   });
 });
 
@@ -53,8 +72,14 @@ describe("pruneTrail", () => {
       { x: 1, y: 0, t: 1 },
       { x: 2, y: 0, t: 1 + TRAIL_TIME },
     ];
-    pruneTrail(trail, 1 + TRAIL_TIME);
-    expect(trail.map((s) => s.x)).toEqual([1, 2]);
+    const pruned = pruneTrail(trail, 1 + TRAIL_TIME);
+    expect(pruned.map((s) => s.x)).toEqual([1, 2]);
+    expect(trail).toHaveLength(3); // and does not mutate
+  });
+
+  it("returns the trail it was given when nothing is outside the window", () => {
+    const trail: TrailSample[] = [{ x: 0, y: 0, t: 0 }];
+    expect(pruneTrail(trail, 0)).toBe(trail);
   });
 });
 

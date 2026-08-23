@@ -46,23 +46,12 @@ export function obstaclePose(index: number, t: number): ObstacleState {
 }
 
 /**
- * Write both obstacles' poses for clock `t` into `out`, in place.
+ * Both obstacles' poses for clock `t`, in the order of OBSTACLE_CENTERS.
  *
- * In place because the poses are declared state: the array identity is part of
- * what `initialize` built, and rebuilding it every frame would churn objects the
- * renderer and the collision both hold for the length of a frame.
+ * A fresh array every call: the poses are declared state, and the state a frame
+ * leaves behind is a new value, so the frame's obstacles are built beside the rest
+ * of it rather than written into slots an earlier frame owned.
  */
-export function poseObstacles(out: ObstacleState[], t: number): void {
-  for (let i = 0; i < OBSTACLE_CENTERS.length; i++) {
-    const pose = obstaclePose(i, t);
-    const slot = out[i];
-    if (slot) {
-      slot.cx = pose.cx;
-      slot.cy = pose.cy;
-      slot.theta = pose.theta;
-    } else {
-      out[i] = pose;
-    }
-  }
-  out.length = OBSTACLE_CENTERS.length;
+export function poseObstacles(t: number): readonly ObstacleState[] {
+  return OBSTACLE_CENTERS.map((_, i) => obstaclePose(i, t));
 }

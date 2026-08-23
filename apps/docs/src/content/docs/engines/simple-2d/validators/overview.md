@@ -5,9 +5,9 @@ title: Overview
 A case's validators are vitest suites that run in the same process as the build
 they check. A suite imports the engine and the build's own game module, creates
 an engine over a canvas it owns and a clock it scripts, and steps the game with
-`engine.advance`. It asserts on the state the game returned, the pixels the
-canvas holds, the draw calls the context received, and the events the engine
-broadcast.
+`engine.advance`. It poses a scenario through `engine.apply`, and asserts on
+the state the frames left, the pixels the canvas holds, the draw calls the
+context received, and the events the engine broadcast.
 
 Running in process is what makes a check exact. A suite asks for a number of
 frames and gets that number, at the deltas its clock supplied, and a failure
@@ -23,7 +23,8 @@ provides.
 
 The scenario a check arranges runs through the game's own state, because posing
 a situation in the game's world belongs to the game. A suite arranges the
-scenario, advances the real systems forward, and reads the outcome back.
+scenario through the build's debug surface, whose poses are transitions over
+the state, advances the real systems forward, and reads the outcome back.
 
 ## Pages
 

@@ -6,26 +6,31 @@ engine's own frame-time metrics. A game registers its sources once, from
 them.
 
 ```ts
-api.diagnostics.register(name: string, source: () => unknown): void;
+api.diagnostics.register(name: string, source: (state: DeepReadonly<S>) => unknown): void;
 ```
 
 ## Registering sources
 
-`source` is a zero-argument function returning the value to display. It is
-invoked on each read rather than sampled at registration, so it reports whatever
-the game holds at that instant.
+`source` is handed the state and returns the value to display. It is invoked on
+each read, with the state current at that read, so it reports what the engine
+holds at that instant. The overlay is drawn after `render`, so that is the
+state this frame's `update` returned.
 
 ```ts
 initialize(api) {
   const state: State = { x: 320, y: 180, enemies: [], score: 0 };
 
-  api.diagnostics.register("pos", () => `${state.x.toFixed(1)}, ${state.y.toFixed(1)}`);
-  api.diagnostics.register("enemies", () => state.enemies.length);
-  api.diagnostics.register("score", () => state.score);
+  api.diagnostics.register("pos", (s) => `${s.x.toFixed(1)}, ${s.y.toFixed(1)}`);
+  api.diagnostics.register("enemies", (s) => s.enemies.length);
+  api.diagnostics.register("score", (s) => s.score);
 
   return [state, null];
 }
 ```
+
+Read the state the source is handed rather than the value `initialize` built.
+Each frame replaces the state, so a source that read the opening object would
+report the opening state forever.
 
 Register the few values that explain what the simulation is doing. Re-registering
 a name replaces its source and keeps the name's original position.

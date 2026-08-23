@@ -22,20 +22,21 @@ import {
 } from "./constants";
 import { integratePaddle } from "./entities";
 import type { BallState, PaddleState } from "./game";
+import type { DeepReadonly } from "ts-essentials";
 
 /**
- * Move the AI's paddle for one frame.
+ * The AI's paddle after one frame.
  *
  * `active` is true only while the screen is `playing`: during the pre-serve
  * hold there is nothing to defend, so the paddle returns home, stopping within
  * the wider AI_HOME_DEADZONE of the center.
  */
 export function updateAi(
-  paddle: PaddleState,
-  ball: BallState,
+  paddle: DeepReadonly<PaddleState>,
+  ball: DeepReadonly<BallState>,
   active: boolean,
   dt: number,
-): void {
+): PaddleState {
   // The lagged perception: the ball as it was AI_REACT seconds ago.
   const perceivedY = ball.y - ball.vy * AI_REACT;
 
@@ -44,12 +45,13 @@ export function updateAi(
   const deadzone = incoming ? AI_DEADZONE : AI_HOME_DEADZONE;
 
   const diff = target - paddle.cy;
+  let vy: number;
   if (Math.abs(diff) <= deadzone) {
-    paddle.vy = 0;
+    vy = 0;
   } else {
     // Never overshoot the target in a single step.
     const reach = dt > 0 ? Math.abs(diff) / dt : AI_SPEED;
-    paddle.vy = Math.sign(diff) * Math.min(AI_SPEED, reach);
+    vy = Math.sign(diff) * Math.min(AI_SPEED, reach);
   }
-  integratePaddle(paddle, dt);
+  return integratePaddle({ cy: paddle.cy, vy }, dt);
 }

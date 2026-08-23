@@ -12,7 +12,12 @@ element happens to be.
 import type { Game } from "@test-cabinet/simple-2d";
 
 interface State {
-  ball: { x: number; y: number; vx: number; vy: number };
+  readonly ball: {
+    readonly x: number;
+    readonly y: number;
+    readonly vx: number;
+    readonly vy: number;
+  };
 }
 
 const game: Game<State, null> = {
@@ -21,11 +26,9 @@ const game: Game<State, null> = {
   },
   update(state, api, dt) {
     const vp = api.viewport();
-    state.ball.x += state.ball.vx * dt;
-    state.ball.y += state.ball.vy * dt;
-    if (state.ball.y < 0 || state.ball.y > vp.height) {
-      state.ball.vy = -state.ball.vy;
-    }
+    const y = state.ball.y + state.ball.vy * dt;
+    const vy = y < 0 || y > vp.height ? -state.ball.vy : state.ball.vy;
+    return { ball: { ...state.ball, x: state.ball.x + state.ball.vx * dt, y, vy } };
   },
   render(state, api) {
     const { ctx } = api;
@@ -48,6 +51,18 @@ pixel ratio are folded into the transform, so a build states every coordinate,
 speed, and size in design units and leaves the element's own size to the
 engine.
 
+## Render only draws
+
+`render` receives the state as a `DeepReadonly` view and returns nothing, so
+the picture is a function of the state `update` returned and the compiler
+refuses a render that assigns into it. A value the drawing depends on, such as
+an animation phase or a highlighted entity, is computed in `update` and carried
+in the state.
+
+`RenderApi` carries the context, the frame counter, and the viewport. Input and
+audio are absent from it, so a frame's response to the player is decided
+entirely by `update`.
+
 ## Every frame draws the whole picture
 
 The engine clears the canvas before each frame, so `render` starts from a blank
@@ -60,8 +75,9 @@ in-game HUD.
 
 ```ts
 import type { RenderApi } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
-function render(state: Board, api: RenderApi): void {
+function render(state: DeepReadonly<Board>, api: RenderApi): void {
   const { ctx } = api;
   drawField(ctx, api.viewport());
   for (const brick of state.bricks) drawBrick(ctx, brick);
@@ -80,7 +96,7 @@ transformed subtree anyway, so the rest of that same frame draws where it meant
 to.
 
 ```ts
-function render(state: Flight, api: RenderApi): void {
+function render(state: DeepReadonly<Flight>, api: RenderApi): void {
   const { ctx } = api;
 
   ctx.save();
@@ -122,48 +138,55 @@ reviewer toggles on demand.
 ## Mapping a pointer into logical coordinates
 
 A pointer event reports a position in CSS pixels relative to the browser
-viewport. The fit reported by `api.viewport()` converts it into the game's own
+viewport. The fit reported by `engine.viewport()` converts it into the game's own
 coordinates: multiply by the device pixel ratio, subtract the letterbox bar, and
 divide by the scale.
 
-Attach the listener in `initialize`, where the state the handler writes into
-already exists, and call `api.viewport()` inside the handler so the conversion
-uses the fit in force at that moment.
+A pointer arrives between frames, so it is folded into the state the way any
+change from outside a frame is: through
+[`engine.apply`](/engines/simple-2d/apis/engine/), with a transition that
+returns the next state from the current one. The listener lives where the
+engine is held — beside `createEngine`, not inside the game — and holds nothing
+of its own; the position it reads goes straight into the state, and the next
+frame's `update` receives it there. Read `engine.viewport()` inside the handler
+so the conversion uses the fit in force at that moment.
 
 ```ts
-import type { Game, InitApi } from "@test-cabinet/simple-2d";
+import { createEngine } from "@test-cabinet/simple-2d";
+import type { Game } from "@test-cabinet/simple-2d";
+
+interface Point {
+  readonly x: number;
+  readonly y: number;
+}
 
 interface Aiming {
-  aim: { x: number; y: number };
+  readonly aim: Point;
 }
 
-function createGame(canvas: HTMLCanvasElement): Game<Aiming, null> {
-  return {
-    initialize(api: InitApi): [Aiming, null] {
-      const state: Aiming = { aim: { x: 320, y: 180 } };
+const game: Game<Aiming, null> = {
+  initialize: () => [{ aim: { x: 320, y: 180 } }, null],
+  update: (state, _api, dt) => stepTowards(state, dt),
+  render: (state, api) => drawCrosshair(api.ctx, state.aim),
+};
 
-      canvas.addEventListener("pointerdown", (event) => {
-        const vp = api.viewport();
-        if (vp.scale === 0) return;
+const engine = createEngine({ canvas, width: 640, height: 360, game });
+await engine.initialize();
 
-        const rect = canvas.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        state.aim.x =
-          ((event.clientX - rect.left) * dpr - vp.offsetX) / vp.scale;
-        state.aim.y =
-          ((event.clientY - rect.top) * dpr - vp.offsetY) / vp.scale;
-      });
+canvas.addEventListener("pointerdown", (event) => {
+  const vp = engine.viewport();
+  if (vp.scale === 0) return;
 
-      return [state, null];
-    },
-    update(state, api, dt) {
-      stepTowards(state, dt);
-    },
-    render(state, api) {
-      drawCrosshair(api.ctx, state.aim);
-    },
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const aim: Point = {
+    x: ((event.clientX - rect.left) * dpr - vp.offsetX) / vp.scale,
+    y: ((event.clientY - rect.top) * dpr - vp.offsetY) / vp.scale,
   };
-}
+  engine.apply((state) => ({ ...state, aim }));
+});
+
+await engine.run();
 ```
 
 `vp.scale` and the two offsets are in device pixels, which is why the CSS-space
@@ -171,6 +194,9 @@ position is multiplied by the device pixel ratio before the bar is subtracted. A
 point inside a letterbox bar maps outside `0..width` or `0..height`, so a game
 either clamps it or treats it as a miss.
 
-Pointer mapping suits aiming and direct manipulation, where the position itself
-is the input. Everything a case checks belongs behind a registered
+The listener is attached after `initialize` resolves because `apply` throws
+before it, and it is attached per engine, so a second engine over a second
+canvas poses its own state and nothing else's. Pointer mapping suits aiming and
+direct manipulation, where the position itself is the input. Everything a case
+checks belongs behind a registered
 [action](/engines/simple-2d/usage/actions/), which a validator drives by name.

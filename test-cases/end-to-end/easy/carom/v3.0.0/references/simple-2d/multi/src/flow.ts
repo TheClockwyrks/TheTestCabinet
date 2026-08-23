@@ -4,29 +4,29 @@
 // The menus (`src/game.ts`) and the debug surface (`src/debug.ts`) both start
 // matches and both return to the title, and they must leave the game in the one
 // same pose each time, so the arithmetic lives here and each of them calls it.
-// This module holds no state: every function writes the `CaromState` it is
-// handed.
+// This module holds no state: every function takes the current `CaromState` and
+// returns the next, leaving the one it was handed as it was.
 
 import { DEFAULT_SEED, FIELD_CY, HOLD_TIME } from "./constants";
 import { createBalls, parkBall } from "./entities";
-import type { CaromState, Mode } from "./game";
+import type { BallState, CaromState, Mode, PaddleState } from "./game";
+import type { DeepReadonly } from "ts-essentials";
 
-/** Put both paddles at the vertical center, stationary. */
-function centerPaddles(state: CaromState): void {
-  state.paddles.left.cy = FIELD_CY;
-  state.paddles.left.vy = 0;
-  state.paddles.right.cy = FIELD_CY;
-  state.paddles.right.vy = 0;
+/** Both paddles at the vertical center, stationary. */
+function centeredPaddles(): { left: PaddleState; right: PaddleState } {
+  return {
+    left: { cy: FIELD_CY, vy: 0 },
+    right: { cy: FIELD_CY, vy: 0 },
+  };
 }
 
 /**
- * Put every ball back on its own home point with the same wait ahead of it.
+ * Every ball back on its own home point with the same wait ahead of it.
  *
  * A `hold` of 0 is the title screen's pose: parked, and no part of a live match.
  */
-function parkBalls(state: CaromState, hold: number): void {
-  for (let i = 0; i < state.balls.length; i++)
-    parkBall(state.balls[i], i, hold);
+function parkedBalls(balls: readonly BallState[], hold: number): BallState[] {
+  return balls.map((_ball, index) => parkBall(index, hold));
 }
 
 /**
@@ -44,10 +44,7 @@ export function createInitialState(): CaromState {
     resumeScreen: "playing",
     score: { p1: 0, p2: 0 },
     winner: null,
-    paddles: {
-      left: { cy: FIELD_CY, vy: 0 },
-      right: { cy: FIELD_CY, vy: 0 },
-    },
+    paddles: centeredPaddles(),
     balls: createBalls(),
     simTime: 0,
     muted: false,
@@ -57,33 +54,41 @@ export function createInitialState(): CaromState {
 }
 
 /**
- * Return to the title screen: every declared field takes its title value except
+ * The title screen: every declared field takes its title value except
  * `simTime`, `muted`, `rngState`, and `driver`, which keep theirs (specs/ui.md).
  */
-export function toTitle(state: CaromState): void {
-  state.screen = "title";
-  state.mode = "solo";
-  state.menuIndex = 0;
-  state.resumeScreen = "playing";
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  centerPaddles(state);
-  parkBalls(state, 0);
+export function toTitle(state: DeepReadonly<CaromState>): CaromState {
+  return {
+    ...state,
+    screen: "title",
+    mode: "solo",
+    menuIndex: 0,
+    resumeScreen: "playing",
+    score: { p1: 0, p2: 0 },
+    winner: null,
+    paddles: centeredPaddles(),
+    balls: parkedBalls(state.balls, 0),
+  };
 }
 
 /**
- * Start a match. All three balls take their home points with a full hold, so the
- * match opens on the countdown screen and they launch together (specs/balls.md).
+ * The opening of a match. All three balls take their home points with a full
+ * hold, so the match opens on the countdown screen and they launch together
+ * (specs/balls.md).
  */
-export function startMatch(state: CaromState, mode: Mode): void {
-  state.mode = mode;
-  state.screen = "countdown";
-  state.resumeScreen = "playing";
-  state.menuIndex = 0;
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  centerPaddles(state);
-  parkBalls(state, HOLD_TIME);
+export function startMatch(
+  state: DeepReadonly<CaromState>,
+  mode: Mode,
+): CaromState {
+  return {
+    ...state,
+    mode,
+    screen: "countdown",
+    resumeScreen: "playing",
+    menuIndex: 0,
+    score: { p1: 0, p2: 0 },
+    winner: null,
+    paddles: centeredPaddles(),
+    balls: parkedBalls(state.balls, HOLD_TIME),
+  };
 }

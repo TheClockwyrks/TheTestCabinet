@@ -23,6 +23,12 @@
  * - **The debug surface** — the object a game returns beside its state from
  *   `initialize`, held and returned off the engine, so a check poses a scenario
  *   through the engine it built rather than through the page the build is drawn on.
+ * - **The state, held by value** — the game's state is a value each frame replaces
+ *   rather than an object each frame writes into: `update` is handed a read-only
+ *   view and returns the next state, `render` is handed the same view and returns
+ *   nothing, and a caller poses the game through {@link Engine.apply}, a
+ *   transition of the same shape. Rendering cannot change the state and nothing
+ *   but a transition advances it, and the compiler is what says so.
  *
  * This module is the wiring and nothing else: every behaviour above belongs to a
  * subsystem beside it, and what is decided *here* is which subsystem talks to which,

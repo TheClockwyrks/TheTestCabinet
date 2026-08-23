@@ -3,12 +3,12 @@
 // The title screen, the opening of a match, and the re-park after a point are
 // each written once here and used by both the menus in `src/game.ts` and the
 // debug surface in `src/debug.ts`, so choosing SOLO from the menu and calling
-// `startMatch("solo")` from a scenario cannot drift apart, and quitting to the
-// menu and `reset()` cannot leave the game looking at two different title
-// screens.
+// `startMatch(state, "solo")` from a scenario cannot drift apart, and quitting to
+// the menu and `reset()` cannot leave the game looking at two different title
+// screens. Each is a transition: the current state in, the next state out.
 
-import { DEFAULT_SEED, FIELD_CX, FIELD_CY, HOLD_TIME } from "./constants";
-import { parkBall } from "./entities";
+import { DEFAULT_SEED, FIELD_CY, HOLD_TIME } from "./constants";
+import { parkedBall } from "./entities";
 import type { CaromState, Mode, Side } from "./game";
 
 /**
@@ -30,7 +30,7 @@ export function createInitialState(): CaromState {
       left: { cy: FIELD_CY, vy: 0 },
       right: { cy: FIELD_CY, vy: 0 },
     },
-    ball: { x: FIELD_CX, y: FIELD_CY, vx: 0, vy: 0, spin: 0 },
+    ball: parkedBall(),
     trail: [],
     simTime: 0,
     muted: false,
@@ -39,18 +39,17 @@ export function createInitialState(): CaromState {
   };
 }
 
-/** Put both paddles at the vertical center, stationary. */
-function centerPaddles(state: CaromState): void {
-  state.paddles.left.cy = FIELD_CY;
-  state.paddles.left.vy = 0;
-  state.paddles.right.cy = FIELD_CY;
-  state.paddles.right.vy = 0;
+/** Both paddles at the vertical center, stationary. */
+function centeredPaddles(): CaromState["paddles"] {
+  return {
+    left: { cy: FIELD_CY, vy: 0 },
+    right: { cy: FIELD_CY, vy: 0 },
+  };
 }
 
-/** Park the ball at the center and clear the trail it left. */
-function parkBallAndTrail(state: CaromState): void {
-  parkBall(state.ball);
-  state.trail.length = 0;
+/** The state with the ball parked at the center and the trail it left cleared. */
+export function parkBallAndTrail(state: CaromState): CaromState {
+  return { ...state, ball: parkedBall(), trail: [] };
 }
 
 /**
@@ -61,43 +60,41 @@ function parkBallAndTrail(state: CaromState): void {
  * not properties of a screen, and the driver's hold is released by `reset()`
  * alone.
  */
-export function toTitle(state: CaromState): void {
-  const title = createInitialState();
-  state.screen = title.screen;
-  state.mode = title.mode;
-  state.menuIndex = title.menuIndex;
-  state.resumeScreen = title.resumeScreen;
-  state.score.p1 = title.score.p1;
-  state.score.p2 = title.score.p2;
-  state.winner = title.winner;
-  state.receiver = title.receiver;
-  state.holdTimer = title.holdTimer;
-  centerPaddles(state);
-  parkBallAndTrail(state);
+export function toTitle(state: CaromState): CaromState {
+  return {
+    ...createInitialState(),
+    simTime: state.simTime,
+    muted: state.muted,
+    rngState: state.rngState,
+    driver: state.driver,
+  };
 }
 
 /**
  * Start a match in `mode`. The match opens on the pre-serve countdown with the
  * first serve aimed at player one, and `simTime` is left as it is.
  */
-export function startMatch(state: CaromState, mode: Mode): void {
-  state.mode = mode;
-  state.screen = "countdown";
-  state.resumeScreen = "playing";
-  state.menuIndex = 0;
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  state.receiver = "left";
-  state.holdTimer = HOLD_TIME;
-  centerPaddles(state);
-  parkBallAndTrail(state);
+export function startMatch(state: CaromState, mode: Mode): CaromState {
+  return parkBallAndTrail({
+    ...state,
+    mode,
+    screen: "countdown",
+    resumeScreen: "playing",
+    menuIndex: 0,
+    score: { p1: 0, p2: 0 },
+    winner: null,
+    receiver: "left",
+    holdTimer: HOLD_TIME,
+    paddles: centeredPaddles(),
+  });
 }
 
 /** Park the ball and begin the pre-serve hold, aimed at `receiver`. */
-export function respawn(state: CaromState, receiver: Side): void {
-  state.receiver = receiver;
-  parkBallAndTrail(state);
-  state.holdTimer = HOLD_TIME;
-  state.screen = "countdown";
+export function respawn(state: CaromState, receiver: Side): CaromState {
+  return {
+    ...parkBallAndTrail(state),
+    receiver,
+    holdTimer: HOLD_TIME,
+    screen: "countdown",
+  };
 }

@@ -18,7 +18,7 @@ import {
 } from "./constants";
 import { ballSpeed } from "./entities";
 import { obstaclePose } from "./obstacles";
-import { step } from "./physics";
+import { step, type StepEvents } from "./physics";
 import type { BallState, ObstacleState, PaddleState } from "./game";
 
 const FRAME = 1 / 60;
@@ -39,6 +39,27 @@ function ball(patch: Partial<BallState> = {}): BallState {
   return { x: 640, y: 360, vx: 0, vy: 0, spin: 0, ...patch };
 }
 
+/** `step` over `frames` equal slices of `dt`, carrying the ball forward. */
+function stepped(
+  start: BallState,
+  left: PaddleState,
+  right: PaddleState,
+  poses: readonly ObstacleState[],
+  dt: number,
+  frames = 1,
+): { ball: BallState; hit: StepEvents } {
+  let b = start;
+  const hit: StepEvents = { paddle: false, wall: false, obstacle: false };
+  for (let i = 0; i < frames; i++) {
+    const { ball: next, events } = step(b, left, right, poses, dt / frames);
+    b = next;
+    hit.paddle = hit.paddle || events.paddle;
+    hit.wall = hit.wall || events.wall;
+    hit.obstacle = hit.obstacle || events.obstacle;
+  }
+  return { ball: b, hit };
+}
+
 function paddles(leftCy = 360, rightCy = 360): [PaddleState, PaddleState] {
   return [
     { cy: leftCy, vy: 0 },
@@ -48,31 +69,43 @@ function paddles(leftCy = 360, rightCy = 360): [PaddleState, PaddleState] {
 
 describe("free flight", () => {
   it("advances the ball by velocity times the elapsed time", () => {
-    const b = ball({ x: 300, vx: 240, vy: 120 });
+    const start = ball({ x: 300, vx: 240, vy: 120 });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, 0.5);
+    const { ball: b, events } = step(start, left, right, UPRIGHT, 0.5);
     expect(b.x).toBeCloseTo(420, 6);
     expect(b.y).toBeCloseTo(420, 6);
     expect(events).toEqual({ paddle: false, wall: false, obstacle: false });
+    // The ball it was handed is as it was.
+    expect(start).toEqual(ball({ x: 300, vx: 240, vy: 120 }));
   });
 
   it("reaches the same place however the interval was divided", () => {
-    const once = ball({ x: 300, vx: 240, vy: 120 });
-    const many = ball({ x: 300, vx: 240, vy: 120 });
     const [l1, r1] = paddles();
     const [l2, r2] = paddles();
-    step(once, l1, r1, UPRIGHT, 0.5);
-    for (let i = 0; i < 30; i++) step(many, l2, r2, UPRIGHT, FRAME);
-    expect(many.x).toBeCloseTo(once.x, 6);
-    expect(many.y).toBeCloseTo(once.y, 6);
+    const once = step(ball({ x: 300, vx: 240, vy: 120 }), l1, r1, UPRIGHT, 0.5);
+    const many = stepped(
+      ball({ x: 300, vx: 240, vy: 120 }),
+      l2,
+      r2,
+      UPRIGHT,
+      0.5,
+      30,
+    );
+    expect(many.ball.x).toBeCloseTo(once.ball.x, 6);
+    expect(many.ball.y).toBeCloseTo(once.ball.y, 6);
   });
 
   it("curves to within a pixel of the same place at 30, 60 and 240 Hz", () => {
     const at = (hz: number): BallState => {
-      const b = ball({ x: 300, vx: 400, vy: 120, spin: 300 });
       const [left, right] = paddles();
-      for (let i = 0; i < hz / 2; i++) step(b, left, right, UPRIGHT, 1 / hz);
-      return b;
+      return stepped(
+        ball({ x: 300, vx: 400, vy: 120, spin: 300 }),
+        left,
+        right,
+        UPRIGHT,
+        0.5,
+        hz / 2,
+      ).ball;
     };
     const slow = at(30);
     const mid = at(60);
@@ -86,9 +119,14 @@ describe("free flight", () => {
 
 describe("walls", () => {
   it("reflects off the top wall and keeps its speed", () => {
-    const b = ball({ y: 15, vy: -600 });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b, events } = step(
+      ball({ y: 15, vy: -600 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(events.wall).toBe(true);
     expect(b.vy).toBe(600);
     expect(ballSpeed(b)).toBeCloseTo(600, 9);
@@ -96,9 +134,14 @@ describe("walls", () => {
   });
 
   it("reflects off the bottom wall", () => {
-    const b = ball({ y: FIELD_H - 15, vy: 600 });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b, events } = step(
+      ball({ y: FIELD_H - 15, vy: 600 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(events.wall).toBe(true);
     expect(b.vy).toBe(-600);
     expect(b.y).toBeLessThanOrEqual(FIELD_H - BALL_R);
@@ -107,18 +150,28 @@ describe("walls", () => {
 
 describe("the paddle bounce", () => {
   it("sends a center hit straight back at 1.04x the speed", () => {
-    const b = ball({ x: 76, vx: -400 });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b, events } = step(
+      ball({ x: 76, vx: -400 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(events.paddle).toBe(true);
     expect(b.vx).toBeCloseTo(400 * SPEED_MULT, 6);
     expect(b.vy).toBeCloseTo(0, 9);
   });
 
   it("takes the outgoing angle from the contact point", () => {
-    const b = ball({ x: 76, y: 400, vx: -400 });
     const [left, right] = paddles();
-    step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b } = step(
+      ball({ x: 76, y: 400, vx: -400 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     // (400 - 360) / 55 of the way to the 55deg maximum.
     const theta = (40 / 55) * MAX_BOUNCE_ANGLE;
     const speed = 400 * SPEED_MULT;
@@ -127,25 +180,40 @@ describe("the paddle bounce", () => {
   });
 
   it("caps the speed", () => {
-    const b = ball({ x: 76, vx: -970 });
     const [left, right] = paddles();
-    step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b } = step(
+      ball({ x: 76, vx: -970 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(ballSpeed(b)).toBeCloseTo(SPEED_CAP, 6);
   });
 
   it("turns the ball back toward the other goal off the right paddle", () => {
-    const b = ball({ x: 1280 - 76, vx: 400 });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b, events } = step(
+      ball({ x: 1280 - 76, vx: 400 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(events.paddle).toBe(true);
     expect(b.vx).toBeCloseTo(-400 * SPEED_MULT, 6);
   });
 
   it("imparts spin from the paddle's motion at contact", () => {
-    const b = ball({ x: 76, vx: -400 });
-    const [left, right] = paddles();
-    left.vy = 300;
-    step(b, left, right, UPRIGHT, FRAME);
+    const [, right] = paddles();
+    const left: PaddleState = { cy: 360, vy: 300 };
+    const { ball: b } = step(
+      ball({ x: 76, vx: -400 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     // Imparted mid-frame, so the remainder of the frame's decay has applied.
     const imparted = 300 * SPIN_FROM_PADDLE;
     expect(b.spin).toBeLessThanOrEqual(imparted);
@@ -153,33 +221,53 @@ describe("the paddle bounce", () => {
   });
 
   it("imparts no spin from a stationary paddle", () => {
-    const b = ball({ x: 76, vx: -400 });
     const [left, right] = paddles();
-    step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b } = step(
+      ball({ x: 76, vx: -400 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(b.spin).toBe(0);
   });
 
   it("clamps the spin it can accumulate", () => {
-    const b = ball({ x: 76, vx: -400, spin: SPIN_CLAMP });
-    const [left, right] = paddles();
-    left.vy = 900;
-    step(b, left, right, UPRIGHT, FRAME);
+    const [, right] = paddles();
+    const left: PaddleState = { cy: 360, vy: 900 };
+    const { ball: b } = step(
+      ball({ x: 76, vx: -400, spin: SPIN_CLAMP }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(b.spin).toBeLessThanOrEqual(SPIN_CLAMP);
   });
 
   it("reflects like a wall off a paddle's top cap", () => {
-    const b = ball({ x: 56, y: 292, vy: 300 });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b, events } = step(
+      ball({ x: 56, y: 292, vy: 300 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(events.wall).toBe(true);
     expect(events.paddle).toBe(false);
     expect(b.vy).toBe(-300);
   });
 
   it("never tunnels through a paddle, even at the speed cap and 5 fps", () => {
-    const b = ball({ x: 260, vx: -SPEED_CAP });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, 0.2);
+    const { ball: b, events } = step(
+      ball({ x: 260, vx: -SPEED_CAP }),
+      left,
+      right,
+      UPRIGHT,
+      0.2,
+    );
     expect(events.paddle).toBe(true);
     expect(b.vx).toBeGreaterThan(0);
     expect(b.x).toBeGreaterThan(64);
@@ -191,14 +279,19 @@ describe("obstacles", () => {
   const insideY = (obstacle.y0 + obstacle.y1) / 2;
 
   it("reflects the ball and leaves speed and spin alone", () => {
-    const b = ball({
-      x: obstacle.x0 - BALL_R - 2,
-      y: insideY,
-      vx: 300,
-      spin: 100,
-    });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b, events } = step(
+      ball({
+        x: obstacle.x0 - BALL_R - 2,
+        y: insideY,
+        vx: 300,
+        spin: 100,
+      }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(events.obstacle).toBe(true);
     expect(b.vx).toBeLessThan(0);
     expect(ballSpeed(b)).toBeCloseTo(300, 6);
@@ -207,22 +300,32 @@ describe("obstacles", () => {
   });
 
   it("reflects off the flat top of an obstacle", () => {
-    const b = ball({
-      x: (obstacle.x0 + obstacle.x1) / 2,
-      y: obstacle.y0 - BALL_R - 2.5,
-      vy: 300,
-    });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b, events } = step(
+      ball({
+        x: (obstacle.x0 + obstacle.x1) / 2,
+        y: obstacle.y0 - BALL_R - 2.5,
+        vy: 300,
+      }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(events.obstacle).toBe(true);
     expect(b.vy).toBe(-300);
     expect(b.y).toBeLessThanOrEqual(obstacle.y0 - BALL_R);
   });
 
   it("never tunnels through an obstacle", () => {
-    const b = ball({ x: obstacle.x0 - 120, y: insideY, vx: SPEED_CAP });
     const [left, right] = paddles();
-    const events = step(b, left, right, UPRIGHT, 0.2);
+    const { ball: b, events } = step(
+      ball({ x: obstacle.x0 - 120, y: insideY, vx: SPEED_CAP }),
+      left,
+      right,
+      UPRIGHT,
+      0.2,
+    );
     expect(events.obstacle).toBe(true);
     expect(b.x).toBeLessThan(obstacle.x0);
   });
@@ -239,12 +342,29 @@ describe("oriented obstacles", () => {
     ];
   }
 
+  /** The level shot from just in front of A's upright face. */
+  function level(): BallState {
+    return ball({ x: A.x - OBSTACLE_HW - BALL_R - 2, y: A.y, vx: 300 });
+  }
+
+  /** The ball's clearance from A's rectangle, measured in A's own frame. */
+  function clearance(b: BallState, theta: number): number {
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    const dx = b.x - A.x;
+    const dy = b.y - A.y;
+    const lx = dx * cos + dy * sin;
+    const ly = -dx * sin + dy * cos;
+    const qx = Math.max(-OBSTACLE_HW, Math.min(OBSTACLE_HW, lx));
+    const qy = Math.max(-OBSTACLE_HH, Math.min(OBSTACLE_HH, ly));
+    return Math.hypot(lx - qx, ly - qy);
+  }
+
   it("reduces to the axis-aligned case when upright", () => {
     // theta = 0 is the base variant's obstacle exactly: a flat vertical face
     // flips vx and nothing else.
-    const b = ball({ x: A.x - OBSTACLE_HW - BALL_R - 2, y: A.y, vx: 300 });
     const [left, right] = paddles();
-    const events = step(b, left, right, only(0), FRAME);
+    const { ball: b, events } = step(level(), left, right, only(0), FRAME);
     expect(events.obstacle).toBe(true);
     expect(b.vx).toBeCloseTo(-300, 6);
     expect(b.vy).toBeCloseTo(0, 6);
@@ -254,9 +374,14 @@ describe("oriented obstacles", () => {
     // The same horizontal shot at the same height, against a face turned 45deg.
     // An axis-aligned reflection could only ever flip vx and leave vy at zero,
     // so any real vertical component here is the tilt doing the work.
-    const b = ball({ x: A.x - OBSTACLE_HW - BALL_R - 2, y: A.y, vx: 300 });
     const [left, right] = paddles();
-    const events = step(b, left, right, only(Math.PI / 4), FRAME);
+    const { ball: b, events } = step(
+      level(),
+      left,
+      right,
+      only(Math.PI / 4),
+      FRAME,
+    );
     expect(events.obstacle).toBe(true);
     expect(Math.abs(b.vy)).toBeGreaterThan(100);
     expect(ballSpeed(b)).toBeCloseTo(300, 6);
@@ -264,10 +389,8 @@ describe("oriented obstacles", () => {
 
   it("turns the deflection the other way when the tilt is the other way", () => {
     const shot = (theta: number): BallState => {
-      const b = ball({ x: A.x - OBSTACLE_HW - BALL_R - 2, y: A.y, vx: 300 });
       const [left, right] = paddles();
-      step(b, left, right, only(theta), FRAME);
-      return b;
+      return step(level(), left, right, only(theta), FRAME).ball;
     };
     const up = shot(Math.PI / 4);
     const down = shot(-Math.PI / 4);
@@ -275,14 +398,14 @@ describe("oriented obstacles", () => {
   });
 
   it("preserves speed and spin through an oriented bounce", () => {
-    const b = ball({
-      x: A.x - OBSTACLE_HW - BALL_R - 2,
-      y: A.y,
-      vx: 300,
-      spin: 100,
-    });
     const [left, right] = paddles();
-    step(b, left, right, only(Math.PI / 5), FRAME);
+    const { ball: b } = step(
+      { ...level(), spin: 100 },
+      left,
+      right,
+      only(Math.PI / 5),
+      FRAME,
+    );
     expect(ballSpeed(b)).toBeCloseTo(300, 6);
     // Untouched by the bounce; only the per-step decay applies.
     expect(b.spin).toBeCloseTo(100 * Math.pow(0.5, FRAME / SPIN_HALFLIFE), 6);
@@ -290,22 +413,11 @@ describe("oriented obstacles", () => {
 
   it("leaves the ball clear of the obstacle it struck", () => {
     for (const theta of [0, 0.3, Math.PI / 4, 1.2, 2.5]) {
-      const b = ball({ x: A.x - OBSTACLE_HW - BALL_R - 2, y: A.y, vx: 300 });
       const [left, right] = paddles();
-      step(b, left, right, only(theta), FRAME);
+      const { ball: b } = step(level(), left, right, only(theta), FRAME);
       // Back into the obstacle's frame: the resolved center must sit at least a
       // ball radius from the rectangle, or the next frame re-triggers the hit.
-      const cos = Math.cos(theta);
-      const sin = Math.sin(theta);
-      const dx = b.x - A.x;
-      const dy = b.y - A.y;
-      const lx = dx * cos + dy * sin;
-      const ly = -dx * sin + dy * cos;
-      const qx = Math.max(-OBSTACLE_HW, Math.min(OBSTACLE_HW, lx));
-      const qy = Math.max(-OBSTACLE_HH, Math.min(OBSTACLE_HH, ly));
-      expect(Math.hypot(lx - qx, ly - qy)).toBeGreaterThanOrEqual(
-        BALL_R - 1e-6,
-      );
+      expect(clearance(b, theta)).toBeGreaterThanOrEqual(BALL_R - 1e-6);
     }
   });
 
@@ -319,20 +431,16 @@ describe("oriented obstacles", () => {
     // the near side — a tilted face legitimately deflects the ball around and
     // past the obstacle's center line, which is the whole point of the variant.
     for (const theta of [0, 0.4, Math.PI / 4, 1.1]) {
-      const b = ball({ x: A.x - 150, y: A.y, vx: SPEED_CAP });
       const [left, right] = paddles();
-      const events = step(b, left, right, only(theta), 0.2);
+      const { ball: b, events } = step(
+        ball({ x: A.x - 150, y: A.y, vx: SPEED_CAP }),
+        left,
+        right,
+        only(theta),
+        0.2,
+      );
       expect(events.obstacle).toBe(true);
-
-      const cos = Math.cos(theta);
-      const sin = Math.sin(theta);
-      const dx = b.x - A.x;
-      const dy = b.y - A.y;
-      const lx = dx * cos + dy * sin;
-      const ly = -dx * sin + dy * cos;
-      const qx = Math.max(-OBSTACLE_HW, Math.min(OBSTACLE_HW, lx));
-      const qy = Math.max(-OBSTACLE_HH, Math.min(OBSTACLE_HH, ly));
-      expect(Math.hypot(lx - qx, ly - qy)).toBeGreaterThan(0);
+      expect(clearance(b, theta)).toBeGreaterThan(0);
     }
   });
 
@@ -341,13 +449,15 @@ describe("oriented obstacles", () => {
     // interval delivered as many short frames must reach the same verdict as one
     // long one. A build that integrated once per frame would disagree here.
     const shot = (theta: number, frames: number): boolean => {
-      const b = ball({ x: A.x - 150, y: A.y, vx: SPEED_CAP });
       const [left, right] = paddles();
-      let hit = false;
-      for (let i = 0; i < frames; i++) {
-        hit = step(b, left, right, only(theta), 0.2 / frames).obstacle || hit;
-      }
-      return hit;
+      return stepped(
+        ball({ x: A.x - 150, y: A.y, vx: SPEED_CAP }),
+        left,
+        right,
+        only(theta),
+        0.2,
+        frames,
+      ).hit.obstacle;
     };
     for (const theta of [0, Math.PI / 4]) {
       expect(shot(theta, 1)).toBe(true);
@@ -357,9 +467,14 @@ describe("oriented obstacles", () => {
 
   it("follows the obstacle: the same shot misses a swayed obstacle it would have hit", () => {
     const shot = (cy: number): boolean => {
-      const b = ball({ x: A.x - 150, y: A.y, vx: 600 });
       const [left, right] = paddles();
-      return step(b, left, right, only(0, cy), 0.35).obstacle;
+      return step(
+        ball({ x: A.x - 150, y: A.y, vx: 600 }),
+        left,
+        right,
+        only(0, cy),
+        0.35,
+      ).events.obstacle;
     };
     expect(shot(A.y)).toBe(true);
     // Swayed a clear bar-length away, the same shot passes through where it was.
@@ -369,25 +484,40 @@ describe("oriented obstacles", () => {
 
 describe("spin", () => {
   it("loses half its magnitude every SPIN_HALFLIFE seconds", () => {
-    const b = ball({ spin: 800 });
     const [left, right] = paddles();
-    step(b, left, right, UPRIGHT, SPIN_HALFLIFE);
+    const { ball: b } = step(
+      ball({ spin: 800 }),
+      left,
+      right,
+      UPRIGHT,
+      SPIN_HALFLIFE,
+    );
     expect(b.spin).toBeCloseTo(400, 6);
   });
 
   it("curves the flight without changing the speed", () => {
-    const b = ball({ x: 300, vx: 520, spin: 400 });
     const [left, right] = paddles();
-    step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b } = step(
+      ball({ x: 300, vx: 520, spin: 400 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(ballSpeed(b)).toBeCloseTo(520, 6);
     // Positive spin turns the velocity toward +y (down the screen).
     expect(b.vy).toBeGreaterThan(0);
   });
 
   it("curves the opposite way for the opposite sign", () => {
-    const b = ball({ x: 300, vx: 520, spin: -400 });
     const [left, right] = paddles();
-    step(b, left, right, UPRIGHT, FRAME);
+    const { ball: b } = step(
+      ball({ x: 300, vx: 520, spin: -400 }),
+      left,
+      right,
+      UPRIGHT,
+      FRAME,
+    );
     expect(b.vy).toBeLessThan(0);
   });
 });

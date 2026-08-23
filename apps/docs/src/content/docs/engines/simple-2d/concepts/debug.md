@@ -13,8 +13,8 @@ runs is expected to carry one.
 `initialize` returns its state and its debug surface together, as the pair
 `[state, debug]`, and the engine returns the second element unchanged from
 `engine.debug`. The surface therefore has the same lifetime and the same origin
-as the state: it is built in the one place the state is built, it closes over
-that same value, and it is in place before the first frame runs.
+as the state: it is built in the one place the state is built, and it is in
+place before the first frame runs.
 
 Carrying the surface in the return value is what makes its presence a property
 of the pair rather than of a call the game might omit or misplace. There is no
@@ -37,18 +37,32 @@ and implements them, and a validator reaches them through `engine.debug` with a
 type of its own written from the same spec. The engine carries the surface
 between the two without knowing what it holds.
 
-## Arrangement, never outcome
+## Written as transitions and readings
 
-A surface arranges the world; it does not decide what happens next. Every control
-operation is a pose of the state the game's own `update` runs from on the next
-frame, so the collision, the serve, or the spawn a scenario is about is computed
-by the same code play exercises. A scenario posed through the surface and the
-same scenario reached by playing leave the game in one state, which is the
-property that makes a check through the surface a check of the game.
+The engine holds the state by value and hands every reader a `DeepReadonly`
+view, so the surface holds no state of its own and closes over nothing
+writable. Its operations take the state as an argument, in the shape `update`
+has:
 
-Readings report what the game holds at the instant they are called, and hand back
-copies where a reference into the live state would let a caller move the
-simulation without going through an operation.
+- A pose takes the current state and returns the next: `serve(state) => state`,
+  `setBall(state, index, patch) => state`. A pose is a `Transition<S>`, and a
+  caller drives it through `engine.apply((state) => engine.debug.serve(state))`.
+- A reading takes the state and returns what it read:
+  `snapshot(state) => CaromSnapshot`. A caller drives it as
+  `engine.debug.snapshot(engine.state)`.
+
+Plain properties such as `version` stay plain properties.
+
+A pose arranges the world; it does not decide what happens next. Every pose
+leaves the state the game's own `update` runs from on the next frame, so the
+collision, the serve, or the spawn a scenario is about is computed by the same
+code play exercises. A scenario posed through the surface and the same scenario
+reached by playing leave the game in one state, which is the property that
+makes a check through the surface a check of the game.
+
+A reading reports the state it is handed, which is whichever state the caller
+read off `engine.state` at that moment. The read-only view is what keeps a
+caller from moving the simulation without going through a pose.
 
 ## What the engine keeps for itself
 

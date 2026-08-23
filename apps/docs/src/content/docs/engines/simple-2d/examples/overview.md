@@ -25,7 +25,7 @@ subscribe to anything the caller wants to observe, initialize, and run.
 
 ```ts
 const engine = createEngine({ canvas, width, height, game });
-const state = await engine.initialize();
+await engine.initialize();
 await engine.run();
 ```
 

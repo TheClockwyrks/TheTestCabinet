@@ -62,6 +62,7 @@ import type {
   RenderApi,
   UpdateApi,
 } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
 /** Every action `TOUCH_LAYOUTS["dpad-4-two-buttons"]` names, with its keys. */
 const BINDINGS: Record<string, ActionBinding> = {
@@ -84,56 +85,56 @@ const JUMP = -520;
 const GRAVITY = 1400;
 
 export interface HopperState {
-  x: number;
-  y: number;
-  vy: number;
-  grounded: boolean;
-  paused: boolean;
-  jumps: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vy: number;
+  readonly grounded: boolean;
+  readonly paused: boolean;
+  readonly jumps: number;
 }
 
 export const hopper: Game<HopperState, null> = {
-  initialize(api: InitApi): [HopperState, null] {
+  initialize(api: InitApi<HopperState>): [HopperState, null] {
     for (const [action, binding] of Object.entries(BINDINGS)) {
       api.input.register(action, binding);
     }
 
-    const state: HopperState = {
-      x: 96,
-      y: GROUND - SIZE,
-      vy: 0,
-      grounded: true,
-      paused: false,
-      jumps: 0,
-    };
-    return [state, null];
+    return [
+      {
+        x: 96,
+        y: GROUND - SIZE,
+        vy: 0,
+        grounded: true,
+        paused: false,
+        jumps: 0,
+      },
+      null,
+    ];
   },
 
-  update(state: HopperState, api: UpdateApi, dt: number): void {
-    if (api.input.pressed("pause")) state.paused = !state.paused;
-    if (state.paused) return;
+  update(state: DeepReadonly<HopperState>, api: UpdateApi, dt: number): HopperState {
+    const paused = api.input.pressed("pause") ? !state.paused : state.paused;
+    if (paused) return { ...state, paused };
 
     const steer = api.input.value("right") - api.input.value("left");
     const limit = api.viewport().width - SIZE;
-    state.x = Math.min(Math.max(state.x + steer * RUN * dt, 0), limit);
+    const x = Math.min(Math.max(state.x + steer * RUN * dt, 0), limit);
 
-    if (api.input.pressed("a") && state.grounded) {
-      state.vy = JUMP;
-      state.grounded = false;
-      state.jumps += 1;
+    const jumping = api.input.pressed("a") && state.grounded;
+    const launched = jumping
+      ? { vy: JUMP, grounded: false, jumps: state.jumps + 1 }
+      : { vy: state.vy, grounded: state.grounded, jumps: state.jumps };
+
+    const vy = launched.vy + GRAVITY * dt;
+    const y = state.y + vy * dt;
+
+    if (y >= GROUND - SIZE) {
+      return { ...launched, x, y: GROUND - SIZE, vy: 0, grounded: true, paused };
     }
-
-    state.vy += GRAVITY * dt;
-    state.y += state.vy * dt;
-
-    if (state.y >= GROUND - SIZE) {
-      state.y = GROUND - SIZE;
-      state.vy = 0;
-      state.grounded = true;
-    }
+    return { ...launched, x, y, vy, paused };
   },
 
-  render(state: HopperState, api: RenderApi): void {
+  render(state: DeepReadonly<HopperState>, api: RenderApi): void {
     const { ctx } = api;
     const { width, height } = api.viewport();
 
@@ -233,32 +234,32 @@ function boot(): { engine: Engine<HopperState>; surface: TestSurface } {
 
 test("a held steer moves the hopper right", async () => {
   const { engine, surface } = boot();
-  const state = await engine.initialize();
-  const startX = state.x;
+  const opening = await engine.initialize();
 
   key(surface.target, "keydown", "KeyD");
   await engine.advance(60);
   key(surface.target, "keyup", "KeyD");
 
-  expect(state.x).toBeGreaterThan(startX);
+  expect(engine.state.x).toBeGreaterThan(opening.x);
   engine.destroy();
 });
 
 test("a held jump button costs one jump", async () => {
   const { engine, surface } = boot();
-  const state = await engine.initialize();
+  await engine.initialize();
 
   key(surface.target, "keydown", "Space");
   await engine.advance(120);
 
-  expect(state.jumps).toBe(1);
+  expect(engine.state.jumps).toBe(1);
   engine.destroy();
 });
 ```
 
-`engine.state` and the value `initialize` resolved to are the same live object,
-so reading `state.x` after `advance` reads the current frame. A figure that must
-survive later frames is copied when it is read, as `startX` is.
+`engine.state` is the value the most recent frame left, so reading it after
+`advance` reads the current frame. The value `initialize` resolved to is the
+opening state and stays that value however many frames run, which is why
+`opening.x` is the figure the first test compares against.
 
 `ConstantClock` makes each of the 60 frames worth exactly `1000 / 60`
 milliseconds, so the distance the first test measures is the distance one

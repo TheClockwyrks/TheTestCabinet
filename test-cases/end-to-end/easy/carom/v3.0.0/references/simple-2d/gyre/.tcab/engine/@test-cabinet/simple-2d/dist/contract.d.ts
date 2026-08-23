@@ -4,10 +4,12 @@
  *
  * These types are declared once, here, rather than beside the subsystem that owns
  * each one, because almost every one of them is spoken by more than one side of
- * the package. Keeping the declarations in a leaf module with no imports means the
+ * the package. Keeping the declarations in a leaf module with no value imports means the
  * entry points cannot drift apart, and that `@test-cabinet/simple-2d` can be
  * consumed for its types alone without pulling in the DOM-bound engine.
  */
+import type { DeepReadonly } from "ts-essentials";
+export type { DeepReadonly };
 /**
  * The source of a frame's delta time.
  *
@@ -206,8 +208,14 @@ export interface SurfaceMetrics {
 }
 /**
  * What a game may reach while it initializes.
+ *
+ * Generic over the game's state so a diagnostic source can be typed against it:
+ * the source is handed the state current at the moment the overlay reads it,
+ * because the state a frame leaves behind is a new value rather than the object
+ * `initialize` built, and a source that closed over that first object would
+ * report the title screen forever.
  */
-export interface InitApi {
+export interface InitApi<S = unknown> {
     readonly input: {
         /** Register or re-register an action. */
         register(name: string, binding: ActionBinding): void;
@@ -231,8 +239,11 @@ export interface InitApi {
         resolve(path: string): string;
     };
     readonly diagnostics: {
-        /** Name a value for the overlay. The source is called on every read. */
-        register(name: string, source: () => unknown): void;
+        /**
+         * Name a value for the overlay. The source is called on every read, with the
+         * state current at that read.
+         */
+        register(name: string, source: (state: DeepReadonly<S>) => unknown): void;
     };
     readonly events: EngineEvents;
     /** The current logical-to-device fit. */
@@ -282,14 +293,23 @@ export interface RenderApi {
  * The three functions and the two types a game supplies.
  *
  * `S` is the game's own state, the first element of the pair `initialize`
- * returns and the value handed back to every `update` and `render`. It is the
- * only channel between the three, so everything a frame needs is reachable from
- * a value the type system already checked.
+ * returns. Every frame is a transition over it: `update` is handed the current
+ * state as a {@link DeepReadonly} view and returns the next state, and `render`
+ * is handed that next state, as the same read-only view, and returns nothing.
+ * The state is the only channel between the three, so everything a frame needs
+ * is reachable from a value the type system already checked — and because no
+ * reader ever holds a writable reference, "rendering does not change the state"
+ * and "nothing but the update advances the simulation" are facts the compiler
+ * checks rather than comments.
  *
  * `D` is the game's debug surface, the second element of that pair and the value
  * {@link Engine.debug} returns unchanged. The engine holds it and reads no member
  * of it, so its shape belongs to the game. A game with no surface writes
- * `Game<State, null>` and returns `[state, null]`.
+ * `Game<State, null>` and returns `[state, null]`. Because the surface cannot
+ * hold a writable state either, its operations are written in the shape of
+ * `update`: a pose takes the current state and returns the next, a reading takes
+ * the current state and returns what it read, and a caller drives them through
+ * {@link Engine.apply} and {@link Engine.state}.
  *
  * Because both are built in one go during initialization and no frame runs
  * before that resolves, the state has no not-yet-loaded fields for a frame to
@@ -300,12 +320,27 @@ export interface Game<S, D = unknown> {
      * Declare the game's bindings, cues and diagnostics, and build its state and
      * its debug surface, returned together as `[state, debug]`.
      */
-    initialize(api: InitApi): [S, D] | Promise<[S, D]>;
-    /** Advance the simulation by `dt` seconds. */
-    update(state: S, api: UpdateApi, dt: number): void;
+    initialize(api: InitApi<S>): [S, D] | Promise<[S, D]>;
+    /**
+     * Advance the simulation by `dt` seconds: the next state, from the current one.
+     *
+     * The value returned is the state the frame leaves behind — what `render`
+     * draws, what {@link Engine.state} reads, and what the next `update` receives.
+     * Returning `undefined` is refused, because a game that forgot to return has
+     * not advanced anything.
+     */
+    update(state: DeepReadonly<S>, api: UpdateApi, dt: number): S;
     /** Draw the state the update left behind. */
-    render(state: S, api: RenderApi): void;
+    render(state: DeepReadonly<S>, api: RenderApi): void;
 }
+/**
+ * A change to the state made from outside a frame.
+ *
+ * The shape `update` has, minus the frame: the current state in, the next state
+ * out. It is what a debug surface's poses are written as, and what a caller
+ * hands {@link Engine.apply}.
+ */
+export type Transition<S> = (state: DeepReadonly<S>) => S;
 /**
  * A value carried inside a recorded operation.
  *
@@ -580,8 +615,14 @@ export interface RunOptions {
 export interface Engine<S, D = unknown> {
     /** Subscribe to engine events. Available from construction. */
     readonly events: EngineEvents;
-    /** The value `initialize` resolved to, live. Throws before then. */
-    readonly state: S;
+    /**
+     * The current state, as a read-only view. Throws before `initialize` resolves.
+     *
+     * "Current" rather than "live": each frame replaces the value, so a reader
+     * reads the state the most recent transition left and holds nothing a later
+     * frame writes to.
+     */
+    readonly state: DeepReadonly<S>;
     /**
      * The debug surface the game's `initialize` returned beside its state, live.
      * Throws before `initialize` has resolved.
@@ -591,7 +632,14 @@ export interface Engine<S, D = unknown> {
      */
     readonly debug: D;
     /** Run the game's `initialize` and resolve to the state it produced. */
-    initialize(): Promise<S>;
+    initialize(): Promise<DeepReadonly<S>>;
+    /**
+     * Replace the state with the one `transition` returns from the current one,
+     * and return the new state. How a caller poses a game between frames: the
+     * next frame's `update` receives the state this left. Throws before
+     * `initialize` resolves, and refuses a transition that returns `undefined`.
+     */
+    apply(transition: Transition<S>): DeepReadonly<S>;
     /** Drive the game off the host's frame callback until the signal aborts. */
     run(options?: RunOptions): Promise<void>;
     /** Tick the clock `frames` times, running a frame for each tick it accepts. */

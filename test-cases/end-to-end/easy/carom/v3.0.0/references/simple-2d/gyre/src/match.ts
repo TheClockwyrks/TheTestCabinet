@@ -6,22 +6,25 @@
 // debug surface's `reset()` all land; a match is what `SOLO`, `VERSUS`,
 // `RESTART`, `PLAY AGAIN`, and the debug surface's `startMatch()` all open. Each
 // rule lives here once, so the menus and the debug surface cannot drift apart.
+//
+// Each is a transition: the current state in, the next state out.
 
 import { FIELD_CY, HOLD_TIME } from "./constants";
-import { parkBall } from "./entities";
-import type { CaromState, Mode } from "./game";
+import { parkedBall } from "./entities";
+import type { CaromState, Mode, PaddleState } from "./game";
 import { poseObstacles } from "./obstacles";
+import type { DeepReadonly } from "ts-essentials";
 
-/** Put both paddles at the vertical center, stationary. */
-function centerPaddles(state: CaromState): void {
-  state.paddles.left.cy = FIELD_CY;
-  state.paddles.left.vy = 0;
-  state.paddles.right.cy = FIELD_CY;
-  state.paddles.right.vy = 0;
+/** Both paddles at the vertical center, stationary. */
+function centeredPaddles(): { left: PaddleState; right: PaddleState } {
+  return {
+    left: { cy: FIELD_CY, vy: 0 },
+    right: { cy: FIELD_CY, vy: 0 },
+  };
 }
 
 /**
- * Return to the title screen.
+ * The title screen.
  *
  * Every declared field takes its title value except `simTime`, `muted`,
  * `rngState`, and `driver`, which the specification keeps across the
@@ -29,43 +32,50 @@ function centerPaddles(state: CaromState): void {
  * generator is reseeded by `reset()` alone, and the debug driver's hold is
  * released by `reset()` alone.
  */
-export function toTitle(state: CaromState): void {
-  state.screen = "title";
-  state.mode = "solo";
-  state.menuIndex = 0;
-  state.resumeScreen = "playing";
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  state.receiver = "left";
-  state.holdTimer = 0;
-  centerPaddles(state);
-  parkBall(state.ball);
-  state.trail.length = 0;
-  state.obstacleClock = 0;
-  poseObstacles(state.obstacles, state.obstacleClock);
+export function toTitle(state: DeepReadonly<CaromState>): CaromState {
+  return {
+    ...state,
+    screen: "title",
+    mode: "solo",
+    menuIndex: 0,
+    resumeScreen: "playing",
+    score: { p1: 0, p2: 0 },
+    winner: null,
+    receiver: "left",
+    holdTimer: 0,
+    paddles: centeredPaddles(),
+    ball: parkedBall(),
+    trail: [],
+    obstacleClock: 0,
+    obstacles: poseObstacles(0),
+  };
 }
 
 /**
- * Start a match in `mode`. It opens on the pre-serve countdown with the first
- * serve aimed at player one, both obstacles upright at their base centers, and
- * `simTime` carried on.
+ * A match in `mode`, just opened. It opens on the pre-serve countdown with the
+ * first serve aimed at player one, both obstacles upright at their base centers,
+ * and `simTime` carried on.
  */
-export function startMatch(state: CaromState, mode: Mode): void {
-  state.mode = mode;
-  state.screen = "countdown";
-  state.resumeScreen = "playing";
-  state.menuIndex = 0;
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  state.receiver = "left";
-  state.holdTimer = HOLD_TIME;
-  centerPaddles(state);
-  parkBall(state.ball);
-  state.trail.length = 0;
-  // The clock starts over rather than carrying the previous match's phase into
-  // this one (specs/playfield.md).
-  state.obstacleClock = 0;
-  poseObstacles(state.obstacles, state.obstacleClock);
+export function startMatch(
+  state: DeepReadonly<CaromState>,
+  mode: Mode,
+): CaromState {
+  return {
+    ...state,
+    mode,
+    screen: "countdown",
+    resumeScreen: "playing",
+    menuIndex: 0,
+    score: { p1: 0, p2: 0 },
+    winner: null,
+    receiver: "left",
+    holdTimer: HOLD_TIME,
+    paddles: centeredPaddles(),
+    ball: parkedBall(),
+    trail: [],
+    // The clock starts over rather than carrying the previous match's phase into
+    // this one (specs/playfield.md).
+    obstacleClock: 0,
+    obstacles: poseObstacles(0),
+  };
 }

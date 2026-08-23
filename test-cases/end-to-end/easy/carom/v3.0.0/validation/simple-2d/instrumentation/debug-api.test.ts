@@ -59,9 +59,10 @@ it("returns its debug surface beside its state from initialize", () => {
   expect(h.engine.debug).not.toBeNull();
 
   // The runtime returns the value the game handed over, unchanged and unwrapped,
-  // so every read is the same object and it is the one the rest of this suite —
-  // and every other check in this directory — poses the game through.
-  expect(h.engine.debug).toBe(h.debug);
+  // so every read is the same object. It is the one the rest of this suite —
+  // and every other check in this directory — poses the game through: `h.debug`
+  // drives this object over the runtime, running each pose through
+  // `engine.apply` and handing `engine.state` to each reading.
   expect(h.engine.debug).toBe(h.engine.debug);
   expect(typeof h.engine.debug).toBe("object");
 });
@@ -74,6 +75,29 @@ it("carries a version and every required operation, as functions", () => {
   for (const op of REQUIRED_OPS) {
     expect(typeof api[op]).toBe("function");
   }
+});
+
+it("writes its operations in the shape of update: state in, state out", () => {
+  // The runtime hands the state out read-only and holds it by value, so an
+  // operation that mutated what it was given would change nothing the next
+  // frame sees. A pose returns the next state; a reading returns what it read;
+  // and neither writes to the state it was handed. The snapshot is read off
+  // the runtime's current value, and a pose is run through `engine.apply`.
+  const api = h.engine.debug;
+  const before = h.engine.state;
+
+  const snapshot = api.snapshot(before);
+  expect(typeof snapshot).toBe("object");
+  expect(snapshot.screen).toBe("title");
+
+  const posed = api.startMatch(before, "versus");
+  expect(posed, "startMatch must return the next state").toBeDefined();
+  expect(posed).not.toBe(before);
+  // The runtime's state is untouched until a transition is applied…
+  expect(api.snapshot(h.engine.state).screen).toBe("title");
+  // …and the posed value is what it holds once one is.
+  h.engine.apply(() => posed);
+  expect(h.snapshot().screen).toBe("countdown");
 });
 
 it("reports the whole documented snapshot shape, from a live match", async () => {

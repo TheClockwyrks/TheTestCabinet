@@ -84,25 +84,22 @@ import type {
   RenderApi,
   UpdateApi,
 } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
 const SHIP = 32;
 const SPEED = 300;
 
-interface Notice {
-  text: string | null;
-}
-
 export interface RunnerState {
-  ship: ImageBitmap;
-  banner: ImageBitmap | null;
-  notice: Notice;
-  x: number;
-  y: number;
-  againstWall: boolean;
+  readonly ship: ImageBitmap;
+  readonly banner: ImageBitmap | null;
+  readonly notice: string | null;
+  readonly x: number;
+  readonly y: number;
+  readonly againstWall: boolean;
 }
 
 export const runner: Game<RunnerState, null> = {
-  async initialize(api: InitApi): Promise<[RunnerState, null]> {
+  async initialize(api: InitApi<RunnerState>): Promise<[RunnerState, null]> {
     api.input.register("left", { keys: ["KeyA", "ArrowLeft"], kind: "analog" });
     api.input.register("right", {
       keys: ["KeyD", "ArrowRight"],
@@ -118,9 +115,9 @@ export const runner: Game<RunnerState, null> = {
       durationMs: 120,
     });
 
-    const notice: Notice = { text: null };
-    api.events.on("asset:failed", (event) => {
-      notice.text = `${event.path} unavailable: ${event.reason}`;
+    const failed: string[] = [];
+    const off = api.events.on("asset:failed", (event) => {
+      failed.push(`${event.path} unavailable: ${event.reason}`);
     });
 
     const [ship] = await Promise.all([
@@ -131,12 +128,13 @@ export const runner: Game<RunnerState, null> = {
     const banner = await api.assets
       .loadImage("sprites/banner.png")
       .catch(() => null);
+    off();
 
     const { width, height } = api.viewport();
     const state: RunnerState = {
       ship,
       banner,
-      notice,
+      notice: failed[0] ?? null,
       x: width / 2,
       y: height - 64,
       againstWall: false,
@@ -144,7 +142,7 @@ export const runner: Game<RunnerState, null> = {
     return [state, null];
   },
 
-  update(state: RunnerState, api: UpdateApi, dt: number): void {
+  update(state: DeepReadonly<RunnerState>, api: UpdateApi, dt: number): RunnerState {
     if (api.input.pressed("mute")) api.audio.setMuted(!api.audio.muted());
 
     const startedLeft = api.input.pressed("left");
@@ -156,13 +154,13 @@ export const runner: Game<RunnerState, null> = {
     const limit = api.viewport().width - half;
     const moved = state.x + steer * SPEED * dt;
     const clamped = Math.min(Math.max(moved, half), limit);
+    const againstWall = clamped !== moved;
 
-    if (clamped !== moved && !state.againstWall) api.audio.play("impact");
-    state.againstWall = clamped !== moved;
-    state.x = clamped;
+    if (againstWall && !state.againstWall) api.audio.play("impact");
+    return { ...state, x: clamped, againstWall };
   },
 
-  render(state: RunnerState, api: RenderApi): void {
+  render(state: DeepReadonly<RunnerState>, api: RenderApi): void {
     const { ctx } = api;
     const { width } = api.viewport();
 
@@ -172,10 +170,10 @@ export const runner: Game<RunnerState, null> = {
 
     ctx.drawImage(state.ship, state.x - SHIP / 2, state.y - SHIP / 2);
 
-    if (state.notice.text !== null) {
+    if (state.notice !== null) {
       ctx.fillStyle = "#ffb4a2";
       ctx.font = "14px monospace";
-      ctx.fillText(state.notice.text, 16, 28);
+      ctx.fillText(state.notice, 16, 28);
     }
   },
 };
@@ -208,9 +206,11 @@ the next frame to replay.
 ## Observing a failed load
 
 `api.events.on("asset:failed", handler)` runs the handler at the moment the load
-fails, and returns the function that removes it. Writing the reason into a box
-the state holds is what carries it from initialization to the frames that draw
-it.
+fails, and returns the function that removes it. Every load this build performs
+is awaited inside `initialize`, so the handler collects each reason while the
+loads run, the subscription is removed once they have settled, and the first
+reason is placed in the state that `initialize` returns. The frames that draw
+the notice read it from there like any other field.
 
 The payload names the path the game asked for, the URL it resolved to, and the
 reason, so the notice on screen identifies the file to add to `assets/`. The
