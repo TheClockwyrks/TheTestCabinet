@@ -572,16 +572,21 @@
 }
 
 // The Follow toggle, on the run monitor's page header and on gg's activity feed.
-// Reads as an outlined control when off; when auto-follow is active (`data-active`)
-// it fills with the accent and glows, so its state is legible at a glance (and
-// conveyed to AT via `aria-pressed`).
+// Boxed exactly like the `.primary`/`.secondary` family above (same type size,
+// line-height, padding, and radius) so it sits on a page header at the same
+// height as the runs list's "+ New run" — the two pages are meant to read as one
+// console. Reads as the secondary control when off; when auto-follow is active
+// (`data-active`) it becomes the primary one — filled with the accent and glowing
+// — so its state is legible at a glance (and conveyed to AT via `aria-pressed`).
 .followButton {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: t.$space-xs t.$space-lg;
+  font-size: t.$font-md;
+  line-height: 1.2;
+  padding: t.$space-sm t.$space-lg;
   border-radius: t.$radius-md;
   border: t.$border-hairline solid t.$color-border;
   background: s.$panel-bg;
@@ -604,6 +609,16 @@
     outline: t.$border-hairline solid t.$color-accent;
     outline-offset: 2px;
   }
+}
+
+// The same toggle at the compact size the gg explorer's in-pane feed header uses:
+// it sits beside a section label inside a pane, where the page-header box above
+// would crowd the row. Composed onto `.followButton`.
+.followButtonCompact {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: t.$space-xs t.$space-lg;
 }
 
 // The live monitor's view toggle. Reuses the run-detail tab bar's container

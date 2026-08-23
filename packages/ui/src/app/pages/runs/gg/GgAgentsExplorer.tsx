@@ -849,7 +849,7 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
           <span className={runExec.sectionLabel}>gg activity</span>
           <button
             type="button"
-            className={runExec.followButton}
+            className={cx(runExec.followButton, runExec.followButtonCompact)}
             data-active={following ? "" : undefined}
             aria-pressed={following}
             onClick={() => setFollowing((on) => !on)}
