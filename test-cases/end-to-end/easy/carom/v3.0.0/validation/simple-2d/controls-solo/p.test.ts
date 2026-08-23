@@ -41,7 +41,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("pauses a live Solo match when KeyP is pressed", async () => {

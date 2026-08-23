@@ -43,7 +43,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("chases the ball competently, and slower than a human paddle", async () => {

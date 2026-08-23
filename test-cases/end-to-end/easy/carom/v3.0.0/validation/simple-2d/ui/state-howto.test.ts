@@ -29,7 +29,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("opens the how-to-play screen from the menu", async () => {

@@ -88,13 +88,13 @@ interface State {
   player: { x: number; y: number };
 }
 
-const game: Game<State> = {
-  async initialize(api: InitApi): Promise<State> {
+const game: Game<State, null> = {
+  async initialize(api: InitApi): Promise<[State, null]> {
     const [ship, level] = await Promise.all([
       api.assets.loadImage("sprites/ship.png"),
       api.assets.load("levels/01.json"),
     ]);
-    return { ship, level, player: { x: 320, y: 180 } };
+    return [{ ship, level, player: { x: 320, y: 180 } }, null];
   },
   update(state, api, dt) {
     step(state, dt);

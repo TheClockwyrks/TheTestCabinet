@@ -19,15 +19,14 @@ simulated time, whatever the machine running the suite is doing.
 
 ```ts
 import { ConstantClock } from "@test-cabinet/simple-2d";
-import { setBall, startMatch } from "../../src/debug";
 import { createHarness } from "../harness";
 
 it("a ball leaving the right edge scores for player one", async () => {
   const { engine } = createHarness(new ConstantClock(1000 / 60));
   const state = await engine.initialize();
 
-  startMatch(state, "versus");
-  setBall(state, { x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
+  engine.debug.startMatch("versus");
+  engine.debug.setBall({ x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
   await engine.advance(30);
 
   expect(state.scoreP1).toBe(1);
@@ -35,8 +34,9 @@ it("a ball leaving the right edge scores for player one", async () => {
 });
 ```
 
-The scenario is posed through the case's `debug.ts` operations, which write the
-game's own state and leave the outcome to the frames that follow. What the
+The scenario is posed through the operations of the build's debug surface, read
+off `engine.debug`, which write the game's own state and leave the outcome to
+the frames that follow. What the
 assertions read is what the real update produced.
 
 ## Reading the state
@@ -85,8 +85,8 @@ for (const clock of clocks) {
   const { engine } = createHarness(clock);
   const state = await engine.initialize();
 
-  startMatch(state, "versus");
-  setBall(state, { x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
+  engine.debug.startMatch("versus");
+  engine.debug.setBall({ x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
   await advanceMs(engine, 500);
 
   expect(state.scoreP1).toBe(1);

@@ -45,7 +45,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("plays the paddle-hit cue on the frame of the contact", async () => {

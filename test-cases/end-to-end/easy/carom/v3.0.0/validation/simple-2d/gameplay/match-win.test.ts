@@ -27,7 +27,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("ends the match on the winning point and names the winner", async () => {

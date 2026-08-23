@@ -86,11 +86,12 @@ import {
   createEngine,
   type Clock,
   type Engine,
+  type Game,
   type SurfaceMetrics,
 } from "@test-cabinet/simple-2d";
 import { FIELD_H, FIELD_W } from "../src/constants";
-import type { Debug } from "../src/debug";
 import { game, type State } from "../src/game";
+import type { Debug } from "./debug";
 
 export interface Harness {
   engine: Engine<State, Debug>;
@@ -115,7 +116,7 @@ export function createHarness(
     canvas: canvas as unknown as HTMLCanvasElement,
     width: FIELD_W,
     height: FIELD_H,
-    game,
+    game: game as Game<State, Debug>,
     clock,
     surface,
   });
@@ -156,8 +157,8 @@ listeners it attached and releases the canvas.
 
 ## The debug surface
 
-A check poses its scenario through the surface the game exposed, read from the
-engine the suite constructed.
+A check poses its scenario through the surface the game returned beside its
+state, read off `engine.debug` of the engine the suite constructed.
 
 ```ts
 const { engine } = createHarness();
@@ -169,11 +170,12 @@ await engine.advance(90);
 expect(engine.debug.snapshot().screen).toBe("playing");
 ```
 
-The case supplies the module that builds the surface, so its operations are the
-same in every build and a scenario reads the same way in every suite. What the
-build supplies is the call that hands it over, which is why a build that never
-exposes one leaves `engine.debug` unreadable and fails the points its checks
-decide.
+The case's instrumentation spec states the surface's operations, so a scenario
+reads the same way against every build. The suite declares its own type for
+that surface from the spec, under `validation/`, and parameterizes the engine
+with it, so `engine.debug` is the whole route from a check to the build's
+implementation. A build whose surface departs from the spec fails the points
+the checks decide.
 
 ## An unmet precondition
 
@@ -194,26 +196,22 @@ that ran.
 
 ## The module contract
 
-A suite imports the build, so a case fixes four module paths and what each one
+A suite imports the build, so a case fixes three module paths and what each one
 exports. That contract is stated in the case's specification and is what gives
 every build of the case the same shape to check.
 
-| Module             | Supplied by | Holds                                                                                                                                     |
-| ------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/constants.ts` | The case    | The logical design size, the palette, the action names with the keys they bind, the cue names, and every tunable the specification fixes. |
-| `src/game.ts`      | The build   | The `State` type the case declares, the `Game<State, Debug>` the engine drives, and the `expose` call that hands the surface over.        |
-| `src/debug.ts`     | The case    | The `Debug` type and the factory building it over a `State`, whose operations pose a situation through the same systems play uses.        |
-| `src/main.ts`      | The case    | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it.                                          |
+| Module             | Supplied by | Holds                                                                                                                                           |
+| ------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/constants.ts` | The case    | The logical design size, the palette, the action names with the keys they bind, the cue names, and every tunable the specification fixes.       |
+| `src/game.ts`      | The build   | The `State` type the case declares and the `Game` the engine drives, whose `initialize` returns `[state, surface]` to the instrumentation spec. |
+| `src/main.ts`      | The case    | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it.                                                |
 
 A suite imports `constants.ts` for the numbers and names its assertions are
-stated in, `game.ts` for the game it drives, and `debug.ts` for the `Debug` type
-its engine handle is parameterized by. `main.ts` belongs to the built page, and
-a suite constructs its own engine instead.
+stated in and `game.ts` for the game it drives. `main.ts` belongs to the built
+page, and a suite constructs its own engine instead. The surface reaches a suite
+only through `engine.debug`, typed by the suite's own declaration of the spec.
 
-The build writes the one line that joins them: its `initialize` builds the
-surface from `debug.ts` over the state it just built and hands it to
-`api.debug.expose`.
-
-The build writes `game.ts` against the other three. It is free in how it
-organizes everything else under `src/`, because the contract covers what a check
-imports rather than how a build is structured.
+The build writes `game.ts` against the other two, and its `initialize` returns
+the surface beside the state. It is free in where it implements the surface and
+how it organizes everything else under `src/`, because the contract covers what
+a check imports rather than how a build is structured.

@@ -20,9 +20,9 @@
  *   and the key that toggles it.
  * - **Draw-command recording** — an opt-in flight recorder over the drawing context,
  *   so a scenario a check drove can be replayed as the operations the build issued.
- * - **The debug surface** — the object a game hands over as it initializes, held and
- *   returned off the engine, so a check poses a scenario through the engine it built
- *   rather than through the page the build is drawn on.
+ * - **The debug surface** — the object a game returns beside its state from
+ *   `initialize`, held and returned off the engine, so a check poses a scenario
+ *   through the engine it built rather than through the page the build is drawn on.
  *
  * This module is the wiring and nothing else: every behaviour above belongs to a
  * subsystem beside it, and what is decided *here* is which subsystem talks to which,
@@ -193,23 +193,19 @@ export function createEngine(options) {
     });
     const diagnostics = new Diagnostics();
     /**
-     * The state the game built, or `null` before it has built one.
+     * The state and debug surface the game built, or `null` before it has built
+     * them.
      *
-     * A box rather than a bare `S | null`, because `S` may perfectly well *be*
-     * `null`: a game whose state is a single mutable object is the common case, but a
-     * game is entitled to any state type it likes, and "has it been built" must not be
-     * answered by inspecting the value.
+     * A box rather than bare `S | null` and `D | null` slots, because either may
+     * perfectly well *be* `null`: a game whose state is a single mutable object and
+     * whose surface is `null` is the common case, but a game is entitled to any two
+     * types it likes, and "has it been built" must not be answered by inspecting
+     * the values. One box for both, because they arrive together — the pair
+     * `initialize` returned — and there is no moment at which one exists without
+     * the other.
      */
     let built = null;
     let starting = null;
-    /**
-     * The debug surface the game exposed, or `null` before it has exposed one.
-     *
-     * A box for the same reason {@link built} is one: `D` may perfectly well be a
-     * nullish type, and "has the game exposed a surface" must not be answered by
-     * inspecting the value it handed over.
-     */
-    let exposed = null;
     let destroyed = false;
     /**
      * The state, or a refusal naming the ordering.
@@ -223,7 +219,7 @@ export function createEngine(options) {
         if (built === null) {
             throw new Error(`engine.${member} was reached before the game's state was built: await engine.initialize() first`);
         }
-        return built.value;
+        return built.state;
     };
     /**
      * The state, as a frame reads it.
@@ -238,7 +234,7 @@ export function createEngine(options) {
         if (built === null) {
             throw new Error("simple-2d: a frame ran before the game's state was built");
         }
-        return built.value;
+        return built.state;
     };
     // Sized once up front, so `viewport()` and the game's own initialization see a
     // real fit rather than a zero one before the first frame runs.
@@ -292,21 +288,6 @@ export function createEngine(options) {
         },
         diagnostics: {
             register: (name, source) => diagnostics.register(name, source),
-        },
-        debug: {
-            // Refused outside initialization, and refused twice, so `engine.debug` is
-            // fixed from the moment `initialize` resolves. A surface that could arrive
-            // later — or be swapped — would let one caller read what another had
-            // already replaced, and neither could tell which it held.
-            expose: (surface) => {
-                if (built !== null) {
-                    throw new Error("api.debug.expose() was reached after the game finished initializing: expose the surface from the game's initialize");
-                }
-                if (exposed !== null) {
-                    throw new Error("api.debug.expose() was called twice: a game exposes one debug surface");
-                }
-                exposed = { value: surface };
-            },
         },
         events: bus,
         viewport: snapshot,
@@ -414,17 +395,19 @@ export function createEngine(options) {
             return requireState("state");
         },
         /**
-         * The surface the game exposed, or a refusal naming the ordering.
+         * The surface the game returned beside its state, or a refusal naming the
+         * ordering.
          *
-         * Worded like {@link requireState}'s refusal, because the mistake has the
-         * same two shapes: reaching for it before `initialize` has run, and reaching
-         * for it in a build whose game never exposed one.
+         * Worded like {@link requireState}'s refusal, because the mistake is the same
+         * one: reaching for it before `initialize` has resolved. There is no "never
+         * returned one" case — the pair `initialize` returns always carries a surface,
+         * and a game with none says so with `null`.
          */
         get debug() {
-            if (exposed === null) {
-                throw new Error("engine.debug was reached before the game exposed a debug surface: await engine.initialize() first, and expose one from the game's initialize");
+            if (built === null) {
+                throw new Error("engine.debug was reached before the game's state was built: await engine.initialize() first — the game's initialize returns its debug surface beside its state, as [state, debug]");
             }
-            return exposed.value;
+            return built.debug;
         },
         /**
          * Run the game's `initialize` once and resolve to the state it produced.
@@ -439,9 +422,17 @@ export function createEngine(options) {
          */
         initialize() {
             starting ??= (async () => {
-                const value = await game.initialize(initApi);
-                built = { value };
-                return value;
+                const returned = await game.initialize(initApi);
+                // The shape is checked here rather than trusted to the type, because a
+                // game reaches the engine as a built module and the type system has not
+                // seen it: a bare state returned where the pair belongs would be held as
+                // the state and leave `engine.debug` reading nothing the game meant.
+                if (!Array.isArray(returned) || returned.length !== 2) {
+                    throw new Error("the game's initialize must return [state, debug] — its state and its debug surface as a two-element array (a game with no debug surface returns [state, null])");
+                }
+                const [state, debug] = returned;
+                built = { state, debug };
+                return state;
             })();
             return starting;
         },

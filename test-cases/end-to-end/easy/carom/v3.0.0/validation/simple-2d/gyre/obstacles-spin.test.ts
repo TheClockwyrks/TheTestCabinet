@@ -44,7 +44,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("rotates both obstacles about their own centers as the clock runs", async () => {

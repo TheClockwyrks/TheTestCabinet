@@ -71,9 +71,9 @@ interface State {
   vx: number;
 }
 
-export const drifter: Game<State> = {
-  initialize(): State {
-    return { x: 0, y: 156, vx: SPEED };
+export const drifter: Game<State, null> = {
+  initialize(): [State, null] {
+    return [{ x: 0, y: 156, vx: SPEED }, null];
   },
 
   update(state: State, api: UpdateApi, dt: number): void {

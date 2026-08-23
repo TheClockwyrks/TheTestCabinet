@@ -33,7 +33,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("plays on at a one-point lead and ends at two", async () => {

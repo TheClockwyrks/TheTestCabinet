@@ -63,7 +63,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 /** The colour at a single logical point, as channels. */

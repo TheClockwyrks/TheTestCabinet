@@ -5,7 +5,7 @@
 // behind it, and steps it with `engine.advance` against a `ConstantClock` — which
 // makes a duration a frame count and the arithmetic asserted here the arithmetic
 // specs/ names. What is read back is the game's own state, the debug surface the
-// game exposed through the engine, the engine's events, and the pixels the render
+// game returned beside its state, the engine's events, and the pixels the render
 // produced.
 
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
@@ -162,10 +162,10 @@ async function createHarness(clock?: Clock): Promise<Harness> {
   return {
     engine,
     state,
-    // Read off the engine rather than built here: `initialize` is what hands the
-    // surface over, so reaching it this way is what makes that call load-bearing —
-    // a build that never exposed one fails here rather than being handed a surface
-    // this file constructed for it.
+    // Read off the engine rather than built here: `initialize` returns the
+    // surface beside the state, so reaching it this way is what makes that return
+    // load-bearing — a build that returned none fails here rather than being
+    // handed a surface this file constructed for it.
     debug: engine.debug,
     ctx,
     calls,

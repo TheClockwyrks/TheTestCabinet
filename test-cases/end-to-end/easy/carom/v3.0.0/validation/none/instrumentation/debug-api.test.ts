@@ -2,11 +2,12 @@
 // surface on `window.__carom`, and that surface is whole, really backed by the
 // state the build declared, and really in control of the game's clock.
 //
-// THREE HALVES, AND ALL OF THEM ARE THE BUILD'S. Under an engine `src/debug.ts`
-// is seeded, so the operations exist by construction and the only thing the build
-// owes is the line that hands them over. Nothing is seeded here: an engineless run
-// gets no `src/` at all, so the surface itself — every operation, the version, the
-// snapshot shape — is a deliverable of this point (specs/instrumentation.md).
+// THREE HALVES, AND ALL OF THEM ARE THE BUILD'S. Under an engine the build
+// writes the surface and returns it beside its state, and the engine is what
+// holds it. Nothing holds it here: an engineless run gets no runtime at all, so
+// the surface itself — every operation, the version, the snapshot shape — and the
+// global it is installed on are deliverables of this point
+// (specs/instrumentation.md).
 //
 // The first half is that it is THERE. A build that never installed the global
 // leaves nothing for a check to reach the game through, and every other automated

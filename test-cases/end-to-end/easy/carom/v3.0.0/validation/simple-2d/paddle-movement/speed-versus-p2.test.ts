@@ -40,7 +40,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("moves player two's paddle at the paddle speed, and only that paddle", async () => {

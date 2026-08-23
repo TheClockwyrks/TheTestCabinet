@@ -40,7 +40,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("suspends a ball in flight for as long as the game is paused", async () => {

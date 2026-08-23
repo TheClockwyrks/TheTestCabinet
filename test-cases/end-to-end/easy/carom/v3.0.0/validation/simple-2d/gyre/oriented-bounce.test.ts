@@ -85,7 +85,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("deflects off a tilted face and returns straight off an upright one", async () => {

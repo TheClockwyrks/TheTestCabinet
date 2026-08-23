@@ -46,7 +46,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("plays the ball-bounce cue once on the frame the pair meets", async () => {

@@ -35,7 +35,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("draws a mid-field obstacle in a colour that stands apart", async () => {

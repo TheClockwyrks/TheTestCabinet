@@ -13,9 +13,10 @@ this section states. These pages are the developer-facing statement of it.
 
 ## The division
 
-The build supplies one [`Game<S>`](/engines/simple-2d/apis/game/). Its
-`initialize` declares the action bindings, cue definitions, assets, diagnostic
-sources, and debug surface the game needs and returns the state; its `update`
+The build supplies one [`Game<S, D>`](/engines/simple-2d/apis/game/). Its
+`initialize` declares the action bindings, cue definitions, assets, and
+diagnostic sources the game needs and returns the state beside the debug
+surface, as `[state, debug]`; its `update`
 advances that state by the frame's delta; its `render` draws the state in
 logical coordinates.
 

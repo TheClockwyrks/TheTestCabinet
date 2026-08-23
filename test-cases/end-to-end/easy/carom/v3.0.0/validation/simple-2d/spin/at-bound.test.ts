@@ -75,7 +75,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("imparts no spin from a bound-pinned paddle, but does from a free one", async () => {

@@ -36,7 +36,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("holds the balls for the specified hold at match start", async () => {

@@ -43,7 +43,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("moves the human paddle at the paddle speed while a key is held", async () => {

@@ -34,7 +34,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("serves toward player two after player one scores", async () => {

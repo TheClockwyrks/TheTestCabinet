@@ -40,7 +40,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("is beaten by a shot that banks off a wall on its way in", async () => {

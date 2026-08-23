@@ -20,9 +20,9 @@
  *   and the key that toggles it.
  * - **Draw-command recording** — an opt-in flight recorder over the drawing context,
  *   so a scenario a check drove can be replayed as the operations the build issued.
- * - **The debug surface** — the object a game hands over as it initializes, held and
- *   returned off the engine, so a check poses a scenario through the engine it built
- *   rather than through the page the build is drawn on.
+ * - **The debug surface** — the object a game returns beside its state from
+ *   `initialize`, held and returned off the engine, so a check poses a scenario
+ *   through the engine it built rather than through the page the build is drawn on.
  *
  * This module is the wiring and nothing else: every behaviour above belongs to a
  * subsystem beside it, and what is decided *here* is which subsystem talks to which,

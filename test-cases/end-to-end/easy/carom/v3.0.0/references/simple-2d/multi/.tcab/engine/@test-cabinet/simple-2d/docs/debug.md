@@ -1,12 +1,12 @@
 # The debug surface
 
-A game's debug surface is the object it hands the engine for posing a scenario
-and reading it back from code. A caller holding it places the pieces where it
-wants them, steps the simulation, and reads the outcome, so a build can be
-driven without the keyboard and without waiting on real time.
+A game's debug surface is the object it returns beside its state for posing a
+scenario and reading it back from code. A caller holding it places the pieces
+where it wants them, steps the simulation, and reads the outcome, so a build can
+be driven without the keyboard and without waiting on real time.
 
 ```ts
-api.debug.expose(surface: D): void;
+initialize(api: InitApi): [S, D] | Promise<[S, D]>;
 engine.debug: D;
 ```
 
@@ -16,19 +16,20 @@ game's design, and the engine reads no member of it.
 
 ## Declaring the surface
 
-`Game`, `InitApi`, `EngineOptions`, `Engine`, and `createEngine` each carry a
-second type parameter alongside the state type. A game states its surface by
-declaring `Game<State, Debug>`, and both parameters are inferred from the game
-the engine options carry.
+`Game`, `EngineOptions`, `Engine`, and `createEngine` each carry a second type
+parameter alongside the state type. A game states its surface by declaring
+`Game<State, Debug>`, and both parameters are inferred from the game the engine
+options carry.
 
-`D` defaults to `unknown`. A game that exposes no surface names one type
-parameter and never calls `expose`.
+`D` defaults to `unknown`. A game with no surface declares `Game<State, null>`
+and returns `[state, null]`.
 
-## Exposing it
+## Returning it
 
-The game calls `api.debug.expose` from `initialize`, which is the one place it
-can. The surface is therefore in place before any frame runs, and a caller finds
-it as soon as `initialize` resolves.
+`initialize` returns the state and the surface together, as the pair
+`[state, debug]`. Building both in one place is what puts the surface in place
+before any frame runs: a caller finds it as soon as `initialize` resolves, and
+there is no moment at which the engine holds a state with no surface beside it.
 
 ```ts
 import type { Game } from "@test-cabinet/simple-2d";
@@ -45,18 +46,18 @@ interface Debug {
 }
 
 const game: Game<State, Debug> = {
-  initialize(api) {
+  initialize() {
     const state: State = { x: 320, vx: 0, bounces: 0 };
 
-    api.debug.expose({
+    const debug: Debug = {
       place(x, vx) {
         state.x = x;
         state.vx = vx;
       },
       bounces: () => state.bounces,
-    });
+    };
 
-    return state;
+    return [state, debug];
   },
 
   update(state, _api, dt) {
@@ -76,13 +77,17 @@ const game: Game<State, Debug> = {
 ```
 
 Close over the state the way a diagnostic source does, so the surface reports
-what the game holds at the instant it is called. Expose the operations a
+what the game holds at the instant it is called. Offer the operations a
 scenario is written in, such as placing a piece, forcing an outcome, or reading
 a score, rather than the raw fields of the state.
 
+The surface's implementation may live wherever the game likes — inline as above,
+or in its own module that `initialize` builds and returns — so long as the pair
+`initialize` returns carries it.
+
 ## Reading it back
 
-`engine.debug` returns the value the game exposed, unchanged, and the engine
+`engine.debug` returns the value the game returned, unchanged, and the engine
 handle is the whole route to it.
 
 ```ts
@@ -110,13 +115,12 @@ the scenario, step an exact number of frames, and read the result back. See
 
 ## Errors
 
-| Condition | Result |
-| --- | --- |
-| `engine.debug` read before the game exposed a surface | `Error` naming the ordering |
-| `expose` called a second time | `Error` naming the duplicate |
+| Condition                                                        | Result                                                                |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `engine.debug` read before `initialize` resolves                 | `Error` naming the ordering and the `[state, debug]` pair             |
+| The game's `initialize` returns anything but a two-element array | `initialize` rejects with an `Error` naming the `[state, debug]` pair |
 
-Reading before a surface exists throws exactly as `engine.state` does, so a game
-that exposes none has no readable `engine.debug` rather than a value every
-caller has to test. A second `expose` throws because a replaced surface would
-leave a caller that already read `engine.debug` holding one the game had
-abandoned.
+Reading before `initialize` resolves throws exactly as `engine.state` does. A
+game with no surface returns `null` there, and `engine.debug` hands that `null`
+back rather than refusing: the surface is whatever the game chose, and `null` is
+a choice the game can make.

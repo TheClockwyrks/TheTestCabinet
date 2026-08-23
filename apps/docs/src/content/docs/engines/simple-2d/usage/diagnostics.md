@@ -16,8 +16,8 @@ interface State {
   score: { left: number; right: number };
 }
 
-const game: Game<State> = {
-  initialize(api: InitApi): State {
+const game: Game<State, null> = {
+  initialize(api: InitApi): [State, null] {
     const state: State = {
       phase: "serve",
       ball: { x: 320, y: 180, vx: 180, vy: 90 },
@@ -37,7 +37,7 @@ const game: Game<State> = {
       Math.hypot(state.ball.vx, state.ball.vy),
     );
 
-    return state;
+    return [state, null];
   },
   update(state, api, dt) {
     step(state, dt);

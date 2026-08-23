@@ -44,9 +44,9 @@ interface State {
   lives: number;
 }
 
-const game: Game<State> = {
+const game: Game<State, null> = {
   initialize() {
-    return { ending: new AbortController(), lives: 3 };
+    return [{ ending: new AbortController(), lives: 3 }, null];
   },
   update(state) {
     if (state.lives <= 0) state.ending.abort();

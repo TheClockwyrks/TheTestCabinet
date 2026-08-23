@@ -23,7 +23,7 @@ initialize(api) {
   api.diagnostics.register("enemies", () => state.enemies.length);
   api.diagnostics.register("score", () => state.score);
 
-  return state;
+  return [state, null];
 }
 ```
 

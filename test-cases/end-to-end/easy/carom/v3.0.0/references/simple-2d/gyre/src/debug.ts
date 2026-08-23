@@ -1,19 +1,19 @@
-// Carom (Gyre) — the debugging and automation surface. CASE-PROVIDED. Do not edit.
+// Carom (Gyre) — the debugging and automation surface.
 //
-// The surface is specified by `specs/instrumentation.md` and supplied here,
-// already written, so it exists in every build and behaves the same way in each.
-// The build hands it to the engine from its own `initialize`
-// (`api.debug.expose(createDebugApi(state))`), and a caller reads it back off
-// `engine.debug`. It reaches nothing global, and it is inert during normal play:
-// nothing below runs until something calls it.
+// The surface is specified by `specs/instrumentation.md` and implemented here.
+// `createDebugApi(state)` builds it over the state `initialize` just built, and
+// `initialize` returns the two together, as `[state, createDebugApi(state)]`: the
+// engine holds the second element and returns it from `engine.debug`, and that is
+// the one way a caller reaches it. It reaches nothing global, and it is inert
+// during normal play: nothing below runs until something calls it.
 //
 // Every operation is expressed as a read or a pose of `CaromState`. That is the
 // point of the split. These calls ARRANGE THE WORLD and never fabricate an
 // outcome: they put the game into a situation, and the game's own `update` — the
 // real collision, the real serve, the real AI — is what runs from there when the
 // runtime advances a frame. So a scenario driven from code behaves exactly like
-// one played by hand, and the only thing this file needs from the build is that
-// the build honours the state it is handed.
+// one played by hand, and the only thing the surface needs from the rest of the
+// game is that the game honours the state it is handed.
 //
 // Everything about DRIVING A BROWSER GAME rather than about Carom belongs to the
 // runtime and is deliberately absent: there is no `step` or `setAutoStep` (the
@@ -21,14 +21,14 @@
 // (the runtime's registered actions are driven directly), and no overlay drawing
 // or toggle (the runtime draws the panel and owns the backtick key).
 
-import { FIELD_CX, FIELD_CY, HOLD_TIME } from "./constants";
+import {
+  CAROM_DEBUG_VERSION,
+  DEFAULT_SEED,
+  FIELD_CX,
+  FIELD_CY,
+  HOLD_TIME,
+} from "./constants";
 import type { BallState, CaromState, Mode, Screen, Side } from "./game";
-
-/** The surface's version, reported as `version` and bumped when it changes. */
-export const CAROM_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
 
 /** The fields `setPaddle` may set. Anything omitted is left as it is. */
 export interface PaddlePatch {

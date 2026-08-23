@@ -50,7 +50,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("holds the human's paddle still while paused", async () => {

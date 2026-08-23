@@ -30,7 +30,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("ends the match on the winning point and draws the match-over screen", async () => {

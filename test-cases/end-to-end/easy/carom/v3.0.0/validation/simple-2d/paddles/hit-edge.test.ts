@@ -45,7 +45,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("deflects the ball steeply off the extreme edge of a still paddle", async () => {

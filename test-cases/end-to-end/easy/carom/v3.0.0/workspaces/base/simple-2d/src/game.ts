@@ -1,25 +1,28 @@
 // Carom — the game. THIS IS THE FILE YOU IMPLEMENT.
 //
-// `src/main.ts`, `src/debug.ts`, `src/constants.ts` and the project's
-// configuration are supplied by the case and must not be edited. What is missing
-// is the game: the state it holds, and the three functions below.
+// `src/main.ts`, `src/constants.ts` and the project's configuration are supplied
+// by the case and must not be edited. What is missing is the game: the state it
+// holds, the debug surface that poses and reads that state, and the three
+// functions below.
 //
-// FIRST, DECLARE AND EXPORT `CaromState`, exactly as `specs/state.md` fixes it.
-// `src/debug.ts` poses and reads that type, so this project does not compile
-// until it exists — the type check failing on a freshly seeded workspace is the
-// starting point, not a broken seed.
+// FIRST, DECLARE AND EXPORT `CaromState`, exactly as `specs/state.md` fixes it,
+// and `CaromDebugApi`, the debug and automation surface `specs/instrumentation.md`
+// specifies. The stub below is written against both names, so this project does
+// not compile until they exist — the type check failing on a freshly seeded
+// workspace is the starting point, not a broken seed.
 //
 // THEN IMPLEMENT the three functions. `initialize` runs once, when the engine is
-// initialized, and returns the state. `update` and `render` then run once each
-// per frame — `update` first, with the frame's delta time in SECONDS, then
-// `render`. The state is the only channel between them. The engine's own
-// documentation, seeded at `engine/`, defines all of this and the scoped APIs each
-// function receives; read it before you start.
+// initialized, and returns the state and the debug surface together, as the pair
+// `[state, debug]`. `update` and `render` then run once each per frame — `update`
+// first, with the frame's delta time in SECONDS, then `render`. The state is the
+// only channel between them. The engine's own documentation, seeded at `engine/`,
+// defines all of this and the scoped APIs each function receives; read it before
+// you start.
 //
-// `initialize` must also hand the debug surface to the engine before it returns,
-// which is how a check reaches this build (`specs/instrumentation.md`):
-//
-//     api.debug.expose(createDebugApi(state));
+// The engine returns the surface from `engine.debug`, exactly as `initialize`
+// handed it over, which is how a check reaches this build
+// (`specs/instrumentation.md`). Where its implementation lives under `src/` is
+// your call; the only fixed point is that `initialize` returns it.
 
 import type {
   Game,
@@ -27,7 +30,6 @@ import type {
   RenderApi,
   UpdateApi,
 } from "@test-cabinet/simple-2d";
-import type { CaromDebugApi } from "./debug";
 
 const NOT_IMPLEMENTED = "Carom: src/game.ts is not implemented yet";
 
@@ -42,11 +44,11 @@ export const game: Game<CaromState, CaromDebugApi> = {
    * Runs once, before any frame.
    *
    * Register every action in ACTIONS against its BINDINGS, define the four CUES,
-   * register the diagnostic sources specs/instrumentation.md lists, expose the
-   * debug surface, and build and return the complete initial state — the title
-   * screen, with every field of CaromState set.
+   * register the diagnostic sources specs/instrumentation.md lists, and build
+   * the complete initial state — the title screen, with every field of
+   * CaromState set — and the debug surface over it. Return the two together.
    */
-  initialize(_api: InitApi<CaromDebugApi>): CaromState {
+  initialize(_api: InitApi): [CaromState, CaromDebugApi] {
     throw new Error(NOT_IMPLEMENTED);
   },
 

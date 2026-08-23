@@ -52,7 +52,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("moves player two's right paddle down while ArrowDown is held, and stops on release", async () => {

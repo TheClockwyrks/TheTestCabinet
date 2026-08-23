@@ -12,15 +12,15 @@
 
 import { createEngine } from "@test-cabinet/simple-2d";
 import { COLOR, FIELD_H, FIELD_W, LAYOUT } from "./constants";
-import type { CaromDebugApi } from "./debug";
 import { game } from "./game";
-import type { CaromState } from "./game";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement | null;
 if (!canvas)
   throw new Error("Carom: the #stage canvas is missing from the page");
 
-const engine = createEngine<CaromState, CaromDebugApi>({
+// The state and debug surface types are inferred from `game`, so this module
+// names neither.
+const engine = createEngine({
   canvas,
   // The logical design size from specs/overview.md. The canvas element is sized
   // by CSS alone (index.html); the engine maps this field onto whatever size that
@@ -34,9 +34,9 @@ const engine = createEngine<CaromState, CaromDebugApi>({
 });
 
 async function main(): Promise<void> {
-  // The engine runs no frame until this resolves. The game's own `initialize` is
-  // what exposes the debug surface (see debug.ts and specs/instrumentation.md),
-  // so by the time this returns the engine is holding it and nothing here has to
+  // The engine runs no frame until this resolves. The game's own `initialize`
+  // returns the debug surface beside its state (specs/instrumentation.md), so by
+  // the time this returns the engine is holding it and nothing here has to
   // publish anything.
   await engine.initialize();
 

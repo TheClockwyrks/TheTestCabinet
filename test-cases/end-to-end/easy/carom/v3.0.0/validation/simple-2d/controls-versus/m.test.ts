@@ -33,7 +33,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("flips the reported mute bit on, and off again", async () => {

@@ -24,7 +24,6 @@ import {
   FIELD_W,
   HOLD_TIME,
 } from "../../src/constants";
-import type { CaromSnapshot } from "../../src/debug";
 import {
   SPARE_PARKS,
   TICK_HZ,
@@ -32,6 +31,7 @@ import {
   type BallView,
   type Harness,
 } from "../harness";
+import type { CaromSnapshot } from "../surface";
 
 /** The hold, in frames of the harness's clock. */
 export const HOLD_TICKS = HOLD_TIME * TICK_HZ;

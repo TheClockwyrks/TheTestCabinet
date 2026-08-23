@@ -90,8 +90,8 @@ function serve(
   state.ball = { x: width / 2, y: height / 2, vx, vy: SPEED / 2 };
 }
 
-export const rally: Game<RallyState> = {
-  initialize(api: InitApi): RallyState {
+export const rally: Game<RallyState, null> = {
+  initialize(api: InitApi): [RallyState, null] {
     const { width, height } = api.viewport();
     const state: RallyState = {
       phase: "serve",
@@ -115,7 +115,7 @@ export const rally: Game<RallyState> = {
     );
     api.diagnostics.register("fps", () => state.fps);
 
-    return state;
+    return [state, null];
   },
 
   update(state: RallyState, api: UpdateApi, dt: number): void {

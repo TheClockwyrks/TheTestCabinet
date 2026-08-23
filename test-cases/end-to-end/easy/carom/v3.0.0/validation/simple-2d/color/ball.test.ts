@@ -32,7 +32,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("draws the ball in a colour that stands apart", async () => {

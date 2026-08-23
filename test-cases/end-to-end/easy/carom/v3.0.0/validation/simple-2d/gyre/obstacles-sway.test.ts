@@ -42,7 +42,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("sways both obstacles vertically, in anti-phase", async () => {

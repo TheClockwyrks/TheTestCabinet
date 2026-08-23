@@ -37,7 +37,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("gives player one the point when the ball leaves the right goal", async () => {

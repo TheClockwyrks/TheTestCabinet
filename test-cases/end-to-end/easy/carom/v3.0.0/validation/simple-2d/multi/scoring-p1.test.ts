@@ -31,7 +31,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("gives player one the point when a ball leaves the right goal", async () => {

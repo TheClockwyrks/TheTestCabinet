@@ -92,13 +92,13 @@ export interface HopperState {
   jumps: number;
 }
 
-export const hopper: Game<HopperState> = {
-  initialize(api: InitApi): HopperState {
+export const hopper: Game<HopperState, null> = {
+  initialize(api: InitApi): [HopperState, null] {
     for (const [action, binding] of Object.entries(BINDINGS)) {
       api.input.register(action, binding);
     }
 
-    return {
+    const state: HopperState = {
       x: 96,
       y: GROUND - SIZE,
       vy: 0,
@@ -106,6 +106,7 @@ export const hopper: Game<HopperState> = {
       paused: false,
       jumps: 0,
     };
+    return [state, null];
   },
 
   update(state: HopperState, api: UpdateApi, dt: number): void {

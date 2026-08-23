@@ -42,7 +42,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("imparts no spin from a still paddle", async () => {

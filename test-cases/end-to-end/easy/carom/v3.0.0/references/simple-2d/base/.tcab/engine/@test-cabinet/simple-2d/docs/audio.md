@@ -40,7 +40,7 @@ interface CueSpec {
 initialize(api) {
   api.audio.define("bounce", { freq: 440, freqTo: 220, durationMs: 80 });
   api.audio.define("score", { wave: "square", freq: 660, durationMs: 120, gain: 0.15 });
-  return { /* ... */ };
+  return [{ /* ... */ }, null];
 }
 ```
 
@@ -59,7 +59,7 @@ to a cue name. It resolves once the cue is playable:
 async initialize(api) {
   api.audio.define("bounce", { freq: 440, durationMs: 80 });
   await api.audio.load("theme", "audio/theme.ogg");
-  return { /* ... */ };
+  return [{ /* ... */ }, null];
 }
 ```
 

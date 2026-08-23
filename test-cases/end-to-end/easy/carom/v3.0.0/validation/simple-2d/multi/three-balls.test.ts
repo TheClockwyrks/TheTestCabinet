@@ -21,7 +21,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("parks three balls on their own home points and holds them at match start", async () => {

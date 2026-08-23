@@ -109,11 +109,11 @@ API poses.
 
 The game exposes a small debugging and automation API **through the engine**, so a
 scenario can be posed in Carom's own world from code. `src/debug.ts` builds the
-surface over a state, `initialize` hands it to the engine with
-`api.debug.expose(createDebugApi(state))`, and a caller reads that same object
-back off **`engine.debug`** — the engine returns it unchanged and reads no member
-of it. Nothing is published on the page, so a check reaches the surface through
-the engine it constructed rather than through the document the build is drawn on.
+surface over a state, `initialize` returns it beside the state as
+`[state, createDebugApi(state)]`, and a caller reads that same object back off
+**`engine.debug`** — the engine returns it unchanged and reads no member of
+it. Nothing is published on the page, so a check reaches the surface through the
+engine it constructed rather than through the document the build is drawn on.
 
 The operations are:
 
@@ -205,8 +205,8 @@ vitest.config.ts      The build's own test suite, over src/
 src/
   main.ts             Bootstrap: create the engine, initialize it, and run
   constants.ts        Palette, geometry, physics constants (logical 1280x720)
-  debug.ts            The debug surface over CaromState, exposed through the
-                      engine by game.ts's initialize
+  debug.ts            The debug surface over CaromState, returned beside the
+                      state by game.ts's initialize
   game.ts             The state contract, the state machine, and the three
                       functions the engine drives
   rng.ts              The seeded generator, over CaromState.rngState

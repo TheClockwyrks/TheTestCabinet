@@ -41,7 +41,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("advances on the runtime's frame loop with nothing stepping it", async () => {

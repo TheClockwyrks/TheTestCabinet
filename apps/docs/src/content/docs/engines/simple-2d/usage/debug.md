@@ -3,10 +3,11 @@ title: Debug Surface
 ---
 
 A build hands the engine one object a caller drives it through. The game builds
-that surface in `initialize` over the state it just built, hands it to
-`api.debug.expose`, and the engine returns the same value from `engine.debug`.
-A caller poses a scenario through it, steps the simulation, and reads the
-outcome back, with no keyboard and no waiting on real time.
+that surface in `initialize` over the state it just built and returns the two
+together as the pair `[state, debug]`, and the engine returns the surface
+unchanged from `engine.debug`. A caller poses a scenario through it, steps the
+simulation, and reads the outcome back, with no keyboard and no waiting on real
+time.
 
 ```ts
 import type { Game } from "@test-cabinet/simple-2d";
@@ -25,14 +26,14 @@ interface Debug {
 }
 
 const game: Game<State, Debug> = {
-  initialize(api) {
+  initialize() {
     const state: State = {
       phase: "serve",
       ball: { x: 320, y: 180, vx: 0, vy: 0 },
       score: { left: 0, right: 0 },
     };
 
-    api.debug.expose({
+    const debug: Debug = {
       place(x, y) {
         state.ball.x = x;
         state.ball.y = y;
@@ -44,9 +45,9 @@ const game: Game<State, Debug> = {
       },
       phase: () => state.phase,
       score: () => ({ ...state.score }),
-    });
+    };
 
-    return state;
+    return [state, debug];
   },
   update(state, api, dt) {
     step(state, dt);
@@ -66,15 +67,15 @@ called.
 
 `Game` takes the surface as a second type parameter alongside the state, and
 `createEngine` infers both from the game the options carry. `D` defaults to
-`unknown`, so a game that exposes nothing writes `Game<State>` and leaves
-`expose` alone.
+`unknown`. A game with no surface writes `Game<State, null>` and returns
+`[state, null]`.
 
 The engine holds the value and reads no member of it. The methods, their
 signatures, and the vocabulary they use are the game's own design.
 
 ## What belongs on it
 
-Expose the operations a scenario is written in rather than the fields of the
+Offer the operations a scenario is written in rather than the fields of the
 state: placing a piece, serving the ball, spawning a wave, ending a round,
 reading the score. Each one runs through the same systems play runs through, so
 a scenario posed from code and the same scenario reached by playing leave the
@@ -86,32 +87,36 @@ decide what happened. Return a copy where a reading would otherwise hand back a
 reference into the live state.
 
 ```ts
-api.debug.expose({
+const debug: Debug = {
   spawn: (kind, x) => addEnemy(state, kind, x),
   live: () => state.enemies.length,
   hud: () => ({ lives: state.lives, wave: state.wave }),
-});
+};
+
+return [state, debug];
 ```
 
-## Exposing it
+## Returning it
 
-`initialize` is the one place `expose` can be called, so the surface is in place
-before the first frame and a caller finds it the moment `engine.initialize`
-resolves. Build the state, expose over it, and return it.
+`initialize` returns the state and the surface as one pair, so the surface is
+in place before the first frame and a caller finds it the moment
+`engine.initialize` resolves. There is no moment at which the engine holds a
+state with no surface beside it, and every caller that reads `engine.debug`
+holds the same object.
 
-A build that keeps `api` and exposes after initialization finishes gets an error
-naming the ordering, and a second `expose` gets one naming the duplicate. One
-surface per game is what keeps every caller that read `engine.debug` holding the
-same object.
+The surface's implementation may live wherever the game likes, inline as above
+or in its own module that `initialize` builds from, so long as the pair
+`initialize` returns carries it. A return that is anything but a two-element
+array rejects `initialize` with an error naming the pair.
 
-Reading `engine.debug` before a surface exists throws the same way, so a build
-that skips the call leaves the handle unreadable rather than returning a value
-every caller has to test.
+Reading `engine.debug` before `initialize` resolves throws, naming the ordering
+and the pair, exactly as `engine.state` does.
 
-## The case's module
+## The case's contract
 
-A case that checks a build through the engine supplies the `Debug` type and the
-factory that builds it over a `State`, and the build writes the line that joins
-them: `initialize` builds the surface from that module and hands it to
-`api.debug.expose`. The module paths a case fixes are at
+A case that checks a build through the engine specifies the surface in its
+instrumentation spec, and the build writes it: `initialize` builds the surface
+over the state and returns the two together. The validators reach the surface
+only through `engine.debug`, declaring their own type for it from the spec. The
+module paths a case fixes are at
 [The Suite](/engines/simple-2d/validators/the-suite/).

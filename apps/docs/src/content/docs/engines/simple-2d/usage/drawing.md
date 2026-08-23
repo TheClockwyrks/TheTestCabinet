@@ -15,9 +15,9 @@ interface State {
   ball: { x: number; y: number; vx: number; vy: number };
 }
 
-const game: Game<State> = {
+const game: Game<State, null> = {
   initialize() {
-    return { ball: { x: 320, y: 180, vx: 180, vy: 90 } };
+    return [{ ball: { x: 320, y: 180, vx: 180, vy: 90 } }, null];
   },
   update(state, api, dt) {
     const vp = api.viewport();
@@ -137,9 +137,9 @@ interface Aiming {
   aim: { x: number; y: number };
 }
 
-function createGame(canvas: HTMLCanvasElement): Game<Aiming> {
+function createGame(canvas: HTMLCanvasElement): Game<Aiming, null> {
   return {
-    initialize(api: InitApi): Aiming {
+    initialize(api: InitApi): [Aiming, null] {
       const state: Aiming = { aim: { x: 320, y: 180 } };
 
       canvas.addEventListener("pointerdown", (event) => {
@@ -154,7 +154,7 @@ function createGame(canvas: HTMLCanvasElement): Game<Aiming> {
           ((event.clientY - rect.top) * dpr - vp.offsetY) / vp.scale;
       });
 
-      return state;
+      return [state, null];
     },
     update(state, api, dt) {
       stepTowards(state, dt);

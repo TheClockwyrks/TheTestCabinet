@@ -52,7 +52,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("moves the human's paddle up while KeyW is held, and stops on release", async () => {

@@ -16,7 +16,6 @@
 // passing on the mode that happened to be tested.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
-import type { Mode } from "../../src/game";
 import {
   ball0,
   captureReplay,
@@ -24,6 +23,7 @@ import {
   startWithKeys,
   type Harness,
 } from "../harness";
+import type { Mode } from "../surface";
 
 /**
  * Frames of the pre-serve hold recorded before the hold is expired.
@@ -54,7 +54,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("serves toward player one to open a match", async () => {

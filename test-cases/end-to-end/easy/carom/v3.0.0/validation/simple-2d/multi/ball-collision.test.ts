@@ -43,7 +43,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("exchanges the two velocities head-on and separates the pair", async () => {

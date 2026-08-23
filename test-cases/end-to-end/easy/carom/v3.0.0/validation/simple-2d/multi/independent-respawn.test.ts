@@ -49,7 +49,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("returns the scored ball to its own home while the other two play on", async () => {

@@ -31,7 +31,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("ends the match on the winning point and names the winner", async () => {

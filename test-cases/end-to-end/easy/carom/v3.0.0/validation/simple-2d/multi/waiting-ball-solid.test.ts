@@ -37,7 +37,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("bounces a moving ball off a waiting one without moving it", async () => {

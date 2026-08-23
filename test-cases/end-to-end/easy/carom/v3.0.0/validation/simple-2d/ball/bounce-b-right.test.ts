@@ -43,7 +43,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("banks the ball off obstacle B's right face", async () => {

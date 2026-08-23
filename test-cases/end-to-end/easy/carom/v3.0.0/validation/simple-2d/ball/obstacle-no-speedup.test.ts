@@ -47,7 +47,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("leaves the ball's speed unchanged through an obstacle bounce", async () => {

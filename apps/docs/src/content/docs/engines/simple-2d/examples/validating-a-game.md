@@ -27,7 +27,7 @@ export interface State {
   paddle: { y: number };
 }
 
-export declare const game: Game<State>;
+export declare const game: Game<State, null>;
 ```
 
 | Figure | Value |
@@ -261,7 +261,7 @@ export async function createHarness(options: HarnessOptions = {}): Promise<Harne
     events: () => events,
   };
 
-  const engine = createEngine<State>({
+  const engine = createEngine<State, null>({
     canvas: element,
     width: FIELD_WIDTH,
     height: FIELD_HEIGHT,

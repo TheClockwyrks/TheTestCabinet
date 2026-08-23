@@ -7,26 +7,28 @@
 // wall-clock time passes: a check asks for a number of frames and gets exactly
 // that number, at exactly the deltas its clock supplied.
 //
-// WHAT A CHECK READS. The game's own state (through `src/debug.ts`'s `snapshot`),
-// the runtime's frame counter, the events the runtime broadcast, and — for the
-// rendering checks — the pixels on the canvas or the calls the 2D context
-// received. Nothing here fabricates an outcome: the scenario helpers below only
-// ARRANGE the world through `src/debug.ts`, and the real `update` the build wrote
-// is what runs from there.
+// WHAT A CHECK READS. The game's own state (through the debug surface's
+// `snapshot`), the runtime's frame counter, the events the runtime broadcast, and
+// — for the rendering checks — the pixels on the canvas or the calls the 2D
+// context received. Nothing here fabricates an outcome: the scenario helpers
+// below only ARRANGE the world through the debug surface, and the real `update`
+// the build wrote is what runs from there.
 //
-// WHY `src/debug.ts` RATHER THAN RAW ASSIGNMENT. The case supplies that module,
-// so its operations are the same in every build: `startMatch` opens on the
-// pre-serve countdown, a control op takes the paddles from the player and the AI,
-// a posed `vy` persists across frames, and `reset` gives everything back. Posing
-// through it is how a scenario is reproducible, and it is the seam the case's
-// specification documents.
+// WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
+// fixes its operations, so they mean the same thing in every build: `startMatch`
+// opens on the pre-serve countdown, a control op takes the paddles from the
+// player and the AI, a posed `vy` persists across frames, and `reset` gives
+// everything back. Posing through it is how a scenario is reproducible, and it is
+// the seam the case's specification documents. `surface.ts` is that
+// specification as types, and it is the only description of the surface this
+// harness reads: the build's own module for it is never imported.
 //
-// WHERE THE SURFACE COMES FROM. Off `engine.debug`, never built here. The build
-// owes one line — `api.debug.expose(createDebugApi(state))` from its own
-// `initialize` — and reading the surface back off the runtime is what makes that
-// line load-bearing rather than decorative. A harness that called the case's own
-// factory instead would hand every build the surface it failed to expose and pass
-// the checks it should have failed. See `readDebugSurface`.
+// WHERE THE SURFACE COMES FROM. Off `engine.debug`, never built here. The build's
+// `initialize` returns it beside the state, as `[state, debug]`, and the runtime
+// holds the second element and returns it from `engine.debug`. Reading it back
+// off the runtime is the only way a surface reaches a check, so a build that
+// returned no surface, or a surface missing an operation, fails the checks that
+// reach the game through it. See `readDebugSurface`.
 //
 // THE CLOCK. `ConstantClock(TICK_MS)` is the default, so one frame is one
 // 120 Hz tick and every duration below is a whole number of them — which is the
@@ -50,6 +52,7 @@ import {
   type DrawValue,
   type PathSegment,
   type Engine,
+  type Game,
   type RecordedFrame,
   type Recording,
   type Resource,
@@ -67,8 +70,27 @@ import {
   P1_X1,
   P2_X0,
 } from "../src/constants";
-import type { CaromDebugApi, CaromSnapshot } from "../src/debug";
-import { game, type CaromState, type Mode, type Side } from "../src/game";
+import { game as build, type CaromState } from "../src/game";
+import type {
+  BallSnapshot,
+  CaromDebugApi,
+  CaromSnapshot,
+  Mode,
+  Side,
+} from "./surface";
+
+export type { Mode, Side };
+
+/**
+ * The build's game, typed against the surface the CASE specifies.
+ *
+ * The build declares its own type for the surface its `initialize` returns, and
+ * that type is the build's: what a check holds it to is `surface.ts`, so the game
+ * is cast to the case's `Game<CaromState, CaromDebugApi>` here and the runtime is
+ * parameterized with it. A surface that departs from the specification is caught
+ * where a check reaches for the missing member, not by the build's own compiler.
+ */
+const game = build as unknown as Game<CaromState, CaromDebugApi>;
 
 /**
  * The frame the suite steps in, in milliseconds.
@@ -101,23 +123,7 @@ export function angleDeg(v: { vx: number; vy: number }): number {
 /* -------------------------------------------------------------------------- */
 
 /** One ball, as a snapshot reports it. */
-export interface BallView {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  speed: number;
-  spin: number;
-  held: boolean;
-}
-
-/** The two shapes a seeded `src/debug.ts` reports its balls in. */
-interface BallShapes {
-  /** The base and gyre workspaces: the single ball in play. */
-  ball?: BallView;
-  /** The multi workspace: all three balls, in play order. */
-  balls?: BallView[];
-}
+export type BallView = BallSnapshot;
 
 /**
  * The ball every shared scenario drives: the only one under `base` and `gyre`,
@@ -129,15 +135,13 @@ interface BallShapes {
  * sound under `multi` is {@link parkSpares}, which puts the other two balls out
  * of the scenario before it is posed, so the reading is of the driven ball alone.
  *
- * The shape is read through a locally declared interface rather than off
- * `CaromSnapshot`, because the shared harness is typed against whichever
- * workspace the tree was seeded from and only one of the two fields exists there.
- * A build reporting neither fails by assertion here rather than throwing a
- * `TypeError` several frames later, so the point names the fault.
+ * `CaromSnapshot` declares both shapes as optional, because which one a build
+ * reports is its variant's to decide. A build reporting neither fails by
+ * assertion here rather than throwing a `TypeError` several frames later, so the
+ * point names the fault.
  */
 export function ball0(snapshot: CaromSnapshot): BallView {
-  const shapes = snapshot as unknown as BallShapes;
-  const one = shapes.ball ?? shapes.balls?.[0];
+  const one = snapshot.ball ?? snapshot.balls?.[0];
   expect(
     one,
     "snapshot() must report the ball as `ball` (base, gyre) or the balls as " +
@@ -148,9 +152,8 @@ export function ball0(snapshot: CaromSnapshot): BallView {
 
 /** Every ball a snapshot reports, in play order. */
 export function allBalls(snapshot: CaromSnapshot): BallView[] {
-  const shapes = snapshot as unknown as BallShapes;
-  if (shapes.balls !== undefined) return shapes.balls;
-  return shapes.ball === undefined ? [] : [shapes.ball];
+  if (snapshot.balls !== undefined) return snapshot.balls;
+  return snapshot.ball === undefined ? [] : [snapshot.ball];
 }
 
 /** One recorded ball position, as `CaromState` declares it. */
@@ -250,7 +253,7 @@ export interface Harness {
   /** The live state the game built. Read it, or pose it through `debug`. */
   readonly state: CaromState;
   /**
-   * The case's own debug surface, as the BUILD exposed it through the runtime.
+   * The debug surface the BUILD returned beside its state, as the runtime holds it.
    *
    * Read off `engine.debug` rather than built here — see {@link readDebugSurface}.
    */
@@ -371,65 +374,73 @@ export function setsOf(
 }
 
 /**
- * The debug surface the BUILD exposed, read off the runtime it exposed it through.
+ * The debug surface the BUILD returned beside its state, read off the runtime
+ * that holds it.
  *
- * This is deliberately a READ and never a construction. `src/debug.ts` is the
- * case's own module, so the harness could perfectly well call
- * `createDebugApi(state)` itself — and every check below would then pass against a
- * build that never handed its surface to the runtime, because the harness would
- * have quietly supplied the one the build owed. Reading `engine.debug` is what
- * makes the build's one line (`api.debug.expose(createDebugApi(state))`,
- * specs/instrumentation.md) load-bearing: it is the only way a surface reaches a
- * check.
+ * This is deliberately a READ and never a construction. The surface is the
+ * build's deliverable: its `initialize` returns `[state, debug]`
+ * (specs/instrumentation.md), the runtime keeps the second element, and
+ * `engine.debug` is the only way it reaches a check. Nothing here could stand in
+ * for it, because the build's own module for the surface is never imported.
  *
- * `engine.debug` THROWS when the game exposed nothing. That is a fault in the
- * build and not in this harness, so it must not present as one:
+ * By the time this runs `engine.initialize()` has resolved, which is the one
+ * precondition `engine.debug` has: it holds whatever the build returned as the
+ * pair's second element, and a build that returned no pair at all never gets
+ * this far, because the runtime rejects `initialize` itself and the rejection
+ * fails the suite's `beforeEach` with the runtime's own message. Such a build
+ * does not run on the engine under any entry point, so it is not this harness's
+ * fault to report — which is why every suite's `afterEach` disposes its harness
+ * with `?.`: the hook then has nothing to add to that message.
  *
- * - It is NOT rethrown from here. Every suite builds its harness in a
- *   `beforeEach`, so a throw at this point would fail the hook, leave the suite's
- *   `afterEach` disposing a harness that was never assigned, and bury the real
- *   verdict under a `TypeError` in the case's own file.
- * - It is NOT swallowed either. {@link unexposedSurface} stands in for the
+ * What IS decided here is a pair whose second element is no surface — a build
+ * that returned `[state, null]`, or something other than an object. That is a
+ * fault in the build and not in this harness, so it must not present as one:
+ *
+ * - It is NOT thrown from here. Every suite builds its harness in a
+ *   `beforeEach`, so a throw at this point would fail the hook and bury the real
+ *   verdict under the harness's own stack in the case's own file.
+ * - It is NOT swallowed either. {@link missingSurface} stands in for the
  *   missing surface and fails, by assertion, at the moment a check first reaches
- *   for an operation on it — naming the call the build owes.
+ *   for an operation on it — naming the return the build owes.
  *
  * So the harness is built, teardown runs, and the fault lands exactly where
  * specs/instrumentation.md says it should: on the points whose checks reach the
  * game through the surface. A check that needs no surface is decided on its own
- * merits, and `instrumentation/debug-api` names the missing `expose` outright.
+ * merits, and `instrumentation/debug-api` names the missing surface outright.
  */
 function readDebugSurface(
   engine: Engine<CaromState, CaromDebugApi>,
 ): CaromDebugApi {
-  try {
-    return engine.debug;
-  } catch (error) {
-    return unexposedSurface(
-      error instanceof Error ? error.message : String(error),
+  const surface: unknown = engine.debug;
+  if (typeof surface !== "object" || surface === null) {
+    return missingSurface(
+      `engine.debug holds ${surface === null ? "null" : typeof surface}, ` +
+        `not an object`,
     );
   }
+  return surface as CaromDebugApi;
 }
 
 /**
- * A stand-in for the surface a build never exposed: every operation on it fails
- * the check that reached for it, with the missing call named.
+ * A stand-in for the surface a build never returned: every operation on it fails
+ * the check that reached for it, with the missing return named.
  *
  * A proxy rather than a hand-written stub, because the surface is not a closed
  * list — the gyre variant adds `setObstacleClock` and `snapshot().obstacles`, and
  * a stub written against the common surface would report a gyre-only operation as
- * merely absent rather than as the consequence of the build's missing `expose`.
+ * merely absent rather than as the consequence of the build's missing surface.
  *
  * Keys that belong to the RUNTIME rather than to a check are answered with
  * `undefined` instead: awaiting the harness probes `then`, and vitest's own error
  * formatting probes symbols and `constructor`. Failing those would replace the
  * verdict below with noise from the machinery that was trying to report it.
  */
-function unexposedSurface(reason: string): CaromDebugApi {
+function missingSurface(reason: string): CaromDebugApi {
   const message =
-    `this build never exposed its debug surface, so nothing can reach the game: ` +
-    `src/game.ts's initialize must call api.debug.expose(createDebugApi(state)) ` +
-    `before it returns the state (specs/instrumentation.md). engine.debug said: ` +
-    `${reason}`;
+    `this build's debug surface is missing, so nothing can reach the game: ` +
+    `src/game.ts's initialize must return [state, debug], its state beside the ` +
+    `surface specs/instrumentation.md specifies, and the engine returns that ` +
+    `surface from engine.debug. ${reason}`;
   return new Proxy({} as CaromDebugApi, {
     get: (_target, property): unknown => {
       if (typeof property === "symbol") return undefined;
@@ -1002,7 +1013,7 @@ export function captureStill(h: Harness, outputId: string): void {
 /* Scenario helpers                                                           */
 /* -------------------------------------------------------------------------- */
 //
-// Each of these poses a situation through `src/debug.ts` and then lets the real
+// Each of these poses a situation through the debug surface and then lets the real
 // simulation run. They are the in-process descendants of the old browser suite's
 // `validation/_helpers.mjs`, and the geometry and the tolerances they encode are
 // the same ones that suite established.

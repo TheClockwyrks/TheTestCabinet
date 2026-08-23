@@ -45,7 +45,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("holds the ball for the pre-serve countdown, then serves", async () => {

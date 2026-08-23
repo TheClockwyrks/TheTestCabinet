@@ -47,7 +47,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("pauses a live Solo match when Escape is pressed", async () => {

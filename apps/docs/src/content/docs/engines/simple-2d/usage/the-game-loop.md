@@ -2,11 +2,11 @@
 title: The Game Loop
 ---
 
-A build writes one [`Game<S>`](/engines/simple-2d/apis/game/): `initialize`
-returns the state, `update` advances that state by the frame's delta, and
-`render` draws it. The engine owns the loop, runs `update` and then `render`
-once per frame, and hands each function only the part of itself that function
-may use.
+A build writes one [`Game<S, D>`](/engines/simple-2d/apis/game/): `initialize`
+returns the state beside the game's debug surface, `update` advances that state
+by the frame's delta, and `render` draws it. The engine owns the loop, runs
+`update` and then `render` once per frame, and hands each function only the
+part of itself that function may use.
 
 ```ts
 import type { Game } from "@test-cabinet/simple-2d";
@@ -21,7 +21,7 @@ interface State {
   score: number;
 }
 
-export const game: Game<State> = {
+export const game: Game<State, null> = {
   async initialize(api) {
     api.input.register("left", { keys: ["ArrowLeft", "KeyA"] });
     api.input.register("right", { keys: ["ArrowRight", "KeyD"] });
@@ -29,7 +29,7 @@ export const game: Game<State> = {
     api.audio.define("boost", { freq: 180, freqTo: 520, durationMs: 120 });
 
     const sprite = await api.assets.loadImage("sprites/ship.png");
-    return { ship: { x: 320, y: 180, vx: 0, vy: 0 }, sprite, score: 0 };
+    return [{ ship: { x: 320, y: 180, vx: 0, vy: 0 }, sprite, score: 0 }, null];
   },
 
   update(state, api, dt) {
@@ -81,10 +81,10 @@ ordering is enforced where a mistake happens rather than several frames later.
 
 ## The state is returned rather than held in module scope
 
-`initialize` returns the state, and the engine hands that one value to every
-`update` and `render`. Everything a frame needs is therefore reachable from a
-value the type system already checked, and every field of it is present the
-moment a frame can observe it.
+`initialize` returns the state as the first element of its pair, and the engine
+hands that one value to every `update` and `render`. Everything a frame needs
+is therefore reachable from a value the type system already checked, and every
+field of it is present the moment a frame can observe it.
 
 A module-level variable belongs to the module, so every engine built from that
 module shares it and its values outlive the run that produced them. Returned
@@ -113,7 +113,7 @@ async initialize(api) {
     api.assets.loadImage("sprites/ship.png"),
     api.assets.loadImage("sprites/rock.png"),
   ]);
-  return { sprites: { ship, rock }, score: 0 };
+  return [{ sprites: { ship, rock }, score: 0 }, null];
 }
 ```
 
@@ -138,7 +138,7 @@ built there, which is why the state is assembled before it is returned.
 async initialize(api) {
   const state: State = { sprites: await loadSprites(api), score: 0 };
   api.diagnostics.register("score", () => state.score);
-  return state;
+  return [state, null];
 }
 ```
 
@@ -203,7 +203,7 @@ interface State {
 }
 
 async initialize(api) {
-  return { lives: 3, ended: new AbortController() };
+  return [{ lives: 3, ended: new AbortController() }, null];
 },
 
 update(state, api, dt) {

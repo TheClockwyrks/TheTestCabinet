@@ -139,7 +139,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("reverses only the component normal to the face it grazed", async () => {

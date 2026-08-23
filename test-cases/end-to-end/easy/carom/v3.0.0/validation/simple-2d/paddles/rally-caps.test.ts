@@ -27,7 +27,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("plateaus at the speed ceiling and never exceeds it", async () => {

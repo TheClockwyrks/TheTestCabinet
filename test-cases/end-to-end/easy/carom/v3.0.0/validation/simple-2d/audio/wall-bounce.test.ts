@@ -51,7 +51,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("plays the wall-bounce cue on the frame of the reflection", async () => {

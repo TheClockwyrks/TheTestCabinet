@@ -28,7 +28,7 @@ what the manifest's `[workspaces]` table is for:
 | Engine | What the seeded project supplies |
 | --- | --- |
 | `none` | The toolchain configuration and `index.html`, and nothing else. There is no `src/`: the model writes the runtime — the frame loop, canvas fit, input, audio, the overlay and the `window.__carom` surface — and the game on top of it. |
-| `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts`, `src/debug.ts` and `src/main.ts`. The model writes `src/game.ts`, which hands the debug surface to the engine from its `initialize`. |
+| `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The model writes `src/game.ts` — the state, the debug surface `specs/instrumentation.md` specifies, and the three functions — and its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. |
 
 The game both projects describe is the same one, so the review items are the same
 under either engine and a score recorded under one is comparable with a score
@@ -79,15 +79,17 @@ variant adds a domain of its own):
 - `base` — fixed, upright obstacles and a single ball served toward the receiver.
   The reference build.
 - `gyre` — obstacles that sway and rotate, so the ball bounces off tilted,
-  oriented faces. It ships its own `workspaces/gyre/simple-2d`, because its state
-  carries the obstacle clock and both obstacles' live poses, and its debug API
-  adds `setObstacleClock`.
+  oriented faces. It ships its own `workspaces/gyre/simple-2d`, because its
+  `src/constants.ts` documents the obstacle centers as base centers the live
+  poses sway about; the obstacle clock, the live poses, and the
+  `setObstacleClock` operation are carried by its branch of the specs.
 - `multi` — three independent balls, each its own contest: its own hold, its own
   launch at a random angle, and its own respawn on a field that never freezes.
   Balls collide with each other, and that collision has a fifth audio cue of its
-  own. It ships its own `workspaces/multi/simple-2d`, because its state carries
-  the three balls in place of one, its debug API addresses them by index, and its
-  constants name the home points and the cue.
+  own. It ships its own `workspaces/multi/simple-2d`, because its constants name
+  the home points, the ball count, the contact distance and the cue; the three
+  balls in place of one, and the surface that addresses them by index, are
+  carried by its branch of the specs.
 
 Only the engine-backed project differs by variant. The engineless project holds
 no game code for a variant to differ in, so every variant shares

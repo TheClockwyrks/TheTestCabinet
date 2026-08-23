@@ -48,7 +48,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("serves the ball at the base serve speed", async () => {

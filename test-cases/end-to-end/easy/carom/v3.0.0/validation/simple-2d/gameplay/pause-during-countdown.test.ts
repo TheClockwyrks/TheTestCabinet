@@ -20,7 +20,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("pauses when the pause key is pressed during the countdown", async () => {

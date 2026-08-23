@@ -44,7 +44,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("plays the obstacle-bounce cue on the frame of the bounce", async () => {

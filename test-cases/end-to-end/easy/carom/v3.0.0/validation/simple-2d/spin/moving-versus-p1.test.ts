@@ -49,7 +49,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("curves the ball the other way off an upward swing", async () => {

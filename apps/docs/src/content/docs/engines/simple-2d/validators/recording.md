@@ -40,14 +40,13 @@ describes.
 ```ts
 import { expect, it } from "vitest";
 import { createHarness } from "../harness";
-import { placeBall } from "../../src/debug";
 import { emitReplay } from "../replay";
 
 it("credits the left player when the ball crosses the right edge", async () => {
   const { engine } = createHarness();
   const state = await engine.initialize();
 
-  placeBall(state, { x: 560, y: 180, vx: 240, vy: 0 });
+  engine.debug.placeBall({ x: 560, y: 180, vx: 240, vy: 0 });
   await engine.advance(30);
 
   engine.startRecording();

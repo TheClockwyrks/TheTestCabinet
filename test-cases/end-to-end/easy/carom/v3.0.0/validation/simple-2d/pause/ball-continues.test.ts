@@ -49,7 +49,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("resumes the ball from its paused position at its preserved velocity", async () => {

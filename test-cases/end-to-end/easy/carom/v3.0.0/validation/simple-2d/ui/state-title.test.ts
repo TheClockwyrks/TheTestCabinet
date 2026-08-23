@@ -28,7 +28,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("opens on the title and draws its name, tagline, and menu", async () => {

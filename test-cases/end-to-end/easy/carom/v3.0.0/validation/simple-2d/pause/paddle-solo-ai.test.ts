@@ -44,7 +44,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("holds the AI paddle still while paused", async () => {

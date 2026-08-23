@@ -18,12 +18,13 @@ that decides what each frame's delta time is, the fit from the logical design
 size to the canvas, the input action registry and its bindings, the audio bus,
 the asset loader, the debug overlay together with the frame metrics it reports,
 the draw-command recorder over the context the game draws through, and the debug
-surface the game exposed, held for a caller to read back.
+surface the game returned beside its state, held for a caller to read back.
 
 The game owns its simulation and its drawing, supplied as a
-[`Game<S>`](/engines/simple-2d/apis/game/): an `initialize` that builds the
-state, an `update` that advances it by a delta in seconds, and a `render` that
-draws it through a 2D context. The declarations the engine works from are made
+[`Game<S, D>`](/engines/simple-2d/apis/game/): an `initialize` that builds the
+state and the debug surface and returns them as `[state, debug]`, an `update`
+that advances the state by a delta in seconds, and a `render` that draws it
+through a 2D context. The declarations the engine works from are made
 during initialization: action bindings, cue definitions, the assets the state
 holds, the diagnostic sources the overlay reads, and the debug surface a caller
 drives the build through.

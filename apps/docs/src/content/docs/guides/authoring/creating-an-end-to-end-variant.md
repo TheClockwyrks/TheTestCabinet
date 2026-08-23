@@ -98,8 +98,10 @@ case supports. In an engineless case it is the single `workspace` key.
 
 Gyre needs one: its state carries the obstacle clock and both obstacles' live
 poses, and its debug API adds a `setObstacleClock` operation, so each
-`workspaces/gyre/<engine>/` is the matching `workspaces/base/<engine>/` plus those
-three additions and the constants naming the sway and spin figures.
+`workspaces/gyre/<engine>/` is the matching `workspaces/base/<engine>/` with the
+constants naming the sway and spin figures and a README pointing at the specs
+that state those additions. The state and the surface themselves are the
+build's to write under every engine.
 
 A variant that changes only the rules, and not the shape of the state or the
 debug surface, declares no starter project and seeds the common one.

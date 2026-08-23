@@ -25,8 +25,9 @@ none = "references/none/multi"
 
 # This variant needs a starter project of its own under `simple-2d`: the seeded
 # `src/constants.ts` there carries the home points, the ball count and the
-# contact distance, `src/debug.ts` addresses the balls by index and reports them
-# as an array, and `CUES` names the fifth cue. The table REPLACES the case's
+# contact distance, and `CUES` names the fifth cue. The surface that addresses the
+# balls by index and reports them as an array is the multi branch of
+# `specs/instrumentation.md.hbs`, and the build writes it. The table REPLACES the case's
 # `[workspaces]` rather than layering on it, so it names one directory per engine
 # exactly as the case's does.
 #

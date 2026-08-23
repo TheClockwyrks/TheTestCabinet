@@ -30,7 +30,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("holds all three balls for the hold, then launches them together", async () => {

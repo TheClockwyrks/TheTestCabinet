@@ -22,8 +22,10 @@ none = "references/none/gyre"
 "simple-2d" = "references/simple-2d/gyre"
 
 # This variant needs a starter project of its own under `simple-2d`: the seeded
-# `src/debug.ts` there carries the `setObstacleClock` operation and the obstacle
-# poses a snapshot reports, which base's does not. The table REPLACES the case's
+# `src/constants.ts` there documents the obstacle centers as BASE centers the live
+# poses sway about, which base's does not. The `setObstacleClock` operation and
+# the obstacle poses a snapshot reports are the gyre branch of
+# `specs/instrumentation.md.hbs`, and the build writes them. The table REPLACES the case's
 # `[workspaces]` rather than layering on it, so it names one directory per engine
 # exactly as the case's does.
 #
@@ -37,7 +39,7 @@ none = "workspaces/none"
 
 # The gyre-specific category, worth one point per item. It applies to the whole
 # game (both Solo and Versus). Its points pose the obstacles through the
-# `setObstacleClock` operation this variant's seeded `src/debug.ts` adds, then read
+# `setObstacleClock` operation this variant's branch of the specs adds, then read
 # their live pose back: that they sway vertically, that they rotate, and that the ball's
 # bounce tracks their tilt. The `format` is inherited from the case manifest
 # (`[review] format = 2`).

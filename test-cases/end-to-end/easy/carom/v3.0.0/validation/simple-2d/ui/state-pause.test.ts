@@ -30,7 +30,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("opens a pause menu offering resume, restart, and quit", async () => {

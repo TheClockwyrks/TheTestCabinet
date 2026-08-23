@@ -101,8 +101,8 @@ export interface RunnerState {
   againstWall: boolean;
 }
 
-export const runner: Game<RunnerState> = {
-  async initialize(api: InitApi): Promise<RunnerState> {
+export const runner: Game<RunnerState, null> = {
+  async initialize(api: InitApi): Promise<[RunnerState, null]> {
     api.input.register("left", { keys: ["KeyA", "ArrowLeft"], kind: "analog" });
     api.input.register("right", {
       keys: ["KeyD", "ArrowRight"],
@@ -133,7 +133,7 @@ export const runner: Game<RunnerState> = {
       .catch(() => null);
 
     const { width, height } = api.viewport();
-    return {
+    const state: RunnerState = {
       ship,
       banner,
       notice,
@@ -141,6 +141,7 @@ export const runner: Game<RunnerState> = {
       y: height - 64,
       againstWall: false,
     };
+    return [state, null];
   },
 
   update(state: RunnerState, api: UpdateApi, dt: number): void {

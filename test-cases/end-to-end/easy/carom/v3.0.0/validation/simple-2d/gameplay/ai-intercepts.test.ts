@@ -36,7 +36,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("tracks down a reachable shot and blocks it", async () => {

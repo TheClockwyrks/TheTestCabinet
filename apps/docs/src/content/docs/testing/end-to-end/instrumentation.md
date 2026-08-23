@@ -34,13 +34,15 @@ surface, so the reliability rules below apply in full.
 An engine supplies the same control and inspection as engine code. A run under
 an engine is driven by a [validator](/components/core/validation/) that
 constructs the engine itself and holds the build's state, events, and drawing
-context as live values, and the case declares only the scenario setup that is
-specific to its game.
+context as live values. The build still writes the whole debug surface the
+case's instrumentation spec states; the engine is only the route by which a
+check reaches it.
 
 The global handle below belongs to the engineless run alone. Under an engine the
-case's scenario operations reach a check through the
-[debug surface](/components/core/engines/) the game hands the engine, so the
-page the build draws on carries no handle.
+build's `initialize` returns its
+[debug surface](/components/core/engines/) beside its state, the engine hands
+that value back off its handle, and a check reads the scenario operations from
+there, so the page the build draws on carries no handle.
 
 ## The reliability principle
 

@@ -48,7 +48,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
   if (collecting === undefined) delete process.env[MEDIA_DIR_ENV];
   else process.env[MEDIA_DIR_ENV] = collecting;
   rmSync(mediaDir, { recursive: true, force: true });

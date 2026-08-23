@@ -46,9 +46,8 @@ across new modules under `src/` however suits you.
 
 The case's own files and the project's configuration **must not be edited**:
 `src/main.ts` (the entry point), `src/constants.ts` (every figure the
-specification fixes), `src/debug.ts` (the debug and automation surface, supplied
-already written), `index.html`, `.tcab/` (the vendored engine), `engine/` (the
-engine's documentation), `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+specification fixes), `index.html`, `.tcab/` (the vendored engine), `engine/`
+(the engine's documentation), `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
 `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
 `package.json` keeps its existing entries and scripts, and takes one kind of
 change: a dependency you genuinely need, added along with the updated
@@ -58,14 +57,17 @@ change: a dependency you genuinely need, added along with the updated
 from. `specs/state.md` states that declaration in full and it is a contract:
 write it in as it stands, keep every field under its declared name, type, and
 meaning, and hold no game state anywhere else. The seeded project does not
-type-check until you have declared it, because the supplied modules are written
-against that type. That first `tsc` failure is expected rather than a broken
-seed, and declaring the type clears it.
+type-check until you have declared it, because the stub is written against that
+type. That first `tsc` failure is expected rather than a broken seed, and
+declaring the type clears it.
 
-`initialize` also hands the debug surface to the engine, calling
-`api.debug.expose(createDebugApi(state))` over the state it has just built. The
-engine returns that same value from `engine.debug`, which is the one way the
-surface is reached; `specs/instrumentation.md` states what the game owes it.
+`src/game.ts` likewise declares and exports `CaromDebugApi`, the debug and
+automation surface `specs/instrumentation.md` specifies, and you write that
+surface too. `initialize` returns it beside the state it has just built, as
+`[state, debug]`, and the engine returns that same value from `engine.debug`,
+which is the one way the surface is reached. It is a required deliverable, and a
+build that does not return it, or returns one that departs from the
+specification, fails every point whose check reaches the game through it.
 
 `src/constants.ts` is the single source of every number, color, key binding, cue
 name, and piece of screen copy the specification fixes — import them, and never
@@ -131,8 +133,9 @@ restating, because they are checked mechanically after the run:
 {{else}}
 - **Your code must type-check.** `npx tsc --noEmit` is run over the repository you
   leave behind, and code that does not compile scores zero. The project as seeded
-  does not compile until `src/game.ts` declares `CaromState`, so expect that
-  failure on a fresh checkout and clear it with the declaration.
+  does not compile until `src/game.ts` declares `CaromState` and
+  `CaromDebugApi`, so expect that failure on a fresh checkout and clear it with
+  the declarations.
 {{/if}}
 - **Your code must lint and be formatted.** `npx eslint .` and
   `npx prettier --check .` are run over it too, and both results are recorded.

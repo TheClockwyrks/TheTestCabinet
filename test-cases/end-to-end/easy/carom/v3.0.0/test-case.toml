@@ -98,8 +98,8 @@ variants = [
 #
 # Carom supports two, and the game is the same under both. What differs is how
 # much of the build is handed over: `simple-2d` vendors the runtime as a package
-# and seeds the modules around it (`src/constants.ts`, `src/debug.ts`,
-# `src/main.ts`, and the `src/game.ts` the build writes), while `none` supplies no
+# and seeds the modules around it (`src/constants.ts`, `src/main.ts`, and the
+# `src/game.ts` the build writes, debug surface included), while `none` supplies no
 # runtime and no `src/` at all, so the build writes the frame loop, the input,
 # the audio, the overlay and the `window.__carom` surface itself. The game they
 # describe is the same one, so the review items are the same for either and a
@@ -141,17 +141,20 @@ min_version = "1.0.0"
 #                 figure the specification fixes, from the specs alone.
 #   - `simple-2d` declares the engine in its `package.json`, which is vendored in
 #                 at seed time so the build imports it by its bare package name,
-#                 and seeds the case-owned modules a validator imports:
-#                 `src/constants.ts` (every tunable this specification fixes),
-#                 `src/debug.ts` (the debug surface the game exposes through the
-#                 engine), and `src/main.ts` (the browser entry). The build writes
-#                 `src/game.ts`.
+#                 and seeds the case-owned modules around the game:
+#                 `src/constants.ts` (every tunable this specification fixes,
+#                 which a validator imports) and `src/main.ts` (the browser
+#                 entry). The build writes `src/game.ts`: the state, the debug
+#                 surface its `initialize` returns beside that state, and the
+#                 three functions.
 #
 # A variant may replace this whole table with one of its own, which gyre and multi
-# both do for `simple-2d`: gyre's seeded `src/debug.ts` adds `setObstacleClock` and
-# the obstacle poses a snapshot reports, and multi's carries the home points, the
-# ball count and the fifth cue, addresses the balls by index, and reports them as
-# an array. The engineless project holds no game code for a variant to differ in,
+# both do for `simple-2d`: gyre's seeded `src/constants.ts` documents the obstacle
+# centers as the base centers the live poses sway about, and multi's carries the
+# home points, the ball count, the contact distance and the fifth cue. What a
+# variant changes about the surface (gyre's `setObstacleClock` and obstacle poses,
+# multi's balls addressed by index and reported as an array) is carried by the
+# specs. The engineless project holds no game code for a variant to differ in,
 # so every variant shares it. The seeded files land at the run root
 # (`workspaces/none/package.json` seeds to `package.json`).
 [workspaces]
@@ -195,8 +198,8 @@ test = "npx vitest run --coverage"
 # script, which they do below. It names the ENGINELESS contract: an engineless
 # build writes the surface itself and installs it on `window.__carom`, so the
 # handle is what a person opening the console of such a build finds. An engine run
-# has no global at all — the game hands the surface the seeded `src/debug.ts`
-# builds to the engine from its `initialize`, and a validator reads it back off
+# has no global at all — the build writes the surface, its `initialize` returns it
+# beside the state as `[state, debug]`, and a validator reads it back off
 # `engine.debug`. The seeded specification documents the surface independently as
 # an ordinary game debug feature (see specs/instrumentation.md); this entry is
 # reporter-side and never seeded.
@@ -264,9 +267,9 @@ source = "specs/modes/single-player.md.hbs"
 source = "specs/modes/versus.md.hbs"
 
 # The shape of the game's state. Under `simple-2d` this is the `CaromState`
-# contract the seeded `src/debug.ts` reads and poses and the validators read back,
-# stated by the case rather than by the seeded `src/game.ts`, which holds the three
-# stubs alone. Under `none` the build owns the shape and the debug surface is the
+# contract the debug surface reads and poses and the validators read back, stated
+# by the case rather than by the seeded `src/game.ts`, which holds the three stubs
+# alone. Under `none` the build owns the shape and the debug surface is the
 # only contract over it. It seeds to `specs/state.md`.
 [[spec]]
 source = "specs/state.md.hbs"
@@ -331,8 +334,8 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 # why a suite reaches the build with `../src/...`.
 #
 # A suite imports that runtime and the build's own `src/game.ts`, constructs it
-# over a headless canvas with a clock it scripts, poses the scenario through
-# `src/debug.ts`, and steps it with `advance`. It reads behavior back from the
+# over a headless canvas with a clock it scripts, poses the scenario through the
+# surface `engine.debug` returns, and steps it with `advance`. It reads behavior back from the
 # game's state, audio from the runtime's `cue:played` event, and drawing from the
 # canvas — either the pixels or a recording proxy over the 2D context. Nothing
 # drives a browser, so there is no waiting and no flake.
@@ -357,10 +360,10 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 format = 2
 
 # --- Instrumentation ----------------------------------------------------------
-# `src/debug.ts` is seeded, so what this point checks is not that the model wrote an
-# API but that the state the build's `src/game.ts` declares actually backs it: every
-# operation runs against a real game, and a snapshot reports the full documented
-# shape with live values. Every other automated item poses its scenario through the
+# The build writes the surface and returns it from `initialize`, so this point
+# checks both that every operation is there and that the state the build's
+# `src/game.ts` declares actually backs it: every operation runs against a real
+# game, and a snapshot reports the full documented shape with live values. Every other automated item poses its scenario through the
 # same surface, so a state the build hollowed out or reshaped also shows up as those
 # items failing to run — this point names the fault plainly and captures a live-match
 # frame as proof the driven game is what was inspected.

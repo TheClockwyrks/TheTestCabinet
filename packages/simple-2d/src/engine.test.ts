@@ -165,9 +165,14 @@ interface TestState {
   renders: number;
 }
 
-/** Anything a test wants to do at one of the three moments, with sane defaults. */
+/**
+ * Anything a test wants to do at one of the three moments, with sane defaults.
+ *
+ * An `initialize` hook may return the debug surface the game should hand back
+ * beside its state; one that returns nothing leaves the game with `null` there.
+ */
 interface GameHooks {
-  initialize?: (api: InitApi, state: TestState) => void | Promise<void>;
+  initialize?: (api: InitApi, state: TestState) => unknown;
   update?: (state: TestState, api: UpdateApi, dt: number) => void;
   render?: (state: TestState, api: RenderApi) => void;
 }
@@ -175,14 +180,18 @@ interface GameHooks {
 /** A game that records the calls it received and does whatever the test asked. */
 function testGame(
   hooks: GameHooks = {},
-): Game<TestState> & { initializations: number } {
+): Game<TestState, unknown> & { initializations: number } {
   const game = {
     initializations: 0,
-    async initialize(api: InitApi): Promise<TestState> {
+    async initialize(api: InitApi): Promise<[TestState, unknown]> {
       game.initializations += 1;
       const state: TestState = { dts: [], order: [], updates: 0, renders: 0 };
-      await hooks.initialize?.(api, state);
-      return state;
+      // Only a real promise is awaited: `await` reads `.then` off whatever it is
+      // handed, and a surface test may hand one that refuses every read.
+      const returned = hooks.initialize?.(api, state);
+      const debug =
+        (returned instanceof Promise ? await returned : returned) ?? null;
+      return [state, debug];
     },
     update(state: TestState, api: UpdateApi, dt: number): void {
       state.updates += 1;
@@ -494,8 +503,8 @@ describe("initialize", () => {
 
   it("rejects with the game's own cause and leaves the engine uninitialized", async () => {
     const cause = new Error("no save file");
-    const game: Game<TestState> = {
-      initialize: (): Promise<TestState> => Promise.reject(cause),
+    const game: Game<TestState, null> = {
+      initialize: (): Promise<[TestState, null]> => Promise.reject(cause),
       update: (): void => {},
       render: (): void => {},
     };
@@ -524,25 +533,46 @@ describe("initialize", () => {
       "load",
     ]);
     expect(Object.keys(api?.diagnostics ?? {})).toEqual(["register"]);
-    expect(Object.keys(api?.debug ?? {})).toEqual(["expose"]);
+    expect(api).not.toHaveProperty("debug");
+  });
+
+  it("refuses a game whose initialize returns anything but [state, debug]", async () => {
+    // The shape is checked at runtime, since the game arrives as a built module
+    // the type system never saw: a bare state where the pair belongs must not be
+    // held as the state with nothing behind `engine.debug`.
+    const fresh = (): TestState => ({
+      dts: [],
+      order: [],
+      updates: 0,
+      renders: 0,
+    });
+    const gameReturning = (value: unknown): Game<TestState, null> => ({
+      initialize: () => value as [TestState, null],
+      update: (): void => {},
+      render: (): void => {},
+    });
+
+    const bare = build({ game: gameReturning(fresh()) }).engine;
+    await expect(bare.initialize()).rejects.toThrow(/\[state, debug\]/);
+    expect(() => bare.state).toThrow(/initialize/);
+    expect(() => bare.debug).toThrow(/initialize/);
+
+    const tooLong = build({ game: gameReturning([fresh(), null, 1]) }).engine;
+    await expect(tooLong.initialize()).rejects.toThrow(/\[state, debug\]/);
   });
 });
 
 describe("the debug surface", () => {
-  /** A game that exposes `surface` from its `initialize`. */
-  function exposing(
+  /** A game that returns `surface` beside its state from its `initialize`. */
+  function returning(
     surface: unknown,
-  ): Game<TestState> & { initializations: number } {
-    return testGame({
-      initialize: (api) => {
-        api.debug.expose(surface);
-      },
-    });
+  ): Game<TestState, unknown> & { initializations: number } {
+    return testGame({ initialize: () => surface });
   }
 
-  it("hands back the value the game exposed, unchanged", async () => {
+  it("hands back the value the game returned, unchanged", async () => {
     const surface = { startMatch: (): void => {} };
-    const { engine } = build({ game: exposing(surface) });
+    const { engine } = build({ game: returning(surface) });
 
     await engine.initialize();
 
@@ -565,7 +595,7 @@ describe("the debug surface", () => {
         },
       },
     );
-    const { engine } = build({ game: exposing(hostile) });
+    const { engine } = build({ game: returning(hostile) });
 
     await engine.initialize();
     await engine.advance(3);
@@ -573,72 +603,30 @@ describe("the debug surface", () => {
     expect(engine.debug).toBe(hostile);
   });
 
-  it("refuses to be read before initialize resolves", () => {
-    const { engine } = build({ game: exposing({}) });
+  it("refuses to be read before initialize resolves, naming the pair", () => {
+    const { engine } = build({ game: returning({}) });
     expect(() => engine.debug).toThrow(/initialize/);
+    expect(() => engine.debug).toThrow(/\[state, debug\]/);
   });
 
-  it("refuses to be read when the game exposed none", async () => {
-    const { engine } = build({ game: testGame() });
+  it("holds a null surface as the surface the game chose", async () => {
+    const game: Game<TestState, null> = {
+      initialize: () => [{ dts: [], order: [], updates: 0, renders: 0 }, null],
+      update: (): void => {},
+      render: (): void => {},
+    };
+    const { engine } = build({ game });
+
     await engine.initialize();
-    expect(() => engine.debug).toThrow(/expose/);
-  });
 
-  it("holds a nullish surface rather than treating it as none exposed", async () => {
-    const { engine } = build({ game: exposing(null) });
-
-    await engine.initialize();
-
-    // The engine boxes what it was handed, so `null` is a surface the game chose
-    // rather than the absence of one.
+    // The engine holds what it was handed, so `null` is readable rather than a
+    // refusal: a game with no surface says so, and a caller sees that it did.
     expect(engine.debug).toBeNull();
-  });
-
-  it("refuses a second surface, naming the duplicate", async () => {
-    // Both calls sit inside `initialize`, which is the only window in which a
-    // second one is even reachable: after initialization every call is refused
-    // for arriving late, whether or not a surface is already held.
-    let refusal: unknown;
-    const game = testGame({
-      initialize: (api) => {
-        api.debug.expose({ first: true });
-        try {
-          api.debug.expose({ second: true });
-        } catch (error) {
-          refusal = error;
-        }
-      },
-    });
-    const { engine } = build({ game });
-    await engine.initialize();
-
-    expect(refusal).toBeInstanceOf(Error);
-    expect((refusal as Error).message).toMatch(/twice/);
-    // The first surface survives the refused replacement.
-    expect(engine.debug).toEqual({ first: true });
-  });
-
-  it("refuses a surface exposed after initialization finished", async () => {
-    let late: ((surface: unknown) => void) | undefined;
-    const game = testGame({
-      initialize: (api) => {
-        late = (surface): void => {
-          api.debug.expose(surface);
-        };
-      },
-    });
-    const { engine } = build({ game });
-    await engine.initialize();
-
-    // A game that keeps the API it was handed cannot install a surface once a
-    // frame could already have run against the engine without one.
-    expect(() => late?.({})).toThrow(/initializ/);
-    expect(() => engine.debug).toThrow(/expose/);
   });
 
   it("is readable the moment initialize resolves, before any frame", async () => {
     const surface = { poses: 0 };
-    const { engine } = build({ game: exposing(surface) });
+    const { engine } = build({ game: returning(surface) });
 
     await engine.initialize();
 

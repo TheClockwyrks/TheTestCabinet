@@ -6,8 +6,9 @@ with Vite, `tsc`, ESLint, Prettier and Vitest already configured and an
 `index.html` holding the canvas. How much of that project the model writes is
 what the engine decides.
 
-Under `simple-2d` the workspace also carries the case-owned modules the checks
-read through, and the model writes `src/game.ts` against them. Everything the
+Under `simple-2d` the workspace also carries the case-owned modules around the
+game, `src/constants.ts` and `src/main.ts`, and the model writes `src/game.ts`
+against them. Everything the
 specification fixes as a number has a name in `src/constants.ts`, and the specs
 cite those names rather than restating the figures. The engine owns the frame
 loop (which hands the game the real elapsed time of each frame, never a mandated
@@ -80,10 +81,10 @@ world, which no runtime can know. What they no longer sit beside are `step`,
 `setAutoStep`, `keyDown`, `keyUp` and `press`: the runtime owns the clock and the
 actions, so the build is not asked for them twice.
 
-How that surface is reached is the engine's. Under `simple-2d` the case supplies
-it already written, `initialize` hands it to the engine, and the engine returns
-it from `engine.debug`. Under `none` the build writes it and installs it on
-`window.__carom`.
+The build writes that surface under either engine; how it is reached is the
+engine's. Under `simple-2d` the game's `initialize` returns it beside the state,
+as `[state, debug]`, and the engine returns it from `engine.debug`. Under `none`
+the build installs it on `window.__carom`.
 
 ## A reviewer's evidence is a replay of the build's own drawing
 

@@ -35,7 +35,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("draws the right (player two / AI) paddle in a colour that stands apart", async () => {

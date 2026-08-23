@@ -1,38 +1,36 @@
-// Carom — instrumentation/debug-api: the build exposed its debug and automation
-// surface through the runtime, and that surface is whole and really backed by the
+// Carom — instrumentation/debug-api: the build returned its debug and automation
+// surface beside its state, and that surface is whole and really backed by the
 // state the build declared.
 //
 // TWO HALVES, AND BOTH ARE THE BUILD'S.
 //
-// The first is the one line `src/game.ts` owes: `initialize` builds the surface
-// over the state it just built and hands it to the runtime with
-// `api.debug.expose(createDebugApi(state))` (specs/instrumentation.md). Nothing
-// else can do it — the runtime accepts a surface during initialization and at no
-// other moment — and a build that skips it leaves `engine.debug` throwing, with
-// no way for a check to reach the game at all. That is what the first check below
-// establishes, reading the surface off the runtime the harness constructed.
+// The first is the surface itself. specs/instrumentation.md specifies every
+// operation, and the build implements them and returns the finished surface
+// from `initialize`, beside the state, as `[state, debug]`. The runtime holds
+// the second element and returns it from `engine.debug`, and nothing else can
+// reach a check: a build that returned no surface leaves `engine.debug` with
+// nothing to hand over. That is what the first check below establishes, reading
+// the surface off the runtime the harness constructed, and the second holds it
+// to the version and the operation list the specification fixes.
 //
-// The second is the state behind it. `src/debug.ts` is the case's own module, so
-// the operations exist in every build by construction; what is the build's is that
-// `CaromState` still holds what those operations read and pose. A build that
-// hollowed out a field, renamed one, or stopped honouring the driver's hold over
-// the paddles exposes a surface that is present and useless, and that is what a
-// snapshot read off a real, driven match catches.
+// The second half is the state behind it. An operation that exists but reads a
+// field the build hollowed out, or poses one the game ignores, is a surface that
+// is present and useless, and that is what a snapshot read off a real, driven
+// match catches.
 //
 // The clock, the keyboard, and the overlay are the runtime's under this runtime,
 // so the surface carries no operation for any of them (specs/instrumentation.md
 // strikes `step`, `setAutoStep`, `keyDown`, `keyUp` and `press`), and demanding
-// them here would fail a perfectly conformant build. What remains is the list
-// below: the reads, and the control operations that pose a scenario in the game's
-// own world.
+// them here would fail a perfectly conformant build. What remains is the list in
+// `surface.ts`: the reads, and the control operations that pose a scenario in
+// the game's own world.
 //
-// Every other automated item drives this surface to pose its own scenario, so an
-// unexposed surface or a state the build reshaped also shows up as those items
+// Every other automated item drives this surface to pose its own scenario, so a
+// missing surface or a state the build reshaped also shows up as those items
 // failing to run. This one names the fault plainly.
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { FIELD_CY, HOLD_TIME } from "../../src/constants";
-import { CAROM_DEBUG_VERSION } from "../../src/debug";
 import {
   ball0,
   captureStill,
@@ -41,18 +39,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-
-/** Every operation the surface must carry under this runtime. */
-const REQUIRED_OPS = [
-  "reset",
-  "snapshot",
-  "startMatch",
-  "serve",
-  "setScore",
-  "setPaddle",
-  "setBall",
-  "setAiControl",
-] as const;
+import { CAROM_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
 
 let h: Harness;
 
@@ -61,14 +48,16 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
-it("hands its debug surface to the runtime from initialize", () => {
-  // `engine.debug` throws in a build whose `initialize` never called
-  // `api.debug.expose`, so reading it is the check: there is no page property to
-  // look for and nothing the harness could have supplied in the build's place.
+it("returns its debug surface beside its state from initialize", () => {
+  // `engine.debug` is whatever the build's `initialize` returned as the second
+  // element of `[state, debug]`, so reading it is the check: there is no page
+  // property to look for and nothing the harness could have supplied in the
+  // build's place. A build that returned `null` there has no surface.
   expect(() => h.engine.debug).not.toThrow();
+  expect(h.engine.debug).not.toBeNull();
 
   // The runtime returns the value the game handed over, unchanged and unwrapped,
   // so every read is the same object and it is the one the rest of this suite —

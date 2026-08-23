@@ -240,11 +240,8 @@ export interface SurfaceMetrics {
 
 /**
  * What a game may reach while it initializes.
- *
- * `D` is the game's debug surface, the value {@link InitApi.debug} accepts. A
- * game that exposes none leaves it at its default and never calls `expose`.
  */
-export interface InitApi<D = unknown> {
+export interface InitApi {
   readonly input: {
     /** Register or re-register an action. */
     register(name: string, binding: ActionBinding): void;
@@ -270,20 +267,6 @@ export interface InitApi<D = unknown> {
   readonly diagnostics: {
     /** Name a value for the overlay. The source is called on every read. */
     register(name: string, source: () => unknown): void;
-  };
-  readonly debug: {
-    /**
-     * Hand the engine the game's debug surface, returned unchanged from
-     * {@link Engine.debug}.
-     *
-     * The engine holds the value and reads no member of it, so its shape belongs
-     * to the game. Initialization is the one place it can be handed over, which
-     * is what puts it in place before any frame runs.
-     *
-     * @throws if a surface has already been exposed. One that could be replaced
-     * would leave a caller holding a surface the game had abandoned.
-     */
-    expose(surface: D): void;
   };
   readonly events: EngineEvents;
   /** The current logical-to-device fit. */
@@ -337,21 +320,28 @@ export interface RenderApi {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The three functions and the state type a game supplies.
+ * The three functions and the two types a game supplies.
  *
- * `S` is the game's own state, returned by `initialize` and handed back to every
- * `update` and `render`. It is the only channel between the three, so everything
- * a frame needs is reachable from a value the type system already checked.
+ * `S` is the game's own state, the first element of the pair `initialize`
+ * returns and the value handed back to every `update` and `render`. It is the
+ * only channel between the three, so everything a frame needs is reachable from
+ * a value the type system already checked.
  *
- * Because the state is built in one go during initialization and no frame runs
- * before that resolves, it has no not-yet-loaded fields for a frame to branch on.
+ * `D` is the game's debug surface, the second element of that pair and the value
+ * {@link Engine.debug} returns unchanged. The engine holds it and reads no member
+ * of it, so its shape belongs to the game. A game with no surface writes
+ * `Game<State, null>` and returns `[state, null]`.
+ *
+ * Because both are built in one go during initialization and no frame runs
+ * before that resolves, the state has no not-yet-loaded fields for a frame to
+ * branch on and the surface is in place before any caller can reach for it.
  */
 export interface Game<S, D = unknown> {
   /**
-   * Declare the game's bindings, cues, diagnostics and debug surface, and build
-   * its state.
+   * Declare the game's bindings, cues and diagnostics, and build its state and
+   * its debug surface, returned together as `[state, debug]`.
    */
-  initialize(api: InitApi<D>): S | Promise<S>;
+  initialize(api: InitApi): [S, D] | Promise<[S, D]>;
   /** Advance the simulation by `dt` seconds. */
   update(state: S, api: UpdateApi, dt: number): void;
   /** Draw the state the update left behind. */
@@ -656,7 +646,8 @@ export interface Engine<S, D = unknown> {
   /** The value `initialize` resolved to, live. Throws before then. */
   readonly state: S;
   /**
-   * The debug surface the game exposed, live. Throws before it has exposed one.
+   * The debug surface the game's `initialize` returned beside its state, live.
+   * Throws before `initialize` has resolved.
    *
    * Returned exactly as the game handed it over, so a caller reads the shape the
    * game declared rather than one the engine imposed.

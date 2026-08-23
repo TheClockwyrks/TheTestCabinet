@@ -31,8 +31,8 @@ A run receives the self-contained specification and a configured TypeScript
 project to build inside: the Vite, Vitest, ESLint, and Prettier toolchain, and
 the page with its canvas. How much more it receives depends on the engine the run
 selects. On an engine run the project also carries the runtime and the case-owned
-modules that name every figure the specification fixes and hold the debug
-surface, and the run writes the game against them; on an engineless run the
+modules that name every figure the specification fixes and stand the engine up,
+and the run writes the game and its debug surface against them; on an engineless run the
 project carries no source at all, and the run writes the runtime as well as the
 game. There are no assets and no visual targets: the look is rebuilt from the
 palette and measurements the specification fixes, drawn entirely in code.

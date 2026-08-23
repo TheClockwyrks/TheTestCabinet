@@ -3,7 +3,7 @@
 //
 // A `Game<S, D>` is three functions, a state type, and the debug surface the game
 // hands to the engine. `initialize` runs once, when the engine is initialized; it
-// exposes the surface and returns the state. `update` and `render` then run once
+// returns the state and the surface together, as `[state, debug]`. `update` and `render` then run once
 // each per frame — `update` first, with the frame's delta time in SECONDS, then
 // `render`. The state is the only channel between them.
 //
@@ -29,10 +29,15 @@
 //     restores exactly these fields, so a scenario replays identically.
 
 import {
+  BALL_R,
+  CUES,
+  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
+  FIELD_W,
   HOLD_TIME,
   MATCHOVER_ITEMS,
+  OBSTACLE_CENTERS,
   PADDLE_SPEED,
   PAUSE_ITEMS,
   SERVE_ANGLE,
@@ -40,13 +45,9 @@ import {
   TITLE_ITEMS,
   WIN_LEAD,
   WIN_SCORE,
-  BALL_R,
-  CUES,
-  FIELD_W,
-  OBSTACLE_CENTERS,
 } from "./constants";
 import { defineCues } from "./audio";
-import { createDebugApi, DEFAULT_SEED, type CaromDebugApi } from "./debug";
+import { createDebugApi, type CaromDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { integratePaddle, parkBall } from "./entities";
 import { updateAi } from "./ai";
@@ -73,6 +74,10 @@ import type {
   RenderApi,
   UpdateApi,
 } from "@test-cabinet/simple-2d";
+
+// The surface is part of the module contract and is declared beside the game
+// it types, so the type is exported from here whichever module implements it.
+export type { CaromDebugApi };
 
 /**
  * The top-level state machine (specs/ui.md). `countdown` and `playing` both
@@ -578,23 +583,21 @@ export const game: Game<CaromState, CaromDebugApi> = {
   /**
    * Runs once, before any frame: register every action against its bindings,
    * define the four cues, build the complete initial state, register the
-   * diagnostic sources over it, and hand the debug surface to the engine.
+   * diagnostic sources over it, and return the state beside the debug surface.
    *
    * The state is built before the diagnostics are registered, because each source
    * is a pure read of that object — and it is the object every later frame is
    * handed, so the overlay reports the live game rather than a snapshot. The
-   * debug surface is built over that same object for the same reason, and handed
-   * over here because initialization is the one place the engine accepts it: by
-   * the time this returns, `engine.debug` reads the live game
-   * (specs/instrumentation.md).
+   * debug surface is built over that same object for the same reason, and
+   * returned beside it because the pair is what the engine holds: by the time
+   * this resolves, `engine.debug` reads the live game (specs/instrumentation.md).
    */
-  initialize(api: InitApi<CaromDebugApi>): CaromState {
+  initialize(api: InitApi): [CaromState, CaromDebugApi] {
     registerActions(api);
     defineCues(api);
     const state = createInitialState();
     registerDiagnostics(api, state);
-    api.debug.expose(createDebugApi(state));
-    return state;
+    return [state, createDebugApi(state)];
   },
 
   /**

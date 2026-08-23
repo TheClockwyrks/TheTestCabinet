@@ -209,3 +209,11 @@ export const CUES = {
 } as const;
 
 export type CueName = (typeof CUES)[keyof typeof CUES];
+
+// ---- Debug surface (specs/instrumentation.md) ----------------------------
+
+/** The version the debug surface reports as `version`. */
+export const CAROM_DEBUG_VERSION = 1;
+
+/** The seed `reset()` restores when the caller names none. */
+export const DEFAULT_SEED = 1;

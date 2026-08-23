@@ -59,7 +59,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 /** Open a match under `seed`, cut the hold short, and read all three launches. */

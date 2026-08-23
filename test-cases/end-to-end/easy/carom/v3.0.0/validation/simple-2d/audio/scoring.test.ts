@@ -39,7 +39,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("plays the score cue on the frame the point lands", async () => {

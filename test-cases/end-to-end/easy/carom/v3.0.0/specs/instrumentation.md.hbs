@@ -20,20 +20,18 @@ The surface is inert during normal play, doing nothing until something calls it.
 Carom carries a small debugging and automation surface so the game can be driven
 and inspected from code without touching the keyboard or waiting on real time.
 
-The surface itself is supplied. `src/debug.ts` holds it, already written, and
-`createDebugApi(state)` builds it over a state. What the build supplies is the
-call that hands it to the engine: `initialize` calls
-`api.debug.expose(createDebugApi(state))` over the state it just built, and the
-engine returns that same value from `engine.debug`. It is reached that way alone,
-and a build that never exposes it leaves `engine.debug` unreadable and fails the
-points its checks decide.
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. A surface that is missing, or that departs from what is specified here,
+fails every point whose check reaches the game through it.
 
-What this file asks of you beyond that call is the other half: the game's state
-holds what the surface reads, and the game honors the state the surface poses.
-Every operation is a read or a write of `CaromState`. Each arranges the world,
-and the game's own `update` runs the real collision, the real serve, and the real
-AI from there on the next frame. Read `src/debug.ts` alongside this file: it is
-the exact behavior described here.
+Each operation is a read or a pose of `CaromState`. It arranges the world, and
+the game's own `update` runs the real collision, the real serve, and the real AI
+from there on the next frame, so a scenario driven from code behaves exactly like
+one played by hand. Where the surface's implementation lives under `src/` is
+yours to decide; `src/game.ts` declares and exports its type, `CaromDebugApi`.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}

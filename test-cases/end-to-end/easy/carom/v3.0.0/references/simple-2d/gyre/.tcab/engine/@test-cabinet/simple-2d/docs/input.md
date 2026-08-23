@@ -34,7 +34,7 @@ initialize(api) {
   api.input.register("thrust", { keys: ["ArrowUp", "KeyW"] });
   api.input.register("fire", { keys: ["Space"] });
   api.input.register("steer", { keys: ["ArrowLeft", "ArrowRight"], kind: "analog" });
-  return { /* ... */ };
+  return [{ /* ... */ }, null];
 }
 ```
 
@@ -125,7 +125,7 @@ initialize(api) {
   for (const name of layout?.actions ?? []) {
     api.input.register(name, { keys: KEYS_FOR[name] ?? [] });
   }
-  return { /* ... */ };
+  return [{ /* ... */ }, null];
 }
 ```
 

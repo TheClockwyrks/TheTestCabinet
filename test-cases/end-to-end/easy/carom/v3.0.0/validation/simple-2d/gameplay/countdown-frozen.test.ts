@@ -32,7 +32,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("freezes the countdown while paused and resumes it where it stopped", async () => {

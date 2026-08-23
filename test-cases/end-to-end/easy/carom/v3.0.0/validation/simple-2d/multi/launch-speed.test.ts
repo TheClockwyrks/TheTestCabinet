@@ -32,7 +32,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("launches every ball at the base launch speed", async () => {

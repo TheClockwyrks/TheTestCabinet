@@ -39,7 +39,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("lets a fast shot placed out of reach get past it", async () => {

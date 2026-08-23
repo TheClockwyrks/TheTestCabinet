@@ -32,7 +32,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("gives player two the point when a ball leaves the left goal", async () => {

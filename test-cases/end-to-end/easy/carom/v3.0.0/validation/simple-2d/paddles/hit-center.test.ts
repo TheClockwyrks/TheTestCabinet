@@ -46,7 +46,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("returns the ball level from the centre of a still paddle", async () => {

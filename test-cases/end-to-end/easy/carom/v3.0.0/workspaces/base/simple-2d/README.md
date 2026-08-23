@@ -13,23 +13,24 @@ that alongside the specs. What is missing is the game.
 **`src/game.ts`, and any new files you add beside it.**
 
 Start by declaring and exporting `CaromState`, exactly as `specs/state.md` fixes
-it. `src/debug.ts` poses and reads that type, so the project does not compile
-until it exists — a fresh workspace failing `npm run typecheck` is the starting
-point, not a broken seed.
+it, and `CaromDebugApi`, the debug and automation surface `specs/instrumentation.md`
+specifies. The stub in `src/game.ts` is written against both names, so the
+project does not compile until they exist — a fresh workspace failing
+`npm run typecheck` is the starting point, not a broken seed.
 
 `src/game.ts` then exports `game`, a `Game<CaromState, CaromDebugApi>`: three
-functions over that state. `initialize` builds the state once, `update` advances
-it against the frame's delta time in seconds, and `render` draws it. All three
+functions over that state. `initialize` builds the state and the debug surface
+once and returns them together as `[state, debug]`, `update` advances the state
+against the frame's delta time in seconds, and `render` draws it. All three
 currently throw `"not implemented"`. Implement them, and split the work across
-new modules under `src/` however you like — physics, rendering, the AI, and so on.
+new modules under `src/` however you like — physics, rendering, the AI, the debug
+surface, and so on.
 
-`initialize` must also hand the debug surface to the engine before it returns:
-
-```ts
-api.debug.expose(createDebugApi(state));
-```
-
-That call is how a check reaches this build. Nothing is published to the page.
+The debug surface is a required deliverable. The engine returns it from
+`engine.debug` exactly as `initialize` handed it over, and that is how a check
+reaches this build: a surface that is missing, or that departs from
+`specs/instrumentation.md`, fails every check that reaches the game through it.
+Nothing is published to the page.
 
 `CaromState` **is a contract**. Keep every field, under the name, type, and
 meaning `specs/state.md` gives it. You may add fields, but only for data you can
@@ -47,10 +48,6 @@ carries a complete worked example of testing a game this way.
 - **`src/constants.ts`** — every figure the specification fixes: geometry,
   colors, speeds, spin, the match rules, the action names, the cue names. Read
   from it, and never restate a number it already names.
-- **`src/debug.ts`** — the debugging and automation surface from
-  `specs/instrumentation.md`, supplied already written. It poses and reads
-  `CaromState`; your `update` is what runs from there. Build it with
-  `createDebugApi(state)` and expose it from `initialize`.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.

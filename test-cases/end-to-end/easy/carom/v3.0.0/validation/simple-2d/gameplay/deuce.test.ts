@@ -37,7 +37,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("plays on at a one-point lead and ends at two", async () => {
