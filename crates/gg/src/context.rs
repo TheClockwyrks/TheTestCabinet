@@ -2581,8 +2581,8 @@ fn apply_code_heading(
 ///
 /// [`TextView`](GgContextSource::TextView) is `Text Views` rather than the console's operator-facing
 /// "Agent views": the model is the agent, so naming the band after it reads as somebody else's, and
-/// `text` is already the word the model meets in `view.openText` and in a `view.current()` entry's
-/// `kind`. The two audiences are allowed to differ here — this table already says `Your Messages`
+/// `text` is already the word the model meets in `view.openText`. The two audiences are allowed to
+/// differ here — this table already says `Your Messages`
 /// where the console says `Assistant`.
 fn source_label(source: GgContextSource) -> &'static str {
     match source {

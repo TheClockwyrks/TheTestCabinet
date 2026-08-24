@@ -183,18 +183,13 @@ interface files {
 
     /// Write UTF-8 text to a file, creating parent directories and overwriting any
     /// existing file. Returns the number of bytes written.
-    ///
-    /// Writing is the EXPENSIVE direction of this membrane: lowering a string out of the guest
-    /// costs about 14,600 fuel per byte, against about 46 for lifting one in. A program that
-    /// rewrites twenty 64 KiB files spends roughly 24 G fuel — a tenth of the default ceiling — so
-    /// a very large rewrite belongs in several programs.
     write-file: func(path: string, contents: string) -> result<u64, api-error>;
 
     /// Replace the single exact occurrence of `old-string` with `new-string`.
     ///
     /// An occurrence that is missing is `not-found`; one that appears more than once is a
     /// `conflict` whose message carries the count. The count stays in the message rather than
-    /// becoming a field: `api-error` is shared by all 33 functions and a per-operation payload on it
+    /// becoming a field: `api-error` is shared by every function and a per-operation payload on it
     /// would be a wart on every other call — a program that needs to disambiguate should add
     /// surrounding context, not count.
     edit-file: func(path: string, old-string: string, new-string: string) -> result<_, api-error>;

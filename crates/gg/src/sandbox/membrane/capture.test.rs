@@ -101,10 +101,11 @@ fn a_truncated_line_is_cut_on_a_character_boundary() {
 
 /// **The roster is bounded, and what it dropped is counted rather than lost.**
 ///
-/// A bridged call costs ≈0.86 M fuel, so the default ceiling affords a program some 230,000 of
-/// them; unbounded, each would push owned strings onto a vector and a line onto a roster the model
-/// then has to read. The count is what keeps the arithmetic honest — the turn dispatched
-/// `calls.len() + calls_suppressed`, and the telemetry pairs it streamed match that, not the vector.
+/// A bridged call is cheap enough that a runaway program can dispatch an enormous number of them
+/// before the execution timeout fires; unbounded, each would push owned strings onto a vector and
+/// a line onto a roster the model then has to read. The count is what keeps the arithmetic honest
+/// — the turn dispatched `calls.len() + calls_suppressed`, and the telemetry pairs it streamed
+/// match that, not the vector.
 #[test]
 fn the_roster_is_capped_and_what_it_dropped_is_counted() {
     let log = CallLog::default();
@@ -168,7 +169,8 @@ fn a_suppressed_record_does_not_corrupt_the_last_kept_one() {
 /// Refusals are capped too — and for a sharper reason than the roster.
 ///
 /// Once the run's wall-clock budget is spent **every** call is refused, so a program that swallows
-/// the throws (`for (;;) { try { shell("x") } catch {} }`) spins refusing until its fuel runs out.
+/// the throws (`for (;;) { try { shell("x") } catch {} }`) spins refusing until epoch interruption
+/// stops it.
 /// The guard whose whole purpose is "the program stops cleanly" would otherwise be an allocation
 /// loop.
 #[test]

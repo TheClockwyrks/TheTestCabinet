@@ -846,15 +846,15 @@ export type GgAgentApiFunction = {
   /**
    * The name a program calls it by, **relative to its module**, in this arm's own spelling:
    * a free function is its bare name — `readFile`, `openDocsView`, `finish` — and a method
-   * carries the receiver it hangs off, in the arm's own separator — `OpenView.close` on
-   * TypeScript, `OpenView#close` on Java, `open_view::close` on C++. Joining the module's
+   * carries the receiver it hangs off, in the arm's own separator — `IssueCreated.wait` on
+   * TypeScript, `IssueCreated#await` on Java, `issue_created::wait` on C++. Joining the module's
    * [`path`](GgAgentApi::path) onto it with the arm's separator gives the catalogue's
-   * fully-qualified name (`gg.views.OpenView.close`), which is the key a documentation view
+   * fully-qualified name (`gg.board.IssueCreated.wait`), which is the key a documentation view
    * opens by.
    *
-   * Module-relative rather than bare so that two rows of one module never share a name: an
-   * arm that binds `close` as a free function **and** as a method on the value `current` lists
-   * reports `close` and `OpenView.close`, not `close` twice.
+   * Module-relative rather than bare so that two rows of one module never share a name: a
+   * method reported bare could collide with a free function beside it, so the memory read an
+   * arm hangs off a search hit reports as `MemoryHit.read`, never as a second bare `read`.
    */
   name: string;
   /**

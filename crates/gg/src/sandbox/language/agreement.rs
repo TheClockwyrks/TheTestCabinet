@@ -218,10 +218,9 @@ impl fmt::Display for Disagreement {
 /// The operation that opens a **view of a file**, which is the one view call a gg tool gates.
 const OPEN_FILE: &str = "open_file";
 
-/// The operation that **closes** a view, and the one that **lists** what is open — the two view calls
-/// that manage the window rather than fill it, bought by `agent-managed-context`.
+/// The operation that **closes** a view — the one view call that manages the window rather than
+/// fills it, bought by `agent-managed-context`.
 const CLOSE: &str = "close";
-const CURRENT: &str = "current";
 
 /// The operation that **searches** the documentation, which is the one documentation call nothing
 /// gates.
@@ -446,7 +445,7 @@ fn views(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
     {
         let expected = if operation.id.key == OPEN_FILE {
             Binding::Capability(CAPABILITY_READ_FILE)
-        } else if operation.id.key == CLOSE || operation.id.key == CURRENT {
+        } else if operation.id.key == CLOSE {
             Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
         } else {
             Binding::Always
@@ -1049,9 +1048,9 @@ fn is_ml_notation(signature: &str) -> bool {
 /// Whether an ML-notation signature's type takes an argument: a `->` at the top level of it, outside
 /// every bracket.
 ///
-/// `current :: Effect (Array OpenView)` takes nothing and `readFile :: String -> Effect FileRead`
+/// `history :: Effect (Array ProgramSummary)` takes nothing and `readFile :: String -> Effect FileRead`
 /// takes one, which the bracket rule cannot tell apart — it sees the parentheses around
-/// `Array OpenView` and reads them as an argument list.
+/// `Array ProgramSummary` and reads them as an argument list.
 fn ml_declares_arguments(signature: &str) -> bool {
     let Some((_, kind)) = signature.split_once(" :: ") else {
         return false;
@@ -1079,7 +1078,7 @@ fn ml_declares_arguments(signature: &str) -> bool {
 /// (`readFile :: String -> Effect FileRead`) has no bracket to look inside, and is read by
 /// [`ml_declares_arguments`] instead: its arguments are the chain of top-level arrows, which is where
 /// that notation puts them. The bracket rule was wrong about such a signature in both directions —
-/// `current :: Effect (Array OpenView)` looked like it took an argument, and
+/// `history :: Effect (Array ProgramSummary)` looked like it took an argument, and
 /// `readFile :: String -> Effect FileRead` looked like it took none — and [`takes_input`], which
 /// holds every arm to gg's own answer about the call, is the second line of defence rather than the
 /// only one.

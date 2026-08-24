@@ -112,8 +112,8 @@ compilers put on their classpath, so a program type-checks against the same
 bytes TeaVM translates. A jar on the classpath is packaging and puts no name in a
 program's scope: a program reaches a name in full, `gg.files.Files.readFile(…)`,
 or under the `import` line the catalogue states for that module. Types are nested
-in the module that produces them, `Files.FileRead` and `Views.OpenView`, so the
-same short name may belong to two modules.
+in the module that produces them, `Files.FileRead` and `Memories.MemoryHit`, so
+the same short name may belong to two modules.
 
 The SDK reaches gg through one imported function, `test-cabinet:gg/wire`'s
 `call`, below a typed and namespaced surface. `gg.internal` carries that
