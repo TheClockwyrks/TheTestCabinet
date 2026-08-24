@@ -112,7 +112,7 @@ page in [the docs section](../../apps/docs/src/content/docs/gg/), not this table
 | `agent.rs` | The agent turn loop and the orchestrator above it (the one coarse-grained plug point). |
 | `agent.code.rs` | One [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/programs.md) turn: heal the reply into a program, run it, service every call it composes, and tell the loop what to do next. |
 | `agent.transitions.rs` | [Succession](../../apps/docs/src/content/docs/gg/fork-and-exec.md): the `Handoff` an `exec`, a `fork` or an [FSM transition](../../apps/docs/src/content/docs/gg/fsms.md) declares, and the refusals that answer an illegal one. |
-| `modules.rs` | [Modules](../../apps/docs/src/content/docs/gg/modules.md): the six units of per-agent state, the ownership param the board and the archive read, and the fork / share / transfer primitives every succession is built from. |
+| `modules.rs` | [Modules](../../apps/docs/src/content/docs/gg/modules.md): the six units of per-agent state and the fork / share / transfer primitives every succession is built from. |
 | `healing.rs` | [Response healing](../../apps/docs/src/content/docs/gg/response-healing.md): the deletion-only, counted, disclosed repairs applied to a model's reply before it is compiled. |
 | `limits.rs` | [Execution limits](../../apps/docs/src/content/docs/gg/execution-limits.md): the single definition of a failed turn, the five ceilings a run is bounded by, and the run-wide spend the cost ceiling is measured against. |
 | `context.rs` | The context window model: what the agent is holding, what is pinned, and what a reclaim frees. |

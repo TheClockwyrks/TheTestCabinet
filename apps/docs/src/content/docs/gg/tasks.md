@@ -84,9 +84,9 @@ profile's rule. A list already longer than a newly tightened ceiling is kept, an
 the ordinary cap check refuses the next `add_task`.
 
 One agent writes a list at a time. Task ids are model-authored, so two live
-writers would mint the same id for two different pieces of work. Ownership is
-likewise fixed: the list is always carried in its holder's prompt, since it is
-what the agent steers its work by from one turn to the next.
+writers would mint the same id for two different pieces of work. The list is
+always carried in its holder's prompt, since it is what the agent steers its
+work by from one turn to the next.
 
 ## Telemetry
 

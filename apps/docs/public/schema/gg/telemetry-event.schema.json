@@ -60,10 +60,6 @@
           "$ref": "#/$defs/GgModuleOrigin",
           "description": "How this holder came by it."
         },
-        "ownership": {
-          "$ref": "#/$defs/GgModuleOwnership",
-          "description": "Whether this holder's prompt carries the module ([`owned`](GgModuleOwnership::Owned)) or it\nis reachable through its tools alone ([`unowned`](GgModuleOwnership::Unowned))."
-        },
         "scope": {
           "anyOf": [
             {
@@ -80,14 +76,7 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "kind",
-        "moduleId",
-        "enabled",
-        "ownership",
-        "origin",
-        "writable"
-      ],
+      "required": ["kind", "moduleId", "enabled", "origin", "writable"],
       "type": "object"
     },
     "GgAgentStatus": {
@@ -403,11 +392,6 @@
         {
           "const": "task_list",
           "description": "The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — retained across\na compaction boundary.",
-          "type": "string"
-        },
-        {
-          "const": "board",
-          "description": "The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/)\n— the heavyweight work-decomposition counterpart to the task list, retained across\na compaction boundary.",
           "type": "string"
         },
         {
@@ -928,21 +912,6 @@
         }
       ]
     },
-    "GgModuleOwnership": {
-      "description": "Whether the state a module-backed capability keeps is carried in its holder's **prompt**, or\nis reachable only through the tools it contributes.\n\nThis is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and it is the one knob that separates\n\"the agent is told what it holds, every turn\" from \"the agent may look it up\". It exists\nbecause a module is no longer necessarily *about* the agent holding it: once a memory instance\ncan be shared between agents, or a task list handed from one FSM state to the next, an agent\ncan be given a working store it should be able to act on without paying for it in every\nrequest it makes.",
-      "oneOf": [
-        {
-          "const": "owned",
-          "description": "The holder's prompt carries the module: its system-prompt section is rendered, and the\npinned block it keeps (the memory index, the task list, the board) is refreshed into the\nwindow on that module's own schedule. What a new document is authored with, and what a\n[task list](GgModuleKind) always is.",
-          "type": "string"
-        },
-        {
-          "const": "unowned",
-          "description": "The module is reachable through the holder's **tools and nothing else**: no system-prompt\nsection, no pinned block, and no per-turn notice. Its state is still live — the tools read\nand write it, and it is still transferred, shared and reported as\n[telemetry](GgTelemetryKind) exactly as an owned one is — it simply costs the holder no\ncontext until it asks.",
-          "type": "string"
-        }
-      ]
-    },
     "GgProgramLanguage": {
       "description": "The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the\naxis a cross-language study compares its arms on.\n\nEach language ships a hand-written, idiomatic SDK that binds the same typed WIT surface, so what\ndiffers between two arms of a study is the *spelling* of a call, never which calls exist. Which\nlanguage an agent writes in is therefore a configuration knob like every other lever the harness\nmeasures, rather than a property of gg.\n\nA language usually brings its own guest component, and one that does not says so in its own\ndocumentation: [`JavaScript`](Self::JavaScript) is evaluated by\n[`TypeScript`](Self::TypeScript)'s, because the two arms are one syntax and differ only in\nwhether the program is checked before it runs.\n\nThe wire values are the language ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param is written\n(`{\"language\": \"typescript\"}`), because the id is one thing: a config key, a telemetry value,\nand the stem of the language's committed guest artifacts. Lower-case rather than this module's\nusual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is\nnot a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the\nmodule default on the same grounds.\n\nNo language is the default. An agent with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nswitched on names one of these, and a launch that omits it is refused. The enum carries no\n`Default` for that reason: a fallback would record a run under a language nobody chose, on the\nvery axis a study slices its arms by.",
       "oneOf": [
@@ -1131,14 +1100,8 @@
       "type": "object"
     },
     "GgRetainedState": {
-      "description": "The pinned state a [compaction] carried across the boundary verbatim — the counts\nthat *survived* summarization — reported on a\n[`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the\nretention contract held (the read skills, the task list, and the in-play memories are\nnot summarized away).\n\nEach figure is a **count of retained items**, not a token figure: how many read\n[skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many\nin-play [memories](GgContextSource::Memory), and how many\n[issues](https://docs.testcabinet.ai/gg/project-management/) on the\n[board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by\nthe summary. The epic/issue board is retained across the boundary just like the task list,\nso its issue count is reported here as part of the retention proof.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "description": "The pinned state a [compaction] carried across the boundary verbatim — the counts\nthat *survived* summarization — reported on a\n[`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the\nretention contract held (the read skills, the task list, and the in-play memories are\nnot summarized away).\n\nEach figure is a **count of retained items**, not a token figure: how many read\n[skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how many\nin-play [memories](GgContextSource::Memory) remained pinned after the ephemeral history was\nreplaced by the summary.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
-        "issues": {
-          "description": "The number of issues on the retained epic/issue board.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
         "memories": {
           "description": "The number of in-play memories carried across the boundary verbatim.",
           "format": "uint64",
@@ -1158,7 +1121,7 @@
           "type": "integer"
         }
       },
-      "required": ["skills", "tasks", "memories", "issues"],
+      "required": ["skills", "tasks", "memories"],
       "type": "object"
     },
     "GgReviewer": {
@@ -2025,7 +1988,7 @@
       "type": "object"
     },
     {
-      "description": "The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/) — the\nheavyweight work-decomposition counterpart to the [task list](Self::TasksState), whose\nissues form a blocked-by DAG retained across a [compaction] boundary verbatim.\n\nEmitted once at session start (an empty board) when the\n[project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is enabled, and again after every\nsuccessful mutation\n(`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`)\n— and whenever gg itself moves an issue (a dispatch, a completion, an acceptance) —\nso the console can render the live board. The whole board is also a pinned\n[`Board`](GgContextSource::Board)-sourced context item, so the model sees its\ndecomposition each turn. A run with the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "description": "The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/) — the\nheavyweight work-decomposition counterpart to the [task list](Self::TasksState), whose\nissues form a blocked-by DAG retained across a [compaction] boundary verbatim.\n\nEmitted once at session start (an empty board) when the\n[project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is enabled, and again after every\nsuccessful mutation\n(`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`)\n— and whenever gg itself moves an issue (a dispatch, a completion, an acceptance) —\nso the console can render the live board. A run with the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
         "epics": {
           "description": "The epics, in the order the model created them.",
@@ -2238,7 +2201,7 @@
       "type": "object"
     },
     {
-      "description": "The [modules](GgModuleKind) one agent instance holds, as it opens: what each is, which\nbacking store it is a holder of, whose it is, and whether the agent's prompt carries it.\n\nEmitted **once per incarnation, for every instance** — the root, every subagent, every\nsuccessor — immediately after that instance's [`AgentSpawned`](Self::AgentSpawned) (and its\n[`FsmState`](Self::FsmState), when it stands in a machine). It is the only event that\nreports a module an agent holds but has not yet *touched* — a read-only inherited memory\nholder that never writes emits no [`MemoryState`](Self::MemoryState) of its own — and the\nonly one that reports [ownership](GgModuleOwnership) as data rather than as a log line.\n\nA roster does not change within an incarnation: every operation that changes what an agent\nholds (an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork`) mints a new agent id, and\nthe new instance emits its own. So it is emitted once and never re-emitted, and it carries\ndeliberately **no holder count** — a point-in-time count is stale the moment a sibling\nspawns, while a consumer holding every instance's roster already knows the exact holder set,\nincluding which of those holders are still running.",
+      "description": "The [modules](GgModuleKind) one agent instance holds, as it opens: what each is, which\nbacking store it is a holder of, and whose it is.\n\nEmitted **once per incarnation, for every instance** — the root, every subagent, every\nsuccessor — immediately after that instance's [`AgentSpawned`](Self::AgentSpawned) (and its\n[`FsmState`](Self::FsmState), when it stands in a machine). It is the only event that\nreports a module an agent holds but has not yet *touched* — a read-only inherited memory\nholder that never writes emits no [`MemoryState`](Self::MemoryState) of its own.\n\nA roster does not change within an incarnation: every operation that changes what an agent\nholds (an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork`) mints a new agent id, and\nthe new instance emits its own. So it is emitted once and never re-emitted, and it carries\ndeliberately **no holder count** — a point-in-time count is stale the moment a sibling\nspawns, while a consumer holding every instance's roster already knows the exact holder set,\nincluding which of those holders are still running.",
       "properties": {
         "modules": {
           "description": "One entry per [kind](GgModuleKind::ALL), in kind order — including the kinds this\ninstance's profile has switched off, so a capability left off is legible rather than\nabsent.",

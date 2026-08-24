@@ -83,7 +83,6 @@ function held(
     kind,
     moduleId,
     enabled: true,
-    ownership: "owned",
     origin: "created",
     writable: true,
     ...overrides,
@@ -821,7 +820,7 @@ describe("deriveGgModules", () => {
             {
               id: "agent-managed-context",
               enabled: true,
-              params: { ownership: "unowned" },
+              params: {},
             },
           ],
           subagents: [],
@@ -831,79 +830,17 @@ describe("deriveGgModules", () => {
       slots: [],
     } as unknown as GgCapabilitySet;
 
+    // No kind declares an ownership any more; the archive and the board carry nothing
+    // beyond their tools, and only memories has a scope to state.
     expect(declaredModuleConfig(declared, "reviewer", "archive")).toEqual({
-      ownership: "unowned",
       scope: null,
     });
-    // Absent params read as their defaults, which is what every configuration written
-    // before they existed has.
     expect(declaredModuleConfig(declared, "reviewer", "board")).toEqual({
-      ownership: "owned",
       scope: null,
     });
-    // Memories keeps its scope and has no ownership to declare at all.
     expect(declaredModuleConfig(declared, "reviewer", "memories")).toEqual({
-      ownership: null,
       scope: "inherited",
     });
-  });
-
-  // Skills, memories and the task list have no `ownership` param behind them any more (or,
-  // for tasks, ever), so there is nothing for a configuration to have asked. Reading the
-  // old default back would be worse than saying nothing: `moduleDivergences` compares the
-  // declared value against what the holders report, and a manufactured `owned` would put a
-  // finding on the Agents tab about a declaration nobody wrote.
-  it("invents no ownership for a kind whose capability has no such param", () => {
-    const declared = {
-      agents: [
-        {
-          id: "root",
-          name: "Root",
-          modelId: "acme/one",
-          capabilities: [
-            // Even where a stale configuration still carries the key — gg ignores it, and
-            // so must the surface that reports what was asked for.
-            {
-              id: "memories",
-              enabled: true,
-              params: { ownership: "unowned" },
-            },
-            { id: "skills", enabled: true, params: {} },
-            { id: "tasks", enabled: true, params: {} },
-          ],
-          subagents: [],
-          promptCacheTtl: "standard",
-        },
-      ],
-      slots: [],
-    } as unknown as GgCapabilitySet;
-
-    for (const kind of ["memories", "skills", "tasks"] as const) {
-      expect(declaredModuleConfig(declared, "root", kind).ownership).toBeNull();
-    }
-  });
-
-  it("reports no ownership divergence for a kind that cannot declare one", () => {
-    // The phantom this gates: every holder reports an ownership, and comparing it against
-    // an invented `owned` produced a divergence on a row whose capability offers no such
-    // control. An unowned-looking store carried in from elsewhere is still a fact about
-    // the module — it is just not a departure from anything this profile asked for.
-    const modules = index(
-      [
-        spawn("root", "root"),
-        roster("root", [
-          held("history", "history-0"),
-          held("memories", "memories-0", { ownership: "unowned" }),
-        ]),
-      ],
-      set([["root", ["memories"]]]),
-    );
-
-    const memories = modules.byProfile
-      .get("root")!
-      .find((row) => row.kind === "memories")!;
-    expect(memories.declared).toEqual({ ownership: null, scope: "isolated" });
-    expect(memories.divergences).toEqual([]);
   });
 
   it("reads a store handed to a successor as carried, never as shared", () => {

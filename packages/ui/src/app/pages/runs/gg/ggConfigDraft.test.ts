@@ -1909,26 +1909,15 @@ describe("gg capability params", () => {
     ).not.toHaveProperty("reviewers");
   });
 
-  // Only two of the five module-backed capabilities still offer an `ownership` control,
-  // and which two is the point of the test: the board and the thread archive can honestly
-  // be held out of the prompt and reached through their tools, while the task list (always
-  // owned), skills and memories cannot — for the last two the knob was a way of switching
-  // the capability off while claiming it was on, and it is gone from gg entirely
-  // (`MODULE_CAPABILITIES` in `crates/gg/src/modules.rs`). A control that outlived the
-  // param would write a key nothing reads.
-  it("offers the ownership control on the board and the archive alone", () => {
-    const ownership = (id: string) =>
-      CAPABILITIES.find((cap) => cap.id === id)?.params?.some(
-        (p) => p.key === "ownership",
-      ) ?? false;
-    expect(
-      ["project-management", "agent-managed-context"].map(ownership),
-    ).toEqual([true, true]);
-    expect(["tasks", "skills", "memories"].map(ownership)).toEqual([
-      false,
-      false,
-      false,
-    ]);
+  // The `ownership` control is gone from gg entirely — the owned mode was deleted, and a
+  // control that outlived the param would write a key nothing reads (a configuration
+  // carrying one is refused at launch).
+  it("offers no ownership control on any capability", () => {
+    for (const cap of CAPABILITIES) {
+      expect(cap.params?.some((p) => p.key === "ownership") ?? false).toBe(
+        false,
+      );
+    }
   });
 
   it("round-trips a string param through its text control", () => {
@@ -2441,26 +2430,24 @@ describe("params gated on the selected implementation", () => {
     const cap = capabilitySpec("agent-managed-context")!;
     const params = (draft: Record<string, string>) =>
       capabilityParams(cap, { enabled: true, params: draft }, true);
-    expect(params({ topFileViews: "5", ownership: "owned" })).toEqual({
+    expect(params({ topFileViews: "5" })).toEqual({
       ok: true,
-      value: { topFileViews: 5, ownership: "owned" },
+      value: { topFileViews: 5 },
     });
     expect(
       params({
         topFileViews: "5",
-        ownership: "owned",
         signalThresholdPercent: "0",
       }),
     ).toEqual({
       ok: true,
-      value: { topFileViews: 5, ownership: "owned", signalThresholdPercent: 0 },
+      value: { topFileViews: 5, signalThresholdPercent: 0 },
     });
     // A share of a window is between none of it and all of it, caught on the screen
     // rather than at the launch it would otherwise refuse.
     expect(
       params({
         topFileViews: "5",
-        ownership: "owned",
         signalThresholdPercent: "120",
       }),
     ).toEqual({ ok: false, error: "Signal at must be between 0 and 100." });

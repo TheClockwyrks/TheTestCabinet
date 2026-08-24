@@ -209,33 +209,6 @@ You may delegate work to any of the following agents:
 {{/each}}
 {{/if}}
 
-{{#if board}}
-## Project management
-
-Each issue is worked in its own isolated copy of the workspace, which is merged
-back once the issue is accepted.
-
-{{#if board.issueAgents}}
-You may assign an issue to any of the following agents:
-
-{{#each board.issueAgents}}
-- `{{name}}`{{#if description}}: {{description}}{{/if}}
-{{/each}}
-{{/if}}
-
-{{#if board.reviewerAgents}}
-{{#if board.reviewersRequired}}
-Every issue must name one or more `reviewers`.
-{{else}}
-An issue may name one or more `reviewers`.
-{{/if}}You may name any of the following agents as a reviewer:
-
-{{#each board.reviewerAgents}}
-- `{{name}}`{{#if description}}: {{description}}{{/if}}
-{{/each}}
-{{/if}}
-{{/if}}
-
 {{#if assignedIssue}}
 ## Your assigned issue
 

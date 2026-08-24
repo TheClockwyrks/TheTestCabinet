@@ -109,20 +109,6 @@ fn full_system() -> SystemContext {
             scope: "isolated".to_string(),
         }),
         tasks: Some(TasksView { max_tasks: 100 }),
-        board: Some(BoardView {
-            max_epics: 50,
-            max_issues: 2000,
-            max_retries: 1,
-            reviewers_required: true,
-            issue_agents: vec![SpawnableAgentView {
-                name: "builder".to_string(),
-                description: "implements issues".to_string(),
-            }],
-            reviewer_agents: vec![SpawnableAgentView {
-                name: "critic".to_string(),
-                description: "reviews finished work".to_string(),
-            }],
-        }),
         assigned_issue: Some(AssignedIssueView {
             id: "feat-1".to_string(),
         }),
@@ -716,11 +702,11 @@ fn the_task_section_carries_the_tool_instructions() {
 
 /// The two execution modes render **different** capability sections, and the split is now asymmetric.
 ///
-/// A tool-calling run names each capability's free-standing tools (`add_task`, `spawn_subagent`,
-/// `create_epic`) — correctly, because those names *are* what such a model requests, and they arrive
-/// with the request's own tool schemas whether the prompt names them or not. A responses-as-code run
-/// names **no call at all**: it says what each capability is, lists the modules its surface is
-/// divided into, and leaves the functions to be searched for.
+/// A tool-calling run names each capability's free-standing tools (`add_task`, `spawn_subagent`)
+/// — correctly, because those names *are* what such a model requests, and they arrive with the
+/// request's own tool schemas whether the prompt names them or not. A responses-as-code run names
+/// **no call at all**: it says what each capability is, lists the modules its surface is divided
+/// into, and leaves the functions to be searched for.
 ///
 /// So this pins both halves. The tool arm must still name its tools; the code arm must name neither
 /// a tool name (which is not what a program calls) nor a grouped call (which is what the model is
@@ -745,37 +731,25 @@ fn the_two_modes_name_calls_in_their_own_form() {
                 name: "helper".to_string(),
                 description: "does scoped work".to_string(),
             }],
-            board: Some(BoardView {
-                max_epics: 50,
-                max_issues: 2000,
-                max_retries: 1,
-                reviewers_required: true,
-                issue_agents: vec![SpawnableAgentView {
-                    name: "builder".to_string(),
-                    description: "implements issues".to_string(),
-                }],
-                reviewer_agents: vec![SpawnableAgentView {
-                    name: "critic".to_string(),
-                    description: "reviews finished work".to_string(),
-                }],
-            }),
             ..SystemContext::default()
         }
     }
 
-    // Tool-calling: the free-standing tool names, and none of the grouped forms.
+    // Tool-calling: the free-standing tool names, and none of the grouped forms. The board
+    // tools are absent from both arms: the board renders no prompt section at all.
     let tools = flat(&render_system(&every_section_on(false), None));
-    for tool in [
-        "`add_task`",
-        "`spawn_subagent`",
-        "`create_epic`",
-        "`create_issue`",
-    ] {
+    for tool in ["`add_task`", "`spawn_subagent`"] {
         assert!(
             tools.contains(tool),
-            "tool-calling missing `{tool}`:\n{tools}"
+            "tool-calling missing `{tool}`:
+{tools}"
         );
     }
+    assert!(
+        !tools.contains("`create_epic`") && !tools.contains("`create_issue`"),
+        "the tool-calling prompt says nothing about the board:
+{tools}"
+    );
     for grouped in [
         "gg.tasks.addTask",
         "gg.delegation.spawnSubagent",
@@ -814,22 +788,15 @@ fn the_two_modes_name_calls_in_their_own_form() {
             "code mode leaked free-standing tool `{tool}`:\n{code}"
         );
     }
-    // And what it says instead. The sentences this used to read are gone with the ruling that the
-    // prompt describes no capability whose functions' own briefs describe it: the Subagents and
-    // project-management sections kept only their **rosters** and the behaviour no brief states,
-    // and the Tasks section kept only when to reach for a task list. So the presence half is
-    // re-anchored on exactly that residue — the sentences that survive because nothing else says
-    // them, and the rosters the run configured.
+    // And what it says instead: the sentences that survive because nothing else says them, and
+    // the rosters the run configured. The board contributes nothing here — it is reachable
+    // through its calls alone.
     for stated in [
         // Tasks: when a task list is worth reaching for, which is a judgement no brief makes.
         "Use your task list to break complex work into steps",
         // Subagents: the roster line, which introduces names that exist only in this run's config.
         "You may delegate work to any of the following agents",
         "`helper`",
-        // Project management: what happens to an issue's work, which is gg's own process rather
-        // than any function's contract, so no brief carries it.
-        "Each issue is worked in its own isolated copy of the workspace",
-        "`builder`",
     ] {
         assert!(
             code.contains(stated),
@@ -921,8 +888,7 @@ fn a_skills_entry_names_only_what_reading_that_skill_does() {
 }
 
 /// The **Subagents** section is gated on the agent actually having `spawn_subagent`,
-/// **not** on its roster being non-empty — and the project-management section lists the
-/// roster's implementers and reviewers separately.
+/// **not** on its roster being non-empty.
 ///
 /// The two are independent by design: a run may give an agent a roster purely so it can
 /// staff board issues, with no delegation anywhere in sight, and teaching that agent to
@@ -934,18 +900,10 @@ fn the_subagents_section_follows_the_capability_not_the_roster() {
         name: name.to_string(),
         description: description.to_string(),
     };
-    // A board-only agent: implementers and reviewers on the roster, no spawn tool.
+    // A roster with no spawn tool.
     let board_only = SystemContext {
         subagents: false,
         spawnable_agents: vec![roster("helper", "does scoped work")],
-        board: Some(BoardView {
-            max_epics: 50,
-            max_issues: 2000,
-            max_retries: 1,
-            reviewers_required: false,
-            issue_agents: vec![roster("builder", "implements issues")],
-            reviewer_agents: vec![roster("critic", "reviews finished work")],
-        }),
         ..SystemContext::default()
     };
     let rendered = flat(&render_system(&board_only, None));
@@ -957,18 +915,6 @@ fn the_subagents_section_follows_the_capability_not_the_roster() {
         !rendered.contains("`helper`"),
         "and its spawnable roster is not listed either:\n{rendered}"
     );
-    // Both issue rosters are named, so the model knows which names each call accepts.
-    for expected in [
-        "`builder`",
-        "implements issues",
-        "`critic`",
-        "reviews finished work",
-    ] {
-        assert!(
-            rendered.contains(expected),
-            "the project-management section must name {expected}:\n{rendered}"
-        );
-    }
 
     // The same roster with the capability on adds the Subagents section, unchanged.
     let delegating = SystemContext {
@@ -1172,51 +1118,6 @@ fn the_task_block_is_state_not_instructions() {
     }
 }
 
-/// The board block renders its epics and issues, each issue with the structured brief that makes
-/// it dispatchable — and, like the task block, no tool instructions.
-#[test]
-fn the_board_block_renders_epics_issues_and_briefs() {
-    let block = render_board(&BoardBlockContext {
-        epics: vec![EpicItemView {
-            id: "core".to_string(),
-            title: "Core loop".to_string(),
-            description: "The playable core.".to_string(),
-        }],
-        issues: vec![IssueItemView {
-            id: "render".to_string(),
-            title: "Render the board".to_string(),
-            description: Some("canvas".to_string()),
-            status: "open".to_string(),
-            marker: "[ ]".to_string(),
-            epic_id: Some("core".to_string()),
-            ready: true,
-            blocked_by: None,
-            in_scope: "the grid".to_string(),
-            out_of_scope: "animation".to_string(),
-            completion_criteria: "the grid draws".to_string(),
-            agent: "implementer".to_string(),
-            reviewers: Some("`critic`".to_string()),
-        }],
-    });
-    assert_eq!(
-        block,
-        "# Your epic/issue board\n\
-         \n\
-         ## Epics\n\
-         - `core` — Core loop: The playable core.\n\
-         \n\
-         ## Issues\n\
-         - [ ] `render` (open) — Render the board  [epic: `core`]  [ready]\n\
-         \x20 - overview: canvas\n\
-         \x20 - in scope: the grid\n\
-         \x20 - out of scope: animation\n\
-         \x20 - done when: the grid draws\n\
-         \x20 - assigned to: `implementer`\n\
-         \x20 - reviewers: `critic`"
-    );
-    assert!(!block.contains("create_issue"));
-}
-
 /// **An agent dispatched to implement an issue is told which issue it is working, and that the
 /// workspace it is in is that issue's own** — whether or not it may author the board, since an
 /// implementer profile normally cannot.
@@ -1236,8 +1137,6 @@ fn an_assigned_issue_names_the_issue_and_its_worktree() {
             brief: "read, write, and edit workspace files".to_string(),
             import: None,
         }],
-        // No `board`: this profile may not author the board, only work an issue on it.
-        board: None,
         assigned_issue: Some(AssignedIssueView {
             id: "feat-1".to_string(),
         }),
@@ -1805,7 +1704,6 @@ const REQUIRED_SECTIONS: &[&str] = &[
     "## Memory",
     "## Tasks",
     "## Subagents",
-    "## Project management",
     "## Your assigned issue",
 ];
 
@@ -1879,20 +1777,6 @@ pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContex
             name: "helper".to_string(),
             description: "does scoped work".to_string(),
         }],
-        board: Some(BoardView {
-            max_epics: 50,
-            max_issues: 2000,
-            max_retries: 1,
-            reviewers_required: true,
-            issue_agents: vec![SpawnableAgentView {
-                name: "builder".to_string(),
-                description: "implements issues".to_string(),
-            }],
-            reviewer_agents: vec![SpawnableAgentView {
-                name: "critic".to_string(),
-                description: "reviews finished work".to_string(),
-            }],
-        }),
         assigned_issue: Some(AssignedIssueView {
             id: "issue-1".to_string(),
         }),
@@ -2235,7 +2119,7 @@ fn every_language_renders_its_own_nothing_shown_notice() {
 /// name, a description, a number, an identifier. That is deliberate and it is the whole discipline
 /// of this table. Rewording a sentence, re-wrapping a paragraph or changing `**bold**` to `*italic*`
 /// must not fail a test — a prompt is prose and it is meant to be edited. Dropping `{{#each
-/// board.reviewerAgents}}` must.
+/// spawnableAgents}}` must.
 const REQUIRED_PHRASES: &[(&str, &str)] = &[
     // ### Your modules — the modules a program's surface is divided into, and what each is for.
     // Without these a model is told to call `<module>.<function>()`, told no function, and never
@@ -2265,11 +2149,6 @@ const REQUIRED_PHRASES: &[(&str, &str)] = &[
     // ## Subagents — the roster a delegation may name.
     ("the spawnable agent's name", "`helper`"),
     ("the spawnable agent's description", "does scoped work"),
-    // ## Project management — the two rosters an issue names.
-    ("the issue agent's name", "`builder`"),
-    ("the issue agent's description", "implements issues"),
-    ("the reviewer agent's name", "`critic`"),
-    ("the reviewer agent's description", "reviews finished work"),
     // ## Your assigned issue — which issue this agent was dispatched to implement.
     ("the assigned issue's id", "`issue-1`"),
 ];
@@ -2449,7 +2328,7 @@ fn a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session() {
             // whose text is the catalogue's rather than a template's.
             let mut context = every_code_section_on(id);
             context.modules = crate::agent::module_views(held, granted, EndingRole::Standard, id);
-            context.code_headings = crate::agent::code_heading_views(true, true, true, true);
+            context.code_headings = crate::agent::code_heading_views(true, true, true);
 
             // Every module this arm declares a function in is one this scan has read, or the
             // configurations above have stopped being maximal and a leak could hide behind a gate.
@@ -2561,7 +2440,7 @@ fn a_rendered_prompt_names_no_type_the_documentation_would_open() {
             let name = language.display_name();
             let mut context = every_code_section_on(id);
             context.modules = crate::agent::module_views(held, granted, EndingRole::Standard, id);
-            context.code_headings = crate::agent::code_heading_views(true, true, true, true);
+            context.code_headings = crate::agent::code_heading_views(true, true, true);
             let rendered = render_system(&context, None);
 
             let separator = language.member_separator();
@@ -2637,44 +2516,6 @@ fn a_read_only_memory_holder_is_told_the_memories_are_not_its_own() {
                  write:\n{rendered}"
             );
         }
-    }
-}
-
-/// **A run that requires reviewers says so, and one that does not says the opposite.**
-///
-/// Deliberately *not* in [`REQUIRED_PHRASES`], and this is the reason the table stays exceptionless:
-/// `reviewers_required` carries no value into the prompt. It picks between two sentences that name
-/// the same identifier, so the only thing that distinguishes them is their wording, and asserting on
-/// wording belongs in a test that says it is doing that rather than in a table whose stated rule is
-/// that rewording must never fail.
-///
-/// It still earns its place: the two sentences are the difference between an agent that must name a
-/// reviewer on every issue and one that may, and a template collapsing them would silently make a
-/// mandatory review optional.
-#[test]
-fn a_run_that_requires_reviewers_tells_the_model_it_must_name_one() {
-    fn board(language: GgProgramLanguage, reviewers_required: bool) -> SystemContext {
-        let mut context = every_code_section_on(language);
-        context
-            .board
-            .as_mut()
-            .expect("the board section is on")
-            .reviewers_required = reviewers_required;
-        context
-    }
-
-    for language in all_languages() {
-        let name = language.display_name();
-        let required = flat(&render_system(&board(language.id(), true), None));
-        assert!(
-            required.contains("Every issue must name one or more `reviewers`"),
-            "{name}: a run requiring reviewers no longer says so:\n{required}"
-        );
-        let optional = flat(&render_system(&board(language.id(), false), None));
-        assert!(
-            optional.contains("An issue may name one or more `reviewers`"),
-            "{name}: a run not requiring reviewers no longer says they are optional:\n{optional}"
-        );
     }
 }
 

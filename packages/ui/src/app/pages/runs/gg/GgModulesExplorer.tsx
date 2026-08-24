@@ -637,14 +637,6 @@ function HoldersSection({ module }: { module: GgModuleInstance }) {
               {holderOrigin(module, holder)}
             </span>
             <span className={panels.modHolderAccess}>
-              <span
-                className={panels.moduleBadge}
-                data-ownership={
-                  holder.ownership === "unowned" ? "unowned" : undefined
-                }
-              >
-                {holder.ownership}
-              </span>
               <span className={panels.moduleBadge}>
                 {holder.writable ? "read/write" : "read-only"}
               </span>

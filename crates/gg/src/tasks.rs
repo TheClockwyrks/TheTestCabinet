@@ -56,7 +56,7 @@ use test_cabinet_core::gg::{
 use crate::dag::{self, DagNode};
 use crate::model::Message;
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Refresh,
     detached_ids,
 };
 use crate::prompts::{self, TaskItemView, TasksBlockContext};
@@ -1103,13 +1103,6 @@ impl Module for TasksRuntime {
 
     fn enabled(&self) -> bool {
         self.enabled
-    }
-
-    /// Always [owned](Ownership::Owned). The list is what the agent steers its work by from
-    /// turn to turn, so it is carried in its holder's prompt as its own message — there is no
-    /// `ownership` param on the tasks capability, and nothing to resolve.
-    fn ownership(&self) -> Ownership {
-        Ownership::Owned
     }
 
     fn context_source(&self) -> Option<GgContextSource> {

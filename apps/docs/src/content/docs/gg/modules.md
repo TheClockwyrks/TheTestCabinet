@@ -20,48 +20,23 @@ There are six kinds, and the list is closed.
 | `skills` | Its profile's [skills](/gg/skills/) catalogue and the set of skills used so far. |
 | `archive` | The thread archive [`archive_thread`](/gg/agent-managed-context/) fills and `search_archive` reads. |
 
-## Ownership
+## What reaches the prompt
 
-Two module-backed capabilities read an `ownership` param:
-[`project-management`](/gg/project-management/) for the board and
-[`agent-managed-context`](/gg/agent-managed-context/) for the thread archive.
+What a module contributes to its holder's prompt is fixed per kind; nothing
+about it is configurable, and an agent's system prompt is never rewritten after
+it is created. A window is its holder's prompt. A task list is what an agent
+steers by from turn to turn, so it is always carried as its own message. For
+memories the [strategy](/gg/memories/) already decides what the store puts in
+the window, and for skills its own catalogue is the only route an agent has to
+knowing which skills exist.
 
-```jsonc
-{
-  "id": "project-management",
-  "enabled": true,
-  "params": {
-    "ownership": "unowned",
-    "mergeAgentId": "merger",
-    "maxEpics": 50,
-    "maxIssues": 2000,
-    "maxRetries": 1
-  }
-}
-```
-
-- `owned` means the holder's prompt carries the module. Its system-prompt
-  section is rendered, and the pinned block it keeps is refreshed into the
-  window on that module's own schedule.
-- `unowned` means the module is reachable through its tools alone. Its state
-  stays live: the tools read and write it, it is copied and transferred like any
-  other module, and its telemetry is unchanged. What the model still gets is
-  each tool's own schema and description.
-
-A value gg does not recognize refuses the launch, and so does an `ownership`
-param on a capability that reads none. The refusal names every such value in the
-configuration at once.
-
-Unowned suits a store an agent should be able to act on without paying for it in
-every request it makes. One case applies it without configuration: an agent
-whose profile has no project-management capability holds the run's board
-unowned, so it is not shown a decomposition it has no tool to act on.
-
-The other four kinds read no ownership param. A window is its holder's prompt. A
-task list is what an agent steers by from turn to turn, so it is always carried
-as its own message. For memories the [strategy](/gg/memories/) already decides
-what the store puts in the window, and for skills its own catalogue is the only
-route an agent has to knowing which skills exist.
+The [`project-management`](/gg/project-management/) board and the
+[`agent-managed-context`](/gg/agent-managed-context/) thread archive contribute
+nothing at all: no system-prompt section and no pinned block. Each is reachable
+through its tools alone — the tools read and write it, it is copied and
+transferred like any other module, and its telemetry is unchanged — so it costs
+its holder no context between calls. What the model gets is each tool's own
+schema and description.
 
 ## Copying
 
@@ -113,8 +88,7 @@ whatever only the successor has.
 Per kind, one of four things happens:
 
 1. Carried. The module moves across live, with its contents, and is
-   re-resolved against the receiving profile: its caps, its mode, and its
-   ownership where it has one.
+   re-resolved against the receiving profile: its caps and its mode.
 2. Dropped. The receiving profile does not enable the capability.
 3. Dropped and re-initialized. The receiving profile configures the
    capability in a shape the contents cannot be read under, so a fresh module is
@@ -153,8 +127,7 @@ A module's telemetry is attributed to its holder, which is what keeps the
 console's per-agent panels honest when a store has more than one. A write is
 reported once, on the stream of the agent that made it. Every other holder
 re-emits its own state snapshot instead, because its panel changed while the
-work was not its own. An unowned module reports everything an owned one does:
-ownership decides what reaches the model, never what reaches the record.
+work was not its own.
 
 A module that is dropped is drained onto the outgoing agent's stream before it
 goes, and every module the successor ends up with re-states itself on the
@@ -211,12 +184,11 @@ turn-by-turn view the Requests file renders. Every other kind's file states its
 figures the way the Modules tab's overviews do: a row of large values over muted
 labels.
 
-Each file leads with an identity strip carrying the store's id, its kind, its
-ownership, how this holder came by it, its read access, everything that has
-happened to it, what it costs this window every turn and what it costs across
-every live holder, and a chip per co-holder that opens that instance's same
-file. An unowned module says in words that this agent holds it while its prompt
-does not carry it. A store every holder has let go of is badged dropped.
+Each file leads with an identity strip carrying the store's id, its kind, how
+this holder came by it, its read access, everything that has happened to it,
+what it costs this window every turn and what it costs across every live
+holder, and a chip per co-holder that opens that instance's same file. A store
+every holder has let go of is badged dropped.
 
 The strip's link to the Modules tab is offered only when the run has that tab.
 Every instance of every run holds a window, so a `modules/history` file exists in
@@ -241,8 +213,8 @@ zero is distinguished both from an unmeasured one and from the archive, which
 has no context band by construction.
 
 Selecting a store reads it in five sections: its identity; its holders, each
-with its origin, read access, ownership and what the module costs that
-instance's window; its lifetime, oldest first, each entry naming the succession
+with its origin, read access and what the module costs that instance's
+window; its lifetime, oldest first, each entry naming the succession
 that caused it; its cost per holder against the summed live figure; and its
 contents, taken from the store's own snapshot. History and archive report no
 snapshot, so their contents are read off their holder's stream.
@@ -267,7 +239,7 @@ chips carries one row per kind, badged by how the stores are distributed:
 
 Where the declared configuration and the observed distribution disagree, the row
 carries a note naming both and the likely cause: a `scope: inherited` whose
-instances each got their own, a `shared` profile re-bound mid-run by a
-succession, or holders disagreeing about ownership after a transfer. Each of
-those is a legal configuration, so it is a note rather than an error. Notes are
+instances each got their own, or a `shared` profile re-bound mid-run by a
+succession. Each of those is a legal configuration, so it is a note rather
+than an error. Notes are
 written only for a run that reported its rosters.

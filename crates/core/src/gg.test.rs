@@ -1140,9 +1140,9 @@ fn context_breakdown_serializes_source_bands_and_omits_unknown_limit() {
     );
 }
 
-/// The [module](GgModuleKind) vocabulary is a closed taxonomy on the wire: a transfer list and an
-/// `ownership` param are both read back from a recorded configuration, so their spellings are part
-/// of the contract rather than an implementation detail.
+/// The [module](GgModuleKind) vocabulary is a closed taxonomy on the wire: a transfer list is
+/// read back from a recorded configuration, so its spellings are part of the contract rather than
+/// an implementation detail.
 #[test]
 fn the_module_vocabulary_serializes_in_its_documented_spelling() {
     assert_eq!(GgModuleKind::ALL.len(), 6);
@@ -1159,22 +1159,12 @@ fn the_module_vocabulary_serializes_in_its_documented_spelling() {
         serde_json::to_value(GgModuleKind::Board).unwrap(),
         json!("board")
     );
-
-    assert_eq!(
-        serde_json::to_value(GgModuleOwnership::Owned).unwrap(),
-        json!("owned")
-    );
-    assert_eq!(
-        serde_json::to_value(GgModuleOwnership::Unowned).unwrap(),
-        json!("unowned")
-    );
-    assert_eq!(MODULE_PARAM_OWNERSHIP, "ownership");
 }
 
 #[test]
 fn context_source_all_covers_every_variant_in_stable_order() {
     // `ALL` constructs every variant (so none is dead) and fixes the band order.
-    assert_eq!(GgContextSource::ALL.len(), 15);
+    assert_eq!(GgContextSource::ALL.len(), 14);
     assert_eq!(GgContextSource::ALL[0], GgContextSource::System);
     // The two responses-as-code failure bands sit together, immediately after the tool output
     // they replaced on that path — a code turn produces one of these where a tool-calling turn
@@ -1223,15 +1213,18 @@ fn context_source_all_covers_every_variant_in_stable_order() {
         serde_json::to_value(GgContextSource::TaskList).unwrap(),
         json!("task_list")
     );
-    assert_eq!(
-        serde_json::to_value(GgContextSource::Board).unwrap(),
-        json!("board")
-    );
     // The plan band went away with the planning capability; nothing replaced it.
     assert!(
         !GgContextSource::ALL
             .iter()
             .any(|source| serde_json::to_value(source).unwrap() == json!("plan"))
+    );
+    // So did the board band with the owned board: the board is reachable through its tools
+    // alone, so no context item ever carries it.
+    assert!(
+        !GgContextSource::ALL
+            .iter()
+            .any(|source| serde_json::to_value(source).unwrap() == json!("board"))
     );
 }
 
@@ -2354,18 +2347,16 @@ fn message_log_events_round_trip() {
 // --- Module instance identity ------------------------------------------------
 
 /// A roster is the only event that reports a module an agent holds but has not touched, so every
-/// field on it has to survive the wire: the id that says *which* store, the ownership that says
-/// whether it is in the prompt, the origin that says how the holder came by it, and — for the one
-/// kind that has one — the declared scope beside it.
+/// field on it has to survive the wire: the id that says *which* store, the origin that says how
+/// the holder came by it, and — for the one kind that has one — the declared scope beside it.
 #[test]
-fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
+fn agent_modules_serializes_a_roster_with_ids_and_origin() {
     let kind = GgTelemetryKind::AgentModules {
         modules: vec![
             GgAgentModule {
                 kind: GgModuleKind::History,
                 module_id: "history-3".to_string(),
                 enabled: true,
-                ownership: GgModuleOwnership::Owned,
                 origin: GgModuleOrigin::Transferred,
                 scope: None,
                 writable: true,
@@ -2376,7 +2367,6 @@ fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
                 kind: GgModuleKind::Memories,
                 module_id: "memories-0".to_string(),
                 enabled: true,
-                ownership: GgModuleOwnership::Unowned,
                 origin: GgModuleOrigin::Inherited,
                 scope: Some(GgMemoryScope::ReadOnly),
                 writable: false,
@@ -2386,7 +2376,6 @@ fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
                 kind: GgModuleKind::Tasks,
                 module_id: String::new(),
                 enabled: false,
-                ownership: GgModuleOwnership::Owned,
                 origin: GgModuleOrigin::Created,
                 scope: None,
                 writable: true,
@@ -2397,7 +2386,6 @@ fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
     assert_eq!(value["type"], json!("agent_modules"));
     assert_eq!(value["modules"][0]["moduleId"], json!("history-3"));
     assert_eq!(value["modules"][0]["origin"], json!("transferred"));
-    assert_eq!(value["modules"][1]["ownership"], json!("unowned"));
     assert_eq!(value["modules"][1]["scope"], json!("read-only"));
     assert_eq!(value["modules"][1]["writable"], json!(false));
     // A kind with no scope omits it rather than sending null.
@@ -2719,7 +2707,7 @@ fn authored_keys(id: &str) -> std::collections::BTreeSet<&'static str> {
 /// Every param key the [authoring catalog](gg_authoring_catalog) can write, so
 /// [`authored_keys`](authored_keys) reports a key by the constant that names it rather than by a
 /// string spelled a second time.
-const GG_AUTHORED_PARAM_KEYS: [&str; 25] = [
+const GG_AUTHORED_PARAM_KEYS: [&str; 24] = [
     PARAM_MAX_LINES,
     PARAM_MAX_CHARS,
     PARAM_LINE_CAP,
@@ -2739,7 +2727,6 @@ const GG_AUTHORED_PARAM_KEYS: [&str; 25] = [
     PARAM_SUMMARY_HEADROOM,
     PARAM_TOP_FILE_VIEWS,
     PARAM_SIGNAL_THRESHOLD_PERCENT,
-    MODULE_PARAM_OWNERSHIP,
     PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
     PARAM_MAX_EPICS,
     PARAM_MAX_ISSUES,
@@ -2887,7 +2874,6 @@ fn the_authoring_catalog_leaves_out_every_param_that_is_off_when_absent() {
             PARAM_MAX_EPICS,
             PARAM_MAX_ISSUES,
             PARAM_MAX_RETRIES,
-            MODULE_PARAM_OWNERSHIP,
         ])
     );
 }

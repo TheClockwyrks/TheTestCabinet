@@ -858,11 +858,9 @@ export const LOOP_DETECTION_SPECS: ReadonlyArray<LoopDetectionSpec> = [
 //
 // Every unit of per-agent state gg keeps behind a capability is a **module** (see
 // gg/modules): memories, the task list, the board, the skills read-set and the thread
-// archive, plus the conversation window itself. Two things about a module are authored
-// here — whether its holder's *prompt* carries it (`ownership`, a param on the two
-// capabilities that still offer it; see [ownershipParam]), and which modules an FSM
-// transition hands to the next state (the transfer list on each edge). Both name the
-// same closed taxonomy, so it is spelled once.
+// archive, plus the conversation window itself. One thing about a module is authored
+// here — which modules an FSM transition hands to the next state (the transfer list on
+// each edge). The transfer list names a closed taxonomy, so it is spelled once.
 
 // The module kinds a transition may carry, in the contract's own declaration order
 // (`GgModuleKind` in `crates/core/src/gg.rs`), each with what carrying it actually
@@ -909,12 +907,8 @@ export const MODULE_KINDS: ReadonlyArray<{
 ];
 
 // Which capability backs each module kind — what lets a module's row link back to the
-// capability an operator would tune.
-//
-// Deliberately *not* the same list as `MODULE_CAPABILITIES` in `crates/gg/src/modules.rs`,
-// which is the narrower question of which capabilities carry an [ownership](ownershipParam)
-// param — two of these five. This map answers "what would I go and configure to change
-// this module?", which every kind but one has an answer to.
+// capability an operator would tune. This map answers "what would I go and configure to
+// change this module?", which every kind but one has an answer to.
 //
 // `history` is that one, and its absence is load-bearing: the window is not a capability,
 // it is the agent. Every agent has one, always.
@@ -1027,46 +1021,6 @@ export function authoredImplementation(cap: CapSpec): string {
 export function requiresImplementation(cap: CapSpec): boolean {
   const options = cap.implementationOptions ?? [];
   return options.length > 0 && options.every((o) => o.value !== "");
-}
-
-// Whether a module-backed capability's state is carried in its holder's **prompt**
-// (`owned` — every turn, as a pinned block and a prompt section) or is reachable only
-// through the tools it contributes (`unowned`). Both are written: a capability that
-// declares no ownership declares nothing gg can conduct a run on.
-export const MODULE_OWNERSHIP_OPTIONS = [
-  { value: "owned", label: "Owned" },
-  { value: "unowned", label: "Unowned — tools only, not in the prompt" },
-] as const;
-
-// One module-backed capability's `ownership` control. The label is shared across the
-// two that offer it — project management and agent-managed context — so the knob reads
-// as one idea rather than two; `what` names the state at stake so the hint says what an
-// unowned arm actually costs that capability.
-//
-// The other three module-backed capabilities have no unowned arm at all, and which one
-// is missing for which reason is worth knowing before wondering where the picker went.
-// The task list is what an agent steers its work by from turn to turn, so it is always
-// owned. Skills and memories offer no such knob (`MODULE_CAPABILITIES` in
-// `crates/gg/src/modules.rs` is two entries), because on both of them it would be a way
-// of switching the capability off while pretending it was on: what a memory strategy puts
-// in the window IS what having memories means under it, and the strategy is already that
-// knob — `keyword-search` is the arm that pins nothing — while a skills catalogue the
-// agent is never shown leaves it able to read a skill only by being handed its name,
-// which is the capability disabled with extra steps rather than an arm of a study.
-//
-// Two behaviours follow and are worth stating: the pinned memory index cannot be
-// withheld, and a linked holder is always told when another holder adds, revises or
-// removes a memory.
-function ownershipParam(what: string): ParamSpec {
-  return {
-    key: "ownership",
-    label: "Ownership",
-    kind: "select",
-    required: true,
-    defaultValue: MODULE_OWNERSHIP_OPTIONS[0].value,
-    options: MODULE_OWNERSHIP_OPTIONS,
-    hint: `Whether this agent's prompt carries ${what}. Owned rebuilds it into the window on its own schedule and describes it in the system prompt, so the agent is told what it holds on every turn. Unowned removes both, and leaves the tools, the state and the telemetry unchanged: the agent reaches ${what} through its tools instead, and pays no context for it between calls.`,
-  };
 }
 
 // The workspace-relative directory a freshly enabled skills capability is written with
@@ -1643,7 +1597,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: String(AUTHORED_SIGNAL_THRESHOLD_PERCENT),
         hint: "How full the window has to be, as a percentage, before the agent is shown the context-usage block at all. The share is of the window the agent may actually fill — the model's window less whatever an enabled Compaction holds back — which is the same figure the block then reports. Below it there is no block, since a block reporting a window that is 6% full costs tokens to ask for a reclaim worth nothing. Set 0 to show it every turn.",
       },
-      ownershipParam("what it has archived"),
     ],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
     // The view call is responses-as-code only: a tool-calling agent has no `view`
@@ -1843,9 +1796,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: String(AUTHORED_MAX_TASKS),
         hint: "How many tasks the list may hold at once.",
       },
-      // No `ownership` param: the task list is always carried in its holder's prompt. It
-      // is what the agent steers by from turn to turn, so an unowned one — reachable
-      // through the tools and absent from the prompt — is not a shape this capability has.
+      // The task list is always carried in its holder's prompt: it is what the agent
+      // steers by from turn to turn.
     ],
     tools: [
       "add_task",
@@ -1923,7 +1875,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "boolean",
         hint: "On, filing an issue requires naming one or more reviewers — from the agents this one lists with the Reviewer scope. Either way, every reviewer an issue names must approve the work before the issue is accepted and merged.",
       },
-      ownershipParam("the board"),
     ],
     tools: [
       "create_epic",
@@ -2071,23 +2022,6 @@ export const RESPONSES_AS_CODE_CAP: CapSpec = CAPABILITIES.find(
 export const FSM_CAP: CapSpec = CAPABILITIES.find((c) => c.id === FSM_CAP_ID)!;
 export const DEFAULT_CAP_IDS = CAPABILITIES.filter((c) => c.defaultOn).map(
   (c) => c.id,
-);
-// The module kinds whose capability still offers an [ownership](ownershipParam) control,
-// derived from the catalog rather than listed a second time — so a capability that gains
-// or loses the param carries this along with it instead of leaving a reader of a module
-// surface to be told about a declaration nobody could have made.
-//
-// That is what it is for: the observed side of the module surfaces compares what a profile
-// asked for against what its instances got, and a kind that cannot be asked has to be read
-// as "nothing declared" rather than as the param's old default. See `declaredModuleConfig`.
-export const OWNERSHIP_MODULE_KINDS: ReadonlySet<GgModuleKind> = new Set(
-  [...MODULE_CAPABILITY_IDS]
-    .filter(([, capability]) =>
-      CAPABILITIES.find((cap) => cap.id === capability)?.params?.some(
-        (param) => param.key === "ownership",
-      ),
-    )
-    .map(([kind]) => kind),
 );
 
 // --- Run limits -----------------------------------------------------------------

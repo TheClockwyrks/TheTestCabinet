@@ -17,8 +17,6 @@ case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-template).
   sections plus the code-protocol framing, with one gated segment per [program
   language](/gg/languages/overview/).
 - `tasks.hbs` — the pinned [task list](/gg/tasks/) block.
-- `board.hbs` — the pinned [project management](/gg/project-management/) board
-  block.
 - `memories.hbs` — the pinned [memories](/gg/memories/) block.
 - `memory-index.hbs` — the pinned index the `markdown` memory strategy keeps.
 - `memory-notice.hbs` — the message a holder of a linked memory instance is
@@ -100,9 +98,9 @@ package inventory.
 A capability that is off contributes no prompt text at all, which is what makes
 two configurations cleanly comparable. A capability that is on contributes
 its instructions and, where it has one, its state: the pinned blocks and the
-skills catalog. For the two capabilities that carry an
-[`ownership`](/gg/modules/#ownership) param, an unowned module contributes
-neither half and is reachable through its tools alone.
+skills catalog. The [board](/gg/project-management/) and the
+[thread archive](/gg/agent-managed-context/) contribute neither half: each is
+reachable through its tools alone.
 
 Each system template is therefore one `{{#if}}` section per capability over a
 rendering context that carries both whether each capability is on and how it is
@@ -292,7 +290,7 @@ rendered, for every language.
 The code arm lists the message headings a run can produce, each message it
 receives being headed by a label on its own line followed by a `----` rule. A
 heading whose capability is off is not described, which covers `Memories`,
-`Tasks`, `Board` and `File`. The rest are ungated: `Task` for the brief or a
+`Tasks` and `File`. The rest are ungated: `Task` for the brief or a
 parent's message, `Compiler error` and `Runtime error` for the two ways a
 program fails, `Notice` for a process fact from the harness, `Summary` for the
 recap a [compaction](/gg/compaction/) restarts the thread from, `Documentation`
@@ -330,7 +328,7 @@ summary claims.
 
 ## The pinned blocks
 
-The task list, board and memories are each pushed into the window as a pinned
+The task list and the memories are each pushed into the window as a pinned
 block that is rebuilt whenever the model changes it. Those blocks are state
 only, being a heading and the current items:
 
@@ -349,12 +347,12 @@ The derived parts of a block, meaning whether an item is ready or blocked by
 specific incomplete items, are computed in Rust by the store that owns the DAG.
 The template lays the result out.
 
-Which of the three an agent gets is decided by its [modules](/gg/modules/): a
+Which of the two an agent gets is decided by its [modules](/gg/modules/): a
 block belongs to a module, and a module the agent does not hold contributes
-neither a block nor the section that would have described it. An
-[unowned](/gg/modules/#ownership) board contributes neither half, which is what
-lets an agent be dispatched an issue from a board it is never shown. A holder of
-the task list or the memory block is shown it.
+neither a block nor the section that would have described it. The
+[board](/gg/modules/#what-reaches-the-prompt) contributes neither half, which
+is what lets an agent be dispatched an issue from a board it is never shown. A
+holder of the task list or the memory block is shown it.
 
 ### Linked-memory notices
 

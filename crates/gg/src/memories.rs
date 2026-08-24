@@ -66,7 +66,7 @@ use test_cabinet_core::gg::{
 
 use crate::model::Message;
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Refresh,
     detached_ids,
 };
 use crate::prompts::{
@@ -2285,14 +2285,6 @@ impl Module for MemoriesRuntime {
 
     fn enabled(&self) -> bool {
         self.enabled
-    }
-
-    /// Always [owned](Ownership::Owned). What a strategy puts in the window — every body, the
-    /// index, or nothing — *is* what having memories means under it, so there is no coherent arm in
-    /// which an agent holds memories and is told nothing about them; the strategy is the knob, and
-    /// [keyword-search](MemoryStrategy::KeywordSearch) is the arm that pins nothing.
-    fn ownership(&self) -> Ownership {
-        Ownership::Owned
     }
 
     fn context_source(&self) -> Option<GgContextSource> {

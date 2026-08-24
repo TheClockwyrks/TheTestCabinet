@@ -54,8 +54,8 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::compile::compile_program;
 use crate::prompts::{
-    AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
-    ModuleView, ReadFileView, SkillView, SpawnableAgentView, SystemContext, TasksView,
+    AssignedIssueView, AutoloadView, CodeHeadingView, EndingView, MemoriesView, ModuleView,
+    ReadFileView, SkillView, SpawnableAgentView, SystemContext, TasksView,
     render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
@@ -121,14 +121,6 @@ fn everything_on() -> SystemContext {
         tasks: Some(TasksView { max_tasks: 100 }),
         subagents: true,
         spawnable_agents: vec![agent("helper")],
-        board: Some(BoardView {
-            max_epics: 50,
-            max_issues: 2000,
-            max_retries: 1,
-            reviewers_required: true,
-            issue_agents: vec![agent("builder")],
-            reviewer_agents: vec![agent("critic")],
-        }),
         assigned_issue: Some(AssignedIssueView {
             id: "feat-1".to_string(),
         }),

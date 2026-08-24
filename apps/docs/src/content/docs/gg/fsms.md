@@ -118,7 +118,7 @@ Per module, a transition does one of three things.
 
 | | |
 | --- | --- |
-| Transferred | Named by the edge and held by the outgoing agent. The live module moves across, with its caps, its mode and (where it has one) its [ownership](/gg/modules/) re-resolved from the receiving profile. |
+| Transferred | Named by the edge and held by the outgoing agent. The live module moves across, with its caps and its mode re-resolved from the receiving profile. |
 | Dropped | Held by the outgoing agent and not named, or named but turned off on the receiving profile. Its backing store is deleted. |
 | Initialized | Enabled on the receiving profile and not carried. A fresh, empty module, exactly as a new agent would get. |
 

@@ -371,9 +371,7 @@ pub const MEMORY_STRATEGY_KEYWORD_SEARCH: &str = "keyword-search";
 /// Meaningful only where memories are enabled: a profile that sets it with the capability off is
 /// **refused** at launch, because the two together describe an intent gg cannot honour.
 ///
-/// See [memories](https://docs.testcabinet.ai/gg/memories/) for what each scope does, and
-/// [`MODULE_PARAM_OWNERSHIP`] for the orthogonal question of whether the bound instance is carried
-/// in the holder's prompt.
+/// See [memories](https://docs.testcabinet.ai/gg/memories/) for what each scope does.
 pub const MEMORY_PARAM_SCOPE: &str = "scope";
 
 /// The [memories](CAPABILITY_MEMORIES) capability's `maxCount` param: how many memories the set
@@ -527,67 +525,6 @@ pub const TASK_MODE_ISSUES: &str = "issues";
 /// [authoring catalog](gg_authoring_catalog) writes into a new document.
 pub const TASK_MODES: [&str; 2] = [TASK_MODE_SIMPLE, TASK_MODE_ISSUES];
 
-/// The [`params`](GgCapabilityConfig::params) key every **module-backed** capability reads to
-/// decide whether the state it keeps is [owned](GgModuleOwnership::Owned) by the agent holding
-/// it — the only behaviour gg had before modules existed — or
-/// [unowned](GgModuleOwnership::Unowned). Each of the two capabilities that read it writes it, and
-/// an enabled one that does not refuses the launch.
-///
-/// A module-backed capability is one whose state gg keeps for the agent rather than one that is
-/// a pure function of a call — see [`GgModuleKind`] for the closed list of modules. Exactly **two**
-/// of them read this param: [`project-management`](CAPABILITY_PROJECT_MANAGEMENT) and
-/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT).
-///
-/// The others have no ownership to configure, and every absence is load-bearing.
-/// [`tasks`](CAPABILITY_TASKS): the task list is what an agent steers its work by from turn to turn,
-/// so it is always carried in its holder's prompt as its own message.
-/// [`memories`](CAPABILITY_MEMORIES) and [`skills`](CAPABILITY_SKILLS): for both of them the knob
-/// would be a way of switching the capability off while pretending it was on — what a
-/// [memory strategy](MEMORY_STRATEGY_SCRATCHPAD) pins *is* what having memories means under it, and
-/// the strategy is already that knob.
-///
-/// So an `ownership` key on any capability but those two is a **launch failure**: it is a key on a
-/// capability that has none, which is a configuration asking for something gg cannot do. An
-/// unrecognized value is refused on the same terms, in line with how every unrecognized capability
-/// *value* is treated.
-///
-/// See the [module model](https://docs.testcabinet.ai/gg/modules/) for what ownership changes.
-pub const MODULE_PARAM_OWNERSHIP: &str = "ownership";
-
-/// Whether the state a module-backed capability keeps is carried in its holder's **prompt**, or
-/// is reachable only through the tools it contributes.
-///
-/// This is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and it is the one knob that separates
-/// "the agent is told what it holds, every turn" from "the agent may look it up". It exists
-/// because a module is no longer necessarily *about* the agent holding it: once a memory instance
-/// can be shared between agents, or a task list handed from one FSM state to the next, an agent
-/// can be given a working store it should be able to act on without paying for it in every
-/// request it makes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GgModuleOwnership {
-    /// The holder's prompt carries the module: its system-prompt section is rendered, and the
-    /// pinned block it keeps (the memory index, the task list, the board) is refreshed into the
-    /// window on that module's own schedule. What a new document is authored with, and what a
-    /// [task list](GgModuleKind) always is.
-    Owned,
-    /// The module is reachable through the holder's **tools and nothing else**: no system-prompt
-    /// section, no pinned block, and no per-turn notice. Its state is still live — the tools read
-    /// and write it, and it is still transferred, shared and reported as
-    /// [telemetry](GgTelemetryKind) exactly as an owned one is — it simply costs the holder no
-    /// context until it asks.
-    Unowned,
-}
-
-impl GgModuleOwnership {
-    /// Whether this is [`Owned`](Self::Owned) — the question every prompt-assembly site asks, since
-    /// what ownership decides is whether the holder's prompt carries the module at all.
-    pub fn is_owned(self) -> bool {
-        matches!(self, GgModuleOwnership::Owned)
-    }
-}
-
 /// The closed set of **modules** an agent instance holds: one unit of per-agent capability state
 /// that gg can clone, share between agents, and hand from one agent instance to the next.
 ///
@@ -738,9 +675,6 @@ pub struct GgAgentModule {
     /// occupies its row, so a capability switched off is legible rather than absent — the same
     /// reason it still occupies its slot in gg's own module set.
     pub enabled: bool,
-    /// Whether this holder's prompt carries the module ([`owned`](GgModuleOwnership::Owned)) or it
-    /// is reachable through its tools alone ([`unowned`](GgModuleOwnership::Unowned)).
-    pub ownership: GgModuleOwnership,
     /// How this holder came by it.
     pub origin: GgModuleOrigin,
     /// The [scope](GgMemoryScope) this holder binds under, for the one kind that has one
@@ -1031,8 +965,7 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// param: how many individual files the context-usage signal's breakdown names, most expensive
 /// first.
 ///
-/// An enabled capability writes it, alongside its [`ownership`](MODULE_PARAM_OWNERSHIP), and an
-/// absent one refuses the launch. How many reads a window holds at once differs enormously between
+/// An enabled capability writes it, and an absent one refuses the launch. How many reads a window holds at once differs enormously between
 /// an agent that opens two specifications and one crawling a codebase, so the figure is the
 /// profile's to state rather than gg's to guess.
 pub const PARAM_TOP_FILE_VIEWS: &str = "topFileViews";
@@ -1730,7 +1663,6 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
                     PARAM_SIGNAL_THRESHOLD_PERCENT,
                     json!(DEFAULT_SIGNAL_THRESHOLD_PERCENT),
                 ),
-                (MODULE_PARAM_OWNERSHIP, json!(GgModuleOwnership::Owned)),
             ]),
         ),
         entry(
@@ -1743,7 +1675,6 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
                 (PARAM_MAX_EPICS, json!(50)),
                 (PARAM_MAX_ISSUES, json!(2_000)),
                 (PARAM_MAX_RETRIES, json!(1)),
-                (MODULE_PARAM_OWNERSHIP, json!(GgModuleOwnership::Owned)),
             ]),
         ),
         entry(
@@ -5161,10 +5092,6 @@ pub enum GgContextSource {
     /// The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — retained across
     /// a compaction boundary.
     TaskList,
-    /// The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/)
-    /// — the heavyweight work-decomposition counterpart to the task list, retained across
-    /// a compaction boundary.
-    Board,
     /// Prior-turn thread material not attributable to a more specific source — the
     /// catch-all history bucket, and what compaction summarizes.
     History,
@@ -5174,7 +5101,7 @@ impl GgContextSource {
     /// Every source, in a stable order. A [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown)
     /// reports one entry per source in this order (zero when a source contributed
     /// nothing), so the console's stacked graph keeps stable bands across turns.
-    pub const ALL: [GgContextSource; 15] = [
+    pub const ALL: [GgContextSource; 14] = [
         GgContextSource::System,
         GgContextSource::UserPrompt,
         GgContextSource::Assistant,
@@ -5188,7 +5115,6 @@ impl GgContextSource {
         GgContextSource::Skill,
         GgContextSource::Memory,
         GgContextSource::TaskList,
-        GgContextSource::Board,
         GgContextSource::History,
     ];
 }
@@ -5625,12 +5551,9 @@ pub struct GgMemoryPeak {
 /// not summarized away).
 ///
 /// Each figure is a **count of retained items**, not a token figure: how many read
-/// [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many
-/// in-play [memories](GgContextSource::Memory), and how many
-/// [issues](https://docs.testcabinet.ai/gg/project-management/) on the
-/// [board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by
-/// the summary. The epic/issue board is retained across the boundary just like the task list,
-/// so its issue count is reported here as part of the retention proof.
+/// [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how many
+/// in-play [memories](GgContextSource::Memory) remained pinned after the ephemeral history was
+/// replaced by the summary.
 ///
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -5643,8 +5566,6 @@ pub struct GgRetainedState {
     pub tasks: u64,
     /// The number of in-play memories carried across the boundary verbatim.
     pub memories: u64,
-    /// The number of issues on the retained epic/issue board.
-    pub issues: u64,
 }
 
 /// The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)
@@ -7465,9 +7386,7 @@ pub enum GgTelemetryKind {
     /// successful mutation
     /// (`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`)
     /// — and whenever gg itself moves an issue (a dispatch, a completion, an acceptance) —
-    /// so the console can render the live board. The whole board is also a pinned
-    /// [`Board`](GgContextSource::Board)-sourced context item, so the model sees its
-    /// decomposition each turn. A run with the capability off emits none.
+    /// so the console can render the live board. A run with the capability off emits none.
     ///
     /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
     BoardState {
@@ -7649,14 +7568,13 @@ pub enum GgTelemetryKind {
         cwd: String,
     },
     /// The [modules](GgModuleKind) one agent instance holds, as it opens: what each is, which
-    /// backing store it is a holder of, whose it is, and whether the agent's prompt carries it.
+    /// backing store it is a holder of, and whose it is.
     ///
     /// Emitted **once per incarnation, for every instance** — the root, every subagent, every
     /// successor — immediately after that instance's [`AgentSpawned`](Self::AgentSpawned) (and its
     /// [`FsmState`](Self::FsmState), when it stands in a machine). It is the only event that
     /// reports a module an agent holds but has not yet *touched* — a read-only inherited memory
-    /// holder that never writes emits no [`MemoryState`](Self::MemoryState) of its own — and the
-    /// only one that reports [ownership](GgModuleOwnership) as data rather than as a log line.
+    /// holder that never writes emits no [`MemoryState`](Self::MemoryState) of its own.
     ///
     /// A roster does not change within an incarnation: every operation that changes what an agent
     /// holds (an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork`) mints a new agent id, and

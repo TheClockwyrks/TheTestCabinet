@@ -35,7 +35,6 @@ const SOURCE_ORDER: GgContextSource[] = [
   "skill",
   "memory",
   "task_list",
-  "board",
   "history",
 ];
 
@@ -111,7 +110,6 @@ describe("visibleSources", () => {
     expect(visible).not.toContain("skill");
     expect(visible).not.toContain("memory");
     expect(visible).not.toContain("task_list");
-    expect(visible).not.toContain("board");
     expect(visible).not.toContain("plan");
     // The unconditional sources — what any run is made of — always stay.
     expect(visible).toContain("system");

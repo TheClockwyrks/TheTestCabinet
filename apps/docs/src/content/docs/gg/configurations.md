@@ -126,12 +126,6 @@ be used for nothing. Every such call names its target by its
 scope. A profile may list itself, which allows recursion. The `subagent` scope is
 also the allowlist [`exec`](/gg/fork-and-exec/) is checked against.
 
-Two capabilities backed by a [module](/gg/modules/), project management and
-agent-managed context, carry an `ownership` param deciding whether the agent's
-prompt carries that module or only its tools do. Each of them writes it, `owned`
-or `unowned`. The other module-backed capabilities always sit in the agent's
-prompt.
-
 ### Identity
 
 An agent profile carries three names, and each answers a different question.

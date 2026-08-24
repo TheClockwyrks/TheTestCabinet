@@ -24,8 +24,8 @@ use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES,
     CAPABILITY_SUBAGENTS, GgAgentModule, GgCapabilityConfig, GgMemoryScope, GgModuleKind,
-    GgModuleOrigin, GgModuleOwnership, GgSubagentRef, GgTelemetryEvent, MEMORY_PARAM_SCOPE,
-    ROOT_AGENT, ROOT_PROFILE_ID,
+    GgModuleOrigin, GgSubagentRef, GgTelemetryEvent, MEMORY_PARAM_SCOPE, ROOT_AGENT,
+    ROOT_PROFILE_ID,
 };
 
 use super::{ScriptedFactory, invocation};
@@ -282,11 +282,6 @@ async fn every_instance_opens_with_a_roster_and_its_state_snapshots() {
         assert!(
             !row(roster, GgModuleKind::Board).enabled,
             "{agent}: this run has no board"
-        );
-        assert_eq!(
-            row(roster, GgModuleKind::Memories).ownership,
-            GgModuleOwnership::Owned,
-            "{agent}: ownership is reported as data, not only as a log line"
         );
     }
 

@@ -37,11 +37,9 @@ import type {
   GgMemoryScope,
   GgModuleKind,
   GgModuleOrigin,
-  GgModuleOwnership,
 } from "@test-cabinet/run-record/gg";
 import {
   MODULE_CAPABILITY_IDS,
-  OWNERSHIP_MODULE_KINDS,
   agentProfile,
   agentProfileName,
   capabilityParam,
@@ -106,7 +104,6 @@ export interface GgModuleHolder {
   profile: string;
   status: GgAgentStatus;
   origin: GgModuleOrigin;
-  ownership: GgModuleOwnership;
   writable: boolean;
   /** The holder's DECLARED memory scope, for the one kind that has one; null otherwise. */
   scope: GgMemoryScope | null;
@@ -241,13 +238,6 @@ export interface GgModuleDivergence {
  * renders the declared value has to be able to render one gg did not recognize.
  */
 export interface GgDeclaredModuleConfig {
-  /**
-   * Whether the holder's prompt carries the module (`owned`/`unowned`), or **null** for a
-   * kind whose capability offers no such param — the task list, skills and memories, which
-   * are always carried. Null is not "owned": it means the configuration was never asked, so
-   * nothing about this module's ownership can diverge from it.
-   */
-  ownership: string | null;
   /** Which instance the module binds, for the one kind that has a scope (memories). */
   scope: string | null;
 }
@@ -268,12 +258,6 @@ export interface GgAgentModuleSummary {
    * for themselves.
    */
   agentScoped: GgModuleInstance | null;
-  /**
-   * What this profile's instances actually reported holding it as, or null where they do
-   * not agree — which they only do when a store crossed profiles that configure it
-   * differently, and which is itself one of the {@link divergences}.
-   */
-  observedOwnership: GgModuleOwnership | null;
   /**
    * What the profile's configuration asked for, with the params' own defaults filled in.
    * Null for a kind with no capability behind it (the window) and for a profile the
@@ -579,7 +563,6 @@ export function deriveGgModules(
         profile,
         status: node.status,
         origin: entry.origin,
-        ownership: entry.ownership,
         writable: entry.writable,
         scope: entry.scope ?? null,
         since: node.startedAt ?? null,
@@ -806,11 +789,6 @@ function foldByProfile(
             a.module.id.localeCompare(b.module.id),
         );
 
-      // What the instances agree they hold it as, or null where they do not — the
-      // disagreement itself being a finding rather than something to average away.
-      const ownerships = new Set(holders.map((holder) => holder.ownership));
-      const observedOwnership =
-        ownerships.size === 1 ? holders[0]!.ownership : null;
       const sharing = classifySharing(profileId, instances);
       // Only the one shape whose contents can honestly be shown at the profile's grain: one
       // store, held by every instance of the profile that holds this kind, all at once.
@@ -826,14 +804,8 @@ function foldByProfile(
           0,
         ),
         agentScoped,
-        observedOwnership,
         declared,
-        divergences: moduleDivergences(
-          declared,
-          instances,
-          holders,
-          observedOwnership,
-        ),
+        divergences: moduleDivergences(declared, instances, holders),
         cost: sumCosts(holders.map((holder) => holder.cost)),
       });
     }
@@ -914,8 +886,6 @@ function moduleDivergences(
   declared: GgDeclaredModuleConfig | null,
   holds: GgAgentModuleHold[],
   holders: GgModuleHolder[],
-  /** What the holders AGREE they hold it as, or null where they do not (see the summary). */
-  observedOwnership: GgModuleOwnership | null,
 ): GgModuleDivergence[] {
   if (!declared) return [];
   const out: GgModuleDivergence[] = [];
@@ -962,35 +932,6 @@ function moduleDivergences(
       break;
     default:
       break;
-  }
-
-  // Only for a kind whose capability has an ownership param to declare. Where it has none
-  // there is no declaration to disagree with — every holder reports the one ownership the
-  // kind has — so comparing the observed value against an invented default would put a
-  // finding on the tab about a configuration nobody wrote.
-  const declaredOwnership = declared.ownership;
-  if (declaredOwnership !== null && holders.length > 0) {
-    const owned = holders.filter(
-      (holder) => holder.ownership === "owned",
-    ).length;
-    if (observedOwnership == null) {
-      out.push({
-        declared: declaredOwnership,
-        observed: `${owned} of ${holders.length} instances own it`,
-        note:
-          "Holders only disagree about ownership when a store is carried across profiles " +
-          "that configure it differently — whether it is in the prompt is the holder's " +
-          "configuration, not the store's.",
-      });
-    } else if (holders[0] && holders[0].ownership !== declaredOwnership) {
-      out.push({
-        declared: declaredOwnership,
-        observed: holders[0].ownership,
-        note:
-          "Every instance holds it on terms its own profile did not ask for, which is what " +
-          "a module carried in from another profile looks like.",
-      });
-    }
   }
 
   return out;
@@ -1045,12 +986,6 @@ export function declaredModuleConfig(
       : null;
   };
   return {
-    // Where the param exists, absent means its default. Where it does not — skills,
-    // memories and tasks, whose modules are always carried — the answer is that nothing was
-    // declared, not that `owned` was.
-    ownership: OWNERSHIP_MODULE_KINDS.has(kind)
-      ? (read("ownership") ?? "owned")
-      : null,
     scope: kind === "memories" ? (read("scope") ?? "isolated") : null,
   };
 }

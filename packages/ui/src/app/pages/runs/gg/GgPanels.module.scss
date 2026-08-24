@@ -63,13 +63,13 @@
 // anywhere but the end shifts every later index and every later swatch quietly
 // takes its neighbour's hue. Whenever `GgContextSource::ALL` gains a variant, walk
 // this whole map against `CONTEXT_SOURCE_COLORS` in the same commit — do not append.
-// (Index 5, `text_view`, arrived that way, shifting skill/memory/task_list/board/
-// history down one; index 9, `board`, arrived with the Phase 3 work-decomposition
-// source; indices 4 and 5, the two responses-as-code error bands, arrived together
-// and shifted the six bands from `file_view` on down by two.)
+// (Index 5, `text_view`, arrived that way, shifting the bands below it down one;
+// indices 4 and 5, the two responses-as-code error bands, arrived together and
+// shifted the six bands from `file_view` on down by two; the `board` band left with
+// the owned board and shifted `history` up one.)
 // 0 system · 1 user_prompt · 2 assistant · 3 tool_output · 4 compiler_error ·
-// 5 runtime_error · 6 file_view · 7 text_view · 8 docs_view · 9 skill ·
-// 10 memory · 11 task_list · 12 board · 13 history
+// 5 runtime_error · 6 file_view · 7 text_view · 8 docs_view · 9 search_results ·
+// 10 skill · 11 memory · 12 task_list · 13 history
 // (`docs_view` split out of `skill` and shifted the five bands from `skill` on down by one.)
 $context-palette: (
   0: #6ea8fe,
@@ -85,8 +85,7 @@ $context-palette: (
   10: #c77dff,
   11: #ff6b9d,
   12: #b5e48c,
-  13: #ef5350,
-  14: #9aa5b1,
+  13: #9aa5b1,
 );
 
 .swatch {
@@ -1484,7 +1483,7 @@ $context-palette: (
 }
 
 // The identity line: the store's id and kind, then the badges that change how everything
-// under them reads (owned/unowned, shared, dropped).
+// under them reads (shared, dropped).
 .moduleIdentity {
   display: flex;
   align-items: center;
@@ -1527,13 +1526,6 @@ $context-palette: (
   font-weight: 500;
   color: t.$color-text-muted;
 
-  // An unowned module never reaches the model's window — the one capability setting
-  // whose effect is otherwise invisible — so it is the badge that is tinted, not the
-  // default.
-  &[data-ownership="unowned"] {
-    border-color: t.$color-warning;
-    color: t.$color-warning;
-  }
   &[data-shared] {
     border-color: t.$color-accent;
     color: t.$color-accent;
@@ -1558,11 +1550,6 @@ $context-palette: (
 .moduleLine,
 .moduleLifetime,
 .moduleCost,
-.moduleNote {
-  margin: 0;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-}
 
 // One row of the header strip: the fact on the left, its counterpart pushed to the
 // pane's far edge (what the store costs, beside how this holder came by it; who else is
@@ -1581,14 +1568,6 @@ $context-palette: (
     margin-left: auto;
     text-align: right;
   }
-}
-
-// The unowned explanation, set apart by the same left rule the retention note uses: it
-// is a statement about how the run is configured, not part of the module's own read-out.
-.moduleNote {
-  margin-top: t.$space-2xs;
-  border-left: 2px solid t.$color-warning;
-  padding-left: t.$space-sm;
 }
 
 // The store's life, oldest first. The verbs are tinted by what happened: a copy made a

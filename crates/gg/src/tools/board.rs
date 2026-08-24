@@ -10,10 +10,9 @@
 //! the [loop](crate::agent)) and returns a [`ToolOutcome`]: a confirmation on success, or — when
 //! a mutation is refused (a duplicate id, an unknown epic/issue, or, crucially, a
 //! [cycle](crate::board::BoardError::Cycle)) — an **error outcome carrying the store's
-//! guidance**, with the board left unchanged. The loop owns the context-window consequences:
-//! after a successful mutation it re-emits the
-//! [`BoardState`](test_cabinet_core::gg::GgTelemetryKind::BoardState) telemetry and rebuilds the
-//! pinned [`Board`](test_cabinet_core::gg::GgContextSource::Board) block.
+//! guidance**, with the board left unchanged. The loop owns the telemetry consequences: after a
+//! successful mutation it re-emits the
+//! [`BoardState`](test_cabinet_core::gg::GgTelemetryKind::BoardState) telemetry.
 //!
 //! The tools are contributed to the registry only when the
 //! [`project-management`](test_cabinet_core::gg::CAPABILITY_PROJECT_MANAGEMENT) capability is enabled and

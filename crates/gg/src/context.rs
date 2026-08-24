@@ -2485,7 +2485,6 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
         }
         GgContextSource::Memory => Some("Memories"),
         GgContextSource::TaskList => Some("Tasks"),
-        GgContextSource::Board => Some("Board"),
         GgContextSource::History => Some("Summary"),
         GgContextSource::System => Some("Notice"),
         GgContextSource::Assistant => None,
@@ -2603,7 +2602,6 @@ fn source_label(source: GgContextSource) -> &'static str {
         GgContextSource::Skill => "Skills",
         GgContextSource::Memory => "Memories",
         GgContextSource::TaskList => "Tasks",
-        GgContextSource::Board => "Board",
         GgContextSource::History => "History",
     }
 }

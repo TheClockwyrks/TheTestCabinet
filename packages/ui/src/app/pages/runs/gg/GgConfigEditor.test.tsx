@@ -681,30 +681,12 @@ describe("authoring a state machine", () => {
   });
 });
 
-// Whether a module's state is carried in its holder's prompt is a per-agent, per-module
-// decision, and it is written down: gg reads the arm the configuration names and has none
-// of its own, so the picker opens on `owned` rather than on a blank row that would have to
-// mean something.
-//
-// Asked of project management rather than memories: the board and the thread archive are
-// the two capabilities that still offer the picker at all. Memories and skills dropped it
-// with gg, so a test that kept looking for it there would be asserting a control that
-// writes a key nothing reads.
+// The owned mode is gone from gg entirely: no capability reads an `ownership` param, and
+// a control that outlived the param would write a key nothing reads — a configuration
+// carrying one is refused at launch.
 describe("module ownership", () => {
-  it("is offered on a module-backed capability and opens on owned", () => {
-    renderCaps(draftWith("project-management", ""));
-    const row = capabilityRow("project-management");
-    const ownership = within(row).getByLabelText(
-      /Ownership/,
-    ) as HTMLSelectElement;
-    expect(ownership.value).toBe("owned");
-    expect(
-      within(ownership).getByRole("option", { name: /Unowned/ }),
-    ).toBeDefined();
-  });
-
-  it("is not offered on the two capabilities that no longer have one", () => {
-    for (const capId of ["memories", "skills"]) {
+  it("is not offered on any capability", () => {
+    for (const capId of ["project-management", "agent-managed-context", "memories"]) {
       const { unmount } = renderCaps(draftWith(capId, ""));
       expect(
         within(capabilityRow(capId)).queryByLabelText(/^Ownership/),

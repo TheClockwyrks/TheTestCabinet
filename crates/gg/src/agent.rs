@@ -199,11 +199,11 @@ use crate::model::{
 };
 use crate::modules::{
     CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
-    ModuleResolveCtx, ModuleSet, Ownership, Refresh, TransferPlan, TransferReport,
+    ModuleResolveCtx, ModuleSet, Refresh, TransferPlan, TransferReport,
 };
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
-    self, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, FixBriefContext,
+    self, AssignedIssueView, AutoloadView, CodeHeadingView, EndingView, FixBriefContext,
     MemoriesView, MergeBriefContext, ModuleView, NumberedItem, ReadFileView, ReviewBriefContext,
     ReviewChangesView, ReviewRecordView, SkillView, SpawnableAgentView, SystemContext, TasksView,
 };
@@ -4604,25 +4604,6 @@ fn announce_configuration(
     if let Some(state) = modules.archive().state_event() {
         emitter.emit(state);
     }
-    // Any module the agent holds but its prompt does **not** carry. Named on the operator log
-    // because it is the one capability configuration whose effect is invisible in the toolset: the
-    // tools are all there, and the model is simply never told what it is holding.
-    let unowned: Vec<&str> = modules
-        .each()
-        .into_iter()
-        .filter(|module| module.enabled() && module.ownership() == Ownership::Unowned)
-        .map(|module| module.kind().as_str())
-        .collect();
-    if !unowned.is_empty() {
-        emitter.emit(log(
-            "info",
-            format!(
-                "the {} module(s) are unowned: their tools are offered and their state is live, \
-                 but nothing about them is put in the prompt.",
-                unowned.join(", ")
-            ),
-        ));
-    }
     if let Some(language) = program_language {
         emitter.emit(log(
             "info",
@@ -6504,13 +6485,6 @@ impl Agent {
             reviewers,
             &mut crate::validate::LaunchReport::Discarding,
         );
-        // Whether the pinned board block belongs in *this* agent's window: the run has a board and
-        // this agent's own profile carries the capability to author it. The same conjunction gates
-        // the prompt's board section (see `system_prompt`), so what an agent is told about the board
-        // and what it is shown of it agree.
-        let offers_board =
-            caps.board().offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT);
-
         // Build the source-tagged context model in place of a flat transcript, seeded with
         // the two pinned items every session opens with: the system prompt (which lists any
         // available skills' descriptions and explains the memory scratchpad and task list) and
@@ -6531,7 +6505,6 @@ impl Agent {
             skills: caps.skills(),
             memories: caps.memories(),
             tasks: caps.tasks(),
-            board: caps.board(),
             read_policy,
             vision: &tool_ctx.vision,
             program_language: code.enabled.then_some(code.language),
@@ -6984,23 +6957,9 @@ impl Agent {
             // the list is what the model steers by from turn to turn rather than a record it
             // consults, so it is worth keeping current every turn.
             for (source, block) in caps.pinned_blocks(Refresh::EveryTurn) {
-                if source == GgContextSource::Board && !offers_board {
-                    continue;
-                }
                 context.replace_source(source, Retention::Pinned, block);
             }
 
-            // Refresh the pinned epic/issue board the same way, so the window always shows the
-            // model's current decomposition (epics, issues, and what is ready vs blocked) and
-            // compaction retains it. Also rebuilt at the turn boundary, never between an assistant
-            // tool-call message and its tool results.
-            //
-            // Gated on **this agent's own** capability, not merely on the run having a board. The
-            // board is run-global, but the block is not: an agent without the capability has no
-            // board tool, is not told in its system prompt that a board exists, and cannot act on
-            // one — so pinning the whole decomposition into its window spends its context every turn
-            // on a document it can only be distracted by, and invites an implementer to go looking
-            // for work other than the job it was dispatched to do.
             // With the pinned blocks refreshed, the window for this turn is fully assembled.
             // If the compaction backstop is on and fullness has crossed its threshold, compact
             // now — at the turn boundary, before this turn's model call, never between an
@@ -11001,8 +10960,6 @@ struct PromptInputs<'a> {
     memories: &'a MemoriesRuntime,
     /// The tasks capability, for its count ceiling.
     tasks: &'a TasksRuntime,
-    /// The epic/issue board capability, for its ceilings.
-    board: &'a BoardRuntime,
     /// How much of a file one `read_file` call returns, so a capped run says so up front, or `None`
     /// when the agent configures no read policy — in which case the prompt states no cap, because
     /// there is none in force.
@@ -11391,12 +11348,7 @@ fn execution_mode(code_enabled: bool) -> &'static str {
 /// model what a heading it *meets* means, not what to write to produce one. Saying the message holds
 /// a value the program put there loses nothing a reader needs, and the call that puts it there is
 /// found the way every other call is.
-pub(crate) fn code_heading_views(
-    memories: bool,
-    tasks: bool,
-    board: bool,
-    files: bool,
-) -> Vec<CodeHeadingView> {
+pub(crate) fn code_heading_views(memories: bool, tasks: bool, files: bool) -> Vec<CodeHeadingView> {
     // (source, one-line description, whether this run can produce it). The heading word itself comes
     // from `code_heading(source)`, the single source of truth both this list and the prefix share.
     let rows: &[(GgContextSource, &str, bool)] = &[
@@ -11444,11 +11396,6 @@ pub(crate) fn code_heading_views(
             tasks,
         ),
         (
-            GgContextSource::Board,
-            "the epic/issue board, as it currently stands",
-            board,
-        ),
-        (
             GgContextSource::FileView,
             "a file, or a window of one, shown in your context — seeded by the run or opened by \
              your own file-view call — headed by its path, the 1-based line range shown and the \
@@ -11474,18 +11421,6 @@ pub(crate) fn code_heading_views(
             })
         })
         .collect()
-}
-
-/// Whether the system prompt describes `module`'s capability at all: it is enabled **and**
-/// [owned](Ownership::Owned) by this agent.
-///
-/// This is the whole of what [`unowned`](Ownership::Unowned) means at the prompt — the module is
-/// reachable through the holder's tools and nothing else. The tools themselves are untouched (the
-/// registry is built from the capability, not from the ownership), its state stays live, and its
-/// telemetry is still emitted; what an unowned module costs its holder is a schema per call it may
-/// make, rather than a section of every request plus a pinned block that grows with the state.
-fn describes(module: &dyn Module) -> bool {
-    module.enabled() && module.ownership().is_owned()
 }
 
 /// The entries of `profile`'s [roster](GgAgentConfig::subagents) that carry `scope`, as the prompt
@@ -11524,7 +11459,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
         skills,
         memories,
         tasks,
-        board,
         read_policy,
         vision,
         program_language,
@@ -11544,14 +11478,9 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
     // here rather than carried alongside the language it would have to agree with.
     let responses_as_code = program_language.is_some();
 
-    // This agent's roster, split by what each entry may be used **for**. The three lists are
-    // independent of one another and of the delegation capability: an agent with no `spawn_subagent`
-    // still names implementers and reviewers on the issues it files, which is exactly why the
-    // prompt's Subagents section is gated on the *tool* being offered rather than on the roster
-    // being non-empty.
+    // This agent's spawnable roster. The prompt's Subagents section is gated on the *tool*
+    // being offered rather than on the roster being non-empty.
     let spawnable_agents = roster(set, profile, GgSubagentScope::Subagent);
-    let issue_agents = roster(set, profile, GgSubagentScope::Implementer);
-    let reviewer_agents = roster(set, profile, GgSubagentScope::Reviewer);
     let offers_spawn = registry.offers(SPAWN_SUBAGENT_TOOL);
 
     // The read cap is only worth stating when `read_file` is actually offered and actually
@@ -11583,12 +11512,8 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
     // discipline every other section follows.
     let code_headings = if program_language.is_some() {
         code_heading_views(
-            describes(memories),
-            describes(tasks),
-            // Gated on this agent's own capability, exactly as the board section below is: an agent
-            // without it is never shown a `Board` block, so naming the heading would describe a
-            // message kind it cannot receive.
-            describes(board) && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
+            memories.enabled(),
+            tasks.enabled(),
             // A restored file view is a `File` message too, so a persistent agent is told the heading
             // even in the (unusual) case that it reads nothing itself.
             offers_read || autoload_specs.is_some() || persistence,
@@ -11648,7 +11573,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
             // The strategy decides what the section says: what memory *is* on this run differs
             // enough between the three (all of it in the window, an index over it, or nothing
             // until you search) that they are three paragraphs rather than one with holes.
-            memories: describes(memories).then(|| {
+            memories: memories.enabled().then(|| {
                 let caps = memories.caps();
                 let strategy = memories.strategy();
                 MemoriesView {
@@ -11670,27 +11595,9 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
                     scope: memories.scope().to_string(),
                 }
             }),
-            tasks: describes(tasks).then(|| TasksView {
+            tasks: tasks.enabled().then(|| TasksView {
                 max_tasks: tasks.max_tasks(),
             }),
-            // The board-authoring section is gated on **this agent's own** capability, not on the
-            // run having a board: the board is run-global, but describing how to file and dispatch
-            // work to an agent whose profile offers none of those tools is a prompt that names
-            // tools the model does not have — which is exactly how an implementer ends up reaching
-            // for `create_issue` instead of doing the work it was sent to do.
-            board: (describes(board) && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)).then(
-                || {
-                    let caps = board.caps();
-                    BoardView {
-                        max_epics: caps.max_epics,
-                        max_issues: caps.max_issues,
-                        max_retries: caps.max_retries,
-                        reviewers_required: crate::board::requires_reviewers(profile),
-                        issue_agents,
-                        reviewer_agents,
-                    }
-                },
-            ),
             // The issue this agent was dispatched to implement, when it was one — rendered
             // whatever its own capabilities are, since being told what it is working on has
             // nothing to do with whether it may author the board.
@@ -12061,8 +11968,7 @@ async fn apply_pending_compaction(
 ///   [`TaskList`](GgContextSource::TaskList) block is rebuilt at the next turn boundary;
 /// - a successful
 ///   `create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`
-///   likewise re-emits the [`BoardState`](GgTelemetryKind::BoardState); the pinned
-///   [`Board`](GgContextSource::Board) block is rebuilt at the next turn boundary;
+///   likewise re-emits the [`BoardState`](GgTelemetryKind::BoardState);
 /// - a **fresh** skill read is pinned as a [`Skill`](GgContextSource::Skill)-sourced item
 ///   (retained across compaction) and the updated
 ///   [`SkillsState`](GgTelemetryKind::SkillsState) is emitted; a **repeat** read is

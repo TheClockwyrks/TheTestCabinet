@@ -1,6 +1,5 @@
 //! gg's **module model**: the per-agent state an agent instance holds, extracted out of the
-//! agent so it can be owned or unowned, cloned, shared, and handed from one agent instance to
-//! another.
+//! agent so it can be cloned, shared, and handed from one agent instance to another.
 //!
 //! # What a module is
 //!
@@ -17,27 +16,6 @@
 //! [`ContextModel`], and were wired together by a `RuntimeSet` plus per-capability plumbing in the
 //! agent loop. A module set is that, with one iteration order and one place per question.
 //!
-//! # Ownership
-//!
-//! [`Ownership`] is the knob that separates *"the agent is told what it holds, every turn"* from
-//! *"the agent may look it up"*. An [owned](Ownership::Owned) module contributes its prompt section
-//! and keeps its pinned block in the window on its own [refresh](Refresh) schedule. An
-//! [unowned](Ownership::Unowned) one contributes **nothing** to the automatically assembled prompt
-//! while remaining fully live: its tools still read and write it, its telemetry is still emitted,
-//! and it is still cloned, shared and transferred.
-//!
-//! It exists because a module is no longer necessarily *about* the agent holding it. Once a memory
-//! instance can be shared between agents, or a task list handed from one state of a machine to the
-//! next, an agent can hold a working store it should be able to act on without paying for it in
-//! every request it makes.
-//!
-//! It is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and the two capabilities that offer it —
-//! [project management](CAPABILITY_PROJECT_MANAGEMENT) and
-//! [agent-managed context](CAPABILITY_AGENT_MANAGED_CONTEXT) — each **write** it when they are
-//! switched on. gg picks neither value for an operator: which of the two an agent is on is the whole
-//! of what this knob varies, so an enabled capability that names none
-//! [refuses the launch](resolve_ownership).
-//!
 //! # Copying: `fork` and `share`, never `Clone`
 //!
 //! None of the module types is [`Clone`]. That is deliberate, and it is the highest-value
@@ -51,7 +29,7 @@
 //!
 //! [`transfer`] is how a live module set is handed to an agent running under a *different*
 //! profile. Its rules — carried, dropped, or initialized fresh, per kind — are documented on that
-//! function. The invariant every implementation must hold is that caps, modes and ownership are
+//! function. The invariant every implementation must hold is that caps and modes are
 //! re-resolved from the **receiving** profile ([`Module::adopt`]); a module carrying limits
 //! resolved from the profile that produced it is the classic transfer bug.
 //!
@@ -61,12 +39,11 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgAgentModule, GgCapabilitySet,
     GgContextSource, GgMemoryScope, GgModuleDisposition, GgModuleOrigin, GgProgramLanguage,
-    GgTelemetryKind, GgTransitionModule, MODULE_PARAM_OWNERSHIP,
+    GgTelemetryKind, GgTransitionModule,
 };
 
 use crate::archive::ArchiveRuntime;
@@ -77,7 +54,6 @@ use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryStrategy};
 use crate::model::Message;
 use crate::skills::SkillsRuntime;
 use crate::tasks::TasksRuntime;
-use crate::validate::{LaunchDefect, LaunchReport};
 
 /// The closed set of module kinds, re-exported from the contract so gg and the configurations it
 /// reads name the same six things. See [`GgModuleKind`](test_cabinet_core::gg::GgModuleKind) for
@@ -143,11 +119,6 @@ pub fn detached_ids() -> ModuleIds {
     Arc::new(ModuleIdMint::default())
 }
 
-/// Whether a module is auto-included in its holder's prompt, re-exported from the contract — the
-/// [`ownership`](MODULE_PARAM_OWNERSHIP) param, resolved. See
-/// [`GgModuleOwnership`](test_cabinet_core::gg::GgModuleOwnership).
-pub use test_cabinet_core::gg::GgModuleOwnership as Ownership;
-
 /// When a module's pinned context block is rebuilt.
 ///
 /// The schedule is a property of the module rather than of the loop, because the right answer
@@ -159,8 +130,8 @@ pub enum Refresh {
     /// Rebuilt at **every turn boundary**, through
     /// [`replace_source`](ContextModel::replace_source) — which is a no-op when the rebuilt block
     /// is byte-identical, so an unchanged block never moves and never rewrites the cached prefix.
-    /// The [task list](TasksRuntime) and the [board](BoardRuntime): both are what the model steers
-    /// by from turn to turn, so both are worth keeping current.
+    /// The [task list](TasksRuntime): it is what the model steers its work by from turn to turn,
+    /// so it is worth keeping current.
     EveryTurn,
     /// Rebuilt only at a **context-reset boundary** — a [compaction](crate::compaction). The
     /// [memories](MemoriesRuntime) block: a memory the model just wrote is already in front of it
@@ -170,8 +141,9 @@ pub enum Refresh {
     /// where it is rebuilt.
     AtBoundary,
     /// Pins nothing on a schedule. [Skills](SkillsRuntime) pin a body when it is read and never
-    /// again; the [archive](ArchiveRuntime) is by definition out of the window; and the
-    /// [history](HistoryModule) *is* the window.
+    /// again; the [archive](ArchiveRuntime) is by definition out of the window; the
+    /// [board](BoardRuntime) is reachable through its tools alone, so nothing of it is ever put in
+    /// a window; and the [history](HistoryModule) *is* the window.
     Never,
 }
 
@@ -262,7 +234,6 @@ pub trait Module: Send {
                 String::new()
             },
             enabled,
-            ownership: self.ownership(),
             origin: self.origin(),
             scope: self.memory_scope(),
             writable: self.writable(),
@@ -274,9 +245,6 @@ pub trait Module: Send {
     /// and contributes nothing: no tools, no prompt, no block, no telemetry.
     fn enabled(&self) -> bool;
 
-    /// Whether this module is [owned](Ownership::Owned) by its holder — see [`Ownership`].
-    fn ownership(&self) -> Ownership;
-
     /// The context band this module's pinned block occupies, or `None` when it pins nothing.
     fn context_source(&self) -> Option<GgContextSource>;
 
@@ -284,9 +252,9 @@ pub trait Module: Send {
     fn refresh(&self) -> Refresh;
 
     /// The module's pinned block for the current state, or `None` when it has nothing to show.
-    /// Always `None` for a disabled or [unowned](Ownership::Unowned) module — an unowned module
-    /// contributes nothing to the automatically assembled prompt, and this is the one place that
-    /// is enforced, so no caller has to remember it.
+    /// Always `None` for a disabled module — a disabled module contributes nothing to the
+    /// automatically assembled prompt, and this is the one place that is enforced, so no caller
+    /// has to remember it.
     fn context_block(&self) -> Option<Message>;
 
     /// The per-turn **notice** this holder owes the model: news produced by *another* holder of a
@@ -294,10 +262,7 @@ pub trait Module: Send {
     /// every turn of a run in which nothing is shared.
     ///
     /// Advancing the holder's watermark is part of producing the notice, so a given piece of news
-    /// is delivered to a given holder exactly once. An [unowned](Ownership::Unowned) module never
-    /// produces one — it contributes nothing to the assembled prompt — and enforcing that is the
-    /// implementation's job, exactly as it is for [`context_block`](Self::context_block), so no
-    /// caller has to remember it.
+    /// is delivered to a given holder exactly once.
     ///
     /// The default is "no module of mine is ever shared, so there is never anything to say"; only
     /// [memories](MemoriesRuntime) overrides it.
@@ -351,8 +316,7 @@ pub trait Module: Send {
     }
 
     /// Re-resolve this module's configuration from the profile that is about to hold it — its
-    /// caps, its mode, its ownership, and anything else the *holder* rather than the contents
-    /// decides.
+    /// caps, its mode, and anything else the *holder* rather than the contents decides.
     ///
     /// Returns [`AdoptError::Disabled`] when the receiving profile does not enable the capability,
     /// and [`AdoptError::Incompatible`] when it configures it in a shape the contents cannot be
@@ -441,10 +405,7 @@ impl ModuleHandle {
 /// the conversation, and [`adopt`](Self::adopt) empties it on the way across so the successor
 /// cannot be handed instructions naming someone else's toolset, roster and ending calls.
 ///
-/// It is always [enabled](Module::enabled) and always [owned](Ownership::Owned): an agent without
-/// a window is not an agent, and a window the agent's prompt does not carry is a contradiction —
-/// the window *is* the prompt. An `ownership` param on a history module would have nothing to
-/// mean, so there is none.
+/// It is always [enabled](Module::enabled): an agent without a window is not an agent.
 pub struct HistoryModule {
     /// The window itself.
     context: ContextModel,
@@ -545,10 +506,6 @@ impl Module for HistoryModule {
 
     fn enabled(&self) -> bool {
         true
-    }
-
-    fn ownership(&self) -> Ownership {
-        Ownership::Owned
     }
 
     fn context_source(&self) -> Option<GgContextSource> {
@@ -772,141 +729,6 @@ impl InheritedModules {
     }
 }
 
-/// The two values [`ownership`](MODULE_PARAM_OWNERSHIP) takes, as they are spelled in a
-/// configuration — the vocabulary a refusal offers back.
-const OWNERSHIPS: [&str; 2] = ["owned", "unowned"];
-
-/// The [`Ownership`] [`resolve_ownership`] answers with when the configuration decides none: a
-/// capability the profile does not declare or has switched **off**, whose module this agent does not
-/// hold, and an enabled one that writes no [`ownership`](MODULE_PARAM_OWNERSHIP) or writes one gg
-/// cannot read, which has refused the launch by the time this comes back.
-///
-/// `Ownership` has two values and one of them has to be named, so this is spelled
-/// [`Owned`](Ownership::Owned) — but it is named rather than reached through `Default` because
-/// nothing acts on it. A module gg does not hold has no prompt to be carried in, and a refused
-/// launch assembles no prompt at all.
-const OWNERSHIP_OF_A_REFUSED_LAUNCH: Ownership = Ownership::Owned;
-
-/// Resolve a module-backed capability's [`ownership`](MODULE_PARAM_OWNERSHIP) param.
-///
-/// **Required of an enabled capability**, and reported here at the constant it is read by: ownership
-/// is the knob that decides whether the agent is *told* what it holds every turn or has to look it
-/// up, so a figure gg picked would run a configuration nobody wrote — and the agent whose board was
-/// meant to cost it nothing would carry it in every request it made. A value gg cannot read is
-/// refused on the same terms, whichever way the switch is set, because a **disabled** capability
-/// still records the configuration the arm would have used and a typo skipped for a switch that
-/// happens to be off surfaces on the launch that flips it.
-///
-/// A capability the profile does not declare, or declares switched off, configures no ownership and
-/// is owed none: it answers [`OWNERSHIP_OF_A_REFUSED_LAUNCH`] in silence, and the two runtime callers
-/// reach it only for a capability they have already established is on.
-pub fn resolve_ownership(
-    profile: &GgAgentConfig,
-    capability: &str,
-    report: &mut LaunchReport,
-) -> Ownership {
-    let Some(declared) = profile.capability(capability) else {
-        return OWNERSHIP_OF_A_REFUSED_LAUNCH;
-    };
-    // An enabled capability owes the param and is told so at its own locus; a disabled one owes
-    // nothing, and only what it actually wrote is read.
-    let written = if declared.enabled {
-        crate::validate::required_param(
-            &declared.params,
-            capability,
-            MODULE_PARAM_OWNERSHIP,
-            report,
-        )
-    } else {
-        declared
-            .params
-            .get(MODULE_PARAM_OWNERSHIP)
-            .filter(|value| !value.is_null())
-    };
-    let Some(raw) = written else {
-        return OWNERSHIP_OF_A_REFUSED_LAUNCH;
-    };
-    let defect = |found: String, message: String| {
-        LaunchDefect::run_level(
-            crate::validate::param_locus(capability, MODULE_PARAM_OWNERSHIP),
-            found,
-            message,
-        )
-        .known(OWNERSHIPS)
-    };
-    match raw {
-        Value::String(value) => match value.trim() {
-            "owned" => Ownership::Owned,
-            "unowned" => Ownership::Unowned,
-            other => {
-                report.report(defect(
-                    other.to_string(),
-                    format!(
-                        "`{MODULE_PARAM_OWNERSHIP}` decides whether the `{capability}` module is \
-                         carried in its holder's prompt or reachable only through its calls, and \
-                         `{other}` names neither."
-                    ),
-                ));
-                OWNERSHIP_OF_A_REFUSED_LAUNCH
-            }
-        },
-        other => {
-            report.report(defect(
-                crate::validate::as_written(other),
-                format!(
-                    "`{MODULE_PARAM_OWNERSHIP}` on the `{capability}` capability must be a string."
-                ),
-            ));
-            OWNERSHIP_OF_A_REFUSED_LAUNCH
-        }
-    }
-}
-
-/// Every capability whose module's ownership is **configurable**, paired with the kind it backs —
-/// the list [`check_ownership`] validates and the console's editor offers an `ownership` picker
-/// for.
-///
-/// Four kinds are absent, and every absence is load-bearing.
-///
-/// [`History`](ModuleKind::History) has no capability behind it at all: the window is not a
-/// capability, it is the agent. [`Tasks`](ModuleKind::Tasks) has one, but no ownership to configure
-/// — the task list is what an agent steers its work by from turn to turn, so it is always carried in
-/// its holder's prompt as its own message.
-///
-/// [`Memories`](ModuleKind::Memories) and [`Skills`](ModuleKind::Skills) are absent because for both
-/// of them the knob was a way of switching the capability off while pretending it was on. What a
-/// [memory strategy](crate::memories::MemoryStrategy) puts in the window *is* what having memories
-/// means under it, and the strategy is already the knob — `keyword-search` is the arm that pins
-/// nothing. And a skills catalogue an agent is never shown leaves it able to read a skill only by
-/// being handed its name, which is not an arm of a study, it is the capability disabled with extra
-/// steps.
-///
-/// An `ownership` param on any of the four is therefore a key on a capability that has no ownership
-/// to configure. It is read by nothing, and it is a **launch refusal** — the
-/// [params table](crate::validate) knows the key on these two capabilities and nowhere else, so
-/// writing it on `memories`, `skills` or `tasks` refuses the run rather than configuring an arm
-/// that does not exist. That it once passed silently is the whole reason the table exists.
-const MODULE_CAPABILITIES: [(&str, ModuleKind); 2] = [
-    (CAPABILITY_PROJECT_MANAGEMENT, ModuleKind::Board),
-    (CAPABILITY_AGENT_MANAGED_CONTEXT, ModuleKind::Archive),
-];
-
-/// Read `profile`'s module configuration — today, the [`ownership`](MODULE_PARAM_OWNERSHIP) param of
-/// each module-backed capability — reporting every value gg cannot honour and every enabled
-/// capability that writes none.
-///
-/// Read whether or not the capability is switched **on**, which is the one thing to notice here. A
-/// disabled capability still records the configuration the arm would have used, and a typo skipped
-/// because a switch happened to be off is a typo that surfaces on the launch where it is flipped —
-/// by which point the operator is no longer looking at the document that has it. What the switch
-/// decides is only whether the param is *owed*: [`resolve_ownership`] asks for it where the
-/// capability is on and judges what is there either way.
-pub fn check_ownership(profile: &GgAgentConfig, report: &mut LaunchReport) {
-    for (capability, _) in MODULE_CAPABILITIES {
-        resolve_ownership(profile, capability, report);
-    }
-}
-
 // ---------------------------------------------------------------------------
 // The set
 // ---------------------------------------------------------------------------
@@ -942,33 +764,16 @@ impl CapabilityModules {
     /// capability the profile enables, and a [disabled](Module::enabled) one where it does not.
     ///
     /// The board is the exception to "per agent": it is a [share](Module::share) of the run-global
-    /// one, because the board is the run's single work queue. What *is* per agent is whether that
-    /// agent's prompt carries it — a profile without the authoring capability holds the board
-    /// [unowned](Ownership::Unowned), so it is not shown a decomposition it has no tool to act on
-    /// and no reason to go looking through for work other than the job it was given.
+    /// one, because the board is the run's single work queue. It never contributes to any holder's
+    /// prompt — every agent reaches it through the board tools alone.
     pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
-        // Asked only where the capability is on, which is the condition under which the param is
-        // owed at all: the discarding sink asserts that nothing arrives, and an enabled capability
-        // short of its `ownership` is a defect the launch pass already reported. Off, the board is
-        // held [unowned](Ownership::Unowned) — not a resolved value but the answer to a different
-        // question, since a profile with no authoring capability is shown no decomposition it has
-        // no tool to act on.
-        let board_ownership = if profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
-            resolve_ownership(
-                profile,
-                CAPABILITY_PROJECT_MANAGEMENT,
-                &mut LaunchReport::Discarding,
-            )
-        } else {
-            Ownership::Unowned
-        };
         Self {
             ids: Arc::clone(ctx.ids),
             memories: MemoriesRuntime::resolve(profile, ctx),
             tasks: TasksRuntime::resolve(profile, ctx),
             // The board is the run's, however a holder came by it — see
             // [`Module::origin_when_forked`].
-            board: ctx.board.shared().with_ownership(board_ownership),
+            board: ctx.board.shared(),
             // Per profile, like every other capability module: the runtime in `ctx` is the run's
             // library and is enabled if *any* profile reads skills, so an agent whose own switch is
             // off must be given a disabled module rather than a fork of it. Reading the run's
@@ -979,15 +784,8 @@ impl CapabilityModules {
             } else {
                 SkillsRuntime::disabled()
             },
-            // The ownership is read only inside the enabled arm, for the reason the board's is:
-            // the param is owed by a capability that is on, and the launch pass has already proved
-            // this profile writes it.
             archive: if profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT) {
-                ArchiveRuntime::new_in(ctx.ids).with_ownership(resolve_ownership(
-                    profile,
-                    CAPABILITY_AGENT_MANAGED_CONTEXT,
-                    &mut LaunchReport::Discarding,
-                ))
+                ArchiveRuntime::new_in(ctx.ids)
             } else {
                 ArchiveRuntime::disabled()
             },
@@ -1118,9 +916,8 @@ impl CapabilityModules {
     ///
     /// A `None` block means "this module has nothing to show", which the loop applies through
     /// [`replace_source`](ContextModel::replace_source) exactly as it applies a rebuilt one — so a
-    /// module that empties, is turned off, or becomes [unowned](Ownership::Unowned) retires its
-    /// block rather than leaving a stale copy pinned. A module that is off and has never shown
-    /// anything produces a no-op.
+    /// module that empties or is turned off retires its block rather than leaving a stale copy
+    /// pinned. A module that is off and has never shown anything produces a no-op.
     ///
     /// This is the whole of prompt assembly's knowledge of what a module is: the loop no longer
     /// names memories, tasks and the board one at a time.
@@ -1152,10 +949,6 @@ impl CapabilityModules {
 
     /// The per-turn notices the modules owe the model — news another holder of a shared module
     /// produced since this holder last looked. Empty on every turn of a run that shares nothing.
-    ///
-    /// Whether a module is [owned](Ownership::Owned) enough to say anything is each module's own
-    /// question, decided inside its [`notice`](Module::notice) — which is what lets an unowned one
-    /// still advance its watermark past news it was never going to be told.
     pub fn notices(&mut self) -> Vec<Message> {
         self.each_mut()
             .into_iter()
@@ -1169,7 +962,6 @@ impl CapabilityModules {
             skills: self.skills.retained(),
             tasks: self.tasks.retained(),
             memories: self.memories.retained(),
-            issues: self.board.retained(),
         }
     }
 }
@@ -1195,10 +987,7 @@ impl ModuleSet {
     /// always-present window.
     ///
     /// The board is the exception to "per agent": it is a [share](Module::share) of the run-global
-    /// one, because the board is the run's single work queue. What *is* per agent is whether that
-    /// agent's prompt carries it — a profile without the authoring capability holds the board
-    /// [unowned](Ownership::Unowned), so it is not shown a decomposition it has no tool to act on
-    /// and no reason to go looking through for work other than the job it was given.
+    /// one, because the board is the run's single work queue.
     pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
         Self {
             history: HistoryModule::new(&ctx.history, ctx.ids),
@@ -1456,8 +1245,8 @@ impl TransferPlan {
 ///
 /// It has to answer the same question `has` does, and `has` is not simply "the profile enables the
 /// capability": the **board** is the run's single work queue, so every agent in a run that has one
-/// holds it — unowned where the profile cannot author it, but held — and the window is not a
-/// capability at all. Everything else is the profile's own switch.
+/// holds it — and the window is not a capability at all. Everything else is the profile's own
+/// switch.
 ///
 /// It is exact for a *transferred* set too, and that is what makes the launch check sound. A module
 /// a transfer could not adopt is dropped and the successor keeps the one it resolved fresh from its

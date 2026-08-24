@@ -63,7 +63,6 @@ const SOURCE_ORDER: GgContextSource[] = [
   "skill",
   "memory",
   "task_list",
-  "board",
   "history",
 ];
 function bySource(
@@ -194,8 +193,8 @@ function sessionStarted(
 //
 // A capability is named either bare (`"tasks"`, taking the capability's defaults) or as
 // `[id, params]` — the params are how a configuration says what it *asked* for
-// (`{ ownership: "unowned" }`, `{ scope: "shared" }`), which the module surfaces read as
-// the declared half of every question they answer about what it actually got.
+// (`{ scope: "shared" }`), which the module surfaces read as the declared half of every
+// question they answer about what it actually got.
 type CapabilitySpec = string | [string, Record<string, unknown>];
 function sessionStartedWith(
   profiles: ReadonlyArray<{
@@ -224,7 +223,7 @@ function sessionStartedWith(
 
 // One row of an agent instance's module roster (`agent_modules`) — the event every
 // incarnation emits as it opens, naming the backing store it is a holder of. Everything
-// not named takes the value an ordinary private, owned, writable module has.
+// not named takes the value an ordinary private, writable module has.
 function held(
   kind: GgModuleKind,
   moduleId: string,
@@ -234,7 +233,6 @@ function held(
     kind,
     moduleId,
     enabled: true,
-    ownership: "owned",
     origin: "created",
     writable: true,
     ...overrides,
@@ -554,7 +552,7 @@ const EVENTS: HarnessEvent[] = [
     beforeTokens: 4400,
     afterTokens: 1800,
     summaryTokens: 300,
-    retained: { skills: 1, tasks: 3, memories: 1, issues: 2 },
+    retained: { skills: 1, tasks: 3, memories: 1 },
     beforeBySource: bySource({
       system: 1000,
       assistant: 2400,
@@ -1877,33 +1875,6 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getAllByText("review-standards").length).toBeGreaterThan(0);
     // From there the chip points back the other way.
     expect(screen.getByRole("button", { name: "agent-0" })).toBeInTheDocument();
-  });
-
-  it("says when a module is held but kept out of the prompt", () => {
-    // `unowned` is the one capability setting whose effect is invisible everywhere else:
-    // the tools are offered, the store is read and written, the telemetry arrives — the
-    // module just never reaches the model's window. So the module file states it as a
-    // sentence rather than leaving a badge to be interpreted.
-    renderMonitor([
-      sessionStartedWith([
-        {
-          slug: "root",
-          name: "Root",
-          capabilities: ["shell", ["tasks", { ownership: "unowned" }]],
-        },
-      ]),
-      roster("root", [
-        held("history", "history-0"),
-        held("tasks", "tasks-0", { ownership: "unowned" }),
-      ]),
-    ]);
-    openTab("Instances");
-    openFolder("root modules");
-    openFile("root modules tasks");
-    expect(screen.getByText("unowned")).toBeInTheDocument();
-    expect(
-      screen.getByText(/its prompt does not carry it/),
-    ).toBeInTheDocument();
   });
 
   it("links an agent's board module through to the board itself", () => {

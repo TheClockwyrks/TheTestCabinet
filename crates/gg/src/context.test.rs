@@ -1342,11 +1342,6 @@ fn every_turn_extends_the_previous_turns_window() {
                 turn / 3
             ))),
         );
-        ctx.replace_source(
-            GgContextSource::Board,
-            Retention::Pinned,
-            Some(Message::user(format!("# Board\n\n- issue {}", turn / 4))),
-        );
         // The signal is rebuilt every turn and changes constantly as the window grows; it renders
         // after every conversation item, so it is compared separately from the prefix below.
         ctx.refresh_context_usage_signal(signal_options());
@@ -1372,11 +1367,7 @@ fn every_turn_extends_the_previous_turns_window() {
     }
 
     // Each mutable source still has exactly one live block at the end.
-    for source in [
-        GgContextSource::Memory,
-        GgContextSource::TaskList,
-        GgContextSource::Board,
-    ] {
+    for source in [GgContextSource::Memory, GgContextSource::TaskList] {
         assert_eq!(
             ctx.items()
                 .iter()

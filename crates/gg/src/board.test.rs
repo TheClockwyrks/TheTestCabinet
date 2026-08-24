@@ -575,30 +575,6 @@ fn state_event_reports_the_whole_board() {
     }
 }
 
-#[test]
-fn context_block_is_none_when_empty_and_renders_the_board_otherwise() {
-    let mut store = store();
-    assert!(store.context_block().is_none());
-    add_epic(&mut store, "core");
-    let a = add_issue(&mut store, "a", &[]);
-    add_issue(&mut store, "b", &[&a]);
-    let block = store.context_block().expect("a non-empty board renders");
-    let text = block.content.clone().expect("the block has content");
-    // The board block names the epics and issues and shows the ready/blocked state.
-    assert!(text.contains("## Epics"));
-    assert!(text.contains("`CORE`"));
-    assert!(text.contains("`ISSUE-1`"));
-    assert!(text.contains("[ready]"), "an unblocked open issue is ready");
-    assert!(
-        text.contains("[blocked by `ISSUE-1`]"),
-        "b is shown blocked by a: {text}"
-    );
-    // The structured brief is rendered so the model always sees each issue's scope.
-    assert!(text.contains("in scope:"));
-    assert!(text.contains("out of scope:"));
-    assert!(text.contains("done when:"));
-}
-
 // ---------------------------------------------------------------------------
 // Caps resolution and the runtime
 // ---------------------------------------------------------------------------
@@ -715,7 +691,8 @@ fn enabled_runtime_offers_caps_and_state() {
         Some(GgTelemetryKind::BoardState { .. })
     ));
     assert!(runtime.context_block().is_none());
-    // After a mutation through the shared store, the count and block reflect it.
+    // After a mutation through the shared store, the count reflects it — and the board still
+    // renders no block, because nothing of it is ever put in a window.
     runtime
         .store()
         .lock()
@@ -723,7 +700,7 @@ fn enabled_runtime_offers_caps_and_state() {
         .create_issue(new_issue("a", None, "in", "out", "done", &[], None))
         .unwrap();
     assert_eq!(runtime.issue_count(), 1);
-    assert!(runtime.context_block().is_some());
+    assert!(runtime.context_block().is_none());
 }
 
 // ---------------------------------------------------------------------------

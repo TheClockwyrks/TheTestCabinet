@@ -1738,18 +1738,10 @@ fn system_prompt_names_the_modules_in_code_mode() {
     assert!(!empty.contains("`gg.shell`"), "{empty}");
 }
 
-/// **An unowned module says nothing in the system prompt.**
+/// **A held module explains itself in the system prompt.**
 ///
-/// `unowned` means the module is reachable through its *tools and nothing else*: not the pinned
-/// block (which each module withholds itself), and not the capability's own section either — the
-/// paragraphs explaining what its store is for and what its ceilings are. What documents the tools
-/// is their own schemas, which are untouched. Withholding only the block would have left an
-/// operator who set the param to cut a large module out of every request still paying for its
-/// prose on every turn.
-///
-/// Every module-backed capability an agent holds explains itself in its prompt.
-///
-/// Neither memories nor skills carries an ownership knob: what a
+/// The task list and the memories each contribute the capability's own section — the paragraphs
+/// explaining what its store is for and what its ceilings are. What a
 /// [strategy](crate::memories::MemoryStrategy) puts in the window *is* what having memories means
 /// under it, and `keyword-search` is the arm that pins nothing. The property this asserts is that
 /// a capability an agent has is a capability it is told it has.
@@ -2276,19 +2268,19 @@ fn system_prompt_omits_image_guidance_without_read_file() {
     assert!(!prompt.contains("Reading images"), "{prompt}");
 }
 
-/// **The board-authoring section follows the agent's own capability, not the run's board.**
+/// **The system prompt never describes the board, whoever holds the capability.**
 ///
-/// The board is run-global, so its runtime is enabled for every agent in the run — but an agent
-/// whose profile has no project-management capability is offered none of the board tools, and
-/// telling it to `create_issue` names a tool it does not have. That is how an implementer ends up
-/// reaching for the board instead of doing the work it was dispatched for.
+/// The board is reachable through the board tools alone: what documents them is their own
+/// schemas, delivered with the tools, and the prompt renders no project-management section and
+/// no pinned board block for any profile. A prompt that taught the board would be a text gg
+/// would have to keep agreeing with the toolset — and for an agent without the capability it
+/// would name tools the model does not have.
 #[test]
-fn the_board_section_follows_the_agents_own_capability() {
+fn the_prompt_never_describes_the_board() {
     let library = Arc::new(SkillLibrary::empty());
 
-    // The run has a board (some other profile owns it), but this agent may not author it.
-    let mut runtimes = DisabledRuntimes::new();
-    runtimes.board = Some(BoardRuntime::new(BoardCaps::detached()));
+    // An agent that may not author the board.
+    let runtimes = DisabledRuntimes::new();
     let registry = ToolRegistry::from_run(
         &runtimes.profile,
         &skills_modules(&library).with(ModuleHandle::Board(BoardRuntime::new(
@@ -2298,14 +2290,17 @@ fn the_board_section_follows_the_agents_own_capability() {
     );
     let prompt = system_prompt(runtimes.inputs(&registry));
     assert!(
-        !prompt.contains("create_issue"),
-        "an agent with no board capability is not taught the board tools:\n{prompt}"
+        !prompt.contains("create_issue") && !prompt.contains("Project management"),
+        "an agent with no board capability reads nothing about the board:
+{prompt}"
     );
 
-    // The same run, for the profile that *does* own the board: the section is rendered.
+    // The same run, for a profile that holds the capability: still no board section — the
+    // tools are offered, and their schemas are the whole of what documents them.
     let mut authoring = DisabledRuntimes::new();
-    authoring.board = Some(BoardRuntime::new(BoardCaps::detached()));
     crate::tools::grant(&mut authoring.profile, CAPABILITY_PROJECT_MANAGEMENT);
+    let authoring_profile = authoring.profile.clone();
+    let authoring = authoring.with_profile(authoring_profile);
     let registry = ToolRegistry::from_run(
         &authoring.profile,
         &skills_modules(&library).with(ModuleHandle::Board(BoardRuntime::new(
@@ -2315,8 +2310,9 @@ fn the_board_section_follows_the_agents_own_capability() {
     );
     let prompt = system_prompt(authoring.inputs(&registry));
     assert!(
-        prompt.contains("create_issue"),
-        "the board's owner still reads the whole section:\n{prompt}"
+        !prompt.contains("create_issue") && !prompt.contains("Project management"),
+        "the capability's holder reads nothing about the board either:
+{prompt}"
     );
 }
 
@@ -2325,8 +2321,7 @@ fn the_board_section_follows_the_agents_own_capability() {
 #[test]
 fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
     let library = Arc::new(SkillLibrary::empty());
-    let mut runtimes = DisabledRuntimes::new();
-    runtimes.board = Some(BoardRuntime::new(BoardCaps::detached()));
+    let runtimes = DisabledRuntimes::new();
     let registry = ToolRegistry::from_run(
         &runtimes.profile,
         &skills_modules(&library),
@@ -2359,7 +2354,6 @@ struct DisabledRuntimes {
     skills: Option<SkillsRuntime>,
     memories: Option<MemoriesRuntime>,
     tasks: Option<TasksRuntime>,
-    board: Option<BoardRuntime>,
     /// The vision context the prompt reads to decide whether to promise images. Owned here
     /// for the same reason as the runtimes: `PromptInputs` borrows it.
     vision: VisionContext,
@@ -2389,7 +2383,6 @@ impl DisabledRuntimes {
             skills: Some(SkillsRuntime::disabled()),
             memories: Some(MemoriesRuntime::disabled()),
             tasks: Some(TasksRuntime::disabled()),
-            board: Some(BoardRuntime::disabled()),
             // Nothing declared: the optimistic default, under which the prompt promises
             // the model it can see images.
             vision: VisionContext::unknown(),
@@ -2448,7 +2441,6 @@ impl DisabledRuntimes {
             skills: self.skills.as_ref().expect("built"),
             memories: self.memories.as_ref().expect("built"),
             tasks: self.tasks.as_ref().expect("built"),
-            board: self.board.as_ref().expect("built"),
             read_policy: Some(ReadPolicy::Unlimited),
             vision: &self.vision,
             program_language: None,
@@ -3794,9 +3786,8 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
 /// **The task list is always a list the agent is shown.**
 ///
 /// Every task tool is offered, every call lands in the store, every `TasksState` reaches the
-/// console — and the pinned block enters the window on every turn, because the task list has no
-/// [ownership](crate::modules::Ownership) to configure. It is what the agent steers its work by
-/// from turn to turn, so it is always carried in the prompt as its own message.
+/// console — and the pinned block enters the window on every turn. It is what the agent steers
+/// its work by from turn to turn, so it is always carried in the prompt as its own message.
 ///
 /// It is asserted from the loop rather than from the module because the claim is about *prompt
 /// assembly*: the loop refreshes every module's block in one pass rather than naming the task
@@ -3937,7 +3928,7 @@ fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
 
 /// With the project-management capability off (its default — it is opt-in), the run offers no
 /// board tools and emits no `BoardState`, even though the default script tries to build a board.
-/// The board calls come back as unknown tools and no Board tokens accumulate.
+/// The board calls come back as unknown tools.
 #[tokio::test]
 async fn run_without_epics_issues_capability_offers_no_board_tools_or_state() {
     let dir = TempDir::new().unwrap();
@@ -3956,20 +3947,6 @@ async fn run_without_epics_issues_capability_offers_no_board_tools_or_state() {
             .any(|e| matches!(e.kind, GgTelemetryKind::BoardState { .. })),
         "the board off must not emit any BoardState"
     );
-    // No Board-source tokens ever accumulate.
-    assert!(
-        events.iter().all(|e| match &e.kind {
-            GgTelemetryKind::ContextBreakdown { by_source, .. } =>
-                by_source
-                    .iter()
-                    .find(|b| b.source == GgContextSource::Board)
-                    .map(|b| b.tokens)
-                    .unwrap_or(0)
-                    == 0,
-            _ => true,
-        }),
-        "the board off must never account tokens to the Board source"
-    );
     // The create_epic call is withheld like any tool a run does not offer.
     assert!(
         events.iter().any(|e| matches!(
@@ -3987,9 +3964,8 @@ async fn run_without_epics_issues_capability_offers_no_board_tools_or_state() {
 }
 
 /// The offline default script builds a board end to end when the capability is enabled: an epic,
-/// two issues with a blocked-by edge, a refused cycle-inducing edge, and the pinned board
-/// accounted to the Board source. Mirrors the tasks DAG e2e but exercises the heavyweight tier
-/// through the full `run` path.
+/// two issues with a blocked-by edge, and a refused cycle-inducing edge. Mirrors the tasks DAG
+/// e2e but exercises the heavyweight tier through the full `run` path.
 #[tokio::test]
 async fn run_builds_a_board_end_to_end_when_epics_issues_enabled() {
     use crate::client::{DEFAULT_MOCK_EPIC, DEFAULT_MOCK_ISSUE_INPUT, DEFAULT_MOCK_ISSUE_RENDER};
@@ -4053,26 +4029,6 @@ async fn run_builds_a_board_end_to_end_when_epics_issues_enabled() {
     assert!(!render.in_scope.is_empty());
     assert!(!render.out_of_scope.is_empty());
     assert!(!render.completion_criteria.is_empty());
-
-    // The pinned board is accounted to the Board source in a later breakdown.
-    let last_board_tokens = events
-        .iter()
-        .rev()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
-                by_source
-                    .iter()
-                    .find(|b| b.source == GgContextSource::Board)
-                    .map(|b| b.tokens)
-                    .unwrap_or(0),
-            ),
-            _ => None,
-        })
-        .expect("a context breakdown was emitted");
-    assert!(
-        last_board_tokens > 0,
-        "the pinned board is accounted to the Board source"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -4382,124 +4338,6 @@ async fn drive_never_compacts_when_capability_off() {
             GgTelemetryKind::ContextBreakdown { fullness: Some(f), .. } if *f >= 0.6
         )),
         "the window crossed the threshold, yet nothing compacted"
-    );
-}
-
-/// A [`BoardRuntime`] holding one real epic and one real issue, so the pinned board block it
-/// produces is non-empty and would be visible in any window it were attached to.
-fn seeded_board() -> BoardRuntime {
-    let board = BoardRuntime::new(BoardCaps::detached());
-    {
-        let handle = board.store();
-        let mut store = handle.lock().unwrap();
-        let epic = store
-            .create_epic("RENDER", "Rendering", "Everything that draws")
-            .unwrap();
-        store
-            .create_issue(crate::board::NewIssue {
-                title: "Draw the board",
-                description: None,
-                in_scope: "the canvas",
-                out_of_scope: "input",
-                completion_criteria: "the board renders",
-                blocked_by: &[],
-                epic_id: Some(&epic),
-                agent: ROOT_PROFILE_ID,
-                reviewers: &[],
-            })
-            .unwrap();
-    }
-    board
-}
-
-/// Drive one agent against a run-global `board` under `profile`, and report the largest `Board`
-/// token band any of its context breakdowns carried.
-async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64 {
-    let dir = TempDir::new().unwrap();
-    let ctx = ToolContext::new(dir.path());
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-board-gate".to_string()), Box::new(sink.clone()));
-    let library = Arc::new(SkillLibrary::empty());
-    let registry =
-        ToolRegistry::from_run(profile, &skills_modules(&library), &AgentFacts::default());
-    let client = MockClient::new("mock/echo", vec![finish_call("f1", "done")]);
-
-    Agent::root(ROOT_PROFILE_ID)
-        .drive(
-            &client,
-            "go",
-            &registry,
-            &ctx,
-            &emitter,
-            &mut test_modules(test_context_setup(), no_code().enabled)
-                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
-                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
-                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
-                .with(ModuleHandle::Board(board)),
-            DriveSetup {
-                limits: no_limits(4),
-                compaction: no_compaction(),
-                amc: no_amc(),
-                autoload: no_autoload(),
-                persistence: no_persistence(),
-                read_policy: Some(ReadPolicy::Unlimited),
-                shell_offload: OffloadPolicy::ample(),
-                code: no_code(),
-                discovery: DiscoveryWarning::default(),
-                hooks: no_hooks(),
-                ending_role: EndingRole::Standard,
-                opening: Opening::Fresh,
-                turn_base: 0,
-                replay: None,
-            },
-            &[],
-            profile,
-            &GgCapabilitySet::default(),
-            &mut None,
-            None,
-        )
-        .await;
-
-    sink.events()
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::ContextBreakdown { by_source, .. } => by_source
-                .iter()
-                .find(|b| b.source == GgContextSource::Board)
-                .map(|b| b.tokens),
-            _ => None,
-        })
-        .max()
-        .unwrap_or(0)
-}
-
-/// The board is run-global, but the pinned board block is **per agent**. An agent whose own
-/// profile does not carry the project-management capability has no board tool, is told nothing
-/// about a board in its system prompt, and cannot act on one — so pinning the whole decomposition
-/// into its window every turn spends its context on a document it can only be distracted by, and
-/// invites an implementer to go looking for work other than the job it was dispatched to do.
-#[tokio::test]
-async fn the_board_block_is_withheld_from_an_agent_without_the_capability() {
-    let mut authoring = GgAgentConfig::root();
-    crate::tools::grant_configured(
-        &mut authoring,
-        crate::tools::configured(
-            CAPABILITY_PROJECT_MANAGEMENT,
-            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-        ),
-    );
-    authoring
-        .subagents
-        .push(GgSubagentRef::any(ROOT_PROFILE_ID));
-
-    assert!(
-        board_band_driving(&authoring, seeded_board()).await > 0,
-        "an agent that authors the board is shown it"
-    );
-    assert_eq!(
-        board_band_driving(&GgAgentConfig::root(), seeded_board()).await,
-        0,
-        "an agent without the capability never sees the board, however full it is"
     );
 }
 
@@ -9374,7 +9212,7 @@ impl ModelClient for SharedClient {
 /// survives.
 #[test]
 fn the_view_heading_is_documented_for_every_code_run() {
-    let withheld = code_heading_views(false, false, false, false);
+    let withheld = code_heading_views(false, false, false);
     let heading = code_heading(GgContextSource::TextView).expect("a text view carries a heading");
     let row = withheld
         .iter()
@@ -9398,7 +9236,7 @@ fn the_view_heading_is_documented_for_every_code_run() {
     let file = code_heading(GgContextSource::FileView).expect("a file view carries a heading");
     assert!(!withheld.iter().any(|view| view.heading == file));
     assert!(
-        code_heading_views(false, false, false, true)
+        code_heading_views(false, false, true)
             .iter()
             .any(|view| view.heading == file)
     );

@@ -76,7 +76,6 @@ function held(
     kind,
     moduleId,
     enabled: true,
-    ownership: "owned",
     origin: "created",
     writable: true,
     ...overrides,

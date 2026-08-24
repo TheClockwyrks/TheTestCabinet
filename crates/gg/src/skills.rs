@@ -39,7 +39,7 @@ use test_cabinet_core::gg::{
 
 use crate::model::Message;
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Refresh,
     detached_ids,
 };
 use crate::sandbox::ProgramLanguage;
@@ -564,13 +564,6 @@ impl Module for SkillsRuntime {
 
     fn enabled(&self) -> bool {
         self.enabled
-    }
-
-    /// Always [owned](Ownership::Owned). The catalogue *is* the state a skills module holds, and a
-    /// holder that was not told what skills exist could only ever reach one by being handed its name
-    /// — which is not an arm of anything, it is the capability switched off with extra steps.
-    fn ownership(&self) -> Ownership {
-        Ownership::Owned
     }
 
     /// None: skills do not occupy a single block. A read skill's body is pinned as its own

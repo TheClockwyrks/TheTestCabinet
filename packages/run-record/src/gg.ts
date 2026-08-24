@@ -663,19 +663,6 @@ export type GgModuleKind =
   | "archive";
 
 /**
- * Whether the state a module-backed capability keeps is carried in its holder's **prompt**, or
- * is reachable only through the tools it contributes.
- *
- * This is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and it is the one knob that separates
- * "the agent is told what it holds, every turn" from "the agent may look it up". It exists
- * because a module is no longer necessarily *about* the agent holding it: once a memory instance
- * can be shared between agents, or a task list handed from one FSM state to the next, an agent
- * can be given a working store it should be able to act on without paying for it in every
- * request it makes.
- */
-export type GgModuleOwnership = "owned" | "unowned";
-
-/**
  * How one agent instance came to hold one module instance — the holder-side half of a module's
  * identity, and the difference between *"this agent made this notebook"* and *"this agent was
  * handed it"*.
@@ -728,11 +715,6 @@ export type GgAgentModule = {
    * reason it still occupies its slot in gg's own module set.
    */
   enabled: boolean;
-  /**
-   * Whether this holder's prompt carries the module ([`owned`](GgModuleOwnership::Owned)) or it
-   * is reachable through its tools alone ([`unowned`](GgModuleOwnership::Unowned)).
-   */
-  ownership: GgModuleOwnership;
   /**
    * How this holder came by it.
    */
@@ -864,17 +846,15 @@ export type GgAgentApiFunction = {
   /**
    * The name a program calls it by, **relative to its module**, in this arm's own spelling:
    * a free function is its bare name — `readFile`, `openDocsView`, `finish` — and a method
-   * carries the receiver it hangs off, in the arm's own separator — `SubagentHandle.send` on
-   * Kotlin, `SubagentHandle#send` on Java, `SubagentHandle::send` on Rust. Joining the module's
+   * carries the receiver it hangs off, in the arm's own separator — `OpenView.close` on
+   * TypeScript, `OpenView#close` on Java, `open_view::close` on C++. Joining the module's
    * [`path`](GgAgentApi::path) onto it with the arm's separator gives the catalogue's
-   * fully-qualified name (`gg.delegation.SubagentHandle.send`), which is the key a documentation
-   * view opens by.
+   * fully-qualified name (`gg.views.OpenView.close`), which is the key a documentation view
+   * opens by.
    *
-   * Module-relative rather than bare so that two rows of one module never share a name: an arm
-   * that binds `send_message` as a free function **and** `send` as a method on the handle its
-   * spawn call returns reports `send_message` and `SubagentHandle::send` — two spellings of one
-   * operation, under two distinct names — where a bare `send` would say nothing about what it
-   * hangs off.
+   * Module-relative rather than bare so that two rows of one module never share a name: an
+   * arm that binds `close` as a free function **and** as a method on the value `current` lists
+   * reports `close` and `OpenView.close`, not `close` twice.
    */
   name: string;
   /**
@@ -1032,7 +1012,6 @@ export type GgContextSource =
   | "skill"
   | "memory"
   | "task_list"
-  | "board"
   | "history";
 
 /**
@@ -1530,12 +1509,9 @@ export type GgBoardIssue = {
  * not summarized away).
  *
  * Each figure is a **count of retained items**, not a token figure: how many read
- * [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many
- * in-play [memories](GgContextSource::Memory), and how many
- * [issues](https://docs.testcabinet.ai/gg/project-management/) on the
- * [board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by
- * the summary. The epic/issue board is retained across the boundary just like the task list,
- * so its issue count is reported here as part of the retention proof.
+ * [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how many
+ * in-play [memories](GgContextSource::Memory) remained pinned after the ephemeral history was
+ * replaced by the summary.
  *
  * [compaction]: https://docs.testcabinet.ai/gg/compaction/
  */
@@ -1552,10 +1528,6 @@ export type GgRetainedState = {
    * The number of in-play memories carried across the boundary verbatim.
    */
   memories: number;
-  /**
-   * The number of issues on the retained epic/issue board.
-   */
-  issues: number;
 };
 
 /**

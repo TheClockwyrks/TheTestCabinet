@@ -267,7 +267,6 @@ fn counts_compactions_and_context_overflow() {
                 skills: 0,
                 tasks: 0,
                 memories: 0,
-                issues: 0,
             },
             before_by_source: Vec::new(),
             after_by_source: Vec::new(),

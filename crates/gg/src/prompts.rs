@@ -2,7 +2,7 @@
 //! literals.
 //!
 //! Everything gg *says* to a model — the system prompt, the pinned context blocks that render
-//! the task list, the epic/issue board and the memories, the [briefs](render_review_brief) it
+//! the task list and the memories, the [briefs](render_review_brief) it
 //! dispatches agents with, and the [compaction](render_compaction_instruction),
 //! [completion](render_completion_missing) and [context-pressure](render_context_pressure) prose
 //! the loop injects between turns — lives in `crates/gg/templates/*.hbs` and is rendered here. The templates
@@ -62,9 +62,9 @@
 //! # No repetition between the prompt and the blocks
 //!
 //! *How* to use a capability is stated **once**, in the system prompt, gated on whether that
-//! capability is enabled. The pinned blocks ([`render_tasks`], [`render_board`],
-//! [`render_memories`]) are then pure **state** — a heading and the current items — rather than
-//! re-teaching the tools on every turn they are refreshed.
+//! capability is enabled. The pinned blocks ([`render_tasks`], [`render_memories`]) are then
+//! pure **state** — a heading and the current items — rather than re-teaching the tools on every
+//! turn they are refreshed.
 //!
 //! # The prompt names no functions at all — the opening turn hands them over
 //!
@@ -177,9 +177,6 @@ const CODE_NOTHING_SHOWN_TEMPLATE: &str = include_str!("../templates/code-nothin
 /// The pinned [task list](crate::tasks) block.
 const TASKS_TEMPLATE: &str = include_str!("../templates/tasks.hbs");
 
-/// The pinned [epic/issue board](crate::board) block.
-const BOARD_TEMPLATE: &str = include_str!("../templates/board.hbs");
-
 /// The pinned [memories](crate::memories) block.
 const MEMORIES_TEMPLATE: &str = include_str!("../templates/memories.hbs");
 
@@ -266,7 +263,6 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("system-code", SYSTEM_CODE_TEMPLATE),
     ("code-nothing-shown", CODE_NOTHING_SHOWN_TEMPLATE),
     ("tasks", TASKS_TEMPLATE),
-    ("board", BOARD_TEMPLATE),
     ("memories", MEMORIES_TEMPLATE),
     ("memory-index", MEMORY_INDEX_TEMPLATE),
     ("memory-notice", MEMORY_NOTICE_TEMPLATE),
@@ -569,13 +565,10 @@ pub struct SystemContext {
     pub memories: Option<MemoriesView>,
     /// The [task list](crate::tasks) ceiling, or `None` when the capability is off.
     pub tasks: Option<TasksView>,
-    /// The [epic/issue board](crate::board) ceilings, or `None` when **this agent** may not author
-    /// the board (it has no project-management capability of its own, or the run has no board).
-    pub board: Option<BoardView>,
     /// The [board issue](crate::board) this agent was dispatched to implement, or `None` when it
-    /// was not dispatched off the board. Independent of [`board`](Self::board): an implementer is
-    /// normally configured without the authoring capability, so this is usually the *only* board
-    /// section such an agent is shown.
+    /// was not dispatched off the board. The board itself is never described in a prompt — an
+    /// agent reaches it through the board tools alone — but being told what it is working on has
+    /// nothing to do with whether it may author the board.
     pub assigned_issue: Option<AssignedIssueView>,
     /// Whether this agent's opening context was pre-seeded with the test case's specifications and
     /// reference images, and if so whether they are locked into the window. `None` renders no
@@ -798,32 +791,6 @@ pub struct MemoriesView {
 pub struct TasksView {
     /// The maximum number of tasks the list may hold at once.
     pub max_tasks: usize,
-}
-
-/// The board ceilings and rosters the prompt states.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BoardView {
-    /// The maximum number of epics the board may hold at once.
-    pub max_epics: usize,
-    /// The maximum number of issues the board may hold at once.
-    pub max_issues: usize,
-    /// How many times gg re-dispatches a failed issue before marking it failed.
-    pub max_retries: usize,
-    /// Whether this agent must name one or more reviewers on every issue it files (as opposed to
-    /// naming them being optional).
-    pub reviewers_required: bool,
-    /// The agents this one may assign an issue to — its roster's
-    /// [`implementer`](test_cabinet_core::gg::GgSubagentScope::Implementer) scope.
-    ///
-    /// Listed in the project-management section rather than left to the tool schema because the two
-    /// rosters are genuinely different sets: a model told only "choose an agent" reaches for a name
-    /// it may spawn but may not assign, spends a call finding out, and learns nothing it could not
-    /// have been told up front.
-    pub issue_agents: Vec<SpawnableAgentView>,
-    /// The agents this one may name as an issue's reviewers — its roster's
-    /// [`reviewer`](test_cabinet_core::gg::GgSubagentScope::Reviewer) scope.
-    pub reviewer_agents: Vec<SpawnableAgentView>,
 }
 
 /// The [board issue](crate::board) an auto-dispatched agent was sent to implement, as its prompt
@@ -1057,66 +1024,6 @@ pub struct TaskItemView {
 /// Render the pinned [task list](crate::tasks) block.
 pub fn render_tasks(context: &TasksBlockContext) -> String {
     render("tasks", context)
-}
-
-/// The variables `board.hbs` may reference: the current [board](crate::board).
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BoardBlockContext {
-    /// The epics, in creation order.
-    pub epics: Vec<EpicItemView>,
-    /// The issues, in creation order.
-    pub issues: Vec<IssueItemView>,
-}
-
-/// One epic as the pinned block renders it.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EpicItemView {
-    /// The epic's id.
-    pub id: String,
-    /// The epic's title.
-    pub title: String,
-    /// The epic's description.
-    pub description: String,
-}
-
-/// One issue as the pinned block renders it — the line, plus the structured brief (scope and
-/// completion criteria) that makes an issue dispatchable.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IssueItemView {
-    /// The issue's id.
-    pub id: String,
-    /// The issue's title.
-    pub title: String,
-    /// The issue's overview, when it has one.
-    pub description: Option<String>,
-    /// The status word (`open`, `in progress`, `done`).
-    pub status: String,
-    /// The checkbox-style status marker.
-    pub marker: String,
-    /// The id of the epic the issue belongs to, when it is grouped under one.
-    pub epic_id: Option<String>,
-    /// Whether the issue is actionable now.
-    pub ready: bool,
-    /// The issue's incomplete blockers, pre-formatted, or `None` when it is ready or done.
-    pub blocked_by: Option<String>,
-    /// What the issue covers.
-    pub in_scope: String,
-    /// What the issue deliberately does not cover.
-    pub out_of_scope: String,
-    /// What makes the issue done.
-    pub completion_criteria: String,
-    /// The agent profile the issue is assigned to — who gg dispatches it under.
-    pub agent: String,
-    /// The issue's reviewer profiles, pre-formatted, or `None` when it was filed without any.
-    pub reviewers: Option<String>,
-}
-
-/// Render the pinned [epic/issue board](crate::board) block.
-pub fn render_board(context: &BoardBlockContext) -> String {
-    render("board", context)
 }
 
 /// The variables `memories.hbs` may reference: the in-play [memories](crate::memories).
