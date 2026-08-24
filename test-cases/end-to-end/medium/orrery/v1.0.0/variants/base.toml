@@ -1,0 +1,33 @@
+# The one and only Orrery variant: the whole machine, both modes. Listed as the
+# single entry in the case manifest's `variants`, so it is the default and every
+# run is a run of it. Every path here would resolve against the version folder,
+# exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The full machine-building game: the build's own Campaign course and the fixed ten-challenge Extras shelf."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# Campaign and Extras are not variants. They are modes the player picks from the
+# title menu, the way Refract's Campaign and Cascade are modes inside its single
+# variant, so both `specs/modes/campaign.md` and `specs/modes/extras.md` are
+# COMMON specs declared in `test-case.toml` and seeded for every run. A build
+# ships both.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only
+# on the selected engine (`{{#if (eq engine.slug "none")}}`). So there is no mode
+# spec, and no spec of any other kind, to put here. If you came to this file to
+# add one, it almost certainly belongs in `test-case.toml` as a common spec.
+
+# No `[reference_implementation]` yet. The authored correct builds — one per
+# supported engine, by convention `references/none` and `references/simple-2d` —
+# do not exist for this version at the time of writing, and a declared path that
+# does not resolve refuses the whole case. Declare the table here when they land,
+# exactly as Refract's base variant declares its two.
+
+# No `[workspaces]` table either. The case's common table covers both engines and
+# there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
+# point and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml` rather than being split across two places.

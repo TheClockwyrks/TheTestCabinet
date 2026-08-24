@@ -1,0 +1,426 @@
+# Orrery — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Orrery carries a debugging and automation surface, `window.__orrery`, so the
+game can be driven and inspected from code without moving a real pointer or
+waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and
+the build installs the finished surface on `window.__orrery` as soon as the
+game has initialized. Every scenario driven from code reaches the game
+through it, so it is present and exactly as specified here.
+
+Each operation is a read or a pose of the game's state. It arranges a
+challenge and a machine, and the game's own editor rules, simulation, and
+completion test run from there exactly as they do in play, so a scenario
+driven from code behaves exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls
+it.
+{{else}}
+Orrery carries a debugging and automation surface so the game can be driven
+and inspected from code without moving a real pointer or waiting on real
+time.
+
+You implement it. Every operation this file specifies is a deliverable, and
+the build's `initialize` returns the finished surface beside the state it
+built, as the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on
+the page. Every scenario driven from code reaches the game through it, so it
+is present and exactly as specified here.
+
+Each operation is a reading or a pose of `OrreryState`, written in the shape
+of `update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<OrreryState>`,
+and returns the next `OrreryState`; a reading takes the state the same way
+and returns what it read. A caller drives a pose through the engine's
+`apply`, as `engine.apply((s) => debug.loadPuzzle(s, challenge))`, and a
+reading against the engine's current state, as
+`debug.snapshot(engine.state)`. A pose arranges a challenge and a machine,
+and the game's own editor rules, simulation, and completion test run from
+there exactly as they do in play, so a scenario driven from code behaves
+exactly like one played by hand. Where the surface's implementation lives
+under `src/` is yours to decide; `src/game.ts` declares and exports its
+type, `OrreryDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls
+it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic: the run advances by
+simulated cycles integrated against the delta time the game is given, so an
+interval of game time reaches the same state however it was divided into
+frames. Two more properties make it driveable from code:
+
+- Render-free core. Game state advances from the elapsed time the game is
+  handed, independent of a canvas, of the frame loop that measured it, and
+  of wall-clock time. The dependency runs one way: the simulation reads
+  nothing from the renderer. Collision is decided at the sample fractions
+  `specs/simulation.md` fixes, never at rendered frames.
+- No randomness. Nothing in this game rolls dice: the same machine on the
+  same challenge produces the same run, cycle for cycle, on any machine at
+  any frame rate.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard and the overlay belong to the runtime layer beneath the game,
+and the surface carries no operation for the registered actions or for the
+overlay. That layer delivers the actions the game registers from the key
+bindings this specification fixes, and it draws and toggles the debug
+overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
+{{else}}
+The clock, the keyboard, the pointer, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at
+the root of this repository, and the surface carries no operation for any of
+them. The engine advances the game frame by frame and can take it off real
+time, it drives the actions the game registers, it reports the pointer
+position in the stage's logical units along with the press and release
+edges, and it draws and toggles the debug overlay.
+{{/if}}
+
+What the overlay shows is Orrery's, under Diagnostics below.
+
+The surface's pointer operations do not stand in for the player's pointer.
+They feed the same input path it feeds, so a posed press and a player's
+press are the same event to the game, and nothing is bypassed: hex, tray,
+and tape targeting, drags, lays, and the focus rule all run exactly as they
+do for a player.
+
+## The operations
+
+The surface carries `version` (`ORRERY_DEBUG_VERSION`, `1`), a plain number,
+and the operations below. Values are plain numbers, strings, booleans, and
+JSON data; challenges and solutions use exactly the formats of
+`specs/formats.md`, and `x` and `y` are in the stage's logical units.
+{{#if (eq engine.slug "none")}}
+{{else}}
+
+Each operation's first parameter is the current state,
+`DeepReadonly<OrreryState>`. A pose returns the next `OrreryState`, built
+from the one it was handed, which it leaves as it was; a reading returns
+what it read. The headings below name the parameters that follow the state.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops
+the frame loop advancing the simulation from the wall clock, so the game
+changes only when `advance` says so. `setAutoStep(true)` returns it to
+running itself, which is how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas
+shows the state the most recent frame left.
+
+### `advance(seconds, frames)`
+
+Runs `frames` whole frames covering `seconds` of game time, each worth
+`seconds / frames`, immediately and in order. `frames` defaults to `1`. Each
+is a real frame, the same update the loop runs followed by a render, so the
+game's own simulation and completion test produce the result and the canvas
+reflects it.
+
+A run advances by `SPEEDS[speed]` cycles per second of game time, so
+`advance(1, 1)` and `advance(1, 60)` cover the same cycles and reach the
+same outcome exactly; every cycle runs in full whatever the frame that
+crossed it.
+
+Advancing while the game is still stepping automatically adds to what the
+wall clock is already doing, so a scenario that must be reproducible calls
+`setAutoStep(false)` first.
+
+### `reset()`
+{{else}}
+### `reset(state)`
+{{/if}}
+
+Restores every declared field of the game's state to its title-screen value:
+the title screen with its first menu item highlighted, `mode` `campaign`, no
+challenge open, an empty editor with empty histories, no run, the pointer
+reported as up, `simTime` `0`, and all progress cleared, so nothing is
+solved, every record and stash is empty, only the first campaign challenge
+is unlocked, and both select screens land on their first row.
+
+`muted` is deliberately untouched: muting is a player preference the runtime
+owns.
+
+Because it restores exactly the declared fields, any state of your own that
+a frame depends on is derivable from them.
+
+{{#if (eq engine.slug "none")}}
+### `snapshot()`
+
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
+
+### `openChallenge(mode, index)`
+{{else}}
+### `snapshot(state)`
+
+A pure reading of `state`, returned as the plain object under Snapshot shape
+below. It returns no state, because it poses nothing.
+
+### `openChallenge(state, mode, index)`
+{{/if}}
+
+Poses entering a challenge, with `mode` `"campaign"` or `"extras"` and
+`index` from `0`. It does exactly what `confirm` on that row of that mode's
+select screen does — opens the challenge in the editor, restoring any
+stashed machine — and it acts from any screen: a live run is discarded and
+an open challenge's machine is stashed first, exactly as leaving the editor
+does. A locked or out-of-range row does nothing, exactly as it does for the
+player.
+
+{{#if (eq engine.slug "none")}}
+### `loadPuzzle(challenge)`
+{{else}}
+### `loadPuzzle(state, challenge)`
+{{/if}}
+
+Poses an arbitrary challenge: `challenge` is a challenge document in the
+format of `specs/formats.md`. The game moves to the editor with that
+challenge open, an empty machine, empty histories, and no run; the tray
+derives from it exactly as it does for a shipped challenge, and
+`challengeRef` reports it as loaded directly, so completing it touches no
+progress or record. A document that is not well formed throws an `Error`
+naming what is wrong with it, and changes nothing.
+
+This is the surface's main lever: it puts the editor on a chosen challenge
+without a course around it. A challenge posed this way is a challenge like
+any other, and every rule of `specs/editor.md` and `specs/simulation.md`
+applies to it unchanged.
+
+{{#if (eq engine.slug "none")}}
+### `loadSolution(solution)`
+{{else}}
+### `loadSolution(state, solution)`
+{{/if}}
+
+Replaces the open challenge's machine with `solution`, a solution document
+in the format of `specs/formats.md`, checked against the placement rules of
+`specs/parts.md` as one whole. It empties both histories, clears the
+selection and cursor, and leaves no run active. A solution that is illegal
+for the open challenge, or a call with no challenge open, throws an `Error`
+naming the first problem, and changes nothing.
+
+{{#if (eq engine.slug "none")}}
+### `readSolution()`
+{{else}}
+### `readSolution(state)`
+{{/if}}
+
+A pure read: the current machine as a solution document, exactly what
+`loadSolution` would accept to rebuild it. With no challenge open it throws
+an `Error` saying so.
+
+{{#if (eq engine.slug "none")}}
+### `challengeSolution(mode, index)`
+{{else}}
+### `challengeSolution(state, mode, index)`
+{{/if}}
+
+A pure read: the build's own reference solution for that challenge, as a
+solution document, whatever is unlocked or solved. `specs/modes/campaign.md`
+and `specs/modes/extras.md` require one per challenge; this is where they
+are reachable. An out-of-range `index` throws an `Error` naming the bounds.
+
+{{#if (eq engine.slug "none")}}
+### `pointerDown(x, y)`, `pointerMove(x, y)`, `pointerUp()`
+{{else}}
+### `pointerDown(state, x, y)`, `pointerMove(state, x, y)`, `pointerUp(state)`
+{{/if}}
+
+Report a press, a move, and a release at a logical stage position, feeding
+the same input path the player's pointer feeds: targeting, selection, drags,
+lays, and the focus rule all run as `specs/editor.md` and
+`specs/controls.md` state.
+
+**Each of the three takes effect immediately, when it is called, rather than
+being sampled once per update.** The press, the move, or the release is
+resolved in the state the call returns rather than deferred to the next
+update.
+{{#if (eq engine.slug "none")}}
+No frame need pass between them, so a whole machine can be placed from code
+without advancing the game at all.
+{{else}}
+Each returns the state that press, move, or release left behind, and the
+next call is handed that state, so a whole machine can be placed from code
+without a frame passing between the calls.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### `play()`, `step()`, `stop()`, `setSpeed(index)`
+{{else}}
+### `play(state)`, `step(state)`, `stop(state)`, `setSpeed(state, index)`
+{{/if}}
+
+The run controls, through the same code path the player's actions drive.
+`play` and `step` do exactly what the `play` and `step` actions do in
+`specs/editor.md`, refusal included; `stop` does what `back` does during a
+run and nothing when none is active; `setSpeed` sets a live run's speed step
+to `index`, clamped to `0` through `3`, and does nothing when no run is
+active. A `step` completes its whole cycle
+within the call, so its outcome, a fault included, is in the state it
+returns.
+
+{{#if (eq engine.slug "none")}}
+A typical scenario calls `loadPuzzle` to pose the challenge wanted,
+`loadSolution` to stand a machine on it, `step()` repeatedly to run it a
+cycle at a time, and reads the result from `snapshot()`.
+
+## Snapshot shape
+
+`snapshot()` returns:
+{{else}}
+A typical scenario applies `loadPuzzle` through
+`engine.apply((s) => debug.loadPuzzle(s, challenge))`, then `loadSolution`
+and `step` the same way to run the machine a cycle at a time, and reads the
+result from `debug.snapshot(engine.state)`.
+
+## Snapshot shape
+
+`snapshot` returns:
+{{/if}}
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "select" | "editor",
+  mode: "campaign" | "extras",
+  menuIndex: <number>,
+  selectIndex: <number>,
+  howtoPage: <number>,
+  campaign: {
+    count: <number>,           // how many challenges the shipped course holds
+    unlockedCount: <number>,
+    solved: [<number>],        // ascending indices
+    records: [{ cost, cycles, area } | null],  // one entry per challenge
+    last: <number>,            // where the select screen lands
+  },
+  extras: {
+    count: 10,
+    solved: [<number>],
+    records: [{ cost, cycles, area } | null],
+    last: <number>,
+  },
+  challenge: {                 // the challenge open in the editor
+    name: <string>,
+    reagents: [<molecule>],    // exactly the formats of specs/formats.md
+    products: [<molecule>],
+    permitted: [<part kind>],
+    target: <number>,
+    source: "campaign" | "extras" | "custom",
+    index: <number | null>,    // null when source is "custom"
+  } | null,
+  editor: {
+    parts: [                   // placement order; the tape panel's row order
+      { id, kind, q, r, rotation, length,
+        cells: [{ q, r }] | null, closed: <boolean | null>,
+        index: <number | null>, tape: [<instruction | null>] | null },
+    ],
+    cost: <number>,
+    period: <number>,
+    selected: <number | null>,
+    focus: "field" | "tape",
+    cursor: { part: <number>, col: <number> } | null,
+    drag: {                  // the live drag, in one of its three shapes
+      kind: "place",
+      part: <part kind>, index: <number | null>,
+      rotation: <number>, length: <number>,
+      at: { q, r } | null,   // the targeted hex, null off every hex
+    } | {
+      kind: "move",
+      part: <part id>,
+      from: { q, r },        // the hex the press grabbed
+      at: { q, r } | null,
+    } | {
+      kind: "lay",
+      part: <part id>,
+      end: "first" | "last",
+    } | null,
+    undoDepth: <number>,
+    redoDepth: <number>,
+  },
+  sim: {
+    status: "running" | "paused" | "faulted" | "complete",
+    cycle: <number>,
+    fraction: <number>,
+    speed: <number>,           // the SPEEDS index
+    motes: [
+      { id, q, r,              // the hex at the last boundary
+        x: <number>, y: <number>,  // the drawn position at the current fraction
+        type: <mote type>,
+        wheel: <number | null> },
+    ],
+    filaments: [{ a: <mote id>, b: <mote id>, weight: 1 | 3 }],
+    poses: [{ part, rotation, length, cell: { q, r } }],
+    grips: [{ part, spoke, mote }],
+    tallies: [<number>],       // one entry per product
+    area: <number>,            // distinct hexes banked so far
+    fault: { kind, parts: [<part id>], motes: [<mote id>] } | null,
+    metrics: { cost, cycles, area } | null,
+  } | null,
+  pointer: { x: <number>, y: <number>, down: <boolean> },
+  muted: <boolean>,
+  simTime: <number>,           // accumulated simulation time, in seconds
+}
+```
+
+The shape is fixed, and every field is present whatever the screen and mode.
+A field the current situation does not use reports its resting value rather
+than going missing:
+
+| Field | Resting value |
+| --- | --- |
+| `challenge` | `null` away from the editor |
+| `editor` | present always; empty `parts`, `cost` `0`, `period` `1`, `selected` and `cursor` `null`, `focus` `"field"`, `drag` `null`, both depths `0` when nothing is open |
+| `sim` | `null` while editing |
+| `campaign.unlockedCount` | `1` |
+| `campaign.last`, `extras.last`, `selectIndex` | `0` |
+| `howtoPage` | `0` away from `howto` |
+
+Every field is read straight off the game's state, so what the snapshot
+reports is what the game holds. The derived ones are:
+
+| Field | Derived from |
+| --- | --- |
+| `editor.cost` | `PART_COSTS` over the parts, as `specs/parts.md` computes it |
+| `editor.period` | the tapes, as `specs/instructions.md` computes it |
+| a mote's `x`, `y` | its hex, its motion, and `sim.fraction`, by the formulas of `specs/field.md` and `specs/simulation.md` |
+| `sim.area` | the length of the area bank |
+
+Three fields need the game to keep them honest every frame: `pointer`
+mirrors the position and press the pointer input reports, `muted` mirrors
+the runtime's mute bit, and `simTime` accumulates the delta time of every
+update, whatever the screen.
+
+## Diagnostics
+
+The runtime's debug overlay shows the values the game registers with it as
+diagnostic sources. Register at least the current `screen` and `mode`, the
+open challenge's name and source, the part count and `cost`, the `period`,
+the run's `status`, `cycle`, and `speed` when one is active, each product's
+tally against the `target`, the mote count, the fault kind when there is
+one, the focus, and the pointer position. Keep each one short enough to
+read on a line, and keep every source a pure read, so watching the overlay
+leaves the game as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
+`Backquote`), and it reads the game without changing it.
+{{else}}
+Registering those values is the whole of Orrery's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the
+read, as `DeepReadonly<OrreryState>`, and reads off that argument: a source
+that closed over the state `initialize` built would report the title screen
+forever, because every frame leaves a new value behind. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
+{{/if}}

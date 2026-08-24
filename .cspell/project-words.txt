@@ -561,3 +561,15 @@ hypot
 # are written for.
 vitest
 backgrounded
+
+# Orrery v1.0.0: the case's own vocabulary — arm variants, fault names, the
+# celestial challenge names, and the spec's hold/rotation terms.
+Aetherfall
+Mirrorwright
+biarm
+hexarm
+misrotated
+overretracted
+retargets
+triarm
+unheld

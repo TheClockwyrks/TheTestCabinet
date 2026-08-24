@@ -1,0 +1,868 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The manifest format. Format 2 is the one that names engines: it replaces the
+# single `workspace` key with a `[workspaces]` table holding one starter directory
+# per engine, and it is the only format under which `engines` and `[[engine]]` are
+# legal. Orrery is built two ways — with a runtime handed to it and with no
+# runtime at all — so a single starter directory could not stand for both and
+# format 1 is not an option here.
+format = 2
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "orrery"
+
+# Human-readable display name for this test case.
+name = "Orrery"
+
+# Relative difficulty of this case, surfaced on the site. Orrery is both a great
+# deal of work AND genuinely demanding to reason about, which is what separates it
+# from an easy case like Refract: simultaneous rigid motion with a sampled sweep
+# collision rule, a multi-hold consistency rule, an ordered sigil pipeline with
+# consuming and producing footprints, exact constellation matching (repeating
+# products included), two editor macros computed from an arm's own pose history,
+# and a direct-manipulation editor with drags, tapes, focus routing, and undo. On
+# top of the mechanics the build designs its own campaign and must actually SOLVE
+# every challenge it ships, the fixed Extras included, because every challenge
+# carries a reference solution the debug surface exposes. Hard is reserved for
+# cases stacking real-time systems on top of this kind of rule load, so medium.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["puzzle", "logic", "2d", "automation"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A machine-building puzzle of brass arms and celestial motes on a hex field: \
+engrave sigils, write looping tapes, and deliver constellations cheaply, \
+quickly, and compactly — without letting two motes collide."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Required per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected engine) and handed to the model as
+# the build instruction. It injects absolute in-container paths through template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. It exists so a stuck or runaway session cannot run unbounded, not to
+# make the job tight. Orrery asks for far more construction than Refract's three
+# hours covered: a simulation with simultaneous motion, sampled collision, and an
+# ordered sigil pipeline; a full direct-manipulation editor with tapes, macros,
+# and undo; a course of the build's own challenges; and a reference solution for
+# every challenge shipped, which means actually solving the ten Extras and the
+# build's own campaign. Six hours is comfortably more than a healthy build of
+# that size needs while still catching a session that never terminates.
+max_runtime_hours = 6
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, and, on an engine run, the
+# vendored engine — and downloads the Playwright Chromium build (the base image
+# ships the OS libraries Chromium links against, but not the browser binary), so
+# the model can build the game and look at it in a browser without any further
+# setup.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Orrery declares exactly ONE, so every run of this case is the same game.
+#
+# Campaign and Extras are NOT variants. They are the two ways to play, chosen by
+# the player from the title menu and reported by the state as `mode`, exactly as
+# Refract's Campaign and Cascade are modes inside its single variant. Both modes
+# ship in every build, so nothing in the seeded spec set branches on the variant
+# at all — the only axis the specs branch on is `engine.slug`, which changes what
+# the build is handed rather than what it is asked to make.
+#
+# This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# input actions a player drives it with, the audio bus, asset loading, and the
+# on-screen diagnostics. It is a *run dimension*, chosen per run alongside the
+# model, the harness, and the variant, and recorded on the run; it is not a
+# property of the game.
+#
+# Orrery supports two, and the game is the same under both. What differs is how
+# much of the build is handed over: `simple-2d` vendors the runtime as a package
+# and seeds the modules around it (`src/constants.ts`, `src/main.ts`, and the
+# `src/game.ts` the build writes, debug surface included), while `none` supplies no
+# runtime and no `src/` at all, so the build writes the frame loop, the input, the
+# audio, the overlay and the `window.__orrery` surface itself. The POINTER the
+# editor is operated with follows that split: `simple-2d` owns it and hands the
+# build positions already in logical stage units with press and release edges,
+# while an engineless build maps the page's pointer itself — which is why
+# `specs/controls.md` branches on the engine only to say where the pointer comes
+# from.
+#
+# The game the two describe is the same one, so the review checklist below is the
+# same for either and a score recorded under one engine is comparable with a score
+# recorded under the other; the specs branch only where the deliverable differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` carries a range and is named in an
+# `[[engine]]` table. The range is pinned because a specification is written
+# against a runtime contract: `min_version` is the 1.0.0 API the specs are written
+# against, and there is deliberately no `max_version`, so a later 1.x or 2.x from
+# the host package store is accepted as it lands. Widening or moving a range means
+# a new case version, so the pin is the statement that THIS spec set matches THIS
+# contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to *this game* under it —
+# Orrery's actions and key bindings, its six cue names, and what it needs from a
+# pointer — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. Both carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration
+# the `[toolchain]` commands below run against, and an `index.html` holding the
+# canvas. What differs is how much of the build is supplied with them.
+#
+#   - `none`      supplies the configuration and nothing else. There is no `src/`:
+#                 the build writes its own frame loop, canvas fit, keyboard and
+#                 pointer input, audio, diagnostics overlay and `window.__orrery`
+#                 surface, and every figure the specification fixes, from the specs
+#                 alone.
+#   - `simple-2d` declares the engine in its `package.json`, which is vendored in
+#                 at seed time so the build imports it by its bare package name,
+#                 and seeds the case-owned modules around the game:
+#                 `src/constants.ts` (every figure this specification fixes — the
+#                 stage, field, and editor geometry, the mote and part rosters, the
+#                 costs, the speeds, the action bindings, the cue names, the screen
+#                 copy; the LOOK is not among them) and `src/main.ts` (the browser
+#                 entry). The build writes `src/game.ts`: the state, the debug
+#                 surface its `initialize` returns beside that state, the three
+#                 functions, and the `BACKGROUND` color `src/main.ts` hands the
+#                 engine.
+#
+# The single variant declares no `[workspaces]` of its own, because there is no
+# second game for one to differ in. The seeded files land at the run root
+# (`workspaces/none/package.json` seeds to `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. These run verbatim from the build's repository root:
+# dependencies are installed, then the static build is produced into `dist/`,
+# `build/`, or `out/`. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`, so the validated build installs exactly what the deploy
+# will. Both commands are required; there are no defaults, so every case states
+# exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case
+# fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does
+# not compile is not reviewable. The other three are recorded and gate nothing —
+# `test` additionally records the count and coverage the build's own suite reports,
+# which is how a build that ships tests is told apart from one that ships none.
+# Each is spelled `npx` rather than `npm run <script>` so the check is the case's
+# own statement of what is run and does not depend on the model leaving the seeded
+# scripts intact. These four are exactly the commands `specs/overview.md` tells the
+# build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. It is reporter-side and never seeded; the seeded specification documents
+# the surface independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md).
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__orrery` once the game has initialized, so
+# the handle is what a person opening the console of such a build finds. An engine
+# run has NO global at all: the build writes the surface, its `initialize` returns
+# it beside the state as `[state, debug]`, and a caller reads it back off
+# `engine.debug`. Because the engine holds the state by value and hands every
+# reader a read-only view, that surface is written in the shape of `update` — a
+# pose takes the current state and returns the next, applied through
+# `engine.apply`, and a reading takes the state and returns what it read, called
+# with `engine.state`. One handle, two ways to reach the same operations.
+#
+# There is deliberately no `tick_hz`. Orrery's simulation unit is the cycle, but
+# cycles advance at a player-chosen SPEEDS rate integrated against the delta time
+# the frame hands the game, and the surface's `step` advances exactly one cycle
+# within the call, so there is no fixed case-wide ticks-per-second to state. The
+# key is optional precisely so a case clocked this way omits it.
+[instrumentation]
+handle = "__orrery"
+
+# The specs. Every one of these is a COMMON spec, seeded for EVERY run of this
+# case, at the `dest` path within the run workspace. The single variant declares
+# none of its own: there is one game here, so there is one spec set.
+#
+# The specification is decomposed by concern, and each file is self-contained
+# enough to be read on its own while naming its siblings where a fact lives
+# elsewhere: `overview.md` the game and the project it is built in, `field.md` the
+# hex geometry and the mote roster, `parts.md` the mechanisms and placement,
+# `sigils.md` every sigil's footprint and effect, `instructions.md` the tapes and
+# the two macros, `simulation.md` the cycle, motion, collision, faults, and
+# metrics, `controls.md` the input, `editor.md` the machine editor,
+# `formats.md` the challenge and solution documents, `challenges.md` the ten
+# fixed Extras, `state.md` the game's state, `instrumentation.md` the debug
+# surface, `ui.md` the screens and audio, and `modes/campaign.md` and
+# `modes/extras.md` the two ways to play.
+#
+# The two mode files are common specs like any other. Both modes ship in every
+# build and both are reachable from the title menu, so both files are seeded into
+# every run and each names the other where the game genuinely crosses between them.
+#
+# Every `.hbs` source is rendered before it lands, and ONE axis is branched on:
+# `engine.slug`, which selects what the build is handed and what it must write.
+# `overview.md.hbs` (the runtime, what is implemented, where the figures come
+# from), `controls.md.hbs` (where the pointer layer sits), `state.md.hbs` (the
+# build's own shape versus the exact `OrreryState` declaration),
+# `instrumentation.md.hbs` (the global versus `engine.debug`, and the clock
+# operations only an engineless build needs), and `ui.md.hbs` (where cues are
+# played) all branch on it. Nothing branches on the variant. A spec's `dest`
+# defaults to its `source` with a trailing `.hbs` stripped, so an `.md.hbs` source
+# seeds to the same `.md` path and a plain `.md` source is seeded verbatim.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The field: the axial hex geometry, the rotation formulas every moving part uses,
+# the pointer targeting rule, the full mote roster with the planetary ladder, and
+# filaments. Seeded verbatim: nothing in it differs by engine.
+[[spec]]
+source = "specs/field.md"
+
+# The mechanisms: the five arm variants and their spokes, the zodiac wheel and its
+# fixture ring, track and mounting, rises and sets as placeable parts, the
+# placement rules, and the cost table.
+[[spec]]
+source = "specs/parts.md"
+
+# Every sigil's footprint, condition, and effect, rises and sets included, with
+# the exact terms (unbonded, unheld, vacant) the conditions are stated in.
+[[spec]]
+source = "specs/sigils.md"
+
+# The instruction set, tapes and the shared period, and the `reset` and `repeat`
+# editor macros with their exact expansions.
+[[spec]]
+source = "specs/instructions.md"
+
+# The heart of the case: the run lifecycle, the cycle order, motion and carrying,
+# the torn rule, the sampled collision rule with eleven worked examples, every
+# fault, the sigil phase order, completion, and the three metrics.
+[[spec]]
+source = "specs/simulation.md"
+
+# How a player operates the game: where the pointer comes from, the focus rule,
+# and the full action and binding tables. It branches on the engine only to say
+# which layer delivers the pointer.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The machine editor: the five stage regions and their fixed geometry, the tray,
+# selection, drags and ghosts, laying track, the tape panel and its scroll rules,
+# undo and redo, the run controls, and per-challenge machine stashes.
+[[spec]]
+source = "specs/editor.md"
+
+# The two JSON documents the game speaks — challenges and solutions — used by the
+# fixed Extras, the build's own campaign data, and the debug surface.
+[[spec]]
+source = "specs/formats.md"
+
+# The ten fixed Extras challenges, in the challenge format. It is authoritative
+# for every one of them, so it is seeded verbatim and the build transcribes it
+# exactly.
+[[spec]]
+source = "specs/challenges.md"
+
+# The shape of the game's state. Under `simple-2d` this is the `OrreryState`
+# declaration the build writes into `src/game.ts` verbatim, stated by the case
+# rather than by the seeded stub. Under `none` the build owns the shape and the
+# file lists only what the state must carry, because the rest of the specification
+# is written against those facts.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# render-free core; an API to drive and inspect the game from code through its own
+# real input path; and a read-only debug overlay. Framed as an ordinary developer
+# affordance of the game. It branches on the engine for how the surface is reached
+# and for the clock operations only an engineless build owns.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The screens, the solved panel and the fault display, menu navigation, and the
+# six audio cues.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# Campaign: the course the build designs itself — count bounds, solvability with
+# shipped reference solutions, whole-vocabulary coverage, the unlock rule, and its
+# select screen.
+[[spec]]
+source = "specs/modes/campaign.md"
+
+# Extras: the fixed ten-challenge shelf, open from the start, with records.
+[[spec]]
+source = "specs/modes/extras.md"
+
+# No `[[reference]]`, no `[[check]]`, and no `[[proof]]`.
+#
+# Orrery deliberately fixes no palette, no font, no artwork, no filament or arm
+# rendering and no background: the look of the sky and the machine is the build's
+# own design, and `specs/field.md`, `specs/parts.md` and `specs/ui.md` say so in
+# as many words. A reference view is a picture a build is compared AGAINST, so
+# there is no honest one to seed here — every build is expected to look different,
+# and a screenshot diff would score the build that copied a mockup best rather
+# than the build that designed the best sky. What the specification does fix about
+# appearance is stated as legibility a player depends on (mote classes told apart,
+# an arm's grip visible, a sigil's footprint readable, the tape's glyphs
+# distinguishable), and that is checked by a reviewer looking at the running game,
+# in the categories below.
+#
+# `[[proof]]` is likewise empty: nothing is asked of the build beyond the game
+# itself. The automated load check still runs.
+
+# Scoring domains. A reviewer rates each independently while playing the build, and
+# the run's overall rating is the WORST across them — an immaculate Extras shelf
+# cannot mask a campaign of unsolvable challenges. Every case must declare at
+# least one. The domain ratings are where the reviewer's judgement lives: the
+# look, the polish, and the feel. They are separate from the checklist below,
+# which is scored per point (the categories grammar attaches no domain to a
+# point).
+#
+# One domain per mode, because a build can plausibly get one right and the other
+# wrong, plus the two things that cut across both: the workshop feel the whole
+# game is operated through, and the presentation this case hands entirely to the
+# build.
+[[domain]]
+id = "campaign"
+name = "Campaign"
+description = "The course the build designed: whether its challenges teach the machine one idea at a time, grow in difficulty, and end somewhere worth reaching."
+
+[[domain]]
+id = "extras"
+name = "Extras"
+description = "The fixed shelf: whether the ten challenges play exactly as specified and reward returning for better records."
+
+[[domain]]
+id = "workshop"
+name = "Workshop"
+description = "How building and running feels: placing and dragging parts, laying track, writing tapes, and watching a machine run, fault, and complete."
+
+[[domain]]
+id = "presentation"
+name = "Presentation"
+description = "The look and sound of the sky and the machine, which this case leaves entirely to the build: the field, the motes, the arms and sigils, the screens, and the cues."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY — a bare name grouping the points a
+# reviewer grades — and each `[[review.categories.items]]` under it is one graded
+# review item, worth one point (the default weight), so a category is worth the
+# number of items it holds. A category carries no prose of its own; each item
+# states in `description` the single observable requirement being checked. The
+# checklist is common to every run: there is one variant and the two engines
+# produce the same game, so nothing here is conditional.
+#
+# The checklist is reporter-side material — never seeded into a run, so the model
+# never sees it. Every item restates a requirement the seeded specification already
+# states, in the spec's own vocabulary and naming the spec's own constants, so a
+# build that read the specs carefully has already been told everything on this
+# list.
+#
+# NO ITEM DECLARES A `validation` SCRIPT. Every point here is decided by a reviewer
+# playing the build. That is deliberate and temporary: this case's validation
+# suites do not exist yet, and a manifest naming a script that is not shipped under
+# `validation/<engine>/` does not resolve. When those suites are written — one
+# directory per engine, `validation/none/` driving the build in Chromium through
+# `window.__orrery` and `validation/simple-2d/` running in process against the
+# vendored engine — the mechanical points here are the ones to move over first,
+# and each gains a `validation` key naming its suite. The intended shape of those
+# suites: smoke tests that pose small fixed challenges through `loadPuzzle`, drive
+# the editor through the pointer operations and real key events to place a part
+# and write a tape, and read the outcome from `snapshot`; then deeper passes that
+# `loadSolution` known machines onto fixed challenges and step them cycle by
+# cycle, asserting every sigil effect, every fault (the collision examples in
+# specs/simulation.md are written to be replayed verbatim), the metrics, and the
+# reference solutions the build itself ships. Until then this list is what a
+# reviewer works down with the build in front of them, which is why every item is
+# phrased as something a person can SEE happen rather than as an assertion over a
+# number they would have to read out of a console.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The debug surface is a deliverable of the build, not a courtesy: it is how the
+# game is driven and inspected from code, and how every later validation suite
+# will reach it. These points check that it is really there, really wired to the
+# running game, and really deterministic.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug and automation surface is present"
+description = "Every operation specs/instrumentation.md names is present as a function on the surface, reached on the page as window.__orrery in an engineless build and off engine.debug in an engine build, and each one poses or reads the running game rather than a copy of it."
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "A snapshot carries every field specs/instrumentation.md lists, with version ORRERY_DEBUG_VERSION (1), and the values it reports match what is on screen: the screen and mode, both modes' progress and records, the open challenge, the machine with its derived cost and period, the run when one is active, the pointer, muted, and simTime."
+[[review.categories.items]]
+id = "snapshot-resting-values"
+title = "Fields the current situation does not use report their resting values"
+description = "The shape is fixed whatever the screen: challenge is null away from the editor, sim is null while editing, the editor block reports its empty values when nothing is open, and no field goes missing."
+[[review.categories.items]]
+id = "load-puzzle"
+title = "loadPuzzle poses an arbitrary challenge"
+description = "loadPuzzle with a well-formed challenge document opens the editor on it with an empty machine, the tray derived from it, and source reported as custom, so completing it touches no progress; a malformed document throws and changes nothing."
+[[review.categories.items]]
+id = "solution-round-trip"
+title = "loadSolution and readSolution round-trip a machine"
+description = "loadSolution stands a legal solution document up as the machine, an illegal one throws naming the first problem and changes nothing, and readSolution returns a document loadSolution would accept to rebuild the same machine."
+[[review.categories.items]]
+id = "challenge-solutions"
+title = "The shipped reference solutions are reachable"
+description = "challengeSolution returns a solution document for every campaign index and every extras index, whatever is unlocked, and an out-of-range index throws naming the bounds."
+[[review.categories.items]]
+id = "pointer-operations-drive-play"
+title = "The pointer operations drive the real input path"
+description = "pointerDown, pointerMove and pointerUp feed the same path a player's pointer feeds, so hex, tray and tape targeting, drags, lays and the focus rule all run, and each call takes effect immediately rather than waiting for the next update."
+[[review.categories.items]]
+id = "run-operations"
+title = "The run operations mirror the player's controls"
+description = "play, step, stop and setSpeed do exactly what the play, step and back actions and the speed steps do, refusal included, and a step completes its whole cycle within the call so its outcome is in the state it returns."
+[[review.categories.items]]
+id = "reset"
+title = "reset returns the game to its title-screen values"
+description = "reset restores the title screen with its first item highlighted, mode campaign, no challenge open, an empty editor with empty histories, no run, simTime 0, and all progress, records and stashes cleared with only campaign challenge 1 unlocked, and leaves muted untouched."
+[[review.categories.items]]
+id = "overlay"
+title = "The debug overlay reports the game"
+description = "The overlay shows the diagnostics specs/instrumentation.md asks for — screen and mode, the challenge, part count and cost, period, the run's status, cycle and speed, tallies against the target, mote count, fault kind, focus, and the pointer — and updates as the game is played without changing it."
+[[review.categories.items]]
+id = "deterministic-core"
+title = "The simulation advances on elapsed time and reads nothing from the renderer"
+description = "The game advances from the delta time each frame hands it rather than from a count of frames, collision is decided at the sample fractions rather than at rendered frames, and the same machine on the same challenge produces the same run at any frame rate."
+
+# --- Field and rendering ------------------------------------------------------
+# The geometry is the one part of Orrery's appearance the specification fixes,
+# because every pointer position is measured against it. The rest of these points
+# are the legibility a player depends on to read the machine at all.
+[[review.categories]]
+id = "field"
+title = "Field and rendering"
+[[review.categories.items]]
+id = "hex-geometry"
+title = "Hexes sit on the centers the formula gives"
+description = "Every hex is drawn at the center specs/field.md computes for it: hexX/hexY about (FIELD_CX, FIELD_CY) (616, 304) with HEX_PITCH (48), the field exactly the radius FIELD_R (5) hexagon, so parts and motes land where the formulas say."
+[[review.categories.items]]
+id = "hex-targeting"
+title = "The pointer targets one hex at a time"
+description = "A press targets the nearest field hex center within HEX_HIT_R (26), ties resolved by smaller r then smaller q, and targets no hex when every center is farther than that."
+[[review.categories.items]]
+id = "mote-legibility"
+title = "Every mote type reads at a glance"
+description = "dust, the four essences, mercury, the six planets in their ladder order, umbra, lumen and aether are all identifiable on sight, and every mote's drawn form fits inside MOTE_R (22) of its position."
+[[review.categories.items]]
+id = "filament-rendering"
+title = "Filaments read, and triune reads heavier"
+description = "A filament visibly joins the centers of the two motes it links, moves rigidly with its constellation, and a weight 3 filament is clearly distinguishable from a weight 1."
+[[review.categories.items]]
+id = "fixtures-read"
+title = "The wheel's fixtures read as part of the wheel"
+description = "A wheel's six fixture motes sit on its spoke hexes in the WHEEL_MOTES arrangement, turn with the wheel, and read as the wheel's own rather than as loose motes."
+
+# --- The editor ---------------------------------------------------------------
+# The direct-manipulation surface the whole game is built through. Each point is
+# one gesture or one rule, checked separately, because a build that places parts
+# correctly but cannot lay track is broken in a different way from one whose tray
+# is wrong.
+[[review.categories]]
+id = "editor"
+title = "The editor"
+[[review.categories.items]]
+id = "layout-regions"
+title = "The five regions sit where specified"
+description = "The heading, tray, field, readout and tape panel occupy the extents specs/editor.md fixes, the heading shows the challenge name and live cost, and the readout shows the run's status, cycle, period, speed and tallies during a run."
+[[review.categories.items]]
+id = "tray-order"
+title = "The tray lists what the challenge offers, in order"
+description = "Tray entries are the permitted kinds in PARTS order, then one rise per reagent, then one set per product, each slot at the rectangle specs/editor.md fixes with its name and PART_COSTS cost, and a placed rise or set reads as spent and places nothing until deleted."
+[[review.categories.items]]
+id = "tray-placement"
+title = "Dragging from the tray places a part"
+description = "A press on a tray entry begins a drag whose ghost tracks the targeted hex and reads legal or illegal, releasing on a legal hex places the part at rotation 0 and length 1 and selects it, and releasing anywhere else places nothing."
+[[review.categories.items]]
+id = "placement-rules"
+title = "Illegal placements are refused"
+description = "Sigil footprints never overlap each other or track, no hex carries two track cells, no two arms or wheels share an anchor, everything stays on the field, and an arm's anchor may sit on a sigil or a track cell, exactly the rules of specs/parts.md."
+[[review.categories.items]]
+id = "selection"
+title = "A press selects the topmost part"
+description = "A press on a shared hex selects the arm or wheel first, else the track, else the sigil; a press on a bare hex clears the selection; and selecting an arm or wheel points the tape cursor at its row, cell 0, without stealing focus from the field."
+[[review.categories.items]]
+id = "move-drag"
+title = "Dragging a part moves it"
+description = "Dragging a placed part shows its ghost and moves it on a legal release, an illegal release leaves it where it was, releasing on the starting hex is a plain selection, and moving a track carries its whole path rigidly."
+[[review.categories.items]]
+id = "part-verbs"
+title = "Rotate, resize and delete act on the selection"
+description = "part-cw and part-ccw turn the selected or dragged part one step, part-grow and part-shrink change an arm's length within ARM_MIN_LEN (1) to ARM_MAX_LEN (3), a change that would be illegal does not happen, rotation does nothing on a track, length does nothing on a track or wheel, and part-delete removes the part."
+[[review.categories.items]]
+id = "track-laying"
+title = "Track is laid from its ends"
+description = "A press on an end cell of an open track begins laying: moving onto an adjacent legal hex appends it, moving back onto the cell behind the live end removes the end cell, moving onto the other end closes the loop, and the release leaves the path as laid."
+[[review.categories.items]]
+id = "tape-editing"
+title = "The tape panel edits at the cursor"
+description = "A press in a cell rectangle points the cursor at that arm and column and sets tape focus, each instruction action writes its instruction and advances the cursor, ins-blank blanks in place, ins-erase blanks the cell before and steps back, and arrows move the cursor as specs/controls.md states."
+[[review.categories.items]]
+id = "tape-scroll"
+title = "The tape panel scrolls by the fixed rules"
+description = "Rows and columns scroll exactly by firstRow = max(0, selectedRow - 4) and firstCol = max(0, cursor.col - 39), so the cursor is always visible and cell positions are computable from the state."
+[[review.categories.items]]
+id = "macros"
+title = "reset and repeat write their expansions"
+description = "ins-reset writes drop, then the length steps, then the shorter rotation run (ties clockwise), then the shorter track run (ties advance), computed from the arm's own tape prefix; ins-repeat copies cells 0 up to the cursor; and both land the cursor after what they wrote."
+[[review.categories.items]]
+id = "undo-redo"
+title = "Undo and redo walk the edit history"
+description = "Every committed edit pushes one history entry, undo restores the machine before it and redo re-applies it, a new edit clears the redo side, and neither touches selection, progress or which challenge is open."
+[[review.categories.items]]
+id = "focus-routing"
+title = "Focus routes the shared keys"
+description = "A press in the tape panel sets tape focus and a press anywhere else sets field focus, and KeyW and KeyS lengthen or shorten the selected part under field focus while writing extend or retract under tape focus."
+[[review.categories.items]]
+id = "machine-stash"
+title = "Machines persist per challenge for the session"
+description = "Leaving a challenge and returning to it restores the machine exactly, tapes included, and no machine ever appears on a different challenge."
+[[review.categories.items]]
+id = "run-locks-editing"
+title = "A run locks the editor"
+description = "While a run is active in any status, field and tape presses select nothing, drags do not begin, and the editing actions do nothing, until back returns to editing with the machine untouched."
+
+# --- Instructions and tapes ---------------------------------------------------
+[[review.categories]]
+id = "instructions"
+title = "Instructions and tapes"
+[[review.categories.items]]
+id = "shared-period"
+title = "Every tape loops on the shared period"
+description = "The period is the longest tape length and 1 when all are empty, on cycle c every part executes its own cell at c modulo the period with cells past its length blank, and the machine repeats itself every period."
+[[review.categories.items]]
+id = "blank-rests"
+title = "A blank cell rests"
+description = "A part whose cell is blank holds its pose for the cycle and keeps its grip."
+[[review.categories.items]]
+id = "grab-drop"
+title = "Grab and drop work the grippers"
+description = "grab closes every gripper and a gripper over a non-fixture mote takes hold of that mote's whole constellation, grab over a fixture or nothing holds nothing, drop releases, grips persist across cycles until dropped, and every drop completes before any grab, so a constellation dropped this cycle can be grabbed by another part the same cycle."
+[[review.categories.items]]
+id = "rotation-carries"
+title = "Rotation carries the held constellation"
+description = "rotate-cw and rotate-ccw turn the part one 60 degree step about its base, every held constellation turns with it as a rigid body, and every mote lands exactly on a hex center."
+[[review.categories.items]]
+id = "pivot"
+title = "Pivot turns the constellation under a still arm"
+description = "pivot-cw and pivot-ccw leave the part in place and turn each held constellation one step about the gripper holding it."
+[[review.categories.items]]
+id = "piston"
+title = "Extend and retract slide the piston"
+description = "extend and retract change a piston's length by one within 1 to 3, translating the gripper and its held constellation one hex along the spoke."
+[[review.categories.items]]
+id = "track-riding"
+title = "Advance and recede ride the track"
+description = "advance and recede carry a mounted part's base to the next or previous cell of its path, wrapping on a closed track, with held constellations translating the same vector."
+
+# --- The torn rule and collision ----------------------------------------------
+# The two rules that make simultaneous motion honest. The collision points replay
+# the worked examples in specs/simulation.md, so each is checked by building the
+# example and watching it fault or pass.
+[[review.categories]]
+id = "collision"
+title = "Torn and collision"
+[[review.categories.items]]
+id = "torn-disagree"
+title = "Disagreeing holders tear"
+description = "A constellation held by two grippers faults as torn the moment one holder moves while the other rests, or the two impose different motions, with the holders and the constellation identified."
+[[review.categories.items]]
+id = "torn-agree"
+title = "Agreeing holders do not tear"
+description = "Two grippers of one rotating arm, two arms riding the same track the same direction, and any set of holders all resting move one constellation without a fault."
+[[review.categories.items]]
+id = "collision-rotation"
+title = "A rotation through a tight gap collides"
+description = "Example A of specs/simulation.md reproduces: a length 1 clockwise carry from (1,0) toward (0,1) with a mote resting on (1,1) faults, freezing at the first violating sample t = 3/8 at 36.10, and example D likewise at length 2 over (1,1), freezing at t = 1/8."
+[[review.categories.items]]
+id = "collision-corridor"
+title = "A straight slide through a corridor clears"
+description = "Examples E and I reproduce: a piston or track carry from (1,0) to (2,0), or (0,0) to (1,0), passes flanking motes at 41.57 without a fault."
+[[review.categories.items]]
+id = "collision-rest"
+title = "Rest adjacency and convoys never collide"
+description = "Motes at rest on adjacent hexes (example H) and two arms translating the same vector in convoy (example J) never fault, holding 48 of separation."
+[[review.categories.items]]
+id = "collision-crossing"
+title = "Crossing and head-on carries collide"
+description = "Examples G and K reproduce: two arcs that swap two motes fault, freezing at t = 1/8, and two carries meeting head on along the same arc fault, freezing at t = 3/8."
+[[review.categories.items]]
+id = "fault-freeze"
+title = "A fault freezes the run where it stood"
+description = "On any fault the run's status becomes faulted, the machine freezes at the faulting sample or cycle start, the parts and motes at fault are visibly marked with the fault named, and back returns to editing."
+[[review.categories.items]]
+id = "instruction-faults"
+title = "Impossible instructions fault by name"
+description = "extend at length 3 is overextended, retract at 1 is overretracted, advance or recede off track is unmounted, past an open track's end is track-end, and extend on a plain arm or a non-rotation on a wheel is impossible, each raised at the fetch."
+
+# --- Sigils -------------------------------------------------------------------
+# One point per sigil, checked by arranging its condition and watching the
+# boundary, plus the ordering that makes overlapping sigils deterministic.
+[[review.categories]]
+id = "sigils"
+title = "Sigils"
+[[review.categories.items]]
+id = "bind"
+title = "bind joins a pair"
+description = "Motes on both hexes of a bind gain a weight 1 filament when none joins them, held motes included, and a pair already joined is left alone."
+[[review.categories.items]]
+id = "manifold"
+title = "manifold joins up to three pairs"
+description = "A manifold with a center mote binds each occupied reach hex to the center in one cycle, and does nothing with an empty center."
+[[review.categories.items]]
+id = "triune"
+title = "triune joins nova pairs threefold"
+description = "Two nova on a triune gain a weight 3 filament when none joins them, and any other pair of types is untouched."
+[[review.categories.items]]
+id = "sunder"
+title = "sunder removes a filament"
+description = "A filament joining the motes on a sunder's two hexes is removed whatever its weight, splitting the constellation where that disconnects it."
+[[review.categories.items]]
+id = "wane"
+title = "wane dims an essence to dust"
+description = "An essence on the seat becomes dust with its filaments and holds untouched, and every other type is left as it is."
+[[review.categories.items]]
+id = "mirror"
+title = "mirror copies an essence onto dust"
+description = "With an essence on the source and dust on the target the dust becomes that essence, and a wheel's essence fixture on the source works as a source."
+[[review.categories.items]]
+id = "ascend"
+title = "ascend spends mercury to raise a planet"
+description = "An unbonded, unheld mercury on the prime is consumed and the planet on the crown rises one rung, a held or bonded mercury is not spent, and sol on the crown leaves the mercury unspent."
+[[review.categories.items]]
+id = "conjoin"
+title = "conjoin fuses two planets into the next"
+description = "Two unbonded, unheld motes of the same planet below sol on the founts, with the crown vacant, become one mote of the next rung on the crown."
+[[review.categories.items]]
+id = "eclipse"
+title = "eclipse splits dust into umbra and lumen"
+description = "Two unbonded, unheld dust on the founts with both crowns vacant are consumed, umbra appearing on the umbral crown and lumen on the lumen crown."
+[[review.categories.items]]
+id = "confluence"
+title = "confluence unites the four essences"
+description = "One of each essence, unbonded and unheld in any arrangement on the four founts, with the crown vacant, becomes one aether on the crown."
+[[review.categories.items]]
+id = "dispersion"
+title = "dispersion breaks aether into the essences"
+description = "An unbonded, unheld aether on the fount with all four crowns vacant becomes the four essences, each on its named crown."
+[[review.categories.items]]
+id = "void"
+title = "void consumes a lone mote"
+description = "An unbonded, unheld mote on the maw is consumed, and a bonded or held one is not."
+[[review.categories.items]]
+id = "sigil-order"
+title = "Sigils act in the fixed order"
+description = "Within a boundary the four waves run in order — transmuting, binding, sunder, void — each sigil in reading order of its anchor, each reading the field as the previous left it, so a mote transmuted this boundary can be bound this boundary."
+[[review.categories.items]]
+id = "rise-spawns"
+title = "A rise spawns when its footprint clears"
+description = "A rise whose footprint hexes are all vacant spawns its reagent at its pose, an obstructed rise waits without fault, and rises fire after sets so a cleared footprint refills at the same boundary."
+[[review.categories.items]]
+id = "set-plain"
+title = "A set consumes an exact constellation"
+description = "An unheld constellation that is exactly the placed product — motes, hexes, filaments and weights, with nothing extra — is consumed and tallies 1, and a held, misplaced, misrotated or excess-carrying one is not."
+[[review.categories.items]]
+id = "set-repeating"
+title = "A repeating set consumes chains"
+description = "An unheld chain of k copies of the pattern along the repeat vector, joined by the link filaments, k at least REPEAT_MIN (2), is consumed and tallies k, and a single unit is not."
+
+# --- Runs and metrics ---------------------------------------------------------
+[[review.categories]]
+id = "runs"
+title = "Runs and metrics"
+[[review.categories.items]]
+id = "play-refusal"
+title = "play refuses an incomplete machine"
+description = "play and step do nothing while any rise or set is unplaced, and the heading states which are missing."
+[[review.categories.items]]
+id = "settle"
+title = "Starting a run settles the field"
+description = "A run starts with every arm at rest, fixtures on their spokes, and one boundary pass that spawns every unobstructed rise, before cycle 0 begins."
+[[review.categories.items]]
+id = "step"
+title = "step runs exactly one cycle"
+description = "step from editing starts the run paused at its settle, each further step completes one whole cycle immediately, and a fault or completion lands within that step."
+[[review.categories.items]]
+id = "speed"
+title = "The speed steps drive the clock"
+description = "The run advances at SPEEDS (1, 3, 10, 30) cycles per second by the current step, starting at DEFAULT_SPEED_INDEX (1), with speed-up and speed-down moving the step and play toggling running and paused."
+[[review.categories.items]]
+id = "stop-restores"
+title = "Stopping restores the editor"
+description = "back during any run status discards the motes and runtime poses and returns to editing with the machine exactly as placed."
+[[review.categories.items]]
+id = "completion"
+title = "Completion is exact"
+description = "The run completes at the boundary where every set's tally reaches CONSTELLATION_TARGET (6), showing the solved panel over the finished machine, and not a cycle earlier."
+[[review.categories.items]]
+id = "metrics"
+title = "The three metrics are computed as specified"
+description = "The recorded cost is the machine's PART_COSTS sum, cycles is the completed-cycle count at the completing boundary, and area is the distinct hexes banked from part footprints, fixtures, grippers and motes as specs/simulation.md accumulates them."
+[[review.categories.items]]
+id = "records"
+title = "Records keep the session's best per metric"
+description = "Each challenge's records take the best cost, best cycles and best area independently across its completed runs, a new best is marked on the solved panel, and records survive leaving and re-entering the challenge."
+[[review.categories.items]]
+id = "smooth-motion"
+title = "A run animates along the sampled paths"
+description = "Arms and carried motes move smoothly through the cycle along the same arcs and slides the collision rule samples, at the pace the speed step sets, rather than teleporting between boundaries."
+
+# --- Campaign -----------------------------------------------------------------
+# The course the build designs itself. The requirements are checkable because the
+# build ships a reference solution for every challenge it authored.
+[[review.categories]]
+id = "campaign"
+title = "Campaign"
+[[review.categories.items]]
+id = "course-bounds"
+title = "The course is within bounds and fixed"
+description = "The campaign holds between CAMPAIGN_MIN (8) and CAMPAIGN_MAX (16) challenges, the same set in the same order every session, each well formed with target CONSTELLATION_TARGET (6) and an original name."
+[[review.categories.items]]
+id = "course-solvable"
+title = "Every campaign challenge's reference solution completes"
+description = "For each campaign challenge, challengeSolution returns a solution that loads legally, places every rise and set, and runs to completion without a fault."
+[[review.categories.items]]
+id = "course-coverage"
+title = "The course exercises the whole vocabulary"
+description = "Across the campaign every part kind in PARTS appears in some challenge's tray and every part kind is placed by at least one reference solution, the wheel, piston, track, and every sigil included."
+[[review.categories.items]]
+id = "unlocking"
+title = "Completing a challenge unlocks the next"
+description = "Campaign challenge 1 is unlocked from the start, completing challenge n unlocks n + 1, and unlocked and solved states last the session."
+[[review.categories.items]]
+id = "campaign-select"
+title = "The campaign select screen shows the course"
+description = "The list shows every challenge in order with its number, name and state readable without hue alone, records on solved rows, the highlight landing on the challenge most recently entered or solved, and confirm refused on locked rows."
+
+# --- Extras -------------------------------------------------------------------
+[[review.categories]]
+id = "extras"
+title = "Extras"
+[[review.categories.items]]
+id = "extras-as-written"
+title = "The ten challenges are the ones specified"
+description = "The Extras hold exactly EXTRA_COUNT (10) challenges matching specs/challenges.md cell for cell — names, reagents, products, permitted parts and targets — in that order, with nothing substituted or reworked."
+[[review.categories.items]]
+id = "extras-open"
+title = "Every Extras challenge is open from the start"
+description = "All ten rows are enterable in a fresh session, with no locking anywhere in the mode."
+[[review.categories.items]]
+id = "extras-solvable"
+title = "Every Extras reference solution completes"
+description = "For each of the ten, challengeSolution returns a solution that loads legally, places every rise and set, and runs to completion without a fault."
+[[review.categories.items]]
+id = "extras-select"
+title = "The Extras select screen mirrors the campaign's"
+description = "The list shows the ten in order with solved state and records, the highlight landing where the player left off, and confirm opening any row."
+
+# --- Screens and audio --------------------------------------------------------
+[[review.categories]]
+id = "screens"
+title = "Screens and audio"
+[[review.categories.items]]
+id = "title-screen"
+title = "The title screen"
+description = "The game opens on the title showing TITLE_TEXT (ORRERY), TAGLINE_TEXT (SET THE HEAVENS TURNING), and TITLE_ITEMS (CAMPAIGN, EXTRAS, HOW TO PLAY) in that order, with the item at menuIndex drawn distinctly and menuIndex 0 on arriving."
+[[review.categories.items]]
+id = "title-navigation"
+title = "The title menu is navigated and confirmed"
+description = "up and down move the highlight by one item and wrap at both ends, back does nothing, and confirm takes the highlighted item into its mode's select screen or the how-to."
+[[review.categories.items]]
+id = "howto"
+title = "The how-to teaches the game over its five pages"
+description = "HOW TO PLAY opens HOWTO_PAGES (5) pages covering the sky, the machine, the tape, running and finishing in a player's words, paged with left and right, the current page indicated, and back returning to title."
+[[review.categories.items]]
+id = "solved-panel"
+title = "The solved panel offers the right choices"
+description = "Completion shows SOLVED_TITLE_TEXT (CHALLENGE COMPLETE) over the machine with the run's metrics and the records, and SOLVED_ITEMS in order with NEXT CHALLENGE offered only when a next challenge exists, KEEP TINKERING returning to editing intact, and BACK TO SELECT leaving."
+[[review.categories.items]]
+id = "menus-are-keyboard"
+title = "The menus are driven from the keyboard"
+description = "Every menu and select list is driven by the registered actions up, down, left, right, confirm and back, and the pointer operates the editor rather than menus."
+[[review.categories.items]]
+id = "cues"
+title = "The six cues play on their events"
+description = "place on a part placed or moved, erase on one removed, start on a run starting, halt on a fault, constellation on a set consuming, and complete on completion. Each is a distinct short sound, played on the frame of its event and at most once on that frame."
+[[review.categories.items]]
+id = "mute"
+title = "Mute works from any screen"
+description = "The mute action toggles sound from any screen and the game stays fully playable with sound muted."
+
+# --- Presentation -------------------------------------------------------------
+# This case fixes no palette, no font, no artwork and no background on purpose,
+# so these points check the things that survive that freedom. How GOOD the result
+# looks is rated on the presentation domain, not scored here.
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "stage-fit"
+title = "The stage is fitted and centered"
+description = "The whole STAGE_W x STAGE_H (1280 x 720) stage is inside the window at its own aspect ratio, centered, with even letterboxing, over windows wider and taller than the stage."
+[[review.categories.items]]
+id = "text-legible"
+title = "Every piece of text is legible"
+description = "Screen copy, tray labels, tape glyphs, readouts and banners are legible against whatever sits behind them at the logical stage size."
+[[review.categories.items]]
+id = "designed-sky"
+title = "The sky is designed rather than left plain"
+description = "The build presents a considered look of its own — the field, the motes, the arms and sigils, the screens — rather than untouched default shapes on an empty background."
+[[review.categories.items]]
+id = "original"
+title = "The game is original to itself"
+description = "The name, the look, the assets and the branding are Orrery's own and reproduce no existing product."
