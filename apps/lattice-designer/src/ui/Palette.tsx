@@ -6,6 +6,7 @@
 import {
   ASSEMBLER_RECIPES,
   BELT_TIERS,
+  beltTierLabel,
   ENTITY_KINDS,
   FURNACE_RECIPES,
   isDirectional,
@@ -88,7 +89,7 @@ export function Palette({ tool, onKind, onRotate, onOpts }: PaletteProps) {
           >
             {BELT_TIERS.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {beltTierLabel(t)}
               </option>
             ))}
           </select>

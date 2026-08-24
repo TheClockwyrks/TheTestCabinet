@@ -20,6 +20,37 @@ export const DIRS: readonly Dir[] = ["E", "S", "W", "N"];
 export const BELT_TIERS = ["slow", "fast", "express"] as const;
 export type BeltTier = (typeof BELT_TIERS)[number];
 
+/** Position units in one tile, mirroring `prototypes::TILE`. */
+export const TILE = 256;
+
+/**
+ * Each tier's `SPEED` — the position units an unobstructed item advances per tick —
+ * mirroring `prototypes::BELT_TIERS` in `lattice-core` (the 1×/2×/3× progression).
+ * The engine owns the authoritative table; this copy exists so the editor can say
+ * what a tier actually *does* rather than only naming it.
+ */
+export const BELT_TIER_SPEED: Record<BeltTier, number> = {
+  slow: 32,
+  // The reference speed: the inserter swing is tuned to it, so an item in a claw
+  // travels at the same rate as one on a `fast` belt.
+  fast: 64,
+  express: 96,
+};
+
+/**
+ * A tier written out with its speed — `"fast — 64 u/tick, 4 ticks/tile"` — so the
+ * choice reads as a throughput decision rather than a recolour. `express` does not
+ * divide the tile evenly, so its crossing time is shown approximate.
+ */
+export function beltTierLabel(tier: BeltTier): string {
+  const speed = BELT_TIER_SPEED[tier];
+  const ticks = TILE / speed;
+  const crossing = Number.isInteger(ticks)
+    ? `${ticks}`
+    : `~${ticks.toFixed(1)}`;
+  return `${tier} — ${speed} u/tick, ${crossing} ticks/tile`;
+}
+
 /** Which lane(s) of the downstream belt a source emits onto. */
 export const LANES = ["left", "right", "both"] as const;
 export type Lane = (typeof LANES)[number];
@@ -446,40 +477,205 @@ export interface Scenario {
 }
 
 /**
- * Project a design to a scenario. The entities are already the scenario shape, so
- * this only wraps them with the grid, a run length, and a snapshot schedule.
+ * A scenario's timeline: how long it runs and the ticks it is checksummed at.
  *
- * `ticks`/`snapshots` are **preview/placeholder** values: this tool designs the
- * layout, and the scored run length and grading checkpoints are set later when the
- * real case is wired. The snapshot schedule here is a simple even split, kept valid
- * (strictly ascending, each `> 0` and `<= ticks`) so the engine accepts it.
+ * This is kept separate from the layout, and carried around rather than recomputed,
+ * because a SCORED scenario's schedule is load-bearing and not derivable: the case
+ * grades at quarter/half/end plus two ticks inside the browser-playback window
+ * (`1250`/`2500`). Opening such a file and saving it back must return that schedule
+ * untouched, so nothing here silently regenerates one.
  */
-export function toScenario(design: Design, ticks: number): Scenario {
+export interface Timeline {
+  ticks: number;
+  snapshots: number[];
+}
+
+/**
+ * Project a design to a scenario. The entities are already the scenario shape, so
+ * this only wraps them with the grid and the timeline.
+ *
+ * Key order matters: it is chosen to match the committed scenarios exactly, so
+ * opening one and saving it back with no edits rewrites the identical bytes.
+ */
+export function toScenario(design: Design, timeline: Timeline): Scenario {
   return {
     version: SCENARIO_VERSION,
     grid: { ...design.grid },
-    ticks,
-    snapshots: snapshotSchedule(ticks),
+    ticks: timeline.ticks,
+    snapshots: [...timeline.snapshots],
     entities: design.entities,
   };
 }
 
-/** Four evenly spaced checkpoints ending at `ticks` (deduped, strictly ascending). */
-function snapshotSchedule(ticks: number): number[] {
-  if (ticks <= 0) return [];
-  const quarters = [1, 2, 3, 4].map((q) => Math.floor((ticks * q) / 4));
+/**
+ * A placeholder timeline for a design that did not come from a file: four evenly
+ * spaced checkpoints ending at `ticks`. Valid (strictly ascending, each in
+ * `1..=ticks`) so the engine accepts it, but it is NOT a scored schedule — wiring a
+ * fresh design into the case means setting the real one.
+ */
+export function defaultTimeline(ticks: number): Timeline {
+  if (ticks <= 0) return { ticks, snapshots: [] };
   const seen = new Set<number>();
-  const out: number[] = [];
-  for (const t of quarters) {
+  const snapshots: number[] = [];
+  for (const q of [1, 2, 3, 4]) {
+    const t = Math.floor((ticks * q) / 4);
     if (t > 0 && t <= ticks && !seen.has(t)) {
       seen.add(t);
-      out.push(t);
+      snapshots.push(t);
     }
   }
-  return out.length > 0 ? out : [ticks];
+  return { ticks, snapshots: snapshots.length > 0 ? snapshots : [ticks] };
+}
+
+/**
+ * Why `timeline` would be rejected by `Scenario::parse`, or `null` if it is fine.
+ * The engine requires at least one snapshot, strictly ascending, each within
+ * `1..=ticks` — so shortening a run below a committed checkpoint is an error to
+ * surface before a save, not after.
+ */
+export function timelineError(timeline: Timeline): string | null {
+  const { ticks, snapshots } = timeline;
+  if (!Number.isInteger(ticks) || ticks < 1) return "ticks must be at least 1";
+  if (snapshots.length === 0) return "needs at least one snapshot tick";
+  let previous = 0;
+  for (const t of snapshots) {
+    if (!Number.isInteger(t) || t < 1) return `snapshot ${t} must be at least 1`;
+    if (t > ticks) return `snapshot ${t} is past the run's ${ticks} ticks`;
+    if (t <= previous) return `snapshots must ascend (${previous} then ${t})`;
+    previous = t;
+  }
+  return null;
 }
 
 /** The exportable JSON text for a design (pretty-printed, trailing newline). */
-export function exportJson(design: Design, ticks: number): string {
-  return `${JSON.stringify(toScenario(design, ticks), null, 2)}\n`;
+export function exportJson(design: Design, timeline: Timeline): string {
+  return `${JSON.stringify(toScenario(design, timeline), null, 2)}\n`;
+}
+
+// --- Reading a scenario back -----------------------------------------------
+
+/**
+ * Parse a `scenario.json` into a design and its timeline — the inverse of
+ * `toScenario`, for opening a committed scenario to edit.
+ *
+ * Entities are REBUILT through the same shapes `makeEntity` produces rather than
+ * passed through, so an opened file is normalised into the editor's model and a
+ * save emits the canonical field order. Placement order is preserved exactly: the
+ * scenario contract reads it as the order of the canonical state, so shuffling it
+ * would change every checksum.
+ *
+ * Throws with a specific reason on anything it cannot read — a silently half-loaded
+ * factory would be far worse than a refusal.
+ */
+export function fromScenario(value: unknown): {
+  design: Design;
+  timeline: Timeline;
+} {
+  const root = asRecord(value, "scenario");
+  const version = asNumber(root.version, "version");
+  if (version !== SCENARIO_VERSION) {
+    throw new Error(
+      `unsupported scenario version ${version} (this tool writes ${SCENARIO_VERSION})`,
+    );
+  }
+  const grid = asRecord(root.grid, "grid");
+  const width = asNumber(grid.width, "grid.width");
+  const height = asNumber(grid.height, "grid.height");
+  if (width < 1 || height < 1) throw new Error("grid must be at least 1×1");
+
+  const rawEntities = root.entities;
+  if (!Array.isArray(rawEntities)) throw new Error("entities must be an array");
+
+  const entities = rawEntities.map((entity, i) => {
+    try {
+      return parseEntity(entity);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new Error(`entities[${i}]: ${detail}`);
+    }
+  });
+
+  const rawSnapshots = root.snapshots;
+  if (!Array.isArray(rawSnapshots)) throw new Error("snapshots must be an array");
+  const timeline: Timeline = {
+    ticks: asNumber(root.ticks, "ticks"),
+    snapshots: rawSnapshots.map((t, i) => asNumber(t, `snapshots[${i}]`)),
+  };
+
+  return { design: { grid: { width, height }, entities }, timeline };
+}
+
+/** One entity, rebuilt into the editor's shape with its fields checked. */
+function parseEntity(value: unknown): DesignEntity {
+  const e = asRecord(value, "entity");
+  const type = asString(e.type, "type");
+  const x = asNumber(e.x, "x");
+  const y = asNumber(e.y, "y");
+
+  switch (type) {
+    case "belt":
+      return { type, x, y, dir: asDir(e.dir), tier: asTier(e.tier) };
+    case "splitter":
+    case "lane-splitter":
+    case "inserter":
+    case "sink":
+      return { type, x, y, dir: asDir(e.dir) };
+    case "assembler":
+      return { type, x, y, recipe: asMember(e.recipe, ASSEMBLER_RECIPES, "recipe") };
+    case "furnace":
+      return { type, x, y, recipe: asMember(e.recipe, FURNACE_RECIPES, "recipe") };
+    case "source":
+      return {
+        type,
+        x,
+        y,
+        dir: asDir(e.dir),
+        item: asMember(e.item, ITEMS, "item"),
+        lane: asMember(e.lane, LANES, "lane"),
+        period: asNumber(e.period, "period"),
+      };
+    default:
+      throw new Error(`unknown entity type ${JSON.stringify(type)}`);
+  }
+}
+
+function asRecord(value: unknown, what: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${what} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function asNumber(value: unknown, what: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`${what} must be a number`);
+  }
+  return value;
+}
+
+function asString(value: unknown, what: string): string {
+  if (typeof value !== "string") throw new Error(`${what} must be a string`);
+  return value;
+}
+
+function asDir(value: unknown): Dir {
+  return asMember(value, DIRS, "dir");
+}
+
+function asTier(value: unknown): BeltTier {
+  return asMember(value, BELT_TIERS, "tier");
+}
+
+/** A string field constrained to one of `allowed`, named in the error. */
+function asMember<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  what: string,
+): T {
+  const text = asString(value, what);
+  const found = allowed.find((option) => option === text);
+  if (found === undefined) {
+    throw new Error(`${what} ${JSON.stringify(text)} is not one of ${allowed.join(", ")}`);
+  }
+  return found;
 }

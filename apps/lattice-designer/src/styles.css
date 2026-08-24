@@ -301,6 +301,20 @@ select {
   width: 64px;
 }
 
+/* --- Scenario file controls --- */
+.file select {
+  max-width: 320px;
+}
+.status .notice {
+  color: var(--accent);
+}
+.inline.bad {
+  color: var(--danger);
+}
+.inline.bad input {
+  border-color: var(--danger);
+}
+
 /* --- Grid presets --- */
 .presets {
   display: inline-flex;

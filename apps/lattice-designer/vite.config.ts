@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { scenarioApi } from "./scenario-api";
 
 // The Lattice renderer, interpolation, and the `lattice-core` wasm + sprite sheet
 // all live inside the console UI package at `pages/runs/lattice`. They are pure
@@ -13,9 +14,11 @@ const lattice = new URL(
 ).pathname;
 
 // The Lattice factory designer. A plain SPA dev tool: `vite build` emits a static
-// bundle, but it is normally run with `vite dev` while authoring a factory.
+// bundle, but it is normally run with `vite dev` while authoring a factory. Only the
+// dev server carries `scenarioApi`, which is what lets the tool open and save the
+// case's committed scenarios; a built bundle can still export/download.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), scenarioApi()],
   resolve: {
     alias: { "@lattice": lattice },
   },

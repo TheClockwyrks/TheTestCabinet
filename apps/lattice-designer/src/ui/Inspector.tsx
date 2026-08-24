@@ -7,6 +7,7 @@
 import {
   ASSEMBLER_RECIPES,
   BELT_TIERS,
+  beltTierLabel,
   DIRS,
   FURNACE_RECIPES,
   ITEMS,
@@ -80,7 +81,7 @@ export function Inspector({
           >
             {BELT_TIERS.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {beltTierLabel(t)}
               </option>
             ))}
           </select>

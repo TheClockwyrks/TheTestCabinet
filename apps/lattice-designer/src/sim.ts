@@ -16,7 +16,7 @@
 import { Engine, Renderer, loadSheet } from "@lattice/renderer";
 import type { Board, Sheet, Snapshot } from "@lattice/renderer";
 import { atlas, sheetPngUrl, wasmUrl } from "./assets";
-import { toScenario, type Design } from "./model";
+import { defaultTimeline, toScenario, type Design } from "./model";
 
 // Ticks of factory time held in the cached preview window. Long enough for a modest
 // factory to fill and reach steady motion, short enough that a rebuild on each edit
@@ -86,7 +86,10 @@ export class Simulation {
    * cache; an engine rejection leaves an empty, invalid window that draws blank.
    */
   setDesign(design: Design): void {
-    const scenario = toScenario(design, WINDOW_TICKS);
+    // The preview always runs its own short window, whatever timeline the design
+    // is destined for — a scored 300,000-tick schedule has nothing to do with what
+    // the editor needs to show.
+    const scenario = toScenario(design, defaultTimeline(WINDOW_TICKS));
     this.frames = [];
     this.board = null;
     this.pos = 0;

@@ -10,5 +10,5 @@
       "@lattice/*": ["../../packages/ui/src/app/pages/runs/lattice/*"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "scenario-api.ts", "vitest.config.ts"]
 }
