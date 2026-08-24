@@ -25,7 +25,21 @@ vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../../components/PromptHeader", () => ({
-  PromptHeader: () => null,
+  // The header's chrome is not what these tests are about; its slots are, because a
+  // page's own actions live in them. Stub the chrome and pass the slots through, so a
+  // control that moves into the header does not silently vanish from the test.
+  PromptHeader: ({
+    titleActions,
+    actions,
+  }: {
+    titleActions?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    <>
+      {titleActions}
+      {actions}
+    </>
+  ),
 }));
 // A local worker needs no sign-in, so auth never gates the launch here — the gating
 // stays on the row's configuration + model. The token is present only because an
@@ -36,6 +50,14 @@ vi.mock("../../../client/auth", () => ({
 // The catalog + case-name hooks pull from the backend/gallery data source; stub
 // them with a single already-selected case so the only remaining launch gate is
 // the row itself.
+// The engines the stubbed version reports as supported. Held in a hoisted box so a
+// test can stand the selected case up as one supporting a choice of engine — the
+// picker is offered off the resolved version, so that set is the only input that
+// decides whether the field exists at all.
+const { supportedEngines, catalogLoading } = vi.hoisted(() => ({
+  supportedEngines: { current: ["none"] as string[] },
+  catalogLoading: { current: false },
+}));
 vi.mock("../../runtime/useCatalog", () => ({
   useCatalog: () => ({
     cases: [{ slug: "carom", versions: ["v1.0.0"] }],
@@ -46,9 +68,10 @@ vi.mock("../../runtime/useCatalog", () => ({
       testType: "end-to-end",
       variants: [{ slug: "base", name: "Base" }],
       maxRuntimeSeconds: 600,
+      engines: supportedEngines.current,
     },
     error: null,
-    loading: false,
+    loading: catalogLoading.current,
     noBackend: false,
     setSlug: () => {},
     setVersion: () => {},
@@ -214,8 +237,9 @@ function backendValue(
 // A single local worker: `local: true` means no sign-in is required.
 function workersValue(
   launchGgRun: WorkerClient["launchGgRun"] = vi.fn(),
+  launchRunBatch: WorkerClient["launchRunBatch"] = vi.fn(),
 ): WorkersContextValue {
-  const client = { launchGgRun } as unknown as WorkerClient;
+  const client = { launchGgRun, launchRunBatch } as unknown as WorkerClient;
   return {
     workers: [],
     activeId: "local",
@@ -237,11 +261,15 @@ function workersValue(
 function renderPage(
   launchGgRun?: WorkerClient["launchGgRun"],
   ggConfigs?: ReadonlyArray<unknown>,
+  launchRunBatch?: WorkerClient["launchRunBatch"],
+  // A case detail page's Run action arrives with the anchored coordinate in the
+  // query string; tests covering that seed pass the full entry here.
+  initialEntry = "/runs/new",
 ) {
   return render(
-    <MemoryRouter initialEntries={["/runs/new"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <BackendProvider value={backendValue(ggConfigs)}>
-        <WorkersProvider value={workersValue(launchGgRun)}>
+        <WorkersProvider value={workersValue(launchGgRun, launchRunBatch)}>
           <Routes>
             <Route path="/runs/new" element={<NewRunPage />} />
           </Routes>
@@ -262,6 +290,29 @@ function chooseGg() {
 describe("NewRunPage", () => {
   beforeEach(() => {
     track.mockClear();
+    // Every test but the engine ones runs against a case supporting the engineless
+    // run alone, which is what a case that declares no engine supports.
+    supportedEngines.current = ["none"];
+    catalogLoading.current = false;
+  });
+
+  it("refuses to launch while the selected version is still resolving", async () => {
+    // A case or version switch leaves the previous version's variants and engines on
+    // screen until the new one resolves. Launching in that window enqueues the case
+    // now selected against a variant and an engine that belong to the one it
+    // replaced, and both are gated by the case: the run is refused in the driver pod,
+    // long after the operator has left the form.
+    supportedEngines.current = ["none", "simple-2d"];
+    catalogLoading.current = true;
+    const launchRunBatch = vi.fn();
+    renderPage(undefined, undefined, launchRunBatch);
+
+    fireEvent.change(await screen.findByPlaceholderText(/^model id/), {
+      target: { value: "claude-opus-4-8" },
+    });
+
+    expect(screen.getByRole("button", { name: "Launch run" })).toBeDisabled();
+    expect(launchRunBatch).not.toHaveBeenCalled();
   });
 
   it("offers harnesses until gg is chosen as the orchestrator", async () => {
@@ -277,6 +328,130 @@ describe("NewRunPage", () => {
     const configs = await screen.findByLabelText("gg configuration");
     expect(configs).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "minimal" })).toBeInTheDocument();
+  });
+
+  it("offers an engine only where the resolved version supports more than one", async () => {
+    // A case that supports the engineless run alone has already decided its engine,
+    // so there is nothing to ask. The field's whole existence is the resolved
+    // version's answer.
+    const { unmount } = renderPage();
+    expect(screen.queryByLabelText("Engine")).not.toBeInTheDocument();
+    unmount();
+
+    supportedEngines.current = ["none", "simple-2d"];
+    renderPage();
+    const engine = screen.getByLabelText("Engine");
+    expect(engine).toBeInTheDocument();
+    // Offered in catalog order, leading with the engineless run, and opening on it.
+    expect(
+      Array.from(engine.querySelectorAll("option")).map((o) => o.textContent),
+    ).toEqual(["None", "Simple 2D"]);
+    expect((engine as HTMLSelectElement).value).toBe("none");
+  });
+
+  it("launches a harness run on the picked engine", async () => {
+    // The engine is a run dimension the case gates, so a run that fails to carry the
+    // operator's selection is not the run they asked for — it is an engineless run
+    // of a case that may not even support one.
+    supportedEngines.current = ["none", "simple-2d"];
+    const launchRunBatch = vi.fn().mockResolvedValue([{ runId: "run-1" }]);
+    renderPage(undefined, undefined, launchRunBatch);
+
+    fireEvent.change(screen.getByLabelText("Engine"), {
+      target: { value: "simple-2d" },
+    });
+    // The harness row's model is typed rather than picked: the combobox scopes its
+    // catalog to the harness's family, and what the run carries is the id either way.
+    fireEvent.change(await screen.findByPlaceholderText(/^model id/), {
+      target: { value: "claude-opus-4-8" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Launch run" }));
+    await waitFor(() => expect(launchRunBatch).toHaveBeenCalledTimes(1));
+
+    const configs = launchRunBatch.mock.calls[0]![0];
+    expect(configs).toHaveLength(1);
+    expect(configs[0]).toMatchObject({
+      testCase: "carom",
+      variant: "base",
+      engine: "simple-2d",
+    });
+  });
+
+  it("launches a gg run on the picked engine", async () => {
+    // A gg run seeds and builds a workspace like any other run, so it carries the
+    // engine dimension too.
+    supportedEngines.current = ["none", "simple-2d"];
+    const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-2" });
+    renderPage(launchGgRun);
+    chooseGg();
+    await screen.findByLabelText("gg configuration");
+
+    fireEvent.change(screen.getByLabelText("Engine"), {
+      target: { value: "simple-2d" },
+    });
+    const input = await screen.findByPlaceholderText(/^model id/);
+    fireEvent.focus(input);
+    fireEvent.click(
+      await screen.findByRole("option", { name: /GPT-5\.6 Sol/ }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Launch run" }));
+    await waitFor(() => expect(launchGgRun).toHaveBeenCalledTimes(1));
+    expect(launchGgRun.mock.calls[0]![0].engine).toBe("simple-2d");
+  });
+
+  it("seeds the engine choice from the ?engine= param", async () => {
+    // A case detail page's Run action carries its whole anchored coordinate,
+    // engine included, so the form must open on exactly the rendering that was
+    // being viewed rather than the engineless default.
+    supportedEngines.current = ["none", "simple-2d"];
+    renderPage(
+      undefined,
+      undefined,
+      undefined,
+      "/runs/new?slug=carom&version=v1.0.0&variant=base&engine=simple-2d",
+    );
+
+    expect((screen.getByLabelText("Engine") as HTMLSelectElement).value).toBe(
+      "simple-2d",
+    );
+  });
+
+  it("holds an unsupported ?engine= param to what the version offers", async () => {
+    // A stale link may name an engine the resolved version does not support; the
+    // existing derived-engine guard resolves it to a supported one, so the seed
+    // must never let the form launch what the case would refuse.
+    supportedEngines.current = ["none", "simple-2d"];
+    renderPage(
+      undefined,
+      undefined,
+      undefined,
+      "/runs/new?slug=carom&version=v1.0.0&variant=base&engine=voxel-3d",
+    );
+
+    expect((screen.getByLabelText("Engine") as HTMLSelectElement).value).toBe(
+      "none",
+    );
+  });
+
+  it("falls back to an engine the resolved version supports", async () => {
+    // A case built against a runtime need not offer the engineless run at all, so the
+    // form's default is not a safe assumption: an unsupported selection would be
+    // refused when the run executes, after the operator had left the form.
+    supportedEngines.current = ["simple-2d"];
+    const launchRunBatch = vi.fn().mockResolvedValue([{ runId: "run-2" }]);
+    renderPage(undefined, undefined, launchRunBatch);
+
+    // One supported engine, so nothing is asked — and the launch still names it.
+    expect(screen.queryByLabelText("Engine")).not.toBeInTheDocument();
+    fireEvent.change(await screen.findByPlaceholderText(/^model id/), {
+      target: { value: "claude-opus-4-8" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Launch run" }));
+    await waitFor(() => expect(launchRunBatch).toHaveBeenCalledTimes(1));
+    expect(launchRunBatch.mock.calls[0]![0][0].engine).toBe("simple-2d");
   });
 
   it("launches the picked gg configuration with the model bound to its root's slot", async () => {

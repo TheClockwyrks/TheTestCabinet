@@ -23,6 +23,7 @@ import {
   seededRunLimits,
   type GgConfigDraft,
 } from "../runs/gg/ggConfigDraft";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -244,25 +245,12 @@ export function GgAgentEditPage() {
     <PageLayout>
       {header}
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
 
       {loading ? (
         <LoadingState label="Loading…" />
       ) : agent ? (
         <>
-          <div className={exec.fields}>
-            <label className={exec.field}>
-              <span className={exec.fieldLabel}>Description (optional)</span>
-              <input
-                className={exec.input}
-                type="text"
-                value={description}
-                placeholder="what this agent is for"
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </label>
-          </div>
-
           <GgAgentEditor
             config={draft}
             agent={agent}
@@ -282,6 +270,8 @@ export function GgAgentEditPage() {
             }
             models={models}
             readOnly={false}
+            description={description}
+            onDescriptionChange={setDescription}
           />
 
           {leaving && (

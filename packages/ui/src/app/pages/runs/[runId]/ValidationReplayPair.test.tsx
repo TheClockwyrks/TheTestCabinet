@@ -24,8 +24,9 @@ function body(count: number): unknown {
       timeMs: 16 * (i + 1),
       deltaMs: 16,
       surface: { width: 320, height: 180 },
-      state: { properties: {}, transform: null, lineDash: null },
-      ops: [{ op: "call", method: "fillRect", args: [i, 0, 4, 4] }],
+      state: 0,
+      stack: [],
+      ops: [i],
     });
   }
   return {
@@ -33,6 +34,16 @@ function body(count: number): unknown {
     width: 320,
     height: 180,
     background: "#000000",
+    images: [],
+    resources: [],
+    ops: frames.map((_, i) => ({
+      op: "call",
+      method: "fillRect",
+      args: [i, 0, 4, 4],
+    })),
+    states: [
+      { properties: {}, transform: null, lineDash: null, clip: [], path: [] },
+    ],
     frames,
   };
 }
@@ -94,27 +105,28 @@ describe("the replay comparison", () => {
     expect(scrub).toHaveAttribute("max", "5");
     fireEvent.change(scrub, { target: { value: "3" } });
 
-    // One index, read by both panes: the position advances, and the shorter side
-    // reports that it is now past its end rather than blanking.
+    // One index, read by both panes: the position advances for the pair rather than
+    // for either pane on its own.
     expect(screen.getByText("4 / 6")).toBeInTheDocument();
-    expect(screen.getByText(/holding on its last frame/)).toBeInTheDocument();
 
-    // Each pane reports the frame the ENGINE counted, which is how a reviewer sees
-    // that a shared index really is the same moment: this run is on its fourth
-    // frame, and the reference — two frames long — is held on its last.
-    expect(screen.getByText(/engine frame 3/)).toBeInTheDocument();
-    expect(screen.getByText(/engine frame 1/)).toBeInTheDocument();
+    // Both panes are still drawn past the shorter one's end: the reference holds on
+    // its last frame rather than blanking, which is what makes the comparison
+    // readable at every position of the scrubber.
+    expect(screen.getAllByRole("img", { name: /Walk cycle/ })).toHaveLength(2);
   });
 
-  it("holds the shorter recording on its last frame, and says so", async () => {
+  it("states each side's own length beside its label", async () => {
     serve(2, 6);
     render(<ValidationReplayPair media={media()} />);
 
     // The pair is paced by the longer recording, so every frame of this run's build
-    // is reachable; the reference simply stops advancing once it runs out.
+    // is reachable; the reference simply stops advancing once it runs out. Each
+    // label row carries its OWN recording's length, so the two figures read against
+    // each other are what say the reference stopped drawing first.
     await waitFor(() => {
-      expect(screen.getByText(/ends at frame 2 of 6/)).toBeInTheDocument();
+      expect(screen.getByText("2 frames")).toBeInTheDocument();
     });
+    expect(screen.getByText("6 frames")).toBeInTheDocument();
     expect(screen.getByText("1 / 6")).toBeInTheDocument();
   });
 

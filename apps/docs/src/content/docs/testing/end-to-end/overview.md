@@ -120,9 +120,12 @@ HTML escaping disabled. Its context exposes exactly:
 - `{{variant.slug}}`, `{{variant.name}}`, and `{{variant.description}}` — the
   selected variant. `description` is empty when the variant declares none.
 - `{{engine}}` — the engine selected for the run, exposing `{{engine.slug}}`,
-  `{{engine.name}}`, and `{{engine.docs}}` exactly as in
-  [Prompt template](#prompt-template). It is always present, so a spec states
-  its engine-specific requirements in a branch on `{{engine.slug}}`.
+  `{{engine.name}}`, and `{{engine.docs}}`. It is always present, so a spec
+  states its engine-specific requirements in a branch on `{{engine.slug}}`.
+  `docs` is the seeded documentation directory **relative to the workspace**
+  (`engine/`), and empty when the engine seeds none, so a specification stays
+  free of container paths. The prompt's `{{engine.docs}}` is the absolute
+  in-container path of the same directory.
 - `{{voxel}}` — for a voxel asset-generation case, the effective bounding volume
   for the run: the variant's `[voxel]` override when it declares one, otherwise
   the case's `[voxel]`. It exposes `{{voxel.width}}`, `{{voxel.height}}`, and
@@ -145,12 +148,12 @@ on. Each file seeds at its path relative to that directory, so
 `workspaces/base/package.json` lands at `package.json` and
 `workspaces/base/src/main.ts` at `src/main.ts`.
 
-Which directory is seeded depends on the case's
-[manifest format](/testing/end-to-end/manifests/#manifest-formats): a format 1
-case names one with the top-level `workspace` key, and a format 2 case names one
-per [engine](/components/core/engines/) in a `[workspaces]` table, because a
-starter project is written against a runtime. A variant may replace either with
-its own.
+Which directory is seeded depends on how the case
+[names it](/testing/end-to-end/manifests/#the-starter-project): an engineless
+case names one with the top-level `workspace` key, and a case that supports
+[engines](/components/core/engines/) names one per engine in a `[workspaces]`
+table, because a starter project is written against a runtime. A variant may
+replace either with its own.
 
 A workspace is how a case gives itself a fixed build interface and ships its
 tooling as project-local dependencies. Carom and Coil ship a `package.json`

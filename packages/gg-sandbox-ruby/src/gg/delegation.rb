@@ -118,11 +118,10 @@ module GG
     # Move the process this session is running inside on to another of its states.
     #
     # The state is named the way an agent to spawn is named. It is bound only when a state machine
-    # is driving the session and the current state has somewhere to go. Like `GG::Context.compact`
-    # it is registered rather than performed: the call validates the target, returns, and the
-    # program runs on to its end, because replacing the agent — and its window — mid-program would
-    # pull every remaining call out from under it. The first declaration in a turn is the one that
-    # stands.
+    # is driving the session and the current state has somewhere to go. It is registered rather
+    # than performed: the call validates the target, returns, and the program runs on to its end,
+    # because replacing the agent — and its window — mid-program would pull every remaining call out
+    # from under it. The first declaration in a turn is the one that stands.
     #
     # @param state [String] The state to move on to, named the way an agent to spawn is named.
     # @param note [String, nil] The opening message the next state's agent sees. Leave it out to
@@ -140,9 +139,9 @@ module GG
     #
     # The named agent takes over with its own model, tools and instructions, keeping every
     # capability the two of them share — the whole conversation above all, so it needs no catching
-    # up. Registered rather than performed, exactly as `GG::Delegation.transition_state` is and for
-    # the same reason: the window would otherwise be pulled out from under the program still
-    # composing into it. A session makes one succession per turn.
+    # up. Registered rather than performed: the call validates the target, returns, and the program
+    # runs on to its end, because the window would otherwise be pulled out from under the program
+    # still composing into it. A session makes one succession per turn.
     #
     # @param agent [String] The agent to become, from the ones this agent may become.
     # @param prompt [String, nil] Its opening message. It already has the whole conversation, so
@@ -163,9 +162,9 @@ module GG
     # there.
     #
     # Its handle comes back immediately, but the copy itself starts once this turn's tool results
-    # are recorded, because the conversation it inherits has to be a complete one. So
-    # `GG::Delegation.wait_for_subagents` can only collect it on a later turn, and waiting on it in
-    # the program that made it never returns it.
+    # are recorded, because the conversation it inherits has to be a complete one. So a later turn
+    # is the earliest a wait can collect it, and waiting on it in the program that made it never
+    # returns it.
     #
     # @param prompt [String] What the copy is to do instead. It has the whole conversation already,
     #   so this is the difference rather than a briefing.
@@ -221,7 +220,7 @@ module GG
     # Every arm is a Symbol, so a comparison may name the constant or write the literal:
     # `GG::Delegation::AgentEnding::COMPLETED` and `:completed` are the same value.
     module AgentEnding
-      # It finished normally, calling `GG::Session.finish`, and its summary is what it returned.
+      # It finished normally, ending its own session, and its summary is what it returned.
       COMPLETED = :completed
 
       # It reached the per-run turn ceiling.

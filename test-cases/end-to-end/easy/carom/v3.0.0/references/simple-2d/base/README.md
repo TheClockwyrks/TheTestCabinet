@@ -14,10 +14,13 @@ here is exactly what a run on this engine is asked to produce.
 
 ---
 
-**Carom** is a neon, top-down paddle duel for the browser. Two paddles face each
-other across a dark field; a ball ricochets between them, off the top and bottom
+**Carom** is a top-down paddle duel for the browser. Two paddles face each other
+across a dark field; a ball ricochets between them, off the top and bottom
 walls, and off a pair of fixed mid-field obstacles. A player scores when the ball
-passes the far edge behind their opponent's paddle.
+passes the far edge behind their opponent's paddle. The neon-on-charcoal look is
+this build's own choice: the specification fixes the rules and leaves the
+palette, type, and layout to the build, so they live in `src/theme.ts` rather
+than beside the case-fixed figures in `src/constants.ts`.
 
 Carom's defining mechanic is **spin**: the motion of a paddle at the moment it
 strikes the ball curves the ball's flight afterward, so skilled play is about
@@ -40,14 +43,14 @@ Matches are first to **11 points**, win by **2** (deuce continues past 10-10).
 Every control is a **registered engine action** on the `dual-vertical` touch
 layout, bound to these keys:
 
-| Action              | Keys               | Does                                                                    |
-| ------------------- | ------------------ | ----------------------------------------------------------------------- |
-| `p1-up` / `p1-down` | `W` / `S`          | Moves player one's (left) paddle.                                       |
-| `p2-up` / `p2-down` | `↑` / `↓`          | Moves player two's (right) paddle — and, in Solo, player one's as well. |
-| `confirm`           | `Enter` or `Space` | Accepts the selected menu item.                                         |
-| `back`              | `Esc`              | Goes back a screen.                                                     |
-| `pause`             | `P` or `Esc`       | Pauses during a match.                                                  |
-| `mute`              | `M`                | Toggles mute, on any screen.                                            |
+| Action              | Keys               | Does                                                                                                                      |
+| ------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `p1-up` / `p1-down` | `W` / `S`          | Moves player one's (left) paddle.                                                                                         |
+| `p2-up` / `p2-down` | `↑` / `↓`          | Moves player two's (right) paddle — and, in Solo, player one's as well.                                                   |
+| `confirm`           | `Enter` or `Space` | Accepts the selected menu item.                                                                                           |
+| `back`              | `Esc`              | Goes back a screen: leaves how-to-play, resumes from the pause menu, and returns to the title from the match-over screen. |
+| `pause`             | `P` or `Esc`       | Pauses during a match.                                                                                                    |
+| `mute`              | `M`                | Toggles mute, on any screen.                                                                                              |
 
 Either side's up/down action moves a menu selection, so the menus answer to
 `W`/`S` and `↑`/`↓` alike. `Esc` drives **two** actions — `pause` and `back` —
@@ -73,6 +76,12 @@ game, and none of it is written here:
   per second and is integrated against it. There is no fixed timestep and no
   accumulator — the same second of play reaches the same state however it was
   divided into frames.
+- **The state, by value.** The engine holds `CaromState` as a value and hands it
+  out as a `DeepReadonly` view: `update` is given the current state and returns
+  the next one, the engine stores what it returned, and `render` draws that.
+  `engine.state` is the current value, and `engine.apply(transition)` replaces
+  it with what a transition returns — which is how a scenario is posed between
+  frames.
 - **The canvas fit.** The uniform scale, the centered letterbox, the device pixel
   ratio, and the resync when any of them changes. `src/render.ts` draws in logical
   `1280x720` coordinates and never reads the canvas element's size.
@@ -86,19 +95,58 @@ game, and none of it is written here:
 What is left is the game: the simulation, the drawing, and the state the debug
 API poses.
 
+## The state is a value
+
+Nothing in this build writes to a state it was handed. Every field of
+`CaromState` is `readonly` and every array in it is a `readonly` array, so the
+declared type and the `DeepReadonly` view the engine hands out are the same
+shape, and every function over the state is a **transition**: the current state
+(or a slice of it) in, the next one out, built by spreading what it keeps around
+what it changes. `update` is the transition the engine runs every frame;
+`startMatch`, `respawn`, `toTitle`, `recordTrail`, and the debug surface's poses
+are the ones it is composed from. The slice-level arithmetic follows the same
+shape — `integratePaddle(paddle, dt)` returns the next paddle, `updateAi(...)`
+the next AI paddle, `step(ball, left, right, dt)` the ball after its flight
+beside the events it saw, and `nextSign(rngState)` the sign drawn beside the
+generator's next state. There is no module-level game state and no closure over
+mutable data; `render` and every diagnostic source are reads of the state they
+are given, and the compiler — not a convention — is what says they cannot change
+it.
+
 ## Debugging and automation
 
-The game exposes a small debugging and automation API on **`window.__carom`** so a
-scenario can be posed in Carom's own world from code:
+The game exposes a small debugging and automation API **through the engine**, so a
+scenario can be posed in Carom's own world from code. `src/debug.ts` builds the
+surface, `initialize` returns it beside the state as
+`[state, createDebugApi()]`, and a caller reads that same object back off
+**`engine.debug`** — the engine returns it unchanged and reads no member of
+it. Nothing is published on the page, so a check reaches the surface through the
+engine it constructed rather than through the document the build is drawn on.
 
-- `reset(options?)` and `snapshot()` — return to the title screen (seedable) and
-  read a JSON-serializable view of the full state.
-- `startMatch(mode)`, `serve()`, `setScore(p1, p2)`, `setPaddle(side, state)`, and
-  `setBall(index, state)` — set up a scenario through the game's own state;
-  calling any of them hands paddle control to the caller until `reset()`.
-- `setAiControl(enabled)` — in Solo, hand the AI's paddle back to the computer
-  opponent for the rest of a driven scenario, so a check can exercise the real AI
-  against a posed shot.
+The surface holds no state, because the engine hands none out: every operation
+is written in the shape of `update`. A **pose** takes the current state and
+returns the next one, and a caller drives it through `engine.apply`; a
+**reading** takes the state and returns what it read, and a caller hands it
+`engine.state`:
+
+```ts
+engine.apply((s) => engine.debug.startMatch(s, "versus"));
+engine.apply((s) => engine.debug.setBall(s, 0, { x: 300, vx: 400 }));
+await engine.advance(30);
+const { ball } = engine.debug.snapshot(engine.state);
+```
+
+The operations are:
+
+- `reset(state, options?)` and `snapshot(state)` — the title screen (seedable),
+  and a JSON-serializable view of the full state.
+- `startMatch(state, mode)`, `serve(state)`, `setScore(state, p1, p2)`,
+  `setPaddle(state, side, patch)`, and `setBall(state, index, patch)` — a
+  scenario set up through the game's own state; each returns a state in which
+  the caller holds the paddles, until `reset`.
+- `setAiControl(state, enabled)` — in Solo, the AI's paddle handed back to the
+  computer opponent for the rest of a driven scenario, so a check can exercise
+  the real AI against a posed shot.
 
 Every one of those is a read or a pose of `CaromState`: they arrange the world,
 and the game's own `update` is what runs from there when the engine advances a
@@ -106,9 +154,9 @@ frame.
 
 Everything about _driving a browser game_ rather than about Carom is the
 engine's. The clock, the exact frames, and the registered actions are driven by
-constructing an engine directly (which is what `src/engine.test.ts` does), so
-there is deliberately no `step`, `setAutoStep`, `keyDown`, `keyUp`, or `press` on
-`window.__carom`. A check that wants the frames a scenario drew arms the engine's
+constructing an engine directly (which is what `src/engine.test.ts` does), so the
+surface deliberately carries no `step`, `setAutoStep`, `keyDown`, `keyUp`, or
+`press`. A check that wants the frames a scenario drew arms the engine's
 draw-command recorder around that section and keeps the recording.
 
 Both surfaces are inert during normal play.
@@ -162,9 +210,10 @@ npm test               # vitest, with coverage over src/
 
 `npm test` runs the build's own suite **in process**: it builds a real engine over
 an `@napi-rs/canvas` canvas and a `SurfaceMetrics` of its own, steps it with
-`engine.advance` against a `ConstantClock`, and reads the result back from the
-game's state, the engine's events, and the pixels the render produced. No browser
-is involved.
+`engine.advance` against a `ConstantClock`, poses it through `engine.apply`, and
+reads the result back from `engine.state`, the engine's events, and the pixels
+the render produced. No browser is involved. The unit tests beside each module
+call its transitions directly and assert on what they return.
 
 ## Project layout
 
@@ -174,18 +223,24 @@ vite.config.ts        Build config (emits to dist/)
 vitest.config.ts      The build's own test suite, over src/
 .tcab/engine/         The vendored, prebuilt @test-cabinet/simple-2d
 src/
-  main.ts             Bootstrap: create the engine, initialize, install, run
-  constants.ts        Palette, geometry, physics constants (logical 1280x720)
-  debug.ts            The window.__carom surface over CaromState
+  main.ts             Bootstrap: create the engine, initialize it, and run
+  constants.ts        Every figure the specification fixes (logical 1280x720);
+                      seeded by the case and not edited
+  theme.ts            This build's own look: palette, type, HUD layout, copy
+  debug.ts            The debug surface: poses and readings over CaromState,
+                      returned beside the state by game.ts's initialize
   game.ts             The state contract, the state machine, and the three
                       functions the engine drives
-  rng.ts              The seeded generator, over CaromState.rngState
+  match.ts            Building the state and the transitions between screens,
+                      shared by the menus and the debug surface
+  rng.ts              The seeded generator: a draw beside the next state
   entities.ts         Paddle and ball arithmetic and geometry
   trail.ts            The ball's motion trail, a fixed slice of time
   physics.ts          Delta-time integration, collision, the spin mechanic
   ai.ts               The beatable AI opponent
-  render.ts           All canvas drawing (neon-on-charcoal), in logical space
-  diagnostics.ts      The values the engine's overlay shows
+  render.ts           All canvas drawing, in logical space
+  diagnostics.ts      The values the engine's overlay shows, each a read of
+                      the state it is handed
   audio.ts            The four engine cues
   *.test.ts           The build's own tests, beside the code they cover
 ```

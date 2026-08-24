@@ -1,36 +1,51 @@
-// Carom — the debugging and automation surface. CASE-PROVIDED. Do not edit.
+// Carom — the debugging and automation surface, `window.__carom`.
 //
-// `window.__carom` is specified by `specs/instrumentation.md` and supplied here,
-// already written, so the full surface exists in every build and behaves the same
-// way in each. It is installed by `src/main.ts` as soon as the runtime has
-// initialized, and it is inert during normal play: nothing below runs until
-// something calls it.
+// `specs/instrumentation.md` specifies it and this file implements it. It is
+// installed by `src/main.ts` as soon as the game has initialized, and it is inert
+// during normal play: nothing below runs until something calls it.
 //
-// Every operation is expressed as a read or a pose of `CaromState`. That is the
-// point of the split. These calls ARRANGE THE WORLD and never fabricate an
+// Almost every operation is expressed as a read or a pose of `CaromState`. That
+// is the point of the split. These calls ARRANGE THE WORLD and never fabricate an
 // outcome: they put the game into a situation, and the game's own `update` — the
-// real collision, the real serve, the real AI — is what runs from there when the
-// runtime advances a frame. So a scenario driven from code behaves exactly like
-// one played by hand, and the only thing this file needs from the build is that
-// the build honours the state it is handed.
+// real collision, the real serve, the real AI — is what runs from there on the
+// next frame. So a scenario driven from code behaves exactly like one played by
+// hand.
 //
-// Everything about DRIVING A BROWSER GAME rather than about Carom belongs to the
-// runtime and is deliberately absent: there is no `step` or `setAutoStep` (the
-// runtime owns the clock and runs exact frames), no `keyDown`, `keyUp` or `press`
-// (the runtime's registered actions are driven directly), and no overlay drawing
-// or toggle (the runtime draws the panel and owns the backtick key).
+// THE TWO EXCEPTIONS ARE THE CLOCK. `setAutoStep` and `advance` reach past the
+// state into the runtime, because this build stands on no engine and nothing
+// outside it owns its clock. Without them a scenario could only be driven by
+// waiting, and a check that waits measures the machine it ran on. Everything else
+// about driving a browser game stays absent: there is no `keyDown`, `keyUp` or
+// `press` (the runtime's registered actions are driven by dispatching real key
+// events at the page) and no overlay drawing or toggle (the runtime draws the
+// panel and owns the backtick key).
 
-import { FIELD_CX, FIELD_CY, HOLD_TIME } from "./constants";
-import type { BallState, CaromState, Mode, Screen, Side } from "./game";
+import { CAROM_DEBUG_VERSION, DEFAULT_SEED } from "./constants";
+import { parkBall } from "./entities";
+import {
+  startMatch,
+  toTitle,
+  type CaromState,
+  type Mode,
+  type Screen,
+  type Side,
+} from "./game";
 
 /** The `window` property the API is installed on. */
 export const CAROM_HANDLE = "__carom";
 
-/** The surface's version, reported as `version` and bumped when it changes. */
-export const CAROM_DEBUG_VERSION = 1;
-
-/** The seed `reset()` restores when the caller names none. */
-export const DEFAULT_SEED = 1;
+/**
+ * The runtime's clock, as the surface reaches it.
+ *
+ * Structural on purpose: `src/runtime.ts` satisfies it without knowing this file
+ * exists, and a test can hand the surface a clock of its own.
+ */
+export interface DebugClock {
+  /** Take the game off the wall clock, or give it back. */
+  setAutoStep(enabled: boolean): void;
+  /** Run `frames` whole frames covering `seconds` of game time. */
+  advance(seconds: number, frames?: number): void;
+}
 
 /** The fields `setPaddle` may set. Anything omitted is left as it is. */
 export interface PaddlePatch {
@@ -100,6 +115,8 @@ export interface CaromSnapshot {
 
 export interface CaromDebugApi {
   version: number;
+  setAutoStep(enabled: boolean): void;
+  advance(seconds: number, frames?: number): void;
   reset(options?: { seed?: number }): void;
   snapshot(): CaromSnapshot;
   startMatch(mode: Mode): void;
@@ -122,39 +139,17 @@ function takeControl(state: CaromState): void {
   state.driver.paddles = true;
 }
 
-/** Park the ball at its spawn point: motionless, and with no spin. */
-function parkBall(ball: BallState): void {
-  ball.x = FIELD_CX;
-  ball.y = FIELD_CY;
-  ball.vx = 0;
-  ball.vy = 0;
-  ball.spin = 0;
-}
-
 /**
  * Restore every declared field of the state to its title-screen value.
  *
+ * The game's own return to the title does most of it; a reset additionally
+ * starts the simulation clock over, reseeds the generator, and clears the driver.
  * `muted` is deliberately untouched: muting is a player preference the runtime
  * owns, and a reset is not a reason to start making noise again.
  */
 function poseTitle(state: CaromState, seed: number): void {
-  state.screen = "title";
-  state.mode = "solo";
-  state.menuIndex = 0;
-  state.resumeScreen = "playing";
-  state.score.p1 = 0;
-  state.score.p2 = 0;
-  state.winner = null;
-  state.receiver = "left";
-  state.holdTimer = 0;
-  state.paddles.left.cy = FIELD_CY;
-  state.paddles.left.vy = 0;
-  state.paddles.right.cy = FIELD_CY;
-  state.paddles.right.vy = 0;
-  parkBall(state.ball);
-  state.trail.length = 0;
+  toTitle(state);
   state.simTime = 0;
-  state.obstacleClock = 0;
   state.rngState = seed;
   state.driver.paddles = false;
   state.driver.ai = false;
@@ -162,18 +157,57 @@ function poseTitle(state: CaromState, seed: number): void {
   state.driver.vy.right = 0;
 }
 
-/** Build the API over one live state object. */
-export function createDebugApi(state: CaromState): CaromDebugApi {
+/** Build the API over one live state object and the runtime driving it. */
+export function createDebugApi(
+  state: CaromState,
+  clock: DebugClock,
+): CaromDebugApi {
   return {
     version: CAROM_DEBUG_VERSION,
+
+    /**
+     * Take the game off real time, and give it back.
+     *
+     * `false` stops the frame loop advancing the simulation from the wall clock,
+     * so the game changes only when `advance` says so; `true` returns it to
+     * running itself, which is how a build starts and how it is played. Drawing
+     * is unaffected either way: the loop keeps rendering, so the canvas shows the
+     * state the most recent frame left.
+     *
+     * It does not touch the paddles. Who is driving them is a separate question
+     * from who is driving the clock, and a scenario that takes the game off real
+     * time to watch the KEYBOARD move a paddle is exactly what the control checks
+     * are.
+     */
+    setAutoStep(enabled) {
+      clock.setAutoStep(Boolean(enabled));
+    },
+
+    /**
+     * Run `frames` whole frames covering `seconds` of game time, each worth
+     * `seconds / frames`, immediately and in order.
+     *
+     * Each is a real frame — the same update the loop runs, then a render — so
+     * the game's own collision, serve and AI produce the result and the canvas
+     * reflects it. Every rate in this game is integrated against the frame's
+     * delta, so `advance(1, 1)` and `advance(1, 60)` cover the same second and
+     * reach the same outcome, beyond the drift a change in step size explains.
+     *
+     * Advancing while the game is still stepping automatically ADDS to what the
+     * wall clock is already doing, so call `setAutoStep(false)` first.
+     */
+    advance(seconds, frames = 1) {
+      clock.advance(seconds, frames);
+    },
 
     /**
      * Return to the title screen, handing the paddles back to the player and (in
      * Solo) the AI, and reseed the game's randomness.
      *
-     * It does not touch the clock: who advances time is the runtime's business,
-     * and a driver that wants the game off real time says so to the runtime
-     * rather than to the game.
+     * It does not touch the clock. A reset restores the declared fields of the
+     * state, and whether the game is stepping itself is not one of them:
+     * `setAutoStep` is how that is said, and a driver that resets mid-scenario
+     * means to re-pose the world, not to hand it back to real time.
      */
     reset(options) {
       poseTitle(state, options?.seed ?? DEFAULT_SEED);
@@ -222,22 +256,7 @@ export function createDebugApi(state: CaromState): CaromDebugApi {
      */
     startMatch(mode) {
       takeControl(state);
-      state.mode = mode;
-      state.screen = "countdown";
-      state.resumeScreen = "playing";
-      state.menuIndex = 0;
-      state.score.p1 = 0;
-      state.score.p2 = 0;
-      state.winner = null;
-      state.receiver = "left";
-      state.holdTimer = HOLD_TIME;
-      state.paddles.left.cy = FIELD_CY;
-      state.paddles.left.vy = 0;
-      state.paddles.right.cy = FIELD_CY;
-      state.paddles.right.vy = 0;
-      parkBall(state.ball);
-      state.trail.length = 0;
-      state.obstacleClock = 0;
+      startMatch(state, mode);
     },
 
     /**
@@ -336,8 +355,11 @@ export function createDebugApi(state: CaromState): CaromDebugApi {
  * Install the API on `window.__carom` and return the function that removes it
  * again, while the installed object is still the one this call published.
  */
-export function installDebugApi(state: CaromState): () => void {
-  const api = createDebugApi(state);
+export function installDebugApi(
+  state: CaromState,
+  clock: DebugClock,
+): () => void {
+  const api = createDebugApi(state, clock);
   const target = window as unknown as Record<string, unknown>;
   target[CAROM_HANDLE] = api;
   return () => {

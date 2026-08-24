@@ -148,12 +148,16 @@ fn build_tarball() -> Vec<u8> {
 /// `implementation/`, the `run-record.json`, the recorded `events.jsonl`, and a
 /// built `dist/index.html`. Used to assert what `tree.tar` carries.
 fn source_tree_tarball() -> Vec<u8> {
-    let entries: &[(&str, &[u8])] = &[
+    tarball(&[
         ("run-record.json", b"{\"id\":\"src\"}"),
         ("events.jsonl", b"{\"kind\":\"start\"}\n"),
         ("implementation/src/main.ts", b"console.log(1)"),
         ("implementation/dist/index.html", b"<html></html>"),
-    ];
+    ])
+}
+
+/// A `tar` archive of the given `(path, contents)` entries, relative to the run root.
+fn tarball(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut builder = tar::Builder::new(Vec::new());
     for (path, contents) in entries {
         let mut header = tar::Header::new_gnu();
@@ -739,6 +743,56 @@ async fn a_text_build_file_is_gzipped_for_a_client_that_accepts_it() {
         "gzip",
         "a text build file should be gzipped for a client that accepts it"
     );
+}
+
+#[tokio::test]
+async fn a_stored_recording_is_served_as_json_framed_in_gzip() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    // Gzip magic followed by a stub member body; the route serves what is stored, so
+    // the bytes only have to be recognisable, not inflatable.
+    let stored: &[u8] = &[0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00];
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-replay/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(tarball(&[(
+            "implementation/.tcab/validation/no-tunnel__serve.json.gz",
+            stored,
+        )])))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::CREATED
+    );
+
+    // A recording is a JSON document that travels compressed, so the response says
+    // both halves and the browser inflates it before the replay player sees a byte.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/runs/run-replay/validation/no-tunnel__serve.json.gz")
+                .header("accept-encoding", "gzip")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/json"
+    );
+    assert_eq!(response.headers().get("content-encoding").unwrap(), "gzip");
+    // Declaring the framing must not invite the compression layer to add a second
+    // one: the body is the stored member, byte for byte.
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    assert_eq!(body.as_ref(), stored);
 }
 
 #[tokio::test]

@@ -105,12 +105,12 @@ pub async fn ingest(
         state.gg_docs.invalidate_all().await;
     }
 
-    // A backend that started on an empty store is held out of its Service until one
-    // of these scans fills it (see `crate::readiness`). Gate on what the store now
-    // holds rather than on the scan merely succeeding: a scan against an empty or
-    // broken checkout returns Ok having ingested nothing, and must not flip an
-    // still-empty backend Ready.
-    if state.store.is_populated() {
+    // A backend that started on an empty store, or one written in another record
+    // format, is held out of its Service until one of these scans leaves it servable
+    // (see `crate::readiness`). Gate on what the store now holds rather than on the
+    // scan merely succeeding: a scan against an empty or broken checkout returns Ok
+    // having ingested nothing, and must not flip an still-empty backend Ready.
+    if state.store.is_servable() {
         state.ready.mark_store_populated();
     }
 
@@ -315,8 +315,8 @@ fn ingest_streaming(
                     tokio::runtime::Handle::current().block_on(gg_docs.invalidate_all());
                 }
                 // …and, as on the non-streaming path, a scan that leaves the store
-                // populated releases the readiness latch.
-                if store.is_populated() {
+                // servable releases the readiness latch.
+                if store.is_servable() {
                     readiness.mark_store_populated();
                 }
                 StreamEvent::done(&report)

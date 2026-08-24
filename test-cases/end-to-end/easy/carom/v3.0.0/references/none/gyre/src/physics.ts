@@ -7,14 +7,15 @@
 // frames — which is the property the debug API in `src/debug.ts` leans on.
 //
 // To guarantee the ball never tunnels through a paddle, wall, or obstacle at high
-// speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP px
-// of travel) that the ball's center can never skip past an object in one move, and
-// collisions are resolved after each sub-step.
+// speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP
+// units of travel) that the ball's center can never skip past an object in one
+// move, and collisions are resolved after each sub-step.
 
 import {
   BALL_R,
   FIELD_H,
   MAX_BOUNCE_ANGLE,
+  MAX_SUBSTEP,
   OBSTACLE_HH,
   OBSTACLE_HW,
   PADDLE_HALF,
@@ -27,9 +28,6 @@ import {
 } from "./constants";
 import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
 import type { BallState, ObstacleState, PaddleState, Side } from "./game";
-
-/** Px of travel per collision sub-step. Below the smallest object half-extent. */
-const MAX_SUBSTEP = 4;
 
 /** What one step's collisions did, so the caller can play a cue per event. */
 export interface StepEvents {
@@ -158,8 +156,11 @@ function resolveObstacle(
   const lx = dx * cos + dy * sin;
   const ly = -dx * sin + dy * cos;
 
-  const qx = clamp(lx, -OBSTACLE_HW, OBSTACLE_HW);
-  const qy = clamp(ly, -OBSTACLE_HH, OBSTACLE_HH);
+  // The closest point of the rectangle to the ball's center, in local axes. For
+  // a center inside the rectangle it is moved onto the nearest face below, so the
+  // placement that follows always measures from the face that was struck.
+  let qx = clamp(lx, -OBSTACLE_HW, OBSTACLE_HW);
+  let qy = clamp(ly, -OBSTACLE_HH, OBSTACLE_HH);
   const ox = lx - qx;
   const oy = ly - qy;
   const dist2 = ox * ox + oy * oy;
@@ -169,15 +170,17 @@ function resolveObstacle(
   let nly: number;
   if (inside) {
     // The center is within the rectangle: leave along whichever face is nearest,
-    // which is the shallowest way out.
+    // which is the axis of least penetration.
     const exX = OBSTACLE_HW - Math.abs(lx);
     const exY = OBSTACLE_HH - Math.abs(ly);
     if (exX <= exY) {
       nlx = lx >= 0 ? 1 : -1;
       nly = 0;
+      qx = nlx * OBSTACLE_HW;
     } else {
       nlx = 0;
       nly = ly >= 0 ? 1 : -1;
+      qy = nly * OBSTACLE_HH;
     }
   } else {
     if (dist2 >= BALL_R * BALL_R) return;
@@ -198,7 +201,7 @@ function resolveObstacle(
     ball.vy -= 2 * vn * ny;
   }
 
-  // Place the center exactly BALL_R off the contact point along the normal.
+  // Place the center exactly BALL_R off the contact face along the normal.
   const contactX = obstacle.cx + (qx * cos - qy * sin);
   const contactY = obstacle.cy + (qx * sin + qy * cos);
   ball.x = contactX + nx * BALL_R;
@@ -232,8 +235,8 @@ export function step(
   // The frame is cut into sub-steps short enough that the ball's center cannot
   // skip past an object in one move. Every part of the step below — the spin, the
   // integration, and the collisions — happens per SUB-step rather than per frame,
-  // so the curve the ball actually travels is resolved to MAX_SUBSTEP px however
-  // long the frame was. That is what keeps a rally on a 30 Hz display and the same
+  // so the curve the ball actually travels is resolved to MAX_SUBSTEP units
+  // however long the frame was. That is what keeps a rally on a 30 Hz display and the same
   // rally on a 240 Hz one landing in the same place.
   const substeps = Math.max(1, Math.ceil((ballSpeed(ball) * dt) / MAX_SUBSTEP));
   const h = dt / substeps;
@@ -247,7 +250,7 @@ export function step(
     //    of `spin / speed` turns the path without changing the speed, which is
     //    exactly what a lateral acceleration of magnitude |spin| does.
     const speed = ballSpeed(ball);
-    if (speed > 1e-6 && ball.spin !== 0) {
+    if (speed > 0) {
       const dTheta = (ball.spin / speed) * h;
       const c = Math.cos(dTheta);
       const s = Math.sin(dTheta);

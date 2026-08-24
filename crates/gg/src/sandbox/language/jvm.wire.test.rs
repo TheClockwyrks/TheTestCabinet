@@ -1,7 +1,7 @@
 //! **The JVM arms' wasm substrate, driven end to end** — hand-written Java programs that are not
 //! gg's, really compiled by TeaVM's `WEBASSEMBLY_WASI` backend, really encoded as components by gg's
 //! own Rust, really instantiated against gg's real membrane, really answered by gg's real
-//! `files.read_text_file`, and really killed by their own runtime.
+//! `skills.read_skill`, and really killed by their own runtime.
 //!
 //! # What this is proving
 //!
@@ -50,10 +50,10 @@ use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::operations::OperationId;
 use crate::sandbox::outcome::SandboxError;
 use crate::sandbox::{
-    FILES_READ_FILE, FILES_READ_TEXT_FILE, PrepareContext, ProgramScope, SandboxLimits,
-    bounded_store, engine, linker, reclaim,
+    PrepareContext, ProgramScope, SKILLS_READ_SKILL, SandboxLimits, bounded_store, engine, linker,
+    reclaim,
 };
-use crate::tools::{ApiData, FileTextData, ToolOutcome};
+use crate::tools::ToolOutcome;
 
 use super::*;
 
@@ -65,16 +65,14 @@ use super::*;
 /// what gg answered, and then fails on purpose.
 ///
 /// Deliberately not run through any preparation: these are the bytes, and `Program.java` is the file
-/// a stack frame has to name. The two `Value.none()`s are `read-text-file`'s `offset` and `limit`,
-/// which this program does not want — an absent `option` is a value on this wire rather than a
-/// missing argument.
+/// a stack frame has to name.
 const PROGRAM: &str = r#"import gg.internal.Coding;
 import gg.internal.Value;
 
 public final class Program {
     public static void main(String[] arguments) {
         Value answered = Coding.call(
-                "files.read_text_file", Value.of("notes.txt"), Value.none(), Value.none());
+                "skills.read_skill", Value.of("layout"));
         System.err.println("the host answered: " + answered.text());
         boom(0);
     }
@@ -113,7 +111,7 @@ import gg.internal.Value;
 public final class Program {
     public static void main(String[] arguments) {
         Value read = Coding.call(
-                "files.read_text_file", Value.of("notes.txt"), Value.none(), Value.none());
+                "skills.read_skill", Value.of("layout"));
         System.err.println("ANSWERED " + read.text().length());
 
         String contents = "0123456789abcdef".repeat(64 * 1024);
@@ -121,8 +119,7 @@ public final class Program {
         System.err.println("SENT " + contents.length());
 
         for (int round = 0; round < 11; round++) {
-            Coding.call("files.read_text_file", Value.of("notes.txt"),
-                    Value.none(), Value.none());
+            Coding.call("skills.read_skill", Value.of("layout"));
             byte[] churn = new byte[4 * 1024 * 1024];
             churn[churn.length - 1] = (byte) round;
             System.err.println("ROUND " + round);
@@ -247,7 +244,7 @@ fn a_hand_written_java_program_reaches_gg_through_the_wire_and_dies_as_its_runti
 
     let ran = run_against_the_membrane(
         &component,
-        granted_operations(&[FILES_READ_TEXT_FILE, FILES_READ_FILE], false),
+        granted_operations(&[SKILLS_READ_SKILL], false),
         canned_outcome,
     );
 
@@ -263,8 +260,7 @@ fn a_hand_written_java_program_reaches_gg_through_the_wire_and_dies_as_its_runti
         ran.api_calls
     );
     assert!(
-        ran.said
-            .contains("the host answered: contents of notes.txt"),
+        ran.said.contains("the host answered: the skill body"),
         "the program did not print what gg answered; its stderr was {:?}",
         ran.said
     );
@@ -308,15 +304,7 @@ fn a_program_carries_ggs_own_maxima_and_survives_its_own_collector() {
     let expected = answer.len();
     let responder = move |name: &str, args: &Value| -> ToolOutcome {
         match name {
-            "read_file" => ToolOutcome::ok(answer.clone(), "read a big file").with_data(
-                ApiData::FileText(FileTextData {
-                    contents: answer.clone(),
-                    first_line: 1,
-                    last_line: 1,
-                    total_lines: 1,
-                    byte_truncated: false,
-                }),
-            ),
+            "read_skill" => ToolOutcome::ok(answer.clone(), "read a big skill"),
             other => canned_outcome(other, args),
         }
     };
@@ -349,9 +337,9 @@ fn a_program_carries_ggs_own_maxima_and_survives_its_own_collector() {
         "the membrane recorded {} of the program's thirteen calls",
         ran.api_calls
     );
-    let expected_calls: Vec<String> = ["read_file", "write_file"]
+    let expected_calls: Vec<String> = ["read_skill", "write_file"]
         .into_iter()
-        .chain(std::iter::repeat_n("read_file", 11))
+        .chain(std::iter::repeat_n("read_skill", 11))
         .map(str::to_string)
         .collect();
     assert_eq!(

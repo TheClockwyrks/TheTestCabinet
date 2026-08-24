@@ -4,18 +4,25 @@
 //
 // `Escape` deliberately drives TWO actions — `pause` and `back` — and the game
 // reads whichever the screen calls for, so a real `Escape` key event raises both
-// edges at once and a live match must resolve it as the pause. Dispatching the
-// key rather than the action is what puts that ambiguity in front of the build,
-// which is the whole of what this item is about.
+// edges at once and a live match must resolve it as the pause. Pressing the key
+// rather than raising the action is what puts that ambiguity in front of the
+// build, which is the whole of what this item is about.
 //
 // The match is started from the title with real key events and then played into a
 // live rally — past the pre-serve hold, so what is paused is a match in flight
 // rather than its countdown, which is the `gameplay/pause-during-countdown`
-// item's separate point. The key event is dispatched at the target the runtime
-// listens on, so the action is raised by the binding the case declares rather
-// than by anything this check reaches into.
+// item's separate point. The key is pressed through Chromium's own input
+// pipeline, so what reaches the build is a browser-trusted DOM key event on the
+// real page rather than a synthetic one posed at the event target a runtime
+// listens on, and the action is raised by the binding the case declares rather
+// than by anything this check reaches into. The keyboard that reads it is the
+// build's own — `specs/instrumentation.md` puts it in the runtime layer an
+// engineless build supplies, and gives the surface no keyboard operation at
+// all — so the whole path from a physical key to a paused match is exercised,
+// which makes this check stronger here rather than weaker.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -46,8 +53,8 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("pauses a live Solo match when Escape is pressed", async () => {
@@ -56,13 +63,13 @@ it("pauses a live Solo match when Escape is pressed", async () => {
 
   await captureReplay(h, "pause", async () => {
     await h.advance(LIVE_TICKS);
-    expect(h.snapshot().screen).toBe("playing");
+    assertEqual((await h.snapshot()).screen, "playing");
 
     await h.tap("Escape");
-    expect(h.snapshot().screen).toBe("paused");
+    assertEqual((await h.snapshot()).screen, "paused");
 
     // And it stays paused: the press opened a screen, it did not blink one.
     await h.advance(PAUSED_TICKS);
   });
-  expect(h.snapshot().screen).toBe("paused");
+  assertEqual((await h.snapshot()).screen, "paused");
 });

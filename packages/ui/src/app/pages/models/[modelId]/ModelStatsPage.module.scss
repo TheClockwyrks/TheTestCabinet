@@ -52,3 +52,13 @@
   color: t.$color-text-muted;
   text-shadow: none;
 }
+
+// The line under an accuracy ring qualifying its figures (run counts, and how
+// many predate the exact counters). Muted — it qualifies a figure rather than
+// being one.
+.accuracyNote {
+  margin: t.$space-sm 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}

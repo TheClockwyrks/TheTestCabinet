@@ -42,6 +42,13 @@ interface AxisLabels {
    * widens its bottom margin to make room for the tilted text.
    */
   xTickRotate?: number;
+  /**
+   * The bar order along x, as the full list of category labels. Pass it whenever
+   * the bars carry a meaningful order — Plot otherwise sorts the ordinal domain
+   * it infers, which silently overrides a caller's chosen ranking. Omit for
+   * genuinely unordered categories.
+   */
+  xDomain?: readonly string[];
 }
 
 // Geometry for sizing the bottom margin under rotated x labels. A monospace
@@ -137,6 +144,7 @@ export function barChart(
       label: labels.x ?? null,
       type: "band",
       tickRotate: labels.xTickRotate,
+      ...(labels.xDomain ? { domain: labels.xDomain as string[] } : {}),
     },
     y: { label: labels.y ?? null, grid: true, tickFormat: labels.yTickFormat },
     // Bars carry literal CSS colors, so use an identity color scale (no legend,

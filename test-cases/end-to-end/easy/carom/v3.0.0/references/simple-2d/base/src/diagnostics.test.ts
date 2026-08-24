@@ -1,30 +1,33 @@
 // specs/instrumentation.md names the values the engine's overlay must show. What
-// is checked here is that every one is registered and that each is a live, pure
-// read of the state rather than a value sampled once at registration.
+// is checked here is that every one is registered and that each is a pure read
+// of the state it is handed rather than a value sampled once at registration.
 
 import { describe, expect, it } from "vitest";
 import { registerDiagnostics } from "./diagnostics";
-import { createInitialState } from "./game";
+import type { CaromState } from "./game";
+import { createInitialState } from "./match";
 import type { InitApi } from "@test-cabinet/simple-2d";
+
+type Source = (state: CaromState) => unknown;
 
 /** Just enough of an `InitApi` to collect the sources a game registers. */
 function collector(): {
-  api: InitApi;
-  read: () => Record<string, unknown>;
+  api: InitApi<CaromState>;
+  read: (state: CaromState) => Record<string, unknown>;
 } {
-  const sources = new Map<string, () => unknown>();
+  const sources = new Map<string, Source>();
   const api = {
     diagnostics: {
-      register: (name: string, source: () => unknown) => {
+      register: (name: string, source: Source) => {
         sources.set(name, source);
       },
     },
-  } as unknown as InitApi;
+  } as unknown as InitApi<CaromState>;
   return {
     api,
-    read: () =>
+    read: (state) =>
       Object.fromEntries(
-        [...sources].map(([name, source]) => [name, source()]),
+        [...sources].map(([name, source]) => [name, source(state)]),
       ),
   };
 }
@@ -32,8 +35,8 @@ function collector(): {
 describe("registerDiagnostics", () => {
   it("registers the screen, mode, scores, ball, and both paddles", () => {
     const { api, read } = collector();
-    registerDiagnostics(api, createInitialState());
-    expect(Object.keys(read())).toEqual([
+    registerDiagnostics(api);
+    expect(Object.keys(read(createInitialState()))).toEqual([
       "screen",
       "mode",
       "score",
@@ -45,22 +48,22 @@ describe("registerDiagnostics", () => {
     ]);
   });
 
-  it("reads the live state on every read", () => {
-    const state = createInitialState();
+  it("reads whichever state it is handed", () => {
     const { api, read } = collector();
-    registerDiagnostics(api, state);
+    registerDiagnostics(api);
 
-    expect(read()["screen"]).toBe("title");
-    expect(read()["score"]).toBe("0 - 0");
+    const title = createInitialState();
+    expect(read(title)["screen"]).toBe("title");
+    expect(read(title)["score"]).toBe("0 - 0");
 
-    state.screen = "playing";
-    state.mode = "versus";
-    state.score.p1 = 4;
-    state.score.p2 = 7;
-    state.ball.x = 123.456;
-    state.ball.spin = -250;
-
-    const values = read();
+    const later: CaromState = {
+      ...title,
+      screen: "playing",
+      mode: "versus",
+      score: { p1: 4, p2: 7 },
+      ball: { ...title.ball, x: 123.456, spin: -250 },
+    };
+    const values = read(later);
     expect(values["screen"]).toBe("playing");
     expect(values["mode"]).toBe("versus");
     expect(values["score"]).toBe("4 - 7");
@@ -71,10 +74,10 @@ describe("registerDiagnostics", () => {
   it("changes nothing it reads", () => {
     const state = createInitialState();
     const { api, read } = collector();
-    registerDiagnostics(api, state);
+    registerDiagnostics(api);
     const before = JSON.stringify(state);
-    read();
-    read();
+    read(state);
+    read(state);
     expect(JSON.stringify(state)).toBe(before);
   });
 });

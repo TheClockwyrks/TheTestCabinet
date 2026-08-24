@@ -4,8 +4,13 @@
 // `SurfaceMetrics` of its own, so the game runs with no browser and no document
 // behind it, and steps it with `engine.advance` against a `ConstantClock` — which
 // makes a duration a frame count and the arithmetic asserted here the arithmetic
-// specs/ names. What is read back is the game's own state, the engine's events,
-// and the pixels the render produced.
+// specs/ names. What is read back is the game's own state — `engine.state`, the
+// value the most recent frame left — the debug surface the game returned beside
+// its opening state, the engine's events, and the pixels the render produced.
+//
+// The surface's poses are transitions, so a check drives one through
+// `engine.apply((s) => engine.debug.serve(s))` and its reading through
+// `engine.debug.snapshot(engine.state)`; the harness wraps both.
 
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import {
@@ -19,7 +24,6 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BALL_R,
-  COLOR,
   CUES,
   FIELD_CX,
   FIELD_CY,
@@ -30,13 +34,15 @@ import {
   P1_X0,
   PADDLE_SPEED,
   PADDLE_W,
-  SERVE_MAX_ANGLE,
+  SERVE_ANGLE,
   SERVE_SPEED,
   SPIN_FROM_PADDLE,
   WIN_SCORE,
 } from "./constants";
-import { createDebugApi, type CaromDebugApi } from "./debug";
-import { game, type CaromState } from "./game";
+import type { CaromDebugApi, CaromSnapshot } from "./debug";
+import { BACKGROUND, game, type CaromState } from "./game";
+import type { Transition } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
 // ---- The harness --------------------------------------------------------
 
@@ -58,9 +64,14 @@ interface CuePlay {
 }
 
 interface Harness {
-  readonly engine: Engine<CaromState>;
-  readonly state: CaromState;
+  readonly engine: Engine<CaromState, CaromDebugApi>;
+  /** The current state: what the most recent frame or pose left. */
+  readonly state: DeepReadonly<CaromState>;
   readonly debug: CaromDebugApi;
+  /** Pose the game between frames through the surface's transitions. */
+  apply(transition: Transition<CaromState>): DeepReadonly<CaromState>;
+  /** The surface's reading of the current state. */
+  snapshot(): CaromSnapshot;
   readonly ctx: SKRSContext2D;
   readonly calls: DrawCall[];
   readonly cues: CuePlay[];
@@ -133,12 +144,12 @@ async function createHarness(clock?: Clock): Promise<Harness> {
 
   // Exactly the options src/main.ts passes, plus the clock and the surface a
   // headless run needs.
-  const engine = createEngine<CaromState>({
+  const engine = createEngine<CaromState, CaromDebugApi>({
     canvas: element,
     width: FIELD_W,
     height: FIELD_H,
     game,
-    background: COLOR.bg,
+    background: BACKGROUND,
     layout: LAYOUT,
     clock: clock ?? new ConstantClock(FRAME_MS),
     surface,
@@ -153,15 +164,26 @@ async function createHarness(clock?: Clock): Promise<Harness> {
   const cues: CuePlay[] = [];
   engine.events.on("cue:played", (play) => cues.push(play));
 
-  const state = await engine.initialize();
+  await engine.initialize();
   const dispatch = (type: "keydown" | "keyup", code: string): void => {
     events.dispatchEvent(new KeyEvent(type, code));
   };
 
   return {
     engine,
-    state,
-    debug: createDebugApi(state),
+    // Read off the engine at every access rather than captured once: each frame
+    // replaces the value, so the state `initialize` resolved to is the opening
+    // state and nothing more.
+    get state() {
+      return engine.state;
+    },
+    // Read off the engine rather than built here: `initialize` returns the
+    // surface beside the state, so reaching it this way is what makes that return
+    // load-bearing — a build that returned none fails here rather than being
+    // handed a surface this file constructed for it.
+    debug: engine.debug,
+    apply: (transition) => engine.apply(transition),
+    snapshot: () => engine.debug.snapshot(engine.state),
     ctx,
     calls,
     cues,
@@ -197,10 +219,10 @@ async function rally(
   mode: "solo" | "versus",
   ball: { x: number; y: number; vx: number; vy: number; spin?: number },
 ): Promise<void> {
-  h.debug.startMatch(mode);
-  h.debug.serve();
+  h.apply((s) => h.debug.startMatch(s, mode));
+  h.apply((s) => h.debug.serve(s));
   await h.engine.advance(1); // the launch, through the build's own serve
-  h.debug.setBall(0, ball);
+  h.apply((s) => h.debug.setBall(s, 0, ball));
 }
 
 /** The names of the cues played, in order. */
@@ -249,7 +271,9 @@ describe("initialization", () => {
 
 describe("the action registration", () => {
   /** An engine over a throwaway canvas, built with whatever layout is named. */
-  function engineWithLayout(layout?: string): Engine<CaromState> {
+  function engineWithLayout(
+    layout?: string,
+  ): Engine<CaromState, CaromDebugApi> {
     const canvas = createCanvas(FIELD_W, FIELD_H);
     const ctx = canvas.getContext("2d");
     const element = Object.assign(canvas, {
@@ -257,7 +281,7 @@ describe("the action registration", () => {
       getContext: () => ctx,
     }) as unknown as HTMLCanvasElement;
     const events = new EventTarget();
-    return createEngine<CaromState>({
+    return createEngine<CaromState, CaromDebugApi>({
       canvas: element,
       width: FIELD_W,
       height: FIELD_H,
@@ -382,6 +406,26 @@ describe("the paddles", () => {
     expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
   });
 
+  it("reads both up actions as one up in Solo", async () => {
+    harness.tap("Enter");
+    await harness.engine.advance(1);
+
+    // Two ups and one down is up = 1, down = 1: the paddle stands still rather
+    // than summing the sliders.
+    harness.hold("KeyW");
+    harness.hold("ArrowUp");
+    harness.hold("KeyS");
+    await harness.engine.advance(30);
+    expect(harness.state.paddles.left.cy).toBe(FIELD_CY);
+
+    harness.release("KeyS");
+    await harness.engine.advance(frames(0.1));
+    expect(harness.state.paddles.left.cy).toBeCloseTo(
+      FIELD_CY - PADDLE_SPEED * 0.1,
+      6,
+    );
+  });
+
   it("gives the second slider its own paddle in Versus", async () => {
     harness.tap("ArrowDown");
     await harness.engine.advance(1);
@@ -402,48 +446,55 @@ describe("the paddles", () => {
 
 describe("serving", () => {
   it("holds the ball for HOLD_TIME and then launches it", async () => {
-    harness.debug.startMatch("versus");
+    harness.apply((s) => harness.debug.startMatch(s, "versus"));
     await harness.engine.advance(frames(HOLD_TIME) - 1);
     expect(harness.state.screen).toBe("countdown");
-    expect(harness.debug.snapshot().ball.held).toBe(true);
+    expect(harness.snapshot().ball.held).toBe(true);
 
     await harness.engine.advance(2);
     expect(harness.state.screen).toBe("playing");
-    expect(harness.debug.snapshot().ball.held).toBe(false);
+    expect(harness.snapshot().ball.held).toBe(false);
   });
 
   it("sends the first serve of a match toward player one", async () => {
-    harness.debug.startMatch("versus");
+    harness.apply((s) => harness.debug.startMatch(s, "versus"));
     await harness.engine.advance(frames(HOLD_TIME) + 1);
-    const { ball } = harness.debug.snapshot();
+    const { ball } = harness.snapshot();
     expect(ball.vx).toBeLessThan(0);
     expect(ball.speed).toBeCloseTo(SERVE_SPEED, 6);
   });
 
-  it("keeps the serve within 30deg of horizontal, and never flat", async () => {
-    harness.debug.startMatch("versus");
-    harness.debug.serve();
+  it("leaves at exactly SERVE_ANGLE from horizontal", async () => {
+    harness.apply((s) => harness.debug.startMatch(s, "versus"));
+    harness.apply((s) => harness.debug.serve(s));
     await harness.engine.advance(1);
-    const { ball } = harness.debug.snapshot();
-    expect(Math.abs(ball.vy)).toBeGreaterThan(0);
+    const { ball } = harness.snapshot();
     // The deviation from horizontal, whichever way the serve is travelling.
-    expect(Math.abs(Math.atan2(ball.vy, Math.abs(ball.vx)))).toBeLessThan(
-      SERVE_MAX_ANGLE,
+    expect(Math.abs(Math.atan2(ball.vy, Math.abs(ball.vx)))).toBeCloseTo(
+      SERVE_ANGLE,
+      9,
     );
+  });
+
+  it("does not advance the ball on the frame it is served", async () => {
+    harness.apply((s) => harness.debug.startMatch(s, "versus"));
+    harness.apply((s) => harness.debug.serve(s));
+    await harness.engine.advance(1);
+    expect(harness.state.screen).toBe("playing");
+    expect(harness.state.ball.x).toBe(FIELD_CX);
+    expect(harness.state.ball.y).toBe(FIELD_CY);
   });
 
   it("replays the same serve from the same seed", async () => {
     const other = await createHarness();
     try {
       for (const h of [harness, other]) {
-        h.debug.reset({ seed: 4242 });
-        h.debug.startMatch("versus");
-        h.debug.serve();
+        h.apply((s) => h.debug.reset(s, { seed: 4242 }));
+        h.apply((s) => h.debug.startMatch(s, "versus"));
+        h.apply((s) => h.debug.serve(s));
         await h.engine.advance(1);
       }
-      expect(other.debug.snapshot().ball.vy).toBe(
-        harness.debug.snapshot().ball.vy,
-      );
+      expect(other.snapshot().ball.vy).toBe(harness.snapshot().ball.vy);
     } finally {
       other.dispose();
     }
@@ -455,13 +506,15 @@ describe("serving", () => {
 describe("the rally", () => {
   it("returns the ball off a paddle and plays the paddle cue", async () => {
     await rally(harness, "versus", { x: 120, y: FIELD_CY, vx: -600, vy: 0 });
-    harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 200 });
+    harness.apply((s) =>
+      harness.debug.setPaddle(s, "left", { cy: FIELD_CY, vy: 200 }),
+    );
     harness.cues.length = 0;
 
     await harness.engine.advance(6);
 
     expect(played(harness)).toEqual([CUES.paddleHit]);
-    const { ball } = harness.debug.snapshot();
+    const { ball } = harness.snapshot();
     expect(ball.vx).toBeGreaterThan(0);
     // The paddle was travelling down at 200 units per second when it struck.
     expect(ball.spin).toBeGreaterThan(0.9 * 200 * SPIN_FROM_PADDLE);
@@ -475,7 +528,7 @@ describe("the rally", () => {
     await harness.engine.advance(3);
 
     expect(played(harness)).toEqual([CUES.wallBounce]);
-    expect(harness.debug.snapshot().ball.vy).toBeGreaterThan(0);
+    expect(harness.snapshot().ball.vy).toBeGreaterThan(0);
   });
 
   it("bounces off an obstacle and plays the obstacle cue", async () => {
@@ -485,7 +538,7 @@ describe("the rally", () => {
     await harness.engine.advance(3);
 
     expect(played(harness)).toEqual([CUES.obstacleBounce]);
-    expect(harness.debug.snapshot().ball.vx).toBeLessThan(0);
+    expect(harness.snapshot().ball.vx).toBeLessThan(0);
   });
 
   it("records a trail that spans a slice of time, not of frames", async () => {
@@ -513,8 +566,8 @@ describe("the rally", () => {
       await harness.engine.advance(30); // 0.5 s at 60 Hz
       await fast.engine.advance(120); // 0.5 s at 240 Hz
 
-      const slowBall = harness.debug.snapshot().ball;
-      const fastBall = fast.debug.snapshot().ball;
+      const slowBall = harness.snapshot().ball;
+      const fastBall = fast.snapshot().ball;
       // A curving path is integrated, so "the same place" is the same place to
       // within the sub-step resolution rather than bit for bit.
       const drift = Math.hypot(
@@ -545,7 +598,7 @@ describe("scoring", () => {
     expect(harness.state.receiver).toBe("right");
 
     await harness.engine.advance(frames(HOLD_TIME) + 1);
-    expect(harness.debug.snapshot().ball.vx).toBeGreaterThan(0);
+    expect(harness.snapshot().ball.vx).toBeGreaterThan(0);
   });
 
   it("gives the point to player two when the ball leaves the left edge", async () => {
@@ -557,7 +610,9 @@ describe("scoring", () => {
 
   it("ends the match at WIN_SCORE with a two-point lead", async () => {
     await rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
-    harness.debug.setScore(WIN_SCORE - 1, WIN_SCORE - 2);
+    harness.apply((s) =>
+      harness.debug.setScore(s, WIN_SCORE - 1, WIN_SCORE - 2),
+    );
 
     await harness.engine.advance(4);
 
@@ -568,7 +623,9 @@ describe("scoring", () => {
 
   it("plays on at deuce until someone leads by two", async () => {
     await rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
-    harness.debug.setScore(WIN_SCORE - 1, WIN_SCORE - 1);
+    harness.apply((s) =>
+      harness.debug.setScore(s, WIN_SCORE - 1, WIN_SCORE - 1),
+    );
 
     await harness.engine.advance(4);
 
@@ -579,7 +636,9 @@ describe("scoring", () => {
 
   it("offers a rematch from the match-over screen", async () => {
     await rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
-    harness.debug.setScore(WIN_SCORE - 1, WIN_SCORE - 2);
+    harness.apply((s) =>
+      harness.debug.setScore(s, WIN_SCORE - 1, WIN_SCORE - 2),
+    );
     await harness.engine.advance(4);
 
     harness.tap("Enter");
@@ -587,6 +646,26 @@ describe("scoring", () => {
     expect(harness.state.screen).toBe("countdown");
     expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
     expect(harness.state.winner).toBeNull();
+  });
+
+  it("returns to the title from the match-over screen on Escape", async () => {
+    await rally(harness, "versus", { x: FIELD_W, y: FIELD_CY, vx: 600, vy: 0 });
+    harness.apply((s) =>
+      harness.debug.setScore(s, WIN_SCORE - 1, WIN_SCORE - 2),
+    );
+    await harness.engine.advance(4);
+    expect(harness.state.screen).toBe("matchover");
+    const simTime = harness.state.simTime;
+
+    harness.tap("Escape");
+    await harness.engine.advance(1);
+    expect(harness.state.screen).toBe("title");
+    expect(harness.state.menuIndex).toBe(0);
+    expect(harness.state.score).toEqual({ p1: 0, p2: 0 });
+    expect(harness.state.winner).toBeNull();
+    expect(harness.state.obstacleClock).toBe(0);
+    // Time carries on across the transition.
+    expect(harness.state.simTime).toBeCloseTo(simTime + 1 / 60, 9);
   });
 });
 
@@ -601,9 +680,9 @@ describe("pause", () => {
     await harness.engine.advance(1);
     expect(harness.state.screen).toBe("paused");
 
-    const frozen = harness.debug.snapshot();
+    const frozen = harness.snapshot();
     await harness.engine.advance(60);
-    expect(harness.debug.snapshot().ball.x).toBe(frozen.ball.x);
+    expect(harness.snapshot().ball.x).toBe(frozen.ball.x);
 
     harness.tap("Escape");
     await harness.engine.advance(1);
@@ -652,10 +731,10 @@ describe("mute", () => {
 
 // ---- The debug surface --------------------------------------------------
 
-describe("window.__carom", () => {
+describe("the debug surface", () => {
   it("holds the paddles once a control operation has taken them", async () => {
-    harness.debug.startMatch("versus");
-    harness.debug.setPaddle("left", { vy: 300 });
+    harness.apply((s) => harness.debug.startMatch(s, "versus"));
+    harness.apply((s) => harness.debug.setPaddle(s, "left", { vy: 300 }));
     expect(harness.state.driver.paddles).toBe(true);
 
     harness.hold("KeyW"); // ignored: the driver has the paddles
@@ -665,9 +744,9 @@ describe("window.__carom", () => {
   });
 
   it("hands the paddles back on reset", async () => {
-    harness.debug.startMatch("versus");
-    harness.debug.setPaddle("left", { vy: 300 });
-    harness.debug.reset();
+    harness.apply((s) => harness.debug.startMatch(s, "versus"));
+    harness.apply((s) => harness.debug.setPaddle(s, "left", { vy: 300 }));
+    harness.apply((s) => harness.debug.reset(s));
     expect(harness.state.driver.paddles).toBe(false);
     expect(harness.state.screen).toBe("title");
 
@@ -683,18 +762,24 @@ describe("window.__carom", () => {
 
   it("runs the real AI against a posed shot when handed its paddle back", async () => {
     await rally(harness, "solo", { x: 900, y: 180, vx: 400, vy: 0 });
-    harness.debug.setPaddle("right", { cy: 600, vy: 0 });
-    harness.debug.setAiControl(true);
+    harness.apply((s) =>
+      harness.debug.setPaddle(s, "right", { cy: 600, vy: 0 }),
+    );
+    harness.apply((s) => harness.debug.setAiControl(s, true));
 
     await harness.engine.advance(30);
 
-    const { paddles } = harness.debug.snapshot();
+    const { paddles } = harness.snapshot();
     expect(paddles.right.cy).toBeLessThan(600);
     expect(paddles.left.cy).toBe(FIELD_CY); // still the driver's
   });
 
   it("refuses a ball index this variant does not have", () => {
-    expect(() => harness.debug.setBall(1, { x: 0 })).toThrow(RangeError);
+    expect(() =>
+      harness.apply((s) => harness.debug.setBall(s, 1, { x: 0 })),
+    ).toThrow(RangeError);
+    // A refused pose leaves the engine holding the state it had.
+    expect(harness.state.driver.paddles).toBe(false);
   });
 });
 
@@ -702,7 +787,7 @@ describe("window.__carom", () => {
 
 describe("rendering", () => {
   it("fills each paddle in its own color", async () => {
-    harness.debug.startMatch("versus");
+    harness.apply((s) => harness.debug.startMatch(s, "versus"));
     await harness.engine.advance(1);
 
     expect(harness.pixel(P1_X0 + PADDLE_W / 2, FIELD_CY)).toEqual([
@@ -711,6 +796,21 @@ describe("rendering", () => {
     expect(harness.pixel(FIELD_W - P1_X0 - PADDLE_W / 2, FIELD_CY)).toEqual([
       255, 92, 138, 255,
     ]);
+  });
+
+  it("draws each score as its own number near the top", async () => {
+    harness.apply((s) => harness.debug.startMatch(s, "versus"));
+    harness.apply((s) => harness.debug.setScore(s, 7, 9));
+    harness.calls.length = 0;
+    await harness.engine.advance(1);
+
+    const texts = callsTo(harness.calls, "fillText");
+    const seven = texts.find((args) => args[0] === "7");
+    const nine = texts.find((args) => args[0] === "9");
+    expect(seven).toBeDefined();
+    expect(nine).toBeDefined();
+    expect(seven?.[1]).toBeLessThan(FIELD_CX);
+    expect(nine?.[1]).toBeGreaterThan(FIELD_CX);
   });
 
   it("draws the ball as one arc at its own position", async () => {
@@ -725,7 +825,7 @@ describe("rendering", () => {
   });
 
   it("draws in logical coordinates whatever size the surface is", async () => {
-    harness.debug.startMatch("versus");
+    harness.apply((s) => harness.debug.startMatch(s, "versus"));
     await harness.engine.advance(1);
     const view = harness.engine.viewport();
     expect(view.width).toBe(FIELD_W);
@@ -736,12 +836,12 @@ describe("rendering", () => {
   it("changes nothing about the state", async () => {
     await rally(harness, "versus", { x: 400, y: 300, vx: 0, vy: 0 });
     await harness.engine.advance(1);
-    const before = JSON.stringify(harness.debug.snapshot());
+    const before = JSON.stringify(harness.snapshot());
     game.render(harness.state, {
       ctx: harness.ctx as unknown as CanvasRenderingContext2D,
       frame: () => harness.engine.frame(),
       viewport: () => harness.engine.viewport(),
     });
-    expect(JSON.stringify(harness.debug.snapshot())).toBe(before);
+    expect(JSON.stringify(harness.snapshot())).toBe(before);
   });
 });

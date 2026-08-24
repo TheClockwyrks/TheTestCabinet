@@ -65,6 +65,7 @@ use crate::db::{
     SortDir, SummaryFilter, SummarySort, SummaryState,
 };
 use crate::error::ApiError;
+use crate::store::CaseNames;
 
 use super::AppState;
 
@@ -1792,6 +1793,9 @@ pub(super) async fn enqueue_top_up(
     let now = now()?;
     let mut jobs: Vec<crate::db::NewJob> = Vec::new();
     let mut launched: Vec<TopUpLaunch> = Vec::with_capacity(cells.len());
+    // Every model the top-up binds, so their prices can be seeded at enqueue exactly
+    // as `POST /jobs` seeds a by-hand launch's.
+    let mut models: Vec<(String, HarnessSlug)> = Vec::new();
     for cell in cells {
         if cell.runs == 0 {
             continue;
@@ -1801,6 +1805,12 @@ pub(super) async fn enqueue_top_up(
             cell.combo.harness,
             cell.combo.provider.as_deref(),
         );
+        if !models
+            .iter()
+            .any(|(known, harness)| *known == launch_model && *harness == cell.combo.harness)
+        {
+            models.push((launch_model.clone(), cell.combo.harness));
+        }
         // A plan pins no orchestrator, runtime, or auth mode, so the request is the
         // console's default new-run shape: the one-shot orchestrator and the
         // backend's default retry policy.
@@ -1880,6 +1890,10 @@ pub(super) async fn enqueue_top_up(
     if jobs.is_empty() {
         return Ok(launched);
     }
+    // Price the batch's models before the runs exist. Missing-only and best-effort:
+    // a model already on record costs nothing, and an unpriced model costs a cost
+    // split, never the top-up.
+    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &models).await;
     state.db.enqueue_jobs(jobs).await.map_err(ApiError::from)?;
     Ok(launched)
 }
@@ -1936,6 +1950,8 @@ pub(super) async fn collect_queue(
             harness: Some(cell.combo.harness.as_str().to_string()),
             variant: Some(cell.case.variant.clone()),
             version: Some(cell.case.version.clone()),
+            versions: None,
+            engine: None,
             latest_versions: false,
             q: None,
         };
@@ -1945,6 +1961,7 @@ pub(super) async fn collect_queue(
                 &filter,
                 SummarySort::Date,
                 SortDir::Desc,
+                &CaseNames::new(),
                 QUEUE_CELL_SCAN,
                 0,
             )

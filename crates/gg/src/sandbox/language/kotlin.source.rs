@@ -209,9 +209,9 @@ pub(super) fn refuse_moved_facade(source: &str) -> Result<(), PrepareFailure> {
             None => continue,
         };
         return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
-            "line {}: gg reaches your program by calling `{PROGRAM_CLASS}.main()`, and {moved} \
-             puts that class somewhere else. Write your reply as one Kotlin file in the root \
-             package.",
+            "line {}: {moved} moves the program out of the root package, and gg's entry call \
+             `{PROGRAM_CLASS}.main()` resolves only there. Write the reply as one Kotlin file in \
+             the root package.",
             number + 1,
         ))));
     }

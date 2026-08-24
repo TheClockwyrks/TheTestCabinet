@@ -174,15 +174,25 @@ gg marks up to four breakpoints per request, which is Anthropic's cap:
   (a marker at a shifting offset would describe a prefix no earlier turn ever
   wrote, and so would never be a cache hit);
 - one at the tail, which writes this turn's prefix for the next turn to read.
+  The tail walks back past the trailing slot messages — the context-usage signal
+  and the [contract notice](/gg/prompts/#the-trailing-contract-notice), both
+  re-rendered at the end of every request — because a prefix ending on one never
+  recurs, so a marker there writes an entry nothing ever reads.
 
-The markers go only to the Anthropic family. Every other provider gg reaches
-caches long prefixes implicitly, and marking their requests costs cache hits:
-`cache_control` has to ride a content block, so marking a text-only message
-promotes it from a bare string to a one-element array, and because the rolling
-breakpoints move every turn the same message goes out as a string on one turn
-and as an array on the next. Anthropic normalizes both to content blocks. A
-provider matching the forwarded OpenAI-shaped payload sees the prefix change
-underneath it and re-bills the request in full.
+The markers go only to the Anthropic family, and every content-bearing message
+of a marked request is serialized as a one-element content array whether or not
+a marker rides it. `cache_control` has to ride a content block, and the rolling
+breakpoints move: without the uniform shape, a sent message would flip between a
+bare string and an array on the turn the grid crossed it — a byte-level edit
+mid-prefix, observed collapsing a run's cached read from 24.7k tokens to 2.6k on
+the turn a marker moved. With it, only the marker metadata comes and goes, and a
+sent message's wire shape is a function of the message alone.
+
+Every other provider gg reaches caches long prefixes implicitly and is sent no
+markers and no array promotion at all: a provider matching the forwarded
+OpenAI-shaped payload sees any shape change as a different prefix and re-bills
+the request in full, so their messages keep the bare-string shape on every
+turn.
 
 How long those entries live is the per-agent [prompt-cache
 lifetime](/gg/configurations/#prompt-cache-lifetime). Left alone, every entry
@@ -289,8 +299,9 @@ the console is [Configurations](/gg/configurations/).
 - [Languages](/gg/languages/overview/) — which language a program is written in,
   treated as an axis: the rules an agent-facing surface obeys in any language,
   what a language supplies to be registered, and what adding another one costs.
-- [Response healing](/gg/response-healing/) — the counted, disclosed repairs gg
-  makes to a reply before running it as a program.
+- [Response healing](/gg/response-healing/) — the repairs gg makes to a reply
+  before running it as a program, counted on the run and shown to the operator
+  but never disclosed to the model.
 - [Program library](/gg/program-library/) — keep every program an agent runs, so
   it can fetch one back, patch it, and hand it over to be run again.
 - Close documentation (`docview-close`) — let an agent take a [documentation

@@ -97,9 +97,7 @@ use serde::Deserialize;
 use crate::execution::ArtifactCollection;
 use crate::test_case::{ReviewOutput, TestCaseVersion, Variant};
 use crate::validation::{Assertion, AutoVerdict, DebugScriptOutput, DebugScriptResult};
-use crate::validator::{
-    DriveUnit, VALIDATION_MEDIA_DIR, VALIDATION_SCRIPT_DIR, drive_units, relocate_outputs,
-};
+use crate::validator::{DriveUnit, VALIDATION_SCRIPT_DIR, drive_units, relocate_outputs};
 
 /// Wall-clock cap on the whole validator suite run.
 ///
@@ -152,7 +150,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(100);
 const TRUNCATION_MARKER: &str = " … output truncated … ";
 
 /// Decide `variant`'s scripted review points by running the case's validator project
-/// for `engine` over the collected tree.
+/// for `engine` over the tree `artifacts` describes, writing what the suites produce
+/// into `media_dir`.
+///
+/// `media_dir` is a parameter rather than a fixed place inside the tree because the
+/// same suites are run twice against two different builds: over a run's collected
+/// tree, where the media travels with the published implementation, and over the
+/// case's own reference implementation, where it lands in the version folder's
+/// committed baseline (see [`crate::validator::capture_baseline_media`]).
 ///
 /// Returns one [`DebugScriptResult`] per verdict unit the case declares a validator
 /// for, in declared order, or an empty vec when the case declares none. Each result
@@ -165,6 +170,7 @@ pub(crate) fn run_vitest_suites(
     engine: &str,
     artifacts: &ArtifactCollection,
     install_command: &str,
+    media_dir: &Path,
 ) -> Vec<DebugScriptResult> {
     let items = test_case.review_items_for(variant);
     let units = drive_units(&items);
@@ -173,7 +179,6 @@ pub(crate) fn run_vitest_suites(
     }
     let suites: Vec<Suite> = units.iter().map(|unit| Suite::of(unit, engine)).collect();
     let filters = suite_filters(&suites);
-    let media_dir = artifacts.repo_path.join(VALIDATION_MEDIA_DIR);
 
     let mut results = match execute(
         test_case,
@@ -181,7 +186,7 @@ pub(crate) fn run_vitest_suites(
         artifacts,
         install_command,
         &filters,
-        &media_dir,
+        media_dir,
     ) {
         Ok(reports) => suites
             .iter()
@@ -208,7 +213,7 @@ pub(crate) fn run_vitest_suites(
     // evidence before it did — so what is on disk is kept either way, and the
     // per-suite scaffolding never survives into the collected tree.
     for (result, suite) in results.iter_mut().zip(&suites) {
-        result.outputs = suite.collect_media(&media_dir);
+        result.outputs = suite.collect_media(media_dir);
     }
     tracing::info!(
         engine,
@@ -581,8 +586,8 @@ pub(crate) struct TestOutcome {
     /// What the test asserts, phrased so it reads true when it passes.
     pub(crate) label: String,
     pub(crate) status: TestStatus,
-    /// The failure message vitest reported, unbounded; the excerpt is taken when the
-    /// assertion is built.
+    /// The failure message vitest reported, unbounded, with every stack frame
+    /// stripped; the excerpt is taken when the assertion is built.
     pub(crate) failure: Option<String>,
 }
 
@@ -616,7 +621,7 @@ pub(crate) fn parse_report(json: &str, repo: &Path) -> Result<Vec<SuiteReport>, 
             file: relative_to(&file.name, &roots),
             message: file
                 .message
-                .map(|message| message.trim().to_string())
+                .map(|message| sanitize_failure(&message))
                 .filter(|message| !message.is_empty()),
             tests: file
                 .assertion_results
@@ -632,8 +637,13 @@ pub(crate) fn parse_report(json: &str, repo: &Path) -> Result<Vec<SuiteReport>, 
                         "failed" => TestStatus::Failed,
                         _ => TestStatus::Skipped,
                     },
-                    failure: (!test.failure_messages.is_empty())
-                        .then(|| test.failure_messages.join("\n")),
+                    failure: (!test.failure_messages.is_empty()).then(|| {
+                        test.failure_messages
+                            .iter()
+                            .map(|message| sanitize_failure(message))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }),
                 })
                 .collect(),
         })
@@ -895,24 +905,198 @@ pub(crate) fn staged_path(script_rel: &str, engine_slug: &str) -> Option<String>
 
 /// The assertion one test contributes, drawing its failure excerpt from the suite's
 /// remaining output `budget`.
+///
+/// A failure that states a comparison — the case's own assertion helpers, or a
+/// chai matcher's message — is stored as the real pair: `expected` carries the
+/// bound the check set ("at most 8") and `actual` the value the build produced.
+/// Anything else falls back to the whole (stack-stripped) message as the actual,
+/// against the generic "the check holds".
 fn assertion(test: &TestOutcome, budget: &mut usize) -> Assertion {
     let pass = test.status == TestStatus::Passed;
-    let actual = (!pass).then(|| match test.failure.as_deref() {
+    let pair = (!pass).then(|| match test.failure.as_deref() {
         Some(failure) if *budget > 0 => {
             let limit = VITEST_ASSERTION_LIMIT.min(*budget);
-            let excerpt = bounded(failure, limit);
-            *budget = budget.saturating_sub(excerpt.len());
-            excerpt
+            let (expected, actual) = match parse_expectation(failure) {
+                Some((expected, actual)) => (
+                    bounded(&expected, VITEST_ASSERTION_LIMIT),
+                    bounded(&actual, limit),
+                ),
+                None => ("the check holds".to_string(), bounded(failure, limit)),
+            };
+            *budget = budget.saturating_sub(actual.len());
+            (expected, actual)
         }
-        Some(_) => TRUNCATION_MARKER.trim().to_string(),
-        None => "the check failed".to_string(),
+        Some(_) => (
+            "the check holds".to_string(),
+            TRUNCATION_MARKER.trim().to_string(),
+        ),
+        None => (
+            "the check holds".to_string(),
+            "the check failed".to_string(),
+        ),
     });
+    let (expected, actual) = pair.map_or((None, None), |(e, a)| (Some(e), Some(a)));
     Assertion {
         label: test.label.clone(),
         pass,
-        expected: (!pass).then(|| "the check holds".to_string()),
+        expected,
         actual,
     }
+}
+
+/// `message` with every stack frame dropped: the lines V8 appends beneath an
+/// error's own text (`    at run (/…/window-fit.test.ts:175:21)`). Frames carry
+/// file paths and line numbers that mean nothing to a reviewer, so they never
+/// reach a stored assertion or detail.
+fn sanitize_failure(message: &str) -> String {
+    message
+        .lines()
+        .filter(|line| !is_stack_frame(line))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+/// Whether `line` is a V8 stack frame rather than a line of the error's own
+/// message. A frame is indented, opens with `at `, and points somewhere: a
+/// `file:line:column`, a `node:` internal, a `file://` URL, or a parenthesized
+/// call site. An error's own prose that happens to open with "at" is unindented
+/// and points nowhere, so it stays.
+fn is_stack_frame(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    if trimmed.len() == line.len() {
+        return false;
+    }
+    let Some(site) = trimmed.strip_prefix("at ") else {
+        return false;
+    };
+    site.contains("node:")
+        || site.contains("file://")
+        || has_line_column(site)
+        || (site.contains('(') && site.ends_with(')'))
+}
+
+/// Whether `text` contains a `:line:column` locator (`:12:34`), the tail every
+/// pathful stack frame ends in.
+fn has_line_column(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b':' && bytes.get(i + 1).is_some_and(u8::is_ascii_digit) {
+            let mut j = i + 1;
+            while bytes.get(j).is_some_and(u8::is_ascii_digit) {
+                j += 1;
+            }
+            if bytes.get(j) == Some(&b':') && bytes.get(j + 1).is_some_and(u8::is_ascii_digit) {
+                return true;
+            }
+            i = j;
+        } else {
+            i += 1;
+        }
+    }
+    false
+}
+
+/// The expected/actual pair a failure message states, when it states one.
+///
+/// Two formats are read. A case's own assertion helpers throw exactly
+///
+/// ```text
+/// Error: Expected: at most 8
+/// Actual: 9.097252332435328
+/// ```
+///
+/// and chai's comparison matchers say the same pair in prose ("expected
+/// 9.097252332435328 to be less than or equal to 8"). Anything else — a diff, a
+/// negated matcher, a thrown non-assertion — is left to the excerpt fallback.
+fn parse_expectation(message: &str) -> Option<(String, String)> {
+    helper_expectation(message).or_else(|| chai_expectation(message))
+}
+
+/// The pair the `Expected:` / `Actual:` lines of an assertion helper's message
+/// carry: the `Expected:` line first, the `Actual:` line after it.
+fn helper_expectation(message: &str) -> Option<(String, String)> {
+    let mut lines = message.lines();
+    let expected = lines.find_map(|line| after_marker(line, "Expected: "))?;
+    let actual = lines.find_map(|line| after_marker(line, "Actual: "))?;
+    (!expected.is_empty() && !actual.is_empty()).then(|| (expected.to_string(), actual.to_string()))
+}
+
+/// The text after `marker` at the head of `line`, tolerating the one-word error
+/// name vitest serializes ahead of the first line (`Error: Expected: at most 8`).
+fn after_marker<'a>(line: &'a str, marker: &str) -> Option<&'a str> {
+    let line = line.trim_start();
+    if let Some(rest) = line.strip_prefix(marker) {
+        return Some(rest.trim());
+    }
+    let (name, rest) = line.split_once(": ")?;
+    if name.contains(' ') {
+        return None;
+    }
+    rest.trim_start().strip_prefix(marker).map(str::trim)
+}
+
+/// The pair a chai comparison message carries, read off its first line:
+/// `expected {actual} {relation} {bound}`. A negated matcher is not a pair this
+/// can state honestly, so it is left to the fallback.
+fn chai_expectation(message: &str) -> Option<(String, String)> {
+    let line = message.lines().next()?.trim();
+    let line = line.strip_prefix("AssertionError: ").unwrap_or(line);
+    let rest = line.strip_prefix("expected ")?;
+    // `toBe` closes with the comparator it used; the pair reads without it.
+    let rest = rest.strip_suffix(" // Object.is equality").unwrap_or(rest);
+    if rest.contains(" not ") || rest.starts_with("not ") {
+        return None;
+    }
+    // Longest relation first, so "less than or equal to" is never split at its
+    // own "less than".
+    const RELATIONS: [(&str, Option<&str>); 9] = [
+        (
+            " to be less than or equal to ",
+            Some("less than or equal to"),
+        ),
+        (
+            " to be greater than or equal to ",
+            Some("greater than or equal to"),
+        ),
+        (" to be less than ", Some("less than")),
+        (" to be greater than ", Some("greater than")),
+        (" to be close to ", Some("close to")),
+        (" to deeply equal ", None),
+        (" to strictly equal ", None),
+        (" to equal ", None),
+        (" to be ", None),
+    ];
+    for (relation, phrase) in RELATIONS {
+        let Some(index) = rest.find(relation) else {
+            continue;
+        };
+        let actual = rest[..index].trim();
+        let bound = rest[index + relation.len()..].trim();
+        if actual.is_empty() || bound.is_empty() {
+            continue;
+        }
+        // `toBeCloseTo` narrates its arithmetic ("expected 9 to be close to 5,
+        // received difference is 4, but expected 0.005"); the pair is the target
+        // and its tolerance.
+        if relation == " to be close to "
+            && let Some((target, tail)) = bound.split_once(", received difference is ")
+            && let Some((_, tolerance)) = tail.split_once("but expected ")
+        {
+            return Some((
+                format!("within {} of {}", tolerance.trim(), target.trim()),
+                actual.to_string(),
+            ));
+        }
+        let expected = match phrase {
+            Some(phrase) => format!("{phrase} {bound}"),
+            None => bound.to_string(),
+        };
+        return Some((expected, actual.to_string()));
+    }
+    None
 }
 
 /// The failed verdict a suite that could not run against a conformant build

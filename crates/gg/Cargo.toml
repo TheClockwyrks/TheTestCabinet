@@ -166,6 +166,13 @@ base64 = { workspace = true }
 # `publisher` already use on the run-tree artifact path.
 flate2 = { workspace = true }
 tar = "0.4"
+# The `search` tool (`src/tools/filesystem.search.rs`): `ignore` walks the workspace under its
+# `.gitignore`/`.ignore` files with ripgrep's own semantics — nested, negated, `.git/info/exclude`
+# and the global file included — which is what makes a search a question about the project rather
+# than about the disk; `regex` is the query syntax, because a model reaching for `grep` writes a
+# pattern. Both are already in the workspace graph (`code-analysis` walks with `ignore`).
+ignore = "0.4"
+regex = "1"
 # Encoding the core wasm module a compiled arm's compiler emits into the component gg's engine
 # instantiates — `rustc`'s (`src/sandbox/language/rust.compile.rs`) and `swiftc`'s
 # (`src/sandbox/language/swift.compile.rs`). Those arms' artifacts are produced per program
@@ -194,6 +201,10 @@ getrandom = { workspace = true }
 # the local filesystem rooted at the invocation's workspace, so the tests exercise
 # them against a real temporary directory.
 tempfile = { workspace = true }
+# `start_paused` for the per-model-call timeout tests: the stalled-gateway sockets are
+# real, but the five-minute ceiling elapses the moment the runtime idles on one, so a
+# timeout test costs milliseconds instead of minutes.
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

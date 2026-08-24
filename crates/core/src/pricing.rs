@@ -206,6 +206,15 @@ impl OpenRouterPrices {
         Ok(listing_of(model_id, self.fetch_endpoints(model_id).await?))
     }
 
+    /// The provider routes OpenRouter lists for one model — the names a request
+    /// can pin with `provider.order` — deduplicated by provider (a provider
+    /// listing several quantizations appears once, first route wins), in
+    /// OpenRouter's listing order. An unlisted model is an `Err`; a listed model
+    /// with no routes is an empty list.
+    pub async fn provider_routes(&self, model_id: &str) -> Result<Vec<ProviderRoute>> {
+        Ok(routes_of(self.fetch_endpoints(model_id).await?))
+    }
+
     /// Fetch one model's `/models/{id}/endpoints` body — the cheap per-model read
     /// (a few KB) shared by the launch-facts and listing lookups.
     async fn fetch_endpoints(&self, model_id: &str) -> Result<ModelEndpoints> {
@@ -266,6 +275,38 @@ impl OpenRouterPrices {
 /// `anthropic`, empty when the slug has no segment) and keeps the whole name as
 /// the display name. A blank description is normalized to `None` so the form sees
 /// "nothing published" rather than an empty field it must trim itself.
+/// One provider route of a model, as [`OpenRouterPrices::provider_routes`]
+/// reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderRoute {
+    /// The provider's display name — the value `provider.order` pins.
+    pub name: String,
+    /// The route's context window in tokens, when reported.
+    pub context_length: Option<u64>,
+}
+
+/// Reduce one model's endpoints body to its deduplicated provider routes.
+fn routes_of(data: ModelEndpoints) -> Vec<ProviderRoute> {
+    let mut routes: Vec<ProviderRoute> = Vec::new();
+    for endpoint in data.endpoints {
+        let Some(name) = endpoint
+            .provider_name
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty())
+        else {
+            continue;
+        };
+        if routes.iter().any(|route| route.name == name) {
+            continue;
+        }
+        routes.push(ProviderRoute {
+            name,
+            context_length: endpoint.context_length,
+        });
+    }
+    routes
+}
+
 fn listing_of(model_id: &str, data: ModelEndpoints) -> ModelListing {
     let (provider, name) = match data.name.split_once(": ") {
         Some((provider, name)) => (provider.trim().to_string(), name.trim().to_string()),
@@ -417,6 +458,8 @@ struct ModelEndpoints {
 /// One provider route for a model. A route may report no context length.
 #[derive(Debug, Deserialize)]
 struct ModelEndpoint {
+    #[serde(default)]
+    provider_name: Option<String>,
     #[serde(default)]
     context_length: Option<u64>,
 }

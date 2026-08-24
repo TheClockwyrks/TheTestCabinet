@@ -3,7 +3,8 @@
 // The mirror of `scoring-p1`: the ball is aimed at the left goal down the lane
 // that clears both obstacles, and the build's own scoring code decides the point.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
@@ -33,14 +34,14 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("gives player two the point when the ball leaves the left goal", async () => {
   await startPlaying(harness);
-  harness.debug.setScore(0, 0);
-  arrangeGoal(harness, "left");
+  await harness.debug.setScore(0, 0);
+  await arrangeGoal(harness, "left");
 
   const point = await captureReplay(harness, "goal", async () => {
     const resolved = await driveGoal(harness);
@@ -48,7 +49,10 @@ it("gives player two the point when the ball leaves the left goal", async () => 
     return resolved;
   });
 
-  expect(point.hit).toBe(true);
-  expect(point.snapshot.score.p2).toBe(1);
-  expect(point.snapshot.score.p1).toBe(0);
+  assertEqual(point.hit, true);
+  assertEqual(point.snapshot.score.p2, 1);
+  assertEqual(point.snapshot.score.p1, 0);
+  // And the point did not end the match: the screen returns to the countdown
+  // for the next serve (specs/balls.md).
+  assertEqual(point.snapshot.screen, "countdown");
 });

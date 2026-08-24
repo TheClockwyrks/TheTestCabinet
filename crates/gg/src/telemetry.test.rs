@@ -19,6 +19,7 @@ fn item<'a>(source: GgContextSource, message: &'a Message, tokens: usize) -> Pro
         retention: Retention::Ephemeral,
         turn: 0,
         region: None,
+        lines: None,
     }
 }
 
@@ -38,6 +39,7 @@ fn tagged<'a>(
         retention: Retention::Ephemeral,
         turn: 0,
         region: None,
+        lines: None,
     }
 }
 
@@ -215,6 +217,7 @@ fn log_prompt_deduplicates_across_turns() {
         None,
         "stop".to_string(),
         None,
+        None,
     );
 
     // Turn 2: the same system + prompt (repeats) + turn 1's reply now in the window as
@@ -231,6 +234,7 @@ fn log_prompt_deduplicates_across_turns() {
         TokenCounts::default(),
         None,
         "stop".to_string(),
+        None,
         None,
     );
 
@@ -314,6 +318,7 @@ fn log_prompt_omits_absent_response() {
         None,
         "stop".to_string(),
         None,
+        None,
     );
     let events = sink.events();
     let prompt = events
@@ -347,6 +352,7 @@ fn log_prompt_carries_a_file_views_path_onto_its_pooled_definition() {
             TokenCounts::default(),
             None,
             "stop".to_string(),
+            None,
             None,
         );
     }

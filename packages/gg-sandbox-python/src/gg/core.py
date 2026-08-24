@@ -97,11 +97,11 @@ class ApiError(Exception):
     import gg
 
     try:
-        notes = gg.files.read_text_file("notes.md")
+        gg.views.open_text("build log", log)
     except gg.core.ApiError as failure:
-        if failure.code is not gg.core.ApiErrorCode.NOT_FOUND:
+        if failure.code is not gg.core.ApiErrorCode.LIMIT_EXCEEDED:
             raise
-        gg.files.write_file("notes.md", "")
+        gg.views.open_text("build log (tail)", log[-40_000:])
     ```
     """
 

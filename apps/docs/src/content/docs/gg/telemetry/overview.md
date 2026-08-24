@@ -44,6 +44,11 @@ The telemetry must let a console display:
   of whether the turn did what it declared, why it did not, and how long the
   agent's failing streak is. Without it, a run's error rate is observable only
   for the runs a [ceiling](/gg/execution-limits/) stopped.
+- Every reply gg [rejected whole](/gg/execution-limits/#model-api-errors) — a
+  length-capped one — as one `response_rejected` per rejection, carrying the
+  reply's size, the usage and cost the provider billed for it, and the provider
+  that served it. The run's own usage excludes a rejected call, so this event is
+  the only place its spend appears live.
 - The message log: the exact request each turn sent and the reply it got,
   streamed as a de-duplicated pool of message bodies (`context_message`) plus one
   pointer list per turn (`prompt`), so a console reconstructs every prompt

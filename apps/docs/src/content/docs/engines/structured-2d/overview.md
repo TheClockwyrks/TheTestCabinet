@@ -21,8 +21,10 @@ The engine owns the frame loop, the
 [clock](/engines/structured-2d/apis/clocks/) that decides what each frame's
 delta time is, the fit from the logical design size to the canvas, the camera
 projection, the rendering pipeline, collision detection, the input action
-registry and its bindings, the audio bus, the asset loader, and the debug
-overlay together with the frame metrics it reports.
+registry and its bindings, the audio bus, the asset loader, the debug overlay
+together with the frame metrics it reports, the draw-command recorder over the
+context the rendering pipeline draws through, and the debug surface the game
+instance returned from its `initialize`, held for a caller to read back.
 
 The game owns the levels it registers, the game modes that hold its rules, the
 actors and components that populate a world, and the controllers that drive its
@@ -31,9 +33,9 @@ builds a world from that description and drives it.
 
 The declarations that belong to the whole game are made once, when the game
 instance initializes: the action bindings, the cue definitions, the assets the
-instance holds, and the diagnostic sources the overlay reads. What a single
-level needs it loads in its own `load`, which the engine awaits before any actor
-of that level exists.
+instance holds, the diagnostic sources the overlay reads, and the debug surface
+a caller drives the build through. What a single level needs it loads in its own
+`load`, which the engine awaits before any actor of that level exists.
 
 ## The sections
 
@@ -55,6 +57,20 @@ with an existing object model without a language boundary in the way. A check
 reads rendering and collision off engine code, and the build stays in one
 language, so a run measures the model's work against a codebase rather than its
 ability to compile a WebAssembly module.
+
+A case's validators are vitest suites that run in the same process as the build
+they check. A suite imports the engine and the build's own game module, creates
+an engine over a scripted clock and a canvas it owns, and steps the world with
+`engine.advance`. A scenario is posed through the build's
+[debug surface](/engines/structured-2d/concepts/debug/), whose operations
+arrange the live world through the same systems play uses, and read back off
+`engine.world`.
+
+The engine also captures what a build drew. A validator arms the
+[recorder](/engines/structured-2d/concepts/recording/) around the stretch of a
+scenario its check is about and hands back the operations the pipeline issued,
+which a reviewer replays beside the same scenario driven against the case's
+reference implementation.
 
 | Family | Gameplay framework | Simulation and rendering |
 | --- | --- | --- |

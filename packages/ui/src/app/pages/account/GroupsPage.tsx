@@ -9,6 +9,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -102,7 +103,8 @@ export function GroupsPage() {
   const caseGroups = groups?.filter((g) => g.kind === "case") ?? [];
 
   const renderGroup = (group: CoverageGroup) => {
-    const count = group.kind === "combo" ? group.combos.length : group.cases.length;
+    const count =
+      group.kind === "combo" ? group.combos.length : group.cases.length;
     return (
       <div key={group.id} className={styles.rowCard}>
         <div className={styles.rowMain}>
@@ -133,18 +135,18 @@ export function GroupsPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--groups"
-          comment={<>// reusable model &amp; case groups</>}
-        />
-        <Link className={exec.primary} to={routes.accountGroupNew()}>
-          New group
-        </Link>
-      </div>
+      <PromptHeader
+        command="--groups"
+        comment={<>// reusable model &amp; case groups</>}
+        titleActions={
+          <Link className={exec.primary} to={routes.accountGroupNew()}>
+            + New group
+          </Link>
+        }
+      />
       <AccountTabs active="groups" />
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
 
       {loading ? (
         <LoadingState size="section" label="Loading groups…" />

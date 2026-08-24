@@ -6,13 +6,12 @@
 //!
 //! ```ignore
 //! let source = programs::get(None)?;
-//! programs::rerun(&source.replace("files::read_fil(", "files::read_file("))?;
+//! programs::rerun(&source.replace("views::open_tex(", "views::open_text("))?;
 //! ```
 
 use crate::bindings::test_cabinet::gg::programs;
 use crate::core::ApiError;
 use crate::wire;
-
 
 /// List the programs this session has already run, oldest first.
 ///

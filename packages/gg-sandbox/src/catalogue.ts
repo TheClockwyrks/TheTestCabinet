@@ -84,18 +84,18 @@ export const SURFACE = "gg";
  * which is a claim about this package rather than about a run, and it is where {@link OPERATIONS}
  * takes its tool-backed half from.
  *
- * Three of these are not one-to-one, and each says something real. `files.read_text_file` is a helper
- * rather than a tool of its own, so it is bought by the read it is built on; `views.open_file`
- * performs that same read on the way to showing the file, so a run with reading withheld must not get
- * one through a side door. Everything else names the tool that shares its key.
+ * One of these is not one-to-one, and it says something real. `views.open_file`
+ * performs the same read `files.read_file` does on the way to showing the file, so a run with
+ * reading withheld must not get one through a side door. Everything else names the tool that shares
+ * its key.
  */
 export const OPERATION_BOUND: Readonly<Record<string, string>> = {
   "shell.shell": "shell",
   "files.read_file": "read_file",
-  "files.read_text_file": "read_file",
   "files.write_file": "write_file",
   "files.edit_file": "edit_file",
   "files.list_dir": "list_dir",
+  "files.search": "search",
   "skills.read_skill": "read_skill",
   "memories.write_memory": "write_memory",
   "memories.update_memory": "update_memory",
@@ -149,7 +149,6 @@ export const OPERATIONS: readonly string[] = [
   "views.open_text",
   "views.open_docs_view",
   "views.close",
-  "views.current",
   "programs.history",
   "programs.get",
   "programs.rerun",

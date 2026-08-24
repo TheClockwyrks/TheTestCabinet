@@ -30,11 +30,17 @@ import type {
   LaunchOrigin,
   LogoFetchResult,
   Model,
+  ModelAccuracy,
   ModelInput,
   ModelListing,
+  ModelProbe,
+  ModelProbeDetail,
+  ModelProbeProviders,
+  ModelProbeTriggerInput,
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
+  ProviderStats,
   PublishEnqueued,
   PublishProgress,
   PublishResult,
@@ -66,6 +72,7 @@ import type {
   BulkCancelOut,
   GgRunRequest,
   LaunchAck,
+  LaunchBody,
   StreamOpened,
 } from "@test-cabinet/run-record/jobs-api";
 import type {
@@ -215,6 +222,11 @@ interface ResolvedVersion {
   changelog: string;
   maxRuntimeSeconds: number;
   testType: TestType;
+  // The engines a run of this version may select, each with the version range the
+  // case accepts it at. Never empty — a version that declares none supports the
+  // engineless run. The range is the host's business, so only the slug is carried
+  // any further.
+  engines: { slug: string }[];
   // The asset shape an asset-generation case produces (camelCase `AssetKind`),
   // carried through verbatim so the catalog can split Sprite vs Voxel tabs.
   assetKind?: AssetKind | null;
@@ -440,10 +452,17 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return versions;
     },
 
-    async resolveVersion(slug: string, version: string): Promise<VersionInfo> {
+    async resolveVersion(
+      slug: string,
+      version: string,
+      engine: string,
+    ): Promise<VersionInfo> {
+      // `engine` selects which engine each variant's prompt is rendered for: a
+      // case's `prompt.hbs` branches on it, so a run surface names the engine its
+      // run recorded and a case surface names the engineless one.
       const r = await getJson<ResolvedVersion>(
         baseUrl,
-        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
+        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}?engine=${encodeURIComponent(engine)}`,
       );
       return {
         slug: r.slug,
@@ -456,6 +475,9 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         changelog: r.changelog,
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
+        // The engines this version supports, which is exactly what the run form's
+        // engine picker offers.
+        engines: r.engines.map((engine) => engine.slug),
         assetKind: r.assetKind ?? null,
         // Case-level runtime packages (shared by every variant), each with a
         // UI-only description. Absent on a backend that predates the field.
@@ -517,6 +539,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       slug: string,
       version: string,
       variant: string,
+      engine: string,
     ): Promise<Specification> {
       // The backend renders each seeded spec for the selected variant and returns
       // the whole set as one bundle — a template spec's `{{#if (eq variant.slug …)}}`
@@ -524,9 +547,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       // handlebars-free files the harness receives (the spec analogue of the
       // rendered prompt). This is why we no longer fetch the raw `/artifacts` bytes
       // per spec and stitch them here: those are the unrendered templates.
+      // `engine` renders the spec bodies under that engine's branch, as it does the
+      // prompt on the resolved version.
       return getJson<Specification>(
         baseUrl,
-        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/specs/${encodeURIComponent(variant)}`,
+        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/specs/${encodeURIComponent(variant)}?engine=${encodeURIComponent(engine)}`,
       );
     },
 
@@ -613,6 +638,58 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/models/openrouter?slug=${encodeURIComponent(slug)}`,
         token,
       );
+    },
+
+    async listModelProbes(slug: string): Promise<ModelProbe[]> {
+      const body = await getJson<{ probes: ModelProbe[] }>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/probes`,
+      );
+      return body.probes;
+    },
+
+    async getModelProbe(id: string): Promise<ModelProbeDetail> {
+      return getJson<ModelProbeDetail>(
+        baseUrl,
+        `/model-probes/${encodeURIComponent(id)}`,
+      );
+    },
+
+    async triggerModelProbe(
+      slug: string,
+      input: ModelProbeTriggerInput,
+      token: string,
+    ): Promise<ModelProbe> {
+      const body = await postJson<{ probe: ModelProbe }>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/probes`,
+        input,
+        token,
+      );
+      return body.probe;
+    },
+
+    async listModelProbeProviders(
+      slug: string,
+      token: string,
+    ): Promise<ModelProbeProviders> {
+      return getJson<ModelProbeProviders>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/probe-providers`,
+        token,
+      );
+    },
+
+    async getProviderStats(): Promise<ProviderStats> {
+      // The wire shape matches `ProviderStats` field-for-field (camelCase),
+      // no envelope to unwrap.
+      return getJson<ProviderStats>(baseUrl, "/stats/providers");
+    },
+
+    async getModelAccuracy(): Promise<ModelAccuracy> {
+      // The wire shape matches `ModelAccuracy` field-for-field (camelCase),
+      // no envelope to unwrap.
+      return getJson<ModelAccuracy>(baseUrl, "/stats/model-accuracy");
     },
 
     async listCoverageGroups(token: string): Promise<CoverageGroup[]> {
@@ -1216,6 +1293,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (opts?.harness) params.set("harness", opts.harness);
       if (opts?.variant) params.set("variant", opts.variant);
       if (opts?.version) params.set("version", opts.version);
+      // The list rides as one comma-separated param
+      // (`versions=v1.0.0,v1.1.0`), matching the backend's split-and-trim.
+      if (opts?.versions?.length)
+        params.set("versions", opts.versions.join(","));
+      if (opts?.engine) params.set("engine", opts.engine);
       // Only sent when on: the backend defaults it off, so the common URL stays
       // free of a redundant `latestVersions=false`.
       if (opts?.latestVersions) params.set("latestVersions", "true");
@@ -1371,14 +1453,24 @@ interface LaunchBatchAckResponse {
 // The backend's `LaunchBody` (camelCase) for one run. Shared by the single
 // (`POST /jobs`) and batch (`POST /jobs/batch`) enqueue paths so the two never
 // drift on how a `LaunchConfig` is put on the wire.
-function launchBodyOf(config: LaunchConfig) {
+function launchBodyOf(config: LaunchConfig): LaunchBody {
   return {
     testCase: config.testCase,
     version: config.version,
     variant: config.variant,
-    harness: config.harness,
+    // The console collects the slug from its own harness catalog, which mirrors
+    // the contract's `HarnessSlug` in the same order, so the narrowing is a
+    // restatement of what the picker can produce rather than a claim about
+    // arbitrary input.
+    harness: config.harness as LaunchBody["harness"],
     model: config.modelId,
     orchestrator: config.orchestrator,
+    // Omitted entirely by a caller that pins no engine — a coverage plan and a
+    // comparison arm both mean the `none` default, which the backend spells as an
+    // absent field. The run form always names one. Typing this return against the
+    // contract's own `LaunchBody` is what keeps a field the console collects from
+    // being silently dropped here.
+    ...(config.engine ? { engine: config.engine } : {}),
     ...(config.maxRuntimeOverride != null
       ? { maxRuntimeSeconds: config.maxRuntimeOverride }
       : {}),

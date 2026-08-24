@@ -56,6 +56,8 @@ mod m20260818_000030_create_gg_agent;
 mod m20260818_000031_add_gg_config_agent_sources;
 mod m20260820_000032_add_case_reference_build_engine;
 mod m20260820_000032_drop_gg_agent_model_slots;
+mod m20260822_000033_add_run_engine_slug;
+mod m20260823_000034_create_model_probe;
 
 pub struct Migrator;
 
@@ -99,6 +101,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260818_000031_add_gg_config_agent_sources::Migration),
             Box::new(m20260820_000032_add_case_reference_build_engine::Migration),
             Box::new(m20260820_000032_drop_gg_agent_model_slots::Migration),
+            Box::new(m20260822_000033_add_run_engine_slug::Migration),
+            Box::new(m20260823_000034_create_model_probe::Migration),
         ]
     }
 }

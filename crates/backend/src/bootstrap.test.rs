@@ -179,3 +179,91 @@ async fn an_unlisted_model_is_seeded_silently() {
 
     assert!(db.latest_price("newco/unlisted").await.unwrap().is_none());
 }
+
+/// Startup prices a freshly seeded curated catalog: a rebuilt deployment inserts the
+/// curated configs with no price rows, and this pass records their first observations
+/// before any run exists — so a live run's per-class cost split never waits on a
+/// completed run.
+#[tokio::test]
+async fn startup_prices_a_freshly_seeded_curated_catalog() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        slug: "opus-4-8".to_string(),
+        display_name: "Opus 4.8".to_string(),
+        provider: "Anthropic".to_string(),
+        provider_logo_url: None,
+        provider_logo_svg: None,
+        description_md: None,
+        openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
+        aliases: vec![AliasEntry {
+            alias: "claude-opus-4-8".to_string(),
+            family: HarnessFamily::Claude,
+        }],
+        now: "2026-01-01T00:00:00Z".to_string(),
+    })
+    .await
+    .unwrap();
+    let prices = fake_openrouter(catalog_of("anthropic/claude-opus-4.8")).await;
+
+    let seeded = seed_catalog_prices(&db, &prices).await.unwrap();
+
+    assert_eq!(seeded, 1);
+    // Filed under the configured slug — the key the periodic refresh writes — so the
+    // observation merges with the model's alias histories at compose time.
+    let observed = db
+        .latest_price("anthropic/claude-opus-4.8")
+        .await
+        .unwrap()
+        .expect("startup recorded the curated model's first observation");
+    assert_eq!(observed.uncached_input, Some(0.000003));
+    assert_eq!(observed.output, Some(0.000015));
+    assert_eq!(observed.context_length, Some(400_000));
+}
+
+/// Startup seeding is missing-only: a catalog already fully priced reads the database
+/// and fetches nothing, so the steady-state boot costs no network.
+#[tokio::test]
+async fn startup_seeding_is_missing_only_and_fetches_nothing() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.upsert_model_config(ModelConfigWrite {
+        slug: "opus-4-8".to_string(),
+        display_name: "Opus 4.8".to_string(),
+        provider: "Anthropic".to_string(),
+        provider_logo_url: None,
+        provider_logo_svg: None,
+        description_md: None,
+        openrouter_slug: Some("anthropic/claude-opus-4.8".to_string()),
+        aliases: vec![AliasEntry {
+            alias: "claude-opus-4-8".to_string(),
+            family: HarnessFamily::Claude,
+        }],
+        now: "2026-01-01T00:00:00Z".to_string(),
+    })
+    .await
+    .unwrap();
+    db.insert_price_observation(PriceWrite {
+        model_id: "anthropic/claude-opus-4.8".to_string(),
+        observed_at: "2026-01-01T00:00:00Z".to_string(),
+        uncached_input: Some(1.0),
+        cached_input: None,
+        output: Some(2.0),
+        context_length: Some(200_000),
+        released_at: None,
+        input_modalities: None,
+    })
+    .await
+    .unwrap();
+
+    // An unreachable endpoint: reaching for the catalog at all would fail this.
+    let seeded = seed_catalog_prices(&db, &unreachable_prices())
+        .await
+        .unwrap();
+
+    assert_eq!(seeded, 0);
+    let observed = db
+        .latest_price("anthropic/claude-opus-4.8")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(observed.observed_at, "2026-01-01T00:00:00Z");
+}

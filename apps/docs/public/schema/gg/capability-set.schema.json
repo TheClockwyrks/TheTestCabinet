@@ -101,7 +101,7 @@
           "type": "string"
         },
         "implementation": {
-          "description": "The arm this capability is configured on, for the five capabilities that offer arms to\nchoose between: [shell](CAPABILITY_SHELL), [read-file](CAPABILITY_READ_FILE),\n[memories](CAPABILITY_MEMORIES), [compaction](CAPABILITY_COMPACTION) and\n[autoload specifications](CAPABILITY_AUTOLOAD_SPECS).\n\n**An enabled capability that offers arms writes one.** Leaving it out refuses the launch\nrather than selecting one, because the arm is the independent variable and a run measured on\none arm while its record names another is worse than no run. The single exception is\nautoload specifications, whose one arm is [`locked`](AUTOLOAD_LOCKED_IMPL): there an\nunwritten implementation is itself the declaration that the seeded specifications are\nordinary file views, which is a reading of absence rather than a substitution for it.\n\nA name the capability does not offer refuses the launch, and so does any name at all on one\nof the sixteen capabilities that offer none. `Option` on the wire so a configuration already\nstored in the database still deserializes and still opens in the editor: what a missing\nrequired arm costs is the *launch*, not the parse. The\n[authoring catalog](gg_authoring_catalog) is what writes one into a new document.",
+          "description": "The arm this capability is configured on, for the five capabilities that offer arms to\nchoose between: [shell](CAPABILITY_SHELL), [read-file](CAPABILITY_READ_FILE),\n[memories](CAPABILITY_MEMORIES), [compaction](CAPABILITY_COMPACTION) and\n[autoload specifications](CAPABILITY_AUTOLOAD_SPECS).\n\n**An enabled capability that offers arms writes one.** Leaving it out refuses the launch\nrather than selecting one, because the arm is the independent variable and a run measured on\none arm while its record names another is worse than no run. The single exception is\nautoload specifications, whose one arm is [`locked`](AUTOLOAD_LOCKED_IMPL): there an\nunwritten implementation is itself the declaration that the seeded specifications are\nordinary file views, which is a reading of absence rather than a substitution for it.\n\nA name the capability does not offer refuses the launch, and so does any name at all on one\nof the seventeen capabilities that offer none. `Option` on the wire so a configuration already\nstored in the database still deserializes and still opens in the editor: what a missing\nrequired arm costs is the *launch*, not the parse. The\n[authoring catalog](gg_authoring_catalog) is what writes one into a new document.",
           "type": ["string", "null"]
         },
         "params": {
@@ -512,6 +512,11 @@
             },
             {
               "enabled": true,
+              "id": "search",
+              "params": {}
+            },
+            {
+              "enabled": true,
               "id": "skills",
               "params": {
                 "builtIns": {},
@@ -546,10 +551,10 @@
           "operations": [
             "shell.shell",
             "files.read_file",
-            "files.read_text_file",
             "files.write_file",
             "files.edit_file",
             "files.list_dir",
+            "files.search",
             "skills.read_skill",
             "memories.write_memory",
             "memories.update_memory",
@@ -572,6 +577,7 @@
             "write_file",
             "edit_file",
             "list_dir",
+            "search",
             "read_skill",
             "write_memory",
             "update_memory",

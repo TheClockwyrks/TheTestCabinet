@@ -922,6 +922,59 @@ fn module_path(catalogue: &'static SignatureCatalogue, id: &'static str) -> &'st
     module_of(catalogue, id).map_or(id, |module| module.path)
 }
 
+/// **The part of `fqn` after its module path and the one separator following it**, or `None` when
+/// the module path is not a prefix of it at all — or is one only by accident, as `gg::fs` is of
+/// `gg::fsx`.
+///
+/// It is the name the model reads *inside* a module: `readFile` for a free function, and
+/// `OpenView.close` / `OpenView#close` / `open_view::close` for a method, in the arm's own
+/// separator. The separator is whatever the arm wrote — `.`, `::`, `#`, or a run of them — so the
+/// check is that the character after the prefix is one that cannot continue an identifier, not
+/// that it is any particular one.
+///
+/// Two readers hold one implementation of it on purpose. The name rule (`signatures.fqn.rs`) parses
+/// it into segments to hold an arm's names to their shape; [`module_relative_name`] reports it, so
+/// that a surface naming a method carries its receiver rather than a bare `close` that collides
+/// with the free function beside it. A second copy would let the two disagree about what a
+/// qualification is.
+/// Whether `c` can continue an identifier in *some* language whose names reach gg.
+///
+/// Deliberately generous — anything alphanumeric, plus `_` — because the alternative is a per-arm
+/// table of identifier syntaxes, and the thing being separated is a name the arm's own compiler
+/// already accepted. What matters is only that a separator is *not* one of these.
+pub(crate) fn is_identifier(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
+pub(crate) fn module_relative<'a>(fqn: &'a str, module_path: &str) -> Option<&'a str> {
+    let rest = fqn.strip_prefix(module_path)?;
+    // A separator, not merely *something*: the character right after the module path has to be one
+    // that cannot continue an identifier, or the prefix match was a coincidence rather than a
+    // qualification.
+    let separator: usize = rest
+        .chars()
+        .take_while(|c| !is_identifier(*c))
+        .map(char::len_utf8)
+        .sum();
+    if separator == 0 {
+        return None;
+    }
+    let tail = &rest[separator..];
+    (!tail.is_empty()).then_some(tail)
+}
+
+/// **The name `function` is reported under within its module** — its
+/// [fully-qualified name](CatalogueFunction::fqn) with the module [path](CatalogueFunction::object)
+/// and the separator after it stripped, falling back to the bare [`name`](CatalogueFunction::name)
+/// for an entry whose name the module path does not qualify.
+///
+/// For a free function the two are the same string. For a method they differ, and the difference is
+/// the point: `OpenView.close` is a row of its own beside `close`, where the bare name would make
+/// one module list `close` twice and a reader keyed on the name would fold them.
+pub(crate) fn module_relative_name(function: &CatalogueFunction) -> &'static str {
+    module_relative(function.fqn, function.object).unwrap_or(function.name)
+}
+
 /// **The one module `module` names**, as a [view](ModuleView) of it: gg's id for it, this arm's own
 /// path, the line it is introduced by and the [line a program writes](ModuleView::import) to bring
 /// it into scope. `None` where the catalogue declares no such module.

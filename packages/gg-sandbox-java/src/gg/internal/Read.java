@@ -9,7 +9,6 @@ import gg.memories.Memories;
 import gg.programs.Programs;
 import gg.shell.Shell;
 import gg.tasks.Tasks;
-import gg.views.Views;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -93,6 +92,17 @@ public final class Read {
         return List.copyOf(out);
     }
 
+    /** Every line a search matched. */
+    public static List<Files.SearchMatch> searchMatches(Value value) {
+        List<Files.SearchMatch> out = new ArrayList<>(value.size());
+        for (int index = 0; index < value.size(); index++) {
+            Value match = value.at(index);
+            out.add(new Files.SearchMatch(match.get("path").text(), match.get("line").integer(),
+                    match.get("text").text()));
+        }
+        return List.copyOf(out);
+    }
+
     /** The memory budget. */
     public static Memories.MemoryUsage memoryUsage(Value value) {
         return new Memories.MemoryUsage(value.get("count").integer(),
@@ -169,22 +179,6 @@ public final class Read {
         return new Context.ArchiveSearch(value.get("archive-empty").flag(), List.copyOf(hits));
     }
 
-    /** Every view open in the window. */
-    public static List<Views.OpenView> openViews(Value value) {
-        List<Views.OpenView> out = new ArrayList<>(value.size());
-        for (int index = 0; index < value.size(); index++) {
-            Value open = value.at(index);
-            Value region = open.get("region");
-            out.add(new Views.OpenView(viewKind(open.get("kind").text()),
-                    open.get("selector").text(), open.get("tokens").integer(),
-                    region.absent()
-                            ? Optional.empty()
-                            : Optional.of(new Views.ViewRegion(region.get("offset").integer(),
-                                    region.get("limit").integer()))));
-        }
-        return List.copyOf(out);
-    }
-
     /** A child agent's handle. */
     public static Delegation.SubagentHandle subagentHandle(Value value) {
         return new Delegation.SubagentHandle(value.get("id").text(), value.get("slot").text(),
@@ -244,15 +238,6 @@ public final class Read {
             case "module" -> Docs.DocKind.MODULE;
             case "type" -> Docs.DocKind.TYPE;
             default -> Docs.DocKind.FUNCTION;
-        };
-    }
-
-    /** Which kind a view is, from the case name the wire used. */
-    private static Views.ViewKind viewKind(String wire) {
-        return switch (wire) {
-            case "file" -> Views.ViewKind.FILE;
-            case "docs" -> Views.ViewKind.DOCS;
-            default -> Views.ViewKind.TEXT;
         };
     }
 

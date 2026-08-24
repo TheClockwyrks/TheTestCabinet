@@ -442,13 +442,15 @@ export function blankRunLimits(): GgRunLimitsDraft {
 }
 
 /**
- * A fresh configuration's guardrails: the two [required](RunLimitSpec.required) ceilings
- * written to their authored figures, and every other field empty — which is that ceiling
- * unarmed, and the only thing an empty field here means.
+ * A fresh configuration's guardrails: every ceiling with an
+ * [authored figure](RunLimitSpec.defaultValue) written to it, and every other field
+ * empty — which is that ceiling unarmed, and the only thing an empty field here means.
  *
  * A run always has an agent pool and always writes a capture journal, so those two are
- * always in the document. The turn, runtime, cost and error ceilings are each a guardrail
- * an operator either wants or does not, and gg arms none that nobody wrote.
+ * always in the document. The three error ceilings are seeded as clearable guardrails:
+ * empty the field and the ceiling is unarmed, exactly as one a stored configuration
+ * omitted. The turn, runtime and cost fields start empty, and gg itself arms none that
+ * the saved configuration does not write.
  */
 export function seededRunLimits(): GgRunLimitsDraft {
   const draft = blankRunLimits();
@@ -472,12 +474,8 @@ export function seededRunLimits(): GgRunLimitsDraft {
 function seededParams(cap: CapSpec): Record<string, string> {
   const out: Record<string, string> = {};
   for (const p of cap.params ?? []) {
-    if (p.kind === "agent") continue;
-    if (p.kind === "toggles") {
-      out[p.key] = seededToggles(p);
-      continue;
-    }
-    if (p.defaultValue !== undefined) out[p.key] = p.defaultValue;
+    const seeded = paramDefault(p);
+    if (seeded !== undefined) out[p.key] = seeded;
   }
   return out;
 }
@@ -492,25 +490,29 @@ function seededParams(cap: CapSpec): Record<string, string> {
  * saves a document that says what the run will do. Nothing is filled in silently on the
  * way out, so a value in the saved set is a value that was on the screen.
  *
- * Only the required ones, and only the empty ones: a param whose absence is the setting
- * stays absent, and a stored figure is never overwritten.
+ * Every param the catalog gives a [default](paramDefault) — not only the required ones —
+ * and only the empty ones: a param with nothing to open at stays absent, and a stored
+ * figure is never overwritten. An optional param with a default is one whose absence and
+ * whose authored figure mean the same thing to gg, so filling it in changes nothing about
+ * the run and everything about the form: every control in the grid then shows a value, and
+ * the reset beside a label is the only thing that says which ones have been moved.
  */
-function filledRequiredParams(
+function filledDefaultedParams(
   cap: CapSpec,
   params: Record<string, string>,
 ): Record<string, string> {
   const out = { ...params };
   for (const p of cap.params ?? []) {
-    if (!p.required || p.kind === "agent") continue;
+    const seeded = paramDefault(p);
+    if (seeded === undefined) continue;
     if (p.kind === "toggles") {
       // A toggle set's draft value is the list of members switched off, so an empty string
       // is a statement — every member on — rather than an empty field. Only a key the
       // stored configuration carried nothing readable for is seeded.
-      if (!(p.key in out)) out[p.key] = seededToggles(p);
+      if (!(p.key in out)) out[p.key] = seeded;
       continue;
     }
-    if (p.defaultValue === undefined) continue;
-    if (!(out[p.key] ?? "").trim()) out[p.key] = p.defaultValue;
+    if (!(out[p.key] ?? "").trim()) out[p.key] = seeded;
   }
   return out;
 }
@@ -977,6 +979,25 @@ function seededToggles(spec: ParamSpec): string {
     spec,
     (spec.options ?? []).filter((o) => o.seedOff).map((o) => o.value),
   );
+}
+
+/**
+ * The draft value a param's control opens at — its [authored value](ParamSpec.defaultValue),
+ * or, for a `toggles` set, the members the catalog writes as off.
+ *
+ * `undefined` is a param with nothing to open at: an `agent` param (whose answer is only
+ * known once a draft has a root), a `boolean` (whose slider always shows one of its two
+ * states), and responses-as-code's `language` (the one required value nobody may choose
+ * for the operator).
+ *
+ * This is what both halves of the "seeded control, reset beside the label" pattern read:
+ * [seededParams] writes it into a fresh draft, and the editor compares the control against
+ * it to decide whether to offer a reset.
+ */
+export function paramDefault(spec: ParamSpec): string | undefined {
+  if (spec.kind === "agent") return undefined;
+  if (spec.kind === "toggles") return seededToggles(spec);
+  return spec.defaultValue;
 }
 
 /**
@@ -1450,7 +1471,7 @@ export function agentDraftFromConfig(agent: GgAgentConfig): GgAgentDraft {
         !implementation.trim() && requiresImplementation(cap)
           ? authoredImplementation(cap)
           : implementation,
-      params: filledRequiredParams(cap, params),
+      params: filledDefaultedParams(cap, params),
       extraParams,
     };
   }
@@ -1976,6 +1997,22 @@ export function featureBundleOn(
 ): boolean {
   const [granted, names] = inAgentVocabulary(agent, bundle);
   return names.every((name) => granted.includes(name));
+}
+
+/**
+ * Whether one of a capability's [feature](CapSpec.features) sliders has anything to grant
+ * in the vocabulary this agent answers on.
+ *
+ * A bundle may live on one surface only — `agent-managed-context`'s view calls are
+ * responses-as-code operations with no tool beside them — and a slider for it on a
+ * tool-calling agent would read as on (every one of no names is granted) and toggle
+ * nothing. The editor shows such a slider only to the agent type it can act for.
+ */
+export function featureBundleOffered(
+  agent: GgAgentDraft,
+  bundle: { tools: ReadonlyArray<string>; operations: ReadonlyArray<string> },
+): boolean {
+  return inAgentVocabulary(agent, bundle)[1].length > 0;
 }
 
 /**
@@ -2775,6 +2812,32 @@ export function capabilitySetFromDraft(
  * imported profile is compared against its saved agent in. `null` when the draft holds
  * no agent under that id.
  */
+/**
+ * `agent` with its capability set as this editor holds it — that half put through the
+ * editor's own load and save, and everything else left exactly as stored.
+ *
+ * What comes out is the capability set a configuration that imported this agent and
+ * changed nothing would save: the type's own defaults wound back in, and every param the
+ * catalog gives a [default](paramDefault) written down. That is the form the
+ * [overlay](agentOverrides) has to compare a following profile against, because the
+ * profile is the *editor's* copy. A stored document short of a param the editor fills in
+ * has not pinned that capability, and reading it as one detaches an untouched import from
+ * the agent it follows and leaves Revert with nothing to do.
+ *
+ * Only the capabilities: the rest of an agent — its roster above all — is resolved against
+ * the profiles a whole configuration declares, which one agent read on its own has none
+ * of.
+ */
+export function canonicalAgentCapabilities(
+  agent: GgAgentConfig,
+): GgAgentConfig {
+  return {
+    ...agent,
+    capabilities: agentConfigFromDraft(agentDraftFromConfig(agent))
+      .capabilities,
+  };
+}
+
 export function wireAgentFromDraft(
   draft: GgConfigDraft,
   agentId: string,

@@ -110,15 +110,16 @@ pixels. The engine resets the context transform to the identity before calling
 `draw`, and `draw` saves and restores the context around all of its own work,
 including when measuring or drawing throws.
 
-The overlay draws, in order:
+The overlay's text is a column of lines, in order:
 
 1. The engine's own world line, reading
    `` `level: ${level}  phase: ${phase}  actors: ${count}` `` from the open
    world's level name, its match phase, and its number of live actors.
-2. The instance registry's lines.
-3. The world registry's lines.
+2. The instance registry's lines, in the order the game registered them.
+3. The world registry's lines, in the order the game registered them.
 4. A metrics line reading `` `frame: ${meanMs} / ${p95Ms} / ${p99Ms} ms` ``.
-5. The frame-time graph.
+
+The frame-time graph sits beside the text, to its right.
 
 `draw` performs no drawing when the overlay is hidden.
 
@@ -150,11 +151,6 @@ One line per source, formatted `` `${name}: ${value}` ``.
 | `null`, `undefined` | `"null"`, `"undefined"`. |
 | `object`, array | `JSON.stringify(value)`, falling back to `String(value)` when it throws or yields `undefined`. |
 | Any other type | `String(value)`. |
-
-## Host operations
-
-A build's overlay is reached from outside through the host interface, specified
-in [the host API](/engines/structured-2d/apis/host/).
 
 ## Exports
 

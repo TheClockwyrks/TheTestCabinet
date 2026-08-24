@@ -4,6 +4,7 @@
 import { expect, it } from "vitest";
 import {
   AI_DEADZONE,
+  AI_HOME_DEADZONE,
   AI_HOME_Y,
   AI_REACT,
   AI_SPEED,
@@ -59,20 +60,32 @@ it("stops inside the deadzone rather than jittering onto a perfect line", () => 
   expect(paddle.cy).toBe(200 + AI_DEADZONE);
 });
 
-it("eases back toward the center while the ball travels away", () => {
+it("returns toward the center while the ball travels away, and stops within AI_HOME_DEADZONE", () => {
   const paddle: PaddleState = { cy: 600, vy: 0 };
   for (let i = 0; i < 120; i++) {
     updateAi(paddle, ball({ y: 660, vx: -300 }), true, FRAME);
   }
-  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThan(20);
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
+  expect(paddle.vy).toBe(0);
 });
 
-it("eases home during the pre-serve hold too", () => {
+it("holds still just inside the home deadzone and moves just outside it", () => {
+  const inside: PaddleState = { cy: AI_HOME_Y + AI_HOME_DEADZONE, vy: 0 };
+  updateAi(inside, ball({ vx: -300 }), true, FRAME);
+  expect(inside.vy).toBe(0);
+  expect(inside.cy).toBe(AI_HOME_Y + AI_HOME_DEADZONE);
+
+  const outside: PaddleState = { cy: AI_HOME_Y + AI_HOME_DEADZONE + 1, vy: 0 };
+  updateAi(outside, ball({ vx: -300 }), true, FRAME);
+  expect(outside.vy).toBeLessThan(0);
+});
+
+it("returns home during the pre-serve hold too", () => {
   const paddle: PaddleState = { cy: 600, vy: 0 };
   for (let i = 0; i < 120; i++) {
     updateAi(paddle, ball({ y: 660, vx: 0 }), false, FRAME);
   }
-  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThan(20);
+  expect(Math.abs(paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
 });
 
 it("keeps its paddle fully on the field", () => {

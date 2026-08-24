@@ -11,13 +11,27 @@ everything around them.
 
 ```ts
 readonly diagnostics: {
-  register(name: string, source: () => unknown): void;
+  register(name: string, source: (state: DeepReadonly<S>) => unknown): void;
 };
 ```
 
-`source` is a zero-argument function returning the value to display. It is
-invoked on each read, never sampled at registration, so it reports whatever the
-game holds at that instant.
+`source` is a function from the game's state to the value to display. It is
+invoked on each read with the state current at that read, never sampled at
+registration. The overlay reads after `render`, so the state a source receives
+is the one this frame's `update` returned. `S` is the `InitApi<S>` type
+parameter, the game's own state type.
+
+```ts
+const game: Game<State, null> = {
+  initialize(api) {
+    api.diagnostics.register("ball", (state) => state.ball);
+    api.diagnostics.register("score", (state) => `${state.score.left}-${state.score.right}`);
+    return [initialState(), null];
+  },
+  update: (state, api, dt) => step(state, api, dt),
+  render: (state, api) => draw(state, api.ctx),
+};
+```
 
 Re-registering a name replaces its source and retains the name's original
 position in the registry.

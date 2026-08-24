@@ -1,10 +1,6 @@
 """Read, write, edit and list the files of the workspace.
 
-Reading is the cheap direction of this sandbox and writing is the expensive one, so a program that
-reads a dozen files to decide what to change is well shaped, while one that rewrites forty large
-files in a single turn will exhaust its fuel budget.
-
-Nothing here places anything in the agent's context window. `views.open_file` is the call that does.
+Nothing here places anything in the agent's context window; a view is what does that.
 """
 
 from __future__ import annotations
@@ -13,21 +9,21 @@ from dataclasses import dataclass
 from enum import Enum
 
 from wit_world.imports import files as wire
-from wit_world.imports import helpers as helpers_wire
 
 from ._registry import missing, operation
-from .core import _call, _uint
+from .core import ApiError, ApiErrorCode, _call, _uint
 
 __all__ = [
     "DirEntry",
     "EntryKind",
     "FileRead",
     "ImageFile",
+    "SearchMatch",
     "TextFile",
     "edit_file",
     "list_dir",
     "read_file",
-    "read_text_file",
+    "search",
     "write_file",
 ]
 
@@ -37,7 +33,7 @@ class TextFile:
     """A text file's window, as the text arm of a `FileRead` carries it."""
 
     contents: str
-    """The file's text, or just the requested window under a capped read policy."""
+    """The file's text, or just the requested window where the read named one."""
 
     first_line: int
     """The 1-based first line returned."""
@@ -110,6 +106,32 @@ class DirEntry:
     """What the entry is."""
 
 
+@dataclass(frozen=True)
+class SearchMatch:
+    """One line `search` matched: where it is, and the line itself."""
+
+    path: str
+    """The file's path, with `/` separators.
+
+    Relative to the workspace root, or absolute for a search rooted outside it.
+    """
+
+    line: int
+    """The 1-based line number of the match within that file."""
+
+    text: str
+    """The matching line, without its line ending.
+
+    A line longer than 200 characters is cut there and annotated in place as `foo (123 more
+    chars...)`.
+    """
+
+
+def _as_search_match(match: wire.SearchMatch) -> SearchMatch:
+    """One membrane search match, as the model-facing class."""
+    return SearchMatch(path=match.path, line=match.line, text=match.text)
+
+
 def _as_file_read(read: wire.FileRead) -> FileRead:
     """The membrane's tagged read, lowered to the model-facing union.
 
@@ -164,8 +186,9 @@ def read_file(path: str, *, offset: int | None = None, limit: int | None = None)
 
     Args:
         path: The file to read, relative to the workspace or absolute.
-        offset: The 1-based line to start at. Honoured only under a capped read policy.
-        limit: How many lines to return from `offset`. Honoured only under a capped read policy.
+        offset: The 1-based line to start at. Left out, the read starts at the first line.
+        limit: How many lines to return from `offset`. Left out, a capped read policy's default
+            applies, or the read runs to the end of the file.
 
     Returns:
         The `TextFile` for a text file's window, or the `ImageFile` describing a picture whose bytes
@@ -184,40 +207,9 @@ def read_file(path: str, *, offset: int | None = None, limit: int | None = None)
     )
 
 
-@operation("files.read_text_file")
-def read_text_file(path: str, *, offset: int | None = None, limit: int | None = None) -> str:
-    """Read a text file and hand back its contents directly.
-
-    `read_file` without the narrowing, for the common case: the same read, the same window, the same
-    cost.
-
-    Args:
-        path: The file to read, relative to the workspace or absolute.
-        offset: The 1-based line to start at. Honoured only under a capped read policy.
-        limit: How many lines to return from `offset`. Honoured only under a capped read policy.
-
-    Returns:
-        The file's text, or the window of it a capped read policy allowed.
-
-    Raises:
-        ApiError: `invalid-argument` when the path names a picture, which `read_file` inspects
-            instead and `views.open_file` displays.
-    """
-    return _call(
-        helpers_wire.read_text_file,
-        path,
-        _uint("read_text_file", "offset", offset),
-        _uint("read_text_file", "limit", limit),
-    )
-
-
 @operation("files.write_file")
 def write_file(path: str, contents: str) -> int:
     """Write UTF-8 text to a file, creating parent directories and replacing what is there.
-
-    Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files
-    in one program exhausts its fuel budget, so a large rewrite is best split across several
-    turns.
 
     Args:
         path: Where to write, relative to the workspace or absolute. Parent directories are created.
@@ -270,6 +262,57 @@ def list_dir(path: str | None = None) -> list[DirEntry]:
             that is given but empty — the default is what lists the workspace root.
     """
     return [_as_dir_entry(entry) for entry in _call(wire.list_dir, path)]
+
+
+@operation("files.search")
+def search(query: str, *, path: str | None = None, limit: int | None = None) -> list[SearchMatch]:
+    r"""Search the workspace's files for a regular expression and hand back every matching line.
+
+    `query` is a regular expression — Rust syntax, so `foo|bar`, `fn\s+update`, and `(?i)todo` for
+    a case-insensitive match — tried against each line on its own, and every line it matches comes
+    back with its path and 1-based line number, in path order and then line order. `path` roots the
+    search at one directory or one file; the default is the workspace root.
+
+    The search honours ignore files: what `.gitignore`, `.ignore` and their kin exclude — nested
+    files, negations and `.git/info/exclude` included, and `.git` itself — is never scanned and
+    never returned, whether or not the workspace is a repository yet, and a file that is not text
+    (one carrying a NUL byte) is skipped rather than matched byte by byte. Dotfiles are otherwise
+    searched like any other file. So a match list holds the project's own sources rather than
+    `node_modules`, build output and the run's own bookkeeping, and a file under an ignored path is
+    still reachable by its path through every other call in this module.
+
+    The result is bounded so one search cannot flood a turn, which is where it differs from a shell
+    `grep`: at most `limit` matches come back — 50 by default, and never more than 200 — and a list
+    exactly `limit` long may have been cut. There is no offset, because a search is a question about
+    where to point the other calls rather than a way of reading a file, so the answer to a cut list
+    is a narrower query or path. A matching line longer than 200 characters is cut there and
+    annotated in place as `foo (123 more chars...)`.
+
+    Args:
+        query: The regular expression to match each line against, in Rust syntax; `(?i)` at the
+            front makes it case-insensitive. It may not be blank.
+        path: The directory or file to search, relative to the workspace or absolute. The default
+            searches the whole workspace.
+        limit: The most matches to return, at least 1. The default is 50 and the ceiling 200, so a
+            larger request is answered with the first 200 rather than refused.
+
+    Returns:
+        Every matching line, in path order and then line order, each with its `path`, 1-based `line`
+            and `text`. A search that matches nothing is an empty list, and a list exactly `limit`
+            long may have been cut.
+
+    Raises:
+        ApiError: `invalid-argument` for a blank query, one that is not a valid pattern, or a
+            `limit` of zero, and `not-found` for a `path` that does not exist.
+    """
+    bound = _uint("search", "limit", limit)
+    if bound == 0:
+        raise ApiError(
+            "search",
+            ApiErrorCode.INVALID_ARGUMENT,
+            "`limit` must be at least 1, got 0; leave it out for gg's default of 50",
+        )
+    return [_as_search_match(match) for match in _call(wire.search, query, path, bound)]
 
 
 __getattr__ = missing(__name__, __all__)

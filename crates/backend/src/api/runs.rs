@@ -25,7 +25,7 @@ use crate::db::{
 };
 use crate::error::ApiError;
 use crate::snapshot::{RunSummary, run_summary_score};
-use crate::store::{DefinitionStore, StoredManifest};
+use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
 
 use super::AppState;
 
@@ -275,18 +275,23 @@ pub async fn list(
             harness: params.harness.clone(),
             variant: params.variant.clone(),
             version: params.version.clone(),
+            versions: parse_versions(params.versions.as_deref()),
+            engine: params.engine.clone(),
             latest_versions: params.latest_versions.unwrap_or(false),
             q: params.q.clone(),
         };
         let sort = parse_sort(params.sort.as_deref());
         let dir = parse_dir(params.dir.as_deref());
+        // The cards name their case, so every listing resolves the name map once;
+        // the test-case sort orders by the same names the cards show.
+        let case_names = state.store.case_names().map_err(ApiError::from)?;
         let (runs, total) = state
             .db
-            .list_summaries(&filter, sort, dir, limit, offset)
+            .list_summaries(&filter, sort, dir, &case_names, limit, offset)
             .await
             .map_err(ApiError::from)?;
         return Ok(Json(SummaryListResponse {
-            runs: summary_cards(&state.store, &runs),
+            runs: summary_cards(&state.store, &case_names, &runs),
             next_before: None,
             total: Some(total),
         })
@@ -321,8 +326,9 @@ pub async fn list(
             .map_err(ApiError::from)?,
     };
     if params.fields.as_deref() == Some("summary") {
+        let case_names = state.store.case_names().map_err(ApiError::from)?;
         Ok(Json(SummaryListResponse {
-            runs: summary_cards(&state.store, &runs),
+            runs: summary_cards(&state.store, &case_names, &runs),
             next_before,
             total: None,
         })
@@ -336,21 +342,28 @@ pub async fn list(
     }
 }
 
-/// Build the summary cards for a page of runs, enriching each with its aggregate
-/// reviewer `score` — the one field [`RunSummary::from_stored`] leaves `None`
-/// because the checklist weights live only in the case catalog, not the run.
+/// Build the summary cards for a page of runs, enriching each with the two fields
+/// [`RunSummary::from_stored`] cannot fill without the case catalog: its case's
+/// display `case_name` (from `case_names`, the same map the `testCase` sort orders
+/// by) and its aggregate reviewer `score` (the checklist weights live only in the
+/// catalog, not the run).
 ///
 /// Each run's manifest is resolved from the definition store and its reviews
 /// scored against that case's declared weights (see [`run_summary_score`]). The
 /// resolved manifest is cached per `(slug, version)` so a case is read once per
 /// page rather than once per run; a run whose case isn't ingested keeps
 /// `score = None`.
-fn summary_cards(store: &DefinitionStore, runs: &[StoredRun]) -> Vec<RunSummary> {
+fn summary_cards(
+    store: &DefinitionStore,
+    case_names: &CaseNames,
+    runs: &[StoredRun],
+) -> Vec<RunSummary> {
     let mut manifests: HashMap<(String, String), Option<StoredManifest>> = HashMap::new();
     runs.iter()
         .map(|run| {
             let mut card = RunSummary::from_stored(run);
             let subject = &run.record.subject;
+            card.case_name = case_display_name(case_names, &subject.test_case_slug);
             let key = (
                 subject.test_case_slug.clone(),
                 subject.test_case_version.clone(),
@@ -680,6 +693,15 @@ pub struct ListParams {
     /// Normally paired with `testCase`, since a version only means something
     /// within a case.
     version: Option<String>,
+    /// Filter to a comma-separated list of exact test-case versions (summary +
+    /// offset path only) — the case-detail Runs tab's version scope: the console
+    /// computes the versions in the anchored `major.minor` or major line from the
+    /// catalog and sends the concrete list. Like `version`, it silences
+    /// `latestVersions`.
+    versions: Option<String>,
+    /// Filter to one engine slug (summary + offset path only) — the slug the run
+    /// was launched under, with the engineless run recording the slug `none`.
+    engine: Option<String>,
     /// Restrict every run to its case's current `major.minor` — the newest one
     /// that case has a run for in the selected `state` slice (summary + offset
     /// path only). Ignored when `version` names an exact version. Wire:
@@ -718,6 +740,19 @@ pub struct SummaryListResponse {
     /// is unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     total: Option<usize>,
+}
+
+/// Split the comma-separated `versions` query param into the filter's list:
+/// entries are trimmed and empties dropped, so `v1.0.0, v1.1.0` and a trailing
+/// comma both parse. `None` (absent, or nothing but separators) applies no filter.
+fn parse_versions(versions: Option<&str>) -> Option<Vec<String>> {
+    let list: Vec<String> = versions?
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    if list.is_empty() { None } else { Some(list) }
 }
 
 /// Map the `state` query param to the summary listing's lifecycle slice, mirroring
@@ -885,3 +920,7 @@ struct RatingSlice {
     rating: Rating,
     count: usize,
 }
+
+#[cfg(test)]
+#[path = "runs.test.rs"]
+mod tests;

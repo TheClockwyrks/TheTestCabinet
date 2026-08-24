@@ -3,12 +3,7 @@
 module GG
   # Read, write, edit and list the files of the workspace.
   #
-  # Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
-  # that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
-  # large files in a single turn will exhaust its fuel budget.
-  #
-  # Nothing here places anything in the agent's context window. `GG::Views.open_file` is the call
-  # that does.
+  # Nothing here places anything in the agent's context window; a view is what does that.
   module Files
     extend Surface::Operations
 
@@ -31,10 +26,10 @@ module GG
     # has looked at.
     #
     # @param path [String] The file to read, relative to the workspace or absolute.
-    # @param offset [Integer, nil] The 1-based line to start at. Honoured only under a capped read
-    #   policy.
-    # @param limit [Integer, nil] How many lines to return from `offset`. Honoured only under a
-    #   capped read policy.
+    # @param offset [Integer, nil] The 1-based line to start at. Left out, the read starts at the
+    #   first line.
+    # @param limit [Integer, nil] How many lines to return from `offset`. Left out, a capped read
+    #   policy's default applies, or the read runs to the end of the file.
     # @return [GG::Files::TextFile, GG::Files::ImageFile] the file's window of text, or the
     #   picture's description
     # @raise [GG::Core::ApiError] `:not_found` for a missing path.
@@ -47,33 +42,7 @@ module GG
     end
     operation :read_file, "files.read_file", tool: "read_file"
 
-    # Read a text file and hand back its contents directly.
-    #
-    # `GG::Files.read_file` without the narrowing, for the common case: the same read, the same
-    # window, the same cost.
-    #
-    # @param path [String] The file to read, relative to the workspace or absolute.
-    # @param offset [Integer, nil] The 1-based line to start at. Honoured only under a capped read
-    #   policy.
-    # @param limit [Integer, nil] How many lines to return from `offset`. Honoured only under a
-    #   capped read policy.
-    # @return [String] the file's text, or just the requested window
-    # @raise [GG::Core::ApiError] `:invalid_argument` when the path names a picture, which
-    #   `GG::Files.read_file` inspects instead and `GG::Views.open_file` displays.
-    def self.read_text_file(path, offset: nil, limit: nil)
-      Wire.call("read_text_file", "helpers", "readTextFile", [
-                  path,
-                  Wire.js(Check.uint("read_text_file", "offset", offset)),
-                  Wire.js(Check.uint("read_text_file", "limit", limit))
-                ])
-    end
-    operation :read_text_file, "files.read_text_file", tool: "read_file"
-
     # Write UTF-8 text to a file, creating parent directories and replacing what is there.
-    #
-    # Writing is the expensive direction of this sandbox: rewriting more than a few dozen large
-    # files in one program exhausts its fuel budget, so a large rewrite is best split across several
-    # turns.
     #
     # The contents may be given as a block, which is what a Ruby program reaches for when the text
     # is assembled rather than held: `GG::Files.write_file("notes.md") { rows.join("\n") }`.
@@ -141,11 +110,70 @@ module GG
     end
     operation :list_dir, "files.list_dir", tool: "list_dir"
 
+    # Search the workspace's files for a regular expression and hand back every matching line.
+    #
+    # `query` is a regular expression — Rust syntax, so `foo|bar`, `fn\s+update`, and `(?i)todo`
+    # for a case-insensitive match — tried against each line on its own, and every line it matches
+    # comes back with its path and 1-based line number, in path order and then line order. It is the
+    # pattern's text, as a String, rather than a Ruby Regexp. `path` roots the search at one
+    # directory or one file; leave it out for the workspace root.
+    #
+    # The search honours ignore files: what `.gitignore`, `.ignore` and their kin exclude — nested
+    # files, negations and `.git/info/exclude` included, and `.git` itself — is never scanned and
+    # never returned, whether or not the workspace is a repository yet, and a file that is not text
+    # (one carrying a NUL byte) is skipped rather than matched byte by byte. Dotfiles are otherwise
+    # searched like any other file. So a match list holds the project's own sources rather than
+    # `node_modules`, build output and the run's own bookkeeping, and a file under an ignored path
+    # is still reachable by its path through every other call in this module.
+    #
+    # The result is bounded so one search cannot flood a turn, which is where it differs from a
+    # shell `grep`: at most `limit` matches come back — 50 by default, and never more than 200 — and
+    # a list exactly `limit` long may have been cut. There is no offset, because a search is a
+    # question about where to point the other calls rather than a way of reading a file, so the
+    # answer to a cut list is a narrower query or path. A matching line longer than 200 characters
+    # is cut there and annotated in place as `foo (123 more chars...)`.
+    #
+    # @param query [String] The regular expression to match each line against, in Rust syntax;
+    #   `(?i)` at the front makes it case-insensitive. It may not be blank.
+    # @param path [String, nil] The directory or file to search, relative to the workspace or
+    #   absolute. Leave it out to search the whole workspace.
+    # @param limit [Integer, nil] The most matches to return, at least 1. Leave it out for 50; the
+    #   ceiling is 200, and a larger request is answered with the first 200 rather than refused.
+    # @return [Array<GG::Files::SearchMatch>] every matching line, in path order and then line
+    #   order, each with its `path`, 1-based `line` and `text`; an empty array when nothing matched,
+    #   and one exactly `limit` long may have been cut
+    # @raise [GG::Core::ApiError] `:invalid_argument` for a blank query, one that is not a valid
+    #   pattern, a `query` that is not a String, or a `limit` of zero, and `:not_found` for a `path`
+    #   that does not exist.
+    def self.search(query, path: nil, limit: nil)
+      unless query.is_a?(String)
+        raise Core::ApiError.new("search", Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "`query` is the pattern's text as a String, in Rust regular-" \
+                                 "expression syntax, got #{query.inspect}")
+      end
+
+      bound = Check.uint("search", "limit", limit)
+      if bound == 0
+        raise Core::ApiError.new("search", Core::ApiErrorCode::INVALID_ARGUMENT,
+                                 "`limit` must be at least 1, got 0; leave it out for gg's " \
+                                 "default of 50")
+      end
+
+      Wire.call("search", "files", "search", [query, Wire.js(path), Wire.js(bound)]).map do |match|
+        SearchMatch.new(
+          path: Wire.field(match, "path"),
+          line: Wire.field(match, "line"),
+          text: Wire.field(match, "text")
+        )
+      end
+    end
+    operation :search, "files.search", tool: "search"
+
     # A text file's window, as `GG::Files.read_file` returns it.
     class TextFile
       include Value
 
-      # @return [String] The file's text, or just the requested window under a capped read policy.
+      # @return [String] The file's text, or just the requested window where the read named one.
       attr_reader :contents
 
       # @return [Integer] The 1-based first line returned.
@@ -238,6 +266,34 @@ module GG
       def initialize(name:, kind:)
         @name = name
         @kind = kind
+        freeze
+      end
+    end
+
+    # One line `GG::Files.search` matched: where it is, and the line itself.
+    class SearchMatch
+      include Value
+
+      # @return [String] The file's path, relative to the workspace root — or absolute, for a search
+      #   rooted outside it — with `/` separators.
+      attr_reader :path
+
+      # @return [Integer] The 1-based line number of the match within that file.
+      attr_reader :line
+
+      # The matching line, without its line ending.
+      #
+      # A line longer than 200 characters is cut there and annotated in place as
+      # `foo (123 more chars...)`.
+      #
+      # @return [String] the matching line
+      attr_reader :text
+
+      # @api private
+      def initialize(path:, line:, text:)
+        @path = path
+        @line = line
+        @text = text
         freeze
       end
     end

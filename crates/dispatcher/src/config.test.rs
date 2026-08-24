@@ -410,8 +410,7 @@ fn driver_resource_requests_default_so_the_pod_is_never_best_effort() {
         );
         // The memory limit defaults too, and to the SAME value as the request: that
         // equality is what makes a node reserve exactly what a driver may use, so
-        // nothing on the node can be killed to satisfy the driver's growth. The CPU
-        // limit stays absent — over-limit CPU is throttled, not killed.
+        // nothing on the node can be killed to satisfy the driver's growth.
         assert_eq!(
             config.driver_resources.memory_limit.as_deref(),
             Some(DEFAULT_DRIVER_MEMORY_LIMIT)
@@ -421,7 +420,14 @@ fn driver_resource_requests_default_so_the_pod_is_never_best_effort() {
             "the driver's memory request and limit must default to one value; a gap \
              between them is memory the scheduler has promised twice"
         );
-        assert!(config.driver_resources.cpu_limit.is_none());
+        // The CPU limit defaults as well, and that is what holds the memory ceiling
+        // above steady: the post-run toolchain sizes its worker pools from the CPU
+        // this container may use, so an unbounded driver on a large node would fan
+        // out across the whole machine and outgrow a ceiling measured on a small one.
+        assert_eq!(
+            config.driver_resources.cpu_limit.as_deref(),
+            Some(DEFAULT_DRIVER_CPU_LIMIT)
+        );
         assert!(!config.driver_resources.is_empty());
     });
 }
@@ -432,7 +438,7 @@ fn driver_resources_are_overridable() {
         set_required();
         set("TCAB_DISPATCHER_DRIVER_CPU_REQUEST", "250m");
         set("TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST", "1Gi");
-        set("TCAB_DISPATCHER_DRIVER_CPU_LIMIT", "2");
+        set("TCAB_DISPATCHER_DRIVER_CPU_LIMIT", "4");
         set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "4Gi");
         let config = Config::from_env().expect("config should resolve");
 
@@ -441,7 +447,7 @@ fn driver_resources_are_overridable() {
             config.driver_resources.memory_request.as_deref(),
             Some("1Gi")
         );
-        assert_eq!(config.driver_resources.cpu_limit.as_deref(), Some("2"));
+        assert_eq!(config.driver_resources.cpu_limit.as_deref(), Some("4"));
         assert_eq!(config.driver_resources.memory_limit.as_deref(), Some("4Gi"));
     });
 }
@@ -454,14 +460,16 @@ fn blanking_a_driver_request_omits_it_rather_than_defaulting() {
         set_required();
         set("TCAB_DISPATCHER_DRIVER_CPU_REQUEST", "");
         set("TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST", "   ");
-        // The memory LIMIT now defaults as well, so it has to be blanked too for the
+        // Both limits default as well, so they have to be blanked too for the
         // container to carry no `resources` at all — the state `is_empty` names.
         set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "");
+        set("TCAB_DISPATCHER_DRIVER_CPU_LIMIT", "");
         let config = Config::from_env().expect("config should resolve");
 
         assert!(config.driver_resources.cpu_request.is_none());
         assert!(config.driver_resources.memory_request.is_none());
         assert!(config.driver_resources.memory_limit.is_none());
+        assert!(config.driver_resources.cpu_limit.is_none());
         assert!(config.driver_resources.is_empty());
     });
 }

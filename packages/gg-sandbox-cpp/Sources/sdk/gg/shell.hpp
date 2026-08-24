@@ -47,8 +47,7 @@ struct shell_output {
 /// A run may offload shell output, and the `shell` tool's own description says which mode is in
 /// force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the
 /// two files the command's full stdout and stderr were written to. Those files are readable by
-/// absolute path, so a `gg::files::read_text_file` of one, or a grep, is cheaper than running the
-/// command again.
+/// absolute path, so reading one, or a grep, is cheaper than running the command again.
 ///
 /// <ggop>shell.shell</ggop>
 ///

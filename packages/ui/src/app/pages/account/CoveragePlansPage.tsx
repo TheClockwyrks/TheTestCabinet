@@ -9,6 +9,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -127,18 +128,18 @@ export function CoveragePlansPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--coverage"
-          comment={<>// your coverage plans</>}
-        />
-        <Link className={exec.primary} to={routes.accountCoveragePlanNew()}>
-          New plan
-        </Link>
-      </div>
+      <PromptHeader
+        command="--coverage"
+        comment={<>// your coverage plans</>}
+        titleActions={
+          <Link className={exec.primary} to={routes.accountCoveragePlanNew()}>
+            + New plan
+          </Link>
+        }
+      />
       <AccountTabs active="coverage" />
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
 
       {loading ? (
         <LoadingState size="section" label="Loading plans…" />

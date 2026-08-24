@@ -77,6 +77,7 @@ fn minimal_capability_set_binds_the_root_model_and_phase0_capabilities() {
         CAPABILITY_WRITE_FILE,
         CAPABILITY_EDIT_FILE,
         CAPABILITY_LIST_DIR,
+        CAPABILITY_SEARCH,
     ] {
         assert!(set.is_enabled(capability), "expected `{capability}` on");
     }
@@ -1081,10 +1082,12 @@ fn usage_telemetry_reuses_the_shared_token_and_cost_types() {
                 comparable: Some(0.021),
                 actual: Some(0.021),
             }),
+            provider: Some("anthropic".to_string()),
         },
     };
     let value = serde_json::to_value(&event).expect("serialize");
     assert_eq!(value["profileId"], json!(ROOT_PROFILE_ID));
+    assert_eq!(value["provider"], json!("anthropic"));
     assert_eq!(value["modelId"], json!("anthropic/claude-opus-5"));
     let back: GgTelemetryEvent = serde_json::from_value(value).expect("deserialize");
     assert_eq!(event, back);
@@ -1655,6 +1658,8 @@ fn a_turn_outcome_event_reports_a_clean_turn_without_an_error_kind() {
         loop_aborts: 0,
         loop_abort_words: 0,
         loop_abort_chars: 0,
+        response_chars: 0,
+        response_output_tokens: 0,
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(
@@ -1685,6 +1690,8 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
         loop_aborts: 0,
         loop_abort_words: 0,
         loop_abort_chars: 0,
+        response_chars: 0,
+        response_output_tokens: 0,
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(
@@ -1714,6 +1721,8 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
         loop_aborts: 0,
         loop_abort_words: 0,
         loop_abort_chars: 0,
+        response_chars: 0,
+        response_output_tokens: 0,
     };
     assert_eq!(
         serde_json::to_value(&fatal).expect("serialize")["outcome"],
@@ -1736,6 +1745,8 @@ fn a_turn_outcome_event_counts_the_looping_replies_it_discarded_and_what_they_ge
         loop_aborts: 2,
         loop_abort_words: 9_100,
         loop_abort_chars: 58_400,
+        response_chars: 0,
+        response_output_tokens: 0,
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(
@@ -1971,7 +1982,7 @@ fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() 
         turns: 40,
         errors: GgTurnErrorType::ALL.len() as u64,
         max_consecutive: 3,
-        model_api: 6,
+        model_api: 8,
         transpile: 3,
         program_fault: 3,
         sandbox_limit: 3,
@@ -2326,6 +2337,7 @@ fn message_log_events_round_trip() {
         tokens: TokenCounts::default(),
         cost: None,
         duration_ms: None,
+        provider: None,
     };
     let value = serde_json::to_value(&prompt).expect("serialize");
     assert_eq!(value["type"], json!("prompt"));
@@ -2853,7 +2865,6 @@ fn the_authoring_catalog_never_names_a_program_language() {
             PARAM_MAX_MEMORY_BYTES,
             PARAM_DOC_VIEW_TYPES,
             PARAM_HEALING,
-            PARAM_ASSISTANT_MESSAGES,
         ])
     );
 }

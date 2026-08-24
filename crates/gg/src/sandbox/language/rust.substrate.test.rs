@@ -342,7 +342,7 @@ fn a_program_reaches_gg_and_ends_the_run_through_the_real_membrane() {
     // wasm runtime.
     let component = prepare(&format!(
         r#"fn main() -> Result<(), gg::Failure> {{
-    let text = gg::bindings::test_cabinet::gg::helpers::read_text_file("notes.md", None, None)
+    let text = gg::bindings::test_cabinet::gg::skills::read_skill("layout")
         .map_err(|error| gg::program::message(format!("read failed: {{}}", error.message)))?;
     {LOG}(&format!("read {{}} bytes", text.len()));
     gg::bindings::test_cabinet::gg::views::open_text_view("summary", &text.to_uppercase())
@@ -355,20 +355,12 @@ fn a_program_reaches_gg_and_ends_the_run_through_the_real_membrane() {
     ));
     let (outcome, log) = evaluate(
         &component,
-        &[crate::sandbox::operations::FILES_READ_TEXT_FILE],
+        &[crate::sandbox::operations::SKILLS_READ_SKILL],
         &[],
         RunEnding::Role(EndingRole::Standard),
         false,
         |name, _arguments| match name {
-            "read_file" => ToolOutcome::ok("hello gg", "read notes.md").with_data(
-                crate::tools::ApiData::FileText(crate::tools::FileTextData {
-                    contents: "hello gg".to_string(),
-                    first_line: 1,
-                    last_line: 1,
-                    total_lines: 1,
-                    byte_truncated: false,
-                }),
-            ),
+            "read_skill" => ToolOutcome::ok("hello gg", "read the skill"),
             other => panic!("the program called {other}"),
         },
     );
@@ -376,7 +368,7 @@ fn a_program_reaches_gg_and_ends_the_run_through_the_real_membrane() {
     assert_eq!(logs(&outcome), ["read 8 bytes"]);
     assert_eq!(
         log.names(),
-        ["read_file"],
+        ["read_skill"],
         "the program's read did not reach gg's real tool dispatch"
     );
     let view = outcome
@@ -867,7 +859,7 @@ fn g8_a_runtime_failure_reaches_the_model() {
 use gg::files;
 
 fn main() -> Result<(), gg::Failure> {
-    let text = files::read_text_file(
+    let text = files::read_file(
         "missing.md",
         files::ReadOptions::default(),
     )?;
@@ -875,7 +867,7 @@ fn main() -> Result<(), gg::Failure> {
     Ok(())
 }
 "#,
-                names: &["read_text_file", "not-found", "missing.md"],
+                names: &["read_file", "not-found", "missing.md"],
                 located: Located::Nowhere,
                 answered: Answered::AtRuntime,
                 recorded: Some(TurnErrorType::SandboxTrap),

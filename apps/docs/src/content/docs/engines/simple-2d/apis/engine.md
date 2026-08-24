@@ -9,8 +9,14 @@ so an engine drives exactly one game for its lifetime.
 ## `createEngine`
 
 ```ts
-function createEngine<S>(options: EngineOptions<S>): Engine<S>;
+function createEngine<S, D = unknown>(
+  options: EngineOptions<S, D>,
+): Engine<S, D>;
 ```
+
+`S` is the game's state type and `D` is its
+[debug surface](/engines/simple-2d/apis/game/). Both are inferred from the
+`game` the options carry.
 
 Construction performs no loading and runs no game code. An engine therefore
 exists in a state where its clock can be replaced and its
@@ -21,11 +27,11 @@ initialization.
 ## `EngineOptions`
 
 ```ts
-interface EngineOptions<S> {
+interface EngineOptions<S, D = unknown> {
   canvas: HTMLCanvasElement;
   width: number;
   height: number;
-  game: Game<S>;
+  game: Game<S, D>;
   background?: string;
   layout?: string;
   clock?: Clock;
@@ -68,10 +74,12 @@ Absent, the engine reads `clientWidth`, `clientHeight`, and the owning window's
 ## `Engine`
 
 ```ts
-interface Engine<S> {
+interface Engine<S, D = unknown> {
   readonly events: EngineEvents;
-  readonly state: S;
-  initialize(): Promise<S>;
+  readonly state: DeepReadonly<S>;
+  readonly debug: D;
+  initialize(): Promise<DeepReadonly<S>>;
+  apply(transition: Transition<S>): DeepReadonly<S>;
   run(options?: RunOptions): Promise<void>;
   advance(frames: number): Promise<void>;
   setClock(clock: Clock): void;
@@ -91,8 +99,10 @@ interface RunOptions {
 | Member | Effect |
 | --- | --- |
 | `events` | Subscribe to engine [events](/engines/simple-2d/apis/game/). Available from construction. |
-| `state` | The value `initialize` resolved to, live. |
+| `state` | The current state, as a read-only view: the value the most recent transition left. |
+| `debug` | The [debug surface](/engines/simple-2d/apis/game/) the game returned beside its state. |
 | `initialize` | Run the game's `initialize` and resolve to the state it produced. |
+| `apply` | Replace the state with what a [`Transition<S>`](/engines/simple-2d/apis/game/) returns from the current one, and return the new state. |
 | `run` | Drive the game off the host's frame callback until the supplied signal aborts. |
 | `advance` | Tick the clock `frames` times, running a frame for each tick the clock accepts. |
 | `setClock` | Replace the clock. The next frame takes its delta from the new one. |
@@ -118,12 +128,43 @@ type to declare every field as present.
 
 ### `state`
 
-The state is the game's own, and the reference is live rather than a copy, so a
-reader observes the current frame's values. A caller that needs a value to
-survive later frames copies what it read.
+The current state, as `DeepReadonly<S>`. It is the value rather than a live
+reference: each frame replaces the state with what `update` returned, and each
+`apply` replaces it with what the transition returned, so a read hands back the
+state the most recent transition left and holds nothing a later frame writes
+to. A caller that wants the state after further frames reads `engine.state`
+again.
 
 Reading it before `initialize` resolves throws, naming the ordering. That keeps
 a contract violation loud at the point of the mistake.
+
+### `apply`
+
+```ts
+const posed = engine.apply((state) => ({ ...state, ball: { ...state.ball, vx: 0 } }));
+```
+
+`apply` hands the current state to `transition`, holds the state it returns,
+and returns that state as `DeepReadonly<S>`. It is how a caller poses a game
+between frames: the next frame's `update` receives the state the transition
+left, so the collision, the serve, or the spawn a scenario is about is still
+computed by the game's own `update`. A debug surface's poses are transitions,
+and a caller drives one as `engine.apply((state) => engine.debug.serve(state))`.
+
+Calling it before `initialize` resolves throws, naming the ordering, exactly as
+reading `state` does. A transition that returns `undefined` is refused with an
+error naming `must return the next state`, and the engine keeps the state it
+had.
+
+### `debug`
+
+The second element of the pair the game's `initialize` returned, unchanged.
+The engine holds it and reads no member of it, so its shape is whatever the
+game declared as `D`.
+
+Reading it before `initialize` resolves throws, naming the ordering and the
+`[state, debug]` pair, exactly as `state` does. A game with no surface returns
+`null` there, and `engine.debug` hands that `null` back.
 
 ### `run`
 
@@ -173,7 +214,10 @@ over. A clock installed mid-run takes effect on the next frame.
 | A canvas that yields no 2D context | `Error` |
 | A `layout` outside the catalogue | `Error` naming every valid layout |
 | The game's `initialize` throws or rejects | `initialize` rejects with the cause |
-| `state`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
+| `state`, `apply`, `run`, or `advance` reached before `initialize` resolves | `Error` naming the ordering |
+| A transition handed to `apply` returns `undefined` | `Error` naming `must return the next state`; the state is unchanged |
+| `debug` read before `initialize` resolves | `Error` naming the ordering and the `[state, debug]` pair |
+| The game's `initialize` returns anything but a two-element array | `initialize` rejects with an `Error` naming the `[state, debug]` pair |
 | `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
 | `startRecording` while already recording, or `stopRecording` while not | `Error` naming the unbalanced call |
 
@@ -197,5 +241,5 @@ the loop and leaves the engine usable, so the two are separate acts.
 ## Exports
 
 `createEngine` is the root entry point's only function. `EngineOptions`,
-`SurfaceMetrics`, `Engine`, and `RunOptions` are exported as types from
-`@test-cabinet/simple-2d`.
+`SurfaceMetrics`, `Engine`, `RunOptions`, `Transition`, and `DeepReadonly` are
+exported as types from `@test-cabinet/simple-2d`.

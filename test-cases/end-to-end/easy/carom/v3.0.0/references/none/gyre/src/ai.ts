@@ -13,18 +13,15 @@
 // fields and knows nothing about a filter, so a remembered perception would
 // survive a reset and stop a scenario replaying identically.
 
-import { AI_DEADZONE, AI_HOME_Y, AI_REACT, AI_SPEED } from "./constants";
+import {
+  AI_DEADZONE,
+  AI_HOME_DEADZONE,
+  AI_HOME_Y,
+  AI_REACT,
+  AI_SPEED,
+} from "./constants";
 import { integratePaddle } from "./entities";
 import type { BallState, PaddleState } from "./game";
-
-/**
- * The deadzone used while easing home.
- *
- * Wider than AI_DEADZONE on purpose: returning to the middle is a drift rather
- * than a defence, and a tight deadzone there would have the paddle twitch around
- * the center line for the whole of a rally played at the far end.
- */
-const AI_HOME_DEADZONE = 18;
 
 /**
  * Move the AI's paddle for one frame.
@@ -38,11 +35,11 @@ export function updateAi(
   active: boolean,
   dt: number,
 ): void {
-  // The lagged perception: the ball as it was AI_REACT seconds ago.
-  const perceivedY = ball.y - ball.vy * AI_REACT;
-
+  // The lagged perception: the ball as it was AI_REACT seconds ago. While the
+  // ball travels away, or is not live, the paddle returns home instead, with the
+  // wider deadzone: returning to the middle is a drift rather than a defence.
   const incoming = active && ball.vx > 0;
-  const target = incoming ? perceivedY : AI_HOME_Y;
+  const target = incoming ? ball.y - ball.vy * AI_REACT : AI_HOME_Y;
   const deadzone = incoming ? AI_DEADZONE : AI_HOME_DEADZONE;
 
   const diff = target - paddle.cy;

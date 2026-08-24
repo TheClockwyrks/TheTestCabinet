@@ -7,10 +7,12 @@
 // of the rebound with no stray flight in between — which is why the margin is a
 // float margin rather than a tolerance.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import {
   arrangeObstacleBounce,
+  ball0,
   captureReplay,
   createHarness,
   driveObstacleBounce,
@@ -21,8 +23,8 @@ import {
 const FACE_X = OBSTACLES[0].x0;
 const LANE_Y = OBSTACLE_CENTERS[0].y;
 const APPROACH_SPEED = 600;
-/** The reflection only rotates the velocity, so this is float noise, not slack. */
-const SPEED_TOLERANCE = 0.5;
+/** The review item's margin: a tenth of a percent of the approach speed. */
+const SPEED_TOLERANCE = APPROACH_SPEED * 0.001;
 
 /**
  * Frames of the departing flight recorded after the rebound.
@@ -45,28 +47,29 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
   await startPlaying(harness);
-  arrangeObstacleBounce(harness, {
+  await arrangeObstacleBounce(harness, {
     faceX: FACE_X,
     y: LANE_Y,
     from: "left",
     speed: APPROACH_SPEED,
   });
 
-  const before = harness.snapshot().ball.speed;
+  const before = ball0(await harness.snapshot()).speed;
   const bank = await captureReplay(harness, "bank", async () => {
     const rebound = await driveObstacleBounce(harness, "left");
     await harness.advance(DEPARTURE_TICKS);
     return rebound;
   });
 
-  expect(bank.hit).toBe(true);
-  expect(Math.abs(bank.snapshot.ball.speed - before)).toBeLessThanOrEqual(
+  assertEqual(bank.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(ball0(bank.snapshot).speed - before),
     SPEED_TOLERANCE,
   );
 });

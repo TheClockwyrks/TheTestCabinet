@@ -1,6 +1,6 @@
 /// Delegate work to child agents, and hand this session's own turn to another agent.
 ///
-/// `waitForSubagents` can dominate a turn's wall clock — it blocks while real agents run — and the
+/// Waiting on children can dominate a turn's wall clock — it blocks while real agents run — and the
 /// run's budget keeps ticking while it does. A program should therefore spawn broadly and wait once,
 /// rather than spawn-and-wait in a loop.
 ///
@@ -97,8 +97,8 @@ public enum delegation {
     /// Move the process this session is running inside on to another of its states.
     ///
     /// The state is named the way an agent to spawn is named. It is bound only when a state machine
-    /// is driving the session and the current state has somewhere to go. Like `context.compact` it
-    /// is registered rather than performed: the call validates the target, returns, and the program
+    /// is driving the session and the current state has somewhere to go. Like a compaction it is
+    /// registered rather than performed: the call validates the target, returns, and the program
     /// runs on to its end, because replacing the agent — and its window — mid-program would pull
     /// every remaining call out from under it. The first declaration in a turn is the one that
     /// stands.
@@ -124,8 +124,8 @@ public enum delegation {
     ///
     /// The named agent takes over with its own model, tools and instructions, keeping every
     /// capability the two of them share — the whole conversation above all, so it needs no catching
-    /// up. Registered rather than performed, exactly as `delegation.transitionState` is and for the
-    /// same reason: the window would otherwise be pulled out from under the program still composing
+    /// up. Registered rather than performed, exactly as a state transition is and for the same
+    /// reason: the window would otherwise be pulled out from under the program still composing
     /// into it. A session makes one succession per turn. It is bound only when this agent may make
     /// agent transitions and has agents it may become, and never while a state machine is driving
     /// the session.
@@ -155,9 +155,9 @@ public enum delegation {
     /// already there.
     ///
     /// Its handle comes back immediately, but the copy itself starts once this turn's tool results
-    /// are recorded, because the conversation it inherits has to be a complete one. So
-    /// `delegation.waitForSubagents` can only collect it on a later turn, and waiting on it in the
-    /// program that made it never returns it.
+    /// are recorded, because the conversation it inherits has to be a complete one. So it can only
+    /// be collected on a later turn, and waiting on it in the program that made it never returns
+    /// it.
     ///
     /// - Parameter prompt: What the copy is to do instead. It has the whole conversation already, so
     ///   this is the difference rather than a briefing.
@@ -186,7 +186,7 @@ public enum delegation {
     public enum Brief: Sendable {
         /// Self-contained instructions for a child that needs no other context.
         case prompt(String)
-        /// The id of a board issue to brief the child from, as `board.createIssue` returned it.
+        /// The id of a board issue to brief the child from, as the board assigned it.
         case issue(String)
     }
 
@@ -209,7 +209,7 @@ public enum delegation {
     /// How a child agent's loop ended — gg's own six words, as the tool-calling path also reports
     /// them.
     public enum AgentStatus: Sendable {
-        /// It finished normally, calling `session.finish`, and its summary is what it returned.
+        /// It finished normally, and its summary is what it returned.
         case completed
         /// It reached the per-run turn ceiling.
         case exhausted

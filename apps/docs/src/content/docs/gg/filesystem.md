@@ -2,9 +2,9 @@
 title: "Filesystem tools"
 ---
 
-The four editor primitives a coding agent works through. Each is its own
-capability, so a study can withhold or reconfigure one without disturbing the
-others.
+The four editor primitives a coding agent works through, and the search that
+finds where to point them. Each is its own capability, so a study can withhold
+or reconfigure one without disturbing the others.
 
 | Capability | Tool | What it does |
 | --- | --- | --- |
@@ -12,8 +12,9 @@ others.
 | `write-file` | `write_file` | Create or overwrite a whole file (parents created). |
 | `edit-file` | `edit_file` | Replace one exact, unique occurrence of a string. |
 | `list-dir` | `list_dir` | List a directory's entries (directories suffixed `/`). |
+| `search` | `search` | Content search over the workspace, under the ignore rule in [searching](#searching) below. |
 
-All four are enabled in a fresh configuration, and they appear as their own
+All five are enabled in a fresh configuration, and they appear as their own
 Filesystem group in the [configuration](/gg/configurations/) editor.
 
 `edit_file` replaces exactly one occurrence. Text that is absent and text that
@@ -40,6 +41,43 @@ shell [offloads](/gg/shell/#output-offloading) command output to `/tmp/gg-shell`
 and tells the agent to read it there, which a workspace-confined `read_file`
 could not honor.
 
+## Searching
+
+The `search` capability's one tool scans the workspace's files for a query and
+returns the matching lines, each with its path and 1-based line number. Under
+[responses as code](/gg/responses-as-code/overview/) the same operation is
+`gg.files.search`, and an agent that holds it has its documentation opened by
+[the opening turn](/gg/responses-as-code/views/#the-opening-turn), before the
+model's first turn.
+
+The query is a **regular expression** (Rust syntax — `foo|bar`, `fn\s+update`,
+`(?i)todo` for a case-insensitive match), tried against each line on its own;
+a blank query and an invalid pattern are both argument errors. `path` roots the
+search at one directory or one file — absent, the workspace root — and a path
+that does not exist is `not-found`. Matches arrive in path order and then line
+order, each as the path, the 1-based line number and the line without its
+ending.
+
+The result is bounded so one search cannot flood a turn. `limit` says how many
+matches come back — 50 when it is left out, and never more than 200, so a larger
+request is answered with the first 200 — and a list exactly `limit` long may have
+been cut; there is no offset, because a search is a question about where to
+point the other tools rather than a way of reading a file, so the answer to a
+cut list is a narrower query or path. A matching line longer than 200 characters
+is cut there and annotated in place as `foo (123 more chars...)`, and a file that
+is not text (one carrying a NUL byte) is skipped rather than matched byte by
+byte.
+
+The search honors ignore files: what `.gitignore`, `.ignore` and their kin
+exclude — nested files, negations and `.git/info/exclude` included, and `.git`
+itself — is never scanned and never returned, in a workspace that is a
+repository and in one that is not yet. Dotfiles are otherwise searched like any
+other file. A match list therefore holds the agent's sources rather than
+`node_modules`, build output and the run's own bookkeeping, and a file under an
+ignored path is still reachable by path through every other tool on this page.
+Ignoring is the search's own rule, because a search is a question about the
+project rather than about the disk.
+
 ## Read modes
 
 How much of a file one `read_file` call returns is the read-file capability's
@@ -49,10 +87,13 @@ stops a single call from flooding the window and forces an agent to be deliberat
 about what it looks at, while costing a round trip per page. The two modes are
 the arms of that experiment.
 
-| Mode | `read_file` returns | Paging arguments |
-| --- | --- | --- |
-| `unlimited` | The whole file, one call. | — |
-| `default-cap` | `lineCap` lines, for a call that names no `limit`. | `offset` and `limit` |
+| Mode | A call that names no `limit` returns |
+| --- | --- |
+| `unlimited` | The rest of the file, from `offset` to its end. |
+| `default-cap` | `lineCap` lines, from `offset`. |
+
+Both modes take `offset` and `limit` and honor them whenever they are given.
+The mode decides only what a call that names no `limit` gets.
 
 The `lineCap` param sets the window a call gets when it asks for no `limit` of
 its own. The capability writes it whichever mode is selected, so a sweep that
@@ -63,20 +104,26 @@ does not recognize each refuse the launch, the last of them naming the two
 modes. A refusal names every value in the configuration gg cannot honour exactly
 as written, so one pass fixes them all.
 
-`default-cap` gives `read_file` two extra arguments, so the agent can page
+`read_file` takes two paging arguments under either mode, so the agent can page
 through a file it did not get at once:
 
-- `offset` — the 1-based line to start from, defaulting to `1`. An offset past
-  the end of the file is an error naming the file's length.
-- `limit` — how many lines to return. A larger value is always honored,
-  verbatim.
+- `offset` — the 1-based line to start from, defaulting to `1` under either
+  mode. An offset past the end of the file is an error naming the file's
+  length.
+- `limit` — how many lines to return. A value that is given is always honored,
+  verbatim, under either mode; under `default-cap` a larger value than the cap
+  is how the agent talks past it.
 
-A windowed result ends with a line saying what the agent is looking at and where
-to continue from:
+A windowed result — one that starts after line 1 or stops short of the file's
+end, whichever mode and whichever arguments produced it — ends with a line
+saying what the agent is looking at and where to continue from:
 
 ```
 [showing lines 251-500 of 1200; continue with offset: 501]
 ```
+
+A result that ran to the end of the file from an `offset` past line 1 still
+says which lines it shows, without a continuation.
 
 ### Whole-file reads under either mode
 
@@ -95,12 +142,13 @@ Two further properties keep the arms comparable:
 - A file shorter than the cap reads identically under both modes, with no window
   note and no paging footer. Only files big enough to be capped differ between
   arms, so a comparison measures the cap rather than incidental formatting.
-- `unlimited` offers `offset` and `limit` nowhere. The tool's schema omits them,
-  and the tool-calling [system prompt](/gg/prompts/) states the cap only under
-  `default-cap`, with this run's own `lineCap` interpolated. Under
-  [responses as code](/gg/responses-as-code/overview/) no prompt states it: the
-  paging footer above carries the file's length and where to continue from, on
-  the read that was actually windowed.
+- The tool's schema offers `offset` and `limit` under both modes and states on
+  `limit` what leaving it out means: the cap under `default-cap`, the end of
+  the file under `unlimited`. The tool-calling [system prompt](/gg/prompts/)
+  states the cap only under `default-cap`, with this run's own `lineCap`
+  interpolated. Under [responses as code](/gg/responses-as-code/overview/) no
+  prompt states it: the paging footer above carries the file's length and
+  where to continue from, on the read that was actually windowed.
 
 A separate 256 KiB byte ceiling backstops every mode, since a file can have
 enormous lines, and applies to whatever the line window selected. A read
@@ -178,7 +226,9 @@ the window nothing: `gg.files.readFile` hands the bytes to the program and stops
 there. What puts a file in the window is `gg.views.openFile(path)`. It performs
 the identical read, under the same line cap, the same magic-number detection and
 the same 8 MiB ceiling, and it also opens a file view of the result, keyed by the
-path and closable by it. `gg.files.readFile` gets bytes for your program;
+path and closable by it. What one view may carry is bounded by the
+[view caps](/gg/responses-as-code/views/#caps), which refuse an over-cap window
+rather than truncating it. `gg.files.readFile` gets bytes for your program;
 `gg.views.openFile` shows a file to you.
 
 A picture obeys that split. Under the code arm `gg.files.readFile` of a mockup

@@ -16,16 +16,16 @@
 //! | `TCAB_DISPATCHER_MAX_INFLIGHT` | no | The maximum number of non-terminal driver `Job`s the dispatcher keeps in flight (queue admission). | `8` |
 //! | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | How long to back off after an empty claim or a full in-flight cap before polling again. | `2` |
 //! | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | `ttlSecondsAfterFinished` on each driver `Job`, for automatic cleanup once it terminates. | `300` |
-//! | `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` | no | CPU/memory **requests** on the driver container. These exist to keep the driver pod out of the `BestEffort` QoS class — see [`DEFAULT_DRIVER_CPU_REQUEST`]. Set to a blank value to omit them (not advised). | `100m` / `1Gi` |
-//! | `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | The memory **limit** on the driver container, defaulting to the same value as its request so a node reserves exactly what the driver may use — see [`DEFAULT_DRIVER_MEMORY_LIMIT`]. Set to a blank value to leave the container unbounded (not advised: it makes the sum of a node's limits unknowable). | `1Gi` |
-//! | `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU **limit** on the driver container. Deliberately unset: over-limit CPU is throttled rather than killed, so a ceiling would only slow a driver's teardown. | — |
+//! | `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` | no | CPU/memory **requests** on the driver container. These exist to keep the driver pod out of the `BestEffort` QoS class — see [`DEFAULT_DRIVER_CPU_REQUEST`]. Set to a blank value to omit them (not advised). | `100m` / `2Gi` |
+//! | `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | The memory **limit** on the driver container, defaulting to the same value as its request so a node reserves exactly what the driver may use — see [`DEFAULT_DRIVER_MEMORY_LIMIT`]. Set to a blank value to leave the container unbounded (not advised: it makes the sum of a node's limits unknowable). | `2Gi` |
+//! | `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` | no | The CPU **limit** on the driver container, which is what makes the memory ceiling above portable across node sizes — see [`DEFAULT_DRIVER_CPU_LIMIT`]. Set to a blank value to leave the CPU unbounded. | `2` |
 //! | `TCAB_DISPATCHER_DRIVER_SECRETS` | no | Comma-separated `Secret` names mounted into each driver `Job`'s env via `envFrom`. This is how the harness provider API key (e.g. `ANTHROPIC_API_KEY`) reaches the driver, which the run engine reads from its own environment exactly as the worker did. Unset injects no secret env. | — |
 //! | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET` | no | The name of an operator-provided `Secret` holding the harness **subscription** credential files (keyed by credential basename). When set, the dispatcher mounts it as a read-only volume into each driver `Job` at `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` (with `optional: true`, so a missing Secret never wedges API-key-only driver pods) and forwards that dir to the driver. Unset leaves runs API-key-only — this is an additive parallel path to `TCAB_DISPATCHER_DRIVER_SECRETS`. | — |
 //! | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` | no | The path the subscription Secret is mounted at inside each driver `Job`, forwarded to the driver as `TCAB_DRIVER_SUBSCRIPTION_DIR`. Only used when the subscription Secret is configured. | `/var/run/tcab/subscription` |
 //! | `TCAB_DISPATCHER_DRIVER_AUTH_MODE` | no | When set, forwarded into each driver `Job` as `TCAB_AUTH_MODE`, locking the harness auth mode (`auto`, `subscription`, `api-key`) for every run. Unset leaves the per-run/default selection unchanged. | — |
 //! | `TCAB_PUBLISHER_IMAGE` | no | The `tcab-publisher` container image each created publish `Job`'s pod runs. Unset disables the publish path entirely — the dispatcher claims no publish jobs and builds no publish `Job`s, so a deployment without a publisher image simply never publishes. | — |
 //! | `TCAB_DISPATCHER_PUBLISHER_CPU_REQUEST` / `_MEMORY_REQUEST` / `_MEMORY_LIMIT` | no | Requests/limit on the publish `Job`'s container, mirroring the driver's. The memory pair defaults to one value so a node reserves what the publisher may use — see [`DEFAULT_PUBLISHER_MEMORY`]. | `100m` / `1Gi` / `1Gi` |
-//! | `TCAB_DISPATCHER_PUBLISHER_CPU_LIMIT` | no | The publisher's CPU limit. Unset, as for the driver: over-limit CPU is throttled, not killed. | — |
+//! | `TCAB_DISPATCHER_PUBLISHER_CPU_LIMIT` | no | The publisher's CPU limit. Unset: a publisher runs no toolchain, so nothing in it sizes itself from the CPU count it can see. | — |
 //! | `TCAB_DISPATCHER_PUBLISHER_SECRETS` | no | Comma-separated `Secret` names mounted into each publish `Job`'s env via `envFrom` (mirrors `TCAB_DISPATCHER_DRIVER_SECRETS`). This is how the publisher's `GH_TOKEN` (for `gh`) and `CLOUDFLARE_API_TOKEN` (for `wrangler`) reach it. Unset injects no secret env. | — |
 //!
 //! The `TCAB_K8S_RUN_*` set below is **passed through** into each driver `Job`'s
@@ -70,6 +70,28 @@ use std::time::Duration;
 /// process, so this stays small.
 pub const DEFAULT_DRIVER_CPU_REQUEST: &str = "100m";
 
+/// The default CPU limit on the driver container.
+///
+/// This is the ceiling that makes [`DEFAULT_DRIVER_MEMORY_LIMIT`] mean the same thing
+/// on every node. The driver does not merely relay a run: once the sandbox is gone it
+/// runs the case's own toolchain over the collected tree in its own cgroup — the
+/// `[build]` install, `tsc`, the linters, `vitest`, the bundler, and a headless
+/// Chromium for the smoke check and for every scripted validation item. Node sizes a
+/// worker pool from the CPU its cgroup is allowed (`uv_available_parallelism`), so an
+/// *unlimited* container reads the whole machine: a `vitest --coverage` pass that
+/// peaks at 195MiB under this limit peaks at 607MiB on an eighteen-core host, purely
+/// because it forked nine times as many workers.
+///
+/// Without a limit the memory ceiling is therefore not a property of the pod at all
+/// but of whichever node the `Job` landed on, and a ceiling measured on a 2-vCPU
+/// production node silently becomes an OOM kill on a larger development box. Two is
+/// what a production node offers a driver today, so this changes nothing there and
+/// makes every other host behave like it.
+///
+/// Over-limit CPU is throttled rather than killed, so the cost of being wrong here is
+/// a slower post-run pass, never a lost run.
+pub const DEFAULT_DRIVER_CPU_LIMIT: &str = "2";
+
 /// The default memory request on the driver container, and — because it is set
 /// equal to [`DEFAULT_DRIVER_MEMORY_LIMIT`] — the amount a node actually reserves
 /// for a driver pod.
@@ -78,43 +100,39 @@ pub const DEFAULT_DRIVER_CPU_REQUEST: &str = "100m";
 /// the `TCAB_K8S_RUN_MEMORY_*` commentary in `deployments/k8s/base/dispatcher.yaml`):
 /// the scheduler packs a node by *requests* and ignores limits, so a gap between the
 /// two is memory promised twice, and the kubelet resolves the shortfall by killing
-/// whichever pod is furthest above its request. A driver was previously the most
-/// likely candidate — a 512Mi request against no ceiling at all, and a real peak
-/// that landed within 40MiB of it.
+/// whichever pod is furthest above its request.
 ///
-/// The value is far above what a driver now needs. It is a thin control process that
-/// costs under 10MiB for the length of a run; the one moment that ever cost more was
-/// buffering the produced run tree to upload it, which `driver::artifacts` now
-/// streams off disk instead. The headroom is kept anyway, for two reasons. A driver
-/// killed after its harness session has finished but before it reports terminal
-/// status destroys a run that has already paid for every one of its API calls, so
-/// the asymmetry between "1Gi reserved" and "a lost run" is not close. And it keeps
-/// this default safe against a driver image *older* than the streaming upload, which
-/// a 512Mi ceiling would OOM at precisely that moment.
+/// The size is set by the post-run pass, not by relaying the session. Relaying costs
+/// under 10MiB, and the produced tree is streamed off disk when it uploads; what the
+/// ceiling has to cover is the case's toolchain, which runs host-side in this
+/// container after the sandbox is gone. Measured in the driver image at
+/// [`DEFAULT_DRIVER_CPU_LIMIT`], each stage of that pass peaks in the low hundreds of
+/// mebibytes on a trivial project — `npm ci` around 400MiB, a `vitest --coverage`
+/// pass around 200MiB, a headless Chromium session around 370MiB — and a real
+/// implementation with its own test suite is a multiple of that. 2Gi is the smallest
+/// ceiling that keeps real headroom over the heaviest of them.
 ///
-/// It does have a cost, and it is charged in whole nodes: 4Gi (a sandbox pod) + 1Gi
+/// The asymmetry is what justifies the generosity: a driver killed after its harness
+/// session has finished but before it reports terminal status destroys a run that has
+/// already paid for every one of its API calls.
+///
+/// It does have a cost, and it is charged in whole nodes: 4Gi (a sandbox pod) + 2Gi
 /// exceeds what an 8Gi node can schedule once its DaemonSets are seated, so a driver
 /// lands on a different node than the sandbox it drives. That is not a side effect to
 /// be tolerated but the isolation this deployment wants — a driver's ceiling and a
-/// sandbox pod's can then never contend for the same node's memory. Tightening this
-/// to 512Mi once every driver image carries the streaming upload would let the pair
-/// co-schedule again, at the cost of giving that property up.
-pub const DEFAULT_DRIVER_MEMORY_REQUEST: &str = "1Gi";
+/// sandbox pod's can then never contend for the same node's memory.
+pub const DEFAULT_DRIVER_MEMORY_REQUEST: &str = "2Gi";
 
 /// The default memory limit on the driver container, equal to
 /// [`DEFAULT_DRIVER_MEMORY_REQUEST`] — see there for the sizing and why the two
 /// match.
 ///
-/// This default is a reversal: the limit used to be deliberately unset, on the
-/// grounds that a ceiling would `SIGKILL` the driver exactly as node pressure did.
-/// That reasoning held only while the driver's peak was a function of the run tree it
-/// tarred in memory, which made *any* ceiling a guess about the heaviest future case.
-/// With the upload streamed off disk the peak is a property of the driver itself, so a
-/// ceiling is now sizeable — and its absence had become the more serious problem: an
-/// unbounded container makes the sum of a node's limits unknowable, which is what
+/// An unbounded container makes the sum of a node's limits unknowable, which is what
 /// stops the deployment from being able to promise that nothing on a node can be
-/// killed for another pod's memory.
-pub const DEFAULT_DRIVER_MEMORY_LIMIT: &str = "1Gi";
+/// killed for another pod's memory. The ceiling is only sizeable at all because
+/// [`DEFAULT_DRIVER_CPU_LIMIT`] pins how wide the post-run toolchain may fan out;
+/// raising one without the other puts this back to a guess about the host.
+pub const DEFAULT_DRIVER_MEMORY_LIMIT: &str = "2Gi";
 
 /// The default CPU request on the **publisher** container.
 pub const DEFAULT_PUBLISHER_CPU_REQUEST: &str = "100m";
@@ -250,11 +268,11 @@ pub enum ConfigError {
 /// The driver container's resource requests and limits.
 ///
 /// Each field is `None` when the corresponding quantity should be omitted from the
-/// manifest entirely. Both memory quantities and the CPU request carry defaults; the
-/// CPU *limit* does not. The memory pair defaults to one equal value so a node
-/// reserves exactly what a driver may use (see [`DEFAULT_DRIVER_MEMORY_REQUEST`]),
-/// while an unlimited CPU ceiling costs nothing — over-limit CPU is throttled, not
-/// killed.
+/// manifest entirely. Every quantity carries a default for the driver. The memory
+/// pair defaults to one equal value so a node reserves exactly what a driver may use
+/// (see [`DEFAULT_DRIVER_MEMORY_REQUEST`]), and the CPU limit is what holds that
+/// figure steady across node sizes (see [`DEFAULT_DRIVER_CPU_LIMIT`]). A publisher
+/// takes the same shape but leaves its CPU limit unset.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DriverResources {
     /// `resources.requests.cpu` on the driver container.
@@ -283,10 +301,11 @@ impl DriverResources {
                 "TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST",
                 DEFAULT_DRIVER_MEMORY_REQUEST,
             ),
-            // CPU stays unlimited by default: a container over its CPU limit is
-            // throttled rather than killed, so a ceiling here buys nothing and would
-            // only slow a driver's teardown.
-            cpu_limit: non_empty("TCAB_DISPATCHER_DRIVER_CPU_LIMIT"),
+            // A real ceiling, not an omission: the post-run toolchain sizes its
+            // worker pools from the CPU this container may use, so the limit is what
+            // keeps the memory ceiling above a property of the pod rather than of the
+            // node (see `DEFAULT_DRIVER_CPU_LIMIT`).
+            cpu_limit: env_or_default("TCAB_DISPATCHER_DRIVER_CPU_LIMIT", DEFAULT_DRIVER_CPU_LIMIT),
             memory_limit: env_or_default(
                 "TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT",
                 DEFAULT_DRIVER_MEMORY_LIMIT,
@@ -307,7 +326,8 @@ impl DriverResources {
                 "TCAB_DISPATCHER_PUBLISHER_MEMORY_REQUEST",
                 DEFAULT_PUBLISHER_MEMORY,
             ),
-            // As for the driver: an over-limit CPU is throttled, not killed.
+            // Unlike the driver, a publisher runs no toolchain, so nothing in it
+            // sizes itself from the CPU count it can see and a ceiling buys nothing.
             cpu_limit: non_empty("TCAB_DISPATCHER_PUBLISHER_CPU_LIMIT"),
             memory_limit: env_or_default(
                 "TCAB_DISPATCHER_PUBLISHER_MEMORY_LIMIT",

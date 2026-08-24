@@ -46,11 +46,11 @@ compile too, and the model is shown that error.
 language's dialect. It performs no I/O, reads no clock, and imports nothing from
 the sandbox, so turning a strategy off changes only what one function returns.
 
-The assistant message gg records for the turn is governed by the
-`assistantMessages` param rather than by healing. Under `response-healing` it
-records the healed program, which is the one that ran. Under `none` it records
-the reply as the model sent it, which puts a reply that could not compile into
-the model's own history and is an arm of a study rather than the ordinary path.
+The assistant message gg records for the turn is the program that ran: the
+healed program where healing rewrote the reply, and the reply verbatim
+otherwise. The turn's `assistant_message` event and the message log carry that
+same recorded text, so what runs, what the model re-reads and what the stream
+shows as the turn's message are one text.
 
 ## Canonicalisation
 
@@ -307,7 +307,6 @@ The run's launch log and session summary record the root agent's resolved set.
 { "id": "responses-as-code", "enabled": true,
   "params": { "language": "typescript", "timeoutSecs": 30,
               "maxMemoryBytes": 268435456,
-              "assistantMessages": "response-healing",
               "docViewTypes": { "return": true, "parameters": false, "errors": true },
               "healing": { "strip-fences": true, "strip-prose": true,
                            "drop-doubled-response": false } } }
@@ -379,8 +378,10 @@ unusual about this response":
 `original` is the reply as the model sent it, and it is carried exactly where the
 program that ran is no longer that text. Everything else downstream treats the
 healed program as the model's source, so this is the only surviving copy of what
-healing started from, and the run's console renders it under the turn it belongs
-to. It is written for the operator and reaches no model.
+healing started from. A turn healing rewrote therefore hands the operator both
+texts, the healed program on the turn's `assistant_message` event and the reply
+as sent on `original`, and the run's console renders the pair under the turn it
+belongs to. `original` is written for the operator and reaches no model.
 
 Per run, on the session summary's `healing` rollup, folded from that same event
 so numerator and denominator come from one mechanism:

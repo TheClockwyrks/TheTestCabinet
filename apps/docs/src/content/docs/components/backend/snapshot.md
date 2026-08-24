@@ -57,7 +57,7 @@ media/runs/<run-id>/asset/<file>
 media/runs/<run-id>/validation/<file>
 media/runs/<run-id>/code-analysis/v<generation>.json
 media/cases/<slug>/<version>/references/<scope>/<digest>-<view>.png
-media/cases/<slug>/<version>/validation-baseline/<variant>/<digest>-<file>
+media/cases/<slug>/<version>/validation-baseline/<engine>/<variant>/<digest>-<file>
 pfp/<account-id>
 ```
 
@@ -145,6 +145,11 @@ referenced without needing its source bytes, so a publish keeps a run's media
 even when the volumes it was originally read from have been lost, such as after
 a cluster is recreated. To re-seed the bucket from a prior snapshot in that
 recovery case, use `scripts/recover-run-media-from-snapshot.sh`.
+
+An upload stores both labels the object is served under: what the resource is
+and how its bytes are framed. A validation recording is stored as
+`application/json` with a gzip content encoding, so a published recording
+arrives at the gallery as JSON.
 
 ## Case media
 
@@ -249,10 +254,15 @@ site resolves those keys to absolute URLs.
 
 Each variant carries its own fully rendered `prompt` and its own `seededInputs`,
 the seeded spec bodies inlined in seed order, so the static site shows the same
-instruction and specs a run is seeded with. A variant also names its deployed
-reference implementations: a `referenceBuilds` map of engine slug to URL for
-playable builds, or a `referenceSheet` of published frame indices whose object
-keys the site derives itself. The file carries no mockup HTML and no host paths.
+instruction and specs a run is seeded with. Both are the engineless rendering,
+which is also what a run on the `none` [engine](/components/core/engines/)
+received. An `engineRenderings` map keyed by engine slug carries the same pair
+re-rendered for every other engine the version declares, because the templates
+branch on the selected engine; a run's Inputs surface reads the entry for the
+engine its run recorded. A variant also names its deployed reference
+implementations: a `referenceBuilds` map of engine slug to URL for playable
+builds, or a `referenceSheet` of published frame indices whose object keys the
+site derives itself. The file carries no mockup HTML and no host paths.
 
 Only a version that at least one published run built is emitted. The site keys
 lookups by `(slug, version)` from each run's subject, so it fetches exactly the

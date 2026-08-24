@@ -30,7 +30,7 @@ The game instance is the one framework object that outlives a level transition,
 so a value that must survive travel lives there and a value scoped to one match
 lives on the game state. The instance's `initialize` is where the action
 bindings, the cue definitions, the instance's assets, and its diagnostic sources
-are declared.
+are declared, and it returns the debug surface a caller drives the build through.
 
 ## Pages
 
@@ -45,3 +45,4 @@ are declared.
 | [Collision](/engines/structured-2d/usage/collision/) | Declaring colliders, channels and responses, applying a response from the engine's events, and the queries. |
 | [Audio and Assets](/engines/structured-2d/usage/audio-and-assets/) | Defining and loading cues, playing them from a tick, and loading assets under the asset root. |
 | [Diagnostics](/engines/structured-2d/usage/diagnostics/) | Registering instance and world sources and choosing what a case's checks can read. |
+| [Debug Surface](/engines/structured-2d/usage/debug/) | Declaring the surface type, writing its poses and readings as methods over the live world, returning it from `initialize`, and driving it through `engine.debug`. |

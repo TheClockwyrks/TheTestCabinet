@@ -7207,6 +7207,8 @@ dependencies = [
  "gg-artifact-swift",
  "gg-artifact-typescript",
  "handlebars",
+ "ignore",
+ "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

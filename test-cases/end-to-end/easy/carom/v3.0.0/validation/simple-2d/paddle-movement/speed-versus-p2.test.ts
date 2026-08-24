@@ -3,8 +3,13 @@
 // The mirror of `speed-versus-p1`: player two's movement key drives the right
 // paddle at the paddle speed, and leaves player one's alone.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED } from "../../src/constants";
+import {
+  assertGreaterThan,
+  assertLessThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -14,7 +19,13 @@ import {
   type Harness,
 } from "../harness";
 
-const SPEED_TOLERANCE = PADDLE_SPEED * 0.2;
+/**
+ * The review item's margin: two percent of PADDLE_SPEED. A held key moves the
+ * paddle at exactly PADDLE_SPEED while it is clear of the bounds
+ * (specs/playfield.md), and the span below starts at FIELD_CY and ends well
+ * short of either bound.
+ */
+const SPEED_TOLERANCE = PADDLE_SPEED * 0.02;
 const TICKS = 36; // 0.3 s
 const STILL_MAX = 6;
 
@@ -40,7 +51,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("moves player two's paddle at the paddle speed, and only that paddle", async () => {
@@ -55,9 +66,10 @@ it("moves player two's paddle at the paddle speed, and only that paddle", async 
     return held;
   });
 
-  expect(moved.delta).toBeGreaterThan(0);
-  expect(
+  assertGreaterThan(moved.delta, 0);
+  assertLessThanOrEqual(
     Math.abs(speedOverTicks(moved.delta, TICKS) - PADDLE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
-  expect(Math.abs(moved.otherDelta.left)).toBeLessThan(STILL_MAX);
+    SPEED_TOLERANCE,
+  );
+  assertLessThan(Math.abs(moved.otherDelta.left), STILL_MAX);
 });

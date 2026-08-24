@@ -1115,6 +1115,7 @@ fn a_text_view_does_not_survive_a_compaction_but_a_named_file_does() {
     ctx.open_file_view_deduped(
         "src/main.ts".to_string(),
         None,
+        None,
         "FILE BODY".to_string(),
         Vec::new(),
     );

@@ -18,7 +18,6 @@ pub(crate) const OPERATIONS: &[&str] = &[
     "compact",
 ];
 
-
 /// Drop the contents of files that were read out of the context window, freeing the tokens they
 /// occupy.
 ///

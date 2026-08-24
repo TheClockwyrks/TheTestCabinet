@@ -5,32 +5,23 @@
 // the `setObstacleClock` operation and the `obstacles` array on a snapshot — and
 // this module is where the checks below reach them.
 //
-// It reaches them through a locally declared interface rather than the imported
-// `CaromDebugApi`, because the shared harness is typed against whichever
-// workspace the tree was seeded from. Narrowing here keeps a gyre check readable
-// and keeps the shared harness variant-agnostic. The cast is safe by
-// construction: these checks only ever run against a gyre tree, whose
-// `src/debug.ts` declares exactly these members.
+// `surface.ts` declares both as optional, because the shared harness serves every
+// variant and only this one's specification names them. What this module adds is
+// the requirement: a gyre check reaches them through the helpers below, which
+// fail with the member named when a build left it out, rather than throwing a
+// `TypeError` several frames later.
 
-import { expect } from "vitest";
 import { OBSTACLE_CENTERS, OBSTACLE_SWAY_PERIOD } from "../../src/constants";
+import { assertEqual, assertLength } from "../assert";
 import type { Harness } from "../harness";
+import type { ObstacleSnapshot } from "../surface";
 
 /** One obstacle's live pose, as `snapshot().obstacles` reports it. */
-export interface ObstaclePose {
-  cx: number;
-  cy: number;
-  /** Rotation about the center, in RADIANS. 0 is upright. */
-  theta: number;
-}
+export type ObstaclePose = ObstacleSnapshot;
 
-/** The operations gyre's `src/debug.ts` adds to the common surface. */
+/** The operations gyre's specification adds to the common surface. */
 interface GyreDebugOps {
   setObstacleClock(t: number): void;
-}
-
-interface GyreSnapshot {
-  obstacles?: ObstaclePose[];
 }
 
 /** The obstacle clock time where the sway is at its peak: a quarter period. */
@@ -59,26 +50,29 @@ export async function poseObstacles(
 
 /** The operations this variant adds, over a harness for a gyre tree. */
 export function gyreOps(h: Harness): GyreDebugOps {
-  const ops = h.debug as unknown as Partial<GyreDebugOps>;
+  const ops = h.debug;
   // A named, actionable failure beats `ops.setObstacleClock is not a function`
   // three frames later: this variant's specification requires the operation.
-  expect(
+  assertEqual(
     typeof ops.setObstacleClock,
-    "gyre requires window.__carom.setObstacleClock (specs/instrumentation.md)",
-  ).toBe("function");
+    "function",
+    "gyre requires setObstacleClock on the debug surface the build returns " +
+      "beside its state (specs/instrumentation.md)",
+  );
   return ops as GyreDebugOps;
 }
 
 /** Both obstacles' live poses, checked for shape before a check reads them. */
 export function readObstacles(h: Harness): ObstaclePose[] {
-  const snapshot = h.snapshot() as unknown as GyreSnapshot;
-  const obstacles = snapshot.obstacles;
-  expect(
+  const obstacles = h.snapshot().obstacles;
+  assertEqual(
     Array.isArray(obstacles),
+    true,
     "gyre requires snapshot().obstacles (specs/instrumentation.md)",
-  ).toBe(true);
-  expect(obstacles).toHaveLength(OBSTACLE_CENTERS.length);
-  return obstacles as ObstaclePose[];
+  );
+  const poses = obstacles as ObstaclePose[];
+  assertLength(poses, OBSTACLE_CENTERS.length);
+  return poses;
 }
 
 /** The smallest signed difference between two angles, in radians. */

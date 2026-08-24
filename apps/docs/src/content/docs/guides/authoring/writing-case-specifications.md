@@ -17,9 +17,11 @@ A run is seeded with the selected variant's specs plus the case's assets, in an
 isolated container. Everything a model must know to build the case is written
 into that set, in real numbers and observable terms.
 
-Every value that matters is stated as a concrete value: dimensions, colors,
-timings, scores. Reference screenshots illustrate the target; the numbers stay in
-the specs.
+Every value that governs behavior is stated as a concrete value: dimensions,
+timings, speeds, scores. Reference screenshots illustrate the target; the numbers
+stay in the specs. Appearance is the exception, as
+[What is specified and what is validated](#what-is-specified-and-what-is-validated)
+explains.
 
 The seeded set describes the design as it stands today. A case's history lives in
 git and in the immutable versions under its slug, so wording such as
@@ -49,6 +51,68 @@ Mentioning reviewers is acceptable. Work gets reviewed whether or not it is part
 of a benchmark, so "reviewers will check X" reads as ordinary engineering
 process.
 
+## What is specified and what is validated
+
+A playable case is scored by its validators and rated by its reviewers, and the
+specs are written so the two never overlap. These principles apply to every
+end-to-end and full-stack case.
+
+### Behavior is exact and validated
+
+Everything a validator checks is specified exactly, or by explicit upper and
+lower bounds. A model then has one reading of the rule, and a validator asserts
+that reading and nothing more.
+
+A validator is derived from the spec, never from the reference implementation.
+Every threshold it asserts traces to a figure or rule the spec states, plus an
+honest numeric tolerance. A validator that passes on the reference but fails a
+different, spec-compliant build is worse than no validator, in the same way a
+flaky test is worse than no test: it teaches the reader to distrust the whole
+suite.
+
+### Appearance is loose and reviewed
+
+The spec states what must be visible or present: a dark field, two paddles each
+drawn in a color that stands apart from the field and from each other, the
+scores near the top during a match, a title screen showing the title and the
+menu. Palettes, fonts, layouts, and styling are the build's choices.
+
+How the build looks is what the reviewer's
+[domain ratings](/testing/end-to-end/evaluation/#review) judge. A validator
+asserting appearance checks presence and distinguishability, never a hex value.
+
+### Every review item carries a validator
+
+Every review item declares a
+[validation script](/testing/end-to-end/manifests/#automated-validation), for
+every engine the case supports. The checklist is decided by the validators and
+the reviewer overrides a verdict only as the exception; behavior is never
+something a reviewer is asked to decide.
+
+### One observable behavior per item
+
+A review item asserts one observable behavior. A single item for "the paddle
+moves up and down" earns the same score for a build whose paddle moves both ways
+as for one whose paddle moves only up, because the item can only fail once.
+Split it into "up" and "down", and the two builds score differently. Tightly
+focused items are what let results differentiate models.
+
+### Clean, maintainable code
+
+The spec requires the code a model writes to be fit for a real codebase shared
+with human developers: modules split by concern, every fixed figure named once
+and imported, no duplicated logic or dead code, comments that explain intent, and
+the project's type-check, lint, format, and test commands passing.
+
+### Engineless configurations
+
+A case's `none` workspace follows the principles above best-effort, since without
+an engine a validator drives the build through its
+[debug API](/testing/end-to-end/instrumentation/) in a browser rather than in
+process. The hard rule is that the seeded workspace supplies configuration only:
+a `package.json`, tool configuration, and an `index.html`, with no source code.
+The model owns as much of the code as possible.
+
 ## Edge cases
 
 A spec states the rules of the system. Recognizing what those rules imply at the
@@ -59,10 +123,10 @@ An edge case earns a place in a spec when it needs behavior the general rules do
 not already produce. In that case it is a rule, and it is written as one.
 
 Every other edge case becomes a
-[review item](/testing/end-to-end/evaluation/#review) with an
-[automated validation script](/testing/end-to-end/manifests/#automated-validation),
-so a model that misses it is docked points. Write the script against the debug
-API and the deterministic core.
+[review item](/testing/end-to-end/evaluation/#review) with a validation script,
+so a model that misses it is docked points. The script asserts what the spec's
+rules imply at that boundary, with the spec, rather than the reference
+implementation, as its source.
 
 ## One variant per run
 
@@ -126,8 +190,16 @@ unambiguous in a table.
 
 When you finish revising a case's specs or prompt, confirm each of the following.
 
-- The seeded set is complete and self-contained, with every value written as a
-  concrete number.
+- The seeded set is complete and self-contained, with every value that governs
+  behavior written as a concrete number or an explicit bound.
+- Appearance is specified as what must be visible or present, leaving palette,
+  type, layout, and styling to the build.
+- Every review item asserts one observable behavior and carries a validation
+  script for every supported engine, with every threshold derived from the
+  spec.
+- The spec requires clean, maintainable code and names the checks that must
+  pass.
+- An engineless workspace contains configuration only.
 - The seeded set carries no historical or changelog wording.
 - Specs, prompt, and file names carry no mention of testing, benchmarking,
   scoring, or this project.

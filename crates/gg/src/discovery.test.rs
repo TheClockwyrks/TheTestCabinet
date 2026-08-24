@@ -8,7 +8,7 @@
 use super::*;
 use crate::sandbox::{
     Binding, DOCS_SEARCH, FILES_READ_FILE, OPERATIONS, SESSION_APPROVE, SESSION_FINISH,
-    SESSION_REQUEST_CHANGES, VIEWS_CURRENT, VIEWS_OPEN_DOCS_VIEW, operation,
+    SESSION_REQUEST_CHANGES, VIEWS_OPEN_DOCS_VIEW, operation,
 };
 
 /// **The exemption is the ending calls and nothing else**, checked against the whole table rather
@@ -60,9 +60,6 @@ fn only_the_calls_ggs_own_prompt_spells_are_exempt() {
 fn the_discovery_calls_are_not_exempt_because_the_bootstrap_documents_them() {
     assert!(!spelled_by_gg(DOCS_SEARCH));
     assert!(!spelled_by_gg(VIEWS_OPEN_DOCS_VIEW));
-    // Nor is the one call that takes no arguments at all: it still has a signature, a return type
-    // and a page, and a model that never read it is still guessing.
-    assert!(!spelled_by_gg(VIEWS_CURRENT));
     assert!(!spelled_by_gg(FILES_READ_FILE));
 }
 

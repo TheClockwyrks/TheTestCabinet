@@ -105,8 +105,14 @@ bound is absent rather than listed empty. What is reported is exactly the
 catalogue's own entries, so the read-out and what a program's scope binds are one
 projection of one array.
 
-Each function names the operation it serves (`files.read_file`,
-`views.open_docs_view`, `session.finish`), and that field is load-bearing: every
+Each function is named **relative to its module**, the way the arm spells it:
+a free function is its bare name (`readFile`), and a method carries the receiver
+it hangs off (`OpenView.close` on TypeScript, `OpenView#close` on Java,
+`open_view::close` on C++), so two rows in one module never share a name and a
+reader spelling the call back joins the module's path onto it
+(`gg.views.OpenView.close`). Each function also names the operation it serves
+(`files.read_file`, `views.open_docs_view`, `session.finish`), and that field is
+load-bearing: every
 call a program makes is recorded as an `api_call` under exactly that id, so it is
 the join from a bound function to how many times it was called. No gg tool name
 appears here. A responses-as-code agent writes `gg.views.openFile`, and the
@@ -115,8 +121,8 @@ appears here. A responses-as-code agent writes `gg.views.openFile`, and the
 The join is at the grain of the operation, which makes both directions of the
 contrast trustworthy. A function that dispatches nothing is counted like any
 other, so an ending call and a view call have figures instead of blanks, and
-three functions over one implementation (`gg.files.readFile`,
-`gg.files.readTextFile` and `gg.views.openFile` all perform one read) are three
+two functions over one implementation (`gg.files.readFile` and
+`gg.views.openFile` both perform one read) are two
 figures, so a function the model ignored reads as ignored rather than inheriting
 its neighbour's calls. Where one arm offers two spellings of one operation, both
 rows carry the same figure, because gg counts what was done rather than which

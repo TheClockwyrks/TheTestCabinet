@@ -17,11 +17,17 @@ import type {
   LaunchOrigin,
   LogoFetchResult,
   Model,
+  ModelAccuracy,
   ModelInput,
   ModelListing,
+  ModelProbe,
+  ModelProbeDetail,
+  ModelProbeProviders,
+  ModelProbeTriggerInput,
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
+  ProviderStats,
   PublishEnqueued,
   PublishProgress,
   PublishResult,
@@ -196,6 +202,42 @@ export interface BackendClient {
    * in rather than have the operator retype it (`GET /models/openrouter`, Bearer). */
   lookupOpenrouterModel?(slug: string, token: string): Promise<ModelListing>;
 
+  // Model probes — responses-as-code readiness checks of a catalog model. The
+  // reads are open (probe results are console-only catalog context, like the
+  // rest of the model detail); the trigger and the provider enumeration are
+  // Bearer-gated mutations/third-party reaches and optional, so a transport
+  // without them (the static site) hides the affordance — the `createModel?`
+  // pattern.
+  /** The model's probe history, newest first (`GET /models/{slug}/probes`). */
+  listModelProbes(slug: string): Promise<ModelProbe[]>;
+  /** One probe with its items, raw replies, and the request as sent
+   * (`GET /model-probes/{id}`). */
+  getModelProbe(id: string): Promise<ModelProbeDetail>;
+  /** Trigger a probe; resolves to the row, already `running`
+   * (`POST /models/{slug}/probes`, Bearer). */
+  triggerModelProbe?(
+    slug: string,
+    input: ModelProbeTriggerInput,
+    token: string,
+  ): Promise<ModelProbe>;
+  /** The providers OpenRouter lists for the model, so a probe can be pinned to
+   * one (`GET /models/{slug}/probe-providers`, Bearer). */
+  listModelProbeProviders?(
+    slug: string,
+    token: string,
+  ): Promise<ModelProbeProviders>;
+
+  // Provider & accuracy statistics — deployment-wide folds over stored gg runs
+  // (and, for providers, the probe corpus). Open reads, but optional: the static
+  // site's snapshot transport has no aggregation endpoints, so a host without
+  // them renders the unavailable state rather than an empty chart.
+  /** Per-provider health across recorded gg runs plus probe evidence
+   * (`GET /stats/providers`). */
+  getProviderStats?(): Promise<ProviderStats>;
+  /** Per-model RaC and tool-calling accuracy across recorded gg runs
+   * (`GET /stats/model-accuracy`). */
+  getModelAccuracy?(): Promise<ModelAccuracy>;
+
   // Per-harness configuration (`GET /harness-config` open; the setter Bearer). The
   // list enumerates every harness with its current knobs (today: max parallelism);
   // the setter upserts one harness's config and returns the refreshed list. Optional
@@ -212,11 +254,27 @@ export interface BackendClient {
 
   listTestCases(): Promise<TestCase[]>;
   listVersions(slug: string): Promise<string[]>;
-  resolveVersion(slug: string, version: string): Promise<VersionInfo>;
+  /**
+   * Resolve one exact case version, with each variant's `prompt` rendered for
+   * `engine`.
+   *
+   * `engine` is required rather than defaulted because a case's prompt template
+   * branches on the selected engine, so the rendering is only correct for the
+   * caller that names one: a run surface passes the engine its run recorded, and
+   * a case surface passes `DEFAULT_ENGINE_SLUG` for the engineless rendering.
+   */
+  resolveVersion(
+    slug: string,
+    version: string,
+    engine: string,
+  ): Promise<VersionInfo>;
+  /** One variant's seeded spec bodies, rendered for `engine` — the spec analogue
+   * of the rendered prompt, with the same requirement that a caller name one. */
   readSpecs(
     slug: string,
     version: string,
     variant: string,
+    engine: string,
   ): Promise<Specification>;
 
   // Published runs (the read side a reporter/gallery consumes).
@@ -239,10 +297,12 @@ export interface BackendClient {
    * - The **numbered-pager** window (console listings): pass an `offset` (0-based;
    *   its presence selects this mode) with an optional `limit`, `state` (including
    *   `any`, the published + unpublished union the console listings draw from), the
-   *   equality filters (`testCase`/`model`/`harness`/`variant`/`version`), the
-   *   `latestVersions` current-version restriction, a free-text `q`, and
-   *   `sort`/`dir`. Resolves the windowed summaries plus the `total` count of
-   *   all matching rows (`nextCursor` is `null`).
+   *   equality filters (`testCase`/`model`/`harness`/`variant`/`version`/`engine`),
+   *   the `versions` list (exact versions, any of which match — the case-detail
+   *   Runs tab's anchored version scope; like `version` it silences
+   *   `latestVersions`), the `latestVersions` current-version restriction, a
+   *   free-text `q`, and `sort`/`dir`. Resolves the windowed summaries plus the
+   *   `total` count of all matching rows (`nextCursor` is `null`).
    */
   listRunSummaries(opts?: {
     before?: string;
@@ -254,6 +314,8 @@ export interface BackendClient {
     harness?: string;
     variant?: string;
     version?: string;
+    versions?: string[];
+    engine?: string;
     latestVersions?: boolean;
     q?: string;
     sort?: RunSort;

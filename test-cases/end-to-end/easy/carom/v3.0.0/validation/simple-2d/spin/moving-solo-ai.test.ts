@@ -4,17 +4,17 @@
 // it is still sweeping down the field to intercept, so it strikes while moving.
 // Nothing poses the AI's velocity: its own chase is what curves the ball.
 //
-// WHY THE BOUND IS RELATIVE. The spin imparted must TRACK the paddle's own
-// motion, not clear a fixed magnitude. The AI is deliberately slower than a human
-// and eases off as it nears the ball, so its contact speed — and therefore its
-// spin — is whatever its own chase produced. A fixed floor tuned to a hard human
-// swing would reject a conformant, gentler AI that applies the mechanic
-// perfectly. Reading the spin against the paddle's actual `vy` is robust to how
-// fast the AI happens to be moving, while still catching a build that imparts no
-// spin, or the wrong spin, from an AI contact.
+// The AI rule (specs/modes/single-player.md) moves the paddle at exactly
+// AI_SPEED whenever it is more than AI_DEADZONE from its target: on this suite's
+// clock `|diff| / dt` exceeds AI_SPEED for any `|diff|` past the deadzone, so
+// there is no easing. The ball is aimed to arrive while the paddle is still well
+// short of its target, so the contact is at AI_SPEED and the spin it imparts is
+// `AI_SPEED * SPIN_FROM_PADDLE` (specs/balls.md), signed by the direction the
+// paddle is sweeping, which the paddle's own reported `vy` gives.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { SPIN_FROM_PADDLE } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { AI_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import {
   arrangeAiMovingHit,
   captureReplay,
@@ -23,11 +23,9 @@ import {
   type Harness,
 } from "../harness";
 
-/** The AI must be genuinely moving when it strikes, or there is nothing to read. */
-const MOVING_FLOOR = 100;
-/** The old browser suite's margin: a quarter of the expected spin, or 50 px/s². */
-const RELATIVE_TOLERANCE = 0.25;
-const ABSOLUTE_TOLERANCE = 50;
+/** The expected magnitude, and the review item's margin of ten percent. */
+const EXPECTED_SPIN = AI_SPEED * SPIN_FROM_PADDLE;
+const SPIN_TOLERANCE = EXPECTED_SPIN * 0.1;
 
 /**
  * Frames of the return flight recorded after the contact.
@@ -52,10 +50,10 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
-it("imparts spin tracking the AI paddle's own speed", async () => {
+it("imparts AI_SPEED * SPIN_FROM_PADDLE of spin, signed by its sweep", async () => {
   await arrangeAiMovingHit(harness);
 
   const contact = await captureReplay(harness, "curve", async () => {
@@ -64,11 +62,12 @@ it("imparts spin tracking the AI paddle's own speed", async () => {
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(contact.paddle.vy).toBeGreaterThan(MOVING_FLOOR);
-
-  const expected = contact.paddle.vy * SPIN_FROM_PADDLE;
-  expect(Math.abs(contact.ball.spin - expected)).toBeLessThanOrEqual(
-    Math.max(ABSOLUTE_TOLERANCE, Math.abs(expected) * RELATIVE_TOLERANCE),
+  assertEqual(contact.hit, true);
+  // The AI was sweeping as it struck, and the spin carries its direction.
+  assertNotEqual(contact.paddle.vy, 0);
+  assertEqual(Math.sign(contact.ball.spin), Math.sign(contact.paddle.vy));
+  assertLessThanOrEqual(
+    Math.abs(Math.abs(contact.ball.spin) - EXPECTED_SPIN),
+    SPIN_TOLERANCE,
   );
 });

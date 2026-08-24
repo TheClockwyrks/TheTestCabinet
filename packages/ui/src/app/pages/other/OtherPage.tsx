@@ -7,7 +7,6 @@ import { useRecordSectionIndex } from "../../components/backReturn";
 import { useTestCases } from "../../data/useTestCases";
 import { routes } from "../../routes";
 import { TournamentsList } from "../tournaments/TournamentsPage";
-import exec from "../runs/RunExec.module.scss";
 // The Other page reuses the Test Cases page's tab-bar and list-card styles so the
 // two catalog-style surfaces read identically.
 import styles from "../testcases/TestCasesPage.module.scss";
@@ -39,18 +38,16 @@ export function OtherPage({ tab }: OtherPageProps) {
   useRecordSectionIndex("other");
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command={tab === "game-jams" ? "--game-jams" : "--tournaments"}
-          comment={
-            tab === "game-jams" ? (
-              <>// themed jams &amp; their entries</>
-            ) : (
-              <>// adversarial standings</>
-            )
-          }
-        />
-      </div>
+      <PromptHeader
+        command={tab === "game-jams" ? "--game-jams" : "--tournaments"}
+        comment={
+          tab === "game-jams" ? (
+            <>// themed jams &amp; their entries</>
+          ) : (
+            <>// adversarial standings</>
+          )
+        }
+      />
 
       <div className={styles.controls}>
         <nav className={styles.tabs} aria-label="Other sections">

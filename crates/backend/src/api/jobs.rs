@@ -237,7 +237,7 @@ pub async fn launch_batch(
 /// [`crate::bootstrap::seed_launch_prices`]), which is the same set a gg launch resolves
 /// windows for. It is harness-agnostic on purpose: a third-party-harness run has one
 /// model, and it deserves a priced catalog entry just as much as a gg run's does.
-fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
+pub(super) fn launch_models(body: &LaunchBody) -> Vec<(String, HarnessSlug)> {
     let mut models: Vec<(String, HarnessSlug)> = Vec::new();
     let mut push = |id: &str| {
         let id = id.trim();
@@ -1211,6 +1211,13 @@ async fn maybe_enqueue_retry(
              launched it is paused"
         );
         return Ok(());
+    }
+
+    // Re-seed the retried launch's model prices exactly as its original enqueue did.
+    // Missing-only, so a launch that was already priced costs nothing; this covers
+    // the launch whose seeding was foiled by a transient OpenRouter failure.
+    if let Ok(body) = serde_json::from_str::<LaunchBody>(&job.request_json) {
+        crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&body)).await;
     }
 
     let retry_id = cuid2::create_id();

@@ -58,8 +58,7 @@ pub struct LaunchBody {
     /// against (e.g. `simple-2d`) — the runtime supplying its frame loop, input,
     /// audio, assets, and diagnostics. Omit for the `none` default, exactly as
     /// `orchestrator` is omitted for `one-shot`: an absent key means the launch
-    /// wants what a run looked like before the dimension existed, so every
-    /// launcher that predates engines keeps working untouched.
+    /// wants the engineless run, which is what `none` is.
     ///
     /// The slug must be one the engine catalogue knows *and* one the requested
     /// case version declares support for; both are checked when the run

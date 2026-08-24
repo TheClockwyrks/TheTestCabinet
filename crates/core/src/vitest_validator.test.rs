@@ -383,13 +383,178 @@ fn a_file_with_a_failing_check_fails_its_point_and_names_the_assertion() {
     let failed = &verdict.assertions[1];
     assert!(!failed.pass);
     assert_eq!(failed.label, "the ball never passes through a paddle");
-    assert!(
-        failed
-            .actual
-            .as_deref()
-            .unwrap_or_default()
-            .contains("expected 1 to be 0"),
-        "the excerpt carries what the assertion said: {failed:?}",
+    assert_eq!(
+        failed.expected.as_deref(),
+        Some("0"),
+        "the chai message's bound is the expected: {failed:?}",
+    );
+    assert_eq!(
+        failed.actual.as_deref(),
+        Some("1"),
+        "the chai message's measured value is the actual: {failed:?}",
+    );
+}
+
+/// A one-file, one-test reporter document whose test failed with `messages`.
+fn failing_document(repo: &Path, messages: &[&str]) -> String {
+    let file = repo
+        .join("validation/rendering/window-fit.test.ts")
+        .to_string_lossy()
+        .replace('\\', "/");
+    serde_json::json!({
+        "testResults": [{
+            "name": file,
+            "status": "failed",
+            "message": "",
+            "assertionResults": [{
+                "fullName": "leaves the letterbox bars bare",
+                "title": "leaves the letterbox bars bare",
+                "status": "failed",
+                "failureMessages": messages,
+            }],
+        }],
+    })
+    .to_string()
+}
+
+/// The one assertion the suite built over `failing_document(messages)` stores.
+fn stored_assertion(messages: &[&str]) -> Assertion {
+    let repo = Path::new("/runs/impl");
+    let reports =
+        parse_report(&failing_document(repo, messages), repo).expect("the document parses");
+    let items = vec![item(
+        "window-fit",
+        "validation/simple-2d/rendering/window-fit.test.ts",
+    )];
+    let result = suite_for(&items).result(reports.first());
+    result.verdicts[0].assertions[0].clone()
+}
+
+#[test]
+fn a_stack_traced_chai_failure_is_stored_as_its_own_pair_with_no_frames() {
+    let stored = stored_assertion(&[concat!(
+        "AssertionError: expected 9.097252332435328 to be less than or equal to 8\n",
+        "    at /home/node/workspace/validation/rendering/window-fit.test.ts:175:21\n",
+        "    at processTicksAndRejections (node:internal/process/task_queues:105:5)",
+    )]);
+    assert_eq!(
+        stored.expected.as_deref(),
+        Some("less than or equal to 8"),
+        "the bound the matcher stated: {stored:?}",
+    );
+    assert_eq!(
+        stored.actual.as_deref(),
+        Some("9.097252332435328"),
+        "the value the build produced: {stored:?}",
+    );
+}
+
+#[test]
+fn a_helper_shaped_failure_carries_its_stated_pair() {
+    let stored = stored_assertion(&[concat!(
+        "Error: Expected: at most 8\n",
+        "Actual: 9.097252332435328\n",
+        "    at fail (/home/node/workspace/validation/assert.ts:38:9)\n",
+        "    at assertLessThanOrEqual (/home/node/workspace/validation/assert.ts:104:26)",
+    )]);
+    assert_eq!(stored.expected.as_deref(), Some("at most 8"));
+    assert_eq!(stored.actual.as_deref(), Some("9.097252332435328"));
+}
+
+#[test]
+fn a_failure_stating_no_comparison_falls_back_to_the_frameless_excerpt() {
+    let stored = stored_assertion(&[concat!(
+        "Error: the harness could not settle the scene\n",
+        "    at arrange (/home/node/workspace/validation/harness.ts:1846:11)",
+    )]);
+    assert_eq!(stored.expected.as_deref(), Some("the check holds"));
+    assert_eq!(
+        stored.actual.as_deref(),
+        Some("Error: the harness could not settle the scene"),
+        "the message survives, the frames do not: {stored:?}",
+    );
+}
+
+#[test]
+fn a_negated_matcher_is_not_forced_into_a_pair() {
+    let stored = stored_assertion(&["AssertionError: expected 5 not to be 3"]);
+    assert_eq!(
+        stored.expected.as_deref(),
+        Some("the check holds"),
+        "a negation has no honest expected value: {stored:?}",
+    );
+}
+
+#[test]
+fn a_close_to_failure_keeps_its_tolerance_in_the_expected() {
+    // The message shape is vitest's own, verified against vitest 3.
+    let stored = stored_assertion(&[
+        "AssertionError: expected 9 to be close to 5, received difference is 4, but expected 0.005",
+    ]);
+    assert_eq!(stored.expected.as_deref(), Some("within 0.005 of 5"));
+    assert_eq!(stored.actual.as_deref(), Some("9"));
+}
+
+#[test]
+fn a_to_be_failure_drops_the_comparator_note() {
+    let stored = stored_assertion(&["AssertionError: expected 2 to be 3 // Object.is equality"]);
+    assert_eq!(stored.expected.as_deref(), Some("3"));
+    assert_eq!(stored.actual.as_deref(), Some("2"));
+}
+
+#[test]
+fn no_stored_assertion_carries_a_stack_frame() {
+    // Whatever shape the failure takes, nothing with a file path or a line
+    // number survives into what the UI renders.
+    for messages in [
+        &["AssertionError: expected 1 to be 0\n    at /a/b/c.test.ts:1:2"][..],
+        &["Error: it broke\n    at run (file:///a/b/c.ts:3:4)\n    at node:internal/x:1:1"][..],
+    ] {
+        let stored = stored_assertion(messages);
+        for field in [&stored.expected, &stored.actual] {
+            let text = field.as_deref().unwrap_or_default();
+            assert!(
+                !text.contains(".ts:") && !text.contains("    at "),
+                "no frame reaches the stored assertion: {text:?}",
+            );
+        }
+    }
+}
+
+#[test]
+fn an_unindented_line_opening_with_at_is_message_rather_than_frame() {
+    let cleaned = sanitize_failure(concat!(
+        "Error: the sweep read too little\n",
+        "at least three samples were needed\n",
+        "    at sweep (/home/node/workspace/validation/harness.ts:12:3)",
+    ));
+    assert_eq!(
+        cleaned, "Error: the sweep read too little\nat least three samples were needed",
+        "prose keeps its place; only the indented locator goes",
+    );
+}
+
+#[test]
+fn a_file_level_message_is_stored_without_frames() {
+    let repo = Path::new("/runs/impl");
+    let file = repo
+        .join("validation/rendering/window-fit.test.ts")
+        .to_string_lossy()
+        .replace('\\', "/");
+    let document = serde_json::json!({
+        "testResults": [{
+            "name": file,
+            "status": "failed",
+            "message": "Error: Cannot find module './surface'\n    at load (node:internal/modules/cjs/loader:1:1)",
+            "assertionResults": [],
+        }],
+    })
+    .to_string();
+    let reports = parse_report(&document, repo).expect("the document parses");
+    assert_eq!(
+        reports[0].message.as_deref(),
+        Some("Error: Cannot find module './surface'"),
+        "the file-level error keeps its message and loses its frames",
     );
 }
 
@@ -503,6 +668,7 @@ fn a_case_with_no_validator_project_for_the_engine_reports_every_point_as_not_ru
         engine().slug(),
         &artifacts,
         "npm ci",
+        &repo.path().join(crate::validator::VALIDATION_MEDIA_DIR),
     );
 
     assert_eq!(results.len(), 2, "every declared point is still reported");
@@ -551,6 +717,7 @@ fn a_variant_whose_every_validator_belongs_to_another_engine_runs_nothing() {
         engine().slug(),
         &artifacts,
         "npm ci",
+        &repo.path().join(crate::validator::VALIDATION_MEDIA_DIR),
     );
 
     assert_eq!(results.len(), 1, "the declared point is still reported");
@@ -580,7 +747,8 @@ fn a_case_declaring_no_validators_reports_nothing() {
             &variant(),
             engine().slug(),
             &artifacts,
-            "npm ci"
+            "npm ci",
+            &repo.path().join(crate::validator::VALIDATION_MEDIA_DIR),
         )
         .is_empty(),
         "there is nothing to run and nothing to record",

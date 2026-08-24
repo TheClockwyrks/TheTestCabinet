@@ -47,7 +47,7 @@
  *   * nothing may be blank.
  *
  * **An attribute a declaration can carry.** gg's identity for a call — that `Gg.Files.readFile` is
- * gg's `files.read_file` operation, the same capability C# spells `Gg.Files.ReadTextFile` — is the
+ * gg's `files.read_file` operation, the same capability C# spells `Gg.Files.ReadFile` — is the
  * one thing PureScript's syntax cannot say. It is written on the declaration all the same, in a
  * `# Operation` section of that declaration's own doc comment, or in an `# Alias` section where the
  * declaration is a second, shorter way to reach an operation another one already binds. On the
@@ -55,9 +55,9 @@
  * the second copy that drifts.
  *
  * **A member on a value.** A record has fields and no behaviour, so the convenience another arm
- * hangs off a value — `view.close()` — is a free function over that value here: `Gg.Views.closeView`
- * takes the `OpenView` that `Gg.Views.current` listed. That is the equivalent shape rather than a
- * shortfall, and it is why `memberFunctions` is empty on every type this SDK declares.
+ * hangs off a value — `view.close()` — is a free function over that value here. That is the
+ * equivalent shape rather than a shortfall, and it is why `memberFunctions` is empty on every type
+ * this SDK declares.
  *
  * Each of those is a `throw` here rather than a `null` in the JSON, because the failure would
  * otherwise land on a model reading a signature it cannot act on.

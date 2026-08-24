@@ -2,7 +2,7 @@
 ///
 /// An issue is heavyweight and self-contained: its scope, non-scope and completion criteria are
 /// exactly what a delegated child agent is briefed from, which is why `createIssue` asks for more
-/// than `tasks.addTask` does.
+/// than adding a task does.
 ///
 /// Two of `updateIssue`'s arguments are three-way, and Swift has an `enum` for exactly that:
 /// `core.TextEdit` leaves, empties or replaces a description, and `board.EpicAssignment` leaves,

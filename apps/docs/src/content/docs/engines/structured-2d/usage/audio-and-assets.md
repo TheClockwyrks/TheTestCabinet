@@ -22,8 +22,8 @@ API](/engines/structured-2d/apis/audio/).
 ```ts
 import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
 
-export class ArenaGame extends GameInstance {
-  async initialize(api: InitApi): Promise<void> {
+export class ArenaGame extends GameInstance<null> {
+  override async initialize(api: InitApi): Promise<null> {
     api.audio.define("thrust", { wave: "sawtooth", freq: 120, durationMs: 90 });
     api.audio.define("bounce", { wave: "square", freq: 440, durationMs: 60 });
     api.audio.define("victory", {
@@ -33,6 +33,7 @@ export class ArenaGame extends GameInstance {
       durationMs: 220,
     });
     api.input.register("mute", { keys: ["KeyM"] });
+    return null;
   }
 }
 ```
@@ -209,14 +210,15 @@ source puts the failed paths on the
 ```ts
 import { GameInstance, type InitApi } from "@test-cabinet/structured-2d";
 
-export class ArenaGame extends GameInstance {
+export class ArenaGame extends GameInstance<null> {
   private failed: string[] = [];
 
-  async initialize(api: InitApi): Promise<void> {
+  override async initialize(api: InitApi): Promise<null> {
     api.events.on("asset:failed", ({ path, reason }) => {
       this.failed.push(`${path}: ${reason}`);
     });
     api.diagnostics.register("assets-failed", () => this.failed);
+    return null;
   }
 }
 ```

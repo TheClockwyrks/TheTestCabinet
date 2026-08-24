@@ -322,6 +322,17 @@ fn session_model_error(error: &ModelError) -> GgSessionModelError {
             attempts: Some(discarded.attempts),
             model_id: None,
         },
+        // The call ran into the per-call ceiling — a stall, recorded because the loop retries the
+        // turn on it, and a record without it would show two identical calls with no reason for
+        // the second. The message already names the provider when the stream got far enough to
+        // say who was serving it.
+        ModelError::Timeout { .. } => GgSessionModelError {
+            kind: GgSessionModelErrorKind::Timeout,
+            message,
+            status: None,
+            attempts: None,
+            model_id: None,
+        },
     }
 }
 
@@ -930,6 +941,7 @@ impl GgRecorder {
                     PromptSlot::System => GgSessionPromptSlot::System,
                     PromptSlot::Thread => GgSessionPromptSlot::Thread,
                     PromptSlot::ContextUsage => GgSessionPromptSlot::ContextUsage,
+                    PromptSlot::TrailingNotice => GgSessionPromptSlot::TrailingNotice,
                 },
                 source: item.source,
                 retention: match item.retention {

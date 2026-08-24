@@ -5,14 +5,14 @@
 /// Under responses as code a whole program's output would otherwise collapse into one anonymous
 /// blob of logs, charged to one band, attributable to nothing and closable by nothing. A view
 /// restores what tool calling gave for free: one message per view, carrying the band it is charged
-/// to and the selector it can be closed by.
+/// to and the selector it is filed under.
 ///
 /// A program's own output is unreadable by the model that wrote it, and a view is the only way a
 /// value it computed reaches that model. `print` and `gg.log` both reach the run instead.
 ///
 /// - ggmodule: views
 public enum views {
-    /// Read a file and place it in the context window, attributed to its path and closable by it.
+    /// Read a file and place it in the context window, attributed to its path and filed under it.
     ///
     /// What comes back is exactly what `files.readFile` returns; the difference is the view. That
     /// split is the point: reading gets bytes for the program, opening shows the file to the agent,
@@ -21,24 +21,40 @@ public enum views {
     /// re-opening the same page replaces what it showed rather than piling up a duplicate. An image
     /// is shown as a picture, and this is the only call that shows one.
     ///
+    /// The view's text body is held to the same 65,536-byte cap a text view's body is: a window
+    /// that would carry more is refused, naming the size and the bound, and nothing is opened —
+    /// never a truncation. The program narrows the window with `offset` and `limit`, or cuts the
+    /// file's long lines with `maxLineChars`: given, each line of the *view* longer than that many
+    /// characters is cut there and annotated in place as `foo (123 more chars...)`, with the count
+    /// of characters dropped. The cut is the view's alone — the value this returns and the file
+    /// itself are untouched — and the cap is measured against the body after it. Left out, lines
+    /// arrive whole.
+    ///
     /// - Parameters:
     ///   - path: The file to open, relative to the workspace or absolute.
     ///   - offset: The 1-based line to start at. Left out, the whole file is shown.
     ///   - limit: How many lines to show from `offset`. Left out, the view runs to the end.
-    /// - Returns: exactly what `files.readFile` returns for the same file.
-    /// - Throws: `core.ApiError` with `.notFound` for a missing path, and `.invalidArgument` for an
-    ///   offset past the end of the file. The read is what fails; nothing is opened when it does.
+    ///   - maxLineChars: Cut each line of the view longer than this many characters, annotating it
+    ///     in place as `foo (123 more chars...)`; `1...65536`. Left out, every line arrives whole.
+    /// - Returns: exactly what `files.readFile` returns for the same file, long lines and all.
+    /// - Throws: `core.ApiError` with `.notFound` for a missing path, `.invalidArgument` for an
+    ///   offset past the end of the file or a `maxLineChars` outside `1...65536`, and
+    ///   `.limitExceeded` — naming the size and the bound — for a text body over 65,536 bytes after
+    ///   the cut. The read is what fails; nothing is opened when it does.
     /// - ggop: views.open_file
     @discardableResult
     public static func openFile(
-        _ path: String, offset: Int? = nil, limit: Int? = nil
+        _ path: String, offset: Int? = nil, limit: Int? = nil, maxLineChars: Int? = nil
     ) throws -> files.FileRead {
         try withScratch { scratch in
             var path = scratch.string(path)
             var ret = test_cabinet_gg_files_file_read_t()
             var err = test_cabinet_gg_types_api_error_t()
             let ok = withWindow(offset, limit) { offset, limit in
-                test_cabinet_gg_views_open_file_view(&path, offset, limit, &ret, &err)
+                withOptional(maxLineChars.map { UInt32(truncatingIfNeeded: $0) }) { maxLineChars in
+                    test_cabinet_gg_views_open_file_view(
+                        &path, offset, limit, maxLineChars, &ret, &err)
+                }
             }
             guard ok else { throw lift(failure: &err) }
             let read = files.FileRead(wire: ret)
@@ -55,8 +71,8 @@ public enum views {
     /// view in a loop without piling up a copy per iteration.
     ///
     /// - Parameters:
-    ///   - label: What to file the view under. `views.close` takes it, and opening the same label
-    ///     again replaces what it showed. It may not be empty.
+    ///   - label: What to file the view under. Opening the same label again replaces what it
+    ///     showed. It may not be empty.
     ///   - body: What to show. An empty body is allowed: it is how a program says that something it
     ///     was showing is now empty.
     /// - Throws: `core.ApiError` with `.invalidArgument` for an empty label — a view with no
@@ -81,12 +97,11 @@ public enum views {
     /// value — the documentation arrives in the next prompt under a `Documentation` heading keyed by
     /// the entry's name, exactly as a file or a computed value arrives — so it is not available in
     /// the turn it is asked for. Ask in one turn, use it in the next. Opening an entry that is
-    /// already open does nothing at all, neither moving the view nor repeating it, and `docs.close`
-    /// closes it — not `views.close`, which does not reach documentation.
+    /// already open does nothing at all, neither moving the view nor repeating it.
     ///
     /// - Parameter name: What to document, by the fully-qualified name its documentation is keyed
-    ///   by — `"gg.files.readFile"`, or a module's own path, `"gg.files"`. The bare name it is
-    ///   called by in its module (`"readFile"`) also resolves and is a fallback rather than the form
+    ///   by — `"gg.views.openText"`, or a module's own path, `"gg.views"`. The bare name it is
+    ///   called by in its module (`"openText"`) also resolves and is a fallback rather than the form
     ///   to reach for: two modules are free to declare a `close`, and only the qualified name says
     ///   which one is meant. Searching the documentation says which names exist, and anything a
     ///   search returns can be opened here.
@@ -110,15 +125,19 @@ public enum views {
     /// call. Closing a file view forgets what was read, not what exists; closing a text view discards
     /// the only copy of what it held, so anything needed later belongs in a file or a memory first.
     ///
-    /// Documentation views are not reached from here. `docs.close` is what takes one away, and it is
-    /// bought by a capability this call is not — so a sweep that included them would hand back `0`
-    /// for an agent that may not close one, which reads as a selector that named nothing.
+    /// Documentation views are not reached from here: taking one away is bought by a capability of
+    /// its own, `docview-close` — so a sweep that included them would hand back `0` for an agent
+    /// that may not close one, which reads as a selector that named nothing.
     ///
     /// - Parameter selector: What the view is filed under: a file's path, a text view's label, or
     ///   `search results`.
+    /// Closing a view is context management, bought by the `agent-managed-context`
+    /// capability: an agent whose run did not enable it is refused.
+    ///
     /// - Returns: how many views were closed.
     /// - Throws: `core.ApiError` with `.invalidArgument` for an empty selector, which names nothing
-    ///   rather than everything — no call here closes the window wholesale.
+    ///   rather than everything — no call here closes the window wholesale — and `.unavailable` for
+    ///   an agent whose run did not buy `agent-managed-context`.
     /// - ggop: views.close
     @discardableResult
     public static func close(_ selector: String) throws -> Int {
@@ -133,91 +152,4 @@ public enum views {
         }
     }
 
-    /// List what is open in the context window right now.
-    ///
-    /// Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and —
-    /// for a paged file view — the `region` it covers. Reading it is what decides what to close when
-    /// the window is filling up.
-    ///
-    /// - Returns: every open view, in no particular order.
-    /// - ggop: views.current
-    public static func current() -> [OpenView] {
-        var ret = test_cabinet_gg_views_list_open_view_t()
-        test_cabinet_gg_views_current_views(&ret)
-        let views = lift(ret.ptr, ret.len) { OpenView(wire: $0) }
-        test_cabinet_gg_views_list_open_view_free(&ret)
-        return views
-    }
-
-    /// Which of the three kinds a view is.
-    public enum ViewKind: Sendable {
-        /// A file that was opened; its selector is the path.
-        case file
-        /// A computed value; its selector is the label it was given.
-        case text
-        /// An entry's documentation; its selector is the key it was opened under.
-        case docs
-
-        init(wire: test_cabinet_gg_views_view_kind_t) {
-            switch Int32(wire) {
-            case TEST_CABINET_GG_VIEWS_VIEW_KIND_FILE: self = .file
-            case TEST_CABINET_GG_VIEWS_VIEW_KIND_TEXT: self = .text
-            default: self = .docs
-            }
-        }
-    }
-
-    /// The window of lines a paged file view covers.
-    public struct ViewRegion: Sendable {
-        /// The 1-based first line the view shows.
-        public let offset: Int
-        /// How many lines it shows.
-        public let limit: Int
-
-        init(wire: test_cabinet_gg_views_view_region_t) {
-            offset = Int(wire.offset)
-            limit = Int(wire.limit)
-        }
-    }
-
-    /// One view open in the context window, as `views.current` reports it.
-    public struct OpenView: Sendable {
-        /// Whether it is a file, text, or documentation view.
-        public let kind: ViewKind
-        /// What closes it.
-        ///
-        /// A file's path, a text view's label or `search results` for `views.close`, and for a
-        /// documentation view the key `docs.close` takes.
-        public let selector: String
-        /// Roughly what holding it costs, in tokens.
-        public let tokens: Int
-        /// The line window a paged file view covers; `nil` for a whole-file view and for text views.
-        public let region: ViewRegion?
-
-        init(wire: test_cabinet_gg_views_open_view_t) {
-            kind = ViewKind(wire: wire.kind)
-            selector = lift(wire.selector)
-            tokens = Int(wire.tokens)
-            region = wire.region.is_some ? ViewRegion(wire: wire.region.val) : nil
-        }
-    }
-}
-
-extension views.OpenView {
-    /// Close this view, with its selector already supplied.
-    ///
-    /// `views.close` for the common case where the open view is in hand. Every view under the same
-    /// selector closes, which for a paged file is every page of that path.
-    ///
-    /// A documentation view is the one this does not take away, because `views.close` does not reach
-    /// that band: `docs.close(selector)` is the call for one of those.
-    ///
-    /// - Returns: how many views were closed.
-    /// - Throws: `core.ApiError` with `.invalidArgument` when this view's `selector` is empty,
-    ///   which no view gg reports ever is.
-    /// - ggop-alias: views.close
-    @discardableResult
-    public func close() throws -> Int {
-        try views.close(selector)
-    }
 }

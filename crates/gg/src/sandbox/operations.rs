@@ -17,8 +17,8 @@
 //! a tool name and a tool name is not usable here; nothing in this table is derived from gg's tool
 //! vocabulary, and nothing in that vocabulary is derived from this table.
 //!
-//! Which is not to say the two are equals. Responses-as-code is the strictly richer surface: fourteen
-//! operations have no tool behind them at all, three operations share one read, and a program
+//! Which is not to say the two are equals. Responses-as-code is the strictly richer surface: thirteen
+//! operations have no tool behind them at all, two operations share one read, and a program
 //! composes calls a tool-calling turn can only make one at a time. Tool calling is the **subset**,
 //! and a gate that held the two in bijection would be asserting a symmetry gg does not have.
 //!
@@ -48,8 +48,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_DOCVIEW_CLOSE,
     CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_LIST_DIR,
     CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgProgramLanguage,
+    CAPABILITY_READ_FILE, CAPABILITY_SEARCH, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgProgramLanguage,
 };
 
 use crate::ending::EndingRole;
@@ -112,10 +112,6 @@ pub const SHELL_SHELL: OperationId = OperationId::new("shell", "shell");
 /// Read a workspace file, as the variant the read returns.
 pub const FILES_READ_FILE: OperationId = OperationId::new("files", "read_file");
 
-/// Read a workspace file's text directly — the one helper, which shares
-/// [`read_file`](FILES_READ_FILE)'s gate and has an identity of its own.
-pub const FILES_READ_TEXT_FILE: OperationId = OperationId::new("files", "read_text_file");
-
 /// Write a workspace file whole.
 pub const FILES_WRITE_FILE: OperationId = OperationId::new("files", "write_file");
 
@@ -124,6 +120,9 @@ pub const FILES_EDIT_FILE: OperationId = OperationId::new("files", "edit_file");
 
 /// List a workspace directory.
 pub const FILES_LIST_DIR: OperationId = OperationId::new("files", "list_dir");
+
+/// Search the workspace's files for a pattern, under the ignore files.
+pub const FILES_SEARCH: OperationId = OperationId::new("files", "search");
 
 /// Read an authored skill.
 pub const SKILLS_READ_SKILL: OperationId = OperationId::new("skills", "read_skill");
@@ -245,11 +244,10 @@ pub const VIEWS_OPEN_TEXT: OperationId = OperationId::new("views", "open_text");
 pub const VIEWS_OPEN_DOCS_VIEW: OperationId = OperationId::new("views", "open_docs_view");
 
 /// The call that closes a view — what the context-pressure block points an agent at when text views
-/// are holding window it could reclaim.
+/// are holding window it could reclaim. Bought by
+/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT): closing what the program opened is
+/// managing the window, exactly as evicting a file view is.
 pub const VIEWS_CLOSE: OperationId = OperationId::new("views", "close");
-
-/// What is open in the agent's window right now.
-pub const VIEWS_CURRENT: OperationId = OperationId::new("views", "current");
 
 /// The [program library](crate::programs)'s own directory.
 pub const PROGRAMS_HISTORY: OperationId = OperationId::new("programs", "history");
@@ -289,10 +287,9 @@ pub enum Binding {
     /// halves are asked.
     ///
     /// More than one operation may name the same capability, and most do: a capability is a *family*
-    /// of calls in gg's configuration surface, and `read-file` alone buys three — `files.read_file`,
-    /// `files.read_text_file` and `views.open_file` are three operations over one read. They are
-    /// separate operations because they are separately documented, separately called and separately
-    /// grantable.
+    /// of calls in gg's configuration surface, and `read-file` alone buys two — `files.read_file`
+    /// and `views.open_file` are two operations over one read. They are separate operations because
+    /// they are separately documented, separately called and separately grantable.
     Capability(&'static str),
     /// Bought by **where this instance stands**, and by nothing on its own profile: the one call an
     /// agent holds because of a machine it was placed in rather than because of a capability
@@ -314,7 +311,11 @@ pub enum Binding {
     Machine,
     /// Bound to every program whatever a run enables. A run that grants nothing at all must still be
     /// able to show its model something — and must always be able to *find* what it does hold —
-    /// which is why the view surface is mostly this and why the documentation search is exactly it.
+    /// which is why the two view calls that *open* something gg holds or the program computed
+    /// ([`open_text`](VIEWS_OPEN_TEXT), [`open_docs_view`](VIEWS_OPEN_DOCS_VIEW)) are this and why
+    /// the documentation search ([`search`](DOCS_SEARCH)) is exactly it. Those three are the whole
+    /// of it: closing a view is context management and is bought by
+    /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) like the rest of that family.
     Always,
 }
 
@@ -346,7 +347,7 @@ pub enum Binding {
               arm binds and watch every arm fail, then excuse them and watch it pass."
 )]
 pub enum Applicability {
-    /// Every registered language offers it. The default, and the state of all 50 today.
+    /// Every registered language offers it. The default, and the state of all 51 today.
     Universal,
     /// Every registered language offers it **except** these, each paired with the reason — prose,
     /// required, and reviewed. An exemption naming a language that in fact binds the operation is
@@ -464,10 +465,11 @@ macro_rules! operation {
 /// failures.
 ///
 /// They are filed under a **twelfth** family rather than joined to `views`, for three reasons that
-/// point the same way. Their gating does not fit that family's rule — a view is bound to every
-/// program except where it reads the workspace (the capability gate's `views` rule), and two of
-/// these are bought by a capability, so folding them in would mean weakening the rule that keeps a
-/// gate off the only channel into a model's window. The namespace and the family are held in
+/// point the same way. Their gating does not fit that family's rule — opening a view is bound to
+/// every program except where it reads the workspace, and managing one is bought by
+/// `agent-managed-context` (the capability gate's `views` rule), and two of these are bought by a
+/// capability of their own, so folding them in would mean weakening the rule that keeps a gate off
+/// the only channel into a model's window. The namespace and the family are held in
 /// bijection, so a `views` family would force `views.search`, naming a search over gg's
 /// documentation after the surface a model shows *itself* things through. And the seam is already
 /// drawn this way everywhere else: they have their own WIT interface, their own membrane file, and
@@ -476,7 +478,9 @@ macro_rules! operation {
 /// What stays behind in `views` is [`open_docs_view`](VIEWS_OPEN_DOCS_VIEW), and that is the right
 /// side of the line rather than a leftover: opening a documentation view *is* putting material into
 /// the window, which is what the view family is, and it is the one of the four that a run can
-/// neither buy nor withhold.
+/// neither buy nor withhold. Closing a view is the family's other half —
+/// managing the window rather than filling it — and is bought by
+/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) with the evictions and the archive.
 pub const OPERATIONS: &[Operation] = &[
     operation!(
         SHELL_SHELL,
@@ -486,12 +490,6 @@ pub const OPERATIONS: &[Operation] = &[
     ),
     operation!(
         FILES_READ_FILE,
-        FAMILY_FILESYSTEM,
-        Binding::Capability(CAPABILITY_READ_FILE),
-        TAKES_INPUT
-    ),
-    operation!(
-        FILES_READ_TEXT_FILE,
         FAMILY_FILESYSTEM,
         Binding::Capability(CAPABILITY_READ_FILE),
         TAKES_INPUT
@@ -512,6 +510,12 @@ pub const OPERATIONS: &[Operation] = &[
         FILES_LIST_DIR,
         FAMILY_FILESYSTEM,
         Binding::Capability(CAPABILITY_LIST_DIR),
+        TAKES_INPUT
+    ),
+    operation!(
+        FILES_SEARCH,
+        FAMILY_FILESYSTEM,
+        Binding::Capability(CAPABILITY_SEARCH),
         TAKES_INPUT
     ),
     operation!(
@@ -720,8 +724,12 @@ pub const OPERATIONS: &[Operation] = &[
         Binding::Always,
         TAKES_INPUT
     ),
-    operation!(VIEWS_CLOSE, FAMILY_VIEWS, Binding::Always, TAKES_INPUT),
-    operation!(VIEWS_CURRENT, FAMILY_VIEWS, Binding::Always, NO_INPUT),
+    operation!(
+        VIEWS_CLOSE,
+        FAMILY_VIEWS,
+        Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        TAKES_INPUT
+    ),
     operation!(
         PROGRAMS_HISTORY,
         FAMILY_PROGRAMS,

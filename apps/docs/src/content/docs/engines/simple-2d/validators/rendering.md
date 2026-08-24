@@ -53,8 +53,8 @@ An interior sample is byte-exact against the color the build was told to use,
 so a fill is asserted on directly.
 
 ```ts
-const ball = sample(h, state.ball.x, state.ball.y);
-expect(ball).toEqual({ r: 0xf2, g: 0xf5, b: 0xf7, a: 255 });
+const { ball } = h.snapshot();
+expect(sample(h, ball.x, ball.y)).toEqual({ r: 0xf2, g: 0xf5, b: 0xf7, a: 255 });
 ```
 
 Reach for pixels when the claim is about the picture: the background color, a
@@ -105,7 +105,7 @@ transform, a draw order, or a count of draws is read straight out of it.
 
 ```ts
 const calls = recordDrawing(h);
-await engine.advance(1);
+await h.engine.advance(1);
 
 const text = calls
   .filter((call) => call.method === "fillText")

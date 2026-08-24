@@ -17,7 +17,6 @@
 // lists them in the layout's order.
 
 import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import { clamp } from "./entities";
 import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
 
 /**
@@ -26,8 +25,11 @@ import type { InitApi, UpdateApi } from "@test-cabinet/simple-2d";
  * The engine's own layout vocabulary is checked against ACTIONS first, so an
  * action the layout speaks and Carom forgot is a hard failure at start-up rather
  * than a control that silently does nothing.
+ *
+ * Only the `input` half of the API is taken, so this is independent of the state
+ * type the rest of the `InitApi` is generic over.
  */
-export function registerActions(api: InitApi): void {
+export function registerActions(api: Pick<InitApi, "input">): void {
   const layout = api.input.layout();
   if (layout === null) {
     throw new Error(`Carom: the engine was built without the ${LAYOUT} layout`);
@@ -61,11 +63,14 @@ export function p2Axis(api: UpdateApi): number {
 /**
  * Solo has no player two, so both sliders drive the one human paddle — which is
  * what makes `W`/`S` and the arrow keys interchangeable there
- * (specs/modes/single-player.md). Summing and clamping keeps opposite inputs
- * cancelling, so holding up on one side and down on the other stands still.
+ * (specs/modes/single-player.md): `up` is held while either up action is held,
+ * `down` while either down action is, and the axis is `down - up`, so holding
+ * up on one side and down on the other stands still.
  */
 export function soloAxis(api: UpdateApi): number {
-  return clamp(p1Axis(api) + p2Axis(api), -1, 1);
+  const up = api.input.value("p1-up") > 0 || api.input.value("p2-up") > 0;
+  const down = api.input.value("p1-down") > 0 || api.input.value("p2-down") > 0;
+  return Number(down) - Number(up);
 }
 
 /**

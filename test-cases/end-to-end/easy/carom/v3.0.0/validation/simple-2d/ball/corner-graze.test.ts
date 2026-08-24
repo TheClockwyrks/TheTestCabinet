@@ -15,7 +15,7 @@
 // component normal to the struck face may reverse, so `vy` KEEPING ITS SIGN
 // through the contact is the property under test.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   BALL_R,
   OBSTACLES,
@@ -23,7 +23,9 @@ import {
   OBSTACLE_HH,
   SERVE_SPEED,
 } from "../../src/constants";
+import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import {
+  ball0,
   captureReplay,
   clearPaddles,
   createHarness,
@@ -138,14 +140,14 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("reverses only the component normal to the face it grazed", async () => {
   await startPlaying(harness);
   // The corner zone is one ball radius deep, which is what makes the inset above
   // land inside it; stated here so a change to either is read against the other.
-  expect(INSET).toBeLessThan(BALL_R);
+  assertLessThan(INSET, BALL_R);
 
   // All three grazes as one section: each is posed instantaneously and then
   // played out, so the recording is the three flights back to back.
@@ -156,39 +158,45 @@ it("reverses only the component normal to the face it grazed", async () => {
       harness.debug.setBall(0, { ...shot, spin: 0 });
 
       const banked = await harness.until(
-        (s) => Math.sign(s.ball.vx) !== Math.sign(shot.vx),
+        (s) => Math.sign(ball0(s).vx) !== Math.sign(shot.vx),
         { maxFrames: GRAZE_MAX, poll: 1 },
       );
       await harness.advance(SETTLE);
-      const out = harness.snapshot().ball;
+      const out = ball0(harness.snapshot());
       // `out` is frozen, so the flight recorded here reaches no assertion below.
       await harness.advance(DEPARTURE_TICKS);
 
       // The bank itself. Without this the vertical assertion would pass
       // vacuously on a build that never reflected the ball at all.
-      expect(banked.hit, `${graze.label}: banks off the face`).toBe(true);
-      expect(Math.sign(out.vx), `${graze.label}: horizontal reversed`).toBe(
+      assertEqual(banked.hit, true, `${graze.label}: banks off the face`);
+      assertEqual(
+        Math.sign(out.vx),
         -Math.sign(shot.vx),
+        `${graze.label}: horizontal reversed`,
       );
 
       // The property under test: the ball leaves still travelling the way it
       // came vertically. Both components reversed means it went back down its
       // own path.
-      expect(
+      assertEqual(
         Math.sign(out.vy),
+        Math.sign(shot.vy),
         `${graze.label}: keeps travelling ${graze.upward ? "up" : "down"}`,
-      ).toBe(Math.sign(shot.vy));
+      );
 
       // And it came off the face rather than through it.
       if (graze.fromLeft) {
-        expect(out.x, `${graze.label}: stays left of the face`).toBeLessThan(
+        assertLessThan(
+          out.x,
           graze.faceX,
+          `${graze.label}: stays left of the face`,
         );
       } else {
-        expect(
+        assertGreaterThan(
           out.x,
+          graze.faceX,
           `${graze.label}: stays right of the face`,
-        ).toBeGreaterThan(graze.faceX);
+        );
       }
     }
   });

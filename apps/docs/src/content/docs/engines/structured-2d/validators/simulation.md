@@ -22,7 +22,6 @@ simulated time, whatever the machine running the suite is doing.
 ```ts
 import { ConstantClock } from "@test-cabinet/structured-2d";
 import { FIELD_H, FIELD_W, TAGS } from "../../src/constants";
-import { placeBall, startMatch } from "../../src/scenarios";
 import { createHarness } from "../harness";
 
 it("a ball leaving the right edge scores for player one", async () => {
@@ -30,8 +29,8 @@ it("a ball leaving the right edge scores for player one", async () => {
   await engine.initialize();
   const world = engine.world;
 
-  startMatch(world, "versus");
-  placeBall(world, { x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
+  engine.debug.startMatch("versus");
+  engine.debug.placeBall({ x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
   await engine.advance(30);
 
   expect(world.state.players[0].score).toBe(1);
@@ -39,10 +38,11 @@ it("a ball leaving the right edge scores for player one", async () => {
 });
 ```
 
-The scenario is posed through the case's `scenarios.ts` operations, each a
-function over the open `World`. They spawn actors, move transforms, and drive
-the game mode through the same surfaces play uses, and leave the outcome to the
-frames that follow. What the assertions read is what the real frame produced.
+The scenario is posed through the operations of the build's debug surface, read
+off `engine.debug`. Each pose is a method that acts on the world the engine
+holds: it spawns actors, moves transforms, and drives the game mode through the
+same surfaces play uses, and leaves the outcome to the frames that follow. What
+the assertions read is what the real frame produced.
 
 ## Reading the world back
 
@@ -96,8 +96,8 @@ for (const clock of clocks) {
   await engine.initialize();
   const world = engine.world;
 
-  startMatch(world, "versus");
-  placeBall(world, { x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
+  engine.debug.startMatch("versus");
+  engine.debug.placeBall({ x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
   await advanceMs(engine, 500);
 
   expect(world.state.players[0].score).toBe(1);

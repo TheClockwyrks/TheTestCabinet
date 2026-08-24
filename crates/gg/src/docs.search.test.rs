@@ -2,7 +2,8 @@
 //! and the permission filter that decides what a search may even see.
 
 use test_cabinet_core::gg::{
-    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE, CAPABILITY_SHELL, GgProgramLanguage,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_READ_FILE,
+    CAPABILITY_SHELL, GgProgramLanguage,
 };
 
 use super::*;
@@ -217,6 +218,31 @@ fn a_withheld_function_is_not_findable() {
             && !keys.contains(&key_of("editFile").as_str()),
         "an agent granted only the read-file capability must not advertise the others: {keys:?}"
     );
+}
+
+/// **Closing a view is findable only with agent-managed context.** The call
+/// used to be bound to every program, so it is asserted by key — the qualified one, since `docs`
+/// has a `close` of its own: a search for the view surface
+/// still finds the calls that open something for an agent with nothing enabled, and finds the one
+/// that manages the window only once the capability that buys it is on.
+#[test]
+fn closing_views_is_findable_only_with_agent_managed_context() {
+    let without = runtime(&[]);
+    let hits = without.search(ask("view")).expect("a usable query");
+    let found = keys(&hits);
+    assert!(
+        found.contains(&key_of("openText").as_str()),
+        "opening a view is bound to every program: {found:?}"
+    );
+    assert!(
+        !found.contains(&"gg.views.close"),
+        "an agent without agent-managed context must not find the call that manages its window: \
+         {found:?}"
+    );
+    let with = runtime(&[CAPABILITY_AGENT_MANAGED_CONTEXT]);
+    let hits = with.search(ask("view")).expect("a usable query");
+    let found = keys(&hits);
+    assert!(found.contains(&"gg.views.close"), "{found:?}");
 }
 
 /// A **capability-bought** family is filtered on exactly the same predicate — the one that reads gg's

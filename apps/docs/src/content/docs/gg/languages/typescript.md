@@ -155,15 +155,20 @@ model is the string `tsc` printed and nothing else. The shared taxonomy these
 bands belong to is on [compilation](/gg/languages/compilation/).
 
 A program that fails at run time fails by capture: nothing catches its throw to
-describe it, the engine writes its own rendering to standard error, and gg puts
-that in front of the trap that follows. What the model reads is its own
-language's account of its own failure, with the frames read back into
-`program.ts` through the map `tsc` emitted.
+describe it. The engine's own rendering — name, message, stack and the
+properties the thrown error carries — is reported to gg over
+`feedback.report-error` with the failure's class, and the turn is filed as a
+`program_fault`: an uncaught `ApiError` is `program_api_error`, a
+`ReferenceError` is `program_unknown_name`, anything else is `program_throw`.
+What the model reads is its own language's account of its own failure, with the
+frames read back into `program.ts` through the map `tsc` emitted.
 
 A stack the SDK raised from carries the SDK's own frames above the program's,
-under the `sdk:` specifiers the guest resolves for its own modules alone. Which
-construct the engine carries a position for, and when a rejected promise counts
-as a failure, are the guest's own rules and are on
+under the `sdk:` specifiers the guest resolves for its own modules alone. Those
+frames are struck and counted before the report leaves the guest, so what the
+model reads locates the failure in its own file and names the SDK only in the
+count. Which construct the engine carries a position for, and when a rejected
+promise counts as a failure, are the guest's own rules and are on
 [the ECMAScript guest](/gg/languages/ecmascript-guest/) page.
 
 ## Code modules

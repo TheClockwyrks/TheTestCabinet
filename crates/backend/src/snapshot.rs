@@ -38,6 +38,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 
+use test_cabinet_core::content_labels::{self, ContentLabels};
 use test_cabinet_core::redact::SecretScrubber;
 use test_cabinet_core::run_record::RunRecord;
 
@@ -145,15 +146,20 @@ pub const RUN_DOCUMENT_PREFIX: &str = "documents/runs";
 /// and re-uploads the current bytes rather than skipping an existing object.
 const PFP_PREFIX: &str = "pfp";
 
-/// One object to upload: its R2 key, bytes, and content type.
+/// One object to upload: its R2 key, bytes, and the labels it is served under.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SnapshotObject {
     /// The R2 key (e.g. `snapshots/<id>/runs.json`).
     pub key: String,
     /// The object's bytes.
     pub bytes: Vec<u8>,
-    /// The object's content type.
+    /// The media type of the resource the object holds.
     pub content_type: String,
+    /// The codec the stored bytes are framed in, `None` when they are already the
+    /// resource. A `.json.gz` recording is published as JSON framed in gzip, so the
+    /// gallery's player is handed inflated JSON (see
+    /// [`test_cabinet_core::content_labels`]).
+    pub content_encoding: Option<String>,
 }
 
 /// A fully generated snapshot: the versioned objects, the top-level `index.json`
@@ -522,6 +528,7 @@ impl SnapshotBuilder {
                     key: key.clone(),
                     bytes,
                     content_type: "application/json".to_string(),
+                    content_encoding: None,
                 });
             }
             document_keys.push(key);
@@ -573,6 +580,7 @@ impl SnapshotBuilder {
                 key: format!("{PFP_PREFIX}/{reviewer_id}"),
                 bytes: picture.bytes.clone(),
                 content_type: picture.content_type.clone(),
+                content_encoding: None,
             });
         }
 
@@ -755,9 +763,15 @@ impl SnapshotBuilder {
                 record.subject.test_case_version.as_str(),
             ))
             .copied();
-        let case_name = manifest
-            .map(|c| c.name.clone())
-            .unwrap_or_else(|| record.subject.test_case_slug.clone());
+        // A run of a case renamed on disk since (`pong` → Carom) has no entry in
+        // the ingested set under its recorded slug; it still shows its current name.
+        let case_name = manifest.map(|c| c.name.clone()).unwrap_or_else(|| {
+            let slug = record.subject.test_case_slug.as_str();
+            crate::store::RENAMED_SLUG_NAMES
+                .iter()
+                .find(|(old, _)| *old == slug)
+                .map_or_else(|| slug.to_string(), |(_, name)| name.to_string())
+        });
         // Score from the same catalog entry that names the case; both are absent
         // for a run whose case isn't in the ingested set.
         let score = manifest.and_then(|m| run_summary_score(m, record, &run.reviews));
@@ -822,11 +836,7 @@ impl SnapshotBuilder {
             // skip the upload. The digest is over these same bytes, so a hit means
             // the object there is byte-identical to what we would have written.
             if !self.existing_media.contains(&key) {
-                objects.push(SnapshotObject {
-                    key: key.clone(),
-                    bytes,
-                    content_type: media_content_type(&reference.extension).to_string(),
-                });
+                objects.push(SnapshotObject::media(key.clone(), bytes, &file));
             }
             metas.push(CaseReferenceOut {
                 variant: variant.map(str::to_string),
@@ -883,10 +893,10 @@ impl SnapshotBuilder {
 
             // Prefer a copy already at the published extension (an image, or a clip
             // that is already mp4); otherwise pull the raw webm and transcode it.
-            let (file, extension, bytes) = if let Some(bytes) =
+            let (file, bytes) = if let Some(bytes) =
                 self.read_media(run_id, "proof", &published_file).await
             {
-                (published_file, published_ext, bytes)
+                (published_file, bytes)
             } else if proof.kind == test_cabinet_core::MediaKind::Video {
                 let served_ext = test_cabinet_core::proof_served_extension(&proof.dest);
                 let served_file = format!("{}.{}", proof.id, served_ext);
@@ -894,14 +904,14 @@ impl SnapshotBuilder {
                     continue;
                 };
                 match transcode_webm_to_mp4(&raw).await {
-                    Some(mp4) => (published_file, published_ext, mp4),
+                    Some(mp4) => (published_file, mp4),
                     None => {
                         tracing::warn!(
                             run_id = %run_id,
                             proof = %proof.id,
                             "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
                         );
-                        (served_file, served_ext, raw)
+                        (served_file, raw)
                     }
                 }
             } else {
@@ -911,11 +921,15 @@ impl SnapshotBuilder {
             // Key by the produced file name (the transcode-fallback path can publish
             // the raw webm under its served name rather than the mp4 published name).
             let key = format!("{MEDIA_PREFIX}/{run_id}/proof/{file}");
-            objects.push(SnapshotObject {
-                key: key.clone(),
-                bytes,
-                content_type: media_content_type(&extension).to_string(),
-            });
+            // A video publishes under a name the transcode decided, so that name is
+            // what describes it; anything else publishes under its recorded `dest`'s
+            // extension, and only the dest carries a compound `.json.gz` suffix whole.
+            let labelled = if proof.kind == test_cabinet_core::MediaKind::Video {
+                file.as_str()
+            } else {
+                test_cabinet_core::proof_labelled_name(&proof.dest, &file)
+            };
+            objects.push(SnapshotObject::media(key.clone(), bytes, labelled));
             metas.push(RunProofOut {
                 id: proof.id.clone(),
                 kind: proof.kind,
@@ -984,17 +998,17 @@ impl SnapshotBuilder {
 
                 // Prefer a copy already at the published extension (an image, or a clip
                 // already mp4); otherwise pull the raw webm and transcode it.
-                let (file, extension, bytes) = if let Some(bytes) =
+                let (file, bytes) = if let Some(bytes) =
                     self.read_media(run_id, "validation", &published_file).await
                 {
-                    (published_file, published_ext.to_string(), bytes)
+                    (published_file, bytes)
                 } else if output.kind == test_cabinet_core::MediaKind::Video {
                     let Some(raw) = self.read_media(run_id, "validation", &requested_file).await
                     else {
                         continue;
                     };
                     match transcode_webm_to_mp4(&raw).await {
-                        Some(mp4) => (published_file, published_ext.to_string(), mp4),
+                        Some(mp4) => (published_file, mp4),
                         None => {
                             tracing::warn!(
                                 run_id = %run_id,
@@ -1002,7 +1016,7 @@ impl SnapshotBuilder {
                                 output = %output.id,
                                 "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
                             );
-                            (requested_file.clone(), "webm".to_string(), raw)
+                            (requested_file.clone(), raw)
                         }
                     }
                 } else {
@@ -1010,11 +1024,7 @@ impl SnapshotBuilder {
                 };
 
                 let key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
-                objects.push(SnapshotObject {
-                    key: key.clone(),
-                    bytes,
-                    content_type: media_content_type(&extension).to_string(),
-                });
+                objects.push(SnapshotObject::media(key.clone(), bytes, &file));
                 metas.push(RunValidationMediaOut {
                     file: requested_file,
                     key,
@@ -1029,11 +1039,12 @@ impl SnapshotBuilder {
     /// key) and the media objects to upload.
     ///
     /// The baseline is a fixed property of the case *version* — synthesized once at
-    /// `tcab publish-reference` time from the reference implementation and committed
-    /// under `validation-baseline/<variant>/`, copied verbatim into the store at
-    /// ingest — so it is published case-scoped, the invariant counterpart to the
-    /// run-scoped *actual* media. Every committed file is enumerated per variant
-    /// ([`crate::store::DefinitionStore::list_validation_baseline`]); a **video**
+    /// `tcab capture-baselines` time from the reference implementation and committed
+    /// under `validation-baseline/<engine>/<variant>/`, copied verbatim into the store
+    /// at ingest — so it is published case-scoped, the invariant counterpart to the
+    /// run-scoped *actual* media. Every committed file is enumerated per engine and
+    /// variant ([`crate::store::DefinitionStore::list_validation_baseline`]), the
+    /// same pairing the reference implementations themselves come in; a **video**
     /// baseline (`.webm`) is transcoded to `.mp4` for the public gallery, with `file`
     /// kept as the requested `.webm` so the gallery's flat lookup resolves (mirrors
     /// [`Self::run_validation_media`]). A transcode failure publishes the raw webm.
@@ -1049,90 +1060,88 @@ impl SnapshotBuilder {
         let (slug, version) = (&manifest.slug, &manifest.version);
         let mut metas = Vec::new();
         let mut objects = Vec::new();
-        for variant in &manifest.variants {
-            let Ok(files) = self
-                .store
-                .list_validation_baseline(slug, version, &variant.slug)
-            else {
-                continue;
-            };
-            for requested_file in files {
-                let Ok(raw) = self.store.read_validation_baseline(
-                    slug,
-                    version,
-                    &variant.slug,
-                    &requested_file,
-                ) else {
+        for engine in &manifest.engines {
+            for variant in &manifest.variants {
+                let Ok(files) =
+                    self.store
+                        .list_validation_baseline(slug, version, &engine.slug, &variant.slug)
+                else {
                     continue;
                 };
-                // The published name is decided from the requested one, so the whole
-                // key — digest included — is known before any transcoding happens.
-                let is_video = requested_file.to_ascii_lowercase().ends_with(".webm");
-                let digest = content_digest(&raw);
-                let published_name = if is_video {
-                    format!(
-                        "{}.mp4",
-                        &requested_file[..requested_file.len() - ".webm".len()]
-                    )
-                } else {
-                    requested_file.clone()
-                };
-                let key = format!(
-                    "{CASE_MEDIA_PREFIX}/{slug}/{version}/validation-baseline/{}/{digest}-{published_name}",
-                    variant.slug
-                );
-                // Already published from byte-identical source: reference it without
-                // re-uploading, and — the expensive half — without re-transcoding.
-                if self.existing_media.contains(&key) {
+                for requested_file in files {
+                    let Ok(raw) = self.store.read_validation_baseline(
+                        slug,
+                        version,
+                        &engine.slug,
+                        &variant.slug,
+                        &requested_file,
+                    ) else {
+                        continue;
+                    };
+                    let prefix = format!(
+                        "{CASE_MEDIA_PREFIX}/{slug}/{version}/validation-baseline/{}/{}",
+                        engine.slug, variant.slug
+                    );
+                    // The published name is decided from the requested one, so the
+                    // whole key — digest included — is known before any transcoding
+                    // happens.
+                    let is_video = requested_file.to_ascii_lowercase().ends_with(".webm");
+                    let digest = content_digest(&raw);
+                    let published_name = if is_video {
+                        format!(
+                            "{}.mp4",
+                            &requested_file[..requested_file.len() - ".webm".len()]
+                        )
+                    } else {
+                        requested_file.clone()
+                    };
+                    let key = format!("{prefix}/{digest}-{published_name}");
+                    // Already published from byte-identical source: reference it
+                    // without re-uploading, and — the expensive half — without
+                    // re-transcoding.
+                    if self.existing_media.contains(&key) {
+                        metas.push(CaseValidationBaselineOut {
+                            engine: engine.slug.clone(),
+                            variant: variant.slug.clone(),
+                            file: requested_file,
+                            key,
+                        });
+                        continue;
+                    }
+
+                    let (published_file, bytes) = if is_video {
+                        match transcode_webm_to_mp4(&raw).await {
+                            Some(mp4) => (published_name, mp4),
+                            None => {
+                                tracing::warn!(
+                                    slug = %slug,
+                                    version = %version,
+                                    engine = %engine.slug,
+                                    variant = %variant.slug,
+                                    file = %requested_file,
+                                    "webm→mp4 transcode unavailable; publishing raw baseline webm (not iOS-playable)"
+                                );
+                                (requested_file.clone(), raw)
+                            }
+                        }
+                    } else {
+                        (requested_file.clone(), raw)
+                    };
+                    // Re-derive the key from what was actually produced. It matches
+                    // the probe key above on the happy path; on the transcode-failure
+                    // path it deliberately differs, so the raw webm never occupies the
+                    // `.mp4` key and a later refresh that *can* transcode still
+                    // publishes the mp4 instead of skipping over a webm sitting under
+                    // an mp4 name.
+                    let key = format!("{prefix}/{digest}-{published_file}");
+                    objects.push(SnapshotObject::media(key.clone(), bytes, &published_file));
                     metas.push(CaseValidationBaselineOut {
+                        engine: engine.slug.clone(),
                         variant: variant.slug.clone(),
                         file: requested_file,
                         key,
                     });
-                    continue;
                 }
-
-                let (published_file, extension, bytes) = if is_video {
-                    match transcode_webm_to_mp4(&raw).await {
-                        Some(mp4) => (published_name, "mp4".to_string(), mp4),
-                        None => {
-                            tracing::warn!(
-                                slug = %slug,
-                                version = %version,
-                                variant = %variant.slug,
-                                file = %requested_file,
-                                "webm→mp4 transcode unavailable; publishing raw baseline webm (not iOS-playable)"
-                            );
-                            (requested_file.clone(), "webm".to_string(), raw)
-                        }
-                    }
-                } else {
-                    let ext = std::path::Path::new(&requested_file)
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("")
-                        .to_string();
-                    (requested_file.clone(), ext, raw)
-                };
-                // Re-derive the key from what was actually produced. It matches the
-                // probe key above on the happy path; on the transcode-failure path it
-                // deliberately differs, so the raw webm never occupies the `.mp4` key
-                // and a later refresh that *can* transcode still publishes the mp4
-                // instead of skipping over a webm sitting under an mp4 name.
-                let key = format!(
-                    "{CASE_MEDIA_PREFIX}/{slug}/{version}/validation-baseline/{}/{digest}-{published_file}",
-                    variant.slug
-                );
-                objects.push(SnapshotObject {
-                    key: key.clone(),
-                    bytes,
-                    content_type: media_content_type(&extension).to_string(),
-                });
-                metas.push(CaseValidationBaselineOut {
-                    variant: variant.slug.clone(),
-                    file: requested_file,
-                    key,
-                });
             }
         }
         (metas, objects)
@@ -1271,15 +1280,7 @@ impl SnapshotBuilder {
             let Some(bytes) = self.read_media(run_id, "asset", file).await else {
                 continue;
             };
-            let extension = std::path::Path::new(file)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-            objects.push(SnapshotObject {
-                key: key.clone(),
-                bytes,
-                content_type: media_content_type(extension).to_string(),
-            });
+            objects.push(SnapshotObject::media(key.clone(), bytes, file));
             metas.push(RunAssetOut {
                 file: file.to_string(),
                 key,
@@ -1390,6 +1391,7 @@ impl SnapshotBuilder {
                 key,
                 bytes,
                 content_type: "application/json".to_string(),
+                content_encoding: None,
             }),
         )
     }
@@ -1598,22 +1600,43 @@ fn content_digest(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))[..16].to_string()
 }
 
-/// A best-effort content type for reference/proof/asset media from its extension.
-fn media_content_type(extension: &str) -> &'static str {
+/// The labels reference/proof/asset media is published under, from its file name.
+///
+/// The whole name is needed, not just the extension: a validator's draw-command
+/// recording is published gzipped as it is stored, and only the compound `.json.gz`
+/// suffix says the gzip is framing over a JSON document rather than the resource
+/// itself.
+fn media_labels(file: &str) -> ContentLabels {
+    let extension = std::path::Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
     match extension.to_ascii_lowercase().as_str() {
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        "webm" => "video/webm",
-        "mp4" => "video/mp4",
-        "json" => "application/json",
-        // A validator's draw-command recording, published gzipped as it is stored.
-        "gz" => "application/gzip",
-        "glb" => "model/gltf-binary",
-        "wav" => "audio/wav",
-        "mid" | "midi" => "audio/midi",
-        _ => "application/octet-stream",
+        "png" => ContentLabels::plain("image/png"),
+        "jpg" | "jpeg" => ContentLabels::plain("image/jpeg"),
+        "webp" => ContentLabels::plain("image/webp"),
+        "gif" => ContentLabels::plain("image/gif"),
+        "webm" => ContentLabels::plain("video/webm"),
+        "mp4" => ContentLabels::plain("video/mp4"),
+        "json" => ContentLabels::plain("application/json"),
+        "gz" => content_labels::for_gz(file),
+        "glb" => ContentLabels::plain("model/gltf-binary"),
+        "wav" => ContentLabels::plain("audio/wav"),
+        "mid" | "midi" => ContentLabels::plain("audio/midi"),
+        _ => ContentLabels::plain("application/octet-stream"),
+    }
+}
+
+impl SnapshotObject {
+    /// A media object published under the labels its file name implies.
+    fn media(key: String, bytes: Vec<u8>, file: &str) -> Self {
+        let labels = media_labels(file);
+        Self {
+            key,
+            bytes,
+            content_type: labels.content_type.to_string(),
+            content_encoding: labels.content_encoding.map(str::to_string),
+        }
     }
 }
 
@@ -1644,6 +1667,7 @@ fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
         key,
         bytes: serde_json::to_vec_pretty(value)?,
         content_type: "application/json".to_string(),
+        content_encoding: None,
     })
 }
 
@@ -1670,9 +1694,14 @@ pub async fn upload_snapshot(
 
     futures_util::stream::iter(snapshot.objects.iter().map(Ok::<_, BackendError>))
         .try_for_each_concurrent(UPLOAD_CONCURRENCY, |object| async move {
-            r2.put_object(&object.key, object.bytes.clone(), &object.content_type)
-                .await
-                .map_err(BackendError::from)
+            r2.put_object(
+                &object.key,
+                object.bytes.clone(),
+                &object.content_type,
+                object.content_encoding.as_deref(),
+            )
+            .await
+            .map_err(BackendError::from)
         })
         .await?;
     // index.json last: this single small overwrite is the atomic cut-over.
@@ -1680,6 +1709,7 @@ pub async fn upload_snapshot(
         &snapshot.index.key,
         snapshot.index.bytes.clone(),
         &snapshot.index.content_type,
+        snapshot.index.content_encoding.as_deref(),
     )
     .await?;
 
@@ -1980,9 +2010,8 @@ impl RunSummary {
     ///
     /// `rating` is the aggregate across the run's reviews, or `None` when the run
     /// carries no reviews yet (an unrated console run). `case_name` falls back to
-    /// the test-case slug — a backend-connected console resolves display names
-    /// itself; only the static snapshot substitutes the real catalog name (see
-    /// `SnapshotBuilder::summary`).
+    /// the test-case slug; both callers substitute the real catalog name (the
+    /// listing via `case_display_name`, the snapshot in `SnapshotBuilder::summary`).
     pub fn from_stored(run: &StoredRun) -> Self {
         let record = &run.record;
         Self {
@@ -2040,6 +2069,17 @@ pub struct SubjectOut {
     pub variant: String,
     pub harness_slug: test_cabinet_core::run_record::HarnessSlug,
     pub harness_version: Option<String>,
+    /// The slug of the [engine](test_cabinet_core::engine) the produced build was
+    /// written against (`none` when it supplied its own runtime). Lifted onto the
+    /// card because the engine is a *run dimension* selected alongside the variant,
+    /// and a result is only comparable with another result on the same engine — so
+    /// every listing that shows the variant has to be able to show this beside it.
+    pub engine_slug: String,
+    /// The version of the engine runtime vendored into the run repository. `None`
+    /// for an engine that vendors no runtime (`none` has no package), and for runs
+    /// recorded before engine selection existed.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub engine_version: Option<String>,
     pub model_id: String,
     /// The name of the gg **configuration** this run was launched from — the
     /// [`preset`](test_cabinet_core::gg::GgCapabilitySet::preset) recorded on the run's
@@ -2062,6 +2102,8 @@ impl SubjectOut {
             variant: record.subject.variant.clone(),
             harness_slug: record.subject.harness_slug,
             harness_version: record.subject.harness_version.clone(),
+            engine_slug: record.subject.engine_slug.clone(),
+            engine_version: record.subject.engine_version.clone(),
             model_id: record.subject.model_id.clone(),
             gg_preset: record
                 .subject
@@ -2330,16 +2372,18 @@ pub struct CaseReferenceOut {
 }
 
 /// A committed **baseline** validation media file exposed in case metadata — one
-/// debug-script output driven once against the case's reference implementation.
-/// `variant` is the variant slug the baseline was captured for (baselines are always
-/// per-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests
-/// (`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the
-/// media as published (a video transcoded to `.mp4`). The static gallery keys its
-/// baseline lookup off `variant` + `file`.
+/// declared output captured once against the case's reference implementation.
+/// `engine` and `variant` name the reference build it was captured from (a variant
+/// has one reference implementation per engine, and their captures are not
+/// interchangeable); `file` is the flat `<item>__<output>.<ext>` name the gallery
+/// requests (`.png`/`.webm`/`.json.gz`); `key` is its snapshot-relative object key,
+/// whose bytes are the media as published (a video transcoded to `.mp4`). The static
+/// gallery keys its baseline lookup off `engine` + `variant` + `file`.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CaseValidationBaselineOut {
+    pub engine: String,
     pub variant: String,
     pub file: String,
     pub key: String,
@@ -2364,6 +2408,22 @@ pub struct CaseVariantOut {
     /// here — the spec analogue of [`Self::prompt`] — rather than the case sharing
     /// one common list.
     pub seeded_inputs: Vec<CaseSeededInputOut>,
+    /// This variant's prompt and seeded specs re-rendered for each
+    /// [engine](test_cabinet_core::engine) the version declares that vendors a
+    /// runtime, keyed by engine slug.
+    ///
+    /// A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so
+    /// the text a run was handed depends on which runtime its build was written
+    /// against. [`Self::prompt`] and [`Self::seeded_inputs`] are the engineless
+    /// rendering — what a reader browsing the *case* sees, and exactly what a run on
+    /// the `none` engine was handed — and this map carries the rest, so a run's
+    /// Inputs surface shows the text that run actually received.
+    ///
+    /// The engineless engine is deliberately absent: it is already the pair above,
+    /// and duplicating every spec body for it would double the document for the many
+    /// cases that support nothing else.
+    #[serde(default)]
+    pub engine_renderings: std::collections::BTreeMap<String, CaseVariantRenderingOut>,
     /// Reviewer checklist items additive to the common ones, with their point
     /// weights, surfaced only when this variant is selected.
     pub review_items: Vec<CaseReviewItemOut>,
@@ -2397,6 +2457,19 @@ pub struct CaseVariantOut {
     /// the `case_reference_sheet` table at ingest, and folded in here at export — never
     /// resolved from the manifest and never seeded into a run.
     pub reference_sheet: Option<CaseReferenceSheetOut>,
+}
+
+/// One variant's prompt and seeded specs rendered for one engine that vendors a
+/// runtime — the per-engine half of [`CaseVariantOut`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseVariantRenderingOut {
+    /// The variant's prompt as a run on this engine receives it.
+    pub prompt: String,
+    /// The variant's complete seeded spec set in seed order, each body rendered for
+    /// this variant on this engine.
+    pub seeded_inputs: Vec<CaseSeededInputOut>,
 }
 
 /// One variant's published reference frames, as exported in case metadata.
@@ -2541,6 +2614,7 @@ fn seeded_inputs(
     store: &DefinitionStore,
     manifest: &StoredManifest,
     variant: &crate::store::StoredVariant,
+    engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
 ) -> Vec<CaseSeededInputOut> {
     // The variant's own volume overrides the case's, so a template spec renders at
     // this variant's actual dimensions — matching how the prompt and a run's seed
@@ -2568,6 +2642,7 @@ fn seeded_inputs(
                     &variant.name,
                     variant.description.as_deref(),
                     voxel,
+                    engine,
                 )
                 .inspect_err(|err| {
                     tracing::warn!(
@@ -2589,11 +2664,53 @@ fn seeded_inputs(
         .collect()
 }
 
+/// Render one variant's prompt for `engine` off the stored manifest, exactly as a
+/// run on that engine receives it. `None` renders the engineless form.
+fn render_case_prompt(
+    manifest: &StoredManifest,
+    variant: &crate::store::StoredVariant,
+    engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
+) -> Result<String, BackendError> {
+    let spec_dests: Vec<String> = manifest
+        .common_specs
+        .iter()
+        .chain(variant.specs.iter())
+        .map(|spec| spec.dest.clone())
+        .collect();
+    test_cabinet_core::render_prompt_from_template(
+        &manifest.slug,
+        &manifest.version,
+        &manifest.prompt_template,
+        &variant.slug,
+        &variant.name,
+        variant.description.as_deref(),
+        &spec_dests,
+        manifest.test_type,
+        manifest.max_runtime_seconds,
+        // The variant's own volume overrides the case's for its prompt.
+        variant.voxel.as_ref().or(manifest.voxel.as_ref()),
+        // A snapshot bakes the standing prompt only — prior game-jam entries are a
+        // property of the run, so no distinctness section.
+        0,
+        engine,
+    )
+    .map_err(|e| {
+        BackendError::Snapshot(format!(
+            "rendering prompt for `{}@{}` variant `{}`: {e}",
+            manifest.slug, manifest.version, variant.slug
+        ))
+    })
+}
+
 /// Build the case-metadata document for one ingested version (no mockup HTML, no
 /// host paths — only the site-facing slice). Each variant's prompt is rendered
 /// exactly as a run receives it, so the public gallery shows the same instruction
 /// the consoles do, and the seeded spec files it references are inlined (bodies
 /// read from `store`) so the fully static site can show them without a backend.
+///
+/// Both are rendered once engineless and once per declared engine that vendors a
+/// runtime, because the templates branch on the selected engine (see
+/// [`CaseVariantOut::engine_renderings`]).
 fn case_metadata(
     store: &DefinitionStore,
     manifest: &StoredManifest,
@@ -2608,43 +2725,49 @@ fn case_metadata(
         .variants
         .iter()
         .map(|v| {
-            let spec_dests: Vec<String> = manifest
-                .common_specs
-                .iter()
-                .chain(v.specs.iter())
-                .map(|spec| spec.dest.clone())
-                .collect();
-            let prompt = test_cabinet_core::render_prompt_from_template(
-                &manifest.slug,
-                &manifest.version,
-                &manifest.prompt_template,
-                &v.slug,
-                &v.name,
-                v.description.as_deref(),
-                &spec_dests,
-                manifest.test_type,
-                manifest.max_runtime_seconds,
-                // The variant's own volume overrides the case's for its prompt.
-                v.voxel.as_ref().or(manifest.voxel.as_ref()),
-                // The gallery snapshot shows the standing prompt only — no prior
-                // game-jam entries, so no distinctness section.
-                0,
-                // A snapshot is baked per case version, not per run, and the
-                // engine is a run dimension — so the engineless form.
-                None,
-            )
-            .map_err(|e| {
-                BackendError::Snapshot(format!(
-                    "rendering prompt for `{}@{}` variant `{}`: {e}",
-                    manifest.slug, manifest.version, v.slug
-                ))
-            })?;
+            // The engineless rendering: what a reader browsing the case sees, and
+            // exactly what a run on the `none` engine was handed.
+            let prompt = render_case_prompt(manifest, v, None)?;
+            // Every engine this version declares that vendors a runtime, rendered
+            // under its own branch of the templates so a run's Inputs surface can
+            // show the text that run actually received. An engine slug this build
+            // does not carry is skipped with a warning rather than failing the
+            // snapshot, mirroring how a missing reference baseline is skipped.
+            let mut engine_renderings = std::collections::BTreeMap::new();
+            for support in &manifest.engines {
+                if support.slug == test_cabinet_core::engine::NONE_SLUG {
+                    continue;
+                }
+                let resolved = match test_cabinet_core::EngineCatalog::new().resolve(
+                    &test_cabinet_core::engine::EngineSelection::new(support.slug.clone()),
+                ) {
+                    Ok(resolved) => resolved,
+                    Err(err) => {
+                        tracing::warn!(
+                            slug = %manifest.slug,
+                            version = %manifest.version,
+                            engine = %support.slug,
+                            %err,
+                            "resolving declared engine for snapshot failed; omitting its rendering"
+                        );
+                        continue;
+                    }
+                };
+                engine_renderings.insert(
+                    support.slug.clone(),
+                    CaseVariantRenderingOut {
+                        prompt: render_case_prompt(manifest, v, Some(&resolved))?,
+                        seeded_inputs: seeded_inputs(store, manifest, v, Some(&resolved)),
+                    },
+                );
+            }
             Ok(CaseVariantOut {
                 slug: v.slug.clone(),
                 name: v.name.clone(),
                 description: v.description.clone(),
                 prompt,
-                seeded_inputs: seeded_inputs(store, manifest, v),
+                seeded_inputs: seeded_inputs(store, manifest, v, None),
+                engine_renderings,
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
                 domains: v.domains.iter().map(case_domain_out).collect(),
                 reference_builds: reference_builds

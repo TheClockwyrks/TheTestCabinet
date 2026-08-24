@@ -66,10 +66,52 @@ baselines. The site resolves these from snapshot assets, a console from the
 backend for a published run and from the [artifact
 service](/components/artifacts/overview/) for a produced one.
 
+A run's Inputs surface is answered through `readCaseVariant`, which resolves one
+variant of one exact case version rendered for one
+[engine](/components/core/engines/). The run detail page passes its run's own
+recorded version and engine, so it shows that run's prompt and specs rather than
+the latest version's. A console resolves it from the backend's version and specs
+routes; the site resolves it from the snapshot's case document for that version.
+
 Listing pages are answered through `queryRunSummaries`, a paged, filtered,
 sorted query the host implements. A console forwards it to the backend's offset
 endpoint; the site answers it from its in-memory summary index with the same
 semantics, so a numbered pager sizes identically on either host.
+
+## The case detail coordinate
+
+A test case's detail page is anchored to one selected coordinate: a version, a
+variant of that version, and an engine that version supports. The coordinate is
+selected in the page header, lives in the query string (`?version=`,
+`?variant=`, `?engine=`, each omitted at its default), and travels across the
+page's tabs, so every tab describes the same deliverable and any selection is
+linkable. Selection is canonical: an unknown version resolves to the latest, and
+a variant or engine the selected version does not declare resolves to that
+version's default. Picking a version re-derives the variant and engine choices
+from what that version declares.
+
+`readTestCase` supplies the frame the selectors are built from — every published
+version, each version's variant names, and each version's supported engines —
+and the layout resolves the selected coordinate through the same
+`readCaseVariant` a run's Inputs surface uses. The tabs that render the
+deliverable itself (Inputs, Reviewing, Reference) render exactly that resolved
+coordinate, and the header's Run action launches it.
+
+The tabs that aggregate runs (Runs, Leaderboard, Metrics) scope relative to the
+anchored coordinate rather than selecting one of their own. Each carries a
+version scope: the exact anchored version, its `major.minor` line (the default,
+since revisions of one minor are the same spec), its major line, or every
+version. Where the selected version declares engines beyond one, each also
+carries an engine scope, defaulting to the anchored engine because runs under
+different engines measure different work; a leaderboard or metrics view widened
+to all engines lists each engine's rows separately rather than folding them.
+The Runs tab additionally offers an all-variants widening. Scopes live in the
+query string (`?scope=`, `?engines=`, `?variants=`) and travel across tabs, so
+the run list and the boards describe the same cohort.
+
+The whole-history tabs (Changelog, Errata) cover every version regardless of the
+anchor, and the Overview tab shows the case's description with a note when the
+anchored version is not the one the description accompanies.
 
 ## Asset viewers
 
@@ -95,6 +137,30 @@ read the artifact, arena, snapshot, and Grafana URLs the backend reports from
 `GET /config`. Both consoles mount these transports, so neither host duplicates
 the protocol. The desktop app supplies its own arena transport, because its
 arena runs in-process.
+
+## Submit outcomes
+
+The outcome of a press — the failure that stopped a save, launch, or publish, or
+the progress and success of one that ran — belongs immediately above the action
+row that raised it, and reveals itself by scrolling onto the screen when it
+appears.
+
+Both halves are required. A notice placed at a fixed point in the document is
+only visible when the whole form fits the viewport, and the console's forms are
+taller than that. The new-run page, the review editor, and the model editor all
+scroll, and an operator who presses a button and sees nothing change reads a
+working page as a dead one.
+
+`SubmitNotice` renders such a notice. A page that draws one in its own chrome
+takes the `useRevealNotice(message)` hook instead and attaches the ref it
+returns. Either way the reveal fires once per appearance, so an action that
+rewrites its message as it streams progress moves the viewport only when its
+notice first arrives, and a notice raised without a press behind it — the
+top-up a coverage plan runs on open — stays a plain notice with no reveal at
+all.
+
+A small control that reports beside itself keeps its own inline error, since the
+control and its message are read together.
 
 ## Dialogs
 

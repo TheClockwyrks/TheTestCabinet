@@ -40,21 +40,21 @@ describes.
 ```ts
 import { expect, it } from "vitest";
 import { createHarness } from "../harness";
-import { placeBall } from "../../src/debug";
 import { emitReplay } from "../replay";
 
 it("credits the left player when the ball crosses the right edge", async () => {
-  const { engine } = createHarness();
-  const state = await engine.initialize();
+  const h = createHarness();
+  const { engine } = h;
+  await engine.initialize();
 
-  placeBall(state, { x: 560, y: 180, vx: 240, vy: 0 });
+  h.setBall({ x: 560, y: 180, vx: 240, vy: 0 });
   await engine.advance(30);
 
   engine.startRecording();
   await engine.advance(60);
   emitReplay(import.meta.url, "goal", engine.stopRecording());
 
-  expect(state.score.left).toBe(1);
+  expect(h.snapshot().score.p1).toBe(1);
 });
 ```
 
@@ -75,13 +75,15 @@ absolute path. A suite writes each declared output to
 `$TCAB_VALIDATION_MEDIA_DIR/<its own staged path>/<output id>.json.gz`.
 
 A recording is a JSON document stored gzipped, which is what the two extensions
-say. The format is repetitive by design: every frame restates the drawing state
-it inherited so that it can be drawn on its own, and consecutive frames of a
-game issue very nearly the same operations. That redundancy is what seeking and
-side-by-side scrubbing are built on, and it is also what compresses away. A real
-capture stores tens of times smaller gzipped, which keeps a run's whole set of
-recordings to a few megabytes. The document inside is the recording exactly as the
-recorder handed it back.
+say. A frame names the drawing state it inherited and the operations it issued
+by index into tables the whole recording shares, so a frame is drawable on its
+own and the frames that repeat each other cost an index apiece. What remains is
+repetitive, because a game's operations differ from their neighbours' by a few
+coordinates, and that compresses away. A real capture stores several times
+smaller gzipped, which keeps a run's whole set of recordings to a few megabytes.
+The document inside is the recording exactly as the
+recorder handed it back, and serving keeps that reading: a recording goes out as
+`application/json` with `Content-Encoding: gzip`.
 
 The staged path is the path the runner handed vitest as a file filter, so a
 suite derives its own from `import.meta.url` and needs no name of its own. Two
@@ -132,10 +134,16 @@ evidence beside the verdict.
 
 ## The baseline
 
-The same suites are driven against the variant's reference implementation by
-[`tcab capture-baselines`](/components/cli/overview/#commands), which produces
-the baseline recording under the same name in the case's version folder. The
-reviewer sees the two beside each other.
+The same suites are run against the variant's reference implementation for the
+same engine by [`tcab capture-baselines`](/components/cli/overview/#commands),
+which produces the baseline recording under the same name in the case's version
+folder, at `validation-baseline/<engine>/<variant>/`. The reviewer sees the two
+beside each other.
+
+The engine is in that path because a variant has one reference implementation
+per engine, and the two are different builds. A run recorded under one engine
+compared against the other's frames would show a reviewer a difference between
+two runtimes and invite them to read it as a difference in the build.
 
 Both recordings carry the engine's frame counter and its accumulated simulated
 time per frame, and every frame in each is drawn from itself alone, so one

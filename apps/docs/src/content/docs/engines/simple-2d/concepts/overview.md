@@ -25,4 +25,5 @@ a caller subscribes to.
 | [Audio](/engines/simple-2d/concepts/audio/) | Synthesized and file-backed cues, the first-interaction unlock, and the cue events. |
 | [Assets](/engines/simple-2d/concepts/assets/) | The single asset root, path resolution, and the load events. |
 | [Diagnostics](/engines/simple-2d/concepts/diagnostics/) | Named sources, the overlay drawn in device space, and its toggle. |
+| [Debug Surface](/engines/simple-2d/concepts/debug/) | The object `initialize` returns beside the state, whose poses and readings a build is driven and read through from code. |
 | [Recording](/engines/simple-2d/concepts/recording/) | The wrapper over the drawing context, per-frame inherited state, and independently drawable frames. |

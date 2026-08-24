@@ -166,6 +166,9 @@ fn manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
+        engines: vec![test_cabinet_core::EngineSupport::unbounded(
+            test_cabinet_core::engine::NONE_SLUG,
+        )],
         experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
@@ -794,6 +797,61 @@ async fn case_metadata_renders_template_specs_per_variant() {
 }
 
 #[tokio::test]
+async fn case_metadata_renders_the_prompt_and_specs_for_every_declared_engine() {
+    // A run's Inputs surface on the static site reads the rendering for the engine
+    // its run recorded. The engineless pair stays at the top level (what a reader
+    // browsing the case sees, and what a run on `none` was handed); every other
+    // declared engine rides in `engineRenderings`.
+    let mut m = manifest();
+    m.prompt_template = "Built on {{engine.name}}.".to_string();
+    m.engines = vec![
+        test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
+        test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+    ];
+    m.common_specs = vec![crate::store::StoredSpec {
+        source: "spec/field.md.hbs".to_string(),
+        dest: "spec/field.md".to_string(),
+        template: true,
+        kind: Default::default(),
+    }];
+
+    let (_tmp, store) = empty_store();
+    let path = store
+        .version_dir(&m.slug, &m.version)
+        .join("spec/field.md.hbs");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, "Write the loop yourself: {{engine.slug}}.\n").unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let variant = &parsed["variants"][0];
+
+    assert_eq!(variant["prompt"], "Built on None.");
+    assert_eq!(
+        variant["seededInputs"][0]["text"],
+        "Write the loop yourself: none.\n"
+    );
+    let engine = &variant["engineRenderings"]["simple-2d"];
+    assert_eq!(engine["prompt"], "Built on Simple 2D.");
+    assert_eq!(
+        engine["seededInputs"][0]["text"],
+        "Write the loop yourself: simple-2d.\n"
+    );
+    // The engineless engine is the top-level pair, so duplicating it here would
+    // double every spec body in the document for no reader.
+    assert!(variant["engineRenderings"]["none"].is_null());
+}
+
+#[tokio::test]
 async fn only_cases_with_a_published_run_are_emitted() {
     // Two ingested versions, but only `pong@v1.0.0` has a published run. The
     // gallery shows only cases with a published run, so the runless version's case
@@ -1089,6 +1147,38 @@ async fn per_run_file_exports_actual_validation_media_from_the_record() {
 }
 
 #[tokio::test]
+async fn a_published_recording_carries_its_framing_onto_the_object() {
+    // R2 hands back what the object records, so a recording published without its
+    // framing declared would reach the gallery as an opaque gzip blob. The compound
+    // `.json.gz` suffix is what says the gzip frames a document rather than being one.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_validation("v1", "spin__replay.json.gz", &[0x1f, 0x8b, 0x08, 0x00])
+        .unwrap();
+
+    let mut run = validation_run("v1", "spin", false, false);
+    run.record.validation.debug_scripts[0].outputs = vec![DebugScriptOutput {
+        id: "replay".to_string(),
+        name: "Replay".to_string(),
+        kind: MediaKind::Replay,
+        actual_present: true,
+    }];
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let replay = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/v1/validation/spin__replay.json.gz")
+        .expect("replay validation media exported");
+    assert_eq!(replay.content_type, "application/json");
+    assert_eq!(replay.content_encoding.as_deref(), Some("gzip"));
+    assert_eq!(replay.bytes, vec![0x1f, 0x8b, 0x08, 0x00]);
+}
+
+#[tokio::test]
 async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdict_id() {
     // A per-sub-item driver's media is addressed by the composite verdict id
     // `<item>.<sub>`, so a sub-item's proof does not collide with its siblings' or the
@@ -1137,14 +1227,17 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
 }
 
 #[tokio::test]
-async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() {
-    // A committed baseline still under the version's `validation-baseline/<variant>/`
-    // dir (copied into the store verbatim at ingest).
+async fn case_metadata_exports_validation_baselines_keyed_by_engine_variant_and_file() {
+    // A committed baseline still under the version's
+    // `validation-baseline/<engine>/<variant>/` dir (copied into the store verbatim at
+    // ingest). The walk is over the engines the manifest declares crossed with its
+    // variants, which is exactly the set of reference builds the case has.
     let m = manifest();
     let (_tmp, store) = empty_store();
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
         .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_core::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();
@@ -1159,7 +1252,7 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
     // The PNG bytes are exported under the content-stable case-media prefix, keyed
     // by a digest of their own bytes — not under this snapshot's prefix.
     let key = format!(
-        "media/cases/pong/v1.0.0/validation-baseline/base/{}-spin__still.png",
+        "media/cases/pong/v1.0.0/validation-baseline/none/base/{}-spin__still.png",
         content_digest(b"png:baseline-still")
     );
     let obj = snapshot
@@ -1170,7 +1263,10 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
     assert_eq!(obj.content_type, "image/png");
     assert_eq!(obj.bytes, b"png:baseline-still");
 
-    // The case metadata names it, carrying the variant and the flat requested name.
+    // The case metadata names it, carrying the reference build it came from — engine
+    // and variant — and the flat requested name. The static gallery keys its lookup
+    // off all three, so a run resolves the baseline of the build it was compared
+    // against rather than of whichever engine happened to be captured last.
     let case = snapshot
         .objects
         .iter()
@@ -1179,6 +1275,7 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
     let baselines = parsed["validationBaselines"].as_array().unwrap();
     assert_eq!(baselines.len(), 1);
+    assert_eq!(baselines[0]["engine"], "none");
     assert_eq!(baselines[0]["variant"], "base");
     assert_eq!(baselines[0]["file"], "spin__still.png");
     assert_eq!(baselines[0]["key"], key);
@@ -1697,6 +1794,7 @@ async fn case_media_already_in_the_bucket_is_referenced_without_re_uploading() {
     let baseline_dir = store
         .version_dir(&m.slug, &m.version)
         .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join(test_cabinet_core::engine::NONE_SLUG)
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();

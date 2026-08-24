@@ -7,26 +7,34 @@
 //
 // From there the real simulation is stepped ONE FRAME at a time until the ball
 // serves. At the harness's 120 Hz clock the hold is a whole number of frames, so
-// the count is the duration.
+// the count is the duration. Each update reads input first and then advances
+// the screen it left (specs/ui.md), so the frame that confirmed the menu is
+// also the first countdown frame, and the serve lands on the frame on which
+// `holdTimer - dt <= 0` first holds: HOLD_TIME of frames counting that one.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { HOLD_TIME } from "../../src/constants";
 import {
-  TICK_HZ,
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
+import {
+  ball0,
   captureReplay,
   createHarness,
   startWithKeys,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
 /** The hold, in frames of the harness's clock. */
 const HOLD_TICKS = HOLD_TIME * TICK_HZ;
 /**
- * The old browser suite's margin: three ticks either side. Enough to absorb the
- * frame the menu confirm was delivered on, and nothing like enough to hide a
- * hold of the wrong length.
+ * The review item's margin: one frame either side, which covers the confirm
+ * frame counting or not and the float rounding of `HOLD_TIME - n * dt`.
  */
-const TOLERANCE_TICKS = 3;
+const TOLERANCE_TICKS = 1;
 /**
  * Frames of the served flight recorded after the launch.
  *
@@ -44,15 +52,15 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("holds the ball for the pre-serve countdown, then serves", async () => {
   await startWithKeys(harness, "versus");
 
   const start = harness.snapshot();
-  expect(start.screen).toBe("countdown");
-  expect(start.ball.held).toBe(true);
+  assertEqual(start.screen, "countdown");
+  assertEqual(ball0(start).held, true);
 
   // The hold itself, from the frame after the menu confirm to the launch: the
   // countdown running out is the whole of what this point is about.
@@ -65,9 +73,7 @@ it("holds the ball for the pre-serve countdown, then serves", async () => {
     return launched;
   });
 
-  expect(served.hit).toBe(true);
-  expect(Math.abs(served.frames - HOLD_TICKS)).toBeLessThanOrEqual(
-    TOLERANCE_TICKS,
-  );
-  expect(served.snapshot.ball.speed).toBeGreaterThan(1);
+  assertEqual(served.hit, true);
+  assertLessThanOrEqual(Math.abs(served.frames - HOLD_TICKS), TOLERANCE_TICKS);
+  assertGreaterThan(ball0(served.snapshot).speed, 1);
 });

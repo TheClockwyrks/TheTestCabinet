@@ -13,10 +13,10 @@
 //!
 //! What runs underneath is recorded under the same identity, and that is the point rather than a
 //! coincidence: a dispatched call is pinned in the [replay](crate::capture) under the **operation**,
-//! so a re-run feeds the recorded outcome back to the call the model actually wrote. Several
-//! operations share one implementation (`files.read_file`, `files.read_text_file` and
-//! `views.open_file` are all reads), so a replay keyed on the implementation would feed one
-//! operation's recorded outcome to another's call. Fourteen operations reach no internal dispatch at
+//! so a re-run feeds the recorded outcome back to the call the model actually wrote. Two
+//! operations may share one implementation (`files.read_file` and `views.open_file` are both
+//! reads), so a replay keyed on the implementation would feed one
+//! operation's recorded outcome to another's call. Thirteen operations reach no internal dispatch at
 //! all, and a call the membrane refused ran nothing whatsoever though the model made it — both are
 //! still API calls, and both are recorded here.
 //!
@@ -138,39 +138,6 @@ impl<A: OperationApi> MembraneState<A> {
         let failure = result.as_ref().err().map(|error| wire_failure(error.code));
         self.api.api.end_api_call(identity, failure);
         result
-    }
-
-    /// As [`recorded`](Self::recorded), for the one call that cannot fail.
-    ///
-    /// `views.current` answers with a list — an agent with nothing open gets an empty one, which is
-    /// an answer rather than an error — so there is no verdict to take and the record is always
-    /// `ok`. Spelling that out here is what keeps its host function from having to invent a
-    /// `Result` it would then unwrap.
-    ///
-    /// `programs.history` is not one: the host checks the [program-library](super::programs)
-    /// capability, because an agent with no library and an agent that has run nothing are different
-    /// facts and one empty list could only tell the model one of them.
-    ///
-    /// It carries **no capability gate**, and it is the only bracket that does not. Its one caller
-    /// is bound by [`Binding::Always`](crate::sandbox::Binding::Always) — nothing gates showing a
-    /// program its own open views — so a gate here could only ever answer yes, and giving it one
-    /// would mean inventing a `Result` for a call that cannot fail.
-    /// `the_one_ungated_bracket_serves_an_operation_nothing_gates` is what holds that true.
-    pub(super) fn recorded_ok<R>(
-        &mut self,
-        id: OperationId,
-        body: impl FnOnce(&mut Self, Recording) -> R,
-    ) -> R {
-        let rendered = id.to_string();
-        let identity = ApiIdentity {
-            operation: &rendered,
-        };
-        self.api.api.begin_api_call(identity);
-        self.api_calls = self.api_calls.saturating_add(1);
-        self.record_discovery(id, identity);
-        let value = body(self, Recording(()));
-        self.api.api.end_api_call(identity, None);
-        value
     }
 
     /// Ask the api whether the model had **read this call's documentation** before writing it, and

@@ -15,7 +15,6 @@ const BOUND: &[&str] = &[
     "writeFile",
     "editFile",
     "listDir",
-    "readTextFile",
     "readSkill",
     "writeMemory",
     "readMemory",
@@ -24,7 +23,6 @@ const BOUND: &[&str] = &[
     "openText",
     "openDocsView",
     "close",
-    "current",
     "shell",
 ];
 

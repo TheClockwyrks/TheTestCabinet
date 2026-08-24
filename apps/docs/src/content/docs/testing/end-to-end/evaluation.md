@@ -5,10 +5,10 @@ title: Evaluation
 An end-to-end run is scored in two stages: an automated validation pass and a
 review written by a person who plays the build. Validation catches gross
 failures cheaply and, through the [instrumentation](#instrumentation) a case
-requires, drives the build into the states a review needs so it can decide the
-objective, mechanically checkable requirements and synthesize their evidence.
-The review is where subjective judgement is made: the quality rating per scoring
-domain, and the checklist verdicts automation cannot produce honestly.
+requires, drives the build into the states each checklist item needs and decides
+its verdict, synthesizing the evidence as it goes. The review is where
+subjective judgement is made: the quality rating per scoring domain, covering
+the build's visuals, polish, and feel.
 
 The mechanism behind each stage lives under Core:
 [Validation](/components/core/validation/) for the automated pass and
@@ -63,15 +63,15 @@ lets validation reach past gross failures. For an objective review item, the
 harness resets the build to a known start, calls the case's control operations
 to establish the item's precondition, steps the real simulation forward, and
 reads the result back, both synthesizing the proof media and deciding the
-verdict.
+verdict. Every review item a case declares carries such a script, so behavior is
+decided by the case's validators and a reviewer is never asked to decide it.
 
 The debug API is load-bearing rather than informational: a build that does not
 expose the contract the case declares, or whose API is non-conformant, fails
 every checklist point its broken instrumentation hid. An implementation that
 cannot expose the mandated contract has not met the spec. See
 [load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing).
-Instrumentation decides only the objective half of a review; the judgement below
-stays human.
+Instrumentation decides the checklist; the domain ratings below stay human.
 
 ## Review
 
@@ -81,7 +81,8 @@ person plays the finished build and writes it up. A review carries three things.
 - A short writeup the site shows before the playable build.
 - A rating per scoring domain, one hand-assigned tier for each
   [`[[domain]]`](/testing/end-to-end/manifests/) in the run's effective domain
-  set: the case's common domains plus any the run's variant declares. The five
+  set: the case's common domains plus any the run's variant declares. This is
+  the reviewer's own judgement of the build's visuals, polish, and feel. The five
   tiers, in descending order of fidelity to the spec, are flawless, great,
   passable, scuffed, and broken. The run's overall rating is the worst across
   that set, so a flawless mode cannot mask a broken one.
@@ -93,9 +94,11 @@ person plays the finished build and writes it up. A review carries three things.
   rating supplied, before a review can be submitted, so a reviewer cannot
   silently skip a requirement the author called out.
 
-An automatically validated point arrives pre-filled with the verdict its debug
-script decided, marked as machine-set and shown in a distinguishable color. The
-reviewer can override any of them.
+Every checklist point arrives pre-filled with the verdict the case's validator
+decided, marked as machine-set and shown in a distinguishable color. The
+reviewer can override any of them, and doing so is the exception: a validator
+whose precondition could not be met in the world the build invented, or a build
+that clearly does the right thing despite broken instrumentation.
 
 ## Scoring
 

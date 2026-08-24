@@ -3,12 +3,14 @@
 // The mirror of `scoring-p1`: the ball is aimed at the left goal down the lane
 // that clears both obstacles, and the build's own scoring code decides the point.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
   createHarness,
   driveGoal,
+  receiver0,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -34,7 +36,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("gives player two the point when the ball leaves the left goal", async () => {
@@ -48,7 +50,11 @@ it("gives player two the point when the ball leaves the left goal", async () => 
     return resolved;
   });
 
-  expect(point.hit).toBe(true);
-  expect(point.snapshot.score.p2).toBe(1);
-  expect(point.snapshot.score.p1).toBe(0);
+  assertEqual(point.hit, true);
+  // After a point the ball is parked, `receiver` becomes the side scored on,
+  // and the screen returns to the countdown (specs/balls.md).
+  assertEqual(point.snapshot.screen, "countdown");
+  assertEqual(receiver0(harness), "left");
+  assertEqual(point.snapshot.score.p2, 1);
+  assertEqual(point.snapshot.score.p1, 0);
 });

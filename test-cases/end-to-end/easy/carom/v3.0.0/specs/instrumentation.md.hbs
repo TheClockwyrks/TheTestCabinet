@@ -1,21 +1,46 @@
 # Carom — Debug and automation surface
 
+{{#if (eq engine.slug "none")}}
 Carom carries a small debugging and automation surface, `window.__carom`, so the
 game can be driven and inspected from code without touching the keyboard or
 waiting on real time.
 
-The surface is supplied. `src/debug.ts` holds it, already written, and
-`src/main.ts` installs it on `window.__carom` as soon as the runtime has
-initialized. Both files are ones you must not edit.
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__carom` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it
+is present and exactly as specified here.
 
-What this file asks of you is the other half: the game's state holds what the
-surface reads, and the game honors the state the surface poses. Every operation is
-a read or a write of `CaromState`. Each arranges the world, and the game's own
-`update` runs the real collision, the real serve, and the real AI from there on
-the next frame. Read `src/debug.ts` alongside this file: it is the exact behavior
-described here.
+Each operation is a read or a pose of the game's state. It arranges the world,
+and the game's own update runs the real collision, the real serve, and the real
+AI from there on the next frame, so a scenario driven from code behaves exactly
+like one played by hand.
 
 The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Carom carries a small debugging and automation surface so the game can be driven
+and inspected from code without touching the keyboard or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `CaromState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<CaromState>`,
+and returns the next `CaromState`; a reading takes the state the same way and
+returns what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.serve(s))`, and a reading against the engine's
+current state, as `debug.snapshot(engine.state)`. A pose arranges the world, and
+the game's own `update` runs the real collision, the real serve, and the real AI
+from there on the next frame, so a scenario driven from code behaves exactly like
+one played by hand. Where the surface's implementation lives under `src/` is
+yours to decide; `src/game.ts` declares and exports its type, `CaromDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
 
 ## A deterministic core
 
@@ -25,8 +50,9 @@ same state however it was divided into frames. Two more properties make it
 driveable from code:
 
 - Render-free core. Game state advances from the elapsed time the game is handed,
-  independent of a canvas, of the host's frame callback, and of wall-clock time.
-  The dependency runs one way: the simulation reads nothing from the renderer.
+  independent of a canvas, of the frame loop that measured it, and of wall-clock
+  time. The dependency runs one way: the simulation reads nothing from the
+  renderer.
 - Seeded randomness. Any randomness the game uses runs off a generator seeded from
   `state.rngState`, and it keeps its whole generator state in that field, so
   reseeding and replaying the same calls reproduces the same result exactly. A
@@ -38,16 +64,23 @@ reaches the same state every time.
 ## What the runtime provides instead
 
 {{#if (eq engine.slug "none")}}
-The clock, the keyboard, and the overlay belong to the runtime in `src/host.ts`.
+The keyboard and the overlay belong to the runtime layer beneath the game, and
+the surface carries no operation for either. That layer delivers the actions the
+game registers from the key bindings this specification fixes, and it draws and
+toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
 {{else}}
 The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
-which documents them at `{{engine.docs}}`.
+which documents them in the `engine/` directory, and the surface carries no
+operation for any of them. The engine advances the game frame by frame and can
+take it off real time, it drives the actions the game registers, and it draws and
+toggles the debug overlay.
 {{/if}}
-Carom defines none of them, and `window.__carom` carries no operation for any of
-them: the runtime advances the game frame by frame and can take it off real time,
-the runtime drives the actions the game registers, and the runtime draws and
-toggles the debug overlay. What the overlay shows is Carom's, under
-[Diagnostics](#diagnostics) below.
+
+What the overlay shows is Carom's, under Diagnostics below.
 
 ## The driver
 
@@ -56,15 +89,20 @@ it is the one behavior the whole surface depends on.
 
 - While `driver.paddles` is `false`, the game plays normally: the registered
   actions move the human paddles and, in Solo, the AI moves the right one.
-- Every operation except `snapshot` and `reset` sets `driver.paddles` to `true`.
-  From then on both paddles move at the held velocities `driver.vy.left` and
+- Every operation that poses the game sets `driver.paddles` to `true`. From then
+  on both paddles move at the held velocities `driver.vy.left` and
   `driver.vy.right`, in units per second, integrated against the frame's delta
   time and clamped to `[PADDLE_MIN_CY, PADDLE_MAX_CY]` exactly as a played paddle
   is. The input actions and the AI leave the paddles alone while it is `true`.
+- `snapshot` and `reset` leave the driver as they found it.
+{{#if (eq engine.slug "none")}}
+- `setAutoStep` and `advance` leave it alone as well: moving the clock is not
+  posing the world.
+{{/if}}
 - The exception is `driver.ai`. In Solo, while `driver.paddles` and `driver.ai`
   are both `true`, the right paddle is driven by the real AI opponent while the
   left paddle stays on its held velocity.
-- `reset()` sets `driver.paddles` and `driver.ai` back to `false` and both held
+- `reset` sets `driver.paddles` and `driver.ai` back to `false` and both held
   velocities to `0`, handing the paddles back.
 
 A paddle's `vy` field reports its actual vertical velocity for the frame, whoever
@@ -74,31 +112,98 @@ velocity is set.
 
 ## The operations
 
-`window.__carom` carries `version` (`CAROM_DEBUG_VERSION`, `1`) and the operations
-below. Values are plain numbers, strings, and booleans; coordinates and velocities
-are in the field's logical units.
+The surface carries `version` (`CAROM_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings, and booleans;
+coordinates and velocities are in the field's logical units.
+{{#if (eq engine.slug "none")}}
+{{else}}
 
+Each operation's first parameter is the current state, `DeepReadonly<CaromState>`.
+A pose returns the next `CaromState`, built from the one it was handed, which it
+leaves as it was; a reading returns what it read. The headings below name the
+parameters that follow the state.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop advancing the simulation from the wall clock, so the game changes only
+when `advance` says so. `setAutoStep(true)` returns it to running itself, which is
+how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent frame left.
+
+### `advance(seconds, frames)`
+
+Runs `frames` whole frames covering `seconds` of game time, each worth
+`seconds / frames`, immediately and in order. `frames` defaults to `1`. Each is a
+real frame — the same update the loop runs, then a render — so the game's own
+collision, serve and AI produce the result and the canvas reflects it.
+
+Every rate in this game is per second and integrated against the frame's delta
+time, so `advance(1, 1)` and `advance(1, 60)` cover the same second of game time
+and must reach the same outcome, beyond the drift a change in step size explains.
+
+Advancing while the game is still stepping automatically adds to what the wall
+clock is already doing, so a scenario that must be reproducible calls
+`setAutoStep(false)` first.
+
+{{/if}}
+{{#if (eq engine.slug "none")}}
 ### `reset(options)`
+{{else}}
+### `reset(state, options)`
+{{/if}}
 
-Restores every declared field of `CaromState` to its title-screen value: the title
+{{#if (eq variant.slug "multi")}}
+Restores every declared field of the game's state to its title-screen value: the title
+screen with `menuIndex` at `0`, both scores `0`, no winner, both paddles centered
+at `FIELD_CY`, each ball parked motionless and spinless at its own home point, not
+held, with its hold timer at `0` and an empty trail, `simTime` at `0`, and the
+driver cleared.
+`options.seed` seeds `rngState`, defaulting to `DEFAULT_SEED` (`1`).
+{{else}}
+Restores every declared field of the game's state to its title-screen value: the title
 screen with `menuIndex` at `0`, both scores `0`, no winner, `receiver` back to
 `"left"`, `holdTimer` at `0`, both paddles centered at `FIELD_CY`, the ball parked
 motionless and spinless at `(FIELD_CX, FIELD_CY)`, an empty trail, `simTime` at
 `0`, and the driver cleared. `options.seed` seeds `rngState`, defaulting to
 `DEFAULT_SEED` (`1`).
+{{/if}}
 
 `muted` is deliberately untouched: muting is a player preference the runtime owns.
 
 Because it restores exactly the declared fields, any state of your own that a
 frame depends on is derivable from them.
 
+{{#if (eq engine.slug "none")}}
 ### `snapshot()`
 
-A pure read of the state, returned as the plain object under
-[Snapshot shape](#snapshot-shape). It changes nothing.
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
 
 ### `startMatch(mode)`
+{{else}}
+### `snapshot(state)`
 
+A pure reading of `state`, returned as the plain object under Snapshot shape
+below. It returns no state, because it poses nothing.
+
+### `startMatch(state, mode)`
+{{/if}}
+
+{{#if (eq variant.slug "multi")}}
+Poses the opening of a real match, with `mode` being `"solo"` or `"versus"`,
+exactly as choosing it from the menu would: `screen` becomes `"countdown"`, both
+scores `0`, `winner` `null`, both paddles centered, and all three balls held at
+their home points with a full `HOLD_TIME` hold timer. It leaves `simTime` as it
+is.
+
+The game runs from there: the hold timers tick down against the delta time and the
+launch happens through the game's own code.
+{{else}}
 Poses the opening of a real match, with `mode` being `"solo"` or `"versus"`,
 exactly as choosing it from the menu would: `screen` becomes `"countdown"`,
 `holdTimer` becomes `HOLD_TIME`, both scores `0`, `winner` `null`, `receiver`
@@ -107,9 +212,23 @@ is.
 
 The game runs from there: the countdown ticks down against the delta time and the
 serve happens through the game's own code.
+{{/if}}
 
+{{#if (eq engine.slug "none")}}
 ### `serve()`
+{{else}}
+### `serve(state)`
+{{/if}}
 
+{{#if (eq variant.slug "multi")}}
+Ends the hold of every waiting ball immediately instead of waiting it out, by
+setting the hold timer of every ball whose `held` is `true` to `0`. A ball already
+in flight is left as it is. It applies on the `"countdown"` and `"playing"` screens
+alone.
+
+The launch itself is yours: on the next frame the game advances, an elapsed hold
+timer launches that ball at `SERVE_SPEED` along a fresh random angle.
+{{else}}
 Ends the pre-serve hold immediately instead of waiting it out, by setting
 `holdTimer` to `0`. From a live rally it re-parks the ball, clears the trail, and
 returns `screen` to `"countdown"` first, so a re-serve and a first serve behave
@@ -117,43 +236,72 @@ identically. It applies on the `"countdown"` and `"playing"` screens alone.
 
 The launch itself is yours: on the next frame the game advances, an elapsed
 `holdTimer` launches the ball at `SERVE_SPEED` toward `state.receiver`.
+{{/if}}
 
+{{#if (eq engine.slug "none")}}
 ### `setScore(p1, p2)`
+{{else}}
+### `setScore(state, p1, p2)`
+{{/if}}
 
 Sets the two scores directly, as a precondition. The win and deuce rules still
 resolve through real play, so a match ends when a real point is driven.
 
-### `setPaddle(side, state)`
+{{#if (eq engine.slug "none")}}
+### `setPaddle(side, patch)`
+{{else}}
+### `setPaddle(state, side, patch)`
+{{/if}}
 
-Poses or moves a paddle. `side` is `"left"` or `"right"`; `state` may set `cy`
+Poses or moves a paddle. `side` is `"left"` or `"right"`; `patch` may set `cy`
 (center y) and `vy` (vertical velocity in units per second). A `vy` set here is
 written to both the paddle and `driver.vy[side]`, so it persists across frames and
 the paddle is still moving when it strikes the ball, which is what drives the spin
 mechanic.
 
-### `setBall(index, state)`
+{{#if (eq engine.slug "none")}}
+### `setBall(index, patch)`
+{{else}}
+### `setBall(state, index, patch)`
+{{/if}}
 
-Places and aims a ball. `index` is `0`, selecting the single ball in play. `state`
+{{#if (eq variant.slug "multi")}}
+Places and aims a ball. `index` selects one of the three balls, numbered in play
+order from `0`. `patch` may set any of `x`, `y`, `vx`, `vy`, and `spin`. Posing a
+ball takes it into live play, clearing `held` and its hold timer, so a scenario
+can drive one ball while parking the others out of the way.
+{{else}}
+Places and aims a ball. `index` is `0`, selecting the single ball in play. `patch`
 may set any of `x`, `y`, `vx`, `vy`, and `spin`.
+{{/if}}
 
+{{#if (eq engine.slug "none")}}
 ### `setAiControl(enabled)`
+{{else}}
+### `setAiControl(state, enabled)`
+{{/if}}
 
 Sets `driver.ai`, handing the right paddle back to the computer opponent for the
 rest of the driven scenario, so advancing the game runs the real AI against the
 posed ball while the left paddle and the ball stay on their posed values. It
-applies in Solo; `false` is the default, and `reset()` clears it.
+applies in Solo; `false` is the default, and `reset` clears it.
 {{#if (eq variant.slug "gyre")}}
 
+{{#if (eq engine.slug "none")}}
 ### `setObstacleClock(t)`
+{{else}}
+### `setObstacleClock(state, t)`
+{{/if}}
 
 Poses the obstacles by setting the obstacle clock to `t` seconds and holding them
 there. `t = 0` is upright at the base centers; a larger `t` sways and rotates them
 exactly as normal play would at that moment. While `driver.paddles` is `true` the
 obstacle clock is held still rather than advancing with the frame, so a scenario
-faces a chosen, known obstacle orientation. `reset()` returns to normal, moving
+faces a chosen, known obstacle orientation. `reset` returns to normal, moving
 obstacles.
 {{/if}}
 
+{{#if (eq engine.slug "none")}}
 A typical scenario calls `startMatch("versus")`, then `setPaddle` and `setBall` to
 arrange the exact contact wanted, advances the game a handful of frames to run the
 real collision, and reads the result from `snapshot()`.
@@ -161,6 +309,17 @@ real collision, and reads the result from `snapshot()`.
 ## Snapshot shape
 
 `snapshot()` returns:
+{{else}}
+A typical scenario applies `startMatch` through
+`engine.apply((s) => debug.startMatch(s, "versus"))`, then `setPaddle` and
+`setBall` the same way to arrange the exact contact wanted, advances the engine a
+handful of frames to run the real collision, and reads the result from
+`debug.snapshot(engine.state)`.
+
+## Snapshot shape
+
+`snapshot` returns:
+{{/if}}
 
 ```js
 {
@@ -175,9 +334,17 @@ real collision, and reads the result from `snapshot()`.
     right: { cy: <number>, vy: <number> },
   },
 
+{{#if (eq variant.slug "multi")}}
+  // All three balls, in play order.
+  balls: [
+    { x: <number>, y: <number>, vx: <number>, vy: <number>,
+      speed: <number>, spin: <number>, held: <boolean> },
+  ],
+{{else}}
   // The single ball in play.
   ball: { x: <number>, y: <number>, vx: <number>, vy: <number>,
           speed: <number>, spin: <number>, held: <boolean> },
+{{/if}}
 
 {{#if (eq variant.slug "gyre")}}
   // Each obstacle's live pose: its center and its rotation in radians, the same
@@ -190,29 +357,50 @@ real collision, and reads the result from `snapshot()`.
 }
 ```
 
-Every field is read straight off `CaromState`, so what the snapshot reports is
+{{#if (eq variant.slug "multi")}}
+Every field is read straight off the game's state, so what the snapshot reports is
+what the game holds. One is derived rather than stored: `speed` is
+`hypot(vx, vy)`. `held` is the ball's own flag, true while it waits at its home
+point, and it stays true through a pause.
+{{else}}
+Every field is read straight off the game's state, so what the snapshot reports is
 what the game holds. Two are derived rather than stored: `speed` is
 `hypot(vx, vy)`, and `held` is true while a ball's pre-serve countdown is still
 running, which stays true through a pause.
+{{/if}}
 
-Three fields need the game to keep them honest every frame:
+The game refreshes the following every frame:
 
-- `muted` mirrors the runtime's mute bit. Refresh it from `api.audio.muted()` in
-  every `update`, since the runtime owns muting and this is the game's readable
-  copy of it.
-- `simTime` accumulates the delta time of every frame the match simulation
-  advances.
+- `muted` mirrors the runtime's mute bit. Refresh it from the runtime in every
+  update, since the runtime owns muting and this is the game's readable copy of
+  it.
+- `simTime` accumulates the delta time of every update, whatever the screen.
+{{#if (eq variant.slug "multi")}}
+- each ball's `holdTimer` counts down from `HOLD_TIME` to `0` while that ball is
+  `held`, and sits at `0` once it is in flight.
+{{else}}
 - `holdTimer` counts down from `HOLD_TIME` to `0` and sits at `0` during a live
   rally.
+{{/if}}
 
 ## Diagnostics
 
 The runtime's debug overlay shows the values the game registers with it as
-diagnostic sources, from `InitApi.diagnostics`. Register at least the current
-`screen` and `mode`, both scores, each ball's position, velocity, speed, and spin,
-and each paddle's center and velocity, the same facts `snapshot()` reports. Keep
-each one short enough to read on a line, and keep every source a pure read, so
-watching the overlay leaves the simulation as it is.
+diagnostic sources. Register at least the current `screen` and `mode`, both
+scores, each ball's position, velocity, speed, and spin, and each paddle's center
+and velocity, the same facts `snapshot` reports. Keep each one short enough to
+read on a line, and keep every source a pure read, so watching the overlay leaves
+the simulation as it is.
 
-Registering those values is the whole of Carom's part. Drawing the panel, toggling
-it, and keeping it read-only are the runtime's.
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
+`Backquote`), and it reads the game without changing it.
+{{else}}
+Registering those values is the whole of Carom's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<CaromState>`, and reads off that argument: a source that closed
+over the state `initialize` built would report the title screen forever, because
+every frame leaves a new value behind. Drawing the panel, toggling it, and
+keeping it read-only are the engine's.
+{{/if}}

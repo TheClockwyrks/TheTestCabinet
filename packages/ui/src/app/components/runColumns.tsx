@@ -36,10 +36,13 @@ import styles from "./RunLog.module.scss";
  * - `"global"` offers every column for cross-case listings (the home page).
  * - `"variant"` drops the test and variant columns for pages already scoped to
  *   a single test case and variant, where they would be constant.
+ * - `"case"` drops only the test column: the case-detail Runs tab widened to all
+ *   variants is still one case per row, but its variant (and engine) now differ
+ *   row to row and must stay visible.
  * - `"model"` drops the model column for the model detail page, where every row
  *   is the same model; it keeps the test and variant columns.
  */
-export type RunScope = "global" | "variant" | "model";
+export type RunScope = "global" | "variant" | "case" | "model";
 
 /**
  * A finished run resolved for the table: the summary card plus the values a cell
@@ -359,6 +362,31 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       </span>
     ),
   },
+  // The engine sits beside the variant because it is the same kind of fact: a run
+  // dimension chosen at launch, and one that decides which other runs this one is
+  // comparable with at all. It is NOT dropped in the `variant` scope the way the
+  // variant column is — a page scoped to one case and variant still lists runs
+  // across every engine that case supports, which is precisely where telling them
+  // apart matters most.
+  //
+  // An in-flight run cannot fill it: the engine selection lives inside the launch
+  // request rather than in a lifted job column, so `GET /jobs/active` does not
+  // report it. The dash says "not yet", which is what every other unfillable cell
+  // says, rather than guessing at `none`.
+  {
+    id: "engine",
+    label: "ENGINE",
+    default: "6rem",
+    min: 56,
+    optional: true,
+    sortKey: (row) => row.summary.subject.engineSlug.toLowerCase(),
+    render: (row) => (
+      <span className={styles.variant} data-label="Engine">
+        {row.summary.subject.engineSlug}
+      </span>
+    ),
+    renderActive: () => activeDash("Engine", false),
+  },
   // What identifies a run at a glance differs by harness, so this one cell carries
   // both — hence the two-part header, and the per-row `data-label` that names which
   // of the two the phone card is actually showing. A third-party-harness run is its
@@ -544,6 +572,7 @@ const COLUMN_BY_ID = new Map(RUN_COLUMNS.map((column) => [column.id, column]));
 const SCOPE_EXCLUDES: Record<RunScope, ReadonlySet<string>> = {
   global: new Set(),
   variant: new Set(["test", "variant"]),
+  case: new Set(["test"]),
   model: new Set(["model"]),
 };
 

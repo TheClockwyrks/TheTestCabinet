@@ -23,11 +23,13 @@ import { toRunSummary } from "../data/runSummary";
 import { toModelSummary, type ModelSummary } from "../data/models";
 import type {
   ArenaApi,
+  CaseVariantRef,
   CatalogStatus,
   GalleryDataInput,
   HarnessAuthApi,
   RunDetail,
 } from "../data/galleryContext";
+import { DEFAULT_ENGINE_SLUG } from "../data/engines";
 import type { RunQuery, RunQueryResult } from "../data/runQuery";
 import type {
   ChangelogEntry,
@@ -35,6 +37,8 @@ import type {
   SeededInput,
   TestCaseDetail,
   TestCaseSummary,
+  VariantRef,
+  VariantSummary,
 } from "../data/testCases";
 import { useRunsRuntime } from "./runsRuntime";
 
@@ -116,9 +120,10 @@ async function fetchSeededInputs(
   slug: string,
   version: string,
   variant: string,
+  engine: string,
 ): Promise<SeededInput[]> {
   try {
-    const spec = await backend.readSpecs(slug, version, variant);
+    const spec = await backend.readSpecs(slug, version, variant, engine);
     return spec.specs.map((s) => ({
       path: s.dest,
       kind: "text" as const,
@@ -130,6 +135,86 @@ async function fetchSeededInputs(
   }
 }
 
+// One resolved variant as the gallery's `VariantSummary`. `info` must already have
+// been resolved for `engine` — the backend renders each variant's prompt for the
+// engine the resolve named — and the same engine is used for the seeded spec
+// bodies, so the pair a caller shows is one consistent rendering.
+async function toVariantSummary(
+  backend: BackendClient,
+  info: VersionInfo,
+  v: VersionInfo["variants"][number],
+  engine: string,
+): Promise<VariantSummary> {
+  return {
+    slug: v.slug,
+    name: v.name,
+    description: v.description,
+    // The backend renders the prompt and serves the references; the seeded
+    // spec bodies are fetched per file (see fetchSeededInputs).
+    prompt: v.prompt,
+    seededInputs: await fetchSeededInputs(
+      backend,
+      info.slug,
+      info.version,
+      v.slug,
+      engine,
+    ),
+    // Case-level runtime packages ride on the resolved version; every variant of
+    // the case ships the same set, so carry them onto each variant summary.
+    packages: info.packages ?? [],
+    referenceScreenshots: v.references.map((r) => ({
+      view: r.view,
+      kind: r.kind,
+      url: r.url,
+    })),
+    reviewItems: v.reviewItems.map((item) => ({
+      id: item.id,
+      title: item.title,
+      text: item.text,
+      reference: item.reference ?? null,
+      proof: item.proof ?? null,
+      sequences: item.sequences ?? [],
+      frames: item.frames ?? [],
+      weight: item.weight,
+      graded: item.graded ?? false,
+      domain: item.domain ?? null,
+      // Whether this point counts toward the score. `false` only when the
+      // version's errata (`excludeFromScore`) retired it — carried through so the
+      // reviewer UIs can flag it "not scored". Dropping it here left the console
+      // (unlike the static site) silently unable to mark excluded points.
+      scored: item.scored,
+      subItems: (item.subItems ?? []).map((sub) => ({
+        id: sub.id,
+        title: sub.title,
+        description: sub.description ?? null,
+        weight: sub.weight,
+        reference: sub.reference ?? null,
+        proof: sub.proof ?? null,
+        // Same as the whole-item `scored` above: preserved so an erratum that
+        // excludes one sub-item of a category still surfaces as "not scored".
+        scored: sub.scored,
+      })),
+    })),
+    // The variant's effective scoring domains (common + its own), already
+    // merged on the resolved VariantInfo — the set a run of this variant is
+    // rated against.
+    domains: v.domains.map((d) => ({
+      id: d.id,
+      name: d.name,
+      description: d.description,
+    })),
+    // The reference-implementation build URLs the backend records for this
+    // variant, one per engine, or empty when it declares none. Drives whether the
+    // case-detail Reference tab appears for the selected variant, and what its
+    // engine switch offers.
+    referenceBuilds: v.referenceBuilds ?? {},
+    // An asset-generation variant's published reference frames (indices only —
+    // the images and action logs live in the snapshot bucket). Null on a backend
+    // that predates the field, so the tab simply never appears.
+    referenceSheet: v.referenceSheet ?? null,
+  };
+}
+
 async function toTestCaseDetail(
   backend: BackendClient,
   /** The case's published versions, newest first. */
@@ -137,75 +222,15 @@ async function toTestCaseDetail(
   info: VersionInfo,
   changelog: ChangelogEntry[],
   errata: ErrataEntry[],
+  /** The engines each version declares, keyed by version. */
+  enginesByVersion: Record<string, string[]>,
+  /** Each version's variant identities, keyed by version. */
+  variantsByVersion: Record<string, VariantRef[]>,
 ): Promise<TestCaseDetail> {
   const variants = await Promise.all(
-    info.variants.map(async (v) => ({
-      slug: v.slug,
-      name: v.name,
-      description: v.description,
-      // The backend renders the prompt and serves the references; the seeded
-      // spec bodies are fetched per file (see fetchSeededInputs).
-      prompt: v.prompt,
-      seededInputs: await fetchSeededInputs(
-        backend,
-        info.slug,
-        info.version,
-        v.slug,
-      ),
-      // Case-level runtime packages ride on the resolved version; every variant of
-      // the case ships the same set, so carry them onto each variant summary.
-      packages: info.packages ?? [],
-      referenceScreenshots: v.references.map((r) => ({
-        view: r.view,
-        kind: r.kind,
-        url: r.url,
-      })),
-      reviewItems: v.reviewItems.map((item) => ({
-        id: item.id,
-        title: item.title,
-        text: item.text,
-        reference: item.reference ?? null,
-        proof: item.proof ?? null,
-        sequences: item.sequences ?? [],
-        frames: item.frames ?? [],
-        weight: item.weight,
-        graded: item.graded ?? false,
-        domain: item.domain ?? null,
-        // Whether this point counts toward the score. `false` only when the
-        // version's errata (`excludeFromScore`) retired it — carried through so the
-        // reviewer UIs can flag it "not scored". Dropping it here left the console
-        // (unlike the static site) silently unable to mark excluded points.
-        scored: item.scored,
-        subItems: (item.subItems ?? []).map((sub) => ({
-          id: sub.id,
-          title: sub.title,
-          description: sub.description ?? null,
-          weight: sub.weight,
-          reference: sub.reference ?? null,
-          proof: sub.proof ?? null,
-          // Same as the whole-item `scored` above: preserved so an erratum that
-          // excludes one sub-item of a category still surfaces as "not scored".
-          scored: sub.scored,
-        })),
-      })),
-      // The variant's effective scoring domains (common + its own), already
-      // merged on the resolved VariantInfo — the set a run of this variant is
-      // rated against.
-      domains: v.domains.map((d) => ({
-        id: d.id,
-        name: d.name,
-        description: d.description,
-      })),
-      // The reference-implementation build URLs the backend records for this
-      // variant, one per engine, or empty when it declares none. Drives whether the
-      // case-detail Reference tab appears for the selected variant, and what its
-      // engine switch offers.
-      referenceBuilds: v.referenceBuilds ?? {},
-      // An asset-generation variant's published reference frames (indices only —
-      // the images and action logs live in the snapshot bucket). Null on a backend
-      // that predates the field, so the tab simply never appears.
-      referenceSheet: v.referenceSheet ?? null,
-    })),
+    info.variants.map((v) =>
+      toVariantSummary(backend, info, v, DEFAULT_ENGINE_SLUG),
+    ),
   );
   return {
     slug: info.slug,
@@ -223,6 +248,15 @@ async function toTestCaseDetail(
     versions,
     latestVersion: versions[0] ?? info.version,
     variants,
+    // The engines each version supports. Every version was resolved to build the
+    // changelog, so the declared set for all of them is already in hand — which is
+    // what lets the detail header offer an older version's engines rather than
+    // the latest version's.
+    enginesByVersion,
+    // The variant identities each version declares, from the same per-version
+    // resolutions, so the header's variant selector offers exactly the selected
+    // version's variants.
+    variantsByVersion,
     domains: info.domains.map((d) => ({
       id: d.id,
       name: d.name,
@@ -294,7 +328,11 @@ async function fetchTestCase(
   // contributing its own entry (every version declares a changelog) — and the
   // newest supplies the case's display metadata and variants.
   const infos = await Promise.all(
-    versions.map((version) => backend.resolveVersion(slug, version)),
+    versions.map((version) =>
+      // A case page is not a run, so nothing has selected an engine: resolve the
+      // engineless rendering.
+      backend.resolveVersion(slug, version, DEFAULT_ENGINE_SLUG),
+    ),
   );
   const changelog: ChangelogEntry[] = infos.map((info) => ({
     version: info.version,
@@ -308,7 +346,24 @@ async function fetchTestCase(
       version: info.version,
       errata: info.errata ?? [],
     }));
-  return toTestCaseDetail(backend, versions, infos[0]!, changelog, errata);
+  const enginesByVersion = Object.fromEntries(
+    infos.map((info) => [info.version, info.engines]),
+  );
+  const variantsByVersion = Object.fromEntries(
+    infos.map((info) => [
+      info.version,
+      info.variants.map((v) => ({ slug: v.slug, name: v.name })),
+    ]),
+  );
+  return toTestCaseDetail(
+    backend,
+    versions,
+    infos[0]!,
+    changelog,
+    errata,
+    enginesByVersion,
+    variantsByVersion,
+  );
 }
 
 // The host supplies its own arena capability (the consoles wire one when a worker
@@ -447,19 +502,22 @@ export function useLiveGallery(
     [workerClient],
   );
 
-  // A case variant's **baseline** validation media is case-scoped — a fixed property
-  // of the case version — so, unlike the run-scoped actual media above, it resolves
-  // against the backend's `/test-cases/.../validation-baseline/...` route keyed by the
-  // run's subject (slug/version/variant), the same way reference screenshots resolve.
-  // This holds for local and published runs alike; a host with no backend (no
-  // case-scoped source) resolves it to null.
+  // A reference build's **baseline** validation media is case-scoped — a fixed
+  // property of the case version — so, unlike the run-scoped actual media above, it
+  // resolves against the backend's `/test-cases/.../validation-baseline/...` route
+  // keyed by the run's subject (slug/version/engine/variant), the same way reference
+  // screenshots resolve. The ENGINE is part of that key: a variant has one reference
+  // implementation per engine, and a run must be compared against the one it was
+  // built on. This holds for local and published runs alike; a host with no backend
+  // (no case-scoped source) resolves it to null.
   const validationBaselineUrl = useCallback(
     (subject: RunSubject, file: string): string | null => {
       if (!backendUrl) return null;
       const path =
         `/test-cases/${encodeURIComponent(subject.testCaseSlug)}` +
         `/versions/${encodeURIComponent(subject.testCaseVersion)}` +
-        `/validation-baseline/${encodeURIComponent(subject.variant)}` +
+        `/validation-baseline/${encodeURIComponent(subject.engineSlug)}` +
+        `/${encodeURIComponent(subject.variant)}` +
         `/${encodeURIComponent(file)}`;
       return joinPath(backendUrl, path);
     },
@@ -583,6 +641,25 @@ export function useLiveGallery(
     [backend],
   );
 
+  // Resolve one variant of one EXACT case version, rendered for one engine — the
+  // inputs a run was given. It resolves that version rather than the case's latest
+  // and names the run's engine on both reads, so the prompt and the spec bodies are
+  // the branch of the templates that run's harness received.
+  const readCaseVariant = useCallback(
+    async (ref: CaseVariantRef): Promise<VariantSummary | null> => {
+      if (!backend) return null;
+      const info = await backend.resolveVersion(
+        ref.slug,
+        ref.version,
+        ref.engine,
+      );
+      const variant = info.variants.find((v) => v.slug === ref.variant);
+      if (!variant) return null;
+      return toVariantSummary(backend, info, variant, ref.engine);
+    },
+    [backend],
+  );
+
   // Answer one page of a filtered/sorted/windowed summary query from the backend's
   // numbered-pager endpoint. Forcing an `offset` (defaulting to 0) selects the
   // backend's offset path, so it returns the matching `total` used to size the
@@ -702,6 +779,7 @@ export function useLiveGallery(
     testCases,
     testCasesStatus,
     readTestCase,
+    readCaseVariant,
     models,
     modelsStatus,
     canExecute: true,

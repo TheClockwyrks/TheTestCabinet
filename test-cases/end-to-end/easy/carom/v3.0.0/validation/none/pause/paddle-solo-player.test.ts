@@ -10,13 +10,14 @@
 // stopped drawing the ball.
 //
 // Everything here goes through the keyboard: the match is started from the title
-// with real key events, paused with one, and driven with one. No control
-// operation is involved, so the paddle is under normal player control throughout.
+// with key events pressed through Chromium's own input pipeline, paused with one,
+// and driven with one. No control operation is involved, so the paddle is under
+// normal player control throughout.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   MOVE_MIN,
-  STILL_MAX,
   captureReplay,
   createHarness,
   startWithKeys,
@@ -49,40 +50,41 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("holds the human's paddle still while paused", async () => {
   await startWithKeys(h, "solo");
   await h.advance(RALLY_TICKS);
-  expect(h.snapshot().screen).toBe("playing");
+  const live = await h.snapshot();
+  assertEqual(live.screen, "playing");
 
   // The precondition: this key really does move this paddle in live play, so the
   // freeze below is the pause's doing rather than a key that never worked.
-  const start = h.snapshot().paddles.left.cy;
+  const start = live.paddles.left.cy;
 
   const held = await captureReplay(h, "frozen", async () => {
-    h.hold("KeyS");
+    await h.hold("KeyS");
     await h.advance(MOVING_TICKS);
-    h.release("KeyS");
-    const moving = h.snapshot().paddles.left.cy;
+    await h.release("KeyS");
+    const moving = (await h.snapshot()).paddles.left.cy;
 
     await h.tap("Escape");
-    const screen = h.snapshot().screen;
-    const paused = h.snapshot().paddles.left.cy;
+    const atPause = await h.snapshot();
+    const screen = atPause.screen;
+    const paused = atPause.paddles.left.cy;
 
-    h.hold("KeyS");
+    await h.hold("KeyS");
     await h.advance(FROZEN_TICKS);
-    h.release("KeyS");
+    await h.release("KeyS");
     return { moving, screen, paused };
   });
 
-  expect(Math.abs(held.moving - start)).toBeGreaterThan(MOVE_MIN);
-  expect(held.screen).toBe("paused");
+  assertGreaterThan(Math.abs(held.moving - start), MOVE_MIN);
+  assertEqual(held.screen, "paused");
 
-  expect(h.snapshot().screen).toBe("paused");
-  expect(Math.abs(h.snapshot().paddles.left.cy - held.paused)).toBeLessThan(
-    STILL_MAX,
-  );
+  const after = await h.snapshot();
+  assertEqual(after.screen, "paused");
+  assertCloseTo(after.paddles.left.cy, held.paused, 6);
 });

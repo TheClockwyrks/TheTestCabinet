@@ -72,7 +72,10 @@ The program is a whole program of the agent's own language, on the terms the
 that reaches gg's surface, then one call per file, and nothing else. A Python
 agent is shown Python. Paths are JSON-quoted, so a quote or a backslash in a
 path cannot break the parse. The views arrive as headed `File` items keyed by
-path, the same envelope a real file-view call produces.
+path, the same envelope a real file-view call produces: each is headed by the
+workspace-relative path the case provided and the whole file's line range, as
+`File: specs/rules.md:1-N of N lines` with `N` the file's total line count (a
+reference mockup, which shows no lines, is headed `File: reference/board.png`).
 
 The reads run first, and the program holds one call per file that was read.
 Every one of those views is present in the same opening context, since the run
@@ -123,10 +126,8 @@ declaration that they are ordinary file views. Any other name refuses the launch
 - `locked` — the autoloaded specs are pinned into the window. They are kept
   verbatim across every compaction boundary, with a reference image kept as a
   picture rather than degraded to its caption, and they survive a blanket
-  eviction and a `gg.views.close` naming the path. They are left out of
-  `gg.views.current()` for the same reason: an entry whose close reclaims
-  nothing is worse than no entry. The full brief is present for the whole
-  session.
+  eviction and a `gg.views.close` naming the path. The full brief is present
+  for the whole session.
 
 `locked` is the lever's whole vocabulary. An `implementation` written as anything
 else refuses the launch, listed with every other value in the capability set gg

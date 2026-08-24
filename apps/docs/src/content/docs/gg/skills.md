@@ -258,8 +258,8 @@ of an agent and what the agent's own code costs it are different questions.
 
 The model meets both under the same `Documentation` heading, because to it they
 are one kind of thing: reference material gg holds. What differs is what it can
-do with each. A used skill's body keeps the bare heading, survives a
-[compaction](/gg/compaction/), and `gg.views.current()` does not offer it. A
+do with each. A used skill's body keeps the bare heading and survives a
+[compaction](/gg/compaction/). A
 documentation view is headed with the name it was opened under
 (`Documentation: readFile`), is listed, and is closable by an agent that holds
 the `docview-close` capability.

@@ -25,8 +25,9 @@ use super::*;
 use crate::client::MockClient;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
-    CAPABILITY_PROGRAM_LIBRARY, GgAgentApi, GgCapabilitySet, GgProgramLanguage, GgTelemetryEvent,
-    ROOT_PROFILE_ID,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY,
+    CAPABILITY_PROJECT_MANAGEMENT, GgAgentApi, GgCapabilitySet, GgProgramLanguage,
+    GgTelemetryEvent, ROOT_PROFILE_ID,
 };
 
 use super::{ScriptedFactory, invocation, subagent_set};
@@ -343,26 +344,19 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
         functions_on(&apis, "gg.files"),
         vec![
             ("readFile".to_string(), "files.read_file".to_string()),
-            // The helper's operation is its own, not the `read_file` it shares a core with: two
-            // API functions over one core are two operations, and each is counted as itself.
-            (
-                "readTextFile".to_string(),
-                "files.read_text_file".to_string()
-            ),
             ("writeFile".to_string(), "files.write_file".to_string()),
             ("editFile".to_string(), "files.edit_file".to_string()),
             ("listDir".to_string(), "files.list_dir".to_string()),
+            // The `search` capability's one function lives on `gg.files` too, and it is its own
+            // operation rather than a read over the files it scans.
+            ("search".to_string(), "files.search".to_string()),
         ],
         "every bound `gg.files` call carries its own identity, in the order its SDK declares them"
     );
     // The view channel is the case the old tool-keyed join could not express: `openFile` runs a
-    // `read_file` and the other four run nothing at all, and all five are counted as themselves.
-    //
-    // The sixth entry is the second `views.close`, and it is here because the surface reports what
-    // the instance was **offered** rather than what gg can do: `OpenView.close` is the method on the
-    // value `current` lists, an alias that supplies its own selector, and a model holding one really
-    // can call it. Counting it once because its operation was already counted would report a
-    // narrower surface than the agent has.
+    // `read_file` and the other two run nothing at all, and all three are counted as themselves.
+    // `close` is absent: this profile has no agent-managed context, which is what buys it —
+    // `views_close_is_bought_by_agent_managed_context` is where it appears.
     assert_eq!(
         functions_on(&apis, "gg.views"),
         vec![
@@ -372,9 +366,6 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
                 "openDocsView".to_string(),
                 "views.open_docs_view".to_string()
             ),
-            ("close".to_string(), "views.close".to_string()),
-            ("current".to_string(), "views.current".to_string()),
-            ("close".to_string(), "views.close".to_string()),
         ],
         "the view channel is counted per function, tool or no tool"
     );
@@ -619,7 +610,7 @@ fn the_surface_reports_the_bound_catalogue_and_nothing_else() {
             .into_iter()
             .filter(|function| function.module == api.module && docs.bound(function))
             .map(|function| GgAgentApiFunction {
-                name: function.name.to_string(),
+                name: crate::sandbox::signatures::module_relative_name(&function).to_string(),
                 operation: function.operation.to_string(),
             })
             .collect();
@@ -634,4 +625,128 @@ fn the_surface_reports_the_bound_catalogue_and_nothing_else() {
             api.path
         );
     }
+}
+
+/// **Closing a view is bought by agent-managed context**, and the surface
+/// says so: a profile without the capability — and without `docview-close`, which is the other
+/// capability a reader might suppose buys a close — reports no
+/// `close`, and one with it reports it.
+///
+/// The run this pins was audited with the capability off and a surface listing the call anyway,
+/// which is exactly the over-report the operations table's gate exists to prevent: the surface, the
+/// documentation runtime and the membrane ask one predicate, so a row bound to every program is
+/// offered, findable and serviced everywhere at once.
+#[test]
+fn views_close_is_bought_by_agent_managed_context() {
+    let mut profile = GgCapabilitySet::minimal("mock/echo").root().clone();
+    assert!(
+        !profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
+            && !profile.is_enabled(CAPABILITY_DOCVIEW_CLOSE),
+        "the fixture starts without either capability"
+    );
+    let managing = ["close"];
+    let names = |apis: &[GgAgentApi]| -> Vec<String> {
+        functions_on(apis, "gg.views")
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect()
+    };
+
+    let (capabilities, operations) = grant(&profile);
+    let without = api_surface(
+        &capabilities,
+        &operations,
+        EndingRole::Standard,
+        GgProgramLanguage::TypeScript,
+    );
+    for name in managing {
+        assert!(
+            !names(&without).contains(&name.to_string()),
+            "`{name}` is context management and is not offered without the capability: {:?}",
+            names(&without)
+        );
+    }
+    assert!(
+        names(&without).contains(&"openText".to_string()),
+        "the module itself survives on the calls nothing gates: {:?}",
+        names(&without)
+    );
+
+    crate::tools::grant(&mut profile, CAPABILITY_AGENT_MANAGED_CONTEXT);
+    let (capabilities, operations) = grant(&profile);
+    let with = api_surface(
+        &capabilities,
+        &operations,
+        EndingRole::Standard,
+        GgProgramLanguage::TypeScript,
+    );
+    for name in managing {
+        assert!(
+            names(&with).contains(&name.to_string()),
+            "`{name}` is offered once agent-managed context is on: {:?}",
+            names(&with)
+        );
+    }
+}
+
+/// **A method is named with its receiver**, module-relative, in the arm's own separator — never as
+/// a bare name that collides with a free function beside it.
+///
+/// The surface used to report a receiver method as a second copy of the free function it aliases,
+/// and every reader keyed on the name folded the two: the console showed one row and spelled both
+/// calls the same way. The name is the catalogue's fully-qualified one with the module path
+/// stripped, so it is `IssueCreated.wait` on the board — and, on an arm whose module path ends in
+/// the class the free functions hang off, the tail after *that* path, which is why Java's is
+/// asserted too.
+#[test]
+fn a_method_on_the_surface_carries_its_receiver() {
+    let mut profile = GgCapabilitySet::minimal("mock/echo").root().clone();
+    crate::tools::grant(&mut profile, CAPABILITY_AGENT_MANAGED_CONTEXT);
+    crate::tools::grant(&mut profile, CAPABILITY_PROJECT_MANAGEMENT);
+    let (capabilities, operations) = grant(&profile);
+
+    let typescript = api_surface(
+        &capabilities,
+        &operations,
+        EndingRole::Standard,
+        GgProgramLanguage::TypeScript,
+    );
+    let board: Vec<String> = functions_on(&typescript, "gg.board")
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    assert!(
+        board.contains(&"IssueCreated.wait".to_string()),
+        "the method carries its receiver: {board:?}"
+    );
+    assert!(
+        !board.contains(&"wait".to_string()),
+        "and never its bare member name: {board:?}"
+    );
+
+    // Java's module path is the class its free functions hang off (`gg.board.Board`), so the tail
+    // after it is the receiver and the member alone, in Java's own separator.
+    let java = api_surface(
+        &capabilities,
+        &operations,
+        EndingRole::Standard,
+        GgProgramLanguage::Java,
+    );
+    let java_board: Vec<String> = java
+        .iter()
+        .find(|api| api.module == "board")
+        .expect("Java binds a board module")
+        .functions
+        .iter()
+        .map(|function| function.name.clone())
+        .collect();
+    assert!(
+        java_board.contains(&"IssueCreated#await".to_string())
+            || java_board.contains(&"IssueCreated#wait".to_string()),
+        "Java's method is module-relative after `gg.board.Board`: {java_board:?}"
+    );
+    assert!(
+        java_board.contains(&"createIssue".to_string()),
+        "and its static method is the bare name, as every free function is: {java_board:?}"
+    );
 }

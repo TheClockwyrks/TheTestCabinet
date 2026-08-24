@@ -10,13 +10,14 @@
 // stopped drawing the ball.
 //
 // Everything here goes through the keyboard: the match is started from the title
-// with real key events, paused with one, and driven with one. No control
-// operation is involved, so the paddle is under normal player control throughout.
+// with key events pressed through Chromium's own input pipeline, paused with one,
+// and driven with one. No control operation is involved, so the paddle is under
+// normal player control throughout.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   MOVE_MIN,
-  STILL_MAX,
   captureReplay,
   createHarness,
   startWithKeys,
@@ -49,40 +50,41 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("holds player two's paddle still while paused", async () => {
   await startWithKeys(h, "versus");
   await h.advance(RALLY_TICKS);
-  expect(h.snapshot().screen).toBe("playing");
+  const live = await h.snapshot();
+  assertEqual(live.screen, "playing");
 
   // The precondition: this key really does move this paddle in live play, so the
   // freeze below is the pause's doing rather than a key that never worked.
-  const start = h.snapshot().paddles.right.cy;
+  const start = live.paddles.right.cy;
 
   const held = await captureReplay(h, "frozen", async () => {
-    h.hold("ArrowDown");
+    await h.hold("ArrowDown");
     await h.advance(MOVING_TICKS);
-    h.release("ArrowDown");
-    const moving = h.snapshot().paddles.right.cy;
+    await h.release("ArrowDown");
+    const moving = (await h.snapshot()).paddles.right.cy;
 
     await h.tap("Escape");
-    const screen = h.snapshot().screen;
-    const paused = h.snapshot().paddles.right.cy;
+    const atPause = await h.snapshot();
+    const screen = atPause.screen;
+    const paused = atPause.paddles.right.cy;
 
-    h.hold("ArrowDown");
+    await h.hold("ArrowDown");
     await h.advance(FROZEN_TICKS);
-    h.release("ArrowDown");
+    await h.release("ArrowDown");
     return { moving, screen, paused };
   });
 
-  expect(Math.abs(held.moving - start)).toBeGreaterThan(MOVE_MIN);
-  expect(held.screen).toBe("paused");
+  assertGreaterThan(Math.abs(held.moving - start), MOVE_MIN);
+  assertEqual(held.screen, "paused");
 
-  expect(h.snapshot().screen).toBe("paused");
-  expect(Math.abs(h.snapshot().paddles.right.cy - held.paused)).toBeLessThan(
-    STILL_MAX,
-  );
+  const after = await h.snapshot();
+  assertEqual(after.screen, "paused");
+  assertCloseTo(after.paddles.right.cy, held.paused, 6);
 });

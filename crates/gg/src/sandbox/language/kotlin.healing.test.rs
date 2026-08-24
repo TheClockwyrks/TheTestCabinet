@@ -1,7 +1,7 @@
 //! The answers that are Kotlin's own, and the lexer underneath them.
 //!
 //! What is deliberately **not** here is a second copy of the skeleton's tests. Fence stripping, prose
-//! stripping, the fixpoint loop, the honesty disclosure and the delete-only invariant are asserted
+//! stripping, the fixpoint loop, the operator's record and the delete-only invariant are asserted
 //! once in `healing.test.rs` against every registered dialect, this one included. What this file
 //! asserts is the part that is Kotlin's — and, because this arm shares a compiler road with
 //! [Java's](super::super::java::healing), some of it is written as a **comparison against that arm**:

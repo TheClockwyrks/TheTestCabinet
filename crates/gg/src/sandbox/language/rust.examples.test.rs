@@ -156,7 +156,7 @@ fn outside_fences(text: &str) -> String {
 /// The text inside each pair of single backticks, with runs of whitespace collapsed to one space.
 ///
 /// The collapse is what lets a span that the template hard-wrapped across two lines —
-/// `files::read_text_file("notes.md",` / `files::ReadOptions::default())?` is one — be read as the
+/// `files::read_file("notes.md",` / `files::ReadOptions::default())?` is one — be read as the
 /// one call it is. It would also rewrite a run of spaces inside a string literal, which none of
 /// these examples has and
 /// which would show up as a failure rather than as a silent pass.

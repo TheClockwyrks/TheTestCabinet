@@ -40,6 +40,16 @@ screenshots as it goes. The repository is the editing source; the store is the
 distribution source a runner resolves at run time. Ingest caches a version
 rather than transforming it.
 
+Ingest writes each version as a resolved record whose shape the backend build
+defines, so the store is only readable by a build that agrees on that shape. The
+store therefore records a record-format version, stamped by the ingest that
+wrote it, and the backend compares it against the format the running build
+reads. A store stamped with any other format holds records this build cannot
+read: the backend reports it unready, and the next ingest scan re-ingests the
+whole catalog so the store returns to a format it can serve. This is what keeps
+a shape change from silently reducing the served catalog to the handful of
+versions that happen to have been re-ingested since.
+
 ### Run results
 
 The stored [run records](/components/core/run-records/) with their reviews and
@@ -155,6 +165,7 @@ skipping the public write.
 | `TCAB_ENV` | Deployment environment name, selecting this backend's entries in the reference-builds lockfile. | `local` |
 | `TCAB_R2_*` | Credentials and bucket the public documents and media are uploaded to. | — |
 | `TCAB_PROJECTION_DATABASE_URL` | Connection string of the [public projection](/components/backend/projection/) the backend writes on publish. | — |
+| `TCAB_OPENROUTER_API_KEY` | OpenRouter key the backend's own completion calls are billed to, today only [model probes](/components/backend/api/#model-probes). Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`. | — |
 | `TCAB_REFERENCE_BROWSER` | Headless browser used to render references at ingest. | image Chromium |
 | `TCAB_GG_REFERENCE` | Directory holding gg's projected reference documents. | `<checkout>/target/gg-reference` |
 | `TCAB_ARTIFACTS_PUBLIC_URL` | Artifact service base URL, advertised to consoles. | — |

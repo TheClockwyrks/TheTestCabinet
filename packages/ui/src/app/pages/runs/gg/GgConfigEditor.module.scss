@@ -340,6 +340,15 @@
   min-width: 0;
 }
 
+// A field's name, its help badge and its reset control on one line — the same row
+// `SettingRow` gives the account pages, so a control that has been moved off its
+// authored figure is marked identically wherever it is edited.
+.fieldLabelRow {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
 // A `toggles` param (gg's response-healing strategies) is a group of checkboxes
 // rather than one control, so it takes a whole row of the param grid — its member
 // labels carry a clause of explanation each and would wrap to shreds in a column
@@ -876,6 +885,14 @@
   }
 }
 
+// The library entry's one-line purpose, under the name and slug row it describes. Full
+// width and set off from the Agent-type panel beneath it, since a sentence typed here is
+// read as prose rather than scanned as a field beside another.
+.agentDescriptionField {
+  display: block;
+  margin: 0 0 t.$space-md;
+}
+
 // The slug field beside the name. Intrinsic width, so the name input keeps the row's
 // spare space — a slug is short, and the two are edited together often enough that they
 // belong on one line rather than stacked.
@@ -1166,10 +1183,63 @@
   flex-wrap: wrap;
 }
 
-.agentImport {
+// The import control. `nowrap` because it shares a row with "+ Add agent" and its label
+// is the longer of the two: allowed to wrap, it broke across two lines and stood half a
+// button taller than its neighbour.
+.agentImportButton {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+// --- The saved-agent picker -----------------------------------------------------------
+//
+// The library, listed inside the import dialog. Rows rather than options, because each
+// carries a note under its name — which is what tells two entries with one name apart.
+
+.importList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  align-items: center;
-  gap: t.$space-sm;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.importOption {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  width: 100%;
+  padding: t.$space-sm;
+  border: t.$border-hairline solid transparent;
+  border-radius: t.$radius-sm;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    border-color: t.$color-accent;
+    background: color-mix(in srgb, t.$color-accent 8%, transparent);
+    outline: none;
+  }
+}
+
+.importOptionName {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+// One line, always: a library listed at two lines a row is scrolled rather than scanned,
+// so a long note is cut with an ellipsis instead of pushing the next entry down.
+.importOptionNote {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 // The note at the top of an imported profile's view. A panel rather than a paragraph,

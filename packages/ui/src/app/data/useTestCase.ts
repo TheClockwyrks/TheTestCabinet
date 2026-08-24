@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-import type { RunSubject } from "@test-cabinet/run-record";
-import type { CatalogStatus, ReviewModel } from "./galleryContext";
+import type { CatalogStatus } from "./galleryContext";
 import { useGalleryData } from "./galleryContext";
 import type { TestCaseDetail } from "./testCases";
 
@@ -24,11 +23,10 @@ type Resolver = (slug: string) => Promise<TestCaseDetail | null>;
 // along with the callback it was keyed on.
 //
 // The cache holds the promise rather than the value so the several detail
-// surfaces that mount together for one case (a run's Inputs tab, its errata
-// callout, and its review scoring model all key on the same slug) share a single
-// in-flight request instead of racing three identical ones. A case version
-// directory is frozen once it has runs, so a resolved detail is safe to keep for
-// the session.
+// surfaces that mount together for one case (its errata callout and its review
+// scoring model both key on the same slug) share a single in-flight request
+// instead of racing identical ones. A case version directory is frozen once it
+// has runs, so a resolved detail is safe to keep for the session.
 const CACHE = new WeakMap<
   Resolver,
   Map<string, Promise<TestCaseDetail | null>>
@@ -100,34 +98,4 @@ export function useTestCase(slug: string | undefined): TestCaseState {
   }, [readTestCase, slug]);
 
   return state;
-}
-
-/** A run's scoring model alongside the load state of the case fetch behind it. */
-export interface ReviewModelState extends ReviewModel {
-  /** The load state of the case this model was resolved from. Items and domains
-   * are empty while it is `loading`, so score them only once it is `ready`. */
-  status: CatalogStatus;
-}
-
-/**
- * The scoring model for a run's subject: the effective (common + variant)
- * weighted checklist items and the effective (common + variant) scoring domains,
- * resolved from the run's case. Lets the verdict page, the review pages, and the
- * review editor score a run from its verdicts and per-domain ratings.
- *
- * Items and domains are empty both while the case is being fetched and when this
- * host holds no such case — the two are not the same thing, so `status` is
- * carried alongside: a surface that hides its score when the model is empty must
- * wait for `ready` before concluding there is no model.
- */
-export function useReviewModel(subject: RunSubject): ReviewModelState {
-  const { testCase, status } = useTestCase(subject.testCaseSlug);
-  const variant = testCase?.variants.find((v) => v.slug === subject.variant);
-  return {
-    items: variant?.reviewItems ?? [],
-    // The variant's effective scoring domains (common + its own). Falls back to
-    // the case's common domains when the variant can't be resolved.
-    domains: variant?.domains ?? testCase?.domains ?? [],
-    status,
-  };
 }

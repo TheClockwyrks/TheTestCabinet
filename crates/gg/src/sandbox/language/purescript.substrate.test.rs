@@ -181,17 +181,21 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
 }
 
 /// **What the model reads when a program died**: the engine's own rendering of the failure, which
-/// the guest wrote to standard error and `with_guest_stderr` put in front of gg's own words.
+/// the guest reported over `feedback.report-error`.
 ///
-/// Nothing catches a throw on this arm — capture rather than interception — so an unhandled failure
-/// is a trap that carries the language's words rather than a `ProgramError` gg composed.
+/// Nothing catches a throw on this arm — capture rather than interception — but the guest observes
+/// the uncaught value at its own entry point and reports it, so the failure is a `ProgramError`
+/// carrying the language's words rather than a store-killing trap.
 fn trapped(outcome: &SandboxOutcome) -> String {
     match &outcome.result {
-        Err(error) => error.to_string(),
-        Ok(result) => panic!(
-            "the program did not fail; it logged {:?} and reported {:?}",
-            outcome.logs, result.error
-        ),
+        Err(error) => panic!("the store died instead of the guest reporting: {error:?}"),
+        Ok(result) => match &result.error {
+            Some(error) => error.message.clone(),
+            None => panic!(
+                "the program did not fail; it logged {:?} and reported nothing",
+                outcome.logs
+            ),
+        },
     }
 }
 
@@ -755,6 +759,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            statement: "_ <- Gg.Files.search \"answer\" { path: \"src\", limit: 10 }",
+            expected: || json!({ "query": "answer", "path": "src", "limit": 10 }),
+        },
+        Crossing {
             tool: "read_skill",
             statement: "_ <- Gg.Skills.readSkill \"testing\"",
             expected: || json!({ "name": "testing" }),
@@ -1023,8 +1032,8 @@ fn every_operation_crosses_the_membrane_from_its_purescript_spelling() {
 /// **Every convenience function reaches the operation it says it is an alias of, keyed on the field
 /// its subject really carries.**
 ///
-/// This arm's five second ways in — `Gg.Board.waitFor`, `Gg.Memories.readHit`,
-/// `Gg.Views.closeView`, `Gg.Delegation.send` and `Gg.Programs.sourceOf` — are one line of body
+/// This arm's four second ways in — `Gg.Board.waitFor`, `Gg.Memories.readHit`,
+/// `Gg.Delegation.send` and `Gg.Programs.sourceOf` — are one line of body
 /// each: they take a field off the record they are given and call the module-level function with
 /// it. They are **free functions over a value** rather than methods on it, because a PureScript
 /// record carries fields and no behaviour, and that is the equivalent shape rather than a shortfall.
@@ -1057,8 +1066,7 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
             "Gg.Delegation.send child \"prefer the simpler parser\"",
             "Console.log child.id",
             "Gg.Views.openText \"summary\" \"eight files, two failing\"",
-            "open <- Gg.Views.current",
-            "closed <- traverse Gg.Views.closeView open",
+            "closed <- Gg.Views.close \"summary\"",
             "Console.log (show closed)",
             "history <- Gg.Programs.history",
             "sources <- traverse Gg.Programs.sourceOf history",
@@ -1092,9 +1100,8 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
             "EPIC-1 wait registered",
             "[\"build-commands\"] [\"the memory contents\"]",
             "agent-1",
-            // The one view open was the one the function was given, and closing it took that view
-            // alone.
-            "[1]",
+            // The one view open was the one its label named, and closing it took that view alone.
+            "1",
             "[2] [\"module Main where\\nmain = pure unit\"]",
         ]
     );
@@ -1135,14 +1142,11 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
     // catalogue describes has been driven through the real membrane.
     let (outcome, log) = run_as(
         &program_of(&[
-            "text <- Gg.Files.readTextFile \"notes.md\" { limit: 2 }",
             "read <- Gg.Views.openFile \"notes.md\" { offset: 1, limit: 2 }",
-            "Gg.Views.openText \"summary\" text",
+            "Gg.Views.openText \"summary\" \"eight files, two failing\"",
             "Gg.Views.openDocsView \"readFile\"",
             "closed <- Gg.Views.close \"summary\"",
             "missing <- Gg.Views.close \"never opened\"",
-            "open <- Gg.Views.current",
-            "Console.log (show (map _.selector open) <> \" \" <> show (map _.kind open))",
             "Console.log (show closed <> \" \" <> show missing)",
             "case read of\n                 Gg.Files.TextFile file -> Console.log file.contents\n                 Gg.Files.ImageFile picture -> Console.log picture.label",
             "Gg.Session.finish \"read the file and showed myself the result\"",
@@ -1158,17 +1162,13 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
         canned_outcome,
     );
     let lines = logs(&outcome);
-    // What is still open is the file view, carrying the kind its constructor names rather than the
-    // word the wire used; the text view the program closed is gone, and a documentation view is
-    // gg's to deliver on the next turn rather than something `current` reports.
-    assert_eq!(lines[0], "[\"notes.md\"] [FileView]");
     // Closing something that is not open is `0` rather than a failure, so a program that tidies up
     // unconditionally does not have to guard every call.
-    assert_eq!(lines[1], "1 0");
+    assert_eq!(lines[0], "1 0");
     assert!(
-        lines[2].starts_with("contents of notes.md"),
+        lines[1].starts_with("contents of notes.md"),
         "{:?}",
-        lines[2]
+        lines[1]
     );
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
@@ -1188,13 +1188,13 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
         outcome.completion
     );
 
-    // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `Gg.Views.openFile` performs. Neither has a tool name of its own, which is exactly the point —
-    // a helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
-    assert_eq!(log.names(), ["read_file", "read_file"]);
+    // One read reached gg's dispatch and arrived as `read_file`: the one `Gg.Views.openFile`
+    // performs. It has no tool name of its own, which is exactly the point — a view is a read
+    // gg also shows you.
+    assert_eq!(log.names(), ["read_file"]);
     assert_eq!(
         log.args("read_file"),
-        Some(json!({ "path": "notes.md", "offset": null, "limit": 2 }))
+        Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
     );
 
     // The program library is bound from the capability rather than from a tool name, and a reviewer
@@ -1435,7 +1435,7 @@ fn every_optional_argument_is_a_field_of_a_record() {
         .filter(|field| field["optional"] == json!(true))
         .count();
     assert_eq!(
-        optional, 42,
+        optional, 43,
         "the optional record fields the surface declares"
     );
 }
@@ -1535,19 +1535,20 @@ import Prelude
 
 import Effect (Effect)
 import Effect.Class.Console as Console
-import Gg.Files as Gg.Files
+import Gg.Skills as Gg.Skills
 
 main :: Effect Unit
 main = do
-  text <- Gg.Files.readTextFile
+  text <- Gg.Skills.readSkill
     "missing.md"
-    {}
   Console.log text
 "#,
-                names: &["read_text_file", "not-found", "missing.md"],
+                names: &["read_skill", "not-found", "missing.md"],
                 located: Located::At("program.purs:14:5"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                // The SDK's `ApiError` carries the wire's code and the guest reports it, so the
+                // turn is filed as the program fighting the API, never as a sandbox trap.
+                recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -1571,7 +1572,7 @@ main = do
                 names: &["Failed pattern match"],
                 located: Located::At("program.purs:15:5"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -1615,7 +1616,7 @@ main = Console.log (show (deeper 0))
                 names: &["Maximum call stack size exceeded"],
                 located: Located::At("program.purs:11:24"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::Abort,
@@ -1638,7 +1639,7 @@ main = do
                 names: &["the third step did not finish"],
                 located: Located::At("program.purs:15:5"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
         ],
     );

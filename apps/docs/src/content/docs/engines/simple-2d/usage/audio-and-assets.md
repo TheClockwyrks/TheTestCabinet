@@ -48,11 +48,13 @@ muted.
 
 ```ts
 import type { UpdateApi } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
-function update(state: Match, api: UpdateApi, dt: number): void {
-  step(state, dt);
-  if (state.hitPaddle) api.audio.play("paddle");
-  if (state.scored) api.audio.play("explosion");
+function update(state: DeepReadonly<Match>, api: UpdateApi, dt: number): Match {
+  const next = step(state, dt);
+  if (next.hitPaddle) api.audio.play("paddle");
+  if (next.scored) api.audio.play("explosion");
+  return next;
 }
 ```
 
@@ -83,21 +85,21 @@ A muted cue still plays in every sense but audibility: the call succeeds and the
 import type { Game, InitApi } from "@test-cabinet/simple-2d";
 
 interface State {
-  ship: ImageBitmap;
-  level: Blob;
-  player: { x: number; y: number };
+  readonly ship: ImageBitmap;
+  readonly level: Blob;
+  readonly player: { readonly x: number; readonly y: number };
 }
 
-const game: Game<State> = {
-  async initialize(api: InitApi): Promise<State> {
+const game: Game<State, null> = {
+  async initialize(api: InitApi<State>): Promise<[State, null]> {
     const [ship, level] = await Promise.all([
       api.assets.loadImage("sprites/ship.png"),
       api.assets.load("levels/01.json"),
     ]);
-    return { ship, level, player: { x: 320, y: 180 } };
+    return [{ ship, level, player: { x: 320, y: 180 } }, null];
   },
   update(state, api, dt) {
-    step(state, dt);
+    return step(state, dt);
   },
   render(state, api) {
     api.ctx.drawImage(state.ship, state.player.x - 16, state.player.y - 16);

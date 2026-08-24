@@ -99,7 +99,8 @@ tool to be offered:
 - variants, for the seven tools whose definition changes with how their
   capability is configured.
 
-`read_file` offers no `offset`/`limit` arguments under the unlimited read mode.
+`read_file` states a different default for `limit` under each read mode: the
+cap under `default-cap`, the end of the file under `unlimited`.
 `shell` describes where a command's output went, which is the substance of the
 [offloading modes](/gg/shell/). `create_issue` demands reviewers under the
 project-management capability's `reviewers` feature and merely permits them

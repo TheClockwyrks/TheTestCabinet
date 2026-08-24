@@ -7,16 +7,26 @@
 // stays where it was. The second half is what catches the common fault of a key
 // driving both paddles at once, and both are read from the one hold.
 //
-// The match is started from the title with real key events dispatched at the
-// target the runtime listens on, so the game stays under normal player control:
-// nothing here calls a control operation, and the paddle moves only because the
-// build read the action the runtime raised from the key the case binds.
+// The match is started from the title with real key presses, and here they are
+// real in the strongest sense: `hold`, `release` and `tap` press the key
+// through Chromium's own input pipeline, so what reaches the build is a
+// browser-trusted DOM key event on the real page rather than a synthetic one
+// posed at the event target a runtime listens on. The game stays under normal
+// player control: nothing here calls a control operation, and the paddle moves
+// only because the build read the action its own runtime layer raised from the
+// key the case binds. That layer is the build's own —
+// `specs/instrumentation.md` puts the keyboard in the runtime layer an
+// engineless build supplies, and gives the surface no keyboard operation at
+// all — so the whole path from a physical key to a moving paddle belongs to the
+// build and every step of it is exercised, which makes this check stronger here
+// rather than weaker.
 //
 // The direction is the whole point here, not the rate: how fast a held paddle
 // travels is the `paddle-movement` category's, and asserting it in both places
 // would cost one build two items for one fault.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertContains, assertLessThan } from "../assert";
 import {
   MOVE_MIN,
   STILL_MAX,
@@ -51,13 +61,13 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("moves player two's right paddle up while ArrowUp is held, and stops on release", async () => {
   await startWithKeys(h, "versus");
-  expect(["countdown", "playing"]).toContain(h.snapshot().screen);
+  assertContains(["countdown", "playing"], (await h.snapshot()).screen);
 
   const moved = await captureReplay(h, "move", async () => {
     await h.advance(REST_TICKS);
@@ -66,14 +76,14 @@ it("moves player two's right paddle up while ArrowUp is held, and stops on relea
     // A paddle is stationary unless a movement action is held
     // (specs/playfield.md), so releasing the key leaves it exactly where it
     // stopped rather than coasting on.
-    const stopped = h.snapshot().paddles.right.cy;
+    const stopped = (await h.snapshot()).paddles.right.cy;
     await h.advance(COAST_TICKS);
     return { ...held, stopped };
   });
 
-  expect(moved.delta).toBeLessThan(-MOVE_MIN);
+  assertLessThan(moved.delta, -MOVE_MIN);
 
   // The other player's paddle is not this key's to move.
-  expect(Math.abs(moved.otherDelta.left)).toBeLessThan(STILL_MAX);
-  expect(h.snapshot().paddles.right.cy).toBeCloseTo(moved.stopped, 6);
+  assertLessThan(Math.abs(moved.otherDelta.left), STILL_MAX);
+  assertCloseTo((await h.snapshot()).paddles.right.cy, moved.stopped, 6);
 });

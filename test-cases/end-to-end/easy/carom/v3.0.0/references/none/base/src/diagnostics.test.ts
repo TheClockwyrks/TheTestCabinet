@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { registerDiagnostics } from "./diagnostics";
 import { createInitialState } from "./game";
-import type { InitApi } from "./host";
+import type { InitApi } from "./runtime";
 
 /** Just enough of an `InitApi` to collect the sources a game registers. */
 function collector(): {

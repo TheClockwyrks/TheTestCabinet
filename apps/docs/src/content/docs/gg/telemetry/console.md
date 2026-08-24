@@ -176,8 +176,8 @@ over the functions this instance bound, each carrying its own count. No gg tool
 name appears on that file. gg records a model-facing call under the operation it
 resolved to, so a view call, a documentation lookup, an ending call and a
 [program-library](/gg/program-library/) call are counted exactly as a file read
-is, and three functions over one implementation (`gg.files.readFile`,
-`gg.files.readTextFile` and `gg.views.openFile` all perform one read) are three
+is, and two functions over one implementation (`gg.files.readFile` and
+`gg.views.openFile` both perform one read) are two
 figures rather than one shared between them. The file's own heading names the
 documentation-view flags this instance ran under, because the tokens those flags
 cost are this agent's own. Every row carries a figure, so a `0×` is a bound function the

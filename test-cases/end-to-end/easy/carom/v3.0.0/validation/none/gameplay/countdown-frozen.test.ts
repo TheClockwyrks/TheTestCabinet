@@ -7,13 +7,19 @@
 // countdown rather than into a live rally, and then finish the remaining hold and
 // actually launch.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { HOLD_TIME } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
 import {
-  TICK_HZ,
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
+import { HOLD_TIME } from "../constants";
+import {
+  ball0,
   captureReplay,
   createHarness,
   startWithKeys,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
@@ -30,8 +36,8 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("freezes the countdown while paused and resumes it where it stopped", async () => {
@@ -46,29 +52,29 @@ it("freezes the countdown while paused and resumes it where it stopped", async (
   // moves; the recorder is simply armed earlier and disarmed later.
   await captureReplay(harness, "countdown", async () => {
     await harness.advance(PARTWAY_TICKS);
-    const mid = harness.snapshot();
-    expect(mid.screen).toBe("countdown");
+    const mid = await harness.snapshot();
+    assertEqual(mid.screen, "countdown");
 
     await harness.tap("Escape");
-    expect(harness.snapshot().screen).toBe("paused");
+    assertEqual((await harness.snapshot()).screen, "paused");
 
     await harness.advance(PAUSED_TICKS);
-    const whilePaused = harness.snapshot();
+    const whilePaused = await harness.snapshot();
 
-    expect(whilePaused.screen).toBe("paused");
-    expect(Math.abs(whilePaused.ball.x - mid.ball.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(whilePaused.ball.y - mid.ball.y)).toBeLessThanOrEqual(1);
+    assertEqual(whilePaused.screen, "paused");
+    assertLessThanOrEqual(Math.abs(ball0(whilePaused).x - ball0(mid).x), 1);
+    assertLessThanOrEqual(Math.abs(ball0(whilePaused).y - ball0(mid).y), 1);
 
     // Resuming returns to the countdown; it did not skip ahead to a live serve.
     await harness.tap("Escape");
-    expect(harness.snapshot().screen).toBe("countdown");
+    assertEqual((await harness.snapshot()).screen, "countdown");
 
     // And the resumed countdown is live, not stuck for good: the remainder of
     // the hold runs out and the ball really launches.
     await harness.advance(RESUMED_TICKS);
-    const resumed = harness.snapshot();
+    const resumed = await harness.snapshot();
 
-    expect(resumed.screen).toBe("playing");
-    expect(resumed.ball.speed).toBeGreaterThan(1);
+    assertEqual(resumed.screen, "playing");
+    assertGreaterThan(ball0(resumed).speed, 1);
   });
 });

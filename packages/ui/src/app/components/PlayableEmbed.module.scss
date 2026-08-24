@@ -147,17 +147,3 @@
     height: 100%;
   }
 }
-
-// The Reference tab's wrapper: the engine switch above the embed, when a variant
-// published a reference build for more than one engine. One column so the switch
-// sits directly over the build it selects.
-.reference {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-sm;
-}
-
-.engineBar {
-  display: flex;
-  justify-content: flex-start;
-}

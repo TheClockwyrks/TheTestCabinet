@@ -6,8 +6,7 @@ The debug overlay is a read-only window onto values a game names and onto what
 the engine already knows about the open world and the frame. The engine cannot
 know what is worth watching inside someone else's simulation, so the game
 registers named sources and the engine owns everything around them: the panel,
-the toggle key, the world line, the frame metrics, and the read the host
-interface answers.
+the toggle key, the world line, and the frame metrics.
 
 ## Sources are pulled on every read
 
@@ -51,9 +50,9 @@ three already.
 
 Frame metrics follow the registered lines. Three figures summarize the window:
 the mean frame time, the 95th percentile, and the 99th percentile. A frame-time
-graph draws below them, one column per recent frame. The measurement covers the
-frame's ticks, its collision pass, its render, and the overlay itself, which is
-the whole of the work the engine drives.
+graph draws one column per recent frame. The measurement covers the frame's
+ticks, its collision pass, its render, and the overlay itself, which is the
+whole of the work the engine drives.
 
 The percentiles carry what the mean hides. An average frame time stays
 comfortable while the occasional long frame a player actually feels sits in the
@@ -66,16 +65,20 @@ from colouring the percentiles once the game has recovered, and capacity keeps
 the memory constant, so a build delivering frames faster than two hundred a
 second summarizes a shorter span of history in place of growing the buffer.
 
-## One evaluation, two audiences
+The world line comes first in the panel. The registered lines follow it, the
+instance registry's in the order the instance registered them and then the
+world registry's in the order the world registered them, and the three figures
+follow as one more line beneath them. The graph sits beside the text, to its
+right, so a game's own values keep their place at the top whether or not the
+frame-time window has any samples yet.
 
-The panel the engine draws and the read the [host
-interface](/engines/structured-2d/concepts/host/) answers both come from
-evaluating the same registered sources, instance registry first. A person
-pressing the toggle sees the values a console read returns, with no second code
-path to keep in step.
+## One evaluation, independent of visibility
 
-The read is independent of whether the panel is visible. Inspecting the game's
-named values never requires switching on a piece of human-facing chrome.
+A read of the registries evaluates the same sources the panel draws, instance
+registry first, whether or not the panel is visible. Inspecting the game's named
+values never requires switching on a piece of human-facing chrome, and a person
+pressing the toggle sees the values that read returns, with no second code path
+to keep in step.
 
 ## Chrome over the finished picture
 

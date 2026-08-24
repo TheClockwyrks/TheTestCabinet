@@ -30,7 +30,7 @@
       "description": "One function bound in a [`GgAgentApi`] — what a\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call.\n\nThe load-bearing field is [`operation`](Self::operation): every model-facing call a program makes\nis recorded under gg's own identity for it as an\n[`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair, so joining a\nbound function to how many times this agent actually called it is a join on that one string. No\ngg tool name appears here, and none is needed: the API surface and the tool vocabulary are two\nindependent surfaces over one core, and a function no tool backs — a view call, an ending call, a\nprogram-library call — is counted exactly as a function one does.\n\nTwo rows may name one operation. An arm may offer a second way in — the method it hangs off the\ntype the call operates on, beside the free function every arm has — and both spellings are the\nsame operation, so both carry the same figure. That is the truth about the run: gg counts what\nwas done, not which of an arm's synonyms did it.",
       "properties": {
         "name": {
-          "description": "The name a program calls it by — `readFile`, `openDocsView`, `finish`.",
+          "description": "The name a program calls it by, **relative to its module**, in this arm's own spelling:\na free function is its bare name — `readFile`, `openDocsView`, `finish` — and a method\ncarries the receiver it hangs off, in the arm's own separator — `OpenView.close` on\nTypeScript, `OpenView#close` on Java, `open_view::close` on C++. Joining the module's\n[`path`](GgAgentApi::path) onto it with the arm's separator gives the catalogue's\nfully-qualified name (`gg.views.OpenView.close`), which is the key a documentation view\nopens by.\n\nModule-relative rather than bare so that two rows of one module never share a name: an\narm that binds `close` as a free function **and** as a method on the value `current` lists\nreports `close` and `OpenView.close`, not `close` twice.",
           "type": "string"
         },
         "operation": {
@@ -538,7 +538,7 @@
       "type": "object"
     },
     "GgHealingStrategy": {
-      "description": "One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,\nindependently toggleable repair gg may apply to a model's response before running it.\n\nThe wire values are the strategy ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are\n(`{\"healing\": {\"strip-fences\": false}}`), because the id is one thing: a config key, a metric\nname, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly\nthat reason.\n\nEvery application is disclosed to the model in its turn feedback — a repair the model is never\ntold about teaches it nothing and corrupts the very question a run of this shape asks, which is\nwhether models learn the contract.\n\nTwo of the three are armed unless a configuration turns them off, because for those, repairing\nis strictly safer than not: the reply they delete from could not have run as sent. The exception\nis [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration\narms it — see its own documentation for why that asymmetry exists.",
+      "description": "One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,\nindependently toggleable repair gg may apply to a model's response before running it.\n\nThe wire values are the strategy ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are\n(`{\"healing\": {\"strip-fences\": false}}`), because the id is one thing: a config key, a metric\nname, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly\nthat reason.\n\nEvery application is counted on the run record and reported on the operator's stream, and none\nof it is disclosed to the model: the model's history carries the healed program as its own reply,\nso the count answers the question a run of this shape asks — how often the model broke the\ncontract — unperturbed by any correction.\n\nTwo of the three are armed unless a configuration turns them off, because for those, repairing\nis strictly safer than not: the reply they delete from could not have run as sent. The exception\nis [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration\narms it — see its own documentation for why that asymmetry exists.",
       "oneOf": [
         {
           "const": "strip-fences",
@@ -1018,6 +1018,97 @@
       "required": ["id", "source"],
       "type": "object"
     },
+    "GgProviderStat": {
+      "description": "One `(provider, model)` health slice in a [`GgSessionSummary`] — which upstream provider\nserved a run's model calls, and how the calls it served went. Folded from the run's own\nstream: the [`Usage`](GgTelemetryKind::Usage) deltas contribute the calls with their tokens\nand cost, the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the length-capped\nreplies, and the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the per-turn judgement,\neach attributed to the provider its own call named.\n\nTwo invariants hold across a summary's slices: their [`turns`](Self::turns) sum to the\n[error rollup](GgErrorSummary::turns)'s denominator, and within a slice `turns` minus\n[`working`](Self::working) minus its error count is its fatal turns.",
+      "properties": {
+        "calls": {
+          "description": "Model calls folded from the [`Usage`](GgTelemetryKind::Usage) deltas — the calls that\nreported usage. A call that reported neither tokens nor cost emits no delta and reaches\nonly the turn figures below.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Their cost, summed, when any of them reported one."
+        },
+        "errors": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The errored turns among them, keyed by [`GgTurnErrorType::wire_id`] — the same open,\nstring-keyed breakdown [`GgErrorSummary::by_type`] is, and omitted when empty on the same\nterms.",
+          "type": "object"
+        },
+        "modelId": {
+          "description": "The model this slice's agent was running on, as the agent's own\n[`Usage`](GgTelemetryKind::Usage) deltas named it. `None` for a turn or rejection recorded\nbefore the agent's first usage delta named one.",
+          "type": ["string", "null"]
+        },
+        "provider": {
+          "description": "OpenRouter's name for the upstream provider that served this slice's calls. `None` for the\nslice of calls that named none — a gateway that stamps no provider, or a turn whose call\nproduced no reply to name one (a model timeout).",
+          "type": ["string", "null"]
+        },
+        "rejected": {
+          "description": "Replies gg [rejected whole](GgRejectedResponses) — the length-capped ones — that this\nslice's provider served. `0`, and omitted, for the ordinary slice with none.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The tokens those calls reported, summed in the shared [`TokenCounts`] units."
+        },
+        "turns": {
+          "description": "Turns attributed to this slice: each [`TurnOutcome`](GgTelemetryKind::TurnOutcome) lands on\nthe provider its own call named, or on the providerless slice when it named none.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "working": {
+          "description": "The turns among them that worked — a [progressed](GgTurnOutcome::Progressed) or\n[finished](GgTurnOutcome::Finished) outcome.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["calls", "tokens", "turns", "working"],
+      "type": "object"
+    },
+    "GgRejectedResponses": {
+      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage is\ndeliberately kept **out** of the run's cost and turn metrics — a degenerate generation must not\nmake a run look expensive or long — but the money was still spent, and \"how often does this\nmodel cap out, and what does it cost?\" is a question the owner asks of the durable record.\nFolded from the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Their cost, summed, when the provider reported any — spend absent from the run's recorded\ncost by design."
+        },
+        "count": {
+          "description": "How many replies were rejected.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The tokens the provider billed for them, summed — spend absent from the run's own\n[token totals](crate::metrics::TokenCounts) by design."
+        }
+      },
+      "required": ["count", "tokens"],
+      "type": "object"
+    },
     "GgResponseHealing": {
       "description": "What gg had to do to a model's response before it could run it — the healing record of one\ncode-shaped turn.\n\nHealing is textual and conservative: it only ever **deletes**, so a healed program is always a\nsubsequence of the response the model sent. The model is told nothing about a repair; this\nrecord and the run's operator stream are where every repair is disclosed.\n\nA response that needed nothing carries the default and is omitted from the wire entirely, so\nthe presence of this object *is* \"something was unusual about this response\".",
       "properties": {
@@ -1257,6 +1348,16 @@
           "type": "string"
         },
         {
+          "const": "model_timeout",
+          "description": "The model call ran into gg's **per-call ceiling** (five minutes) without producing a reply —\na stalled provider, not a refusal. Unlike every other `model_` type this one does **not**\nend the session: the turn is recorded as this error and the loop asks again, so a stalled\nendpoint costs the run one bounded error turn per stall and the run ends only when the\n[error ceilings](GgRunLimits) say it should.",
+          "type": "string"
+        },
+        {
+          "const": "model_length_capped",
+          "description": "The reply hit the **provider's output cap** (`finish_reason: length`) and was rejected\nwhole: a length-capped reply is presumed a degenerate generation, so it never enters the\ncontext, its usage is kept out of the run's cost and turn metrics (tallied on\n[`GgSessionSummary::rejected_responses`] instead), and the turn is retried on the same\nterms as [`ModelTimeout`](Self::ModelTimeout) — recorded as this error, bounded by the\nerror ceilings.",
+          "type": "string"
+        },
+        {
           "const": "transpile_syntax",
           "description": "The program is not valid source in its [language](GgProgramLanguage) — the parser's own\ndiagnostics. Nothing ran.",
           "type": "string"
@@ -1462,7 +1563,7 @@
       "description": "A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called one of the functions its\nmodules offer it — the **model-facing** record, emitted once per call the program makes.\n\nIt is not a variant spelling of [`ToolCall`](Self::ToolCall), and the two never describe the\nsame call. gg's tool vocabulary and its API surface are two independent surfaces over one\ncore, and an agent is offered **exactly one** of them: a responses-as-code agent's calls are\nrecorded here and only here, and a tool-calling agent emits `ToolCall`/`ToolResult` and none\nof these. Neither event is derived from, or counted through, the other.\n\nIt carries **no arguments**. They are either trivial (`session.finish()`) or enormous\n(`views.openText(label, body)`), and the program that composed them is itself the model's\nreply — so a second copy would double the stream's largest payloads to say nothing the\nturn's own text does not already say.\n\nEmitted **before** the call runs, so anything the call produces — a delegation's child events\n— lands between it and its [`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a\nnative tool call.",
       "properties": {
         "operation": {
-          "description": "**The cross-arm join key**: gg's operation id for what was called — `files.read_file` —\nthe same string the agent's [surface](GgAgentApiFunction::operation) reports the bound\nfunction under.\n\nIt is here because eleven arms legitimately spell one operation eleven ways, and by\ndesign they do: an arm's surface answers to its own language, so `read_file`,\n`readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things\ngg has exactly one name for. A study comparing arms — or comparing two agents of one run\nwritten in two languages — joins on this and on nothing else.\n\nEvery model-facing call has one, including the\n[documentation](https://docs.testcabinet.ai/gg/responses-as-code/views/) family: the\noperations table is the single vocabulary of the API surface, so a call with no row in it\nis a call the surface could not have offered.",
+          "description": "**The cross-arm join key**: gg's operation id for what was called — `files.read_file` —\nthe same string the agent's [surface](GgAgentApiFunction::operation) reports the bound\nfunction under.\n\nIt is here because eleven arms legitimately spell one operation eleven ways, and by\ndesign they do: an arm's surface answers to its own language, so `read_file`,\n`readFile` and `ReadFile` are all real spellings of things\ngg has exactly one name for. A study comparing arms — or comparing two agents of one run\nwritten in two languages — joins on this and on nothing else.\n\nEvery model-facing call has one, including the\n[documentation](https://docs.testcabinet.ai/gg/responses-as-code/views/) family: the\noperations table is the single vocabulary of the API surface, so a call with no row in it\nis a call the surface could not have offered.",
           "type": "string"
         },
         "type": {
@@ -1525,6 +1626,10 @@
           "description": "The [slug](GgAgentConfig::slug) of the agent profile that spent this — the same id\n[`AgentSpawned::profile_id`](Self::AgentSpawned::profile_id) and\n[`SlotUsage::profile_id`](Self::SlotUsage::profile_id) key on.",
           "type": "string"
         },
+        "provider": {
+          "description": "The upstream **provider** that served the call, when the gateway reported one\n(OpenRouter's `provider` response field). A model id is served by several providers\nbehind one name, and provider-shaped failures are only attributable — and a provider\nonly blacklistable — if every call's spend names who served it.",
+          "type": ["string", "null"]
+        },
         "tokens": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
           "description": "The normalized token counts for this accounting."
@@ -1535,6 +1640,46 @@
         }
       },
       "required": ["type", "profileId", "modelId", "tokens"],
+      "type": "object"
+    },
+    {
+      "description": "A model reply gg **rejected whole** instead of using: today, exactly the replies that hit\nthe provider's output cap (`finish_reason: length`), which are presumed degenerate.\n\nA rejected reply never enters the context, and its usage is deliberately **excluded** from\nthe run's cost and turn metrics — no [`Usage`](Self::Usage) delta is emitted for it — so\nthis event is the only place the spend appears, and\n[`GgSessionSummary::rejected_responses`] is its durable sum. The turn that produced it is\nrecorded as a [`model_length_capped`](GgTurnErrorType::ModelLengthCapped) error and\nretried, bounded by the error ceilings.",
+      "properties": {
+        "chars": {
+          "description": "The rejected reply's length in characters, measured by gg — the figure a later\noutput ceiling would be judged against.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The rejected call's cost, when the provider reported one. Excluded from the run's\nrecorded cost on the same terms as the tokens."
+        },
+        "provider": {
+          "description": "The upstream provider that served the rejected call, when the gateway named one — the\nattribution that makes a provider-shaped failure blacklistable.",
+          "type": ["string", "null"]
+        },
+        "reason": {
+          "description": "Why the reply was rejected — the provider's own finish reason, today always\n`\"length\"`. A string so a future rejection class joins without a schema change.",
+          "type": "string"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The usage the provider billed for the rejected call — spend the run's own metrics do\nnot include, kept here so nothing is silently lost."
+        },
+        "type": {
+          "const": "response_rejected",
+          "type": "string"
+        }
+      },
+      "required": ["type", "reason", "chars", "tokens"],
       "type": "object"
     },
     {
@@ -1646,6 +1791,10 @@
         "finishReason": {
           "description": "Why the model's turn stopped (`stop`, `tool_calls`, `length`, …).",
           "type": "string"
+        },
+        "provider": {
+          "description": "The upstream **provider** that served the call, when the gateway reported one\n(OpenRouter's `provider` response field) — the request/response record's copy of the\nattribution the [`Usage`](Self::Usage) delta carries, so a provider-shaped reply is\nattributable from the message log alone.",
+          "type": ["string", "null"]
         },
         "request": {
           "description": "The messages sent to the model this turn, in order — pointers into the pool.",
@@ -2472,6 +2621,18 @@
         "outcome": {
           "$ref": "#/$defs/GgTurnOutcome",
           "description": "How the turn ended. [`Error`](GgTurnOutcome::Error) is the only outcome the error\nceilings count."
+        },
+        "responseChars": {
+          "description": "The reply's length in characters — the model's raw text, before any healing. Carried on\nevery outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum\nover the turns that **worked** (a progressed or finished outcome): the figure a later\noutput ceiling would have to accommodate. `0` — and omitted — for a turn whose reply\ncarried no text at all.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "responseOutputTokens": {
+          "description": "The reply's **completion tokens** as the provider billed them (output plus reasoning —\nthe figure a provider's output cap is measured in), the companion of\n[`response_chars`](Self::TurnOutcome::response_chars) and the second unit\n[`GgSessionSummary::max_response_output_tokens`] is folded in. `0` — and omitted —\nwhen the provider reported no usage.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
         },
         "turns": {
           "description": "How many turns this agent has recorded, **including this one** — its own running total,\nnot the run's. The per-agent denominator, and the same figure the turn ceiling is\nmeasured against.",

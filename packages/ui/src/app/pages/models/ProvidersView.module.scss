@@ -1,0 +1,114 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/surfaces" as s;
+@use "../../styles/halo" as h;
+
+.view {
+  font-family: var(--ttc-font);
+}
+
+// The honesty line: how much of the run corpus carries provider attribution at
+// all. Muted — it qualifies the figures below rather than being one.
+.scanned {
+  margin: 0 0 t.$space-lg;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+.section {
+  margin-bottom: t.$space-xl;
+}
+
+.sectionTitle {
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text;
+  @include h.halo;
+}
+
+.sectionNote {
+  margin: -#{t.$space-sm} 0 t.$space-md;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// One provider's block: a translucent neon-outlined panel matching the models
+// table, one per provider so the grouping reads at a glance.
+.provider {
+  margin-bottom: t.$space-lg;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 45%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  overflow-x: auto;
+}
+
+.providerHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  border-bottom: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 28%, transparent);
+}
+
+.providerName {
+  font-size: t.$font-lg;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+}
+
+.providerSummary {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// Aligned rows like printed output: model · six numeric columns · the error
+// breakdown, which gets the widest track since it is prose-ish.
+.table {
+  min-width: 46rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1.4fr repeat(6, minmax(4.5rem, 0.7fr)) 1.6fr;
+  align-items: baseline;
+  gap: t.$space-sm;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+}
+
+// The probe table has fewer figures: model · four numeric columns.
+.probeTable .row {
+  grid-template-columns: 1.4fr repeat(4, minmax(4.5rem, 0.7fr));
+}
+
+.head {
+  color: t.$color-text-muted;
+  letter-spacing: 0.06em;
+  font-size: t.$font-sm;
+}
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.errors {
+  color: t.$color-text-muted;
+  overflow-wrap: anywhere;
+}
+
+.muted {
+  color: t.$color-text-muted;
+  opacity: 0.6;
+}
+
+.empty {
+  color: t.$color-text-muted;
+  @include h.halo;
+}

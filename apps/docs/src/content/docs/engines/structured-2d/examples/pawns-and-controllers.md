@@ -78,15 +78,16 @@ import type { GameDefinition, InitApi } from "@test-cabinet/structured-2d";
 import { BINDINGS, LEVEL } from "./constants";
 import { DuelMode } from "./levels/duel-mode";
 
-export class DuelGame extends GameInstance {
-  override initialize(api: InitApi): void {
+export class DuelGame extends GameInstance<null> {
+  override initialize(api: InitApi): null {
     for (const [action, binding] of Object.entries(BINDINGS)) {
       api.input.register(action, binding);
     }
+    return null;
   }
 }
 
-export const duel: GameDefinition = {
+export const duel: GameDefinition<null> = {
   instance: DuelGame,
   levels: { [LEVEL]: { mode: DuelMode } },
   startLevel: LEVEL,

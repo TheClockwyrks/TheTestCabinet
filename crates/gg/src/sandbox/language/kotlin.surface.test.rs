@@ -132,6 +132,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            statement: "gg.files.search(\"answer\", path = \"src\", limit = 5)",
+            expected: || json!({ "query": "answer", "path": "src", "limit": 5 }),
+        },
+        Crossing {
             tool: "read_skill",
             statement: "gg.skills.readSkill(\"testing\")",
             expected: || json!({ "name": "testing" }),
@@ -392,14 +397,12 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
     // functions driven at the end of this function, every entry this arm's catalogue describes has
     // been driven through the real membrane.
     let (outcome, log) = run_as(
-        "val text = gg.files.readTextFile(\"notes.md\", offset = 1, limit = 2)\n\
-         val read = gg.views.openFile(\"notes.md\", offset = 1, limit = 2)\n\
-         gg.views.openText(\"summary\", text)\n\
+        "val read = gg.views.openFile(\"notes.md\", offset = 1, limit = 2)\n\
+         gg.views.openText(\"summary\", \"eight files, two failing\")\n\
          gg.views.openDocsView(\"readFile\")\n\
+         gg.views.openFile(\"wide.md\", offset = 1, limit = 2, maxLineChars = 80)\n\
          val closed = gg.views.close(\"summary\")\n\
          val missing = gg.views.close(\"never opened\")\n\
-         val open = gg.views.current()\n\
-         gg.log(open[0].selector + \" \" + open[0].kind)\n\
          gg.log(\"$closed $missing\")\n\
          gg.log(when (read) {\n\
          \x20   is gg.files.TextFile -> read.contents.lines()[0]\n\
@@ -412,14 +415,10 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         canned_outcome,
     );
     let lines = logs(&outcome);
-    // What is still open is the file view, carrying the enum entry rather than the word the wire
-    // used; the text view the program closed is gone, and a documentation view is gg's to deliver on
-    // the next turn rather than something `current` reports.
-    assert_eq!(lines[0], "notes.md FILE");
     // Closing something that is not open is `0` rather than a failure, so a program that tidies up
     // unconditionally does not have to guard every call.
-    assert_eq!(lines[1], "1 0");
-    assert_eq!(lines[2], "contents of notes.md");
+    assert_eq!(lines[0], "1 0");
+    assert_eq!(lines[1], "contents of notes.md");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -427,7 +426,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
             .iter()
             .map(|view| view.selector.as_str())
             .collect::<Vec<_>>(),
-        ["notes.md", "summary", "readFile"]
+        ["notes.md", "summary", "readFile", "wide.md"]
     );
     assert!(
         matches!(
@@ -438,13 +437,24 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         outcome.completion
     );
 
-    // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `gg.views.openFile` performs. Neither has a tool name of its own, which is exactly the point — a
-    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
+    // Two reads reached gg's dispatch and both arrived as `read_file`: the two
+    // `gg.views.openFile` performs. Neither has a tool name of its own, which is exactly the
+    // point — a view is a read gg also shows you. The second carries the view's own line cut,
+    // which crosses only when the program wrote one.
     assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
+    );
+    let reads: Vec<Value> = log
+        .calls()
+        .into_iter()
+        .filter(|call| call.name == "read_file")
+        .map(|call| call.args)
+        .collect();
+    assert_eq!(
+        reads[1],
+        json!({ "path": "wide.md", "offset": 1, "limit": 2, "maxLineChars": 80 })
     );
 
     // The program library is bound from the capability rather than from a tool name, and a reviewer
@@ -521,7 +531,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          val child = gg.delegation.spawnSubagent(\"subagent\", gg.delegation.Brief.Prompt(\"go\"))\n\
          child.send(\"prefer the simpler parser\")\n\
          gg.views.openText(\"scratch\", \"body\")\n\
-         gg.log(gg.views.current()[0].close().toString())\n\
+         gg.log(gg.views.close(\"scratch\").toString())\n\
          try {\n\
          \x20   gg.programs.ProgramSummary(2, 1, 1, true, null).source()\n\
          } catch (failure: gg.core.ApiError) {\n\
@@ -630,7 +640,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         "the capability was granted and the closes still did not answer"
     );
 
-    // Exhaustive by construction, the way the crossing table is: a sixth member function added to
+    // Exhaustive by construction, the way the crossing table is: a fifth member function added to
     // this arm's SDK fails here rather than shipping as a name nothing has ever called.
     let kotlin =
         crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
@@ -647,7 +657,6 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
             "gg.delegation.SubagentHandle.send",
             "gg.memories.MemoryHit.read",
             "gg.programs.ProgramSummary.source",
-            "gg.views.OpenView.close",
         ],
         "every member function this arm catalogues needs a call in the program above"
     );
@@ -660,7 +669,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     // which is what makes the clause below work at all and what a `runCatching` can see.
     let (outcome, _log) = run_with(
         "try {\n\
-         \x20   gg.files.readTextFile(\"gone.kt\")\n\
+         \x20   gg.files.readFile(\"gone.kt\")\n\
          } catch (failure: gg.core.ApiError) {\n\
          \x20   gg.log(\"${failure.code} on ${failure.operation}\")\n\
          }\n\
@@ -673,17 +682,14 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
             )
         },
     );
-    assert_eq!(
-        logs(&outcome),
-        ["NOT_FOUND on read_text_file", "carried on"]
-    );
+    assert_eq!(logs(&outcome), ["NOT_FOUND on read_file", "carried on"]);
 
     // And one that ESCAPED. There is no second channel for it on a compiled arm — gg catches
     // nothing — so what the model reads is the exception's own header on the guest's standard error,
     // which is why `ApiError`'s message carries the tool and the code as well as gg's sentence.
     let (outcome, _log) = run_with(
         "gg.log(\"before\")\n\
-         gg.files.readTextFile(\"gone.kt\")\n\
+         gg.files.readFile(\"gone.kt\")\n\
          gg.log(\"after\")\n",
         &all_operations(),
         |_name: &str, _args: &Value| {
@@ -695,7 +701,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     );
     let reported = trap(&outcome);
     assert!(
-        reported.contains("gg.core.ApiError: `read_text_file` failed (not-found)")
+        reported.contains("gg.core.ApiError: `read_file` failed (not-found)")
             && reported.contains("no such file: gone.kt"),
         "the model reads gg's own sentence under the class it would have caught: {reported}",
     );
@@ -707,7 +713,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     // A `runCatching` is the other way a Kotlin author reaches a failure, and it works for the same
     // reason: what the SDK raises is an ordinary exception rather than something the bridge wrapped.
     let (outcome, _log) = run_with(
-        "val read = runCatching { gg.files.readTextFile(\"gone.kt\") }\n\
+        "val read = runCatching { gg.files.readFile(\"gone.kt\") }\n\
          gg.log(read.exceptionOrNull().let { it is gg.core.ApiError }.toString())\n",
         &all_operations(),
         |_name: &str, _args: &Value| {
@@ -727,15 +733,11 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // than a missing name. It carries the code the HOST refuses an out-of-set call with, because gg
     // classifies a turn's error from the code: a capability nobody granted must not be recorded as a
     // name the model got wrong.
-    let (outcome, log) = run_with(
-        "gg.files.readTextFile(\"src/Main.kt\")\n",
-        &[],
-        canned_outcome,
-    );
+    let (outcome, log) = run_with("gg.files.readFile(\"src/Main.kt\")\n", &[], canned_outcome);
     let reported = trap(&outcome);
     assert!(
-        reported.contains("`read_text_file` failed (unavailable)")
-            && reported.contains("`gg.files.readTextFile` is not available"),
+        reported.contains("`read_file` failed (unavailable)")
+            && reported.contains("`gg.files.readFile` is not available"),
         "the refusal names the call the model wrote, in the host's own words, under the code gg \
          classifies an out-of-set call with: {reported}",
     );
@@ -1022,7 +1024,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     // THE TWO THAT RESOLVE. Both are driven through the real membrane rather than merely compiled,
     // because a call that resolves and then reaches nothing would pass a compile check.
     let (outcome, log) = run_with(
-        "    gg.log(gg.files.readTextFile(\"a.md\"))\n",
+        "    gg.log(gg.files.readFile(\"a.md\").let { if (it is gg.files.TextFile) it.contents else \"\" })\n",
         &all_operations(),
         canned_outcome,
     );
@@ -1038,7 +1040,10 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     .expect("the catalogue states the line a program writes to reach `gg.files`");
     assert_eq!(line, "import gg.files.*");
     let (outcome, log) = evaluate_as(
-        &prepare(&whole(line, "    gg.log(readTextFile(\"a.md\"))\n")),
+        &prepare(&whole(
+            line,
+            "    gg.log(readFile(\"a.md\").let { if (it is TextFile) it.contents else \"\" })\n",
+        )),
         &all_operations(),
         &[],
         RunEnding::None,
@@ -1051,7 +1056,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     // AND THE ONE THAT DOES NOT: the short name with neither the line nor the path, which is what an
     // injected scope would have made work.
     let failure = compile_program(
-        &whole("", "    gg.log(readTextFile(\"a.md\"))\n"),
+        &whole("", "    gg.log(readFile(\"a.md\").toString())\n"),
         &[],
         &PrepareContext::new(),
     )

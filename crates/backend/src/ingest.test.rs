@@ -90,6 +90,53 @@ fn catalog_version_skips_a_re_render_when_unchanged_and_forces_when_changed() {
 }
 
 #[test]
+fn a_store_in_another_record_format_is_re_ingested_whole() {
+    // The repair after a build changed the stored shapes. The store looks full and
+    // none of it can be read, so a partial scan is promoted to a forced whole-catalog
+    // one: it prunes the versions the checkout no longer backs and leaves the store
+    // stamped with the format this build writes. Exercised with an empty test-cases
+    // tree, which needs no browser to render references.
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("test-cases")).unwrap();
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    write(&store.manifest_path("pong", "v1.0.0"), r#"{"slug":"pong"}"#);
+    write(&store_dir.path().join(".tcab/store-format"), "999");
+    assert!(store.needs_reingest());
+
+    Ingestor::new(dir.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec![]),
+            ..Default::default()
+        })
+        .unwrap();
+
+    assert!(!store.has_version("pong", "v1.0.0"));
+    assert!(!store.needs_reingest());
+}
+
+#[test]
+fn a_partial_scan_of_a_current_store_leaves_the_rest_of_it_alone() {
+    // The contrast with the promotion above: a store this build reads is scanned as
+    // asked, so a partial scan neither forces nor prunes.
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("test-cases")).unwrap();
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    write(&store.manifest_path("pong", "v1.0.0"), r#"{"slug":"pong"}"#);
+    store.set_store_format().unwrap();
+
+    Ingestor::new(dir.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec![]),
+            ..Default::default()
+        })
+        .unwrap();
+
+    assert!(store.has_version("pong", "v1.0.0"));
+}
+
+#[test]
 fn scan_with_progress_emits_a_start_event_with_the_target_count() {
     // The streamed progress feed leans on `Start` always firing before the loop,
     // carrying the total to be scanned. An empty test-cases tree exercises that
@@ -458,6 +505,35 @@ fn stored_manifest_carries_voxel_specs() {
         model.parts.is_empty(),
         "parts are model-invented, not declared in the manifest"
     );
+}
+
+#[test]
+fn stored_manifest_carries_the_engines_the_case_declares() {
+    // The engines a version supports are the compatibility gate a run's selection is
+    // held against in the driver pod, which resolves the case over HTTP rather than
+    // from a checkout. Dropping them at ingest makes every version look as though it
+    // supports the engineless run alone, so an engine-backed run is refused whatever
+    // the case declares. Carom declares both spellings.
+    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+
+    let carom = catalog.resolve("carom", "v3.0.0").unwrap();
+    let manifest = build_stored_manifest(&carom).unwrap();
+    let slugs: Vec<&str> = manifest.engines.iter().map(|e| e.slug.as_str()).collect();
+    assert_eq!(slugs, vec!["none", "simple-2d"]);
+    // A pinned engine keeps its floor through the store, or the gate would admit a
+    // staged runtime the case's specs were never written against.
+    let pinned = manifest
+        .engines
+        .iter()
+        .find(|e| e.slug == "simple-2d")
+        .expect("declared");
+    assert_eq!(pinned.min_version, Some("1.0.0".parse().unwrap()));
+
+    // And the whole set survives the JSON round-trip the on-disk sidecar takes.
+    let json = serde_json::to_string(&manifest).unwrap();
+    let read: crate::store::StoredManifest = serde_json::from_str(&json).unwrap();
+    assert_eq!(read.engines, manifest.engines);
 }
 
 #[test]

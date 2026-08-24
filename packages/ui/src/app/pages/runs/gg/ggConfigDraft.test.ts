@@ -29,6 +29,7 @@ import {
   draftSaveError,
   dropAgentReferences,
   emptyDraft,
+  featureBundleOffered,
   fsmStatesWarnings,
   grantsOf,
   isValidAgentSlug,
@@ -45,7 +46,10 @@ import {
   type GgConfigSlotDraft,
 } from "./ggConfigDraft";
 import {
+  AUTHORED_ERROR_RATE_WINDOW,
   AUTHORED_HOOK_TIMEOUT_SECS,
+  AUTHORED_MAX_CONSECUTIVE_ERRORS,
+  AUTHORED_MAX_ERROR_RATE,
   AUTHORED_MAX_PARALLEL,
   AUTHORED_MEMORY_MAX_COUNT,
   AUTHORED_MEMORY_MAX_LEN_DESCRIPTION,
@@ -2117,13 +2121,17 @@ describe("a command hook's timeout", () => {
 });
 
 describe("gg run limits", () => {
-  it("writes the two ceilings every run has, and arms no other", () => {
-    // A fresh configuration is fully specified where gg requires it and silent everywhere
-    // else: the pool and the journal are what every run has, and an error, turn, runtime or
-    // cost ceiling is armed only by an operator who wants one.
+  it("writes a fresh configuration's seeded ceilings, and arms no other", () => {
+    // A fresh configuration is fully specified where gg requires it — the pool and the
+    // journal — and guarded where the catalog seeds a clearable figure: the three error
+    // ceilings. A turn, runtime or cost ceiling is armed only by an operator who wants
+    // one.
     expect(capabilitySetFromDraft(emptyDraft(), null).limits).toEqual({
       maxParallel: AUTHORED_MAX_PARALLEL,
       replayMaxBytes: AUTHORED_REPLAY_MAX_MIB * BYTES_PER_MIB,
+      maxConsecutiveErrors: AUTHORED_MAX_CONSECUTIVE_ERRORS,
+      maxErrorRate: AUTHORED_MAX_ERROR_RATE,
+      errorRateWindow: AUTHORED_ERROR_RATE_WINDOW,
     });
     expect(RUN_LIMIT_SPECS.map((spec) => spec.key).sort()).toEqual(
       Object.keys(emptyDraft().limits).sort(),
@@ -2141,11 +2149,15 @@ describe("gg run limits", () => {
 
   it("fills the two required ceilings into a configuration that named neither", () => {
     // An older stored set opens with the figures in their fields, where the operator sees
-    // them before saving — not silently on the way out.
+    // them before saving — not silently on the way out. The error-ceiling seeds do NOT
+    // fill in the same way: they are for fresh configurations only, and a stored set
+    // that omitted a clearable ceiling opens with the field empty, exactly as saved.
     const draft = draftFromCapabilitySet(set({ limits: { maxTurns: 12 } }));
     expect(draft.limits.maxParallel).toBe(String(AUTHORED_MAX_PARALLEL));
     expect(draft.limits.replayMaxBytes).toBe(String(AUTHORED_REPLAY_MAX_MIB));
     expect(draft.limits.maxConsecutiveErrors).toBe("");
+    expect(draft.limits.maxErrorRate).toBe("");
+    expect(draft.limits.errorRateWindow).toBe("");
     expect(draftSaveError(draft)).toBeNull();
   });
 
@@ -2198,6 +2210,9 @@ describe("gg run limits", () => {
 
   it("warns when the error-rate window can only fill on the last turn", () => {
     const draft = emptyDraft();
+    // The seeded guardrails alone draw no warning: the seeded window has no turn
+    // ceiling to be measured against, so it always has room to fill.
+    expect(runLimitsWarning(draft.limits)).toBeNull();
     draft.limits.maxTurns = "8";
     draft.limits.maxErrorRate = "0.5";
     draft.limits.errorRateWindow = "8";
@@ -2838,7 +2853,7 @@ describe("a state machine", () => {
 
 describe("a capability that is on and grants nothing", () => {
   // `agent-managed-context` is the capability an operator can empty *by hand on the form*:
-  // its two feature sliders between them name all three of its calls, so switching both
+  // its feature sliders between them name every one of its calls, so switching them all
   // off leaves the capability on and the agent holding none of it.
   const MANAGED = capabilitySpec("agent-managed-context")!;
 
@@ -2852,6 +2867,18 @@ describe("a capability that is on and grants nothing", () => {
     expect(draft.mode).toBe(mode);
     return draft;
   }
+
+  it("offers the view-call slider to a code agent and not to a tool-calling one", () => {
+    // Closing a view has no tool beside it, so the slider has nothing to grant a
+    // tool-calling agent and is not shown one.
+    const views = MANAGED.features!.find((b) => b.label === "Close views")!;
+    expect(views.operations).toEqual(["views.close"]);
+    expect(featureBundleOffered(armed("rac"), views)).toBe(true);
+    expect(featureBundleOffered(armed("tools"), views)).toBe(false);
+    expect(featureBundleOffered(armed("tools"), MANAGED.features![0]!)).toBe(
+      true,
+    );
+  });
 
   it("says nothing while the capability still grants one of its calls", () => {
     const agent = armed("tools");

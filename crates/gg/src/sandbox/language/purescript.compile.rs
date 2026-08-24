@@ -438,8 +438,8 @@ fn refuse_a_program_taking_a_modules_name(
     match taken {
         None => Ok(()),
         Some(module) => Err(PrepareFailure::Program(PrepareError::Compile(format!(
-            "your module header names `{declared}`, which is the code module you loaded as \
-             `{}`. Name your own module something else.",
+            "the module header names `{declared}`, which is the code module loaded as `{}`. \
+             Name the program's module something else.",
             module.name,
         )))),
     }
@@ -909,8 +909,8 @@ fn classify_bundle(report: &CompilerReport, module: &str) -> Result<(), PrepareF
     }
     if report.stderr.contains(NO_ENTRY_POINT) {
         return Err(PrepareFailure::Program(PrepareError::Compile(
-            "your program has no entry point: it must define `main :: Effect Unit`, and export it \
-             if its `module … (…) where` header lists its exports"
+            "the program has no entry point: it must define `main :: Effect Unit`, and export \
+             it if its `module … (…) where` header lists its exports"
                 .to_string(),
         )));
     }

@@ -19,37 +19,50 @@ simulated time, whatever the machine running the suite is doing.
 
 ```ts
 import { ConstantClock } from "@test-cabinet/simple-2d";
-import { setBall, startMatch } from "../../src/debug";
 import { createHarness } from "../harness";
 
 it("a ball leaving the right edge scores for player one", async () => {
   const { engine } = createHarness(new ConstantClock(1000 / 60));
-  const state = await engine.initialize();
+  await engine.initialize();
 
-  startMatch(state, "versus");
-  setBall(state, { x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
+  engine.apply((s) => engine.debug.startMatch(s, "versus"));
+  engine.apply((s) =>
+    engine.debug.setBall(s, { x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 }),
+  );
   await engine.advance(30);
 
-  expect(state.scoreP1).toBe(1);
-  expect(state.screen).toBe("countdown");
+  const snapshot = engine.debug.snapshot(engine.state);
+  expect(snapshot.score.p1).toBe(1);
+  expect(snapshot.screen).toBe("countdown");
 });
 ```
 
-The scenario is posed through the case's `debug.ts` operations, which write the
-game's own state and leave the outcome to the frames that follow. What the
-assertions read is what the real update produced.
+The scenario is posed through the operations of the build's debug surface, read
+off `engine.debug`. Each pose takes the current state and returns the next, so
+a check hands it to `engine.apply`, which replaces the state with what the pose
+returned and leaves the outcome to the frames that follow. What the assertions
+read is what the real update produced.
+
+A harness wraps the two routes so a check names the operation alone:
+`h.startMatch("versus")` for `engine.apply((s) => engine.debug.startMatch(s, "versus"))`,
+and `h.snapshot()` for `engine.debug.snapshot(engine.state)`. The pages below
+use both forms.
 
 ## Reading the state
 
-`engine.initialize` resolves to the game's state and `engine.state` is the same
-value, live. A read after an `advance` therefore sees that frame's values, and a
-value that must survive later frames is copied at the moment it is read.
+`engine.state` is the value the most recent frame or `apply` left, as a
+read-only view. A read after an `advance` sees that frame's value, and a value
+read before the advance stays what it was, so a before-and-after comparison is
+two reads.
 
 ```ts
-const startY = state.ball.y;
+const startY = engine.state.ball.y;
 await engine.advance(60);
-expect(state.ball.y).not.toBe(startY);
+expect(engine.state.ball.y).not.toBe(startY);
 ```
+
+The value `engine.initialize` resolves to is the opening state and stays so
+however many frames run.
 
 `engine.frame()` reports the frame count, the accumulated simulated time in
 milliseconds, and the delta the last frame was stepped by. It is how a check
@@ -82,14 +95,14 @@ const clocks = [
 ];
 
 for (const clock of clocks) {
-  const { engine } = createHarness(clock);
-  const state = await engine.initialize();
+  const h = createHarness(clock);
+  await h.engine.initialize();
 
-  startMatch(state, "versus");
-  setBall(state, { x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
-  await advanceMs(engine, 500);
+  h.startMatch("versus");
+  h.setBall({ x: FIELD_W - 40, y: FIELD_H / 2, vx: 600, vy: 0 });
+  await advanceMs(h.engine, 500);
 
-  expect(state.scoreP1).toBe(1);
+  expect(h.snapshot().score.p1).toBe(1);
 }
 ```
 

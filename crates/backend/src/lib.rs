@@ -31,12 +31,14 @@ pub mod ingest;
 pub mod logo;
 pub mod metrics;
 pub mod model_seed;
+pub mod probe;
 pub mod publish_relay;
 pub mod publisher;
 pub mod readiness;
 pub mod relay;
 pub mod render;
 pub mod snapshot;
+pub mod stats;
 pub mod store;
 
 use std::sync::Arc;
@@ -132,6 +134,29 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping run code-analyzer-version backfill"),
     }
 
+    // Reap probes orphaned by the last shutdown. A model probe runs inside this
+    // process, so a restart always killed it; the row is failed rather than left
+    // `running` forever (which would also block re-triggering). Idempotent,
+    // best-effort, never blocks startup.
+    match time::OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339) {
+        Ok(now) => match db.fail_running_model_probes(&now).await {
+            Ok(0) => {}
+            Ok(reaped) => tracing::info!(reaped, "failed model probes orphaned by restart"),
+            Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
+        },
+        Err(err) => tracing::warn!(error = %err, "skipping model-probe reap"),
+    }
+
+    // The engine slug, lifted out of records stored before the `engine_slug` column
+    // existed (pre-engine-era records deserialize to `none`, which is lifted too — it
+    // is what the engineless filter matches). Same contract as the two above:
+    // idempotent, best-effort, never blocks startup.
+    match db.backfill_engine_slug().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run engine slugs"),
+        Err(err) => tracing::warn!(error = %err, "skipping run engine-slug backfill"),
+    }
+
     let db = Arc::new(db);
 
     // Reconcile orphaned in-flight jobs before serving — but only single-box,
@@ -199,6 +224,18 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         // Never block startup on this best-effort normalization.
         tracing::warn!(error = %err, "skipping :free run normalization");
     }
+    // Price every known model the catalog holds no observation for, so a freshly
+    // seeded deployment shows prices — and a live run its per-class cost split —
+    // before the first run rather than after it completes. Missing-only (a
+    // steady-state boot fetches nothing) and best-effort: an unreachable OpenRouter
+    // leaves the models to the launch-time and completion-time observations.
+    match crate::bootstrap::seed_catalog_prices(&db, &prices).await {
+        Ok(seeded) if seeded > 0 => {
+            tracing::info!(seeded, "seeded missing model prices at startup");
+        }
+        Ok(_) => {}
+        Err(err) => tracing::warn!(error = %err, "skipping startup model-price seeding"),
+    }
     let price_refresher = crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone());
 
     let bind = config.bind.clone();
@@ -206,13 +243,19 @@ pub async fn build(config: Config) -> error::Result<Backend> {
     // whose /state is ephemeral it starts EMPTY — the ingest sidecar refills it, but
     // that takes minutes on a cold catalog. Hold the backend out of its Service until
     // then, or every run launched in the gap dies on a spurious "is not ingested"
-    // 404. A store that already holds versions has nothing to wait for.
-    let readiness = crate::readiness::Readiness::new(store.is_populated());
+    // 404. A store that already holds readable versions has nothing to wait for.
+    let readiness = crate::readiness::Readiness::new(store.is_servable());
     if !readiness.is_ready() {
-        tracing::info!(
-            store = %store.root().display(),
+        // A store written in another record format is held out for the same reason an
+        // empty one is, and says so distinctly: it looks full, and serving it would
+        // answer with whatever subset an ingest has since rewritten.
+        let reason = if store.needs_reingest() {
+            "definition store was written in another record format; staying unready \
+             until an ingest rewrites it"
+        } else {
             "definition store is empty; staying unready until an ingest populates it"
-        );
+        };
+        tracing::info!(store = %store.root().display(), "{reason}");
     }
     let state = AppState {
         db,

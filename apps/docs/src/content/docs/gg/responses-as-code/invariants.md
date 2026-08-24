@@ -130,6 +130,25 @@ turn, and what the model reads is what its language emitted, including the
 location that language reported and whatever the program wrote to standard
 error.
 
+How the turn is **filed** follows from what the guest can see, and the rule has
+two halves. A guest whose runtime delivers an uncaught failure to its single
+entry point — an interpreter's top-level `except`, an engine's exception slot,
+a rejection tracker — reports it over `feedback.report-error` with the class
+the failure carries: a failed gg call's own code, an unknown name, or anything
+else the program threw. The turn is a `program_fault`, and an uncaught failed
+call is `program_api_error` on every such arm, whichever language it was
+written in. Reporting is not interception: nothing catches the throw to
+describe it, the runtime's own rendering is what is reported, and no guest may
+build a catch chain to type a failure it would otherwise have died of. Only a
+guest whose runtime kills the program before any entry point can see the throw
+lets it die as a trap, and then the runtime's words reach the model from
+standard error.
+
+A `sandbox_limit` is therefore reserved for a ceiling gg imposed or a real
+wasmtime trap: the execution timeout, the memory cap, a store killed by a
+runtime gg does not hear from. An API failure a program did not catch is never
+one, and a guest that can report it and instead dies is a defect.
+
 The location is the model's own, because the text that compiled is the text the
 model wrote and the text the next prompt carries. gg may resolve a location
 through a source map, which is a mechanism the toolchain maintains and the
@@ -158,6 +177,11 @@ location, and a location a toolchain misattributed, are the two gg strikes. What
 is left is the whole of what the runtime had to say, so a count there would tell
 a model there is more to read when there is not. Each strike states at its own
 site what it removes and why it is untrue.
+
+A frame in code the model cannot open is struck and counted: a frame inside
+gg's own SDK, or in a line a compiler emitted that no source map resolves. What
+survives names a file the model wrote or a library its program compiled
+against, and the count under it says how many frames were in neither.
 
 ## The system prompt
 

@@ -212,7 +212,7 @@ fn hoist(source: &str) -> Result<(String, Vec<String>), PrepareFailure> {
         if let Some(rest) = keyword(trimmed, "package") {
             return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
                 "line {}: a gg code module is one compilation unit with no package, so \
-                 `package {}` has nowhere to go. Remove it; every name you declare is already \
+                 `package {}` has nowhere to go. Remove it; every declared name is already \
                  visible to the rest of the module.",
                 number + 1,
                 rest.trim_end_matches(';').trim(),

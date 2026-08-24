@@ -28,17 +28,6 @@
   background: t.$color-surface;
 }
 
-// What the engine called the frame on screen: its own frame counter and the
-// simulated time it had accumulated. A shared scrubber puts two panes on the same
-// index; these two figures are what let a reviewer confirm the index is the same
-// frame of the same scenario in both recordings.
-.readout {
-  margin: 0;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  font-variant-numeric: tabular-nums;
-}
-
 // A frame the player could not draw whole. Per frame, not per recording: the
 // operation that could not be reproduced is missing from THIS picture, and the
 // frame beside it may be complete.

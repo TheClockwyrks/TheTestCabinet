@@ -6,8 +6,9 @@ use std::time::{Duration, Instant};
 use super::super::ErrorCode;
 use super::super::capture::MAX_RECORDED_VIEW_EVENTS;
 use super::*;
+use crate::context::ViewKind as HostViewKind;
 use crate::sandbox::fake::{CallLog, all_operations, canned_outcome, membrane, membrane_with};
-use crate::tools::{ApiData, FileTextData, ToolFailure, ToolOutcome};
+use crate::tools::{ToolFailure, ToolOutcome};
 
 /// **`open-file-view` is a `read_file`, and is rostered as one.**
 ///
@@ -21,7 +22,7 @@ fn opening_a_file_view_dispatches_a_read_file() {
     let mut state = membrane(&log);
 
     let read = state
-        .open_file_view("src/a.ts".to_string(), None, None)
+        .open_file_view("src/a.ts".to_string(), None, None, None)
         .expect("the file is read and shown");
 
     match read {
@@ -51,42 +52,6 @@ fn opening_a_file_view_dispatches_a_read_file() {
     assert!(!opened[0].superseded, "nothing was open under that path");
 }
 
-/// **The window a paged view covers comes back to the program.**
-///
-/// `current-views` is what `view.current()` renders, and a paged file view is only distinguishable
-/// from a whole-file one by its region — which is also what makes two pages of one file two views
-/// rather than one changing its mind.
-#[test]
-fn a_paged_file_view_reports_its_region() {
-    let log = CallLog::default();
-    let mut state = membrane_with(&log, &all_operations(), None, |_name, args| {
-        let path = args["path"].as_str().unwrap_or_default().to_string();
-        ToolOutcome::ok(format!("page of {path}"), "read 2 lines").with_data(ApiData::FileText(
-            FileTextData {
-                contents: format!("page of {path}"),
-                first_line: 201,
-                last_line: 400,
-                total_lines: 1_000,
-                byte_truncated: false,
-            },
-        ))
-    });
-
-    state
-        .open_file_view("src/a.ts".to_string(), Some(201), Some(200))
-        .expect("the page is read and shown");
-
-    let views = state.current_views();
-    assert_eq!(views.len(), 1);
-    assert_eq!(views[0].kind, ViewKind::File);
-    let region = views[0].region.expect("a paged view carries its window");
-    assert_eq!(
-        (region.offset, region.limit),
-        (201, 200),
-        "the region is what the read RETURNED, which is what re-opening the page must cover"
-    );
-}
-
 /// **A read that failed opens nothing, and says so twice.**
 ///
 /// The program is thrown into (it asked for a file it cannot have), and the turn's view report
@@ -100,7 +65,7 @@ fn a_failed_read_opens_no_view_and_is_reported_as_a_refusal() {
     });
 
     let error = state
-        .open_file_view("nope.ts".to_string(), None, None)
+        .open_file_view("nope.ts".to_string(), None, None, None)
         .expect_err("the read failed, so nothing is shown");
     assert_eq!(error.code, ErrorCode::NotFound);
 
@@ -122,7 +87,7 @@ fn a_view_of_a_picture_reports_it_as_shown() {
     let mut state = membrane(&log);
 
     let read = state
-        .open_file_view("mock.png".to_string(), None, None)
+        .open_file_view("mock.png".to_string(), None, None, None)
         .expect("the picture is read and shown");
     match read {
         FileRead::Image(image) => {
@@ -156,8 +121,6 @@ fn re_opening_a_selector_is_reported_as_a_supersede() {
     state
         .open_text_view("summary".to_string(), "second".to_string())
         .expect("replaced");
-
-    assert_eq!(state.current_views().len(), 1, "one view, re-stated");
 
     let opened = state.into_parts().views_opened;
     assert_eq!(opened.len(), 2, "but two calls, both reported");
@@ -250,24 +213,23 @@ fn a_spent_budget_refuses_the_read_but_not_the_report() {
         )
         .expect("a report is never withheld");
     state
-        .current_views()
-        .first()
-        .expect("and it is in the window");
+        .close_view("never-opened".to_string())
+        .expect("closing is never withheld by a spent budget either");
 
     let error = state
-        .open_file_view("src/a.ts".to_string(), None, None)
+        .open_file_view("src/a.ts".to_string(), None, None, None)
         .expect_err("but a read is a read");
     assert_eq!(error.code, ErrorCode::LimitExceeded);
 }
 
 /// **An agent granted no read does not get one through `views.openFile`.**
 ///
-/// Three operations are bought by the read capability — `files.read_file`, `files.read_text_file`
-/// and this one — and this is the one a side door could be opened through: it is filed under
-/// `views`, where the rest of the family is bound to every program whatever a run enables. The gate
-/// reads the **operation's** own binding rather than its family, so an agent whose allowlist names
-/// none of the three is refused all three. Every guest binds `openFile` in such a run, since every
-/// SDK is static, so this is a path a program really does reach.
+/// Two operations are bought by the read capability — `files.read_file` and this one — and this
+/// is the one a side door could be opened through: it is filed under `views`, where the rest of
+/// the family is bound to every program whatever a run enables. The gate reads the **operation's**
+/// own binding rather than its family, so an agent whose allowlist names neither is refused both.
+/// Every guest binds `openFile` in such a run, since every SDK is static, so this is a path a
+/// program really does reach.
 #[test]
 fn a_run_without_read_file_cannot_open_a_file_view() {
     let log = CallLog::default();
@@ -278,7 +240,7 @@ fn a_run_without_read_file_cannot_open_a_file_view() {
     let mut state = membrane_with(&log, &granted, None, canned_outcome);
 
     let error = state
-        .open_file_view("src/a.ts".to_string(), None, None)
+        .open_file_view("src/a.ts".to_string(), None, None, None)
         .expect_err("reading is withheld this run");
     assert_eq!(error.code, ErrorCode::Unavailable);
     assert!(log.names().is_empty(), "it never reached the api");
@@ -302,4 +264,24 @@ fn the_view_report_is_capped_and_the_overflow_is_counted() {
     let parts = state.into_parts();
     assert_eq!(parts.view_refusals.len(), MAX_RECORDED_VIEW_EVENTS);
     assert_eq!(parts.views_suppressed, 25);
+}
+
+/// `max-line-chars` crosses to the api beside the window, as the view's own option: the loop is
+/// what cuts and caps, and this file only has to hand it over unchanged.
+#[test]
+fn a_line_cut_crosses_to_the_api_beside_the_window() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+
+    state
+        .open_file_view("src/a.ts".to_string(), Some(5), Some(40), Some(120))
+        .expect("the read runs");
+
+    let calls = log.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "read_file");
+    assert_eq!(
+        calls[0].args,
+        serde_json::json!({ "path": "src/a.ts", "offset": 5, "limit": 40, "maxLineChars": 120 })
+    );
 }

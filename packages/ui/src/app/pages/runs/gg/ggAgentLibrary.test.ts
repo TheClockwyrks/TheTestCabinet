@@ -137,6 +137,39 @@ describe("importing a saved agent", () => {
     expect(draftAgentOverrides(draft, agentId)).toEqual([]);
   });
 
+  // The library holds whatever was written to it, and the editor fills a document in on
+  // the way through — every param the catalog gives a default, whether or not gg refuses a
+  // launch without it. A profile is always the editor's copy, so a basis that is not is a
+  // basis that differs from every untouched import of it.
+  it("pins nothing when the stored entry omits a param the editor fills in", () => {
+    const saved = savedReviewer();
+    // A document written before compaction's optional retry count was a control: gg reads
+    // its absence as none, which is the same figure the editor now writes down.
+    const stored: GgAgentConfig = {
+      ...saved.agent,
+      capabilities: (saved.agent.capabilities ?? []).map((cap) => {
+        if (cap.id !== "compaction" || !cap.params) return cap;
+        const params = { ...cap.params };
+        delete params.maxRetries;
+        return { ...cap, params };
+      }),
+    };
+    expect(
+      (stored.capabilities ?? []).find((c) => c.id === "compaction")?.params,
+    ).not.toHaveProperty("maxRetries");
+
+    const { draft, agentId } = importSavedAgent(emptyDraft(), {
+      ...saved,
+      agent: stored,
+    });
+    expect(draftAgentOverrides(draft, agentId)).toEqual([]);
+
+    // And Revert still has the same nothing to do, rather than reporting a drift it
+    // cannot clear.
+    const reverted = revertImportedAgent(draft, agentId);
+    expect(draftAgentOverrides(reverted, agentId)).toEqual([]);
+  });
+
   it("does not become the root of a configuration that already has one", () => {
     const before = emptyDraft();
     const { draft, agentId } = importSavedAgent(before, savedReviewer());

@@ -4,8 +4,9 @@
 // adds none and the return flies straight. The paddle pose is the precondition;
 // the bounce, and the spin it does or does not add, are the build's own physics.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   LEAD_TICKS,
   arrangePaddleHit,
@@ -16,8 +17,11 @@ import {
   type Harness,
 } from "../harness";
 
-/** The old browser suite's margin: spin is either imparted or it is not. */
-const SPIN_TOLERANCE = 0.5;
+/**
+ * A float margin. `spin = clamp(spin + paddleVy * SPIN_FROM_PADDLE, ...)` with
+ * both terms zero is exactly zero (specs/balls.md).
+ */
+const SPIN_TOLERANCE = 1e-6;
 
 /**
  * Frames of the return flight recorded after the contact.
@@ -42,7 +46,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("imparts no spin from a still paddle", async () => {
@@ -62,6 +66,6 @@ it("imparts no spin from a still paddle", async () => {
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(Math.abs(contact.ball.spin)).toBeLessThanOrEqual(SPIN_TOLERANCE);
+  assertEqual(contact.hit, true);
+  assertLessThanOrEqual(Math.abs(contact.ball.spin), SPIN_TOLERANCE);
 });

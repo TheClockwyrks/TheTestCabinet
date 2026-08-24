@@ -77,6 +77,20 @@ export type SubjectOut = {
   variant: string;
   harnessSlug: HarnessSlug;
   harnessVersion: string | null;
+  /**
+   * The slug of the [engine](test_cabinet_core::engine) the produced build was
+   * written against (`none` when it supplied its own runtime). Lifted onto the
+   * card because the engine is a *run dimension* selected alongside the variant,
+   * and a result is only comparable with another result on the same engine — so
+   * every listing that shows the variant has to be able to show this beside it.
+   */
+  engineSlug: string;
+  /**
+   * The version of the engine runtime vendored into the run repository. `None`
+   * for an engine that vendors no runtime (`none` has no package), and for runs
+   * recorded before engine selection existed.
+   */
+  engineVersion?: string | null;
   modelId: string;
   /**
    * The name of the gg **configuration** this run was launched from — the
@@ -513,14 +527,16 @@ export type CaseReferenceOut = {
 
 /**
  * A committed **baseline** validation media file exposed in case metadata — one
- * debug-script output driven once against the case's reference implementation.
- * `variant` is the variant slug the baseline was captured for (baselines are always
- * per-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests
- * (`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the
- * media as published (a video transcoded to `.mp4`). The static gallery keys its
- * baseline lookup off `variant` + `file`.
+ * declared output captured once against the case's reference implementation.
+ * `engine` and `variant` name the reference build it was captured from (a variant
+ * has one reference implementation per engine, and their captures are not
+ * interchangeable); `file` is the flat `<item>__<output>.<ext>` name the gallery
+ * requests (`.png`/`.webm`/`.json.gz`); `key` is its snapshot-relative object key,
+ * whose bytes are the media as published (a video transcoded to `.mp4`). The static
+ * gallery keys its baseline lookup off `engine` + `variant` + `file`.
  */
 export type CaseValidationBaselineOut = {
+  engine: string;
   variant: string;
   file: string;
   key: string;
@@ -582,6 +598,22 @@ export type CaseReferenceSheetOut = {
 };
 
 /**
+ * One variant's prompt and seeded specs rendered for one engine that vendors a
+ * runtime — the per-engine half of [`CaseVariantOut`].
+ */
+export type CaseVariantRenderingOut = {
+  /**
+   * The variant's prompt as a run on this engine receives it.
+   */
+  prompt: string;
+  /**
+   * The variant's complete seeded spec set in seed order, each body rendered for
+   * this variant on this engine.
+   */
+  seededInputs: Array<CaseSeededInputOut>;
+};
+
+/**
  * One variant of a case as the gallery shows it.
  */
 export type CaseVariantOut = {
@@ -603,6 +635,23 @@ export type CaseVariantOut = {
    * one common list.
    */
   seededInputs: Array<CaseSeededInputOut>;
+  /**
+   * This variant's prompt and seeded specs re-rendered for each
+   * [engine](test_cabinet_core::engine) the version declares that vendors a
+   * runtime, keyed by engine slug.
+   *
+   * A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so
+   * the text a run was handed depends on which runtime its build was written
+   * against. [`Self::prompt`] and [`Self::seeded_inputs`] are the engineless
+   * rendering — what a reader browsing the *case* sees, and exactly what a run on
+   * the `none` engine was handed — and this map carries the rest, so a run's
+   * Inputs surface shows the text that run actually received.
+   *
+   * The engineless engine is deliberately absent: it is already the pair above,
+   * and duplicating every spec body for it would double the document for the many
+   * cases that support nothing else.
+   */
+  engineRenderings: { [key in string]: CaseVariantRenderingOut };
   /**
    * Reviewer checklist items additive to the common ones, with their point
    * weights, surfaced only when this variant is selected.

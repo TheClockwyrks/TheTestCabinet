@@ -24,8 +24,7 @@
 // LIFTING (C → C++) has to copy and then free. What an import hands back is memory the guest owns:
 // the lift copies it into a `std::string` or a `std::vector`, and the generated `*_free` gives it
 // back. A program that read a hundred files in a loop would otherwise grow its own heap until the
-// fuel ceiling stopped it, and the failure would read as "your program was too expensive" rather
-// than as a leak.
+// memory ceiling stopped it, and the failure would read as an out-of-memory rather than as a leak.
 
 #pragma once
 
@@ -105,30 +104,36 @@ std::vector<std::string> lift(const sandbox_list_string_t& texts);
 // value with no `else`.
 [[noreturn]] void fail(test_cabinet_gg_types_api_error_t& failure);
 
-// The two nullable scalars a read's window and a search's page are, as the ABI spells an optional
-// `u32` argument: a pointer that is null for the absent case.
+// The nullable scalars a read's window, a search's page and a file view's cut are, as the ABI
+// spells an optional `u32` argument: a pointer that is null for the absent case.
 //
-// One type for both because the two are the same pair — an offset and a count, either of which may
-// be left out — and the ABI shape is what this class exists to produce. The reads name it in their
-// own terms with `files::read_window`; a page arrives as the two optionals it already is.
+// One type for all of them because they are the same shape — an offset, a count and a cut, any of
+// which may be left out — and the ABI shape is what this class exists to produce. The reads name it
+// in their own terms with `files::read_window`, a file view with `views::view_options`; a page
+// arrives as the two optionals it already is.
 struct window {
   explicit window(const files::read_window& from);
+  explicit window(const views::view_options& from);
   window(std::optional<std::uint32_t> offset, std::optional<std::uint32_t> limit);
 
   std::uint32_t* offset();
   std::uint32_t* limit();
+  std::uint32_t* max_line_chars();
 
  private:
   std::optional<std::uint32_t> offset_;
   std::optional<std::uint32_t> limit_;
+  std::optional<std::uint32_t> max_line_chars_;
   std::uint32_t offset_value_{};
   std::uint32_t limit_value_{};
+  std::uint32_t max_line_chars_value_{};
 };
 
 // The lifts for the records this SDK hands back, one per wire type.
 shell::shell_output lift_shell_output(test_cabinet_gg_shell_shell_output_t& wire);
 files::file_read lift_file_read(test_cabinet_gg_files_file_read_t& wire);
 files::dir_entry lift_dir_entry(const test_cabinet_gg_files_dir_entry_t& wire);
+files::search_match lift_search_match(const test_cabinet_gg_files_search_match_t& wire);
 memories::memory_usage lift_memory_usage(const test_cabinet_gg_memories_memory_usage_t& wire);
 memories::memory_hit lift_memory_hit(const test_cabinet_gg_memories_memory_hit_t& wire);
 tasks::task_usage lift_task_usage(const test_cabinet_gg_tasks_task_usage_t& wire);
@@ -136,7 +141,6 @@ board::board_usage lift_board_usage(const test_cabinet_gg_board_board_usage_t& w
 context::reclaim_report lift_reclaim_report(test_cabinet_gg_context_reclaim_report_t& wire);
 context::archive_search lift_archive_search(test_cabinet_gg_context_archive_search_t& wire);
 docs::doc_search lift_doc_search(test_cabinet_gg_docs_doc_search_t& wire);
-views::open_view lift_open_view(const test_cabinet_gg_views_open_view_t& wire);
 programs::program_summary lift_program_summary(const test_cabinet_gg_programs_program_summary_t& wire);
 delegation::subagent_handle lift_subagent_handle(test_cabinet_gg_delegation_subagent_handle_t& wire);
 delegation::subagent_result lift_subagent_result(const test_cabinet_gg_delegation_subagent_result_t& wire);
@@ -150,7 +154,6 @@ files::entry_kind lift_entry_kind(test_cabinet_gg_files_entry_kind_t wire);
 std::string_view lower(docs::doc_kind kind);
 docs::doc_kind lift_doc_kind(const sandbox_string_t& wire);
 context::message_role lift_message_role(test_cabinet_gg_context_message_role_t wire);
-views::view_kind lift_view_kind(test_cabinet_gg_views_view_kind_t wire);
 delegation::agent_status lift_agent_status(test_cabinet_gg_delegation_agent_status_t wire);
 core::api_error_code lift_error_code(test_cabinet_gg_types_error_code_t wire);
 

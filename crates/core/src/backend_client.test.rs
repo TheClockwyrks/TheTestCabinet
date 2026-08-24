@@ -678,6 +678,7 @@ async fn resolve_version_carries_voxel_volume_and_rig() {
         "summary": null,
         "description": null,
         "maxRuntimeSeconds": 3600,
+        "engines": [{ "slug": "none" }],
         "testType": "asset-generation",
         "assetKind": "voxel-animation",
         "tool": { "binary": "voxel-anim", "preview": "{part}.png" },
@@ -740,6 +741,7 @@ async fn resolve_version_carries_instrumentation_and_item_validation() {
         "summary": null,
         "description": null,
         "maxRuntimeSeconds": 1800,
+        "engines": [{ "slug": "none" }],
         "testType": "end-to-end",
         "instrumentation": { "handle": "__carom" },
         "promptTemplate": "",
@@ -793,6 +795,54 @@ async fn resolve_version_carries_instrumentation_and_item_validation() {
 }
 
 #[tokio::test]
+async fn resolve_version_carries_the_engines_the_case_supports() {
+    // The engine dimension is gated on what the case declares, and a run resolved
+    // over HTTP is held to that gate in the driver pod. If the client synthesizes a
+    // support set instead of reading the served one, every engine-backed run
+    // enqueued through the backend dies on "unsupported engine" no matter what the
+    // case declares. Both spellings arrive: a bare engine and a pinned one.
+    let body = serde_json::json!({
+        "slug": "carom",
+        "version": "v3.0.0",
+        "name": "Carom",
+        "difficulty": "easy",
+        "tags": ["end-to-end"],
+        "summary": null,
+        "description": null,
+        "maxRuntimeSeconds": 1800,
+        "engines": [
+            { "slug": "none" },
+            { "slug": "simple-2d", "minVersion": "1.0.0" }
+        ],
+        "testType": "end-to-end",
+        "promptTemplate": "",
+        "commonSpecs": [],
+        "assets": [],
+        "variants": [],
+        "commonReferences": [],
+        "checks": []
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let version = HttpBackendClient::new(base)
+        .resolve_version("carom", "v3.0.0")
+        .await
+        .expect("resolve version");
+
+    assert_eq!(version.engine_slugs(), vec!["none", "simple-2d"]);
+    let pinned = version.engine_support("simple-2d").expect("declared");
+    assert_eq!(pinned.min_version, Some(semver::Version::new(1, 0, 0)));
+    assert_eq!(pinned.max_version, None);
+    // The bare spelling constrains nothing, so the gate never needs a version for it.
+    assert!(
+        !version
+            .engine_support("none")
+            .expect("declared")
+            .is_bounded()
+    );
+}
+
+#[tokio::test]
 async fn resolve_version_decodes_object_shaped_packages() {
     // The backend serves each shipped package as a `{ name, description }` object
     // (the description is gallery-only). If the client decodes `packages` as bare
@@ -808,6 +858,7 @@ async fn resolve_version_decodes_object_shaped_packages() {
         "summary": null,
         "description": null,
         "maxRuntimeSeconds": 3600,
+        "engines": [{ "slug": "none" }],
         "testType": "full-stack",
         "packages": [
             { "name": "@test-cabinet/particle-runtime", "description": "produced-effect runtime" }

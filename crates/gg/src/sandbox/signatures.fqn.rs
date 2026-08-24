@@ -59,7 +59,7 @@
 use std::collections::BTreeSet;
 use std::fmt;
 
-use super::{EntryKind, FunctionSignature, SignatureCatalogue, TypeReference};
+use super::{EntryKind, FunctionSignature, SignatureCatalogue, TypeReference, is_identifier};
 
 /// Every **type reference** one entry writes: what it returns, what its comment declares it throws,
 /// and every type its shapes name.
@@ -229,15 +229,6 @@ pub(crate) fn check(
     Ok(())
 }
 
-/// Whether `c` can continue an identifier in *some* language whose names reach this rule.
-///
-/// Deliberately generous — anything alphanumeric, plus `_` — because the alternative is a per-arm
-/// table of identifier syntaxes, and the thing being separated is a name the arm's own compiler
-/// already accepted. What matters is only that a separator is *not* one of these.
-fn is_identifier(c: char) -> bool {
-    c.is_alphanumeric() || c == '_'
-}
-
 /// Where a name's trailing **signature suffix** begins — Swift's argument labels, a parameter list,
 /// a generic argument list — or the end of the string.
 ///
@@ -251,21 +242,11 @@ fn suffix_at(text: &str) -> usize {
 
 /// The part of `fqn` after its module path and the separator following it, or `None` when the module
 /// path is not a prefix of it at all — or is one only by accident, as `gg::fs` is of `gg::fsx`.
+///
+/// The one implementation is [`module_relative`](super::module_relative), which the surface readout
+/// reports a method's name through; the rule and the readout must agree on what a qualification is.
 fn tail<'a>(fqn: &'a str, module_path: &str) -> Option<&'a str> {
-    let rest = fqn.strip_prefix(module_path)?;
-    // A separator, not merely *something*: the character right after the module path has to be one
-    // that cannot continue an identifier, or the prefix match was a coincidence rather than a
-    // qualification.
-    let separator: usize = rest
-        .chars()
-        .take_while(|c| !is_identifier(*c))
-        .map(char::len_utf8)
-        .sum();
-    if separator == 0 {
-        return None;
-    }
-    let tail = &rest[separator..];
-    (!tail.is_empty()).then_some(tail)
+    super::module_relative(fqn, module_path)
 }
 
 /// The identifier segments of a name's tail, in order — the tail cut at its signature suffix and

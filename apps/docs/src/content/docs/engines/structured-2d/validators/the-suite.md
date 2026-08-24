@@ -27,6 +27,7 @@ workspace/
   src/            the build
   validation/     the case's suites
     harness.ts
+    debug.ts
     gameplay/scoring-p1.test.ts
 ```
 
@@ -88,13 +89,15 @@ import {
   createEngine,
   type Clock,
   type Engine,
+  type GameDefinition,
   type SurfaceMetrics,
 } from "@test-cabinet/structured-2d";
 import { FIELD_H, FIELD_W } from "../src/constants";
 import { game } from "../src/game";
+import type { Debug } from "./debug";
 
 export interface Harness {
-  engine: Engine;
+  engine: Engine<Debug>;
   canvas: Canvas;
   keys: EventTarget;
 }
@@ -112,11 +115,11 @@ export function createHarness(
     events: () => keys,
   };
 
-  const engine = createEngine({
+  const engine = createEngine<Debug>({
     canvas: canvas as unknown as HTMLCanvasElement,
     width: FIELD_W,
     height: FIELD_H,
-    game,
+    game: game as GameDefinition<Debug>,
     clock,
     surface,
   });
@@ -125,9 +128,10 @@ export function createHarness(
 }
 ```
 
-`createEngine` takes the build's `GameDefinition` and returns an `Engine` with
-no state type parameter, because the game's state lives in the framework objects
-the engine owns. `@napi-rs/canvas` implements the 2D context natively, so the
+`createEngine` takes the build's `GameDefinition` and returns an `Engine` whose
+one type parameter is the debug surface, because the game's state lives in the
+framework objects the engine owns and the surface is the one value the build
+hands back. `@napi-rs/canvas` implements the 2D context natively, so the
 canvas is handed to `createEngine` through a cast and the engine draws through
 it exactly as it draws in a browser. The surface reports the logical design size
 at a device pixel ratio of `1` by default, which puts one device pixel on one
@@ -156,13 +160,66 @@ expect(opened).toEqual(["title"]);
 `initialize` resolves once the game instance exists and has run its
 `initialize`, the start level's `load` has resolved, its actors are spawned and
 have begun play, and its game mode has begun play. It resolves to the instance,
-and `engine.instance` is that same live object. Reading `engine.world` or
-`engine.instance` before it resolves throws an error naming the ordering, so a
-suite awaits the call before it reads anything.
+and `engine.instance` is that same live object. Reading `engine.world`,
+`engine.instance`, or `engine.debug` before it resolves throws an error naming
+the ordering, so a suite awaits the call before it reads anything.
 
 Call `engine.destroy()` when a suite is finished with an engine, which closes
-the world, halts the loop, drops the listeners it attached, and unpublishes the
-host interface.
+the world, halts the loop, and drops the listeners it attached.
+
+## The debug surface
+
+A check poses its scenario through the surface the game instance's `initialize`
+returned, read off `engine.debug` of the engine the suite constructed. Its
+operations are methods that act on the live world: the instance holds `engine`,
+and `engine.world` follows transitions, so a pose reads `this.engine.world` at
+the moment of the call. A pose takes only its own arguments and returns nothing,
+and a reading takes nothing and returns plain data, so a check drives both
+directly.
+
+```ts
+const { engine } = createHarness();
+await engine.initialize();
+
+engine.debug.startMatch("solo");
+await engine.advance(90);
+
+expect(engine.debug.snapshot().phase).toBe("playing");
+```
+
+The case's instrumentation spec states the surface's operations, so a scenario
+reads the same way against every build. The suite declares its own type for
+that surface from the spec, under `validation/`, and parameterizes the engine
+with it, so `engine.debug` is the whole route from a check to the build's
+implementation. A build whose surface departs from the spec fails the points
+the checks decide.
+
+```ts
+// validation/debug.ts — the surface as the case specifies it
+export type Mode = "solo" | "versus";
+
+export interface BallPatch {
+  x?: number;
+  y?: number;
+  vx?: number;
+  vy?: number;
+}
+
+export interface Snapshot {
+  level: string;
+  phase: string;
+  score: { p1: number; p2: number };
+  paddles: { left: { cy: number; vy: number }; right: { cy: number; vy: number } };
+  ball: { x: number; y: number; vx: number; vy: number };
+}
+
+export interface Debug {
+  version: number;
+  startMatch(mode: Mode): void;
+  placeBall(patch: BallPatch): void;
+  snapshot(): Snapshot;
+}
+```
 
 ## An unmet precondition
 
@@ -183,15 +240,14 @@ checks that ran.
 
 ## The module contract
 
-A suite imports the build, so a case fixes four module paths and what each one
+A suite imports the build, so a case fixes three module paths and what each one
 exports. That contract is stated in the case's specification and is what gives
 every build of the case the same shape to check.
 
 | Module | Supplied by | Holds |
 | --- | --- | --- |
 | `src/constants.ts` | The case | The design size, the palette, the level names, the actor tag vocabulary, the action names with the keys they bind, the cue names, and every tunable the specification fixes. |
-| `src/game.ts` | The build | The `GameDefinition` the engine drives. |
-| `src/scenarios.ts` | The case | The scenario operations, each a function over a `World`, that pose a situation through the same systems play uses. |
+| `src/game.ts` | The build | The `GameDefinition` the engine drives, whose instance's `initialize` returns the debug surface to the instrumentation spec. |
 | `src/main.ts` | The case | The browser entry, which builds the engine over the page's canvas with a wall clock and runs it. |
 
 The contract is small because the engine's own object model is what a check
@@ -202,10 +258,12 @@ the build. The case fixes the tag vocabulary and the level names so that a check
 names things every build of the case agrees on.
 
 A suite imports `constants.ts` for the numbers and names its assertions are
-stated in, `game.ts` for the definition it drives, and `scenarios.ts` for the
-situations it poses. `main.ts` belongs to the built page, and a suite constructs
-its own engine instead.
+stated in and `game.ts` for the definition it drives. `main.ts` belongs to the
+built page, and a suite constructs its own engine instead. The surface reaches a
+suite only through `engine.debug`, typed by the suite's own declaration of the
+spec, and each of its operations acts on the world the engine holds.
 
-The build writes `game.ts` against the other three. It is free in how it
-organizes everything else under `src/`, because the contract covers what a check
-imports rather than how a build is structured.
+The build writes `game.ts` against the other two, and its instance's
+`initialize` returns the surface. It is free in where it implements the surface
+and how it organizes everything else under `src/`, because the contract covers
+what a check imports rather than how a build is structured.

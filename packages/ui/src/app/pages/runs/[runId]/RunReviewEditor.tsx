@@ -21,6 +21,7 @@ import { useTestCase } from "../../../data/useTestCase";
 import { topUpAfterReview } from "../../account/CoveragePlanPage";
 import { topUpLaddersAfterReview } from "../../account/LadderPage";
 import { MediaView } from "../../../components/MediaView";
+import { SubmitNotice } from "../../../components/SubmitNotice";
 import { ReviewItemAssets } from "./AssetResultSection";
 import { ValidationReplayPair } from "./ValidationReplayPair";
 import { DebugScriptList } from "./DebugScriptList";
@@ -1587,6 +1588,9 @@ export function RunReviewEditor({
         </>
       )}
 
+      <SubmitNotice message={message} tone="ok" />
+      <SubmitNotice message={error} />
+
       {(() => {
         const reviewReady = writeup.trim() !== "" && allAddressed && allRated;
         const reviewTitle = reviewReady
@@ -1693,9 +1697,6 @@ export function RunReviewEditor({
           </div>
         );
       })()}
-
-      {message && <p className={`${styles.notice} ${styles.ok}`}>{message}</p>}
-      {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
     </Panel>
   );
 }

@@ -5,8 +5,9 @@
 // held input exactly as they do for a player. A movement key is then held for a
 // known span and the displacement is measured back into a speed.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED } from "../../src/constants";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -16,8 +17,13 @@ import {
   type Harness,
 } from "../harness";
 
-/** The old browser suite's margin: 20% of the spec paddle speed. */
-const SPEED_TOLERANCE = PADDLE_SPEED * 0.2;
+/**
+ * The review item's margin: two percent of PADDLE_SPEED. A held key moves the
+ * paddle at exactly PADDLE_SPEED while it is clear of the bounds
+ * (specs/playfield.md), and the span below starts at FIELD_CY and ends well
+ * short of either bound.
+ */
+const SPEED_TOLERANCE = PADDLE_SPEED * 0.02;
 /** The measured span, in frames of the harness's clock. */
 const TICKS = 36; // 0.3 s
 
@@ -43,7 +49,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("moves the human paddle at the paddle speed while a key is held", async () => {
@@ -56,8 +62,9 @@ it("moves the human paddle at the paddle speed while a key is held", async () =>
     return held;
   });
 
-  expect(moved.delta).toBeGreaterThan(0); // KeyS drives it down the field
-  expect(
+  assertGreaterThan(moved.delta, 0); // KeyS drives it down the field
+  assertLessThanOrEqual(
     Math.abs(speedOverTicks(moved.delta, TICKS) - PADDLE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
+    SPEED_TOLERANCE,
+  );
 });

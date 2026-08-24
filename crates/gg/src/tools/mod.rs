@@ -80,7 +80,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC,
     CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
+    CAPABILITY_SEARCH, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
     CAPABILITY_WRITE_FILE, GgAgentConfig, GgCallFailure, GgRosterEntry,
 };
 
@@ -109,8 +109,8 @@ pub use context::{
 pub use data::{
     AgentStatusData, ApiData, ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData,
     DirEntryData, DirEntryKind, FileImageData, FileTextData, MemoryHitData, MemoryUsageData,
-    ReclaimData, ShellData, SubagentHandleData, SubagentResultData, ToolFailure, UsagePair,
-    saturating_u32, saturating_u64,
+    ReclaimData, SearchMatchData, ShellData, SubagentHandleData, SubagentResultData, ToolFailure,
+    UsagePair, saturating_u32, saturating_u64,
 };
 /// Crate-visible, unlike the rest of this module's surface: the only consumer of either is
 /// [session capture](crate::capture). It sizes its tool-payload ceiling at [`READ_FILE_CAP`] and
@@ -119,9 +119,12 @@ pub use data::{
 /// shown and the seed that placed it on disk agree about what it is, which is what lets the two
 /// collapse into one blob-pool entry. Neither is part of the tool API.
 pub(crate) use filesystem::READ_FILE_CAP;
+/// The line clip the `search` tool annotates a long match with, shared with the file view's
+/// `maxLineChars` so the two annotations a model meets read alike.
+pub(crate) use filesystem::clip_line;
 pub use filesystem::{
     EditFileTool, ListDirTool, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED,
-    ReadFileTool, ReadPolicy, WriteFileTool,
+    ReadFileTool, ReadPolicy, SEARCH_TOOL, SearchTool, WriteFileTool,
 };
 pub use memories::{
     CREATE_MEMORY_TOOL, CreateMemoryTool, DELETE_MEMORY_TOOL, DeleteMemoryTool, EDIT_MEMORY_TOOL,
@@ -168,6 +171,7 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "write_file",
     "edit_file",
     "list_dir",
+    SEARCH_TOOL,
     "read_skill",
     "write_memory",
     "update_memory",
@@ -247,6 +251,7 @@ pub fn tool_capability(name: &str) -> Option<&'static str> {
         "write_file" => CAPABILITY_WRITE_FILE,
         "edit_file" => CAPABILITY_EDIT_FILE,
         "list_dir" => CAPABILITY_LIST_DIR,
+        SEARCH_TOOL => CAPABILITY_SEARCH,
         READ_SKILL_TOOL => CAPABILITY_SKILLS,
         WRITE_MEMORY_TOOL | UPDATE_MEMORY_TOOL | CREATE_MEMORY_TOOL | READ_MEMORY_TOOL
         | EDIT_MEMORY_TOOL | SEARCH_MEMORIES_TOOL | DELETE_MEMORY_TOOL => CAPABILITY_MEMORIES,
@@ -712,9 +717,9 @@ impl ToolRegistry {
     /// [`is_enabled`](GgAgentConfig::is_enabled) reports it on: the
     /// [`shell`](CAPABILITY_SHELL) capability contributes the `shell` tool; the
     /// [`read-file`](CAPABILITY_READ_FILE), [`write-file`](CAPABILITY_WRITE_FILE),
-    /// [`edit-file`](CAPABILITY_EDIT_FILE), and [`list-dir`](CAPABILITY_LIST_DIR)
-    /// capabilities each contribute their one filesystem tool (`read_file` under the
-    /// [read policy](read_policy) its capability configures); the
+    /// [`edit-file`](CAPABILITY_EDIT_FILE), [`list-dir`](CAPABILITY_LIST_DIR) and
+    /// [`search`](CAPABILITY_SEARCH) capabilities each contribute their one filesystem tool
+    /// (`read_file` under the [read policy](read_policy) its capability configures); the
     /// [`skills`](CAPABILITY_SKILLS) capability contributes the `read_skill` tool — but only
     /// when the bound library is **non-empty**, since there would be nothing to read; the
     /// [`memories`](CAPABILITY_MEMORIES) capability contributes the
@@ -767,6 +772,11 @@ impl ToolRegistry {
         }
         if capabilities.is_enabled(CAPABILITY_LIST_DIR) {
             tools.push(Box::new(filesystem::ListDirTool));
+        }
+        // The search is filed with the filesystem primitives and gated exactly as they are: its own
+        // capability, one tool, no params.
+        if capabilities.is_enabled(CAPABILITY_SEARCH) {
+            tools.push(Box::new(filesystem::SearchTool));
         }
 
         if capabilities.is_enabled(CAPABILITY_SKILLS) && modules.skills().offers_skills() {

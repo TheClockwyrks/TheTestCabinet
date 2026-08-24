@@ -8,6 +8,7 @@
 
 use super::*;
 use crate::context::{EvictionResult, ViewsClosed};
+use crate::tools::{ApiData, FileImageData, FileTextData, ToolFailure, ToolOutcome};
 
 /// A body under the ceiling, with a label, is simply allowed.
 #[test]
@@ -46,8 +47,15 @@ fn the_turns_composed_body_budget_refuses_by_total_and_says_what_is_left() {
         .expect("one byte past the ceiling is refused");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
     assert!(
-        refusal.message.contains("MAX_COMPOSED_VIEW_BYTES_PER_TURN"),
-        "a cap that does not name itself cannot be worked around: {}",
+        refusal
+            .message
+            .contains(&MAX_COMPOSED_VIEW_BYTES_PER_TURN.to_string()),
+        "a cap that does not state its bound cannot be worked around: {}",
+        refusal.message
+    );
+    assert!(
+        !refusal.message.contains("MAX_COMPOSED_VIEW_BYTES_PER_TURN"),
+        "the refusal must state the bound's value, not the constant that supplies it: {}",
         refusal.message
     );
     assert!(
@@ -68,14 +76,21 @@ fn a_blank_label_is_an_argument_error() {
     assert!(refusal.message.contains("non-empty label"));
 }
 
-/// Both size caps refuse, name themselves, and carry the size that broke them — the two facts a
-/// program branching on the refusal needs, and nothing else.
+/// Both size caps refuse with the violated rule first, then the size that broke them and the
+/// bound in parentheses — the facts a program branching on the refusal needs, and nothing else:
+/// the constants that supply the bounds are gg's own and stay out of the message.
 #[test]
-fn the_size_caps_name_themselves_and_the_size_that_broke_them() {
+fn the_size_caps_state_the_bound_and_the_size_that_broke_them() {
     let long_label = "l".repeat(MAX_VIEW_LABEL_BYTES + 1);
     let refusal = text_view_refusal(&long_label, "body").expect("the label is over the cap");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
-    assert!(refusal.message.contains("MAX_VIEW_LABEL_BYTES"));
+    assert!(refusal.message.contains("exceeds max length"));
+    assert!(refusal.message.contains(&MAX_VIEW_LABEL_BYTES.to_string()));
+    assert!(
+        !refusal.message.contains("MAX_VIEW_LABEL_BYTES"),
+        "the refusal must state the bound's value, not the constant that supplies it: {}",
+        refusal.message
+    );
     assert!(
         refusal.message.contains(&long_label.len().to_string()),
         "the size that broke the cap has to be in the message: {}",
@@ -85,7 +100,13 @@ fn the_size_caps_name_themselves_and_the_size_that_broke_them() {
     let long_body = "b".repeat(MAX_TEXT_VIEW_BYTES + 1);
     let refusal = text_view_refusal("notes", &long_body).expect("the body is over the cap");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
-    assert!(refusal.message.contains("MAX_TEXT_VIEW_BYTES"));
+    assert!(refusal.message.contains("exceeds max size"));
+    assert!(refusal.message.contains(&MAX_TEXT_VIEW_BYTES.to_string()));
+    assert!(
+        !refusal.message.contains("MAX_TEXT_VIEW_BYTES"),
+        "the refusal must state the bound's value, not the constant that supplies it: {}",
+        refusal.message
+    );
     assert!(
         refusal.message.contains(&long_body.len().to_string()),
         "the size that broke the cap has to be in the message: {}",
@@ -655,4 +676,161 @@ fn closing_documentation_has_exactly_one_producer() {
         "`close_docviews` is the only call that may take a documentation view out of the window; \
          a second one here is `gg.views.close` reaching a band it does not name and cannot refuse from"
     );
+}
+
+// ---------------------------------------------------------------------------
+// The file view's caps: the byte bound, and the line cut that lets a window fit under it
+// ---------------------------------------------------------------------------
+
+/// A successful text read, as the tool produces one: `output` is the contents followed by gg's
+/// footer, and the sidecar carries the contents alone.
+fn text_read(contents: &str, footer: &str) -> ToolOutcome {
+    ToolOutcome::ok(format!("{contents}{footer}"), "read").with_data(ApiData::FileText(
+        FileTextData {
+            contents: contents.to_string(),
+            first_line: 1,
+            last_line: 2,
+            total_lines: 2,
+            byte_truncated: false,
+        },
+    ))
+}
+
+/// **A file view's body is held to the same bound a text view's is**, and the refusal names the
+/// size, the bound, and both ways out.
+#[test]
+fn a_file_view_over_the_byte_cap_is_refused_naming_the_bound_and_the_ways_out() {
+    assert!(file_view_refusal(&"b".repeat(MAX_TEXT_VIEW_BYTES)).is_none());
+    let over = "b".repeat(MAX_TEXT_VIEW_BYTES + 1);
+    let refusal = file_view_refusal(&over).expect("one byte past the cap is refused");
+    assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
+    assert!(refusal.message.contains("view body exceeds max size"));
+    assert!(refusal.message.contains(&MAX_TEXT_VIEW_BYTES.to_string()));
+    assert!(refusal.message.contains(&over.len().to_string()));
+    assert!(
+        !refusal.message.contains("MAX_TEXT_VIEW_BYTES"),
+        "the refusal must state the bound's value, not the constant that supplies it: {}",
+        refusal.message
+    );
+    assert!(
+        refusal.message.contains("`offset`/`limit`") && refusal.message.contains("`maxLineChars`"),
+        "a refusal that does not say how to narrow the window cannot be worked around: {}",
+        refusal.message
+    );
+}
+
+/// The cap is measured against the **view body**: a read over the cap is refused as the read's own
+/// failure with no data, and one under it is opened with its output intact.
+#[test]
+fn a_read_over_the_cap_fails_and_one_under_it_opens_whole() {
+    let big = "x".repeat(MAX_TEXT_VIEW_BYTES + 1);
+    let refused = file_view_outcome(text_read(&big, ""), None);
+    assert!(!refused.ok);
+    assert_eq!(refused.failure, Some(ToolFailure::LimitExceeded));
+    assert!(
+        refused.data.is_none(),
+        "a refused view hands the program nothing"
+    );
+
+    let small = text_read("one\ntwo\n", "\n\n[showing lines 1-2 of 9]");
+    let opened = file_view_outcome(small.clone(), None);
+    assert!(opened.ok);
+    assert_eq!(opened.output, small.output);
+}
+
+/// **`maxLineChars` cuts each long line of the view and annotates it in place**, keeps the read's
+/// footer whole, and leaves the structured contents untouched — so the cap is measured after the
+/// cut, and a window of enormous lines fits.
+#[test]
+fn max_line_chars_cuts_the_view_and_not_the_result() {
+    let long = "y".repeat(MAX_TEXT_VIEW_BYTES);
+    let contents = format!("short\n{long}\nend");
+    let footer = "\n\n[showing lines 1-3 of 3]";
+    let read = text_read(&contents, footer);
+
+    assert!(
+        !file_view_outcome(read.clone(), None).ok,
+        "whole, the window is over the cap"
+    );
+
+    let cut = file_view_outcome(read, Some(10));
+    assert!(cut.ok, "{}", cut.output);
+    let dropped = MAX_TEXT_VIEW_BYTES - 10;
+    assert_eq!(
+        cut.output,
+        format!(
+            "short\n{} ({dropped} more chars...)\nend{footer}",
+            "y".repeat(10)
+        )
+    );
+    match cut.data {
+        Some(ApiData::FileText(text)) => assert_eq!(
+            text.contents, contents,
+            "what the program is handed back is the read's own text"
+        ),
+        other => panic!("expected the read's text, got {other:?}"),
+    }
+}
+
+/// The cut is at a character boundary, counts characters rather than bytes, and leaves every line
+/// ending as it was — including `\r\n`, whose `\r` is not a character to count or to cut.
+#[test]
+fn cut_long_lines_respects_characters_and_line_endings() {
+    assert_eq!(
+        cut_long_lines("abc\nabcd\n", 3),
+        "abc\nabc (1 more chars...)\n"
+    );
+    assert_eq!(
+        cut_long_lines("日本語テキスト\r\nok\r\n", 3),
+        "日本語 (4 more chars...)\r\nok\r\n"
+    );
+    assert_eq!(cut_long_lines("🙂🙂🙂", 2), "🙂🙂 (1 more chars...)");
+    assert_eq!(cut_long_lines("", 2), "");
+    assert_eq!(cut_long_lines("a\n\nb", 1), "a\n\nb");
+}
+
+/// A `maxLineChars` that names no cut is an argument error stating the range; the range's ends
+/// are legal.
+#[test]
+fn max_line_chars_outside_its_range_is_an_argument_error() {
+    assert!(line_cut_refusal(None).is_none());
+    assert!(line_cut_refusal(Some(1)).is_none());
+    assert!(line_cut_refusal(Some(MAX_TEXT_VIEW_BYTES)).is_none());
+    for bad in [0, MAX_TEXT_VIEW_BYTES + 1] {
+        let refusal = line_cut_refusal(Some(bad)).expect("outside the range is refused");
+        assert_eq!(refusal.failure, ToolFailure::InvalidArgument);
+        assert!(
+            refusal.message.contains("`maxLineChars`"),
+            "{}",
+            refusal.message
+        );
+        assert!(
+            refusal.message.contains(&bad.to_string()),
+            "{}",
+            refusal.message
+        );
+        assert!(
+            refusal.message.contains(&MAX_TEXT_VIEW_BYTES.to_string()),
+            "{}",
+            refusal.message
+        );
+    }
+}
+
+/// **A picture is not a text body.** Its view is bounded by `IMAGE_ATTACH_CAP` alone, so neither
+/// the byte cap nor the line cut touches it, and a failed read is handed back as it is.
+#[test]
+fn a_picture_and_a_failed_read_pass_through_untouched() {
+    let picture = ToolOutcome::ok("`mock.png` — PNG image, 2 KB. The image follows.", "PNG")
+        .with_data(ApiData::FileImage(FileImageData {
+            media_type: "image/png".to_string(),
+            label: "PNG".to_string(),
+            bytes: 2_048,
+            shown: true,
+            not_shown_reason: None,
+        }));
+    assert_eq!(file_view_outcome(picture.clone(), Some(1)), picture);
+
+    let failed = ToolOutcome::failed(ToolFailure::NotFound, "no such file");
+    assert_eq!(file_view_outcome(failed.clone(), Some(1)), failed);
 }

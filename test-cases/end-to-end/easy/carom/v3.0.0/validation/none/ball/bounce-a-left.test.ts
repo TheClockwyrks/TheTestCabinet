@@ -1,38 +1,46 @@
 // ball/bounce-a-left — the ball reflects off obstacle A's left face.
 //
-// The ball is fired level with the obstacle, straight at that face; the build's
-// own collision code reflects it. It must reverse its horizontal direction and
-// stay on the near (left) side of the struck face — a reflection, not a pass
-// through. The other three faces are the sibling checks, so a build that resolves
-// only some of them fails exactly the ones it gets wrong.
+// specs/playfield.md fixes the obstacle collision exactly: the rectangle is
+// expanded by `BALL_R`, the struck face is the one of least penetration, the
+// ball is placed with its center `BALL_R` off that face, and the velocity
+// component normal to the face is reversed. A ball fired straight at the
+// midpoint of the left face therefore leaves with `vx` reversed, `vy`
+// unchanged, and its center at `x0 - BALL_R`.
+//
+// The reversal and the unchanged component are read to a millionth of a unit,
+// since the rule is arithmetic on the posed values. The position is read on the
+// frame the reflection resolves on, so it is the placement plus whatever of that
+// frame's travel came after it: within one frame of travel of where the rule
+// placed it, as the review item states, however the build divided the frame. Under gyre the obstacles are held upright at clock 0, where the
+// oriented rule reduces to this one. The other faces are the sibling checks.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
 import {
-  arrangeObstacleBounce,
+  assertCloseTo,
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
+import { OBSTACLES } from "../constants";
+import {
+  arrangeFaceShot,
+  ball0,
   captureReplay,
   createHarness,
-  driveObstacleBounce,
+  driveFaceBounce,
+  FACE_SHOT_SPEED,
+  restingOff,
   startPlaying,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
-const FACE_X = OBSTACLES[0].x0;
-const LANE_Y = OBSTACLE_CENTERS[0].y;
+const RECT = OBSTACLES[0];
+/** One frame of the approach, which bounds the placement reading. */
+const FRAME_TRAVEL = FACE_SHOT_SPEED / TICK_HZ;
+const FACE = "left";
 
-/**
- * Frames of the departing flight recorded after the rebound.
- *
- * The sweep that drives the bank stops on the frame the ball's horizontal
- * velocity reverses — the frame of the contact itself. A recording that ended
- * there would show the ball arriving and nothing more, and the review item
- * promises a reviewer a BANK: the leg that leaves the face is half of what the
- * clip is for. Half a second of it is enough to read the outgoing angle off and
- * short enough that the ball is still on the field at the end.
- *
- * These frames are driven AFTER the sweep, inside the same recorded section, so
- * the rebound the assertions read is still the sweep's own frame.
- */
+/** Frames of the departing flight recorded after the rebound, for the replay. */
 const DEPARTURE_TICKS = 60; // 0.5 s
 
 let harness: Harness;
@@ -41,20 +49,26 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("banks the ball off obstacle A's left face", async () => {
   await startPlaying(harness);
-  arrangeObstacleBounce(harness, { faceX: FACE_X, y: LANE_Y, from: "left" });
+  await arrangeFaceShot(harness, RECT, FACE);
+  const before = ball0(await harness.snapshot());
 
   const bank = await captureReplay(harness, "bank", async () => {
-    const rebound = await driveObstacleBounce(harness, "left");
+    const rebound = await driveFaceBounce(harness, FACE);
     await harness.advance(DEPARTURE_TICKS);
     return rebound;
   });
 
-  expect(bank.hit).toBe(true);
-  expect(bank.snapshot.ball.x).toBeLessThan(FACE_X);
+  assertEqual(bank.hit, true);
+  const after = ball0(bank.snapshot);
+  assertCloseTo(after.vx, -before.vx, 6);
+  assertCloseTo(after.vy, before.vy, 6);
+  const placed = restingOff(RECT, FACE);
+  assertLessThanOrEqual(after.x, placed + 1e-6);
+  assertGreaterThanOrEqual(after.x, placed - FRAME_TRAVEL);
 });

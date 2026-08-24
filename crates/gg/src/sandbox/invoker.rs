@@ -23,7 +23,7 @@ use std::time::Duration;
 use test_cabinet_core::gg::GgCallFailure;
 
 use crate::board::IssueStatus;
-use crate::context::{OpenViewInfo, TurnRange, ViewKind};
+use crate::context::{TurnRange, ViewKind};
 use crate::discovery::CallDiscovery;
 use crate::docs::DocSearch;
 use crate::memories::MemoryCode;
@@ -56,9 +56,9 @@ pub struct FunctionSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxToolCall {
     /// What the **model wrote**, as gg's own [operation id](super::operations::OperationId) for it —
-    /// `files.read_text_file`, `views.open_file`. Never the name of whatever ran underneath: three
+    /// `files.read_file`, `views.open_file`. Never the name of whatever ran underneath: two
     /// operations share one internal read, and a roster keyed on the implementation would report
-    /// two of them as the third.
+    /// one of them as the other.
     pub name: String,
     /// Whether the call succeeded.
     pub ok: bool,
@@ -228,7 +228,7 @@ pub trait OperationApi: Send + 'static {
     /// Independent of the tool layer by construction: the membrane brackets every host function with
     /// this pair, and only *some* of those host functions go on to dispatch a tool. That is what
     /// makes `views.openFile` a `views.open_file` here and a `read_file` on the tool stream, and
-    /// what gives `views.current` — which dispatches nothing at all — a count.
+    /// what gives `views.openText` — which dispatches nothing at all — a count.
     ///
     /// Called **before** the work, so anything the call produces (a bridged `ToolCall`/`ToolResult`
     /// pair, a delegation's whole subtree of child events) lands inside the bracket, exactly as the
@@ -286,6 +286,10 @@ pub trait OperationApi: Send + 'static {
     fn write_file(&mut self, path: String, contents: String) -> ToolOutcome;
     fn edit_file(&mut self, path: String, old_string: String, new_string: String) -> ToolOutcome;
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome;
+    /// Search the workspace's files for `query` under the ignore files — the `search` tool, with the
+    /// matches on its [`SearchMatches`](crate::tools::ApiData::SearchMatches) sidecar. `path` roots
+    /// the search (`None` is the workspace) and `limit` bounds the list, both on the tool's terms.
+    fn search(&mut self, query: String, path: Option<String>, limit: Option<u32>) -> ToolOutcome;
     fn read_skill(&mut self, name: String) -> ToolOutcome;
     fn write_memory(
         &mut self,
@@ -447,11 +451,19 @@ pub trait OperationApi: Send + 'static {
     /// session-record entry, the same roster line. What differs is what happens to the result — it also
     /// becomes a context item keyed by `(path, region)`, and the picture a mockup returned rides in
     /// that item rather than out on the turn's feedback.
+    ///
+    /// `max_line_chars` is the view's own option and touches nothing the program is handed back:
+    /// when it is set, each line of the **view body** longer than that many characters is cut there
+    /// and annotated in place with how many were dropped. The view's text body is then held to the
+    /// same byte cap a text view's is, measured after the cut, and a window over the cap is a
+    /// [`limit-exceeded`](ToolFailure::LimitExceeded) failure of the read — nothing is opened and
+    /// nothing is truncated behind the model's back.
     fn open_file_view(
         &mut self,
         path: String,
         offset: Option<usize>,
         limit: Option<usize>,
+        max_line_chars: Option<usize>,
     ) -> ViewOpenOutcome;
     /// Open (or replace) the text view keyed by `label`: material the program computed, pushed into
     /// the window as its own attributable item.
@@ -467,9 +479,6 @@ pub trait OperationApi: Send + 'static {
     /// path — and report how many were closed. A selector that is not open closes `0`, which is not
     /// a failure. Documentation is [closed by its own call](Self::close_docviews).
     fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal>;
-    /// What is open in this agent's window right now, in the order it was opened. Charged against
-    /// no cap: it opens nothing and reads nothing off disk.
-    fn current_views(&mut self) -> Vec<OpenViewInfo>;
     /// Every program this agent has run that its [library](crate::programs::ProgramLibrary) still
     /// holds — the whole of `programs.history()`.
     ///

@@ -11,6 +11,7 @@ import { useWorkers } from "../../../client/context";
 import { useAuth } from "../../../client/auth";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { RunsTabs } from "./RunsTabs";
+import { StopRunsControls, useCanStopRuns } from "./StopRunsControls";
 import { useFindModel } from "../../data/useModels";
 import { formatSlug } from "../../format";
 import { useTestCaseName } from "../../data/useTestCaseName";
@@ -34,6 +35,7 @@ export function RunFailuresPage() {
   const { canExecute } = useGalleryData();
   const { active: worker } = useWorkers();
   const { refreshToken, requestRefresh } = useRunsRuntime();
+  const canStop = useCanStopRuns();
   const { token } = useAuth();
   const client = worker?.client ?? null;
 
@@ -71,7 +73,9 @@ export function RunFailuresPage() {
   // infrastructure failure out defensively.
   const publishable = useMemo(() => {
     return failures
-      .filter((f) => describeRunState(f.record.status.state).isPublishableFailure)
+      .filter(
+        (f) => describeRunState(f.record.status.state).isPublishableFailure,
+      )
       .sort((a, b) => timestamp(b.record) - timestamp(a.record));
   }, [failures]);
 
@@ -81,6 +85,7 @@ export function RunFailuresPage() {
         command="--runs --failures"
         blink
         comment={<>// publishable failures awaiting publish</>}
+        actions={canStop ? <StopRunsControls /> : undefined}
       />
 
       <RunsTabs active="failures" />

@@ -16,6 +16,7 @@ use serde_json::json;
 
 use super::test_cabinet::gg::files::Host as FilesHost;
 use super::test_cabinet::gg::skills::Host as SkillsHost;
+use super::test_cabinet::gg::views::Host as ViewsHost;
 use super::*;
 use crate::sandbox::fake::{CallLog, all_operations, canned_outcome, membrane, membrane_with};
 
@@ -63,6 +64,47 @@ fn a_call_outside_the_allowlist_is_unavailable_without_reaching_the_invoker() {
     assert!(
         log.calls().is_empty(),
         "the call reached the invoker anyway"
+    );
+}
+
+/// **Closing a view is withheld exactly like any other ungranted call.**
+///
+/// It is bought by `agent-managed-context`, and it is asserted by name because it used to be
+/// bound to every program: a regression that put it back would be invisible to every other test
+/// here, which grants a maximal agent. The gate is the membrane's, so the fake api is never
+/// reached.
+#[test]
+fn closing_views_is_unavailable_without_agent_managed_context() {
+    let log = CallLog::default();
+    let mut state = membrane_with(
+        &log,
+        &[crate::sandbox::operations::VIEWS_OPEN_TEXT],
+        None,
+        canned_outcome,
+    );
+    state
+        .open_text_view("notes".to_string(), "kept".to_string())
+        .expect("opening a text view is bound to every program");
+
+    let error = ViewsHost::close_view(&mut state, "notes".to_string())
+        .expect_err("closing a view is bought by agent-managed-context");
+    assert_eq!(error.code, ErrorCode::Unavailable);
+    assert_eq!(error.operation, "close");
+
+    let parts = state.into_parts();
+    assert_eq!(
+        parts
+            .refusals
+            .iter()
+            .map(|refusal| refusal.name.as_str())
+            .collect::<Vec<_>>(),
+        ["views.close"],
+        "it is filed as a refusal under gg's own operation id"
+    );
+    assert_eq!(
+        parts.views_opened.len(),
+        1,
+        "the view stayed open: a refused close closes nothing"
     );
 }
 

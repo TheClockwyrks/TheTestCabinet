@@ -429,24 +429,32 @@ async fn long_output_is_tailed_and_written_to_the_file_pair() {
     );
     assert!(!data.body.contains("line-37"), "{}", data.body);
     // The note is part of the body, so a code program that prints the output sees where the rest
-    // went — not only the tool-calling prose around it. It says what was kept and where the whole of
-    // it is, and nothing else.
-    let note: Vec<&str> = data.body.lines().rev().take(3).collect();
+    // went — not only the tool-calling prose around it. It says what was kept, where the whole of
+    // it is, and the shape of each file it names.
+    let note: Vec<&str> = data.body.lines().rev().take(6).collect();
     assert!(
-        note[2].starts_with("[Output truncated: last 3 lines and "),
+        note[5].starts_with("[Output truncated: last 3 lines and "),
         "{}",
         data.body
     );
     assert!(
-        note[1].starts_with("stdout: ") && note[1].ends_with(".stdout"),
+        note[4].starts_with("stdout: ") && note[4].ends_with(".stdout"),
         "{}",
         data.body
+    );
+    // `line-1`..`line-9` are six characters, `line-10`..`line-40` seven — so every percentile of
+    // the forty lines lands on 7.
+    assert_eq!(note[3], "  40 lines; line length p50 7, p95 7, p99 7");
+    assert_eq!(
+        note[2],
+        "  longest lines: 7 chars @ 10, 7 @ 11, 7 @ 12, 7 @ 13, 7 @ 14"
     );
     assert!(
-        note[0].starts_with("stderr: ") && note[0].ends_with(".stderr"),
+        note[1].starts_with("stderr: ") && note[1].ends_with(".stderr"),
         "{}",
         data.body
     );
+    assert_eq!(note[0], "  0 lines", "{}", data.body);
     assert!(outcome.output.contains("line-40"), "{}", outcome.output);
 
     let (stdout, stderr) = written_pair(&dir);
@@ -684,4 +692,129 @@ fn the_character_tail_counts_characters_not_bytes() {
         "fewer characters than the cap"
     );
     assert_eq!(char_tail_start("", 3), 0);
+}
+
+// ---------------------------------------------------------------------------
+// The shape beneath each offloaded path
+// ---------------------------------------------------------------------------
+
+/// An untruncated command carries **no shape lines**: the note the shape belongs to only exists
+/// when something was dropped, and a body the model already has whole needs no map of itself.
+#[tokio::test]
+async fn an_untruncated_body_carries_no_shape() {
+    let dir = TempDir::new().unwrap();
+    let outcome = run(
+        &dir,
+        offloading(&dir, 50, UNBOUNDED),
+        json!({ "command": "echo one; echo two" }),
+    )
+    .await;
+
+    let data = shell_data(&outcome);
+    assert!(!data.truncated);
+    assert!(!data.body.contains("line length"), "{}", data.body);
+    assert!(!data.body.contains("longest lines"), "{}", data.body);
+}
+
+/// Both streams get their own shape, in each file's own line numbers — the coordinates a windowed
+/// view of that file takes.
+#[tokio::test]
+async fn each_stream_reports_its_own_shape() {
+    let dir = TempDir::new().unwrap();
+    let outcome = run(
+        &dir,
+        offloading(&dir, 2, UNBOUNDED),
+        json!({
+            "command": "for i in $(seq 1 9); do echo out-$i; done; echo error-line 1>&2; echo e 1>&2"
+        }),
+    )
+    .await;
+
+    let data = shell_data(&outcome);
+    assert!(data.truncated);
+    // stdout: nine lines of five characters each — an all-ties list resolves to the earliest five.
+    assert!(
+        data.body
+            .contains("\n  9 lines; line length p50 5, p95 5, p99 5\n  longest lines: 5 chars @ 1, 5 @ 2, 5 @ 3, 5 @ 4, 5 @ 5\n"),
+        "{}",
+        data.body
+    );
+    // stderr: two lines, so the longest-lines list holds both and no more — and the median of a
+    // ten-and-a-one ranks to the one.
+    assert!(
+        data.body.contains(
+            "\n  2 lines; line length p50 1, p95 10, p99 10\n  longest lines: 10 chars @ 1, 1 @ 2"
+        ),
+        "{}",
+        data.body
+    );
+}
+
+/// Percentiles are nearest-rank over the actual line lengths: on a hundred lines of lengths
+/// 1..=100 the 50th/95th/99th percentiles are exactly 50, 95, and 99.
+#[test]
+fn percentiles_are_nearest_rank_on_a_known_distribution() {
+    let text: String = (1..=100).map(|length| "x".repeat(length) + "\n").collect();
+    let shape = describe_shape(&text);
+    assert!(
+        shape.starts_with("\n  100 lines; line length p50 50, p95 95, p99 99\n"),
+        "{shape}"
+    );
+    assert!(
+        shape.ends_with("\n  longest lines: 100 chars @ 100, 99 @ 99, 98 @ 98, 97 @ 97, 96 @ 96"),
+        "{shape}"
+    );
+}
+
+/// The longest-five list is ordered longest first, and a tie goes to the **earlier** line, so the
+/// same file always describes itself the same way.
+#[test]
+fn longest_lines_break_ties_by_line_number() {
+    let shape = describe_shape("aaa\nbb\nccc\ndddd\nee\nfff\n");
+    assert!(
+        shape.ends_with("\n  longest lines: 4 chars @ 4, 3 @ 1, 3 @ 3, 3 @ 6, 2 @ 2"),
+        "{shape}"
+    );
+}
+
+/// A single-line file has a one-length distribution — every percentile is that length, and the
+/// longest-lines list is just it — rather than a panic over an empty upper tail.
+#[test]
+fn a_single_line_body_describes_itself_without_panicking() {
+    assert_eq!(
+        describe_shape("hello"),
+        "\n  1 line; line length p50 5, p95 5, p99 5\n  longest lines: 5 chars @ 1"
+    );
+    // A trailing newline terminates the line rather than starting a second one, exactly as the
+    // tail counts.
+    assert_eq!(describe_shape("hello\n"), describe_shape("hello"));
+}
+
+/// A stream that printed nothing is just `0 lines`: there is no distribution to describe, and the
+/// absence must not panic.
+#[test]
+fn an_empty_body_is_zero_lines() {
+    assert_eq!(describe_shape(""), "\n  0 lines");
+}
+
+/// One pathological line among small ones is exactly what the shape is for: it dominates the upper
+/// percentiles and heads the longest-lines list with its (character) length and line number.
+#[test]
+fn a_huge_line_dominates_the_shape() {
+    let huge = "y".repeat(100_000);
+    let text = format!("short\n{huge}\ntiny\n");
+    assert_eq!(
+        describe_shape(&text),
+        "\n  3 lines; line length p50 5, p95 100000, p99 100000\n  longest lines: 100000 chars @ 2, 5 @ 1, 4 @ 3"
+    );
+}
+
+/// Lengths are **characters**, not bytes, so a shape means the same thing whatever the output is
+/// written in — and matches how the model will count when windowing a view.
+#[test]
+fn line_lengths_count_characters_not_bytes() {
+    assert_eq!(
+        describe_shape("αβγδε\n"),
+        "\n  1 line; line length p50 5, p95 5, p99 5\n  longest lines: 5 chars @ 1"
+    );
 }

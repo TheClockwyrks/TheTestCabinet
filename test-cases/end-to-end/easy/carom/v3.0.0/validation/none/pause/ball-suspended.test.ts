@@ -7,13 +7,16 @@
 // than the flight took. A build that kept integrating behind the pause menu
 // drifts; a build that froze the field does not move at all.
 //
-// The tolerance is a single logical pixel, because "suspended" admits no drift:
+// specs/ui.md: on `paused` nothing advances but `simTime` and input, so the
+// ball's `x`, `y`, `vx`, `vy` and `spin` are read back unchanged to rounding;
 // at the posed speed one frame of leaked simulation is already more than three
-// pixels.
+// units.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeLiveBall,
+  ball0,
   captureReplay,
   createHarness,
   type Harness,
@@ -38,30 +41,32 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("suspends a ball in flight for as long as the game is paused", async () => {
   await arrangeLiveBall(h, { x: 500, y: 360, vx: 400, vy: -120 });
-  const launched = h.snapshot().ball;
+  const launched = ball0(await h.snapshot());
 
   const paused = await captureReplay(h, "suspended", async () => {
     await h.advance(FLIGHT_TICKS);
     await h.tap("Escape");
-    const at = h.snapshot();
+    const at = await h.snapshot();
     await h.advance(PAUSED_TICKS);
     return at;
   });
 
-  expect(paused.screen).toBe("paused");
-  expect(
-    Math.hypot(paused.ball.x - launched.x, paused.ball.y - launched.y),
-  ).toBeGreaterThan(10);
+  assertEqual(paused.screen, "paused");
+  assertGreaterThan(
+    Math.hypot(ball0(paused).x - launched.x, ball0(paused).y - launched.y),
+    10,
+  );
 
-  const later = h.snapshot();
+  const later = await h.snapshot();
 
-  expect(later.screen).toBe("paused");
-  expect(later.ball.x).toBeCloseTo(paused.ball.x, 1);
-  expect(later.ball.y).toBeCloseTo(paused.ball.y, 1);
+  assertEqual(later.screen, "paused");
+  for (const field of ["x", "y", "vx", "vy", "spin"] as const) {
+    assertCloseTo(ball0(later)[field], ball0(paused)[field], 6, field);
+  }
 });

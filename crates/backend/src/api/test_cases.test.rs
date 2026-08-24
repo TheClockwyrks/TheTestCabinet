@@ -32,6 +32,9 @@ fn manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: TestType::EndToEnd,
+        engines: vec![test_cabinet_core::EngineSupport::unbounded(
+            test_cabinet_core::engine::NONE_SLUG,
+        )],
         experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
@@ -93,7 +96,7 @@ fn a_variant_reference_build_url_is_folded_onto_the_matching_variant() {
         ]),
     )]);
 
-    let response = version_response(&manifest, &reference_builds, &HashMap::new()).unwrap();
+    let response = version_response(&manifest, &reference_builds, &HashMap::new(), None).unwrap();
 
     let base = response.variants.iter().find(|v| v.slug == "base").unwrap();
     assert_eq!(
@@ -123,7 +126,7 @@ fn a_variant_reference_sheet_is_folded_onto_the_matching_variant() {
     let manifest = manifest();
     let reference_sheets = HashMap::from([("base".to_string(), vec![0, 1, 2])]);
 
-    let response = version_response(&manifest, &HashMap::new(), &reference_sheets).unwrap();
+    let response = version_response(&manifest, &HashMap::new(), &reference_sheets, None).unwrap();
 
     let base = response.variants.iter().find(|v| v.slug == "base").unwrap();
     assert_eq!(
@@ -158,7 +161,7 @@ fn no_reference_sheets_leaves_every_variant_without_one() {
     // or the backend has no R2 configured to have discovered one): every variant
     // resolves to `None` rather than to an empty frame list, so a client can tell
     // "no reference" from "a reference with no frames".
-    let response = version_response(&manifest(), &HashMap::new(), &HashMap::new()).unwrap();
+    let response = version_response(&manifest(), &HashMap::new(), &HashMap::new(), None).unwrap();
     assert!(
         response
             .variants
@@ -191,7 +194,7 @@ fn a_performance_case_scored_set_reaches_the_resolved_version() {
         },
     ];
 
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new()).unwrap();
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
     assert_eq!(response.cases.len(), 2);
     assert_eq!(response.cases[0].input, "cases/small.json");
     assert_eq!(response.cases[0].expected, "cases/small.out");
@@ -221,7 +224,7 @@ fn a_performance_case_scored_set_reaches_the_resolved_version() {
 fn a_non_performance_version_omits_the_cases_field() {
     // `cases` is skipped when empty, so a non-performance version's wire shape is
     // byte-identical to before this field existed (no `cases` key at all).
-    let response = version_response(&manifest(), &HashMap::new(), &HashMap::new()).unwrap();
+    let response = version_response(&manifest(), &HashMap::new(), &HashMap::new(), None).unwrap();
     assert!(response.cases.is_empty());
     let value = serde_json::to_value(&response).unwrap();
     assert!(
@@ -235,13 +238,37 @@ fn no_reference_builds_leaves_every_variant_without_one() {
     // The empty-map case (no variant of this version has a deployed reference
     // implementation): every variant resolves to an empty map.
     let manifest = manifest();
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new()).unwrap();
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
     assert!(
         response
             .variants
             .iter()
             .all(|v| v.reference_builds.is_empty())
     );
+}
+
+#[test]
+fn the_declared_engines_are_folded_into_the_version_response() {
+    // The engines a version supports are the set a launcher offers and the gate the
+    // runner holds a selection against, so they have to reach the wire. Both
+    // spellings map onto the one table shape: a bare engine carries the slug alone,
+    // a pinned one carries its bounds.
+    let mut manifest = manifest();
+    manifest.engines = vec![
+        test_cabinet_core::EngineSupport::unbounded("none"),
+        test_cabinet_core::EngineSupport {
+            slug: "simple-2d".to_string(),
+            min_version: Some("1.0.0".parse().expect("a valid version")),
+            max_version: Some("2.0.0".parse().expect("a valid version")),
+        },
+    ];
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let engines: Vec<&str> = response.engines.iter().map(|e| e.slug.as_str()).collect();
+    assert_eq!(engines, vec!["none", "simple-2d"]);
+    assert_eq!(response.engines[0].min_version, None);
+    assert_eq!(response.engines[0].max_version, None);
+    assert_eq!(response.engines[1].min_version.as_deref(), Some("1.0.0"));
+    assert_eq!(response.engines[1].max_version.as_deref(), Some("2.0.0"));
 }
 
 #[test]
@@ -261,7 +288,7 @@ fn errata_are_folded_into_the_version_response() {
         variant: None,
         review: None,
     }];
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new()).unwrap();
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
     assert_eq!(response.errata.len(), 1);
     let erratum = &response.errata[0];
     assert_eq!(erratum.id, "cue-clips-rail");
@@ -293,7 +320,7 @@ fn a_graded_review_item_carries_its_graded_flag_to_the_wire() {
         validation: None,
     }];
 
-    let response = version_response(&manifest, &HashMap::new(), &HashMap::new()).unwrap();
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
 
     let item = &response.common_review_items[0];
     assert_eq!(item.id, "fun");
@@ -445,6 +472,44 @@ fn accept_encoding_is_read_conservatively() {
 }
 
 #[tokio::test]
+async fn a_stored_recording_is_served_as_json_framed_in_gzip() {
+    // The baseline and per-run validation routes hand the stored file over under the
+    // name it is stored as. A `.json.gz` is a JSON document travelling compressed, so
+    // the response says exactly that and the browser inflates it before the replay
+    // player sees a byte.
+    let stored = gzipped(br#"{"format":1}"#);
+    let response = bytes_response("no-tunnel__serve.json.gz", stored.clone());
+    let (status, headers, body) = read_response(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+    assert_eq!(headers[header::CONTENT_ENCODING], "gzip");
+    assert_eq!(headers[header::CONTENT_LENGTH], stored.len().to_string());
+    assert_eq!(body, stored);
+}
+
+#[tokio::test]
+async fn a_gzip_archive_is_served_as_the_gzip_document_it_is() {
+    // The counterpart case, and the reason the suffix match is compound: here the gzip
+    // is the resource. Declaring an encoding would have the client inflate it and keep
+    // a bare tar under a `.tar.gz` name.
+    let response = bytes_response("run-abc.tar.gz", vec![0x1f, 0x8b, 0x08, 0x00]);
+    let (_, headers, _) = read_response(response).await;
+    assert_eq!(headers[header::CONTENT_TYPE], "application/gzip");
+    assert!(!headers.contains_key(header::CONTENT_ENCODING));
+}
+
+#[tokio::test]
+async fn an_unframed_case_file_declares_no_encoding() {
+    for file in ["prompt.hbs", "spec.md", "reference.png", "controller.wasm"] {
+        let (_, headers, _) = read_response(bytes_response(file, vec![1, 2, 3])).await;
+        assert!(
+            !headers.contains_key(header::CONTENT_ENCODING),
+            "`{file}` must not claim a body framing"
+        );
+    }
+}
+
+#[tokio::test]
 async fn a_corrupt_stored_artifact_fails_loudly_rather_than_serving_garbage() {
     // Gzip magic with a truncated member: the bytes claim an encoding they cannot
     // honor, so a client that cannot decode gzip must get an error, never a body that
@@ -528,4 +593,104 @@ fn a_catalog_entry_carries_the_asset_shape_the_catalog_tabs_partition_on() {
 
     assert_eq!(entry.test_type, TestType::AssetGeneration);
     assert_eq!(entry.asset_kind, AssetKind::SpriteSheet);
+}
+
+/// The prompt template both engine-rendering tests render. A case's real
+/// `prompt.hbs` branches on `{{engine.slug}}`; this is the smallest template that
+/// makes the branch observable.
+fn engine_aware_manifest() -> StoredManifest {
+    StoredManifest {
+        prompt_template: "Built on {{engine.name}} ({{engine.slug}}).".to_string(),
+        engines: vec![
+            test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
+            test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+        ],
+        ..manifest()
+    }
+}
+
+/// A resolved engine, read from an empty package store: the manifest is baked in,
+/// and the staged version a store would supply plays no part in rendering.
+fn resolved(slug: &str) -> ResolvedEngine {
+    test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
+        .resolve(&EngineSelection::new(slug))
+        .unwrap()
+}
+
+#[test]
+fn a_run_s_engine_renders_that_engine_s_branch_of_the_prompt() {
+    // The whole point of the engine on this route: a run's Inputs surface must show
+    // the instruction its harness received, and that text depends on the runtime the
+    // build was written against.
+    let engine = resolved("simple-2d");
+    let response = version_response(
+        &engine_aware_manifest(),
+        &HashMap::new(),
+        &HashMap::new(),
+        Some(&engine),
+    )
+    .unwrap();
+
+    let base = response.variants.iter().find(|v| v.slug == "base").unwrap();
+    assert_eq!(base.prompt, "Built on Simple 2D (simple-2d).");
+}
+
+#[test]
+fn no_engine_renders_the_engineless_prompt() {
+    // A case gallery renders a case, not a run, so nothing has selected an engine.
+    let response = version_response(
+        &engine_aware_manifest(),
+        &HashMap::new(),
+        &HashMap::new(),
+        None,
+    )
+    .unwrap();
+
+    let base = response.variants.iter().find(|v| v.slug == "base").unwrap();
+    assert_eq!(base.prompt, "Built on None (none).");
+}
+
+#[test]
+fn an_explicit_engineless_run_reads_exactly_as_no_engine() {
+    // A run that recorded `none` and a surface that named no engine are the same
+    // text, so a caller never has to special-case the sentinel to get it right.
+    let engine = resolved(test_cabinet_core::engine::NONE_SLUG);
+    let manifest = engine_aware_manifest();
+    let explicit =
+        version_response(&manifest, &HashMap::new(), &HashMap::new(), Some(&engine)).unwrap();
+    let absent = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+
+    assert_eq!(explicit.variants[0].prompt, absent.variants[0].prompt);
+}
+
+#[test]
+fn an_absent_engine_parameter_resolves_to_the_engineless_rendering() {
+    assert!(EngineQuery { engine: None }.resolve().unwrap().is_none());
+}
+
+#[test]
+fn a_named_engine_resolves_to_that_engine() {
+    let resolved = EngineQuery {
+        engine: Some("simple-2d".to_string()),
+    }
+    .resolve()
+    .unwrap();
+
+    assert_eq!(
+        resolved.as_ref().map(ResolvedEngine::slug),
+        Some("simple-2d")
+    );
+}
+
+#[test]
+fn an_unknown_engine_is_refused_rather_than_rendered_engineless() {
+    // Falling back to the engineless rendering here would hand a reader text no run
+    // ever received, and say nothing about it.
+    let error = EngineQuery {
+        engine: Some("not-an-engine".to_string()),
+    }
+    .resolve()
+    .expect_err("an unknown engine slug is a client error");
+
+    assert_eq!(error.status, StatusCode::BAD_REQUEST);
 }

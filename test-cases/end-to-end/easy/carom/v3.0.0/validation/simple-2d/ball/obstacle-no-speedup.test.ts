@@ -1,16 +1,18 @@
 // ball/obstacle-no-speedup — an obstacle bounce does not speed the ball up.
 //
-// Only a paddle hit multiplies the ball's speed; a wall or obstacle bounce
-// reflects it and leaves the magnitude alone. A ball is fired straight at one
-// obstacle face at a known speed and the speeds either side of the real collision
-// are compared. Sampled every frame, so the outgoing speed is read at the instant
-// of the rebound with no stray flight in between — which is why the margin is a
-// float margin rather than a tolerance.
+// Only a paddle hit multiplies the ball's speed; "an obstacle bounce leaves
+// speed and spin unchanged" (specs/playfield.md). A ball is fired straight at
+// one obstacle face at a known speed and the speeds either side of the real
+// collision are compared. Sampled every frame, so the outgoing speed is read at
+// the instant of the rebound, and the review item's 0.1 percent is a float
+// margin rather than slack.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeObstacleBounce,
+  ball0,
   captureReplay,
   createHarness,
   driveObstacleBounce,
@@ -21,8 +23,8 @@ import {
 const FACE_X = OBSTACLES[0].x0;
 const LANE_Y = OBSTACLE_CENTERS[0].y;
 const APPROACH_SPEED = 600;
-/** The reflection only rotates the velocity, so this is float noise, not slack. */
-const SPEED_TOLERANCE = 0.5;
+/** The review item's margin: a tenth of a percent of the approach speed. */
+const SPEED_TOLERANCE = APPROACH_SPEED * 0.001;
 
 /**
  * Frames of the departing flight recorded after the rebound.
@@ -46,7 +48,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
@@ -58,15 +60,16 @@ it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
     speed: APPROACH_SPEED,
   });
 
-  const before = harness.snapshot().ball.speed;
+  const before = ball0(harness.snapshot()).speed;
   const bank = await captureReplay(harness, "bank", async () => {
     const rebound = await driveObstacleBounce(harness, "left");
     await harness.advance(DEPARTURE_TICKS);
     return rebound;
   });
 
-  expect(bank.hit).toBe(true);
-  expect(Math.abs(bank.snapshot.ball.speed - before)).toBeLessThanOrEqual(
+  assertEqual(bank.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(ball0(bank.snapshot).speed - before),
     SPEED_TOLERANCE,
   );
 });

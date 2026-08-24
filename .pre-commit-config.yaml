@@ -35,8 +35,9 @@ repos:
       - id: check-added-large-files
         # Committed case media are an intentional binary category that routinely
         # exceeds the 500KB default; exempt those dirs. `validation-baseline/` holds
-        # the webm/png baseline clips synthesized by `tcab publish-reference
-        # --baselines-only`; `reference/screenshots/` holds the per-variant reference
+        # the per-engine, per-variant baseline media synthesized by `tcab
+        # capture-baselines` (draw-command recordings, clips, and stills);
+        # `reference/screenshots/` holds the per-variant reference
         # renders of a case's authored mockups (a full-detail gameplay frame is a
         # large PNG). `reference-impl/<variant>/assets/` holds the sprites, particle
         # systems, and audio the reference build produced with the asset-generation

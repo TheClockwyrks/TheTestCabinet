@@ -14,8 +14,10 @@ engine.frame(): FrameInfo;
 
 1. The canvas is resynced to its element and the device pixel ratio, the frame
    is cleared to `background`, and the viewport transform is applied.
-2. `update(state, api, dt)` runs, with `dt` in seconds.
-3. `render(state, api)` runs, drawing in logical coordinates.
+2. `update(state, api, dt)` runs, with `dt` in seconds, and the state it
+   returns replaces the current one.
+3. `render(state, api)` runs over that next state, drawing in logical
+   coordinates.
 4. The transform is reset, the overlay is drawn in device pixels, and the input
    frame is closed so an edge-triggered action is consumed exactly once.
 
@@ -40,16 +42,17 @@ game's own state rather than an engine operation.
 
 ```ts
 interface State {
-  ending: AbortController;
-  lives: number;
+  readonly ending: AbortController;
+  readonly lives: number;
 }
 
-const game: Game<State> = {
+const game: Game<State, null> = {
   initialize() {
-    return { ending: new AbortController(), lives: 3 };
+    return [{ ending: new AbortController(), lives: 3 }, null];
   },
   update(state) {
     if (state.lives <= 0) state.ending.abort();
+    return state;
   },
   render() {},
 };
@@ -68,11 +71,14 @@ keeps rendering while paused:
 
 ```ts
 update(state, api, dt) {
-  if (api.input.pressed("pause")) state.paused = !state.paused;
-  if (state.paused) return;
-  world.step(dt);
+  const paused = api.input.pressed("pause") ? !state.paused : state.paused;
+  if (paused) return { ...state, paused };
+  return { ...state, paused, world: stepWorld(state.world, dt) };
 }
 ```
+
+Returning the state unchanged is how a frame that advances nothing is written;
+returning nothing is refused.
 
 ## `advance`
 
@@ -160,8 +166,7 @@ Integrate against `dt` rather than assuming a frame rate. Every speed is stated
 per second and multiplied by `dt`:
 
 ```ts
-state.x += state.vx * dt;
-state.vy += GRAVITY * dt;
+return { ...state, x: state.x + state.vx * dt, vy: state.vy + GRAVITY * dt };
 ```
 
 A game that needs a fixed timestep builds one on top of the delta it is handed,
@@ -176,6 +181,7 @@ the step.
 | `advance` with a count that is not a whole, non-negative number | `RangeError` naming the value |
 | `update` or `render` throws under `run` | The error reaches the host, and the loop schedules the next frame |
 | `update` or `render` throws under `advance` | `advance` rejects with the cause, and the remaining frames do not run |
+| `update` returns `undefined` | `Error` naming `update`, thrown as above; the engine keeps the state it had |
 
 A throw under `run` leaves the loop alive so one bad frame does not freeze the
 game permanently. A throw under `advance` stops immediately, because a caller

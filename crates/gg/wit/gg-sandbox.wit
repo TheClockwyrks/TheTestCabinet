@@ -11,15 +11,14 @@
 // exactly one name in `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs); a test asserts the two sets are
 // equal, so a tool cannot be added, renamed, or removed without a typed signature following it.
 //
-// Eight interfaces stand outside that correspondence, and each is separate for exactly that reason:
+// Seven interfaces stand outside that correspondence, and each is separate for exactly that reason:
 // `feedback` is the shim's private channel back to gg and is never model-facing at all; `session`
 // carries the model-facing calls that end the run; `docs` is the always-bound documentation lookup;
 // `views` is how a program puts material into its own context window; `programs` is the library
-// of programs this agent has already run; `helpers` holds the convenience wrappers built on a
-// tool without being one; `wire` is not model-facing either — it is the one door the JVM arms
+// of programs this agent has already run; `wire` is not model-facing either — it is the one door the JVM arms
 // come through, naming a call by string BELOW their typed surface, for the reason it states; and
 // neither is `math`, which answers the `java.lang.Math` primitives TeaVM's WebAssembly backend
-// leaves to a host. None of the five model-facing ones has a name in `ALL_TOOL_NAMES` — no
+// leaves to a host. None of the four model-facing ones has a name in `ALL_TOOL_NAMES` — no
 // capability offers them and nothing dispatches them by name — so keeping them out of the tool
 // interfaces is what lets the bijection above be checked mechanically rather than by reading.
 package test-cabinet:gg;
@@ -71,8 +70,8 @@ interface types {
         /// The failure class, so a catch site branches on a value rather than on prose.
         code: error-code,
         /// The call that failed, by the KEY of the operation the program reached for:
-        /// `read_file` for `files.read_file`, `read_text_file` for `files.read_text_file`,
-        /// `open_file` for `views.open_file`. A catch site branches on the call the program wrote
+        /// `read_file` for `files.read_file`, `open_file` for `views.open_file`. A catch site
+        /// branches on the call the program wrote
         /// rather than on prose; it is never the name of whatever ran underneath, which several
         /// operations share.
         operation: string,
@@ -133,8 +132,9 @@ interface files {
 
     /// A text file, or the window of one this run's read policy returned.
     record text-read {
-        /// The file's text. Under a capped read policy this is the requested window only, with no
-        /// explanatory footer — the window is described by the fields below instead.
+        /// The file's text. Where the read was windowed — by an `offset`/`limit` it named, or by a
+        /// capped read policy's default — this is the window only, with no explanatory footer: the
+        /// window is described by the fields below instead.
         contents: string,
         /// The 1-based first line returned.
         first-line: u32,
@@ -175,9 +175,9 @@ interface files {
 
     /// Read a file.
     ///
-    /// `offset`/`limit` are honoured only under a capped read policy; under the unlimited policy the
-    /// whole file comes back and both are ignored. The system prompt states which policy this run
-    /// uses.
+    /// `offset`/`limit` are honoured under every read policy. The policy decides only what an absent
+    /// `limit` means: its default cap under a capped policy, the end of the file under the unlimited
+    /// one. An absent `offset` starts at the first line under every policy.
     read-file: func(path: string, offset: option<u32>, limit: option<u32>)
         -> result<file-read, api-error>;
 
@@ -194,7 +194,7 @@ interface files {
     ///
     /// An occurrence that is missing is `not-found`; one that appears more than once is a
     /// `conflict` whose message carries the count. The count stays in the message rather than
-    /// becoming a field: `api-error` is shared by all 32 functions and a per-operation payload on it
+    /// becoming a field: `api-error` is shared by all 33 functions and a per-operation payload on it
     /// would be a wart on every other call — a program that needs to disambiguate should add
     /// surrounding context, not count.
     edit-file: func(path: string, old-string: string, new-string: string) -> result<_, api-error>;
@@ -213,33 +213,36 @@ interface files {
     /// List a directory, sorted by name. `none` lists the workspace root. An empty
     /// directory is an empty list, not an error.
     list-dir: func(path: option<string>) -> result<list<dir-entry>, api-error>;
-}
 
-/// The convenience wrappers bound alongside the tools — the sixth interface standing outside the
-/// tool bijection, and the only one whose functions do dispatch a gg tool.
-///
-/// A helper is not a tool: it has no name in `ALL_TOOL_NAMES`, no capability offers it, and it is
-/// bound exactly when the tool it is built on is. Filing one among the tool interfaces would break
-/// the one-to-one correspondence the committed component is checked against, which is why it lives
-/// here rather than on `files` beside the read it wraps.
-///
-/// It is an **import** rather than something the guest composes out of `read-file`, and that is the
-/// whole reason the interface exists. Composed in the guest, the host sees one `read-file` call and
-/// cannot tell which of two functions the model wrote — so `readTextFile` would be recorded as
-/// `readFile` and then report a zero of its own, telling a reader the model ignored the call it
-/// actually used. An API function is a function in its own right; that it shares a core with
-/// another is not a reason for the two to share one record.
-interface helpers {
-    use types.{api-error};
+    /// One line a `search` matched.
+    record search-match {
+        /// The file's path, relative to the workspace root (or absolute, for a search rooted
+        /// outside it), with `/` separators.
+        path: string,
+        /// The 1-based line number of the match within that file.
+        line: u32,
+        /// The matching line, without its line ending. A line longer than gg's 200-character clip
+        /// is cut there and annotated in place as `foo (123 more chars...)`.
+        text: string,
+    }
 
-    /// Read a text file and return its contents directly — `read-file` without the variant
-    /// narrowing, for the common case.
+    /// Search the workspace's files for `query` and return every line that matches it, each with
+    /// its path and 1-based line number, in path order and then line order.
     ///
-    /// The same read, the same `read_file` tool, the same `offset`/`limit` window. A path naming a
-    /// picture is `invalid-argument`: the caller asked for text and there is none, and `read-file`
-    /// is the call that inspects one.
-    read-text-file: func(path: string, offset: option<u32>, limit: option<u32>)
-        -> result<string, api-error>;
+    /// `query` is a **regular expression** (Rust syntax: `foo|bar`, `fn\s+update`, `(?i)todo` for a
+    /// case-insensitive match), matched against each line on its own; a blank query, or one that is
+    /// not a valid pattern, is `invalid-argument`. `path` narrows the search to one directory or one
+    /// file — `none` is the workspace root — and a `path` that does not exist is `not-found`.
+    ///
+    /// The search honours ignore files: what `.gitignore`, `.ignore` and their kin exclude is never
+    /// scanned and never returned, `.git` itself included, and a file that is not text (one carrying
+    /// a NUL byte) is skipped. `limit` bounds how many matches come back — gg's default is 50 and
+    /// its ceiling 200, so a larger request is answered with the first 200 — and a `limit` of zero
+    /// is `invalid-argument`. A list exactly `limit` long may have been cut: narrow the query or the
+    /// path, or page nothing, because there is no offset — a search is a question about where to
+    /// point the other tools, not a way of reading a file.
+    search: func(query: string, path: option<string>, limit: option<u32>)
+        -> result<list<search-match>, api-error>;
 }
 
 /// The authored skill library.
@@ -743,8 +746,8 @@ interface docs {
     /// Results come back as a value AND are opened as a view, so you can read them next turn without
     /// showing them to yourself. That view is REPLACED by your next search: it names what you are
     /// working from, not a permanent record, which is the opposite of how a documentation view
-    /// behaves. It appears in `current-views` as a `text` view under the selector `search results`,
-    /// and `close-view` on that selector closes it.
+    /// behaves. It is a `text` view, under the selector `search results`, and `close-view` on that
+    /// selector closes it.
     search: func(query: option<string>, modules: list<string>, %type: option<string>,
                  kind: option<string>, offset: option<u32>, limit: option<u32>)
         -> result<doc-search, api-error>;
@@ -783,49 +786,16 @@ interface docs {
 /// the third kind because they are neither — gg holds them, not the workspace and not the program —
 /// and because they are the one kind whose content the model cannot produce for itself.
 ///
-/// `open-text-view`, `open-docs-view`, `close-view` and `current-views` are bound into every
-/// program's scope whatever a run enables — a run with no tools at all must still be able to show
-/// its model something, and must always be able to read what the functions it *does* have do.
-/// `open-file-view` is bound only when the `read-file` tool is: it is a read, and a run with reading
-/// withheld must not get one through a side door.
+/// `open-text-view` and `open-docs-view` are bound into every program's scope whatever a run
+/// enables — a run with no tools at all must still be able to show its model something, and must
+/// always be able to read what the functions it *does* have do. `open-file-view` is bound only when
+/// the `read-file` tool is: it is a read, and a run with reading withheld must not get one through a
+/// side door. `close-view` is bought by the `agent-managed-context` capability: closing a view is
+/// context management, exactly as evicting a file view is, and a run that withholds the capability
+/// refuses it as `unavailable`.
 interface views {
     use types.{api-error};
     use files.{file-read};
-
-    /// Which of the three kinds a view is.
-    enum view-kind {
-        /// A file view, keyed by its workspace path (and, for a paged read, its region).
-        file,
-        /// A text view, keyed by the label the program gave it.
-        text,
-        /// A documentation view, keyed by the name of the function it documents.
-        docs,
-        // There is deliberately NO `search` case: the results of a `docs.search` are reported here
-        // as a `text` view, because that is what they behave like at this boundary — composed text
-        // under one label, closed by `close-view` rather than by the capability-bought
-        // `docs.close-doc-view`. gg accounts them separately regardless.
-    }
-
-    /// The line window a **paged** file view covers. Absent for a whole-file view and for every
-    /// text view.
-    record view-region {
-        /// The 1-based first line the view shows.
-        offset: u32,
-        /// How many lines it shows.
-        limit: u32,
-    }
-
-    /// One view currently open in your context window.
-    record open-view {
-        /// Whether it is a file or a text view.
-        kind: view-kind,
-        /// What `close-view` takes: a file view's workspace path, or a text view's label.
-        selector: string,
-        /// Roughly what holding it costs, in tokens.
-        tokens: u64,
-        /// The window a paged file view covers.
-        region: option<view-region>,
-    }
 
     /// Read a file AND show it to yourself: the read's result comes back exactly as
     /// `read-file` returns it, and the file is added to your context window as its own attributable
@@ -838,8 +808,18 @@ interface views {
     /// The key is `(path, region)`, so two pages of one file are two views and coexist. Re-opening
     /// the SAME page replaces it rather than piling up a duplicate — this call names an intent
     /// ("this file should be visible"), and re-stating an intent replaces it.
-    open-file-view: func(path: string, offset: option<u32>, limit: option<u32>)
-        -> result<file-read, api-error>;
+    ///
+    /// The view's text body is held to the same 65,536-byte cap a text view's body is: a window
+    /// that would carry more is `limit-exceeded`, naming the size and the bound, and nothing is
+    /// opened — never a truncation. The program narrows the window with `offset`/`limit`, or cuts
+    /// the file's long lines with `max-line-chars`: when it is set, each line of the VIEW longer
+    /// than that many characters is cut there and annotated in place as `foo (123 more chars...)`,
+    /// with the count of characters dropped. The cut is the view's alone — the `file-read` this
+    /// returns and the file itself are untouched — and the byte cap is measured against the body
+    /// after it. Absent, lines arrive whole; a value of zero, or one over 65,536, is
+    /// `invalid-argument`.
+    open-file-view: func(path: string, offset: option<u32>, limit: option<u32>,
+        max-line-chars: option<u32>) -> result<file-read, api-error>;
 
     /// Show yourself a value you computed, under `label`. Opening the same label again replaces what
     /// it showed.
@@ -877,10 +857,6 @@ interface views {
     /// `0` for a documentation key, because it cannot reclaim one by any route.
     close-view: func(selector: string) -> result<u32, api-error>;
 
-    /// What is open in your window right now — the views, never the functions. It is named for what
-    /// it enumerates because a bare `list` on this interface would read as the object's own
-    /// declarations rather than as the window's contents.
-    current-views: func() -> list<open-view>;
 }
 
 /// The programs this agent has already run — the fourth model-facing carve-out, and like `session`,
@@ -1122,8 +1098,16 @@ interface feedback {
     /// `addEventListener("unhandledrejection", …)` but never fires it. So the host tells the model
     /// plainly rather than reporting a clean turn over a half-failed program.
     report-deferred: func(note: string);
-    /// The program threw and did not run to its end. Called at most once per run, from the shim's
-    /// single `catch`.
+    /// The program threw and did not run to its end. Called at most once per run, from the one
+    /// place the guest's runtime delivers an uncaught failure to — an interpreter's top-level
+    /// `except`, an engine's exception slot, a rejection tracker — never from a catch chain built
+    /// to type it.
+    ///
+    /// A guest that CAN observe the failure there MUST report it here rather than die: a turn so
+    /// ended is a `program_*` type, and an uncaught failed call is `program_api_error` on every
+    /// arm that reports. The `sandbox_*` types are reserved for a ceiling gg imposed or a real
+    /// wasmtime trap, and a guest that dies of a failure it could have reported files a program
+    /// fault under a sandbox limit.
     ///
     /// It is also what **revokes** a completion the same program declared with `session.finish`: a
     /// program that ended the run and then failed did not check what its summary claims, so the host
@@ -1142,7 +1126,7 @@ interface feedback {
 /// **The one door the JVM arms come through**, and the only interface on this membrane that names a
 /// call by a string.
 ///
-/// Every other guest reaches the fifteen interfaces above directly, because every other guest has a
+/// Every other guest reaches the fourteen interfaces above directly, because every other guest has a
 /// binding generator that can write the canonical ABI for them: `wit-bindgen` for Rust, C++ and
 /// Swift, `componentize-js` for the ECMAScript arms, `wit-bindgen` again through the C the C#, Python
 /// and Ruby guests link. **There is no wit-bindgen for Java**, and there is no prospect of one — so
@@ -1155,7 +1139,7 @@ interface feedback {
 ///
 /// The seam's rule — that a capability reaches a program as a typed, namespaced binding and never as
 /// a dispatcher taking a name as data — is a rule about **what a model writes**. A model writing
-/// Java writes `Files.readTextFile("notes.txt")`, on a typed surface that is namespaced exactly like
+/// Java writes `Files.readFile("notes.txt")`, on a typed surface that is namespaced exactly like
 /// every other arm's; this is what that surface is implemented over, one layer below anything a model
 /// can see, in a package no catalogue describes and no program imports. It is the same split the
 /// arms' SDKs already had when their far side was a JavaScript object rather than gg's Rust: one
@@ -1163,7 +1147,7 @@ interface feedback {
 ///
 /// What is on **this** side of it is unchanged by that. `op` is one of gg's own rendered operation
 /// ids (`files.read_file`, `views.open_text`), and the host answers it by decoding the request and
-/// calling the very same typed host function the fifteen interfaces above are implemented by — same
+/// calling the very same typed host function the fourteen interfaces above are implemented by — same
 /// capability gate, same recorded call, same deadline, same `api-error`. Nothing here is a second
 /// implementation of anything, and nothing reachable through it is reachable any other way.
 ///
@@ -1346,7 +1330,6 @@ world sandbox {
     import types;
     import shell;
     import files;
-    import helpers;
     import skills;
     import memories;
     import tasks;
@@ -1388,14 +1371,16 @@ world sandbox {
     /// has to say about its own work it says over `feedback`, and what it has to say about its own
     /// death it says the way its runtime says it.
     ///
-    /// A guest with an exception mechanism that survives to the export boundary MAY report an
-    /// uncaught throw over `feedback.report-error`, which is what carries the failure's class to the
-    /// host and files the turn under one of the `program_*` types. A guest without one lets the
-    /// program die as its runtime kills it: the runtime's own words reach the host on standard
-    /// error, the crossing ends in a trap, and the turn is filed as `sandbox_trap`. Both are
+    /// A guest whose runtime delivers an uncaught throw to this export's boundary MUST report it
+    /// over `feedback.report-error` and return normally, which is what carries the failure's class
+    /// to the host and files the turn under one of the `program_*` types. Only a guest whose
+    /// runtime kills the program before any entry point can see the throw lets it die: the
+    /// runtime's own words reach the host on standard error, the crossing ends in a trap, and the
+    /// turn is filed as `sandbox_trap`. Both are
     /// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) — the mechanism is
     /// capture rather than interception, and no guest may build a catch chain to type a throw it
-    /// would otherwise have died of.
+    /// would otherwise have died of. A `sandbox_*` type is a ceiling gg imposed or a real trap,
+    /// never an API failure a program did not catch.
     export run: func(
         program: string,
         modules: list<code-module>,

@@ -35,6 +35,7 @@ import {
   toolCallChartData,
   withArmRunIds,
 } from "./comparisonMath";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Comparisons.module.scss";
 
@@ -408,7 +409,7 @@ export function ComparisonDetailPage() {
       {comparison.description && (
         <p className={styles.empty}>{comparison.description}</p>
       )}
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
       {publishResult && (
         <p className={`${exec.notice} ${exec.warn}`}>
           Published. {publishResult.enqueued.length} run

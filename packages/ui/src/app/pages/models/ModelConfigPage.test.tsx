@@ -41,12 +41,13 @@ function galleryValue(): GalleryDataInput {
 
 function backendValue(
   lookupOpenrouterModel: ReturnType<typeof vi.fn>,
+  createModel: ReturnType<typeof vi.fn> = vi.fn(),
 ): BackendContextValue {
   return {
     client: {
       // The whole config surface must be present or `useModelConfig` hides the
       // form outright, so every method it gates on is stubbed here.
-      createModel: vi.fn(),
+      createModel,
       updateModel: vi.fn(),
       deleteModel: vi.fn(),
       fetchModelLogo: vi.fn(),
@@ -63,11 +64,14 @@ function backendValue(
 
 function renderPage(
   lookupOpenrouterModel = vi.fn().mockResolvedValue(LISTING),
+  createModel = vi.fn(),
 ) {
   render(
     <MemoryRouter initialEntries={["/models/new"]}>
       <GalleryDataProvider value={galleryValue()}>
-        <BackendProvider value={backendValue(lookupOpenrouterModel)}>
+        <BackendProvider
+          value={backendValue(lookupOpenrouterModel, createModel)}
+        >
           <Routes>
             <Route path="/models/new" element={<ModelConfigPage />} />
           </Routes>
@@ -181,5 +185,36 @@ describe("ModelConfigPage's OpenRouter fill-in", () => {
     typeSlug("anthropic/claude-sonnet-4.5");
     expect(fillButton()).not.toBeDisabled();
     await settle();
+  });
+});
+
+describe("ModelConfigPage's save failure", () => {
+  const saveButton = () => screen.getByRole("button", { name: "Create model" });
+
+  it("reports the failure above the button that raised it", async () => {
+    renderPage(
+      vi.fn(),
+      vi.fn().mockRejectedValue(new Error("slug already taken")),
+    );
+    fireEvent.change(nameInput(), { target: { value: "Hand-written" } });
+    fireEvent.click(saveButton());
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("slug already taken");
+    // Above, not below: an error rendered after the actions sits past the fold on
+    // a form this tall, so the press reads as having done nothing at all.
+    expect(
+      alert.compareDocumentPosition(saveButton()) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("re-enables the button so the operator can fix it and retry", async () => {
+    renderPage(vi.fn(), vi.fn().mockRejectedValue(new Error("nope")));
+    fireEvent.change(nameInput(), { target: { value: "Hand-written" } });
+    fireEvent.click(saveButton());
+
+    await screen.findByRole("alert");
+    expect(saveButton()).not.toBeDisabled();
   });
 });

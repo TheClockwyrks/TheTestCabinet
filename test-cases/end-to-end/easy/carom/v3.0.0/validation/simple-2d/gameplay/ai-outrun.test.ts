@@ -1,12 +1,16 @@
 // gameplay/ai-outrun — the Solo opponent is beatable, not superhuman.
 //
 // The REAL AI starts pinned at the bottom bound and faces a fast, low shot
-// arriving near the top. The ball reaches the goal line before a paddle moving at
-// the AI's speed could cover the distance, so a correctly-paced opponent misses
-// it. An AI that moves faster than it should blocks it and fails here.
+// arriving near the top. The shot reaches the paddle's face in
+// (P2_X0 - BALL_R - 700) / 940 = 0.54 s at a height of about 172; to touch it the
+// paddle's center must be within PADDLE_HALF + BALL_R = 66 of that, a trip of
+// about 427 units from PADDLE_MAX_CY, which at AI_SPEED takes 0.76 s. A paddle
+// moving at the rule's speed is about 135 units short when the ball passes, so
+// player one scores. An AI that moves faster than it should blocks it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_MAX_CY, SPEED_CAP } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   arrangeAiScenario,
   captureReplay,
@@ -39,7 +43,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("lets a fast shot placed out of reach get past it", async () => {
@@ -51,5 +55,5 @@ it("lets a fast shot placed out of reach get past it", async () => {
     return outcome;
   });
 
-  expect(result).toBe("scored");
+  assertEqual(result, "scored");
 });

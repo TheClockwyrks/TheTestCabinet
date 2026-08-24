@@ -186,28 +186,26 @@ fn a_granted_call_reaches_the_loop_and_answers_with_a_record() {
 /// A failed call comes back as the three fields of the `api-error` it already was — the same code,
 /// the same key, the same sentence the other ten arms are given.
 ///
-/// `read_text_file` over a picture is the failure chosen because the host function *itself* raises
-/// it, on the narrowing that is the whole difference between it and `read_file`: so what is asserted
-/// is that an `api-error` built inside the typed implementation crosses this wire unaltered, rather
-/// than that a fake said no.
+/// `views.open_text` with a blank label is the failure chosen because the api *itself* raises it,
+/// before anything is dispatched: so what is asserted is that an `api-error` built inside the typed
+/// implementation crosses this wire unaltered, rather than that a fake said no.
 #[test]
 fn a_failed_call_comes_back_as_the_api_error_it_already_was() {
     let log = CallLog::default();
     let mut state = membrane(&log);
     let response = crossing(
         &mut state,
-        "files.read_text_file",
+        "views.open_text",
         request(vec![
-            Value::Text("logo.png".to_string()),
-            Value::None,
-            Value::None,
+            Value::Text("   ".to_string()),
+            Value::Text("body".to_string()),
         ]),
     );
-    let (operation, code, message) = failure(&response).expect("reading a picture as text fails");
-    assert_eq!(operation, "read_text_file");
+    let (operation, code, message) = failure(&response).expect("a blank label names nothing");
+    assert_eq!(operation, "open_text");
     assert_eq!(code, "invalid-argument");
     assert!(
-        message.contains("logo.png") && message.contains("not text"),
+        message.contains("label"),
         "the failure lost its own sentence: {message}"
     );
 }
@@ -227,4 +225,72 @@ fn every_error_code_has_the_wits_own_spelling() {
     ] {
         assert_eq!(code_name(code), name);
     }
+}
+
+/// `files.search` crosses the wire as three positional arguments and answers with a list of
+/// `search-match` records keyed by the WIT field names.
+#[test]
+fn a_search_crosses_the_wire_and_answers_with_match_records() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+    let response = crossing(
+        &mut state,
+        "files.search",
+        request(vec![
+            Value::Text("answer".to_string()),
+            Value::None,
+            Value::Int(3),
+        ]),
+    );
+    let matches = answer(&response);
+    let items = matches.list("the matches").expect("a list of matches");
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].field("a match", "path").expect("the path"),
+        &Value::Text("src/a.ts".to_string())
+    );
+    assert_eq!(
+        items[0].field("a match", "line").expect("the line"),
+        &Value::Int(3)
+    );
+    assert_eq!(
+        items[0].field("a match", "text").expect("the text"),
+        &Value::Text("const answer = 42;".to_string())
+    );
+    let calls = log.calls();
+    assert_eq!(calls[0].name, "search");
+    assert_eq!(calls[0].args["limit"], serde_json::json!(3));
+}
+
+/// `views.open_file` reads its fourth argument when it is there and reads a three-argument request
+/// as a view with its lines whole — the one trailing option this wire tolerates leaving out.
+#[test]
+fn an_open_file_view_reads_a_trailing_line_cut_or_none() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+    let three = crossing(
+        &mut state,
+        "views.open_file",
+        request(vec![
+            Value::Text("src/a.ts".to_string()),
+            Value::None,
+            Value::None,
+        ]),
+    );
+    answer(&three);
+    let four = crossing(
+        &mut state,
+        "views.open_file",
+        request(vec![
+            Value::Text("src/a.ts".to_string()),
+            Value::None,
+            Value::None,
+            Value::Int(80),
+        ]),
+    );
+    answer(&four);
+    let calls = log.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].args["maxLineChars"], serde_json::Value::Null);
+    assert_eq!(calls[1].args["maxLineChars"], serde_json::json!(80));
 }

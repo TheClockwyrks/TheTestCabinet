@@ -1,15 +1,23 @@
-// paddles/hit-center — a centre contact on a still paddle returns straight across.
+// paddles/hit-center — a center contact on a still paddle returns straight
+// across.
 //
-// The outgoing angle comes from the contact point: `offset = (ballY - paddleCy) /
-// PADDLE_HALF` and `theta = offset * MAX_BOUNCE_ANGLE`, so a contact level with
-// the paddle's centre returns level. The paddle is stationary, so the angle is
-// the contact point's doing alone with no spin from paddle motion mixed in. The
-// paddle pose and the contact height are the preconditions; the outgoing velocity
-// is what the real bounce produced. The steep case is the sibling `hit-edge`.
+// specs/balls.md: `offset = (ballY - paddleCy) / PADDLE_HALF` and
+// `theta = offset * MAX_BOUNCE_ANGLE`, so a contact level with the paddle's
+// center leaves at 0 degrees from horizontal. The paddle is stationary, so
+// nothing but the contact point sets the angle. The ball approaches at
+// `FACE_SHOT_SPEED`, one sub-step per frame, so the frame of the rebound ends
+// with exactly the velocity the bounce formula produced; the margin of a degree
+// is rounding room, since `sin(0)` is exact.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { FIELD_CY } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
 import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
+import { FIELD_CY } from "../constants";
+import {
+  FACE_SHOT_SPEED,
   LEAD_TICKS,
   angleDeg,
   arrangePaddleHit,
@@ -20,23 +28,9 @@ import {
   type Harness,
 } from "../harness";
 
-/** The old browser suite's margin for "straight", in degrees. */
-const STRAIGHT_MAX_DEG = 3;
+const STRAIGHT_MAX_DEG = 1;
 
-/**
- * Frames of the return flight recorded after the contact.
- *
- * `drivePaddleHit` stops on the frame the ball comes off the paddle, because that
- * is the instant the reading has to be taken at — a frame later and spin has
- * already begun to curve the flight this check is about. That makes it a bad
- * place to stop RECORDING: the clip would end on the contact and a reviewer would
- * never see the shot it produced.
- *
- * So the reading stays exactly where it was and the flight is driven after it,
- * inside the same recorded section. Three quarters of a second is long enough for
- * a curve to be a curve and a straight return to be visibly straight, and short
- * enough that the ball is still on the field at the end of it.
- */
+/** Frames of the return flight recorded after the contact, for the replay. */
 const RETURN_TICKS = 90; // 0.75 s
 
 let harness: Harness;
@@ -45,16 +39,17 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
-it("returns the ball level from the centre of a still paddle", async () => {
+it("returns the ball level from the center of a still paddle", async () => {
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,
     ballY: FIELD_CY,
+    approachSpeed: FACE_SHOT_SPEED,
     leadTicks: LEAD_TICKS,
   });
 
@@ -66,7 +61,7 @@ it("returns the ball level from the centre of a still paddle", async () => {
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(contact.ball.vx).toBeGreaterThan(0);
-  expect(angleDeg(contact.ball)).toBeLessThan(STRAIGHT_MAX_DEG);
+  assertEqual(contact.hit, true);
+  assertGreaterThan(contact.ball.vx, 0);
+  assertLessThanOrEqual(angleDeg(contact.ball), STRAIGHT_MAX_DEG);
 });

@@ -127,9 +127,12 @@ them as a per-model history:
 - The backend fetches a model's current OpenRouter price when a run completes,
   and again on a 24-hour periodic refresh.
 - It records a first observation the moment a model first appears: when you save
-  it here with an OpenRouter slug, and when a run that binds it is enqueued. That
-  seeding is missing-only, so a model already on record is left to the two paths
-  above.
+  it here with an OpenRouter slug, when a run that binds it is enqueued (on every
+  enqueue path — the run form, a gg launch, a coverage top-up, an automatic
+  retry), and at backend startup for every known model still missing one. The
+  startup pass is what prices a freshly seeded deployment's curated catalog
+  before its first run. All of this seeding is missing-only, so a model already
+  on record is left to the two paths above.
 - An observation is appended only when something changed: the price, or one of
   the catalog facts riding along on it. The stored history collapses
   consecutive-equal prices, so an observation recorded for a fact change adds no
@@ -179,6 +182,21 @@ observed.
 
 Open the model in the Models section, click Edit, change any field, and Save. The
 change is live at once, and the snapshot picks it up on the next publish.
+
+## Probing a model
+
+A model probe is a responses-as-code readiness check, run from the model's
+Probes tab. It answers whether the model can drive [gg](/gg/overview/)'s RaC
+mode at all: the backend replays gg's real RaC opening request against the
+model's OpenRouter slug and classifies the shape of every reply, because some
+models emit tool-call syntax even with no tools offered and waste every RaC run.
+The verdict says whether to run the model as-is, run it with cross-model prompt
+reminders, or keep it out of RaC mode.
+
+Run a probe when a new model is introduced, and again after pinning a new
+provider, since providers can serve the same model differently. The steps are in
+the [Probe a Model](/quickstarts/devops/probe-a-model/) quickstart, and the wire
+contract is at [Model probes](/components/backend/api/#model-probes).
 
 ## Next steps
 

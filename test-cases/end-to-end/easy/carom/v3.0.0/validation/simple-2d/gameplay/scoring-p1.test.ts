@@ -6,12 +6,14 @@
 // `scoring-p2` check, so a build that scores on only one edge fails the side it
 // gets wrong rather than passing on an average.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
   createHarness,
   driveGoal,
+  receiver0,
   startPlaying,
   type Harness,
 } from "../harness";
@@ -37,7 +39,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("gives player one the point when the ball leaves the right goal", async () => {
@@ -51,7 +53,11 @@ it("gives player one the point when the ball leaves the right goal", async () =>
     return resolved;
   });
 
-  expect(point.hit).toBe(true);
-  expect(point.snapshot.score.p1).toBe(1);
-  expect(point.snapshot.score.p2).toBe(0);
+  assertEqual(point.hit, true);
+  // After a point the ball is parked, `receiver` becomes the side scored on,
+  // and the screen returns to the countdown (specs/balls.md).
+  assertEqual(point.snapshot.screen, "countdown");
+  assertEqual(receiver0(harness), "right");
+  assertEqual(point.snapshot.score.p1, 1);
+  assertEqual(point.snapshot.score.p2, 0);
 });

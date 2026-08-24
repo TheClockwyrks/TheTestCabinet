@@ -1295,7 +1295,7 @@ const UNUSED: GgProgramLanguage = GgProgramLanguage::TypeScript;
 ///
 /// Read literally — with only surrounding whitespace forgiven — and [refused](crate::validate) on
 /// mismatch, for a sharper version of the reason
-/// [`resolve_assistant_messages`](crate::healing::resolve_assistant_messages) is: reading `"pythn"`
+/// [`resolve_healing`](crate::healing::resolve_healing) is: reading `"pythn"`
 /// as Python would be bad, but reading it as TypeScript would record the run under a language nobody
 /// chose — and the language is the very axis a cross-language study slices on. [`UNUSED`] comes back
 /// anyway to keep the resolver total for the per-turn calls that re-read it.

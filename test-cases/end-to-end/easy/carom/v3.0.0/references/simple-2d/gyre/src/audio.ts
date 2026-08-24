@@ -49,8 +49,12 @@ export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {
   },
 };
 
-/** Declare every cue, once, before the first frame. */
-export function defineCues(api: InitApi): void {
+/**
+ * Declare every cue, once, before the first frame. Only the `audio` half of the
+ * API is taken, so this is independent of the state type the rest of the
+ * `InitApi` is generic over.
+ */
+export function defineCues(api: Pick<InitApi, "audio">): void {
   for (const [cue, spec] of Object.entries(CUE_SPECS)) {
     api.audio.define(cue, spec);
   }

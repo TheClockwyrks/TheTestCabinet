@@ -48,6 +48,13 @@ Counts as an error:
 
 - The model call failed after the client exhausted its own retry and backoff. No
   turn happened at all, and this one is separately [fatal](#model-api-errors).
+- The model call ran into gg's [per-call ceiling](#model-api-errors) without
+  producing a reply. The turn is recorded as a `model_timeout` error and retried,
+  so a stalled provider spends the error ceilings rather than hanging the run.
+- The reply hit the provider's output cap (`finish_reason: length`). gg presumes
+  a length-capped reply is a degenerate generation and
+  [rejects it whole](#model-api-errors): recorded as a `model_length_capped`
+  error and retried on the same terms as a timeout.
 - The program did not compile: it did not parse, it broke an early error, or the
   language's compiler read it whole and rejected it. Nothing ran, and the model
   gets a `Compiler error` carrying the compiler's diagnostic and nothing else.
@@ -99,7 +106,11 @@ the replies loop detection discarded on the way with the size of the output they
 threw away, for every run rather than only for the runs a ceiling stopped. A
 discarded reply counts towards neither the errors nor the turns, because the
 request was retried and the turn was judged on whatever the retry produced, and
-its output is absent from the cost the `maxCost` ceiling reads.
+its output is absent from the cost the `maxCost` ceiling reads. A
+[rejected length-capped reply](#model-api-errors) differs on exactly one of
+those terms: it does count as an error, so the ceilings bound a model that keeps
+capping out, while its usage stays out of the run's cost and turn count and is
+summed on the summary's `rejectedResponses` rollup instead.
 
 ## What is required and what is armed
 
@@ -519,9 +530,12 @@ ceiling that produced it:
 
 In the console the limits are a Run limits fieldset above the capability groups
 in the [configuration](/gg/configurations/) editor, one field per key. A fresh
-configuration is seeded with parallelism and journal figures for the operator to
-keep or change, and with the five ceiling fields empty. An empty ceiling field is
-an unarmed ceiling.
+configuration is seeded with the parallelism and journal figures, a
+consecutive-error ceiling of 5, and an error rate of 0.2 over a window of 50
+turns; the turn, runtime and cost fields start empty. Each seeded error figure is
+a guardrail the operator keeps, changes, or clears. An empty ceiling field is an
+unarmed ceiling, and a stored configuration that omitted a ceiling opens with
+that field empty.
 
 A key that is present is armed exactly as written, and one gg cannot arm that way
 refuses the launch. So does an absent `maxParallel` or `replayMaxBytes`. The
@@ -559,6 +573,33 @@ in the log (*"model looped every attempt"*), because "retries exhausted" would
 send an operator looking at the provider for an outage that never happened. The
 recorded base error kind is `model_api` and the recorded type is
 `model_response_loop`.
+
+Two model-call failures are recoverable rather than fatal. Each is recorded as
+an error turn — it spends the consecutive-error count and the error-rate window
+exactly as a failed call does — and the same request is then asked again on the
+same turn. Nothing enters the context between the attempts, so the retry is
+byte-identical, and only the error ceilings, the run's wall clock and an
+operator's kill (both re-checked between attempts) decide when to stop asking.
+
+- A timed-out call. Every model call runs under a five-minute per-call ceiling:
+  a total-duration cap on the buffered transport, whose reply arrives all at
+  once or not at all, and an idle cap on the [streaming](/gg/loop-detection/)
+  one — five minutes waiting for the response head or between chunks — so a
+  stream that is still producing is never cut however long it runs. A timeout
+  surfaces immediately, without spending the client's internal retry budget:
+  each internal retry of a stall would cost the full ceiling again, and the
+  turn-level retry is the bounded one. Recorded as `model_timeout`.
+- A length-capped reply. A reply whose finish reason is `length` hit the
+  provider's own output cap, and gg presumes it is a degenerate generation
+  rather than work. It is rejected whole: it never enters the context, and its
+  usage is excluded from the run's cost and turn count so one looping turn
+  cannot taint the run's data. The spend is not lost — a `response_rejected`
+  event carries the reply's size, usage, cost and serving provider, and the
+  session summary's `rejectedResponses` rollup sums them. Recorded as
+  `model_length_capped`.
+
+A run that ends on these does so under `limit_exceeded`, on whichever error
+ceiling the repeated failures breached, and never under `model_error`.
 
 ## Breach records
 

@@ -645,10 +645,10 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
             .all(|diagnostic| diagnostic.file.as_deref() == Some(ENTRY_FILE))
         {
             return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
-                "gg reaches your program by calling `{program}.main(new String[0])`, and that does \
-                 not compile against what you wrote: {rendered}\n\nWrite your reply as one \
-                 compilation unit declaring `public final class {program}` with a \
-                 `public static void main(String[] args)` in it. Anything else you declare — a \
+                "the entry point does not compile: gg calls `{program}.main(new String[0])`, \
+                 and that call does not resolve against this program: {rendered}\n\nWrite the \
+                 reply as one compilation unit declaring `public final class {program}` with a \
+                 `public static void main(String[] args)` in it. Any other declaration — a \
                  second class, a record, an enum — goes beside it in the same file.",
                 program = source::PROGRAM_CLASS,
             ))));

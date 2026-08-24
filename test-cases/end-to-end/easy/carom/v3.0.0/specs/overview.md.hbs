@@ -2,17 +2,24 @@
 
 ## Overview
 
-Carom is a neon, top-down paddle duel for the browser. Two paddles face each
-other across a dark field while a ball ricochets between them, off the top and
-bottom walls, and off a pair of obstacles in the middle of the field. A player
-scores when the ball passes the far edge behind their opponent's paddle.
+Carom is a top-down paddle duel for the browser. Two paddles face each other
+{{#if (eq variant.slug "multi")}}
+across a dark field while three balls ricochet between them, off the top and
+bottom walls, off a pair of obstacles in the middle of the field, and off each
+other. A player scores when a ball passes the far edge behind their opponent's
+paddle.
+{{else}}
+across a dark field while a ball ricochets between them, off the top and bottom
+walls, and off a pair of obstacles in the middle of the field. A player scores
+when the ball passes the far edge behind their opponent's paddle.
+{{/if}}
 
 Carom's defining mechanic is spin: the motion of a paddle at the moment it
 strikes the ball curves the ball's flight afterward. The obstacles turn the open
 field into a bank-shot puzzle.
 
-Carom has its own name, look, spin mechanic, and obstacle layout. Do not
-reproduce the assets, branding, or design of any existing game.
+Carom has its own name, look, spin mechanic, and obstacle layout, and its assets,
+branding, and design are original to it.
 
 The specification spans several files under `specs/`. Read all of them and build
 the game they describe as one cohesive whole.
@@ -20,19 +27,19 @@ the game they describe as one cohesive whole.
 {{#if (eq engine.slug "none")}}
 ## The runtime
 
-The runtime this game is built on is part of the project, in `src/host.ts`. It
-owns the frame loop and the delta time the game is given, input actions, audio
-cues, asset loading, the canvas fit, and the debug overlay. `src/host.ts`
-documents every API the game receives and is the authority on all of it. Read it
-before you start. This specification states only what is specific to Carom.
+This game stands on no engine, so the runtime under it is yours to write: the
+frame loop and the delta time it measures, the canvas fit, input, audio cues,
+and the debug overlay. Where this specification speaks of the runtime it means
+that layer, and it states only what Carom needs from it. How the layer is
+structured is yours to decide.
 {{else}}
 ## The runtime
 
-The game is built on the {{engine.name}} engine, which documents itself at
-`{{engine.docs}}`. It owns the frame loop and the delta time the game is given,
-input actions, audio cues, asset loading, the canvas fit, and the debug overlay.
-Read its documentation before you start. This specification states only what is
-specific to Carom.
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and
+the delta time the game is given, input actions, audio cues, asset loading, the
+canvas fit, and the debug overlay. Read its documentation before you start. This
+specification states only what is specific to Carom.
 {{/if}}
 
 ## The project you build in
@@ -42,68 +49,115 @@ The project at the root of this repository is already wired up, and its
 Vitest, linted with ESLint, and formatted with Prettier. That toolchain is fixed
 and supplied.
 
+{{#if (eq engine.slug "none")}}
 ### What you implement
 
-`src/game.ts`, and any new modules you add beside it under `src/`.
+Everything under `src/`. The directory does not exist yet.
 
-`src/game.ts` exports `game`, a `Game<CaromState>`: `initialize` builds the state
-once, `update` advances it against the frame's delta time in seconds, and
-`render` draws it. All three throw `"not implemented"` as they stand. Implement
-them, and split the work across new files under `src/` however suits you.
+`index.html` loads `/src/main.ts` as its entry point, so that module is where
+your build starts. Beyond that the structure is yours: the frame loop and the
+canvas fit, input, audio, the diagnostics overlay, the debug and automation
+surface, the figures this specification fixes, and the game itself.
 
-`CaromState`, declared in full in `src/game.ts`, is a contract. Keep every field
-under its declared name, type, and meaning. You may add fields for data you can
-rebuild from the declared ones: the declared fields are the whole of the
-authoritative state. Hold the game's state in `CaromState` alone.
+### What stays as it is
 
-### What you must not edit
+- `index.html`, the page and the canvas the field is fitted into.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
 
-- `src/main.ts`, the entry point. It stands the runtime up over the page's
-  canvas, binds `game` to it, installs the debug surface, and runs.
-{{#if (eq engine.slug "none")}}
-- `src/host.ts`, the runtime the game runs on.
-{{/if}}
-- `src/constants.ts`, holding every figure this specification fixes.
-- `src/debug.ts`, holding the `window.__carom` surface, supplied already written.
-- `index.html`, the page and the canvas the runtime fits the field into.
-- The configuration: `package.json`, `tsconfig.json`, `vite.config.ts`,
-  `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`,
-  and `.gitignore`.
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
 
-Add a dependency to `package.json` if you genuinely need one, and commit the
-updated `package-lock.json`. Leave the existing entries and scripts alone.
+### Every figure comes from this specification
 
-### Every figure comes from `src/constants.ts`
-
-Every number, color, key binding, cue name, and piece of screen copy this
-specification fixes is exported from `src/constants.ts` under the name this
-specification gives it. Import it and use it. Where a spec states a value it also
-names the constant that holds it, and the constant is authoritative. Anything
-this specification does not name is yours to decide.
+Every number, key binding, cue name, and piece of screen copy this specification
+fixes is stated here under a name. Name each one once in a module of your own and
+read it from there, rather than restating a value at each use. Anything this
+specification does not name is yours to decide.
 
 ### Your own tests
 
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured over
-`src/`. A test stands the runtime up over its own canvas and clock and steps the
-game a counted number of frames, so it needs no browser and no DOM. Cover the
-parts of the game a person cannot see at a glance: the collision resolution, the
-paddle bounce and spin, the serve, the scoring and match rules, and the AI.
+`src/`. A test drives the game over its own clock for a counted number of frames,
+so it needs no browser, and `@napi-rs/canvas` is installed for a test that wants
+a real 2D context. Cover the parts of the game a person cannot see at a glance:
+the collision resolution, the paddle bounce and spin, the serve, the scoring and
+match rules, and the AI.
+{{else}}
+### What you implement
 
-### The checks run over what you deliver
+`src/game.ts`, and any new modules you add beside it under `src/`.
 
-Four commands run over the finished repository, and their results are recorded
-with the run:
+`src/game.ts` exports `game`, a `Game<CaromState, CaromDebugApi>`: `initialize`
+builds the state and the debug surface once and returns them together as
+`[state, debug]`, `update` takes the current state as a read-only view
+(`DeepReadonly<CaromState>`) and returns the next state, advanced against the
+frame's delta time in seconds, and `render` is handed that next state, read-only
+again, and draws it. The engine holds the state by value and replaces it with
+what each `update` returns, so a frame builds the next state from the current
+one rather than writing into it, and nothing but `update` and the debug
+surface's poses advances the game. All three functions throw `"not implemented"`
+as they stand. Implement them, and split the work across new files under `src/`
+however suits you.
 
-| Command | Effect |
+`src/game.ts` also declares and exports `CaromState` and the types it is built
+from, exactly as this specification states them, and `CaromDebugApi`, the debug
+and automation surface this specification fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the field
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the field match the field
+itself. The seeded stub exports a placeholder; replace it with the color your
+field uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the field into.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, key binding, cue name, and piece of screen copy this specification
+fixes is exported from `src/constants.ts` under the name this specification gives
+it. Import it and use it. Where a spec states a value it also names the constant
+that holds it, and the constant is authoritative. Anything this specification
+does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over its own canvas and clock and advances the
+game a counted number of frames, so it needs no browser. Cover the parts of the
+game a person cannot see at a glance: the collision resolution, the paddle bounce
+and spin, the serve, the scoring and match rules, and the AI.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
 | --- | --- |
-| `npx tsc --noEmit` | Gating. Code that does not compile scores zero. |
-| `npx eslint .` | Recorded. |
-| `npx prettier --check .` | Recorded. |
-| `npx vitest run --coverage` | Recorded, with the test count and the coverage. |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
 
-They run on the repository as you leave it, so leave it type-clean, lint-clean,
-and formatted, with your tests passing. `npm run typecheck`, `npm run lint`,
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
 `npm run format`, and `npm test` run the same four locally.
 
 ### The build interface
@@ -123,18 +177,41 @@ mode. Aim for a game a person would enjoy playing.
 
 ### Hard requirements
 
-- Build on the supplied runtime, taking the frame loop, input handling, audio,
-  and debug overlay from it.
-- Render real graphics, drawing the game through the runtime. A text-only or
-  ASCII rendering does not satisfy this requirement.
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the
+  canvas fit, input handling, audio, and the debug overlay.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, input handling,
+  audio, and debug overlay from it.
+{{/if}}
+- Render real graphics on the canvas, drawn as shapes and text rather than as an
+  ASCII or text-only rendering.
 - Draw everything in code. The build ships no art or audio files and fetches
   nothing at runtime.
 - Run in the browser with no backend. Everything needed to play is
   self-contained, and no API key or credential is needed to build, run, or play.
+{{#if (eq engine.slug "none")}}
+- Hold the game's whole state in one value, the one the frame loop advances and
+  the debug surface reads.
+{{else}}
 - Hold the game's whole state in `CaromState`.
+{{/if}}
 - Replace the starter `README.md` with one explaining what the game is, how to
   install dependencies, how to run it in development, how to produce the static
   production build, and the controls.
+
+## Code quality
+
+The code is written as for a long-lived codebase shared with human developers.
+
+- Modules are split by concern, and each has one responsibility.
+- Every fixed figure is named once and imported where it is used.
+- Logic appears once; no two places implement the same rule.
+- The tree carries no dead code, no commented-out code, and no leftover
+  debugging output.
+- Comments explain intent where the code cannot.
+- The type-check, lint, and format checks pass.
+- Unit tests cover the simulation.
 
 ## Coordinate system and presentation
 
@@ -145,9 +222,10 @@ increases downward. The field center is `(FIELD_CX, FIELD_CY)` (`640, 360`).
 
 - `FIELD_W x FIELD_H` is the game's logical design size. Fitting it to the
   browser window is the runtime's: the uniform scale that preserves the aspect
-  ratio, the letterboxed centering on the background color, and the device pixel
-  ratio. The complete field is therefore on screen at every window size, on load
-  and at any pixel density.
+  ratio, the letterboxed centering, and the device pixel ratio. The complete
+  field is therefore on screen at every window size, on load and at any pixel
+  density.
+- The letterbox bars around the field are the field's background color.
 - Draw in logical units, and take the canvas element's own size from the runtime
   alone.
 - Gameplay logic operates in logical units, independent of the rendered scale.
@@ -157,38 +235,37 @@ integrated against the delta time the runtime hands each update.
 
 ## Visual design
 
-The look is neon-on-charcoal. Every color below is exported from
-`src/constants.ts` on the `COLOR` object.
+{{#if (eq variant.slug "multi")}}
+The field is dark. The left paddle, the right paddle, the balls, and the
+obstacles are each drawn as a solid body in a bright color that stands clearly
+apart from the field background. The two paddles are clearly distinguishable from
+each other by color, and the obstacles are distinguishable from both paddles. The
+palette, type, glow, and every other aspect of the look are yours.
+{{else}}
+The field is dark. The left paddle, the right paddle, the ball, and the
+obstacles are each drawn as a solid body in a bright color that stands clearly
+apart from the field background. The two paddles are clearly distinguishable from
+each other by color, and the obstacles are distinguishable from both paddles. The
+palette, type, glow, and every other aspect of the look are yours.
+{{/if}}
 
-| Element | Constant | Color |
-| --- | --- | --- |
-| Field background | `COLOR.bg` | `#0b0e14` |
-| Raised panel fill | `COLOR.bgRaised` | `#11151f` |
-| Player one paddle | `COLOR.p1` | `#3ae7c4` |
-| Player two / AI paddle | `COLOR.p2` | `#ff5c8a` |
-| Ball | `COLOR.ball` | `#f2f5f7` |
-| Obstacles | `COLOR.obstacle` | `#ffb454` |
-| Center net | `COLOR.net` | `#243044` |
-| Primary text | `COLOR.text` | `#e6edf3` |
-| Secondary text | `COLOR.textDim` | `#8a94a6` |
-| Faint text | `COLOR.textFaint` | `#4a5567` |
-| Panel border | `COLOR.panelBorder` | `#20283a` |
-
-- Draw all text in the `MONO` font stack, a system monospace stack, so the game
-  renders identically offline.
-- Paddles, the ball, and obstacles have a soft neon glow, each drawn in its color
-  above. The interior of each of those shapes is that exact color, so the glow is
-  a halo around a solid body.
-- The center net is a dashed vertical line at `x = NET_X` (`640`), drawn in
-  `COLOR.net`. It is decoration and has no collision.
-- The ball leaves a motion trail. Behind the moving ball, draw a fading tail that
-  traces its recent path, so it visibly curves whenever spin curves the flight.
-  It reads as one continuous streak, a smooth comet, and tapers from the ball:
-  widest and brightest where it meets the ball, then narrowing and fading
-  smoothly to nothing at its oldest end. The trail represents `TRAIL_TIME`
-  (`0.13`) seconds of recent travel, so its length is proportional to the ball's
-  current speed. It stretches as the ball speeds up, shortens as it slows, and
-  collapses to almost nothing during the pre-serve hold while the ball is still.
-  Draw it in `COLOR.ball`.
-- The title screen, the in-match view, and the match-over screen each carry this
-  palette and type.
+- A dashed center net is drawn at `x = NET_X` (`640`). It is decoration and has
+  no collision.
+- During a match the two scores are drawn near the top of the field, player one's
+  left of center and player two's right of center, and a label naming the mode
+  is drawn somewhere on the field. The label's copy is yours.
+{{#if (eq variant.slug "multi")}}
+- Every moving ball has a motion trail: behind the ball, draw its path over the
+  last `TRAIL_TIME` (`0.13`) seconds of travel, from the samples the state
+  records. Its length is therefore proportional to that ball's speed, and it
+  curves where the flight curved. How the trail is styled is yours.
+{{else}}
+- The moving ball has a motion trail: behind the ball, draw its path over the
+  last `TRAIL_TIME` (`0.13`) seconds of travel, from the samples the state
+  records. Its length is therefore proportional to the ball's speed, and it
+  curves where the flight curved. How the trail is styled is yours.
+{{/if}}
+- The title screen shows `TITLE_TEXT` and the `TITLE_ITEMS` menu, with the item
+  at `menuIndex` drawn distinctly from the others. The pause and match-over
+  screens draw their menus' items the same way. The how-to screen names the
+  controls. The match-over screen shows the winner and the final score.

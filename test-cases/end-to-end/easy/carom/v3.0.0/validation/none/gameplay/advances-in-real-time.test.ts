@@ -1,21 +1,28 @@
-// gameplay/advances-in-real-time — the game runs itself off the runtime's own loop.
+// gameplay/advances-in-real-time — the game runs itself off its own frame loop.
 //
 // WHY THIS CHECK EXISTS. Every other check in this suite drives the simulation
-// itself, through `engine.advance`, which is blind to this claim: a build whose
-// game never advances unless something steps it would answer all of them
+// itself, through the surface's `advance`, which is blind to this claim: a build
+// whose game never advances unless something steps it would answer all of them
 // perfectly while a person who opened it saw a frozen court. So this one alone
-// never calls `advance` for the measured stretch. It hands the runtime a
-// `WallClock` and starts `engine.run`, which pumps frames off the host's frame
-// callback in real time, and then reads what the build did with them.
+// never advances the measured stretch. It hands the game back to its own loop
+// with `setAutoStep(true)`, lets a second of REAL time pass, takes the clock back,
+// and reads what the build did with it.
+//
+// THAT IS THE WHOLE OF THE CONTRACT UNDER THIS ENGINE. Nothing outside an
+// engineless build owns its loop: the build measured each frame's elapsed time
+// off the wall clock, clamped it or did not, and integrated the game against it,
+// and `setAutoStep` is the switch the specification puts on the surface so that
+// the loop can be stopped and started from outside (specs/instrumentation.md).
+// Handing it back is therefore the only way to see the loop the build wrote.
 //
 // TWO INDEPENDENT WITNESSES. The game's own accumulated `simTime`, which says the
-// build integrated the elapsed seconds it was handed, and the distance the ball
+// build integrated the elapsed seconds it measured, and the distance the ball
 // covered, which says the SIMULATION ran rather than a counter ticking up.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { WallClock } from "../../src/host";
-import { SERVE_SPEED } from "../../src/constants";
-import { createHarness, type Harness } from "../harness";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
+import { SERVE_SPEED } from "../constants";
+import { ball0, captureStill, createHarness, type Harness } from "../harness";
 
 /** The real-time window the loop is left to run for. */
 const RUN_MS = 1000;
@@ -36,34 +43,38 @@ const MIN_TRAVEL = (SERVE_SPEED * (RUN_MS / 1000)) / 5;
 let harness: Harness;
 
 beforeEach(async () => {
-  // A real clock, because this is the one check about real elapsed time.
-  harness = await createHarness({ clock: new WallClock() });
+  harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
-it("advances on the runtime's frame loop with nothing stepping it", async () => {
+it("advances on its own frame loop with nothing stepping it", async () => {
   const { debug } = harness;
-  debug.startMatch("solo");
-  debug.serve();
+  await debug.startMatch("solo");
+  await debug.serve();
   // One frame to let the build's own serve launch the ball, so the travel below
   // is measured on a ball already in flight.
   await harness.advance(1);
 
-  const before = harness.snapshot();
-  expect(before.ball.speed).toBeGreaterThan(1);
+  const before = await harness.snapshot();
+  await captureStill(harness, "before");
+  assertGreaterThan(ball0(before).speed, 1);
 
   await harness.runFor(RUN_MS);
 
-  const after = harness.snapshot();
+  const after = await harness.snapshot();
+  // The pair is the evidence: two frames of the same match, a second apart, with
+  // nothing between them but the build's own loop. A build that never advanced
+  // itself produces two identical pictures.
+  await captureStill(harness, "after");
   const advanced = after.simTime - before.simTime;
   const travelled = Math.hypot(
-    after.ball.x - before.ball.x,
-    after.ball.y - before.ball.y,
+    ball0(after).x - ball0(before).x,
+    ball0(after).y - ball0(before).y,
   );
 
-  expect(advanced).toBeGreaterThan(MIN_ADVANCE);
-  expect(travelled).toBeGreaterThan(MIN_TRAVEL);
+  assertGreaterThan(advanced, MIN_ADVANCE);
+  assertGreaterThan(travelled, MIN_TRAVEL);
 });

@@ -6,7 +6,7 @@
 -- |
 -- | ```
 -- | source <- Gg.Programs.get {}
--- | Gg.Programs.rerun (replaceAll (Pattern "readfile") (Replacement "readFile") source)
+-- | Gg.Programs.rerun (replaceAll (Pattern "opentext") (Replacement "openText") source)
 -- | ```
 module Gg.Programs
   ( history

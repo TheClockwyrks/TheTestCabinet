@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConstantClock, SequenceClock } from "./clocks";
 import type {
+  DeepReadonly,
+  DrawOp,
   Engine,
   EngineOptions,
   Game,
   InitApi,
+  Recording,
   RenderApi,
   SurfaceMetrics,
   UpdateApi,
@@ -30,6 +33,8 @@ interface RecordedOp {
   op: string;
   transform: readonly number[];
   fill: string;
+  /** The text drawn, for `fillText` alone. */
+  text?: string;
 }
 
 interface ContextStub {
@@ -54,7 +59,14 @@ function contextStub(canvas: HTMLCanvasElement): ContextStub {
     font: "",
     textAlign: "start",
     textBaseline: "alphabetic",
-    setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void {
+    setTransform(
+      a: number,
+      b: number,
+      c: number,
+      d: number,
+      e: number,
+      f: number,
+    ): void {
       transform = [a, b, c, d, e, f];
       ops.push({ op: "setTransform", transform, fill: stub.fillStyle });
     },
@@ -64,8 +76,8 @@ function contextStub(canvas: HTMLCanvasElement): ContextStub {
     fillRect(): void {
       ops.push({ op: "fillRect", transform, fill: stub.fillStyle });
     },
-    fillText(): void {
-      ops.push({ op: "fillText", transform, fill: stub.fillStyle });
+    fillText(text: string): void {
+      ops.push({ op: "fillText", transform, fill: stub.fillStyle, text });
     },
     measureText(text: string): { width: number } {
       return { width: text.length * 7 };
@@ -75,6 +87,15 @@ function contextStub(canvas: HTMLCanvasElement): ContextStub {
     },
     restore(): void {
       ops.push({ op: "restore", transform, fill: stub.fillStyle });
+    },
+    beginPath(): void {
+      ops.push({ op: "beginPath", transform, fill: stub.fillStyle });
+    },
+    rect(): void {
+      ops.push({ op: "rect", transform, fill: stub.fillStyle });
+    },
+    clip(): void {
+      ops.push({ op: "clip", transform, fill: stub.fillStyle });
     },
   };
   return {
@@ -89,20 +110,31 @@ function contextStub(canvas: HTMLCanvasElement): ContextStub {
  * element it produces reports a client size of zero — which the viewport correctly
  * fits to a scale of zero, and which would make every assertion here vacuous.
  */
-function mount(cssW = 800, cssH = 600): { canvas: HTMLCanvasElement; stub: ContextStub } {
+function mount(
+  cssW = 800,
+  cssH = 600,
+): { canvas: HTMLCanvasElement; stub: ContextStub } {
   const canvas = document.createElement("canvas");
-  Object.defineProperty(canvas, "clientWidth", { value: cssW, configurable: true });
-  Object.defineProperty(canvas, "clientHeight", { value: cssH, configurable: true });
+  Object.defineProperty(canvas, "clientWidth", {
+    value: cssW,
+    configurable: true,
+  });
+  Object.defineProperty(canvas, "clientHeight", {
+    value: cssH,
+    configurable: true,
+  });
   document.body.append(canvas);
   const stub = contextStub(canvas);
-  canvas.getContext = (() => stub.ctx) as unknown as HTMLCanvasElement["getContext"];
+  canvas.getContext = (() =>
+    stub.ctx) as unknown as HTMLCanvasElement["getContext"];
   return { canvas, stub };
 }
 
 /** A canvas whose context cannot be had — the failure `createEngine` refuses. */
 function contextlessCanvas(): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
-  canvas.getContext = (() => null) as unknown as HTMLCanvasElement["getContext"];
+  canvas.getContext = (() =>
+    null) as unknown as HTMLCanvasElement["getContext"];
   return canvas;
 }
 
@@ -128,40 +160,70 @@ function fakeRaf(): { tick: (t: number) => void; pending: () => number } {
   };
 }
 
-/** The state every game below carries: a record of what its frames were handed. */
+/**
+ * The state every game below carries: a record of what its updates were handed.
+ *
+ * Nothing about renders lives here. A render is handed a read-only view and
+ * returns nothing — that is the contract — so the interleaving of updates and
+ * renders is logged on the game object instead (`testGame().log`), and a render
+ * hook that wants to know which frame it is in reads `state.updates`, which the
+ * frame's update has already counted by the time the render sees it.
+ */
 interface TestState {
-  readonly dts: number[];
-  readonly order: string[];
-  updates: number;
-  renders: number;
+  readonly dts: readonly number[];
+  readonly updates: number;
 }
 
-/** Anything a test wants to do at one of the three moments, with sane defaults. */
+/**
+ * Anything a test wants to do at one of the three moments, with sane defaults.
+ *
+ * An `initialize` hook may return the debug surface the game should hand back
+ * beside its state; one that returns nothing leaves the game with `null` there.
+ * An `update` hook is handed the frame's NEXT state, already counted, and may
+ * return a replacement for it; one that returns nothing leaves it as it is.
+ */
 interface GameHooks {
-  initialize?: (api: InitApi, state: TestState) => void | Promise<void>;
-  update?: (state: TestState, api: UpdateApi, dt: number) => void;
-  render?: (state: TestState, api: RenderApi) => void;
+  initialize?: (api: InitApi<TestState>, state: TestState) => unknown;
+  update?: (
+    state: TestState,
+    api: UpdateApi,
+    dt: number,
+  ) => TestState | undefined | void;
+  render?: (state: DeepReadonly<TestState>, api: RenderApi) => void;
 }
 
-/** A game that records the calls it received and does whatever the test asked. */
-function testGame(hooks: GameHooks = {}): Game<TestState> & { initializations: number } {
+/**
+ * A game that records the calls it received and does whatever the test asked.
+ *
+ * Every frame returns a fresh state — the value style the contract is written
+ * for — so a test that holds the state `initialize` returned holds the opening
+ * one, and reads the current one off `engine.state`. `log` is the order the
+ * three functions ran in, kept on the game because a render cannot write it.
+ */
+function testGame(
+  hooks: GameHooks = {},
+): Game<TestState, unknown> & { initializations: number; log: string[] } {
   const game = {
     initializations: 0,
-    async initialize(api: InitApi): Promise<TestState> {
+    log: [] as string[],
+    async initialize(api: InitApi<TestState>): Promise<[TestState, unknown]> {
       game.initializations += 1;
-      const state: TestState = { dts: [], order: [], updates: 0, renders: 0 };
-      await hooks.initialize?.(api, state);
-      return state;
+      const state: TestState = { dts: [], updates: 0 };
+      // Only a real promise is awaited: `await` reads `.then` off whatever it is
+      // handed, and a surface test may hand one that refuses every read.
+      const returned = hooks.initialize?.(api, state);
+      const debug =
+        (returned instanceof Promise ? await returned : returned) ?? null;
+      return [state, debug];
     },
-    update(state: TestState, api: UpdateApi, dt: number): void {
-      state.updates += 1;
-      state.dts.push(dt);
-      state.order.push(`update:${state.updates}`);
-      hooks.update?.(state, api, dt);
+    update(state: DeepReadonly<TestState>, api: UpdateApi, dt: number): TestState {
+      const updates = state.updates + 1;
+      game.log.push(`update:${updates}`);
+      const next: TestState = { updates, dts: [...state.dts, dt] };
+      return hooks.update?.(next, api, dt) ?? next;
     },
-    render(state: TestState, api: RenderApi): void {
-      state.renders += 1;
-      state.order.push(`render:${state.renders}`);
+    render(state: DeepReadonly<TestState>, api: RenderApi): void {
+      game.log.push(`render:${state.updates}`);
       hooks.render?.(state, api);
     },
   };
@@ -171,9 +233,11 @@ function testGame(hooks: GameHooks = {}): Game<TestState> & { initializations: n
 const engines: Engine<unknown>[] = [];
 
 /** Creates an engine the teardown disposes of, whatever the test does with it. */
-function build(
-  options: Partial<EngineOptions<TestState>> = {},
-): { engine: Engine<TestState>; stub: ContextStub; canvas: HTMLCanvasElement } {
+function build(options: Partial<EngineOptions<TestState>> = {}): {
+  engine: Engine<TestState>;
+  stub: ContextStub;
+  canvas: HTMLCanvasElement;
+} {
   const { canvas, stub } = mount();
   const created = createEngine<TestState>({
     canvas,
@@ -197,7 +261,10 @@ beforeEach(() => {
   raf = fakeRaf();
   // A ratio of 2 rather than 1, so a bug that drops the device pixel ratio shows up
   // as a wrong number instead of the right one by coincidence.
-  Object.defineProperty(window, "devicePixelRatio", { value: 2, configurable: true });
+  Object.defineProperty(window, "devicePixelRatio", {
+    value: 2,
+    configurable: true,
+  });
 });
 
 afterEach(() => {
@@ -235,14 +302,25 @@ describe("construction", () => {
 
   it("refuses a canvas that yields no 2D context", () => {
     expect(() =>
-      createEngine({ canvas: contextlessCanvas(), width: 400, height: 200, game: testGame() }),
+      createEngine({
+        canvas: contextlessCanvas(),
+        width: 400,
+        height: 200,
+        game: testGame(),
+      }),
     ).toThrow(/2D context/);
   });
 
   it("refuses a layout outside the catalogue, naming every valid one", () => {
     const { canvas } = mount();
     expect(() =>
-      createEngine({ canvas, width: 400, height: 200, game: testGame(), layout: "nope" }),
+      createEngine({
+        canvas,
+        width: 400,
+        height: 200,
+        game: testGame(),
+        layout: "nope",
+      }),
     ).toThrow(/dpad-4-two-buttons/);
   });
 
@@ -311,7 +389,12 @@ describe("construction", () => {
 });
 
 /** A surface reporting fixed figures over a caller-supplied event target. */
-function fixedSurface(target: EventTarget, cssW = 800, cssH = 600, dpr = 2): SurfaceMetrics {
+function fixedSurface(
+  target: EventTarget,
+  cssW = 800,
+  cssH = 600,
+  dpr = 2,
+): SurfaceMetrics {
   return {
     cssWidth: (): number => cssW,
     cssHeight: (): number => cssH,
@@ -326,7 +409,9 @@ describe("events", () => {
     // observes initialization as it happens rather than inferring it afterwards.
     const game = testGame({
       initialize: async (api) => {
-        await expect(api.assets.load("/etc/passwd")).rejects.toThrow(/escapes the asset root/);
+        await expect(api.assets.load("/etc/passwd")).rejects.toThrow(
+          /escapes the asset root/,
+        );
       },
     });
     const { engine } = build({ game });
@@ -418,7 +503,7 @@ describe("initialize", () => {
     const state = await engine.initialize();
 
     expect(game.initializations).toBe(1);
-    expect(state).toEqual({ dts: [], order: [], updates: 0, renders: 0 });
+    expect(state).toEqual({ dts: [], updates: 0 });
     // The engine exposes the game's own value, live, rather than a copy of it.
     expect(engine.state).toBe(state);
   });
@@ -427,7 +512,10 @@ describe("initialize", () => {
     const game = testGame();
     const { engine } = build({ game });
 
-    const [first, second] = await Promise.all([engine.initialize(), engine.initialize()]);
+    const [first, second] = await Promise.all([
+      engine.initialize(),
+      engine.initialize(),
+    ]);
     const third = await engine.initialize();
 
     expect(game.initializations).toBe(1);
@@ -437,9 +525,9 @@ describe("initialize", () => {
 
   it("rejects with the game's own cause and leaves the engine uninitialized", async () => {
     const cause = new Error("no save file");
-    const game: Game<TestState> = {
-      initialize: (): Promise<TestState> => Promise.reject(cause),
-      update: (): void => {},
+    const game: Game<TestState, null> = {
+      initialize: (): Promise<[TestState, null]> => Promise.reject(cause),
+      update: (state): TestState => state as TestState,
       render: (): void => {},
     };
     const { engine } = build({ game });
@@ -458,9 +546,187 @@ describe("initialize", () => {
     const { engine } = build({ game });
     await engine.initialize();
 
-    expect([...Object.keys(api?.input ?? {})].sort()).toEqual(["layout", "register"]);
-    expect([...Object.keys(api?.audio ?? {})].sort()).toEqual(["define", "load"]);
+    expect([...Object.keys(api?.input ?? {})].sort()).toEqual([
+      "layout",
+      "register",
+    ]);
+    expect([...Object.keys(api?.audio ?? {})].sort()).toEqual([
+      "define",
+      "load",
+    ]);
     expect(Object.keys(api?.diagnostics ?? {})).toEqual(["register"]);
+    expect(api).not.toHaveProperty("debug");
+  });
+
+  it("refuses a game whose initialize returns anything but [state, debug]", async () => {
+    // The shape is checked at runtime, since the game arrives as a built module
+    // the type system never saw: a bare state where the pair belongs must not be
+    // held as the state with nothing behind `engine.debug`.
+    const fresh = (): TestState => ({
+      dts: [],
+      order: [],
+      updates: 0,
+      renders: 0,
+    });
+    const gameReturning = (value: unknown): Game<TestState, null> => ({
+      initialize: () => value as [TestState, null],
+      update: (state): TestState => state as TestState,
+      render: (): void => {},
+    });
+
+    const bare = build({ game: gameReturning(fresh()) }).engine;
+    await expect(bare.initialize()).rejects.toThrow(/\[state, debug\]/);
+    expect(() => bare.state).toThrow(/initialize/);
+    expect(() => bare.debug).toThrow(/initialize/);
+
+    const tooLong = build({ game: gameReturning([fresh(), null, 1]) }).engine;
+    await expect(tooLong.initialize()).rejects.toThrow(/\[state, debug\]/);
+  });
+});
+
+describe("the debug surface", () => {
+  /** A game that returns `surface` beside its state from its `initialize`. */
+  function returning(
+    surface: unknown,
+  ): Game<TestState, unknown> & { initializations: number } {
+    return testGame({ initialize: () => surface });
+  }
+
+  it("hands back the value the game returned, unchanged", async () => {
+    const surface = { startMatch: (): void => {} };
+    const { engine } = build({ game: returning(surface) });
+
+    await engine.initialize();
+
+    // Identity, not equality: a caller poses a scenario through the game's own
+    // object, so an engine that copied it would drive a different one.
+    expect(engine.debug).toBe(surface);
+  });
+
+  it("reads no member of the surface it holds", async () => {
+    // Every read of the surface throws, so the engine touching one at any point
+    // between construction and a drawn frame fails the test rather than passing
+    // it quietly.
+    const hostile = new Proxy(
+      {},
+      {
+        get(_target, property): never {
+          throw new Error(
+            `the engine read ${String(property)} off the debug surface`,
+          );
+        },
+      },
+    );
+    const { engine } = build({ game: returning(hostile) });
+
+    await engine.initialize();
+    await engine.advance(3);
+
+    expect(engine.debug).toBe(hostile);
+  });
+
+  it("refuses to be read before initialize resolves, naming the pair", () => {
+    const { engine } = build({ game: returning({}) });
+    expect(() => engine.debug).toThrow(/initialize/);
+    expect(() => engine.debug).toThrow(/\[state, debug\]/);
+  });
+
+  it("holds a null surface as the surface the game chose", async () => {
+    const game: Game<TestState, null> = {
+      initialize: () => [{ dts: [], updates: 0 }, null],
+      update: (state): TestState => state as TestState,
+      render: (): void => {},
+    };
+    const { engine } = build({ game });
+
+    await engine.initialize();
+
+    // The engine holds what it was handed, so `null` is readable rather than a
+    // refusal: a game with no surface says so, and a caller sees that it did.
+    expect(engine.debug).toBeNull();
+  });
+
+  it("is readable the moment initialize resolves, before any frame", async () => {
+    const surface = { poses: 0 };
+    const { engine } = build({ game: returning(surface) });
+
+    await engine.initialize();
+
+    expect(engine.frame().count).toBe(0);
+    expect(engine.debug).toBe(surface);
+  });
+});
+
+describe("apply", () => {
+  it("replaces the state with what the transition returns, and hands it back", async () => {
+    const game = testGame();
+    const { engine } = build({ game });
+    const opening = await engine.initialize();
+
+    const posed = engine.apply((state) => ({ ...state, updates: 40 }));
+
+    expect(posed).toEqual({ dts: [], updates: 40 });
+    expect(engine.state).toBe(posed);
+    // The opening state is a value nothing wrote to.
+    expect(opening).toEqual({ dts: [], updates: 0 });
+  });
+
+  it("is what the next frame's update receives", async () => {
+    const handed: number[] = [];
+    const game = testGame({
+      update: (state) => {
+        handed.push(state.updates);
+      },
+    });
+    const { engine } = build({ game });
+    await engine.initialize();
+
+    await engine.advance(1);
+    engine.apply((state) => ({ ...state, updates: 10 }));
+    await engine.advance(1);
+
+    // Frame 1 counted to 1; the pose set 10; frame 2 counted from there.
+    expect(handed).toEqual([1, 11]);
+    expect(engine.state.updates).toBe(11);
+  });
+
+  it("drives a debug surface written as transitions over the state", async () => {
+    // The shape a case's surface takes under this contract: a pose is
+    // `(state, ...args) => state`, a reading is `(state) => value`, and a caller
+    // threads them through the engine rather than through a closure.
+    const debug = {
+      set: (state: DeepReadonly<TestState>, updates: number): TestState => ({
+        ...state,
+        updates,
+      }),
+      read: (state: DeepReadonly<TestState>): number => state.updates,
+    };
+    const game = testGame({ initialize: () => debug });
+    const { engine } = build({ game });
+    await engine.initialize();
+
+    engine.apply((state) => engine.debug.set(state, 7));
+    await engine.advance(2);
+
+    expect(engine.debug.read(engine.state)).toBe(9);
+  });
+
+  it("refuses a transition that returns nothing, and holds the state it had", async () => {
+    const game = testGame();
+    const { engine } = build({ game });
+    const opening = await engine.initialize();
+
+    expect(() =>
+      engine.apply(() => undefined as unknown as TestState),
+    ).toThrow(/engine\.apply must return the next state/);
+    expect(engine.state).toBe(opening);
+  });
+
+  it("refuses to be reached before initialize resolves, naming the ordering", () => {
+    const { engine } = build();
+    expect(() => engine.apply((state) => state as TestState)).toThrow(
+      /initialize/,
+    );
   });
 });
 
@@ -512,11 +778,11 @@ describe("advance", () => {
   it("runs update then render once per frame, with dt in seconds", async () => {
     const game = testGame();
     const { engine } = build({ game, clock: new ConstantClock(1000 / 60) });
-    const state = await engine.initialize();
+    await engine.initialize();
 
     await engine.advance(3);
 
-    expect(state.order).toEqual([
+    expect(game.log).toEqual([
       "update:1",
       "render:1",
       "update:2",
@@ -525,7 +791,8 @@ describe("advance", () => {
       "render:3",
     ]);
     // Seconds, not milliseconds: every quantity a 2D game writes down is per second.
-    for (const dt of state.dts) expect(dt).toBeCloseTo(1 / 60, 12);
+    expect(engine.state.dts).toHaveLength(3);
+    for (const dt of engine.state.dts) expect(dt).toBeCloseTo(1 / 60, 12);
     expect(engine.frame()).toEqual({
       count: 3,
       timeMs: 50,
@@ -533,26 +800,61 @@ describe("advance", () => {
     });
   });
 
-  it("hands every frame the same live state the engine exposes", async () => {
-    const seen: TestState[] = [];
-    const game = testGame({ update: (state) => seen.push(state) });
+  it("hands each frame the state the previous one returned, and exposes the latest", async () => {
+    const handed: DeepReadonly<TestState>[] = [];
+    const returned: TestState[] = [];
+    const game: Game<TestState, null> = {
+      initialize: () => [{ dts: [], updates: 0 }, null],
+      update: (state, _api, dt) => {
+        handed.push(state);
+        const next = { updates: state.updates + 1, dts: [...state.dts, dt] };
+        returned.push(next);
+        return next;
+      },
+      render: (state) => {
+        // The render sees the state this frame's update returned, not the one
+        // it was handed.
+        expect(state).toBe(returned[returned.length - 1]);
+      },
+    };
     const { engine } = build({ game });
-    const state = await engine.initialize();
+    const opening = await engine.initialize();
 
     await engine.advance(2);
 
-    expect(seen).toEqual([state, state]);
-    expect(engine.state).toBe(state);
+    // Frame 1 was handed the opening state; frame 2 was handed what frame 1
+    // returned; the engine now exposes what frame 2 returned — and the opening
+    // state is untouched, because nothing ever wrote to it.
+    expect(handed[0]).toBe(opening);
+    expect(handed[1]).toBe(returned[0]);
+    expect(engine.state).toBe(returned[1]);
+    expect(opening).toEqual({ dts: [], updates: 0 });
+  });
+
+  it("refuses an update that returns nothing, and holds the state it had", async () => {
+    const game: Game<TestState, null> = {
+      initialize: () => [{ dts: [], updates: 0 }, null],
+      // A game written against the old, mutating contract: it writes into the
+      // state it was handed and returns nothing.
+      update: (): TestState => undefined as unknown as TestState,
+      render: () => {},
+    };
+    const { engine } = build({ game });
+    const opening = await engine.initialize();
+
+    await expect(engine.advance(1)).rejects.toThrow(/update must return the next state/);
+
+    expect(engine.state).toBe(opening);
   });
 
   it("runs nothing for a count of zero", async () => {
     const game = testGame();
     const { engine } = build({ game });
-    const state = await engine.initialize();
+    await engine.initialize();
 
     await engine.advance(0);
 
-    expect(state.order).toEqual([]);
+    expect(game.log).toEqual([]);
     expect(engine.frame().count).toBe(0);
   });
 
@@ -579,14 +881,16 @@ describe("advance", () => {
       },
     });
     const { engine } = build({ game });
-    const state = await engine.initialize();
+    await engine.initialize();
 
     await expect(engine.advance(5)).rejects.toBe(cause);
 
-    // The failing frame counted — it happened — and the three after it did not run.
+    // The failing frame counted — it happened — and the three after it did not
+    // run. Its update threw before returning, so the state it was handed is the
+    // state the engine still holds: one finished frame's worth.
     expect(engine.frame().count).toBe(2);
-    expect(state.updates).toBe(2);
-    expect(state.renders).toBe(1);
+    expect(game.log).toEqual(["update:1", "render:1", "update:2"]);
+    expect(engine.state.updates).toBe(1);
   });
 });
 
@@ -623,7 +927,12 @@ describe("the frame's own work", () => {
 
     await engine.advance(1);
 
-    expect(stub.names()).toEqual(["setTransform", "fillRect", "setTransform", "setTransform"]);
+    expect(stub.names()).toEqual([
+      "setTransform",
+      "fillRect",
+      "setTransform",
+      "setTransform",
+    ]);
     expect(stub.ops[1]?.fill).toBe("#101018");
   });
 
@@ -631,8 +940,14 @@ describe("the frame's own work", () => {
     const { engine, canvas } = build();
     await engine.initialize();
 
-    Object.defineProperty(canvas, "clientWidth", { value: 400, configurable: true });
-    Object.defineProperty(canvas, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(canvas, "clientWidth", {
+      value: 400,
+      configurable: true,
+    });
+    Object.defineProperty(canvas, "clientHeight", {
+      value: 400,
+      configurable: true,
+    });
     await engine.advance(1);
 
     // 400x400 CSS at a ratio of 2: an 800x800 store, a 400x200 field fitted on the
@@ -678,7 +993,8 @@ describe("the frame's own work", () => {
         // Deliberately blind to the first frame: an edge armed during a frame the
         // game did not poll must be gone by the next one, or the press would arrive
         // out of order with the input that caused it.
-        if (state.updates > 1 && api.input.pressed("fire")) pressedIn.push(state.updates);
+        if (state.updates > 1 && api.input.pressed("fire"))
+          pressedIn.push(state.updates);
       },
     });
     const { engine } = build({ game, surface: fixedSurface(target) });
@@ -697,7 +1013,9 @@ describe("the frame's own work", () => {
       initialize: (api) => {
         api.input.register("thrust", { keys: ["KeyW"] });
       },
-      update: (_state, api) => values.push(api.input.value("thrust")),
+      update: (_state, api) => {
+        values.push(api.input.value("thrust"));
+      },
     });
     const { engine } = build({ game, surface: fixedSurface(target) });
     await engine.initialize();
@@ -741,6 +1059,30 @@ describe("the frame's own work", () => {
     expect(stub.names()).not.toContain("fillText");
   });
 
+  it("hands each diagnostic source the state current at the read", async () => {
+    const target = new EventTarget();
+    const game = testGame({
+      initialize: (api) => {
+        // A source reads the state it is handed — not the object `initialize`
+        // built, which every frame since has replaced.
+        api.diagnostics.register("updates", (state) => state.updates);
+      },
+    });
+    const { engine, stub } = build({ game, surface: fixedSurface(target) });
+    await engine.initialize();
+    target.dispatchEvent(new KeyboardEvent("keydown", { code: "Backquote" }));
+
+    await engine.advance(3);
+    engine.apply((state) => ({ ...state, updates: 50 }));
+    stub.ops.length = 0;
+    await engine.advance(1);
+
+    const drawn = stub.ops
+      .filter((entry) => entry.op === "fillText")
+      .map((entry) => entry.text);
+    expect(drawn).toContain("updates: 51");
+  });
+
   it("ignores an auto-repeat of the overlay key, so holding it does not strobe", async () => {
     const target = new EventTarget();
     const game = testGame({
@@ -749,7 +1091,9 @@ describe("the frame's own work", () => {
     const { engine, stub } = build({ game, surface: fixedSurface(target) });
     await engine.initialize();
 
-    target.dispatchEvent(new KeyboardEvent("keydown", { code: "Backquote", repeat: true }));
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "Backquote", repeat: true }),
+    );
     await engine.advance(1);
 
     expect(stub.names()).not.toContain("fillText");
@@ -780,7 +1124,9 @@ describe("run", () => {
     const { engine } = build();
     await engine.initialize();
 
-    await expect(engine.run({ signal: AbortSignal.abort() })).resolves.toBeUndefined();
+    await expect(
+      engine.run({ signal: AbortSignal.abort() }),
+    ).resolves.toBeUndefined();
     expect(engine.frame().count).toBe(0);
   });
 
@@ -796,24 +1142,29 @@ describe("run", () => {
     expect(engine.frame().count).toBe(1);
 
     engine.destroy();
-    await expect(Promise.all([first, second])).resolves.toEqual([undefined, undefined]);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
   });
 
   it("keeps the loop alive when a frame throws, so one bad frame is not fatal", async () => {
     const game = testGame({
-      update: (state) => {
-        if (state.updates === 1) throw new Error("one bad frame");
+      update: (_state, api) => {
+        if (api.frame().count === 1) throw new Error("one bad frame");
       },
     });
     const { engine } = build({ game });
-    const state = await engine.initialize();
+    await engine.initialize();
     void engine.run();
 
     expect(() => raf.tick(16)).toThrow(/one bad frame/);
     raf.tick(32);
 
-    expect(state.updates).toBe(2);
+    // Both frames ran. The first threw before returning a state, so the engine
+    // kept the one it had, and only the second's update counted.
     expect(engine.frame().count).toBe(2);
+    expect(engine.state.updates).toBe(1);
   });
 
   it("leaves the engine usable after an abort", async () => {
@@ -886,7 +1237,8 @@ describe("destroy", () => {
 
   it("drops every subscription, so a stale handler cannot observe a successor", async () => {
     const game = testGame({
-      initialize: (api) => api.audio.define("blip", { freq: 440, durationMs: 10 }),
+      initialize: (api) =>
+        api.audio.define("blip", { freq: 440, durationMs: 10 }),
       update: (_state, api) => api.audio.play("blip"),
     });
     const { engine } = build({ game });
@@ -904,7 +1256,6 @@ describe("destroy", () => {
     expect(cues).toBe(1);
   });
 
-
   it("runs and advances nothing once destroyed, rather than failing a teardown race", async () => {
     const { engine } = build();
     await engine.initialize();
@@ -916,6 +1267,19 @@ describe("destroy", () => {
     expect(raf.pending()).toBe(0);
   });
 });
+
+/**
+ * One frame's operations, resolved through the table the recording shares.
+ *
+ * A frame names its operations by index, so a test that wants to read what a frame
+ * drew resolves them the way a player does.
+ */
+function frameOps(recording: Recording, at: number): readonly DrawOp[] {
+  return (recording.frames[at]?.ops ?? []).flatMap((index) => {
+    const op = recording.ops[index];
+    return op === undefined ? [] : [op];
+  });
+}
 
 describe("draw-command recording", () => {
   it("records nothing until it is armed", async () => {
@@ -937,20 +1301,27 @@ describe("draw-command recording", () => {
     const recording = engine.stopRecording();
 
     expect(recording.frames.map((frame) => frame.count)).toEqual([1, 2, 3]);
-    expect(recording.frames.map((frame) => frame.deltaMs)).toEqual([20, 20, 20]);
+    expect(recording.frames.map((frame) => frame.deltaMs)).toEqual([
+      20, 20, 20,
+    ]);
     expect(recording.frames.map((frame) => frame.timeMs)).toEqual([20, 40, 60]);
   });
 
   it("records the engine's own frame preparation, so a replayed frame starts blank", async () => {
-    const { engine } = build({ clock: new ConstantClock(20), background: "#101018" });
+    const { engine } = build({
+      clock: new ConstantClock(20),
+      background: "#101018",
+    });
     await engine.initialize();
     engine.startRecording();
     await engine.advance(1);
-    const [frame] = engine.stopRecording().frames;
+    const recording = engine.stopRecording();
 
     // `prepare` resets the transform, paints the background, then applies the
     // viewport — in that order, before anything the game draws.
-    const names = (frame?.ops ?? []).flatMap((op) => (op.op === "call" ? [op.method] : []));
+    const names = frameOps(recording, 0).flatMap((op) =>
+      op.op === "call" ? [op.method] : [],
+    );
     expect(names.slice(0, 2)).toEqual(["setTransform", "fillRect"]);
   });
 
@@ -965,31 +1336,161 @@ describe("draw-command recording", () => {
     await engine.initialize();
     engine.startRecording();
     await engine.advance(1);
-    const [frame] = engine.stopRecording().frames;
+    const recording = engine.stopRecording();
 
-    expect(frame?.ops).toContainEqual({ op: "set", property: "fillStyle", value: "#7fd1ff" });
-    expect(frame?.ops).toContainEqual({ op: "call", method: "fillRect", args: [1, 2, 3, 4] });
+    const ops = frameOps(recording, 0);
+    expect(ops).toContainEqual({
+      op: "set",
+      property: "fillStyle",
+      value: "#7fd1ff",
+    });
+    expect(ops).toContainEqual({
+      op: "call",
+      method: "fillRect",
+      args: [1, 2, 3, 4],
+    });
   });
 
   it("keeps the diagnostics overlay out of the recording", async () => {
+    const target = new EventTarget();
     const game = testGame({
       initialize: (api) => api.diagnostics.register("score", () => 7),
     });
-    const { engine, stub } = build({ game, clock: new ConstantClock(20) });
+    const { engine, stub } = build({
+      game,
+      clock: new ConstantClock(20),
+      surface: fixedSurface(target),
+    });
     await engine.initialize();
+
+    // The overlay is off by default, so a recording taken without turning it on says
+    // nothing about where the overlay is drawn. Switched on, its text reaches the
+    // canvas and the recording holds none of it.
+    target.dispatchEvent(new KeyboardEvent("keydown", { code: "Backquote" }));
     engine.startRecording();
     await engine.advance(1);
-    const [frame] = engine.stopRecording().frames;
+    const recording = engine.stopRecording();
 
-    // The overlay is off by default, so turn it on through the toggle key and
-    // confirm the drawing it produces reaches the canvas and not the recording.
-    const names = (frame?.ops ?? []).flatMap((op) => (op.op === "call" ? [op.method] : []));
-    expect(stub.names()).toContain("setTransform");
+    const names = frameOps(recording, 0).flatMap((op) =>
+      op.op === "call" ? [op.method] : [],
+    );
+    expect(stub.names()).toContain("fillText");
     expect(names).not.toContain("fillText");
   });
 
+  it("carries the stack a frame left saved for the next one, outermost first", async () => {
+    const game = testGame({
+      render: (state, api) => {
+        // A build that saves on one frame and restores on the next: the second
+        // frame's operations run under the states the first frame saved, and a
+        // player has no earlier frame to have pushed them.
+        if (state.updates === 1) {
+          api.ctx.fillStyle = "#outer";
+          api.ctx.save();
+          api.ctx.fillStyle = "#inner";
+          api.ctx.save();
+          api.ctx.fillStyle = "#current";
+        } else api.ctx.restore();
+      },
+    });
+    const { engine } = build({ game, clock: new ConstantClock(20) });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(2);
+    const recording = engine.stopRecording();
+
+    // The order is the contract: a player applies each entry and saves, so a stack
+    // written the other way round restores the frame to the wrong state.
+    expect(recording.frames.map((frame) => frame.stack.length)).toEqual([0, 2]);
+    const saved = (recording.frames[1]?.stack ?? []).map(
+      (index) => recording.states[index]?.properties["fillStyle"],
+    );
+    expect(saved).toEqual(["#outer", "#inner"]);
+    expect(
+      recording.states[recording.frames[1]?.state ?? -1]?.properties[
+        "fillStyle"
+      ],
+    ).toBe("#current");
+  });
+
+  it("survives the resize its own frame preparation performs", async () => {
+    const target = new EventTarget();
+    let cssWidth = 800;
+    const surface: SurfaceMetrics = {
+      cssWidth: (): number => cssWidth,
+      cssHeight: (): number => 600,
+      dpr: (): number => 2,
+      events: (): EventTarget => target,
+    };
+    const game = testGame({
+      render: (state, api) => {
+        if (state.updates > 1) return;
+        api.ctx.beginPath();
+        api.ctx.rect(0, 0, 10, 10);
+        api.ctx.clip();
+        api.ctx.save();
+      },
+    });
+    const { engine } = build({ game, clock: new ConstantClock(20), surface });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(1);
+
+    // The display changed, so the next frame's preparation writes the backing store
+    // — which resets the context completely, from inside the frame bracket.
+    cssWidth = 400;
+    await engine.advance(1);
+    const recording = engine.stopRecording();
+
+    const inherited = recording.states[recording.frames[1]?.state ?? -1];
+    expect(recording.frames[1]?.surface.width).toBe(800);
+    expect(inherited?.clip).toEqual([]);
+    expect(inherited?.path).toEqual([]);
+    expect(recording.frames[1]?.stack).toEqual([]);
+  });
+
+  it("notices a game clearing its canvas by writing the size straight back", async () => {
+    const game = testGame({
+      render: (state, api) => {
+        if (state.updates === 1) {
+          api.ctx.beginPath();
+          api.ctx.rect(0, 0, 10, 10);
+          api.ctx.clip();
+          api.ctx.save();
+          return;
+        }
+        // The ordinary clear. It resets the context completely — transform,
+        // properties, clip, current path, save stack — and changes no size, so
+        // nothing about the backing store says it happened.
+        const { canvas } = api.ctx;
+        const size = canvas.width;
+        canvas.width = size;
+        api.ctx.fillRect(0, 0, 4, 4);
+      },
+    });
+    const { engine } = build({ game, clock: new ConstantClock(20) });
+    await engine.initialize();
+    engine.startRecording();
+    await engine.advance(2);
+    const recording = engine.stopRecording();
+
+    const inherited = recording.states[recording.frames[1]?.state ?? -1];
+    expect(inherited?.clip).toEqual([]);
+    expect(recording.frames[1]?.stack).toEqual([]);
+    // The wipe erased the pixels the frame's own preparation had already drawn, so
+    // the frame holds only what the game issued after it.
+    expect(
+      frameOps(recording, 1).flatMap((op) =>
+        op.op === "call" ? [op.method] : [],
+      ),
+    ).toEqual(["fillRect"]);
+  });
+
   it("reports the design size and background the engine was built with", async () => {
-    const { engine } = build({ clock: new ConstantClock(20), background: "#101018" });
+    const { engine } = build({
+      clock: new ConstantClock(20),
+      background: "#101018",
+    });
     await engine.initialize();
     engine.startRecording();
     await engine.advance(1);

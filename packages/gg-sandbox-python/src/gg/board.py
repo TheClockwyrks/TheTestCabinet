@@ -1,9 +1,9 @@
 """The epic and issue board, on which work is decomposed into dispatchable units.
 
 An issue is heavyweight and self-contained: its scope, non-scope and completion criteria are exactly
-what a delegated child agent is briefed from, which is why `create_issue` asks for more than
-`tasks.add_task` does. Its five required arguments are positional, and Python lets a program pass any
-of them by name, which is what a call with this many strings in it should do.
+what a delegated child agent is briefed from, which is why `create_issue` asks for more than a task
+does. Its five required arguments are positional, and Python lets a program pass any of them by name,
+which is what a call with this many strings in it should do.
 
 Two of an issue's patch fields are three-way, and both take the same shape: leaving the argument out
 keeps what is there, `None` clears or detaches, and a value replaces or regroups.

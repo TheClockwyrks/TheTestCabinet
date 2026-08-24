@@ -38,13 +38,15 @@ use test_cabinet_entities::{
     case_reference_build, case_reference_sheet, comparison, coverage_group, coverage_plan,
     coverage_settings, gg_agent, gg_config, gg_dashboard, gg_saved_query, harness_config, job,
     ladder, ladder_climber, ladder_outcome, ladder_rung, model, model_alias, model_price,
-    publish_job, review, review_plan, review_revision, run, run_link, snapshot_state, tournament,
+    model_probe, model_probe_item, publish_job, review, review_plan, review_revision, run,
+    run_link, snapshot_state, tournament,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::coverage::gate::{Gate, GateOutcome, GateThreshold, RungRun};
 use crate::error::{BackendError, Result};
+use crate::store::CaseNames;
 
 /// The non-terminal job states — a run the queue still owns, from enqueue through
 /// execution. A job in one of these is "in flight": it appears in the active-run
@@ -400,6 +402,7 @@ impl Db {
             test_case_slug: Set(record.subject.test_case_slug.clone()),
             test_case_version: Set(record.subject.test_case_version.clone()),
             variant: Set(record.subject.variant.clone()),
+            engine_slug: Set(Some(record.subject.engine_slug.clone())),
             harness_slug: Set(record.subject.harness_slug.as_str().to_string()),
             harness_version: Set(record.subject.harness_version.clone()),
             model_id: Set(record.subject.model_id.clone()),
@@ -435,6 +438,7 @@ impl Db {
                     run::Column::TestCaseSlug,
                     run::Column::TestCaseVersion,
                     run::Column::Variant,
+                    run::Column::EngineSlug,
                     run::Column::HarnessSlug,
                     run::Column::HarnessVersion,
                     run::Column::ModelId,
@@ -913,11 +917,16 @@ impl Db {
     /// `assemble` preserves the input row order (it maps rows
     /// one-for-one, only skipping any that no longer deserialize), so the returned
     /// page stays in the sorted order.
+    ///
+    /// `case_names` is consulted only by [`SummarySort::TestCase`], which orders by
+    /// the case's display name rather than its slug (see `case_name_expr`); every
+    /// other sort may pass an empty map.
     pub async fn list_summaries(
         &self,
         filter: &SummaryFilter,
         sort: SummarySort,
         dir: SortDir,
+        case_names: &CaseNames,
         limit: usize,
         offset: usize,
     ) -> Result<(Vec<StoredRun>, usize)> {
@@ -934,7 +943,7 @@ impl Db {
             SortDir::Asc => Order::Asc,
             SortDir::Desc => Order::Desc,
         };
-        let rows = apply_summary_sort(summary_query(filter, scope), sort, order.clone())
+        let rows = apply_summary_sort(summary_query(filter, scope), sort, order.clone(), case_names)
             // A stable final tiebreak on the primary key so paging is deterministic
             // even when the sort column ties.
             .order_by(run::Column::Id, order)
@@ -948,13 +957,15 @@ impl Db {
     }
 
     /// The per-case current-version allowlist a filter asks for, or `None` when it
-    /// does not (the toggle is off, or an exact [`SummaryFilter::version`] overrides
-    /// it — see that field).
+    /// does not (the toggle is off, or an explicit version selection — an exact
+    /// [`SummaryFilter::version`] or a [`SummaryFilter::versions`] list — overrides
+    /// it; see those fields).
     async fn resolve_version_scope(
         &self,
         filter: &SummaryFilter,
     ) -> Result<Option<Vec<CaseVersions>>> {
-        let exact = filter.version.as_deref().is_some_and(|s| !s.is_empty());
+        let exact = filter.version.as_deref().is_some_and(|s| !s.is_empty())
+            || filter.versions.as_deref().is_some_and(|v| !v.is_empty());
         if !filter.latest_versions || exact {
             return Ok(None);
         }
@@ -4146,6 +4157,25 @@ pub struct SummaryFilter {
     /// [`Self::test_case`] — but it is a plain equality filter, so on its own it
     /// selects that version of *every* case.
     pub version: Option<String>,
+    /// Restrict to a list of exact test-case versions (`test_case_version` ∈ the
+    /// list). This is the case-detail Runs tab's anchored version scope: the
+    /// console computes the versions in the anchored `major.minor` or major line
+    /// from the catalog and sends the concrete list. Like [`Self::version`], it
+    /// silences [`Self::latest_versions`] — the explicit list is the more specific
+    /// instruction. An empty or absent list applies no filter.
+    pub versions: Option<Vec<String>>,
+    /// Restrict to one engine slug (`engine_slug`) — the runtime the produced
+    /// build was written against, with `none` naming the engineless run. Runs
+    /// under different engines are not comparable, so this is how the case-detail
+    /// tabs pin a listing to the anchored engine.
+    ///
+    /// A `NULL` column is a row written before the column existed whose record no
+    /// longer deserializes (the startup backfill lifts every readable record,
+    /// pre-engine-era ones included, to a concrete slug). Such a row's engine is
+    /// unknown, so it is excluded from any engine filter — except `"none"`, where
+    /// `NULL` matches: every pre-engine-era record deserializes to `none`, so an
+    /// un-backfillable row can only plausibly be an engineless-era one.
+    pub engine: Option<String>,
     /// Restrict every run to its case's **current** version — the greatest
     /// `major.minor` that case has a run for within this filter's
     /// [`state`](Self::state) slice (see [`Db::current_case_versions`]). This is
@@ -4194,7 +4224,9 @@ pub enum SummarySort {
     Rating,
     /// By test type (`test_type`).
     TestType,
-    /// By test-case slug (`test_case_slug`).
+    /// By the test case's **display name** — what the listing's column shows — with
+    /// the slug standing in for a case the store has no name for (see
+    /// `case_name_expr`).
     TestCase,
     /// By harness slug (`harness_slug`).
     Harness,
@@ -4269,6 +4301,25 @@ fn summary_query(filter: &SummaryFilter, scope: Option<&[CaseVersions]>) -> Sele
     }
     if let Some(version) = filter.version.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseVersion.eq(version));
+    }
+    if let Some(versions) = filter.versions.as_deref().filter(|v| !v.is_empty()) {
+        query =
+            query.filter(run::Column::TestCaseVersion.is_in(versions.iter().map(String::as_str)));
+    }
+    if let Some(engine) = filter.engine.as_deref().filter(|s| !s.is_empty()) {
+        // NULL is a row whose record could not be re-read (the backfill settles every
+        // readable row to a concrete slug), so its engine is unknown and it matches no
+        // engine filter — except `none`: every pre-engine-era record deserializes to
+        // `none`, so the only engine an un-backfillable row can plausibly have is none.
+        if engine == "none" {
+            query = query.filter(
+                Condition::any()
+                    .add(run::Column::EngineSlug.eq(engine))
+                    .add(run::Column::EngineSlug.is_null()),
+            );
+        } else {
+            query = query.filter(run::Column::EngineSlug.eq(engine));
+        }
     }
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));
@@ -4361,18 +4412,21 @@ fn current_versions(pairs: Vec<(String, String)>) -> Vec<CaseVersions> {
 
 /// Apply the primary sort key (in `order`) to a summary query. The caller appends
 /// the `id` tiebreak. Cost/rating lead with a null-group key so NULLs always sort
-/// last regardless of `order`.
+/// last regardless of `order`. `case_names` feeds the test-case key alone.
 fn apply_summary_sort(
     query: Select<run::Entity>,
     sort: SummarySort,
     order: Order,
+    case_names: &CaseNames,
 ) -> Select<run::Entity> {
     match sort {
         SummarySort::Date => query.order_by(run::Column::StartedAt, order),
         SummarySort::Runtime => query.order_by(run::Column::RunTimeSeconds, order),
         SummarySort::Tokens => query.order_by(run::Column::TotalTokens, order),
         SummarySort::TestType => query.order_by(run::Column::TestType, order),
-        SummarySort::TestCase => query.order_by(run::Column::TestCaseSlug, order),
+        // The TEST column shows the case's display name, so it sorts by it: a run
+        // of `pong` (shown as Carom) files under "c", not "p".
+        SummarySort::TestCase => query.order_by(case_name_expr(case_names), order),
         SummarySort::Harness => query.order_by(run::Column::HarnessSlug, order),
         // The MODEL / CONFIG column sorts by what it displays: a gg run's
         // configuration name, falling back to the model id for every other run (and
@@ -4403,6 +4457,23 @@ fn apply_summary_sort(
 /// This is the value the console's MODEL / CONFIG cell renders, so ordering by it
 /// puts a server-ordered page in the order its own header claims. Safe as a bare
 /// COALESCE because [`lifted_gg_preset`] only ever writes the column for a gg run.
+/// The display name of a run's case as a SQL expression: a `CASE` over
+/// `test_case_slug` mapping every slug in `names` to its name, with the slug itself
+/// for any other. The catalog is not in the database — the definition store holds
+/// it — so the lookup is spelled out per query rather than joined; a catalog's
+/// worth of branches is a few hundred at most. An empty map degrades to the bare
+/// slug column, which is also what a slug nobody knows sorts by.
+fn case_name_expr(names: &CaseNames) -> SimpleExpr {
+    if names.is_empty() {
+        return run::Column::TestCaseSlug.into_expr().into();
+    }
+    let mut case = CaseStatement::new();
+    for (slug, name) in names {
+        case = case.case(run::Column::TestCaseSlug.eq(slug.as_str()), name.as_str());
+    }
+    case.finally(run::Column::TestCaseSlug.into_expr()).into()
+}
+
 fn model_identity_expr() -> SimpleExpr {
     Func::coalesce([
         run::Column::GgPreset.into_expr().into(),
@@ -5848,6 +5919,63 @@ impl Db {
         }
         Ok(backfilled)
     }
+
+    /// Backfill the lifted `engine_slug` column for rows stored before the column
+    /// existed: parse each `NULL` row's record and lift `record.subject.engine_slug`
+    /// into the column — `none` included, since the engineless run is a real value
+    /// the engine filter matches on, not an absence.
+    ///
+    /// Unlike [`Self::backfill_code_analyzer_version`], no record-blob pushdown is
+    /// needed for the candidate set to settle: every readable record carries a slug
+    /// (a pre-engine-era record deserializes to the default `none`), so one
+    /// successful pass leaves `NULL` only on rows whose record no longer
+    /// deserializes — a bounded residue, not the whole historical corpus.
+    ///
+    /// Best-effort per row: a record that no longer deserializes is left for a later
+    /// boot (and is the reason the engine filter treats `NULL` as unknown). Returns
+    /// how many rows were filled.
+    ///
+    /// The pass is paged by an `id` cursor because its first boot visits the ENTIRE
+    /// historical corpus — every pre-migration row is `NULL` — and each row carries
+    /// its multi-KB record (and event) blobs; one unpaged `.all()` would materialize
+    /// all of it in memory before the router is even built, on the single-replica
+    /// coordinator. An `id` cursor rather than offset paging (or re-querying the
+    /// first N `NULL`s) is load-bearing twice over: filled rows leave the `NULL`
+    /// predicate mid-pass, which would shift offset pages, and undeserializable rows
+    /// stay `NULL`, which would pin a "first N" loop in place forever.
+    pub async fn backfill_engine_slug(&self) -> Result<usize> {
+        const BATCH: u64 = 256;
+        let mut backfilled = 0usize;
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut query = run::Entity::find().filter(run::Column::EngineSlug.is_null());
+            if let Some(after) = cursor.as_deref() {
+                query = query.filter(run::Column::Id.gt(after));
+            }
+            let rows = query
+                .order_by_asc(run::Column::Id)
+                .limit(BATCH)
+                .all(&self.conn())
+                .await?;
+            let Some(last) = rows.last() else {
+                break;
+            };
+            cursor = Some(last.id.clone());
+
+            for row in rows {
+                let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                    continue;
+                };
+                let id = row.id.clone();
+                let mut active = row.into_active_model();
+                active.engine_slug = Set(Some(record.subject.engine_slug));
+                active.update(&self.conn()).await?;
+                touch_run(&self.conn(), &id).await?;
+                backfilled += 1;
+            }
+        }
+        Ok(backfilled)
+    }
 }
 
 /// The reference-implementation store: the deployed URL of a test-case variant's
@@ -6211,3 +6339,188 @@ fn parse_harness_slug(slug: &str) -> HarnessSlug {
 #[cfg(test)]
 #[path = "db.test.rs"]
 mod tests;
+
+/// The model-probe store: responses-as-code readiness probes of catalog models
+/// (see [`crate::probe`]).
+///
+/// A probe row is inserted `running` when an operator triggers it, its per-call
+/// items are appended as the background runner completes each call, and the row
+/// is finished exactly once with its verdict and spend. Probes are append-only
+/// history — a re-run is a new row — and console-only data: nothing here feeds
+/// the public snapshot.
+impl Db {
+    /// Insert a freshly-triggered probe row (id and timestamps minted by the
+    /// handler; status `running`).
+    pub async fn insert_model_probe(&self, row: model_probe::Model) -> Result<()> {
+        model_probe::ActiveModel {
+            id: Set(row.id),
+            model_slug: Set(row.model_slug),
+            openrouter_slug: Set(row.openrouter_slug),
+            provider: Set(row.provider),
+            user_id: Set(row.user_id),
+            samples: Set(row.samples),
+            max_tokens: Set(row.max_tokens),
+            full_context: Set(row.full_context),
+            request_json: Set(row.request_json),
+            status: Set(row.status),
+            error: Set(row.error),
+            verdict: Set(row.verdict),
+            base_clean_rate: Set(row.base_clean_rate),
+            best_variation_clean_rate: Set(row.best_variation_clean_rate),
+            spend: Set(row.spend),
+            created_at: Set(row.created_at),
+            finished_at: Set(row.finished_at),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// One probe by id, or `None` when unknown.
+    pub async fn get_model_probe(&self, id: &str) -> Result<Option<model_probe::Model>> {
+        Ok(model_probe::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
+    /// Every probe of one catalog model, newest first.
+    pub async fn list_model_probes(&self, model_slug: &str) -> Result<Vec<model_probe::Model>> {
+        Ok(model_probe::Entity::find()
+            .filter(model_probe::Column::ModelSlug.eq(model_slug))
+            .order_by_desc(model_probe::Column::CreatedAt)
+            .order_by_desc(model_probe::Column::Id)
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// Whether a probe of this catalog model is still running (the trigger
+    /// endpoint refuses a second concurrent probe of the same model).
+    pub async fn model_probe_running(&self, model_slug: &str) -> Result<bool> {
+        Ok(model_probe::Entity::find()
+            .filter(model_probe::Column::ModelSlug.eq(model_slug))
+            .filter(model_probe::Column::Status.eq("running"))
+            .one(&self.conn())
+            .await?
+            .is_some())
+    }
+
+    /// Append one completed (or errored) probe call.
+    pub async fn insert_model_probe_item(&self, row: model_probe_item::Model) -> Result<()> {
+        model_probe_item::ActiveModel {
+            id: Set(row.id),
+            probe_id: Set(row.probe_id),
+            condition: Set(row.condition),
+            sample: Set(row.sample),
+            provider: Set(row.provider),
+            finish_reason: Set(row.finish_reason),
+            native_finish_reason: Set(row.native_finish_reason),
+            label: Set(row.label),
+            clean: Set(row.clean),
+            response_text: Set(row.response_text),
+            reasoning_text: Set(row.reasoning_text),
+            prompt_tokens: Set(row.prompt_tokens),
+            completion_tokens: Set(row.completion_tokens),
+            cost: Set(row.cost),
+            duration_ms: Set(row.duration_ms),
+            error: Set(row.error),
+            created_at: Set(row.created_at),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// One probe's calls, in matrix order (condition insertion order is not
+    /// stored, so items are ordered by creation, which the sequential runner
+    /// makes matrix order).
+    pub async fn list_model_probe_items(
+        &self,
+        probe_id: &str,
+    ) -> Result<Vec<model_probe_item::Model>> {
+        Ok(model_probe_item::Entity::find()
+            .filter(model_probe_item::Column::ProbeId.eq(probe_id))
+            .order_by_asc(model_probe_item::Column::CreatedAt)
+            .order_by_asc(model_probe_item::Column::Id)
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// The `/stats/providers` probe projection: every probe item's serving
+    /// provider, the probed model's catalog slug (via the owning probe), its
+    /// clean flag, and whether the call errored before classification —
+    /// four columns across the whole store, folded in Rust by
+    /// [`fold_probe_providers`](crate::stats::fold_probe_providers). The label
+    /// travels only as its absence: `None` is the errored call, exactly the
+    /// reading the probe reducer uses.
+    pub async fn probe_item_provider_rows(&self) -> Result<Vec<crate::stats::ProbeItemRow>> {
+        let rows: Vec<(Option<String>, String, bool, Option<String>)> =
+            model_probe_item::Entity::find()
+                .select_only()
+                .column(model_probe_item::Column::Provider)
+                .column(model_probe::Column::ModelSlug)
+                .column(model_probe_item::Column::Clean)
+                .column(model_probe_item::Column::Label)
+                .join(JoinType::InnerJoin, model_probe_item::Relation::Probe.def())
+                .into_tuple()
+                .all(&self.conn())
+                .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(provider, model_slug, clean, label)| {
+                (provider, model_slug, clean, label.is_none())
+            })
+            .collect())
+    }
+
+    /// Finish a probe: stamp its terminal status (`complete`/`failed`), the
+    /// verdict and clean rates when it completed, the failure message when it did
+    /// not, and the summed spend. Returns whether a row matched.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn finish_model_probe(
+        &self,
+        id: &str,
+        status: &str,
+        error: Option<String>,
+        verdict: Option<String>,
+        base_clean_rate: Option<f64>,
+        best_variation_clean_rate: Option<f64>,
+        spend: f64,
+        finished_at: &str,
+    ) -> Result<bool> {
+        let res = model_probe::Entity::update_many()
+            .col_expr(model_probe::Column::Status, Expr::value(status))
+            .col_expr(model_probe::Column::Error, Expr::value(error))
+            .col_expr(model_probe::Column::Verdict, Expr::value(verdict))
+            .col_expr(
+                model_probe::Column::BaseCleanRate,
+                Expr::value(base_clean_rate),
+            )
+            .col_expr(
+                model_probe::Column::BestVariationCleanRate,
+                Expr::value(best_variation_clean_rate),
+            )
+            .col_expr(model_probe::Column::Spend, Expr::value(spend))
+            .col_expr(model_probe::Column::FinishedAt, Expr::value(finished_at))
+            .filter(model_probe::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Fail every probe still marked `running` — the startup reap. A probe runs
+    /// inside the backend process, so a backend restart always killed it; unlike
+    /// the job-queue reap this is correct on every deployment shape.
+    pub async fn fail_running_model_probes(&self, now: &str) -> Result<u64> {
+        let res = model_probe::Entity::update_many()
+            .col_expr(model_probe::Column::Status, Expr::value("failed"))
+            .col_expr(
+                model_probe::Column::Error,
+                Expr::value("the backend restarted while the probe was running"),
+            )
+            .col_expr(model_probe::Column::FinishedAt, Expr::value(now))
+            .filter(model_probe::Column::Status.eq("running"))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected)
+    }
+}

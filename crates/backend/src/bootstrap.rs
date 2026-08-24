@@ -8,8 +8,9 @@
 //! `tcab catalog` step.
 //!
 //! A model is also priced the moment it first *appears* — when it is curated in the
-//! app and when a launch binds it — so the catalog never shows a blank price for a
-//! model the system already knows about but has not finished a run with yet.
+//! app, when a launch binds it, and at startup for every known model still missing
+//! an observation — so the catalog never shows a blank price for a model the system
+//! already knows about but has not finished a run with yet.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -355,6 +356,36 @@ pub async fn seed_curated_price(db: &Db, prices: &OpenRouterPrices, openrouter_s
             tracing::warn!(slug = openrouter_slug, error = %err, "could not seed a curated model's prices");
         }
     }
+}
+
+/// Seed a first price observation for every model the catalog knows but holds none
+/// for: each curated model's configured OpenRouter slug, and each model a stored run
+/// references. Run at startup, so a freshly seeded deployment (curated configs
+/// inserted by [`seed_models_if_empty`], an empty `model_price` table) is priced
+/// before its first run rather than after its first run *completes* — the per-class
+/// cost split on a live run depends on it.
+///
+/// Missing-only via `seed_missing_prices`: the steady-state boot reads the
+/// database and fetches nothing. Returns how many models were seeded.
+pub async fn seed_catalog_prices(db: &Db, prices: &OpenRouterPrices) -> Result<usize> {
+    // (storage key) -> OpenRouter lookup id — the same keying `refresh_all_prices`
+    // uses, so a startup observation lands exactly where the refresh would put it.
+    let mut targets: HashMap<String, String> = HashMap::new();
+    for config in db.list_model_configs().await? {
+        if let Some(slug) = &config.config.openrouter_slug {
+            targets.insert(slug.clone(), slug.clone());
+        }
+    }
+    for (model_id, harness_slug) in db.distinct_run_models().await? {
+        let harness = parse_harness(&harness_slug);
+        let canonical = canonical_model_id(&model_id, harness);
+        if targets.contains_key(&canonical) {
+            continue;
+        }
+        let lookup = openrouter_lookup_id(db, &model_id, harness).await?;
+        targets.insert(canonical, lookup);
+    }
+    seed_missing_prices(db, prices, targets).await
 }
 
 /// Re-price every known model from a single OpenRouter catalog fetch: each curated

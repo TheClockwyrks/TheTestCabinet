@@ -30,6 +30,7 @@ import { routes } from "../../routes";
 import { ReviewQueue } from "./CoveragePlanPage";
 import { RungRuns } from "./LadderRungRuns";
 import { ladderAxisLabel } from "./ladderPickers";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 import ladderStyles from "./Ladder.module.scss";
@@ -1059,7 +1060,10 @@ export function LadderPage() {
         </Link>
       </header>
 
-      {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
+      <SubmitNotice message={error} />
+      {/* The note stays a plain notice: a top-up runs on open with no press behind
+        it, and a note that revealed itself would pull a reader who had already
+        scrolled down back to the top of the page. */}
       {note && <p className={`${exec.notice} ${exec.ok}`}>{note}</p>}
 
       {loading ? (

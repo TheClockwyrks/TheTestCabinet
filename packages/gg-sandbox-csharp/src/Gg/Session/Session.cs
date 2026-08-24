@@ -4,8 +4,9 @@ namespace Gg;
 /// <remarks>
 /// Under responses-as-code every turn is a program, so there is no prose turn that could mean the
 /// work is done. These calls mean it, and nothing else does. Which of them an agent has is decided
-/// by its role: an agent doing work ends with <see cref="Finish"/>, and a reviewer returns a verdict
-/// with <see cref="Approve"/> or <see cref="RequestChanges"/>.
+/// by its role: an agent doing work is given the plain ending, and a reviewer the verdict pair
+/// instead. No agent holds both, because an ending is a result and the two roles produce different
+/// results.
 /// </remarks>
 /// <ggmodule>session</ggmodule>
 public static partial class Session
@@ -37,8 +38,8 @@ public static partial class Session
     /// <summary>Declare the work under review acceptable.</summary>
     /// <remarks>
     /// It takes nothing, deliberately: an approval carries no further obligation, and a shape that
-    /// demanded prose would be a shape gg had to read back. It ends the session under the same rules
-    /// <see cref="Finish"/> does, and is revoked the same way.
+    /// demanded prose would be a shape gg had to read back. It sets a flag gg reads once the program
+    /// has ended, stops nothing, and is revoked if the program then fails.
     /// </remarks>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.Unavailable"/> when the agent's role returns no verdict.
@@ -49,8 +50,8 @@ public static partial class Session
     /// <summary>Declare the work unacceptable, listing every change it needs.</summary>
     /// <remarks>
     /// A rejection with nothing to act on leaves the agent that has to fix the work no work to do,
-    /// which is why the empty case is refused rather than represented. It ends the session under the
-    /// same rules <see cref="Finish"/> does.
+    /// which is why the empty case is refused rather than represented. It sets a flag gg reads once
+    /// the program has ended, stops nothing, and is revoked if the program then fails.
     /// </remarks>
     /// <param name="items">
     /// One entry per change, each saying what is wrong and what to change. At least one, and none of

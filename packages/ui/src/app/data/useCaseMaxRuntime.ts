@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useOptionalBackend } from "../../client/context";
+import { DEFAULT_ENGINE_SLUG } from "./engines";
 
 // The wall-clock ceiling a test-case version is run under — its manifest's
 // `max_runtime_hours`, resolved to seconds — for the surfaces that state what a run is
@@ -30,7 +31,8 @@ export function useCaseMaxRuntime(
     }
     let active = true;
     client
-      .resolveVersion(slug, version)
+      // Only the ceiling is read here, so the engineless rendering will do.
+      .resolveVersion(slug, version, DEFAULT_ENGINE_SLUG)
       .then((info) => {
         if (active) setSeconds(info.maxRuntimeSeconds);
       })

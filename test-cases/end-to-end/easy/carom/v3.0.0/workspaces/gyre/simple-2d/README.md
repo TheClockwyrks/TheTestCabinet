@@ -4,12 +4,12 @@ This repository is the starting point for building **Carom**, the game the
 specification under `specs/` describes. Read `specs/overview.md` first; it says
 how the rest of the specification is organized.
 
-In this variant the two mid-field obstacles are **live**: they sway and rotate,
+In Carom the two mid-field obstacles are live: they sway and rotate,
 and the ball bounces off their tilted faces. `specs/playfield.md` gives the pose
 formulas and the oriented collision, and `specs/instrumentation.md` covers the
-`setObstacleClock` operation and the obstacle poses a snapshot reports. Both are
-already reflected in the state contract and the debug API below — what is missing
-is, as ever, the game.
+`setObstacleClock` operation and the obstacle poses a snapshot reports. The state
+contract in `specs/state.md` already carries the obstacle clock and both live
+poses. What is missing is the game.
 
 The project is already wired up. It builds on the **Simple 2D** engine, which is
 installed as an ordinary dependency and documents itself under `engine/` — read
@@ -19,17 +19,38 @@ that alongside the specs. What is missing is the game.
 
 **`src/game.ts`, and any new files you add beside it.**
 
-`src/game.ts` exports `game`, a `Game<CaromState>`: three functions and a state
-type. `initialize` builds the state once, `update` advances it against the
-frame's delta time in seconds, and `render` draws it. All three currently throw
-`"not implemented"`. Implement them, and split the work across new modules under
-`src/` however you like — physics, rendering, the AI, and so on.
+Start by declaring and exporting `CaromState`, exactly as `specs/state.md` fixes
+it, and `CaromDebugApi`, the debug and automation surface `specs/instrumentation.md`
+specifies. The stub in `src/game.ts` is written against both names, so the
+project does not compile until they exist — a fresh workspace failing
+`npm run typecheck` is the starting point, not a broken seed.
 
-`CaromState` is declared in full in `src/game.ts` and **is a contract**. Keep
-every field, under its declared name, type, and meaning. You may add fields, but
-only for data you can rebuild from the declared ones: the declared fields are the
-whole of the authoritative state, and `window.__carom`'s `reset()` restores
-exactly those.
+`src/game.ts` then exports `game`, a `Game<CaromState, CaromDebugApi>`: three
+functions over that state. `initialize` builds the state and the debug surface
+once and returns them together as `[state, debug]`; `update` takes the current
+state as a read-only view (`DeepReadonly<CaromState>`, from `ts-essentials`) and
+returns the next state, advanced against the frame's delta time in seconds; and
+`render` is handed that next state, read-only again, and draws it. The engine
+holds the state by value and replaces it with whatever `update` returns, so a
+frame builds the next state from the current one — spreading the parts that
+change — rather than writing into it, and the type is what guarantees that
+rendering changes nothing. All three currently throw `"not implemented"`.
+Implement them, and split the work across new modules under `src/` however you
+like — physics, rendering, the AI, the debug surface, and so on.
+
+The debug surface is a required deliverable. The engine returns it from
+`engine.debug` exactly as `initialize` handed it over, and that is how the game
+is driven from code, so it is present and exactly as `specs/instrumentation.md`
+specifies. Because nothing holds a writable state, its operations are written in
+the shape of `update`: a pose takes the current state and returns the next, and
+a caller applies it through `engine.apply((s) => debug.serve(s))`; a reading
+takes the state and returns what it read, as `debug.snapshot(engine.state)`.
+Nothing is published to the page.
+
+`CaromState` **is a contract**. Keep every field, under the name, type, and
+meaning `specs/state.md` gives it. You may add fields, but only for data you can
+rebuild from the declared ones: the declared fields are the whole of the
+authoritative state, and the surface's `reset()` restores exactly those.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test`
 runs them in process, with coverage over `src/`. The engine's documentation
@@ -38,13 +59,10 @@ carries a complete worked example of testing a game this way.
 ## What you must not edit
 
 - **`src/main.ts`** — the fixed entry point. It creates the engine over the
-  page's canvas, binds `game` to it, installs the debug API, and runs.
+  page's canvas, binds `game` to it, and runs.
 - **`src/constants.ts`** — every figure the specification fixes: geometry,
-  colors, speeds, spin, the match rules, the action names, the cue names. Read
+  speeds, spin, the match rules, the action names, the cue names. Read
   from it, and never restate a number it already names.
-- **`src/debug.ts`** — the `window.__carom` debugging and automation API from
-  `specs/instrumentation.md`, supplied already written. It poses and reads
-  `CaromState`; your `update` is what runs from there.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.

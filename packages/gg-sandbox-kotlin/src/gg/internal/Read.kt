@@ -17,15 +17,13 @@ import gg.files.DirEntry
 import gg.files.EntryKind
 import gg.files.FileRead
 import gg.files.ImageFile
+import gg.files.SearchMatch
 import gg.files.TextFile
 import gg.memories.MemoryHit
 import gg.memories.MemoryUsage
 import gg.programs.ProgramSummary
 import gg.shell.ShellOutput
 import gg.tasks.TaskUsage
-import gg.views.OpenView
-import gg.views.ViewKind
-import gg.views.ViewRegion
 
 /**
  * **Reading the wire** — every [Value] gg answers with, as the Kotlin value this SDK's signatures
@@ -81,6 +79,16 @@ internal object Read {
     fun dirEntries(value: Value): List<DirEntry> =
         ggEach(value) {
             DirEntry(name = it.get("name").text(), kind = entryKind(it.get("kind").text()))
+        }
+
+    /** Every line a search matched. */
+    fun searchMatches(value: Value): List<SearchMatch> =
+        ggEach(value) {
+            SearchMatch(
+                path = it.get("path").text(),
+                line = it.get("line").integer(),
+                text = it.get("text").text(),
+            )
         }
 
     /** The memory budget. */
@@ -167,26 +175,6 @@ internal object Read {
                 },
         )
 
-    /** Every view open in the window. */
-    fun openViews(value: Value): List<OpenView> =
-        ggEach(value) {
-            val region = it.get("region")
-            OpenView(
-                kind = viewKind(it.get("kind").text()),
-                selector = it.get("selector").text(),
-                tokens = it.get("tokens").integer(),
-                region =
-                    if (region.absent()) {
-                        null
-                    } else {
-                        ViewRegion(
-                            offset = region.get("offset").integer(),
-                            limit = region.get("limit").integer(),
-                        )
-                    },
-            )
-        }
-
     /** A child agent's handle. */
     fun subagentHandle(value: Value): SubagentHandle =
         SubagentHandle(
@@ -247,13 +235,6 @@ internal object Read {
         }
 
     /** Which kind a view is, from the case name the wire used. */
-    private fun viewKind(wire: String): ViewKind =
-        when (wire) {
-            "file" -> ViewKind.FILE
-            "docs" -> ViewKind.DOCS
-            else -> ViewKind.TEXT
-        }
-
     /** How a child agent ended, from the case name the wire used. */
     private fun agentEnding(wire: String): AgentEnding =
         when (wire) {

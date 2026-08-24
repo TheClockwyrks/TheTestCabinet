@@ -2,25 +2,23 @@
 // angle that tracks that obstacle's current orientation, rather than at an
 // axis-aligned reflection.
 //
-// The check is a contrast, driven twice with the same purely-horizontal shot at
-// obstacle A's own center:
+// The check is driven twice with the same level shot at obstacle A's own
+// center: upright (obstacle clock 0), and tilted (the clock posed so that
+// `theta = pi / 4`). specs/playfield.md fixes the outcome: a level shot at the
+// center height meets the long face, whose local normal `(-1, 0)` rotates to
+// the world normal `(-cos theta, -sin theta)`, and the velocity reflects about
+// it: the direction `(1, 0)` leaves as `(-cos 2theta, -sin 2theta)`. Upright
+// that is straight back; at a quarter turn it is straight up the field. Each
+// reading is held to that direction within the review item's 3 degrees.
 //
-//   * upright (obstacle clock 0) — a vertical face, so the shot comes straight
-//     back and picks up essentially no vertical velocity;
-//   * tilted (obstacle clock posed to about 45 degrees) — an oriented face, so
-//     the same shot leaves well off-axis.
-//
-// An axis-aligned obstacle can only ever flip `vx` here, whatever it is doing,
-// so a build that reflects against the upright box no matter how it DRAWS its
-// obstacles fails the tilted half while passing the upright one. That contrast
-// is the point: neither shot alone would prove anything.
-//
-// Both shots are the build's own physics — the ball is posed and then flown, and
+// Both shots are the build's own physics: the ball is posed and then flown, and
 // the outgoing velocity is read at the instant the bounce resolves.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
+  ball0,
   captureReplay,
   createHarness,
   startPlaying,
@@ -31,20 +29,30 @@ import { poseObstacles, type ObstaclePose } from "./harness";
 /** The clock time that presents a face turned a quarter turn from upright. */
 const TILT_T = Math.PI / 4 / OBSTACLE_SPIN_RATE;
 
-/** How far off-axis the tilted bounce must send the ball, in px/s. */
-const DEFLECT_MIN = 80;
+/** The review item's margin on the outgoing direction, in degrees. */
+const ANGLE_TOLERANCE_DEG = 3;
 
-/** How straight the upright bounce must come back, in px/s. */
-const STRAIGHT_MAX = 40;
+/** The specified outgoing direction of a level shot off a face turned `theta`. */
+function reflectedHeading(theta: number): { x: number; y: number } {
+  return { x: -Math.cos(2 * theta), y: -Math.sin(2 * theta) };
+}
+
+/** The angle between a velocity and a direction, in degrees. */
+function degreesOff(
+  v: { vx: number; vy: number },
+  heading: { x: number; y: number },
+): number {
+  const dot = (v.vx * heading.x + v.vy * heading.y) / Math.hypot(v.vx, v.vy);
+  return (Math.acos(Math.max(-1, Math.min(1, dot))) * 180) / Math.PI;
+}
 
 /**
  * Fire a level shot at obstacle A's own center and report the ball's velocity at
  * the instant the bounce resolves.
  *
- * The bounce is detected as "the velocity turned away from the launch": either
- * the horizontal component reversed (an upright face) or a real vertical one
- * appeared (a tilted face). One predicate covers both, so neither outcome is
- * assumed by the way the shot is watched.
+ * The bounce is detected as "the velocity turned away from the launch": the
+ * horizontal component no longer the full launch speed, which covers both a
+ * reversal off an upright face and a deflection off a tilted one.
  */
 async function shootLevelAt(
   h: Harness,
@@ -57,11 +65,11 @@ async function shootLevelAt(
     vy: 0,
     spin: 0,
   });
-  const r = await h.until(
-    (s) => s.ball.vx < SERVE_SPEED * 0.6 || Math.abs(s.ball.vy) > DEFLECT_MIN,
-    { maxFrames: 120, poll: 1 },
-  );
-  return { hit: r.hit, vx: r.snapshot.ball.vx, vy: r.snapshot.ball.vy };
+  const r = await h.until((s) => ball0(s).vx < SERVE_SPEED * 0.6, {
+    maxFrames: 120,
+    poll: 1,
+  });
+  return { hit: r.hit, vx: ball0(r.snapshot).vx, vy: ball0(r.snapshot).vy };
 }
 
 /**
@@ -83,40 +91,36 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
-it("deflects off a tilted face and returns straight off an upright one", async () => {
+it("reflects a level shot about the face's normal, upright and tilted", async () => {
   await startPlaying(harness);
 
-  // 1. Upright control. A vertical face returns a level shot level.
+  // 1. Upright: a vertical face returns the level shot level.
   const upright = (await poseObstacles(harness, 0))[0]!;
   const straight = await shootLevelAt(harness, upright);
-  expect(straight.hit, "the upright shot should reach the obstacle").toBe(true);
-  expect(straight.vx, "an upright face should send the shot back").toBeLessThan(
-    0,
+  assertEqual(straight.hit, true, "the upright shot should reach the obstacle");
+  assertLessThanOrEqual(
+    degreesOff(straight, reflectedHeading(0)),
+    ANGLE_TOLERANCE_DEG,
+    "an upright face should send the shot straight back",
   );
-  expect(
-    Math.abs(straight.vy),
-    "an upright face should add essentially no vertical velocity",
-  ).toBeLessThan(STRAIGHT_MAX);
 
-  // 2. The same shot against a face turned a quarter turn.
+  // 2. The same shot against the face turned a quarter turn.
   const tilted = (await poseObstacles(harness, TILT_T))[0]!;
+  assertLessThanOrEqual(Math.abs(tilted.theta - Math.PI / 4), 0.01);
   const deflected = await captureReplay(harness, "oriented", async () => {
     const shot = await shootLevelAt(harness, tilted);
     await harness.advance(DEPARTURE_TICKS);
     return shot;
   });
-  expect(deflected.hit, "the tilted shot should reach the obstacle").toBe(true);
-  expect(
-    Math.abs(deflected.vy),
-    "a tilted face should deflect the shot well off-axis",
-  ).toBeGreaterThan(DEFLECT_MIN);
+  assertEqual(deflected.hit, true, "the tilted shot should reach the obstacle");
+  assertLessThanOrEqual(
+    degreesOff(deflected, reflectedHeading(Math.PI / 4)),
+    ANGLE_TOLERANCE_DEG,
+    "a tilted face should send the shot along the reflection about its normal",
+  );
 
-  // The contrast itself, stated: the tilted face turned the ball far further off
-  // level than the upright one did.
-  expect(Math.abs(deflected.vy)).toBeGreaterThan(Math.abs(straight.vy) + 60);
-
-  expect(harness.assetFailures).toEqual([]);
+  assertDeepEqual(harness.assetFailures, []);
 });

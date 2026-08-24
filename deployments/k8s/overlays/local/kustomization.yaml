@@ -74,7 +74,9 @@ images:
 # `local-up`), so no API key or token is ever written to disk:
 #   - tcab-backend-secrets / tcab-dispatcher-secrets — the shared
 #     TCAB_BACKEND_SERVICE_TOKEN (a fixed dev default, overridable via $SERVICE_TOKEN),
-#     so the dispatcher can claim jobs.
+#     so the dispatcher can claim jobs; the backend's copy also carries
+#     TCAB_OPENROUTER_API_KEY (from $OPENROUTER_API_KEY, when set) so model
+#     probes work locally.
 #   - tcab-driver-secrets — the harness provider API key(s) read from
 #     $ANTHROPIC_API_KEY / $OPENAI_API_KEY / $OPENROUTER_API_KEY.
 # The manifests reference these by fixed name; the Makefile creates them with those

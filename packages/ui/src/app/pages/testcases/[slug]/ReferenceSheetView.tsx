@@ -59,19 +59,22 @@ const FALLBACK_FRAME_SIZE = 64;
  */
 export function ReferenceSheetView({
   testCase,
+  version,
   variant,
   referenceSheet,
 }: {
   testCase: TestCaseDetail;
+  /** The page's anchored version. A reference is published per case VERSION, so
+   * its objects live under the version being viewed — resolving the latest
+   * version's keys while anchored to an older one would show frames the anchored
+   * deliverable never declared. */
+  version: string;
   variant: VariantSummary;
   /** The variant's published frame indices. */
   referenceSheet: ReferenceSheet;
 }) {
   const { referenceMediaUrl } = useGalleryData();
 
-  // The reference belongs to a case VERSION, and the catalog surfaces the newest
-  // version's variants, so that is the version its objects were published under.
-  const version = testCase.latestVersion;
   const resolve = (file: string): string | null =>
     referenceMediaUrl?.(testCase.slug, version, variant.slug, file) ?? null;
 

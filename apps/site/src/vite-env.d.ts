@@ -6,7 +6,11 @@
 declare module "virtual:tcab-snapshot" {
   import type { RunSummary } from "@test-cabinet/run-record/snapshot";
   import type { StoredReview } from "@test-cabinet/ui/client";
-  import type { TestCaseDetail } from "@test-cabinet/ui/app";
+  import type {
+    SeededInput,
+    TestCaseDetail,
+    VariantSummary,
+  } from "@test-cabinet/ui/app";
   import type { Model } from "@test-cabinet/ui/client";
   import type { Comparison } from "@test-cabinet/run-record/comparison";
   import type { GgRunDoc } from "@test-cabinet/run-record/gg-query";
@@ -30,7 +34,32 @@ declare module "virtual:tcab-snapshot" {
    * (variants, changelog, errata) a case page needs as well as the listing
    * fields; `staticGallery` serves both halves of the contract from this array.
    */
-  export const testCases: TestCaseDetail[];
+  export const testCases: SnapshotTestCase[];
+
+  /**
+   * One variant as the snapshot carries it: the gallery's {@link VariantSummary}
+   * (the engineless rendering) plus the same prompt and specs re-rendered for
+   * each engine the version declares that vendors a runtime. A case's prompt and
+   * `.hbs` specs branch on the selected engine, so a run's Inputs tab reads the
+   * entry for the engine its run recorded.
+   */
+  export interface SnapshotVariant extends VariantSummary {
+    engineRenderings: Record<
+      string,
+      { prompt: string; seededInputs: SeededInput[] }
+    >;
+  }
+
+  /**
+   * One case as the snapshot carries it: the gallery's {@link TestCaseDetail}
+   * (whose `variants` are the latest version's) plus every older published
+   * version's variants, so a run of an older version resolves the inputs it was
+   * itself given.
+   */
+  export interface SnapshotTestCase extends Omit<TestCaseDetail, "variants"> {
+    variants: SnapshotVariant[];
+    priorVariantsByVersion: Record<string, SnapshotVariant[]>;
+  }
   /** The composed model catalog (wire `Model` shape); mapped via `toModelSummary`. */
   export const models: Model[];
   /** The published harness comparisons, each the full read model (rendered read-only). */

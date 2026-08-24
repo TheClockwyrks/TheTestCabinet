@@ -36,17 +36,17 @@ read assets as plain values:
 
 ```ts
 interface State {
-  ship: ImageBitmap;
-  x: number;
+  readonly ship: ImageBitmap;
+  readonly x: number;
 }
 
-const game: Game<State> = {
+const game: Game<State, null> = {
   async initialize(api) {
     const ship = await api.assets.loadImage("sprites/ship.png");
-    return { ship, x: 320 };
+    return [{ ship, x: 320 }, null];
   },
-  update(state, api, dt) {
-    state.x += 60 * dt;
+  update(state, _api, dt) {
+    return { ...state, x: state.x + 60 * dt };
   },
   render(state, api) {
     api.ctx.drawImage(state.ship, state.x, 180);
@@ -62,7 +62,7 @@ async initialize(api) {
     api.assets.loadImage("sprites/ship.png"),
     api.assets.loadImage("sprites/rock.png"),
   ]);
-  return { ship, rock, x: 320 };
+  return [{ ship, rock, x: 320 }, null];
 }
 ```
 
@@ -138,6 +138,6 @@ async initialize(api) {
   const ship = await api.assets
     .loadImage("sprites/ship.png")
     .catch(() => null);
-  return { ship, x: 320 };
+  return [{ ship, x: 320 }, null];
 }
 ```

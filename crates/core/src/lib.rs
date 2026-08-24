@@ -21,6 +21,7 @@ pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
 pub mod container;
+pub mod content_labels;
 pub mod engine;
 pub mod error;
 pub mod event;
@@ -142,12 +143,14 @@ pub use orchestrator::{
 pub use performance_validator::PerformanceValidator;
 pub use playable::{
     BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, ServedValidationFile,
-    find_build_output, proof_published_extension, proof_served_extension, serve_asset_file,
-    serve_build_file, serve_proof_file, serve_validation_file,
+    find_build_output, proof_labelled_name, proof_published_extension, proof_served_extension,
+    serve_asset_file, serve_build_file, serve_proof_file, serve_validation_file,
 };
 pub use post_run::{PostRunContext, PostRunReport, PostRunStage};
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
-pub use pricing::{MODALITY_IMAGE, ModelDetails, ModelLaunchFacts, ModelListing, OpenRouterPrices};
+pub use pricing::{
+    MODALITY_IMAGE, ModelDetails, ModelLaunchFacts, ModelListing, OpenRouterPrices, ProviderRoute,
+};
 pub use prompt::{render_prompt, render_prompt_from_template, render_spec_from_template};
 pub use publish::{
     BackendPublisher, CommandOutput, CommandRunner, PublishConfig, Publisher, ReleaseRequest,

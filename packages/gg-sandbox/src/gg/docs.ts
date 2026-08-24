@@ -85,7 +85,7 @@ export interface DocSearch {
  *
  * The page comes back as a value **and** opens as a view labelled `search results`, so the results
  * can be read next turn without being shown deliberately. That view is replaced by the next search
- * rather than accumulating, and `gg.views.close("search results")` takes it away.
+ * rather than accumulating.
  *
  * @ggop docs.search
  * @param options The words to look for, the filters, and the page. Every field is optional, and

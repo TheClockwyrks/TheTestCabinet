@@ -1,21 +1,28 @@
-// Carom — ui/state-howto: How to Play is reachable from the menu and draws a
-// screen of its own.
+// ui/state-howto — HOW TO PLAY is reachable from the menu, and the screen names
+// the movement keys.
 //
-// The menu is navigated with real key events — two moves down to the third entry,
-// then confirm — so what opens the screen is the build's own menu handling
-// through the actions the case binds, not a state assignment.
+// The menu is navigated with real key events (two moves down to the third
+// entry, then confirm), so what opens the screen is the build's own menu
+// handling through the actions the case binds.
 //
-// What is asserted about the screen itself is deliberately narrow. The
-// specification fixes no copy for it ("a simple screen describing the controls
-// and the spin and obstacle mechanics"), so this asserts that it is a real screen
-// — a meaningful amount of text, and not simply the title menu redrawn — and
-// leaves whether it reads well to the reviewer looking at the capture.
+// specs/ui.md fixes no copy for the screen beyond that it names the controls,
+// so what is read is that the frame's text names the movement keys: `W` and `S`
+// as words of their own, and the arrow keys by name or by glyph. How the screen
+// says the rest is the build's.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { createHarness, drawnText, type Harness } from "../harness";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertMatches } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  drawnText,
+  type Harness,
+} from "../harness";
 
-/** Enough text that the screen explains something rather than being a stub. */
-const MIN_CHARACTERS = 40;
+/** The movement keys, as a screen names them (specs/modes/*.md). */
+const NAMES_W = /\bW\b/;
+const NAMES_S = /\bS\b/;
+const NAMES_ARROWS = /ARROW|\bUP\b|\bDOWN\b|[↑↓▲▼]/;
 
 let h: Harness;
 
@@ -23,25 +30,23 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
-it("opens the how-to-play screen from the menu", async () => {
-  h.calls.length = 0;
-  await h.advance(1);
-  const title = drawnText(h.calls).join(" ");
-
+it("opens the how-to screen from the menu, naming the movement keys", async () => {
+  await h.debug.reset();
   await h.tap("ArrowDown"); // SOLO -> VERSUS
   await h.tap("ArrowDown"); // VERSUS -> HOW TO PLAY
   await h.tap("Enter");
 
-  h.calls.length = 0;
-  await h.advance(1);
+  const calls = await h.frameCalls();
+  await captureStill(h, "howto");
 
-  expect(h.snapshot().screen).toBe("howto");
+  assertEqual((await h.snapshot()).screen, "howto");
 
-  const howto = drawnText(h.calls);
-  expect(howto.join("").length).toBeGreaterThanOrEqual(MIN_CHARACTERS);
-  expect(howto.join(" ")).not.toBe(title);
+  const text = drawnText(calls).join(" ").toUpperCase();
+  assertMatches(text, NAMES_W);
+  assertMatches(text, NAMES_S);
+  assertMatches(text, NAMES_ARROWS);
 });

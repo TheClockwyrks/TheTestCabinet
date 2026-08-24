@@ -41,11 +41,11 @@ import {
   WIN_SCORE,
   BALL_R,
   CUES,
+  DEFAULT_SEED,
   FIELD_W,
   OBSTACLE_CENTERS,
 } from "./constants";
 import { defineCues } from "./audio";
-import { DEFAULT_SEED } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { integratePaddle, parkBall } from "./entities";
 import { updateAi } from "./ai";
@@ -66,7 +66,7 @@ import { step } from "./physics";
 import { renderGame } from "./render";
 import { nextSign } from "./rng";
 import { recordTrail } from "./trail";
-import type { Game, InitApi, RenderApi, UpdateApi } from "./host";
+import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
 
 /**
  * The top-level state machine (specs/ui.md). `countdown` and `playing` both
@@ -282,12 +282,15 @@ export function createInitialState(): CaromState {
 // ---- Screen transitions -------------------------------------------------
 
 /**
- * Return to the title screen.
+ * Return to the title screen (specs/ui.md): every declared field goes back to
+ * its title-screen value except `simTime`, `muted`, `rngState` and `driver`.
  *
- * `simTime` is deliberately untouched: it is accumulated simulation time, not a
- * property of the screen, and only a `reset()` starts it over.
+ * `simTime` is accumulated simulation time, not a property of the screen, and
+ * the other three are the player's or the debug surface's to keep; only a
+ * `reset()` on the surface starts them over. Exported so the surface's `reset`
+ * is this same transition rather than a second copy of it.
  */
-function toTitle(state: CaromState): void {
+export function toTitle(state: CaromState): void {
   state.screen = "title";
   state.mode = "solo";
   state.menuIndex = 0;
@@ -300,14 +303,16 @@ function toTitle(state: CaromState): void {
   centerPaddles(state);
   parkBall(state.ball);
   state.trail.length = 0;
+  state.obstacleClock = 0;
+  poseObstacles(state.obstacles, state.obstacleClock);
 }
 
 /**
- * Start a match. The match opens on the pre-serve countdown, with the first serve
- * of the match always aimed at player one, so it opens consistently
- * (specs/balls.md).
+ * Start a match (specs/ui.md). The match opens on the pre-serve countdown, with
+ * the first serve of the match always aimed at player one, so it opens
+ * consistently. Exported so the surface's `startMatch` is this same transition.
  */
-function startMatch(state: CaromState, mode: Mode): void {
+export function startMatch(state: CaromState, mode: Mode): void {
   state.mode = mode;
   state.screen = "countdown";
   state.resumeScreen = "playing";
@@ -337,11 +342,9 @@ function respawn(state: CaromState, receiver: Side): void {
 }
 
 /**
- * Launch the ball toward the receiver at SERVE_SPEED.
- *
- * The vertical component is small and fixed in magnitude — SERVE_ANGLE, well
- * inside the +/-30deg specs/balls.md allows — so the volley is never perfectly
- * flat, and its SIGN is the one draw this game makes from its seeded generator.
+ * Launch the ball toward the receiver at SERVE_SPEED and SERVE_ANGLE from
+ * horizontal (specs/balls.md). The angle's magnitude is fixed; its SIGN is the
+ * one draw this game makes from its seeded generator.
  */
 function serve(state: CaromState): void {
   const dir = state.receiver === "left" ? -1 : 1;
@@ -399,9 +402,12 @@ function handleInput(state: CaromState, api: UpdateApi): void {
         menuInput(state, api, PAUSE_ITEMS.length, (i) => selectPause(state, i));
       break;
     case "matchover":
-      menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
-        selectMatchOver(state, i),
-      );
+      // A menu is up, so Escape means `back` — which here is "to the title".
+      if (back(api)) toTitle(state);
+      else
+        menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
+          selectMatchOver(state, i),
+        );
       break;
   }
 }
@@ -413,7 +419,8 @@ function menuInput(
   onConfirm: (index: number) => void,
 ): void {
   // All three are read before any is acted on, so exactly one press moves the
-  // selection or accepts it and nothing is left armed for a later frame.
+  // selection or accepts it and nothing is left armed for a later frame. Up is
+  // applied before down, and movement before confirm (specs/ui.md).
   const up = menuUp(api);
   const down = menuDown(api);
   const accepted = confirm(api);

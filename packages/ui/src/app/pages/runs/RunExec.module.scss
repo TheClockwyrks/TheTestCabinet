@@ -20,6 +20,21 @@
   margin-bottom: t.$space-lg;
 }
 
+// The new-run form's test half: the type, case and version on the first row, the
+// variant and the engine on the second. The columns are fixed rather than
+// auto-fit so the second row keeps its shape whether or not the resolved version
+// offers a choice of engine — an engine that appears takes the empty column
+// beside the variant instead of resizing the row.
+.testFields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+
+  // Three columns at the 14rem floor the rest of the form holds to need a 44rem
+  // container, and the page's own padding costs 2rem of the viewport.
+  @media (max-width: 46rem) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .field {
   display: flex;
   flex-direction: column;
@@ -542,10 +557,11 @@
 // monitor, the gg activity panel, and the Appearance settings preview render it
 // identically.
 
-// The header row above the live feed: the "Live Event Feed" label stacked over
-// the run id on the left, and the Follow toggle pinned to the right. Aligns to
-// the bottom so the button sits on the run-id line, and wraps the button under
-// the heading on a narrow viewport.
+// The header row above a live feed: a section label on the leading edge and the
+// Follow toggle pinned to the trailing one. Aligns to the bottom so the button sits
+// on the label's line, and wraps the button under it on a narrow viewport. The run
+// monitor's own feed no longer has one — its Follow toggle rides the page header —
+// so gg's activity panel is what this now dresses.
 .feedHeader {
   display: flex;
   align-items: flex-end;
@@ -555,36 +571,22 @@
   margin: t.$space-lg 0 t.$space-sm;
 }
 
-.feedHeading {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-  min-width: 0;
-}
-
-// Matches the section-label treatment elsewhere on the page.
-.feedTitle {
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: t.$color-text-muted;
-}
-
-.feedRunId {
-  color: t.$color-text-muted;
-  font-size: t.$font-sm;
-}
-
-// The Follow toggle. Reads as an outlined control when off; when auto-follow is
-// active (`data-active`) it fills with the accent and glows, so its state is
-// legible at a glance (and conveyed to AT via `aria-pressed`).
+// The Follow toggle, on the run monitor's page header and on gg's activity feed.
+// Boxed exactly like the `.primary`/`.secondary` family above (same type size,
+// line-height, padding, and radius) so it sits on a page header at the same
+// height as the runs list's "+ New run" — the two pages are meant to read as one
+// console. Reads as the secondary control when off; when auto-follow is active
+// (`data-active`) it becomes the primary one — filled with the accent and glowing
+// — so its state is legible at a glance (and conveyed to AT via `aria-pressed`).
 .followButton {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--ttc-font);
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: t.$space-xs t.$space-lg;
+  font-size: t.$font-md;
+  line-height: 1.2;
+  padding: t.$space-sm t.$space-lg;
   border-radius: t.$radius-md;
   border: t.$border-hairline solid t.$color-border;
   background: s.$panel-bg;
@@ -607,6 +609,16 @@
     outline: t.$border-hairline solid t.$color-accent;
     outline-offset: 2px;
   }
+}
+
+// The same toggle at the compact size the gg explorer's in-pane feed header uses:
+// it sits beside a section label inside a pane, where the page-header box above
+// would crowd the row. Composed onto `.followButton`.
+.followButtonCompact {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: t.$space-xs t.$space-lg;
 }
 
 // The live monitor's view toggle. Reuses the run-detail tab bar's container
@@ -988,26 +1000,10 @@
 // In-progress runs now render as spinner rows folded into the shared run log
 // (see `RunLog`), so their styling lives there beside the finished rows.
 
-// The Runs page header row: the prompt header on the left, the "+ New run"
-// action pinned to the right on the same row. Aligns to the prompt line at the
-// top (the header carries a second comment line below) and wraps the action
-// under the header on narrow viewports.
-.runsHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
-
-// Groups the header's actions (the Publish-failures link beside the New-run
-// button) so they sit together at the right, wrapping as one unit.
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: t.$space-md;
-  flex-wrap: wrap;
-}
+// A page's header actions are `PromptHeader`'s own `titleActions` slot — the header
+// lays out both of its rows, so a page never wraps one in a row of its own. The two
+// containers that used to do that here are gone; what stays is the button treatment
+// below, which is what every header action wears.
 
 // --- Review flow: one question at a time, with a navigable item rail ---------
 
@@ -1342,11 +1338,27 @@
   gap: t.$space-xs;
 }
 
+// The pane's heading row: what the pane is, on the left, and — for a replay pane —
+// how long its recording is, pushed to the right edge, which is the right edge of
+// the viewport directly under it.
 .mediaPaneLabel {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
   font-size: t.$font-sm;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: t.$color-text-muted;
+}
+
+// A replay pane's frame count. Read against the count across the row: a shorter
+// recording is a build that stopped drawing before the other did.
+.mediaPaneLength {
+  flex: none;
+  text-transform: none;
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
 }
 
 .mediaMissing {

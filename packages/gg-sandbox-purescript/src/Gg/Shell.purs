@@ -30,7 +30,8 @@ type ShellOptions = (timeoutSecs :: Int)
 -- |
 -- |   Under a run that offloads shell output the ceiling is the configured line or character limit
 -- |   instead, and an output that was cut ends with a note naming the two files that hold the whole
--- |   of it.
+-- |   of it — and, beneath each path, the shape of that file: its line count, its 50th, 95th and
+-- |   99th-percentile line lengths, and the length and line number of its five longest lines.
 -- | - `truncated` — Whether the cap cut `output`, dropping the head and keeping the tail.
 type ShellOutput =
   { exitCode :: Maybe Int
@@ -45,8 +46,11 @@ type ShellOutput =
 -- |
 -- | This run may **offload** shell output, and the `shell` tool's own description says which mode is
 -- | in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the
--- | two files the command's full stdout and stderr were written to. Those files are readable by
--- | absolute path, so a `Gg.Files.readTextFile` of one, or a grep, beats re-running the command.
+-- | two files the command's full stdout and stderr were written to, each with the shape of what it
+-- | holds — the line count, the 50th, 95th and 99th-percentile line lengths, and the five longest
+-- | lines by length and line number — so a window can be aimed at the right region of a file nobody
+-- | has seen. Those files are readable by absolute path, so reading a window of one, or grepping it,
+-- | beats re-running the command.
 -- |
 -- | # Operation
 -- |

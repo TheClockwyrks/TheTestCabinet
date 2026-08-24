@@ -1,8 +1,9 @@
 // Carom — the values the runtime's debug overlay shows.
 //
-// The overlay itself is the runtime's: it owns the panel, the backtick key that
-// toggles it, and its read-only-ness. Carom's whole part is to name the values it
-// wants on it (specs/instrumentation.md), which is what this file does.
+// The overlay itself is the runtime's (`src/overlay.ts`): it owns the panel, the
+// backtick key that toggles it, and its read-only-ness. Carom's whole part is to
+// name the values it wants on it (specs/instrumentation.md), which is what this
+// file does.
 //
 // Every source is a PURE READ of the one live state object, so watching the
 // overlay never changes what the simulation does, and each line is short enough to
@@ -10,7 +11,7 @@
 
 import { ballSpeed } from "./entities";
 import type { CaromState } from "./game";
-import type { InitApi } from "./host";
+import type { InitApi } from "./runtime";
 
 /** One decimal place: enough to see motion, short enough to fit on a line. */
 function fixed(value: number): string {

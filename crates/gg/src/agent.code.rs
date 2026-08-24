@@ -46,7 +46,7 @@ use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use crate::board::BOARD_MUTATIONS;
 use crate::context::{
-    DocviewOpen, EvictionResult, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind, ViewsClosed,
+    DocviewOpen, EvictionResult, SEARCH_RESULTS_VIEW, ShownLines, ViewKind, ViewsClosed,
 };
 use crate::docs::{DocKind, DocQuery, DocSearch};
 use crate::ending::Ending;
@@ -60,22 +60,22 @@ use crate::sandbox::{
     CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, CONTEXT_SEARCH_ARCHIVE, DELEGATION_EXEC,
     DELEGATION_FORK, DELEGATION_SEND_MESSAGE, DELEGATION_SPAWN_SUBAGENT,
     DELEGATION_TRANSITION_STATE, DELEGATION_WAIT_FOR_SUBAGENTS, DocSearchQuery, DocSearchResult,
-    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_WRITE_FILE, MEMORIES_CREATE_MEMORY,
-    MEMORIES_DELETE_MEMORY, MEMORIES_EDIT_MEMORY, MEMORIES_READ_MEMORY, MEMORIES_SEARCH_MEMORIES,
-    MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationApi, OperationId, PreparedProgram,
-    ProgramError, ProgramLanguage, ProgramScope, RunEnding, SHELL_SHELL, SKILLS_READ_SKILL,
-    SandboxViewOpened, TASKS_ADD_TASK, TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK,
-    TASKS_SET_BLOCKED_BY, TASKS_UPDATE_TASK, ViewOpenOutcome, ViewRefusal, run_prepared_program,
-    spell,
+    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_SEARCH, FILES_WRITE_FILE,
+    MEMORIES_CREATE_MEMORY, MEMORIES_DELETE_MEMORY, MEMORIES_EDIT_MEMORY, MEMORIES_READ_MEMORY,
+    MEMORIES_SEARCH_MEMORIES, MEMORIES_UPDATE_MEMORY, MEMORIES_WRITE_MEMORY, OperationApi,
+    OperationId, PreparedProgram, ProgramError, ProgramLanguage, ProgramScope, RunEnding,
+    SHELL_SHELL, SKILLS_READ_SKILL, SandboxViewOpened, TASKS_ADD_TASK, TASKS_COMPLETE_TASK,
+    TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY, TASKS_UPDATE_TASK, ViewOpenOutcome, ViewRefusal,
+    run_prepared_program, spell,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
     AddTaskTool, ArchiveThreadTool, CompactTool, CompleteTaskTool, CreateEpicTool, CreateIssueTool,
     CreateMemoryTool, DeleteMemoryTool, EditFileTool, EditMemoryTool, EvictFileViewTool,
     ListDirTool, OffloadPolicy, OwnedStructured, ReadMemoryTool, ReadSkillTool, RemoveEpicTool,
-    RemoveIssueTool, RemoveTaskTool, SearchArchiveTool, SearchMemoriesTool, SetBlockedByTool,
-    SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool, UpdateTaskTool, WriteFileTool,
-    WriteMemoryTool, read_only_refusal, run_command,
+    RemoveIssueTool, RemoveTaskTool, SearchArchiveTool, SearchMemoriesTool, SearchTool,
+    SetBlockedByTool, SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool, UpdateTaskTool,
+    WriteFileTool, WriteMemoryTool, clip_line, read_only_refusal, run_command,
 };
 
 // ---------------------------------------------------------------------------
@@ -242,9 +242,9 @@ impl CodeTurnOutcome {
 /// Classification and feedback are decided at the *same* match, rather than by a separate
 /// classifier the feedback then re-derives: the two decisions read the same facts, and splitting
 /// them is how they drift. `healed` is the reply already run through [healing](healing::heal) by
-/// the caller — done there, not here, because the loop needs the healed program *before* this turn
-/// runs to decide what assistant message to record (see [`AssistantMessageMode`]), and healing the
-/// same reply twice would be the kind of duplicated decision that drifts.
+/// the caller — done there, not here, because the loop records the healed program *as* the
+/// assistant message before this turn runs, and healing the same reply twice would be the kind of
+/// duplicated decision that drifts.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_code_turn(
     healed: Healed,
@@ -266,17 +266,17 @@ pub(super) async fn run_code_turn(
              repair was discarded and the reply was compiled exactly as the model sent it.",
         ));
     }
-    // gg rewrote the model's message before running it, so it says so on the operator's stream as
-    // well as in the model's own feedback. A silent rewrite of a model's output is exactly the class
-    // of thing this harness exists to make visible: a study reading a live run must be able to see
-    // that the program gg compiled was not byte-for-byte the one the model sent, without waiting for
-    // the run's closing rollup.
+    // gg rewrote the model's message before running it, so it says so on the operator's stream —
+    // and only there: the model is never told, and no feedback this turn mentions the repair. A
+    // rewrite of a model's output is exactly the class of thing this harness exists to make visible
+    // to the operator: a study reading a live run must be able to see that the program gg compiled
+    // was not byte-for-byte the one the model sent, without waiting for the run's closing rollup.
     if healed.rewritten() {
         emitter.emit(log(
             "info",
             format!(
                 "the model's reply was repaired before it was compiled ({}); the repairs are \
-                 disclosed to the model in this turn's feedback.",
+                 counted on this turn's record and not disclosed to the model.",
                 healed
                     .strategies()
                     .into_iter()
@@ -1001,22 +1001,22 @@ fn handover_notice(
     let rerun = crate::sandbox::spell(crate::sandbox::language(language), sandbox::PROGRAMS_RERUN);
     if outcome.revoked_rerun {
         return Some(format!(
-            "the program you handed to `{rerun}` was NOT run: your program failed after handing it \
-             over, and a program that did not run to its end did not decide what should run next \
-             either. Fix the fault and hand it over again."
+            "the program handed to `{rerun}` was NOT run: the handing program failed after \
+             handing it over, and a program that did not run to its end decided nothing about \
+             what runs next. Fix the fault and hand it over again."
         ));
     }
     match chain.refused? {
         // The session is ending, so there is no next turn to read a notice — but the turn is only
         // `Finished` if the ending survived, and this arm is reached on the path where it did not.
         ChainRefusal::Ended => Some(format!(
-            "the program you handed to `{rerun}` was NOT run: the same program ended your session, \
+            "the program handed to `{rerun}` was NOT run: the same program ended the session, \
              and an ending outranks a hand-over."
         )),
         ChainRefusal::Exhausted => Some(format!(
-            "the program you handed to `{rerun}` was NOT run: this turn had already run \
-             {MAX_PROGRAM_CHAIN} programs, which is the most one turn may. The last of them is the \
-             turn's program. Hand over once, to a program that does the work."
+            "the program handed to `{rerun}` was NOT run: this turn already ran its maximum of \
+             {MAX_PROGRAM_CHAIN} programs, and the last of them is the turn's program. Hand over \
+             once, to a program that does the work."
         )),
     }
 }
@@ -2234,6 +2234,28 @@ impl LoopOperationApi {
         self.complete(operation, call, outcome, managed)
     }
 
+    /// The read every `read_file`-backed operation performs: this agent's [policy](ReadPolicy) over
+    /// the workspace, shared by the bare read, the text helper and the file view so the three
+    /// cannot read different lines.
+    ///
+    /// Belt to the membrane's braces, as the memory-scope gate below is: the call is bound only for
+    /// an agent whose read-file capability configures a policy, so a program reaching here without
+    /// one asked for a call this agent does not have. gg reads no file under a policy nobody wrote.
+    fn policy_read(&self, path: &str, offset: Option<usize>, limit: Option<usize>) -> ToolOutcome {
+        match self.read_policy {
+            Some(policy) => {
+                ReadFileTool::new(policy).read(&self.tool_ctx, path.to_string(), offset, limit)
+            }
+            None => ToolOutcome::failed(
+                ToolFailure::Unavailable,
+                format!(
+                    "`{}` is not available.",
+                    spell(self.language, FILES_READ_FILE)
+                ),
+            ),
+        }
+    }
+
     /// The gates every serviced call passes: `Some(refusal_outcome)` when this call cannot run.
     ///
     /// Neither of them is the capability gate — that is the [membrane](crate::sandbox)'s, applied
@@ -2556,7 +2578,7 @@ fn text_view_refusal(label: &str, body: &str) -> Option<ViewRefusal> {
         return Some(ViewRefusal {
             failure: ToolFailure::LimitExceeded,
             message: format!(
-                "that label is {} bytes (max {MAX_VIEW_LABEL_BYTES}, MAX_VIEW_LABEL_BYTES)",
+                "label exceeds max length ({} bytes; max {MAX_VIEW_LABEL_BYTES})",
                 label.len()
             ),
         });
@@ -2565,7 +2587,7 @@ fn text_view_refusal(label: &str, body: &str) -> Option<ViewRefusal> {
         return Some(ViewRefusal {
             failure: ToolFailure::LimitExceeded,
             message: format!(
-                "that body is {} bytes (max {MAX_TEXT_VIEW_BYTES}, MAX_TEXT_VIEW_BYTES)",
+                "view body exceeds max size ({} bytes; max {MAX_TEXT_VIEW_BYTES})",
                 body.len()
             ),
         });
@@ -2576,19 +2598,114 @@ fn text_view_refusal(label: &str, body: &str) -> Option<ViewRefusal> {
 /// The refusal the turn's [composed-body budget](MAX_COMPOSED_VIEW_BYTES_PER_TURN) makes about one
 /// `view.openText`, or `None` to let it through.
 ///
-/// It refuses the call that would cross the ceiling rather than truncating it, and names the
-/// constant, so a program that meant to compose something enormous is told what it may still spend
-/// instead of silently showing the model half of what it wrote.
+/// It refuses the call that would cross the ceiling rather than truncating it, and states the
+/// budget and what remains of it, so a program that meant to compose something enormous is told
+/// what it may still spend instead of silently showing the model half of what it wrote.
 fn composed_view_budget_refusal(spent: usize, body: usize) -> Option<ViewRefusal> {
     let remaining = MAX_COMPOSED_VIEW_BYTES_PER_TURN.saturating_sub(spent);
     (body > remaining).then(|| ViewRefusal {
         failure: ToolFailure::LimitExceeded,
         message: format!(
-            "this turn's programs have already composed {spent} bytes of view bodies, and another \
-             {body} would pass gg's ceiling of {MAX_COMPOSED_VIEW_BYTES_PER_TURN} \
-             (MAX_COMPOSED_VIEW_BYTES_PER_TURN); {remaining} bytes are left"
+            "view body exceeds the turn's composed-body budget ({body} bytes; {spent} already \
+             composed; budget {MAX_COMPOSED_VIEW_BYTES_PER_TURN}; {remaining} left)"
         ),
     })
+}
+
+/// The refusal a file view's byte cap makes about the body it would open, or `None` to let it
+/// through.
+///
+/// The same bound a text view's body is held to, and the same shape of answer: the size that broke
+/// it and the bound, never a truncation. What it adds is the way out, because a file view has two
+/// that a text view does not — a narrower line window, and a cut on the lines themselves.
+fn file_view_refusal(body: &str) -> Option<ViewRefusal> {
+    (body.len() > MAX_TEXT_VIEW_BYTES).then(|| ViewRefusal {
+        failure: ToolFailure::LimitExceeded,
+        message: format!(
+            "view body exceeds max size ({} bytes; max {MAX_TEXT_VIEW_BYTES}); open fewer lines \
+             with `offset`/`limit`, or cut long lines with `maxLineChars`",
+            body.len()
+        ),
+    })
+}
+
+/// The refusal a file view's `maxLineChars` earns for a value that names no cut, or `None` to let
+/// it through.
+///
+/// Zero would cut every line to its annotation alone, and anything past [`MAX_TEXT_VIEW_BYTES`]
+/// cuts nothing the cap would let through anyway — so both are argument errors rather than settings,
+/// stated with the range so the program can pick a number that means something.
+fn line_cut_refusal(max_line_chars: Option<usize>) -> Option<ViewRefusal> {
+    match max_line_chars {
+        Some(chars) if chars == 0 || chars > MAX_TEXT_VIEW_BYTES => Some(ViewRefusal {
+            failure: ToolFailure::InvalidArgument,
+            message: format!(
+                "`maxLineChars` must be between 1 and {MAX_TEXT_VIEW_BYTES} ({chars} given); \
+                 omit it to leave lines whole"
+            ),
+        }),
+        _ => None,
+    }
+}
+
+/// A successful read, as the file view will show it: the body cut to `max_line_chars` where that is
+/// set, and refused where the result is still over the cap.
+///
+/// Only a **text** read is touched. A picture's body is the sentence describing it, and the
+/// picture itself rides on the outcome's images under `IMAGE_ATTACH_CAP`; neither is a text body
+/// and neither is cut. A read that failed is handed back as it is.
+///
+/// The cut is applied to the file's own text and the read's footers are re-appended whole, because a
+/// footer is gg telling the model how to page and a cut through it would hide the very number the
+/// model needs next. The structured result — what `views.openFile` returns to the program — keeps
+/// the read's untouched contents, which is what makes the cut the view's alone.
+fn file_view_outcome(mut outcome: ToolOutcome, max_line_chars: Option<usize>) -> ToolOutcome {
+    if !outcome.ok {
+        return outcome;
+    }
+    let Some(ApiData::FileText(text)) = &outcome.data else {
+        return outcome;
+    };
+    let body = match max_line_chars {
+        None => outcome.output.clone(),
+        Some(max) => {
+            // The model-facing output is the file's text followed by gg's footers, so what
+            // follows the contents is exactly the footers — and a read whose output somehow does
+            // not start with its contents is shown whole rather than guessed at.
+            let footer = outcome.output.strip_prefix(text.contents.as_str());
+            match footer {
+                Some(footer) => format!("{}{footer}", cut_long_lines(&text.contents, max)),
+                None => outcome.output.clone(),
+            }
+        }
+    };
+    if let Some(refusal) = file_view_refusal(&body) {
+        return ToolOutcome::failed(refusal.failure, refusal.message);
+    }
+    outcome.output = body;
+    outcome
+}
+
+/// `text` with every line longer than `max` characters cut there and annotated in place —
+/// `foo (123 more chars...)` — line endings kept as they were.
+///
+/// Lines are measured in characters, never bytes, and cut on a character boundary, so a line of
+/// CJK or emoji is cut where a model counting what it sees would cut it. A `\r\n` ending survives
+/// as itself rather than becoming a `\r` counted among the characters dropped.
+fn cut_long_lines(text: &str, max: usize) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        let (body, ending) = match line.strip_suffix("\r\n") {
+            Some(body) => (body, "\r\n"),
+            None => match line.strip_suffix('\n') {
+                Some(body) => (body, "\n"),
+                None => (line, ""),
+            },
+        };
+        out.push_str(&clip_line(body, max));
+        out.push_str(ending);
+    }
+    out
 }
 
 /// The refusal a `view.close` earns for a selector that could never name anything.
@@ -2891,22 +3008,7 @@ impl OperationApi for LoopOperationApi {
         self.serviced(
             FILES_READ_FILE,
             json!({ "path": path, "offset": offset, "limit": limit }),
-            |api| match api.read_policy {
-                Some(policy) => {
-                    ReadFileTool::new(policy).read(&api.tool_ctx, path.clone(), offset, limit)
-                }
-                // Belt to the membrane's braces, as the memory-scope gate above is: the call is
-                // bound only for an agent whose read-file capability configures a policy, so a
-                // program reaching here without one asked for a call this agent does not have. gg
-                // reads no file under a policy nobody wrote.
-                None => ToolOutcome::failed(
-                    ToolFailure::Unavailable,
-                    format!(
-                        "`{}` is not available.",
-                        spell(api.language, FILES_READ_FILE)
-                    ),
-                ),
-            },
+            |api| api.policy_read(&path, offset, limit),
         )
     }
     fn write_file(&mut self, path: String, contents: String) -> ToolOutcome {
@@ -2934,6 +3036,13 @@ impl OperationApi for LoopOperationApi {
         self.serviced(FILES_LIST_DIR, json!({ "path": path }), |api| {
             ListDirTool.list(&api.tool_ctx, path.clone())
         })
+    }
+    fn search(&mut self, query: String, path: Option<String>, limit: Option<u32>) -> ToolOutcome {
+        self.serviced(
+            FILES_SEARCH,
+            json!({ "query": query, "path": path, "limit": limit }),
+            |api| SearchTool.search(&api.tool_ctx, query.clone(), path.clone(), limit),
+        )
     }
     fn read_skill(&mut self, name: String) -> ToolOutcome {
         self.serviced(SKILLS_READ_SKILL, json!({ "name": name }), |api| {
@@ -3328,7 +3437,7 @@ impl OperationApi for LoopOperationApi {
             let Some(position) = api.spawner.fsm.clone() else {
                 return ToolOutcome::failed(
                     ToolFailure::Unavailable,
-                    "you are not running inside a state machine, so there is no state to \
+                    "this agent is not running inside a state machine, so there is no state to \
                      transition to.",
                 );
             };
@@ -3573,9 +3682,10 @@ impl OperationApi for LoopOperationApi {
     /// the session-record entry, the roster line and the read policy are the ones a bare `fs.readFile`
     /// gets; there is no second, quieter read path. What follows it is the view: the `(path,
     /// region)` key comes from what the tool actually **returned** rather than from what the call
-    /// asked for (an unlimited read policy ignores the window; a capped one applies its default when
-    /// the call named none), so
-    /// re-opening the same page supersedes it instead of stacking a second copy beside it.
+    /// asked for (a capped policy applies its default when the call named no `limit`, a window
+    /// running past the end of the file stops at the file's end, and a window covering the whole
+    /// file is no region at all), so re-opening the same page supersedes it instead of stacking a
+    /// second copy beside it.
     ///
     /// The content is cloned rather than moved out of the outcome because the outcome goes on to
     /// become the program's own return value — the model is handed the bytes *and* shown the file
@@ -3588,13 +3698,35 @@ impl OperationApi for LoopOperationApi {
     /// image**, and the window's own fullness. A count cap here would refuse a model the thing it
     /// had just decided to look at, in exchange for a bound the fullness signal reports honestly and
     /// per-file.
+    ///
+    /// # The text body is capped, and long lines can be cut
+    ///
+    /// The view's text body is held to [`MAX_TEXT_VIEW_BYTES`] exactly as a text view's is: a window
+    /// that would carry more is refused with the size and the bound, as the read's own failure —
+    /// the same serviced `read_file`, recorded as failed — and nothing is opened. `max_line_chars`
+    /// is what lets a window over a log of enormous lines fit: each line of the **view body** longer
+    /// than it is cut there and annotated in place, the cap is measured after the cut, and what the
+    /// program is handed back is the read's own untouched text. See [`file_view_outcome`].
     fn open_file_view(
         &mut self,
         path: String,
         offset: Option<usize>,
         limit: Option<usize>,
+        max_line_chars: Option<usize>,
     ) -> ViewOpenOutcome {
-        let mut outcome = self.read_file(path.clone(), offset, limit);
+        // The dispatch record is the read's own, argument for argument, and gains the view's one
+        // option only when the program wrote it: a bare `openFile` is recorded exactly as a bare
+        // `readFile` is, which is what lets the two be read as one read.
+        let mut args = json!({ "path": path, "offset": offset, "limit": limit });
+        if let Some(chars) = max_line_chars {
+            args["maxLineChars"] = json!(chars);
+        }
+        let mut outcome = self.serviced(FILES_READ_FILE, args, |api| {
+            if let Some(refusal) = line_cut_refusal(max_line_chars) {
+                return ToolOutcome::failed(refusal.failure, refusal.message);
+            }
+            file_view_outcome(api.policy_read(&path, offset, limit), max_line_chars)
+        });
         if !outcome.ok {
             // The read failed; there is nothing to show. The failure is already a rostered,
             // streamed, replayed `read_file` result, and the membrane throws it at the program.
@@ -3611,6 +3743,9 @@ impl OperationApi for LoopOperationApi {
             ),
             _ => None,
         };
+        // The lines the view shows, for its heading — from the same sidecar as the region, so the
+        // heading and the key describe the same read.
+        let lines = ShownLines::of_read(outcome.data.as_ref());
         // The picture, if the read produced one, moves out of the outcome and into the view item:
         // the model looks at it there, and leaving a copy behind would let the membrane attach a
         // second one to the turn.
@@ -3618,6 +3753,7 @@ impl OperationApi for LoopOperationApi {
         let opened = self.context.open_file_view_deduped(
             path.clone(),
             region,
+            lines,
             outcome.output.clone(),
             images,
         );
@@ -3658,10 +3794,12 @@ impl OperationApi for LoopOperationApi {
     /// decision rather than a side effect of tidying: it is the one close that rewrites the middle
     /// of the prompt instead of appending to the end, so it costs the run every cached token after
     /// the view it took away, and it is bought by
-    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) where this call is bound to
-    /// every program. A sweep that reached the documentation band would therefore have to either
-    /// spend a capability the caller did not ask about or silently do nothing for an agent that
-    /// lacks it — and a call that answers `0` where the honest answer is *you may not* is
+    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) where this call is bought
+    /// by [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) — the
+    /// membrane has already asked that gate by the time this runs. A sweep that reached the
+    /// documentation band would therefore have to either spend a second capability the caller did
+    /// not ask about or silently do nothing for an agent that lacks it — and a call that answers
+    /// `0` where the honest answer is *you may not* is
     /// indistinguishable, to the model reading it, from a selector that named nothing. `docs.close`
     /// refuses by name instead, which is an answer.
     ///
@@ -3690,10 +3828,6 @@ impl OperationApi for LoopOperationApi {
         }
         Ok(saturating_u32(files.items + texts.items + searches.items))
     }
-    fn current_views(&mut self) -> Vec<OpenViewInfo> {
-        self.context.open_views()
-    }
-
     /// The shapes of the programs this agent's [library](crate::programs) still holds.
     ///
     /// Nothing is dispatched, nothing is charged and nothing is recorded: it reads gg's own state,

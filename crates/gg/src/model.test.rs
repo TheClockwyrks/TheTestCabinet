@@ -61,6 +61,7 @@ fn model_response_round_trips_through_json() {
             comparable: Some(0.01),
             actual: Some(0.01),
         }),
+        provider: None,
         loop_aborts: LoopAborts::none(),
     };
 
@@ -253,6 +254,7 @@ fn a_response_carries_what_the_replies_before_it_threw_away() {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts {
             attempts: 2,
             words: 6_130,

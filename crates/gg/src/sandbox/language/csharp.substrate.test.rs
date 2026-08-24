@@ -33,7 +33,7 @@
 //! with every other registered language's — searching each artifact for markers, which is all it
 //! asks of any arm.
 //!
-//! The programs below call the **SDK**, which is what a model would call: `Files.ReadTextFile`,
+//! The programs below call the **SDK**, which is what a model would call: `Files.ReadFile`,
 //! `Views.OpenText`, `Console.WriteLine`. Every one of them is compiled into the program's own
 //! assembly out of `packages/gg-sandbox-csharp/src/Gg/`, so what these prove is not only that the
 //! crossing happens but that the surface a model is shown is the surface that runs. The SDK's own
@@ -373,14 +373,14 @@ using System;
 
 public static class Program {
   public static void Main() {
-    var text = Files.ReadTextFile("notes.md");
+    var text = ((Files.TextFile)Files.ReadFile("notes.md")).Contents;
     var first = text.Split('\n')[0];
     Console.WriteLine($"read {first.ToUpperInvariant()}");
   }
 }
 "#,
         )),
-        &[crate::sandbox::operations::FILES_READ_TEXT_FILE],
+        &[crate::sandbox::operations::FILES_READ_FILE],
         RunEnding::None,
         false,
         canned_outcome,
@@ -800,7 +800,7 @@ public static class Program
 {
     public static void Main()
     {
-        var notes = Files.ReadTextFile("notes.md");
+        var notes = ((Files.TextFile)Files.ReadFile("notes.md")).Contents;
         Console.WriteLine($"read {notes.Length} characters");
         Views.OpenText("notes", notes);
     }
@@ -913,12 +913,12 @@ fn g8_a_runtime_failure_reaches_the_model() {
 using Gg;
 using System;
 
-var text = Files.ReadTextFile(
+var text = Files.ReadFile(
     "missing.md"
 );
 Console.WriteLine(text);
 "#,
-                names: &["Gg.ApiException", "Files.ReadTextFile", "missing.md"],
+                names: &["Gg.ApiException", "Files.ReadFile", "missing.md"],
                 located: Located::At("./program.cs:line 5"),
                 answered: Answered::AtRuntime,
                 recorded: Some(TurnErrorType::ProgramThrow),

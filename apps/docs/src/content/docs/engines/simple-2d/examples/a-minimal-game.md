@@ -61,35 +61,32 @@ that actually elapsed.
 
 ```ts
 import type { Game, RenderApi, UpdateApi } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
 const BOX = 48;
 const SPEED = 220;
 
 interface State {
-  x: number;
-  y: number;
-  vx: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
 }
 
-export const drifter: Game<State> = {
-  initialize(): State {
-    return { x: 0, y: 156, vx: SPEED };
+export const drifter: Game<State, null> = {
+  initialize(): [State, null] {
+    return [{ x: 0, y: 156, vx: SPEED }, null];
   },
 
-  update(state: State, api: UpdateApi, dt: number): void {
+  update(state: DeepReadonly<State>, api: UpdateApi, dt: number): State {
     const limit = api.viewport().width - BOX;
-    state.x += state.vx * dt;
+    const x = state.x + state.vx * dt;
 
-    if (state.x < 0) {
-      state.x = -state.x;
-      state.vx = SPEED;
-    } else if (state.x > limit) {
-      state.x = 2 * limit - state.x;
-      state.vx = -SPEED;
-    }
+    if (x < 0) return { ...state, x: -x, vx: SPEED };
+    if (x > limit) return { ...state, x: 2 * limit - x, vx: -SPEED };
+    return { ...state, x };
   },
 
-  render(state: State, api: RenderApi): void {
+  render(state: DeepReadonly<State>, api: RenderApi): void {
     const { ctx } = api;
     ctx.fillStyle = "#7fd1ff";
     ctx.fillRect(state.x, state.y, BOX, BOX);
@@ -100,12 +97,16 @@ export const drifter: Game<State> = {
 ## What the game owns
 
 `State` is the whole of what the three functions share, and `initialize` returns
-it complete, so `update` and `render` read every field directly.
+it complete, so `update` and `render` read every field directly. Both receive
+it as a `DeepReadonly` view; `update` returns the next value and `render`
+returns nothing, so `ts-essentials` is the one import beside the engine.
 
 `update` multiplies by `dt` in seconds and reflects the overshoot back into the
 field, which keeps the outcome the same whatever step size the clock delivers.
-Reading the bound from `api.viewport()` keeps the design width in one place, the
-`width` passed to `createEngine`.
+Each branch spreads the current state into a new one, and the engine keeps the
+value returned as the state the next frame receives. Reading the bound from
+`api.viewport()` keeps the design width in one place, the `width` passed to
+`createEngine`.
 
 `render` draws in logical units against a context that arrives cleared and
 already carrying the viewport transform, so the rectangle lands in the same

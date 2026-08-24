@@ -29,7 +29,23 @@ import { OVERVIEW_DASHBOARD } from "./dashboards/overviewDashboard";
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../../components/PromptHeader", () => ({ PromptHeader: () => null }));
+vi.mock("../../components/PromptHeader", () => ({
+  // The header's chrome is not what these tests are about; its slots are, because a
+  // page's own actions live in them. Stub the chrome and pass the slots through, so a
+  // control that moves into the header does not silently vanish from the test.
+  PromptHeader: ({
+    titleActions,
+    actions,
+  }: {
+    titleActions?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    <>
+      {titleActions}
+      {actions}
+    </>
+  ),
+}));
 vi.mock("../../../client/auth", () => ({ useAuth: () => ({ token: "t0" }) }));
 
 const listGgDashboards = vi.fn();
@@ -151,7 +167,7 @@ describe("GgDashboardsPage", () => {
   it("adds and removes panels from the board being edited", async () => {
     renderPage();
     await waitFor(() => expect(listGgDashboards).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: "New dashboard" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ New dashboard" }));
 
     // A new board opens with one panel, because a board with none teaches nobody what a
     // panel is.

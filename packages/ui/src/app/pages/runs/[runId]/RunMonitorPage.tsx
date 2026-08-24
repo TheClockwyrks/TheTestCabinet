@@ -120,61 +120,66 @@ export function RunMonitorPage() {
     return unsubscribe;
   }, [worker, runId]);
 
-  // The event feed half: its header (the run id and the Follow toggle) and the
-  // feed itself. Shared by both the tabbed (asset) and untabbed layouts.
+  // Whether the activity feed is the half on screen. An asset run can be watching
+  // the model draw instead, where the Follow toggle governs nothing visible.
+  const showFeed = !isAssetRun || tab === "events";
+
+  // The event feed half. Nothing but the feed: the two controls that used to head
+  // it — Follow and the kill control — ride the page header's own two rows (see
+  // below), which the monitor has spare, and the label and run id it also carried
+  // said only what the URL and the header already say.
   const feed = (
-    <>
-      <div className={styles.feedHeader}>
-        <div className={styles.feedHeading}>
-          <span className={styles.feedTitle}>Live Event Feed</span>
-          <span className={styles.feedRunId}>
-            Run id <code>{runId}</code>
-          </span>
-        </div>
-        <button
-          type="button"
-          className={styles.followButton}
-          data-active={following ? "" : undefined}
-          aria-pressed={following}
-          onClick={() => setFollowing((on) => !on)}
-        >
-          Follow
-        </button>
-      </div>
-      <EventFeed
-        events={events}
-        feedStyle={feedStyle}
-        fill
-        follow={following}
-        onFollowChange={setFollowing}
-        emptyLabel={
-          status.kind === "running"
-            ? "Waiting for events…"
-            : "No events were recorded."
-        }
-      />
-    </>
+    <EventFeed
+      events={events}
+      feedStyle={feedStyle}
+      fill
+      follow={following}
+      onFollowChange={setFollowing}
+      emptyLabel={
+        status.kind === "running"
+          ? "Waiting for events…"
+          : "No events were recorded."
+      }
+    />
   );
 
   return (
     <PageLayout fill>
-      <PromptHeader command="--monitor" comment={<>// live run activity</>} />
+      {/* Both of the header's rows are the header's own, so the monitor's controls
+          ride them exactly as the runs list's do — the toggle on the prompt line, the
+          negative action on the comment line beneath it. The page is one live view of
+          one run with no other furniture to hang them from, and a strip of their own
+          above the feed spent a row of height on a label the header already carries.
+          Follow appears only while the feed is the visible half: on an asset run's
+          drawing tab it would be following nothing. */}
+      <PromptHeader
+        command="--monitor"
+        comment={<>// live run activity</>}
+        titleActions={
+          showFeed ? (
+            <button
+              type="button"
+              className={styles.followButton}
+              data-active={following ? "" : undefined}
+              aria-pressed={following}
+              onClick={() => setFollowing((on) => !on)}
+            >
+              Follow
+            </button>
+          ) : undefined
+        }
+        actions={
+          status.kind === "running" && runId ? (
+            <KillRunControl runId={runId} />
+          ) : undefined
+        }
+      />
 
       {!worker && (
         <p className={`${styles.notice} ${styles.warn}`}>
           No worker connected — the live stream comes from the worker that ran
           this job.
         </p>
-      )}
-
-      {/* While the run is still in flight, offer to kill it. The control hides
-          itself when cancellation isn't possible (no execution rights, no token,
-          or a transport that can't cancel). An asset run hosts this in its tab
-          row (below) so it sits inline with the tabs, mirroring the test-case
-          detail page's variant selector; every other run type has no tab row, so
-          the control stands on its own above the feed. */}
-      {status.kind === "running" && runId && !isAssetRun && (
-        <KillRunControl runId={runId} />
       )}
 
       {status.kind === "done" && status.outcome.kind === "canceled" && (
@@ -246,12 +251,6 @@ export function RunMonitorPage() {
                 Event feed
               </button>
             </nav>
-            {/* Sits in the tab row, pushed to the trailing edge by its own
-                `margin-left: auto`, mirroring the variant selector on the test
-                case detail page. */}
-            {status.kind === "running" && runId && (
-              <KillRunControl runId={runId} />
-            )}
           </div>
           {tab === "assets" ? (
             <LiveAssetView

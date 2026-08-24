@@ -834,11 +834,14 @@ export function CostWidget({
       ) : (
         displayTotal != null && (
           // The split is derived from the model catalog's per-token prices, so the one
-          // thing that can withhold it is the catalog — not the run. Say which, rather
-          // than blaming gg for an accounting it does report.
+          // thing that can withhold it is the catalog — not the run. The backend seeds
+          // prices at startup and at every enqueue, so reaching this fallback means
+          // those fetches found nothing: say plainly that the model is not priceable,
+          // rather than blaming gg for an accounting it does report.
           <p className={styles.cardNote}>
-            No per-class split: the catalog lists no prices for this run&rsquo;s
-            model(s).
+            No per-class split: the catalog has no prices for this run&rsquo;s
+            model(s). Prices are fetched from OpenRouter before a run starts, so
+            this usually means OpenRouter does not list the model.
           </p>
         )
       )}

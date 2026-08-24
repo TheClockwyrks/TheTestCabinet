@@ -10,8 +10,9 @@
 // and this is the check that says so: the name asserted here is the obstacle's,
 // and a build that reuses one blip for every bounce fails it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { CUES, OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeObstacleBounce,
   captureReplay,
@@ -44,7 +45,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("plays the obstacle-bounce cue on the frame of the bounce", async () => {
@@ -70,8 +71,11 @@ it("plays the obstacle-bounce cue on the frame of the bounce", async () => {
     return measured;
   });
 
-  expect(bounce.bounced.hit).toBe(true);
-  expect(bounce.cues.map((cue) => cue.cue)).toEqual([CUES.obstacleBounce]);
-  expect(bounce.cues[0].frame).toBe(bounce.frame);
-  expect(bounce.cues[0].gain).toBeGreaterThan(0);
+  assertEqual(bounce.bounced.hit, true);
+  assertDeepEqual(
+    bounce.cues.map((cue) => cue.cue),
+    [CUES.obstacleBounce],
+  );
+  assertEqual(bounce.cues[0].frame, bounce.frame);
+  assertGreaterThan(bounce.cues[0].gain, 0);
 });

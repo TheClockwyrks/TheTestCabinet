@@ -24,8 +24,8 @@ the surface a validator exercises is the surface the game was written against.
 
 | Page | Covers |
 | --- | --- |
-| [Engine](/engines/simple-2d/apis/engine/) | `createEngine`, `EngineOptions`, `SurfaceMetrics`, and the `Engine` object's lifecycle. |
-| [Game](/engines/simple-2d/apis/game/) | `Game`, the scoped `InitApi`, `UpdateApi`, and `RenderApi`, `EngineEvents`, and `FrameInfo`. |
+| [Engine](/engines/simple-2d/apis/engine/) | `createEngine`, `EngineOptions`, `SurfaceMetrics`, and the `Engine` object's lifecycle, state, and `apply`. |
+| [Game](/engines/simple-2d/apis/game/) | `Game`, `Transition`, `DeepReadonly`, the scoped `InitApi`, `UpdateApi`, and `RenderApi`, the debug surface a game returns beside its state, `EngineEvents`, and `FrameInfo`. |
 | [Clocks](/engines/simple-2d/apis/clocks/) | The `Clock` interface and the five clocks a run's deltas can come from. |
 | [Viewport](/engines/simple-2d/apis/viewport/) | `Viewport`, `fitViewport`, `applyViewport`, `syncCanvas`, and the logical-to-device mapping. |
 | [Input](/engines/simple-2d/apis/input/) | Action registration, `ActionBinding`, the read methods, and `TOUCH_LAYOUTS`. |

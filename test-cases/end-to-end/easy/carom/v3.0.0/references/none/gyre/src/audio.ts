@@ -1,23 +1,22 @@
 // Carom — audio, as runtime cues.
 //
 // There is no Web Audio graph here, no mute flag, and no autoplay unlock: the
-// runtime owns the audio context, the synthesis, the mute state, and the
-// first-gesture unlock. The game's whole part is to DECLARE the four cues
-// `src/constants.ts` names, once, and then play them BY NAME as the events happen
-// (specs/ui.md).
+// runtime (`src/audio-bus.ts`) owns the audio context, the synthesis, the mute
+// state, and the first-gesture unlock. The game's whole part is to DECLARE the
+// four cues `src/constants.ts` names, once, and then play them BY NAME as the
+// events happen (specs/ui.md).
 //
-// Playing by name is what makes the sound legible from outside: the runtime emits a
-// `cue:played` event carrying the name, so "the ball hit a paddle and the paddle
-// cue played" is a fact a check can subscribe to rather than something inferred
-// from an oscillator starting. It also means a mistyped name throws rather than
-// silently going quiet.
+// Playing by name is what keeps the sound legible: a mistyped name throws at the
+// moment of the event rather than going quietly silent, which is otherwise
+// indistinguishable from a muted bus.
 //
 // The four are pitched and shaped to be told apart by ear: a bright square click
 // off a paddle, a low soft thud off a wall, a woodier falling knock off an
 // obstacle, and a longer rising chime for a point.
 
 import { CUES, type CueName } from "./constants";
-import type { CueSpec, InitApi } from "./host";
+import type { CueSpec } from "./audio-bus";
+import type { InitApi } from "./runtime";
 
 export const CUE_SPECS: Readonly<Record<CueName, CueSpec>> = {
   [CUES.paddleHit]: {

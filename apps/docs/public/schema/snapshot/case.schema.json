@@ -364,8 +364,11 @@
       "type": "object"
     },
     "CaseValidationBaselineOut": {
-      "description": "A committed **baseline** validation media file exposed in case metadata — one\ndebug-script output driven once against the case's reference implementation.\n`variant` is the variant slug the baseline was captured for (baselines are always\nper-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests\n(`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the\nmedia as published (a video transcoded to `.mp4`). The static gallery keys its\nbaseline lookup off `variant` + `file`.",
+      "description": "A committed **baseline** validation media file exposed in case metadata — one\ndeclared output captured once against the case's reference implementation.\n`engine` and `variant` name the reference build it was captured from (a variant\nhas one reference implementation per engine, and their captures are not\ninterchangeable); `file` is the flat `<item>__<output>.<ext>` name the gallery\nrequests (`.png`/`.webm`/`.json.gz`); `key` is its snapshot-relative object key,\nwhose bytes are the media as published (a video transcoded to `.mp4`). The static\ngallery keys its baseline lookup off `engine` + `variant` + `file`.",
       "properties": {
+        "engine": {
+          "type": "string"
+        },
         "file": {
           "type": "string"
         },
@@ -376,7 +379,7 @@
           "type": "string"
         }
       },
-      "required": ["variant", "file", "key"],
+      "required": ["engine", "variant", "file", "key"],
       "type": "object"
     },
     "CaseVariantOut": {
@@ -391,6 +394,14 @@
             "$ref": "#/$defs/CaseDomainOut"
           },
           "type": "array"
+        },
+        "engineRenderings": {
+          "additionalProperties": {
+            "$ref": "#/$defs/CaseVariantRenderingOut"
+          },
+          "default": {},
+          "description": "This variant's prompt and seeded specs re-rendered for each\n[engine](test_cabinet_core::engine) the version declares that vendors a\nruntime, keyed by engine slug.\n\nA case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so\nthe text a run was handed depends on which runtime its build was written\nagainst. [`Self::prompt`] and [`Self::seeded_inputs`] are the engineless\nrendering — what a reader browsing the *case* sees, and exactly what a run on\nthe `none` engine was handed — and this map carries the rest, so a run's\nInputs surface shows the text that run actually received.\n\nThe engineless engine is deliberately absent: it is already the pair above,\nand duplicating every spec body for it would double the document for the many\ncases that support nothing else.",
+          "type": "object"
         },
         "name": {
           "type": "string"
@@ -444,6 +455,24 @@
         "reviewItems",
         "domains"
       ],
+      "type": "object"
+    },
+    "CaseVariantRenderingOut": {
+      "description": "One variant's prompt and seeded specs rendered for one engine that vendors a\nruntime — the per-engine half of [`CaseVariantOut`].",
+      "properties": {
+        "prompt": {
+          "description": "The variant's prompt as a run on this engine receives it.",
+          "type": "string"
+        },
+        "seededInputs": {
+          "description": "The variant's complete seeded spec set in seed order, each body rendered for\nthis variant on this engine.",
+          "items": {
+            "$ref": "#/$defs/CaseSeededInputOut"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["prompt", "seededInputs"],
       "type": "object"
     },
     "ErratumSeverity": {

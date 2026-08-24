@@ -167,7 +167,8 @@ async fn publish_one(
             let bytes =
                 std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
             client
-                .put_object(&key, bytes, content_type)
+                // Reference frames are PNG and JSON, neither of them framed.
+                .put_object(&key, bytes, content_type, None)
                 .await
                 .with_context(|| format!("uploading {key}"))?;
         }

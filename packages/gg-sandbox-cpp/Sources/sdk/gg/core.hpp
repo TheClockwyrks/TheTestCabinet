@@ -75,8 +75,7 @@ enum class api_error_code {
 ///
 /// ```cpp
 /// try {
-///   const auto notes = gg::files::read_text_file("notes.md");
-///   gg::views::open_text("notes", notes);
+///   gg::views::open_file("notes.md");
 /// } catch (const gg::core::api_error& failure) {
 ///   if (failure.code() != gg::core::api_error_code::not_found) throw;
 ///   gg::files::write_file("notes.md", "");

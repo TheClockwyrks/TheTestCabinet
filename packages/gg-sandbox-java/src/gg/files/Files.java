@@ -11,12 +11,8 @@ import java.util.Optional;
 /**
  * Read, write, edit and list the files of the workspace.
  *
- * <p>Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
- * that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
- * large files in a single turn will exhaust its fuel budget.
- *
- * <p>Nothing here places anything in the context window. {@code Views.openFile} is the call that
- * does.
+ * <p>Nothing here places anything in the context window: a read hands bytes to the program, and a
+ * view — the {@code gg.views.Views} module — is what puts something in front of the model.
  *
  * @ggmodule files
  */
@@ -56,8 +52,8 @@ public final class Files {
     /**
      * Read a window of lines from a file rather than the whole of it.
      *
-     * <p>The window is honoured only under a capped read policy; where it is not, the whole file
-     * comes back and {@code totalLines} says how much of it the read returned.
+     * <p>The window is honoured under every read policy, and {@code totalLines} says how much of the
+     * file lies outside it.
      *
      * @param path The file to read, relative to the workspace or absolute.
      * @param offset The 1-based first line to read from.
@@ -72,43 +68,7 @@ public final class Files {
     }
 
     /**
-     * Read a text file and hand back its contents directly.
-     *
-     * <p>{@link #readFile(String)} without the narrowing, for the common case: the same read, the
-     * same window, the same cost.
-     *
-     * @param path The file to read, relative to the workspace or absolute.
-     * @return the file's text
-     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when the path names a picture, which
-     *     {@link #readFile(String)} inspects instead.
-     * @ggop files.read_text_file
-     */
-    public static String readTextFile(String path) {
-        return Coding.call("files.read_text_file", Value.of(path), Value.none(), Value.none())
-                .text();
-    }
-
-    /**
-     * Read a window of lines of a text file, handing back just those lines.
-     *
-     * @param path The file to read, relative to the workspace or absolute.
-     * @param offset The 1-based first line to read from.
-     * @param limit How many lines to read from {@code offset}.
-     * @return the window of the file's text
-     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when the path names a picture.
-     * @ggop files.read_text_file
-     */
-    public static String readTextFile(String path, int offset, int limit) {
-        return Coding.call("files.read_text_file", Value.of(path), Value.of(offset),
-                Value.of(limit)).text();
-    }
-
-    /**
      * Write UTF-8 text to a file, creating parent directories and replacing what is there.
-     *
-     * <p>Writing is the expensive direction of this sandbox: rewriting more than a few dozen large
-     * files in one program exhausts its fuel budget, so a large rewrite is best split across several
-     * turns.
      *
      * @param path Where to write, relative to the workspace or absolute. Parent directories are
      *     created as needed.
@@ -167,6 +127,79 @@ public final class Files {
         return Read.dirEntries(Coding.call("files.list_dir", Value.of(path)));
     }
 
+    /**
+     * Search the workspace's files for a pattern, and hand back every line that matched it.
+     *
+     * <p>The query is a regular expression in Rust syntax — {@code "foo|bar"}, {@code "fn\\s+update"},
+     * {@code "(?i)todo"} for a case-insensitive match — matched against each line on its own. Each
+     * hit carries the file's path, the 1-based line number and the line itself, in path order and
+     * then line order, so a program can point a read or a view at exactly the right window.
+     *
+     * <p>The search honours ignore files: what {@code .gitignore}, {@code .ignore},
+     * {@code .git/info/exclude} and the global ignore file exclude is never scanned and never
+     * returned, nested ignore files and negations included, and {@code .git} itself is skipped. No
+     * repository is needed for that to hold, and dotfiles are searched like any other. A file that
+     * is not text — one carrying a NUL byte — is skipped, and a matching line longer than 200
+     * characters is cut there and annotated in place as {@code foo (123 more chars...)}.
+     *
+     * <p>A search is this surface's grep: it says where to look rather than reading a file. This
+     * overload hands back at most 50 matches, a list exactly that long may have been cut, and there
+     * is no offset to page with — the answer to a full page is a narrower query or path.
+     *
+     * @param query The regular expression to look for, in Rust syntax, matched line by line.
+     * @return every matching line, each with its path and 1-based line number
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a query that is blank or not a
+     *     valid pattern.
+     * @ggop files.search
+     */
+    public static List<SearchMatch> search(String query) {
+        return Read.searchMatches(Coding.call("files.search", Value.of(query), Value.none(),
+                Value.none()));
+    }
+
+    /**
+     * Search one directory, or one file, rather than the whole workspace.
+     *
+     * <p>Rooting the search is the way to a smaller answer; ignore files are still honoured from the
+     * workspace root down.
+     *
+     * @param query The regular expression to look for, in Rust syntax, matched line by line.
+     * @param path The directory or file to search, relative to the workspace or absolute. A file
+     *     searches that file alone; {@code null} searches the workspace root.
+     * @return every matching line, each with its path and 1-based line number
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a query that is blank or not a
+     *     valid pattern, and {@link ApiErrorCode#NOT_FOUND} for a path that is not there.
+     * @ggop files.search
+     */
+    public static List<SearchMatch> search(String query, String path) {
+        return Read.searchMatches(Coding.call("files.search", Value.of(query), Value.of(path),
+                Value.none()));
+    }
+
+    /**
+     * Search with a cap of the program's own on how many matches come back.
+     *
+     * @param query The regular expression to look for, in Rust syntax, matched line by line.
+     * @param path The directory or file to search, relative to the workspace or absolute. A file
+     *     searches that file alone; {@code null} searches the workspace root.
+     * @param limit How many matches to hand back at most: 50 by default, 200 at most — a larger
+     *     request is answered with the first 200 — and zero is refused. A list exactly this long
+     *     may have been cut.
+     * @return every matching line, each with its path and 1-based line number
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a query that is blank or not a
+     *     valid pattern, or for a limit of zero, and {@link ApiErrorCode#NOT_FOUND} for a path
+     *     that is not there.
+     * @ggop files.search
+     */
+    public static List<SearchMatch> search(String query, String path, int limit) {
+        if (limit < 1) {
+            throw new ApiError("search", ApiErrorCode.INVALID_ARGUMENT,
+                    "limit must be at least 1 (" + limit + " given); leave it out for gg's default");
+        }
+        return Read.searchMatches(Coding.call("files.search", Value.of(query), Value.of(path),
+                Value.of(limit)));
+    }
+
     // -------------------------------------------------------------------------------------------
     // The types a read hands back
     // -------------------------------------------------------------------------------------------
@@ -185,7 +218,7 @@ public final class Files {
     /**
      * A file that turned out to be text, and the window of it the read policy returned.
      *
-     * @param contents The file's text, or the requested window of it under a capped read policy.
+     * @param contents The file's text, or the requested window of it where the read named one.
      * @param firstLine The 1-based first line returned.
      * @param lastLine The 1-based last line returned.
      * @param totalLines The file's whole line count, which is what says whether to page again.
@@ -227,5 +260,17 @@ public final class Files {
         DIRECTORY,
         /** Something else — a symlink, a socket, a device. */
         OTHER
+    }
+
+    /**
+     * One line a search matched.
+     *
+     * @param path The file's path with {@code /} separators, relative to the workspace root or
+     *     absolute for a search rooted outside it.
+     * @param line The 1-based line number of the match within that file.
+     * @param text The matching line without its line ending, cut at 200 characters and annotated
+     *     {@code (N more chars...)} where longer.
+     */
+    public record SearchMatch(String path, int line, String text) {
     }
 }

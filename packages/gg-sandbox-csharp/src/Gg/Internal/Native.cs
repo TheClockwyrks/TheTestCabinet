@@ -77,9 +77,6 @@ internal static class Native
         out long[] numbers);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
-    internal static extern bool ReadTextFile(string path, int offset, int limit, out string contents);
-
-    [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool WriteFile(string path, string contents, out ulong written);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
@@ -87,6 +84,16 @@ internal static class Native
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool ListDir(string? path, out string[] names, out int[] kinds);
+
+    // A `list<search-match>` as one array per field, of equal length.
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern bool Search(
+        string query,
+        string? path,
+        int limit,
+        out string[] paths,
+        out uint[] lines,
+        out string[] texts);
 
     // --- skills -------------------------------------------------------------------------------
 
@@ -309,12 +316,13 @@ internal static class Native
     // --- view ---------------------------------------------------------------------------------
 
     // `numbers` is what `ReadFile`'s is: this call performs the same read and hands back the same
-    // record.
+    // record. `maxLineChars` is the view's own `option<u32>`, absent as `-1` like the window's two.
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool OpenFileView(
         string path,
         int offset,
         int limit,
+        int maxLineChars,
         out int kind,
         out string contents,
         out string mediaType,
@@ -330,15 +338,6 @@ internal static class Native
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool CloseView(string selector, out uint closed);
-
-    // A paged file view's region arrives as `-1`/`-1` when the view covers a whole file.
-    [MethodImpl(MethodImplOptions.InternalCall)]
-    internal static extern void CurrentViews(
-        out int[] kinds,
-        out string[] selectors,
-        out ulong[] tokens,
-        out long[] offsets,
-        out long[] limits);
 
     // --- docs ---------------------------------------------------------------------------------
 

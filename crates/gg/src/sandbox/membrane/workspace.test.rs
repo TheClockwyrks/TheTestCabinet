@@ -378,3 +378,42 @@ fn an_absent_path_is_lowered_as_null() {
 
     assert_eq!(log.args("list_dir"), Some(json!({ "path": null })));
 }
+
+/// `files.search` reaches the loop with the three arguments the model wrote and lowers what came
+/// back as one `search-match` per hit — path, 1-based line and text.
+#[test]
+fn search_reaches_the_loop_and_lowers_each_match() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+
+    let found = state
+        .search("answer".to_string(), Some("src".to_string()), Some(5))
+        .expect("a search that ran");
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].path, "src/a.ts");
+    assert_eq!(found[0].line, 3);
+    assert_eq!(found[0].text, "const answer = 42;");
+    let calls = log.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "search");
+    assert_eq!(
+        calls[0].args,
+        json!({ "query": "answer", "path": "src", "limit": 5 })
+    );
+}
+
+/// A search this agent was not granted is refused by name, and nothing runs.
+#[test]
+fn search_is_refused_for_an_agent_without_the_capability() {
+    let log = CallLog::default();
+    let mut state = membrane_with(&log, &[crate::sandbox::SHELL_SHELL], None, canned_outcome);
+
+    let error = state
+        .search("answer".to_string(), None, None)
+        .expect_err("a withheld search is refused");
+
+    assert_eq!(error.code, ErrorCode::Unavailable);
+    assert_eq!(error.operation, "search");
+    assert!(log.calls().is_empty(), "a refused search reached the loop");
+}

@@ -1,4 +1,5 @@
 use super::*;
+use crate::store::CaseNames;
 use test_cabinet_core::metrics::RunMetrics;
 use test_cabinet_core::review::{DomainRating, Rating};
 use test_cabinet_core::run_record::{
@@ -108,6 +109,9 @@ fn gg_record(id: &str) -> RunRecord {
     record.subject.model_id = "mock/echo".to_string();
     record.subject.gg_capability_set = Some(GgCapabilitySet::minimal("mock/echo"));
     record.subject.gg_summary = Some(GgSessionSummary {
+        rejected_responses: Default::default(),
+        max_response_chars: 0,
+        max_response_output_tokens: 0,
         terminal_status: "completed".to_string(),
         undocumented_calls: GgUndocumentedCalls::default(),
         agents_spawned: 3,
@@ -126,6 +130,8 @@ fn gg_record(id: &str) -> RunRecord {
         compile_ms: 0,
         healing: Default::default(),
         errors: Default::default(),
+        tool_calls: 0,
+        provider_stats: Vec::new(),
         issues_created: 2,
         issues_completed: 2,
         slot_costs: vec![GgSlotCost {
@@ -2758,7 +2764,10 @@ async fn summary_ids(
     sort: SummarySort,
     dir: SortDir,
 ) -> Vec<String> {
-    let (runs, _) = db.list_summaries(filter, sort, dir, 50, 0).await.unwrap();
+    let (runs, _) = db
+        .list_summaries(filter, sort, dir, &CaseNames::new(), 50, 0)
+        .await
+        .unwrap();
     run_ids(&runs)
 }
 
@@ -2776,7 +2785,14 @@ async fn list_summaries_filters_by_test_case_model_and_harness() {
         ..unpublished_filter()
     };
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Tokens,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&runs), ["a", "b"]);
@@ -2901,7 +2917,14 @@ async fn list_summaries_filters_by_exact_version() {
         ..unpublished_filter()
     };
     let (_, total) = db
-        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(total, 3);
@@ -2922,7 +2945,14 @@ async fn list_summaries_latest_versions_narrows_per_case() {
         ..unpublished_filter()
     };
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&runs), ["b", "c", "e"]);
@@ -2958,6 +2988,166 @@ async fn list_summaries_exact_version_overrides_latest_versions() {
         summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
         ["a"]
     );
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_a_versions_list() {
+    // The case Runs tab's anchored version scope: the console computes the versions
+    // in the anchored line and sends the concrete list; any of them matches.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "pong", "v1.1.0").await;
+    seed_version(&db, "c", "pong", "v2.0.0").await;
+
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        versions: Some(vec!["v1.0.0".to_string(), "v1.1.0".to_string()]),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a", "b"]
+    );
+
+    // An empty list is no filter at all, like the other empty equality filters.
+    let filter = SummaryFilter {
+        versions: Some(Vec::new()),
+        ..unpublished_filter()
+    };
+    let (_, total) = db
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(total, 3);
+}
+
+#[tokio::test]
+async fn list_summaries_versions_list_overrides_latest_versions() {
+    // Scoping to an older line explicitly must show it — the concrete list is the
+    // more specific instruction, exactly as an exact `version` is.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "pong", "v2.0.0").await;
+
+    let filter = SummaryFilter {
+        versions: Some(vec!["v1.0.0".to_string()]),
+        latest_versions: true,
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a"]
+    );
+}
+
+/// Push an unpublished `pong` run recording the given engine slug, varying nothing
+/// else. For the engine-filter tests, whose ordering key is the id tiebreak.
+async fn seed_engine(db: &Db, id: &str, engine: &str) {
+    let mut r = record(id);
+    r.subject.test_case_slug = "pong".to_string();
+    r.subject.engine_slug = engine.to_string();
+    db.push(&r, &links(), None).await.unwrap();
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_engine_with_null_matching_only_none() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_engine(&db, "a", "none").await;
+    seed_engine(&db, "b", "simple-2d").await;
+    // Simulate a pre-column row the backfill could not lift (its record no longer
+    // deserializes, so the column stays NULL — the engine is unknown).
+    seed_engine(&db, "c", "simple-2d").await;
+    let mut active = lifted(&db, "c").await.into_active_model();
+    active.engine_slug = Set(None);
+    active.update(&db.connection()).await.unwrap();
+
+    // An engine filter matches the lifted slug — and NEVER a NULL row, whose engine
+    // is unknown even if its unreadable record happened to name one.
+    let filter = SummaryFilter {
+        engine: Some("simple-2d".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["b"]
+    );
+
+    // `none` is the one filter NULL matches: every pre-engine-era record
+    // deserializes to `none`, so an un-backfillable row can only be engineless-era.
+    let filter = SummaryFilter {
+        engine: Some("none".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a", "c"]
+    );
+
+    // An empty engine is ignored, like the other equality filters.
+    let filter = SummaryFilter {
+        engine: Some(String::new()),
+        ..unpublished_filter()
+    };
+    let (_, total) = db
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(total, 3);
+}
+
+#[tokio::test]
+async fn push_lifts_the_engine_slug() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_engine(&db, "r1", "simple-2d").await;
+    assert_eq!(
+        lifted(&db, "r1").await.engine_slug.as_deref(),
+        Some("simple-2d")
+    );
+    // The engineless run lifts the concrete `none`, not NULL — it is a real value
+    // the engine filter matches on, distinct from "unknown".
+    seed_engine(&db, "r2", "none").await;
+    assert_eq!(lifted(&db, "r2").await.engine_slug.as_deref(), Some("none"));
+}
+
+#[tokio::test]
+async fn backfill_engine_slug_lifts_the_recorded_engine() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_engine(&db, "r1", "simple-2d").await;
+    seed_engine(&db, "r2", "none").await;
+
+    // Simulate rows that predate the column: NULL the lifted value.
+    for id in ["r1", "r2"] {
+        let mut active = lifted(&db, id).await.into_active_model();
+        active.engine_slug = Set(None);
+        active.update(&db.connection()).await.unwrap();
+    }
+
+    let filled = db.backfill_engine_slug().await.unwrap();
+    assert_eq!(filled, 2);
+    assert_eq!(
+        lifted(&db, "r1").await.engine_slug.as_deref(),
+        Some("simple-2d")
+    );
+    // `none` is lifted too: the candidate set settles rather than re-parsing the
+    // whole engineless-era corpus on every boot.
+    assert_eq!(lifted(&db, "r2").await.engine_slug.as_deref(), Some("none"));
+
+    // Idempotent: a second pass finds nothing un-backfilled.
+    assert_eq!(db.backfill_engine_slug().await.unwrap(), 0);
 }
 
 #[tokio::test]
@@ -3130,7 +3320,14 @@ async fn list_summaries_any_slice_covers_every_recorded_run() {
         ..SummaryFilter::default()
     };
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     let mut ids = run_ids(&runs);
@@ -3256,6 +3453,89 @@ async fn list_summaries_sorts_model_by_the_configuration_where_there_is_one() {
 }
 
 #[tokio::test]
+async fn list_summaries_sorts_test_case_by_display_name_not_slug() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Chosen so slug order and name order disagree: by slug `arc-foundry` <
+    // `pong` < `zz-unknown`; by name Arc Foundry < Carom < `zz-unknown` still, but
+    // `pong` (Carom) must file under "c" ahead of `valence` (Valence), which by
+    // slug trails it.
+    seed_ident(
+        &db,
+        "a",
+        "valence",
+        "sonnet",
+        HarnessSlug::Claude,
+        "base",
+        10,
+    )
+    .await;
+    seed_ident(&db, "b", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;
+    seed_ident(
+        &db,
+        "c",
+        "arc-foundry",
+        "sonnet",
+        HarnessSlug::Claude,
+        "base",
+        10,
+    )
+    .await;
+    seed_ident(
+        &db,
+        "d",
+        "zz-unknown",
+        "sonnet",
+        HarnessSlug::Claude,
+        "base",
+        10,
+    )
+    .await;
+    let names: CaseNames = [
+        ("arc-foundry", "Arc Foundry"),
+        ("pong", "Carom"),
+        ("valence", "Valence"),
+    ]
+    .into_iter()
+    .map(|(slug, name)| (slug.to_string(), name.to_string()))
+    .collect();
+
+    let ids = |dir| {
+        let (db, names) = (&db, &names);
+        async move {
+            let (runs, _) = db
+                .list_summaries(
+                    &unpublished_filter(),
+                    SummarySort::TestCase,
+                    dir,
+                    names,
+                    50,
+                    0,
+                )
+                .await
+                .unwrap();
+            run_ids(&runs)
+        }
+    };
+    // Arc Foundry, Carom, Valence, then the nameless slug on its own.
+    assert_eq!(ids(SortDir::Asc).await, ["c", "b", "a", "d"]);
+    assert_eq!(ids(SortDir::Desc).await, ["d", "a", "b", "c"]);
+
+    // Without a name map the key degrades to the slug itself.
+    let (runs, _) = db
+        .list_summaries(
+            &unpublished_filter(),
+            SummarySort::TestCase,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(run_ids(&runs), ["c", "b", "a", "d"]);
+}
+
+#[tokio::test]
 async fn list_summaries_sorts_by_tokens_and_reverses_with_dir() {
     let db = Db::connect_in_memory().await.unwrap();
     seed_metric(&db, "a", 10, Some(1.0), None).await;
@@ -3331,6 +3611,7 @@ async fn list_summaries_windows_by_offset_and_limit_with_a_full_total() {
             &unpublished_filter(),
             SummarySort::Tokens,
             SortDir::Asc,
+            &CaseNames::new(),
             2,
             2,
         )
@@ -3345,6 +3626,7 @@ async fn list_summaries_windows_by_offset_and_limit_with_a_full_total() {
             &unpublished_filter(),
             SummarySort::Tokens,
             SortDir::Asc,
+            &CaseNames::new(),
             2,
             4,
         )
@@ -3389,7 +3671,14 @@ async fn list_summaries_total_counts_the_filtered_set_not_the_page() {
         ..unpublished_filter()
     };
     let (page, total) = db
-        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 2, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Tokens,
+            SortDir::Asc,
+            &CaseNames::new(),
+            2,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(page.len(), 2);
@@ -3420,7 +3709,14 @@ async fn list_summaries_filters_by_variant_within_a_case() {
         ..unpublished_filter()
     };
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Tokens,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&runs), ["a"]);
@@ -3446,7 +3742,14 @@ async fn list_summaries_any_slice_orders_unpublished_runs_among_the_published_on
     // The unpublished run sorts strictly between the two published ones by tokens —
     // in both directions — and the total counts every stored run.
     let (runs, total) = db
-        .list_summaries(&filter, SummarySort::Tokens, SortDir::Asc, 50, 0)
+        .list_summaries(
+            &filter,
+            SummarySort::Tokens,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
         .await
         .unwrap();
     assert_eq!(run_ids(&runs), ["pub-lo", "unpub-mid", "pub-hi"]);
@@ -4137,6 +4440,7 @@ async fn unreviewed_excludes_the_auto_graded_performance_type() {
             },
             SummarySort::Date,
             SortDir::Desc,
+            &CaseNames::new(),
             50,
             0,
         )
@@ -5465,5 +5769,88 @@ fn a_combination_key_separates_on_a_character_a_model_id_cannot_contain() {
     assert_eq!(
         combination_key(&sample_combo()),
         "claude|claude-sonnet-4-5|",
+    );
+}
+
+#[tokio::test]
+async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_label() {
+    // The `/stats/providers` probe fold reads four columns: the item's serving
+    // provider, the owning probe's model slug (the join), the clean flag, and
+    // "errored" as the absence of a classification label. Prove the projection
+    // against a store with two probes of two models, mixed providers, and one
+    // errored call.
+    let db = Db::connect_in_memory().await.unwrap();
+    let probe = |id: &str, slug: &str| test_cabinet_entities::model_probe::Model {
+        id: id.to_string(),
+        model_slug: slug.to_string(),
+        openrouter_slug: format!("or/{slug}"),
+        provider: None,
+        user_id: "u1".to_string(),
+        samples: 1,
+        max_tokens: 100,
+        full_context: false,
+        request_json: "{}".to_string(),
+        status: "complete".to_string(),
+        error: None,
+        verdict: None,
+        base_clean_rate: None,
+        best_variation_clean_rate: None,
+        spend: 0.0,
+        created_at: "2026-08-23T00:00:00Z".to_string(),
+        finished_at: None,
+    };
+    let item =
+        |id: &str, probe_id: &str, provider: Option<&str>, clean: bool, label: Option<&str>| {
+            test_cabinet_entities::model_probe_item::Model {
+                id: id.to_string(),
+                probe_id: probe_id.to_string(),
+                condition: "base".to_string(),
+                sample: 0,
+                provider: provider.map(str::to_string),
+                finish_reason: None,
+                native_finish_reason: None,
+                label: label.map(str::to_string),
+                clean,
+                response_text: String::new(),
+                reasoning_text: None,
+                prompt_tokens: None,
+                completion_tokens: None,
+                cost: None,
+                duration_ms: 1,
+                error: label.is_none().then(|| "gateway refused".to_string()),
+                created_at: "2026-08-23T00:00:01Z".to_string(),
+            }
+        };
+    db.insert_model_probe(probe("p1", "alpha")).await.unwrap();
+    db.insert_model_probe(probe("p2", "beta")).await.unwrap();
+    db.insert_model_probe_item(item("i1", "p1", Some("acme"), true, Some("clean-program")))
+        .await
+        .unwrap();
+    db.insert_model_probe_item(item("i2", "p1", Some("acme"), false, Some("prose+program")))
+        .await
+        .unwrap();
+    db.insert_model_probe_item(item(
+        "i3",
+        "p2",
+        Some("zenith"),
+        true,
+        Some("clean-program"),
+    ))
+    .await
+    .unwrap();
+    db.insert_model_probe_item(item("i4", "p2", None, false, None))
+        .await
+        .unwrap();
+
+    let mut rows = db.probe_item_provider_rows().await.unwrap();
+    rows.sort();
+    assert_eq!(
+        rows,
+        vec![
+            (None, "beta".to_string(), false, true),
+            (Some("acme".to_string()), "alpha".to_string(), false, false),
+            (Some("acme".to_string()), "alpha".to_string(), true, false),
+            (Some("zenith".to_string()), "beta".to_string(), true, false),
+        ],
     );
 }

@@ -14,7 +14,21 @@ vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../../components/PromptHeader", () => ({
-  PromptHeader: () => null,
+  // The header's chrome is not what these tests are about; its slots are, because a
+  // page's own actions live in them. Stub the chrome and pass the slots through, so a
+  // control that moves into the header does not silently vanish from the test.
+  PromptHeader: ({
+    titleActions,
+    actions,
+  }: {
+    titleActions?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    <>
+      {titleActions}
+      {actions}
+    </>
+  ),
 }));
 
 // The catalog is injected through `useTestCases`; mock it so each test seeds an
@@ -120,10 +134,7 @@ describe("TestCasesPage", () => {
     // such case is dropped from the bar (mirroring, for the tabs, the grid's
     // published-only listing).
     ready(
-      [
-        testCase("Sunfront", "end-to-end"),
-        testCase("Foray", "adversarial"),
-      ],
+      [testCase("Sunfront", "end-to-end"), testCase("Foray", "adversarial")],
       { canExecute: false },
     );
 
@@ -173,7 +184,9 @@ describe("TestCasesPage", () => {
       testCase("Lanternjaw", "asset-generation", { assetKind: "mc-model" }),
       testCase("Trooper", "asset-generation", { assetKind: "sn-skinned" }),
       // Blender family: the glTF-character kind (its own tab, not 2D or 3D).
-      testCase("Rifleman", "asset-generation", { assetKind: "blender-character" }),
+      testCase("Rifleman", "asset-generation", {
+        assetKind: "blender-character",
+      }),
       // Particle and audio families.
       testCase("Spectra", "asset-generation", { assetKind: "particle-3d" }),
       testCase("Broadside", "asset-generation", { assetKind: "sfx-sample" }),

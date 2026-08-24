@@ -39,7 +39,6 @@ fn code_with(healing: HealingConfig) -> CodeSetup {
         language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::AMPLE,
         healing,
-        assistant_messages: AssistantMessageMode::None,
         doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
@@ -168,17 +167,50 @@ async fn healing_is_never_disclosed_to_the_model() {
     )
     .await;
 
+    // Nothing on the model's side of the conversation — system, user, or feedback — names the
+    // repair, under the old note's wording or any other. Only the model's own turns are exempt,
+    // since a program is free to say "repair" itself; here none does.
     let leaks = |messages: &[Message]| {
-        messages.iter().any(|message| {
-            message.content.as_deref().is_some_and(|text| {
-                text.contains("repaired your reply")
-                    || text.contains("Markdown code fence you wrapped")
-                    || text.contains("Only text was removed")
+        messages
+            .iter()
+            .filter(|message| message.role != crate::model::Role::Assistant)
+            .any(|message| {
+                message.content.as_deref().is_some_and(|text| {
+                    let folded = text.to_lowercase();
+                    folded.contains("repaired your reply")
+                        || folded.contains("markdown code fence you wrapped")
+                        || folded.contains("only text was removed")
+                        || folded.contains("heal")
+                        || folded.contains("repair")
+                })
             })
-        })
     };
     for (turn, messages) in requests.iter().enumerate().skip(1) {
         assert!(!leaks(messages), "turn {turn} was told what gg repaired");
+    }
+
+    // The history holds exactly the healed text and nothing else of the reply: no fence, no
+    // pre-heal copy, nothing alongside it. The raw reply of a rewritten turn never enters the
+    // context; it survives for the operator on the turn's healing record.
+    let code = code_with(HealingConfig::SAFE_REPAIRS);
+    for (turn, reply) in ["```ts\n1;\n```", "```ts\nconst x = ;\n```"]
+        .into_iter()
+        .enumerate()
+    {
+        let healed = healing::heal(
+            reply,
+            &code.healing,
+            crate::sandbox::language(code.language).healing(),
+        );
+        assert!(
+            healed.rewritten(),
+            "the fixture reply needs a repair to test"
+        );
+        assert_eq!(
+            assistant_message(&requests[turn + 1]),
+            healed.program,
+            "turn {turn}'s stored assistant message is the healed program alone"
+        );
     }
 
     // The last one: a program the sandbox stopped. Its own run, because it needs an execution
@@ -427,19 +459,19 @@ fn assistant_message(request: &[Message]) -> String {
         .expect("the turn's request carries the prior assistant turn")
 }
 
-/// **Post-response healing records the healed program as the assistant turn.**
+/// **The healed program is recorded as the assistant turn — always.**
 ///
-/// Under `assistantMessages: "response-healing"` the message the model re-reads next turn is the
-/// program gg actually ran — the fence and the prose either side of it gone — not the malformed reply
-/// it sent. (The reply is still healed and still disclosed in the feedback under either mode; the mode
-/// governs only what the transcript stores.)
+/// The message the model re-reads next turn is the program gg actually ran — the fence and the
+/// prose either side of it gone — never the malformed reply it sent. There is no mode: every line
+/// number gg later reports counts lines of this text, so the history must carry it. The reply as
+/// sent survives on the operator's side of the record only.
 #[tokio::test]
-async fn response_healing_mode_records_the_healed_program() {
+async fn the_recorded_assistant_turn_is_the_healed_program() {
     let dir = TempDir::new().unwrap();
     std::fs::create_dir_all(dir.path().join("src")).unwrap();
-    let (_, _, requests) = drive_recorded_code_run(
+    let (_, events, requests) = drive_recorded_code_run(
         &dir,
-        healing_set(json!({ "assistantMessages": "response-healing" })),
+        healing_set(json!({})),
         vec![code_reply(FENCED_PROGRAM), code_reply(FINISHING_PROGRAM)],
     )
     .await;
@@ -458,31 +490,45 @@ async fn response_healing_mode_records_the_healed_program() {
         assistant.trim_start().starts_with("const srcFiles"),
         "the healed program stands on its own:\n{assistant}"
     );
-}
 
-/// **No post-processing records the reply verbatim, fence and prose and all.**
-///
-/// The mirror of the above, and the arm a study of a model's code-only compliance reads. It is asked
-/// for explicitly, because the default is the healed program.
-#[tokio::test]
-async fn no_post_processing_records_the_raw_reply() {
-    let dir = TempDir::new().unwrap();
-    std::fs::create_dir_all(dir.path().join("src")).unwrap();
-    let (_, _, requests) = drive_recorded_code_run(
-        &dir,
-        healing_set(json!({ "assistantMessages": "none" })),
-        vec![code_reply(FENCED_PROGRAM), code_reply(FINISHING_PROGRAM)],
-    )
-    .await;
-
-    let assistant = assistant_message(&requests[1]);
-    assert!(
-        assistant.contains("```ts"),
-        "the reply is stored as sent, fence and all:\n{assistant}"
+    // The `assistant_message` event carries that same text — what ran — and the raw reply survives
+    // for the operator on the turn's healing record, so both texts are in the stream.
+    let assistant_events: Vec<&String> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::AssistantMessage { text } => Some(text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        assistant_events[0], &assistant,
+        "the assistant_message event carries the healed program"
     );
     assert!(
-        assistant.contains("I see the issue"),
-        "including its prose:\n{assistant}"
+        !assistant_events.iter().any(|text| text.contains("```")),
+        "no assistant_message event ever carries a pre-heal reply"
+    );
+    assert_eq!(
+        healing_records(&events)[0].original.as_deref(),
+        Some(FENCED_PROGRAM),
+        "the healing record keeps the reply exactly as it was sent"
+    );
+    // And in that order: the assistant message — settled only once healing has run — is
+    // emitted before the turn's execution record, so a reader of the stream meets the
+    // program that ran before the record that says what it was healed from.
+    let first_message = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::AssistantMessage { .. }))
+        .expect("an assistant_message event");
+    let first_healing = events
+        .iter()
+        .position(|e| {
+            matches!(&e.kind, GgTelemetryKind::CodeExecution { healing, .. } if healing.original.is_some())
+        })
+        .expect("a code_execution event carrying the original reply");
+    assert!(
+        first_message < first_healing,
+        "the assistant_message ({first_message}) precedes the healing record ({first_healing})"
     );
 }
 

@@ -97,6 +97,27 @@ const SESSION_ID_HEADER: &str = "x-session-id";
 /// Maximum length of a provider error body copied into a [`ModelError`].
 const ERROR_BODY_CAP: usize = 2000;
 
+/// The **per-model-call ceiling**: five minutes.
+///
+/// Without one, a stalled provider stream blocks the turn forever — a run was observed hung twenty
+/// minutes inside a single call, and nothing in gg could ever have interrupted it. How the ceiling
+/// is applied differs by [transport](OpenRouterClient), because the two fail differently:
+///
+/// - The **buffering** transport gets its reply all at once or not at all, so the ceiling is a
+///   **total-duration** cap over the whole call, internal retries included: five minutes without a
+///   complete reply is a stall whatever the client was doing with them.
+/// - The **streaming** transport delivers the reply incrementally, and a stream that is still
+///   producing bytes is not stalled however long it runs — a legitimately long program can stream
+///   for longer than any total cap worth having. Its ceiling is therefore an **idle** cap: five
+///   minutes waiting for the response head, or five minutes between chunks, is a stall; steady
+///   progress never is.
+///
+/// A timed-out call surfaces as [`ModelError::Timeout`] **immediately**, without spending the
+/// client's own retry budget — each internal retry of a stall would cost the full ceiling again —
+/// and the turn loop records it as an error turn and asks again, so the bounded retry is the
+/// turn-level one the error ceilings govern. It must therefore never end the session by itself.
+pub const MODEL_CALL_TIMEOUT: Duration = Duration::from_secs(300);
+
 /// The most [`cache_control` breakpoints](cache_breakpoints) one request may carry.
 ///
 /// Anthropic — the provider that requires explicit markers — caps a request at four, and that is
@@ -537,7 +558,30 @@ impl OpenRouterClient {
 
     /// The **buffering** transport: post the request, read the whole body, [parse](parse_response)
     /// it. gg's original and still its default — see [`send`](Self::send).
+    ///
+    /// The whole call — every attempt, backoff included — runs under the
+    /// [per-call ceiling](MODEL_CALL_TIMEOUT) as a **total-duration** cap: a buffered reply
+    /// arrives all at once or not at all, so there is no progress to watch, and five minutes
+    /// without a complete reply is a stall whichever attempt it happened on. The elapse is a
+    /// [`ModelError::Timeout`] with no provider (nothing was read that could name one).
     async fn send_buffered(
+        &self,
+        body: Value,
+        messages: &[Message],
+    ) -> Result<ModelResponse, ModelError> {
+        match tokio::time::timeout(MODEL_CALL_TIMEOUT, self.send_buffered_inner(body, messages))
+            .await
+        {
+            Ok(outcome) => outcome,
+            Err(_) => Err(ModelError::Timeout {
+                after: MODEL_CALL_TIMEOUT,
+                provider: None,
+            }),
+        }
+    }
+
+    /// [`send_buffered`](Self::send_buffered) without its ceiling — the attempt loop itself.
+    async fn send_buffered_inner(
         &self,
         body: Value,
         messages: &[Message],
@@ -629,7 +673,25 @@ impl OpenRouterClient {
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
 
         for attempt in 1..=self.retry.max_attempts {
-            let sent = self.attempt(&url).json(&body).send().await;
+            // The [per-call ceiling](MODEL_CALL_TIMEOUT) on the wait for the response *head*. The
+            // body's own progress is watched separately (see `read_stream`); a head that has not
+            // arrived in five minutes is a stall, and it surfaces immediately rather than
+            // spending the retry budget — each internal retry of a stall would cost the full
+            // ceiling again, and the turn-level retry is the bounded one.
+            let sent = match tokio::time::timeout(
+                MODEL_CALL_TIMEOUT,
+                self.attempt(&url).json(&body).send(),
+            )
+            .await
+            {
+                Ok(sent) => sent,
+                Err(_) => {
+                    return Err(ModelError::Timeout {
+                        after: MODEL_CALL_TIMEOUT,
+                        provider: None,
+                    });
+                }
+            };
 
             match sent {
                 // Transport-level failure (connect/timeout/etc.): always retryable.
@@ -656,6 +718,12 @@ impl OpenRouterClient {
                                 last_trip = Some(detail);
                             }
                             StreamOutcome::Interrupted(detail) => last_err = detail,
+                            StreamOutcome::Stalled { provider } => {
+                                return Err(ModelError::Timeout {
+                                    after: MODEL_CALL_TIMEOUT,
+                                    provider,
+                                });
+                            }
                             StreamOutcome::Malformed(err) => return Err(err),
                         },
                         StatusClass::Fatal => {
@@ -736,6 +804,13 @@ enum StreamOutcome {
     /// The connection failed part-way through the reply. **Retryable**, on the same terms as a
     /// transport error before the response head: nothing about the request was wrong.
     Interrupted(String),
+    /// The stream went [idle past the per-call ceiling](MODEL_CALL_TIMEOUT): five minutes without
+    /// a chunk. Surfaced as [`ModelError::Timeout`] **without** consuming the retry budget — see
+    /// that constant — carrying the provider the chunks had named, when any arrived at all.
+    Stalled {
+        /// The upstream provider serving the stalled stream, when a chunk named one.
+        provider: Option<String>,
+    },
     /// The stream was not a stream gg can read — an unparseable event, a provider error object, a
     /// tool call whose assembled arguments are not JSON, or an empty reply with no finish reason.
     /// **Fatal**, exactly as the same conditions are on the buffering transport.
@@ -769,7 +844,18 @@ async fn read_stream(resp: reqwest::Response, config: LoopGuardConfig) -> Stream
     let mut accumulator = StreamAccumulator::new();
     let mut stream = resp.bytes_stream();
 
-    while let Some(chunk) = stream.next().await {
+    loop {
+        // The idle half of the [per-call ceiling](MODEL_CALL_TIMEOUT): a stream still producing
+        // bytes is not stalled however long it runs, so the clock is per read rather than total.
+        let chunk = match tokio::time::timeout(MODEL_CALL_TIMEOUT, stream.next()).await {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            Err(_) => {
+                return StreamOutcome::Stalled {
+                    provider: accumulator.provider().map(str::to_string),
+                };
+            }
+        };
         let chunk = match chunk {
             Ok(chunk) => chunk,
             Err(err) => return StreamOutcome::Interrupted(format!("stream interrupted: {err}")),
@@ -911,7 +997,8 @@ pub fn build_request_body(
     stable_ttl: CacheTtl,
     stream: bool,
 ) -> Value {
-    let breakpoints = if requires_cache_markers(model_id) {
+    let marked_model = requires_cache_markers(model_id);
+    let breakpoints = if marked_model {
         cache_breakpoints(messages)
     } else {
         Vec::new()
@@ -933,7 +1020,7 @@ pub fn build_request_body(
                     stable_ttl
                 }
             });
-            wire_message(message, ttl)
+            wire_message(message, ttl, marked_model)
         })
         .collect();
     let mut body = json!({
@@ -1153,9 +1240,20 @@ impl From<GgPromptCacheTtl> for CacheTtl {
 ///
 /// Pure, so the placement is unit tested without network.
 pub fn cache_breakpoints(messages: &[Message]) -> Vec<usize> {
-    let Some(tail) = messages.len().checked_sub(1) else {
+    let Some(last) = messages.len().checked_sub(1) else {
         return Vec::new();
     };
+    // The tail marker writes the prefix the **next** turn's request will read, so it must land on
+    // the newest *conversation* message. gg's trailing slots — the context-usage signal and the
+    // responses-as-code contract notice — are `system`-role messages re-rendered at the very end
+    // of every request: a prefix ending on one never recurs (the next request has new
+    // conversation ahead of it), so an entry written there is never read and the tail marker
+    // would be wasted every single turn. Walking back past trailing `system` messages is safe
+    // because the only mid-thread `system` message is the system prompt itself, at index 0.
+    let tail = (0..=last)
+        .rev()
+        .find(|&index| messages[index].role != Role::System)
+        .unwrap_or(last);
     // The opening context ends where the thread begins. With no assistant turn yet the whole
     // request is still preamble, so the anchor is simply the last message.
     let anchor = messages
@@ -1224,9 +1322,23 @@ fn is_markable(message: &Message) -> bool {
 /// the **last** part so the cached prefix covers the whole message — attaching it to the leading
 /// text part of a message with pictures would leave the pictures, by far the expensive half,
 /// outside the cache.
-fn wire_message(message: &Message, cached: Option<CacheTtl>) -> Value {
+///
+/// `stable_parts` serializes **every** content-bearing message as the multi-part array, marker or
+/// no marker — set exactly for the [models that take markers](requires_cache_markers). It exists
+/// because the rolling [breakpoints](cache_breakpoints) *move*: as the grid advances, a message
+/// that carried a marker on one turn is unmarked on the next, and without this flag its wire shape
+/// would flip between a bare string and a one-element array **mid-prefix** — a byte-level edit
+/// behind the end of an otherwise append-only prompt, observed busting a run's cached prefix from
+/// 24.7k tokens to 2.6k on the turn the grid moved. With it, a sent message's serialized form is a
+/// function of the message alone: only the `cache_control` *field* comes and goes, which is
+/// metadata the caching providers do not hash as content. Models that take no markers keep the
+/// bare-string shape they always had — for them the array form is what busts implicit caching (see
+/// [`requires_cache_markers`]).
+fn wire_message(message: &Message, cached: Option<CacheTtl>, stable_parts: bool) -> Value {
     let mut obj = json!({ "role": role_str(message.role) });
-    if !message.images.is_empty() || (cached.is_some() && message.content.is_some()) {
+    if !message.images.is_empty()
+        || (message.content.is_some() && (stable_parts || cached.is_some()))
+    {
         let mut parts: Vec<Value> = Vec::with_capacity(message.images.len() + 1);
         if let Some(content) = &message.content {
             parts.push(json!({ "type": "text", "text": content }));
@@ -1302,6 +1414,7 @@ pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
         )));
     }
 
+    let provider = parsed.provider.filter(|provider| !provider.is_empty());
     let choice = parsed
         .choices
         .into_iter()
@@ -1340,6 +1453,7 @@ pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
         finish_reason,
         usage,
         cost,
+        provider,
         loop_aborts: LoopAborts::none(),
     })
 }
@@ -1418,6 +1532,9 @@ struct WireResponse {
     usage: Option<WireUsage>,
     #[serde(default)]
     error: Option<WireError>,
+    /// OpenRouter's name for the upstream provider that served the call.
+    #[serde(default)]
+    provider: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1549,6 +1666,8 @@ pub struct StreamAccumulator {
     usage: Option<WireUsage>,
     /// Whether the terminal `data: [DONE]` sentinel has been seen.
     done: bool,
+    /// The upstream provider the chunks named, from the first chunk that carried one.
+    provider: Option<String>,
 }
 
 /// One tool call being assembled from the fragments of several chunks.
@@ -1580,6 +1699,7 @@ impl StreamAccumulator {
             finish_reason: None,
             usage: None,
             done: false,
+            provider: None,
         }
     }
 
@@ -1635,6 +1755,12 @@ impl StreamAccumulator {
         self.done
     }
 
+    /// The upstream provider the chunks have named so far, if any — read when a stalled stream is
+    /// abandoned, so the [timeout](ModelError::Timeout) can say who was serving it.
+    pub fn provider(&self) -> Option<&str> {
+        self.provider.as_deref()
+    }
+
     /// Take one complete SSE line, appending any assistant text it carried to `delta`.
     fn push_line(&mut self, line: &str, delta: &mut String) -> Result<(), ModelError> {
         // The event separator, and the keep-alive comment OpenRouter sends while a slow provider
@@ -1666,6 +1792,9 @@ impl StreamAccumulator {
         }
         if let Some(usage) = chunk.usage {
             self.usage = Some(usage);
+        }
+        if self.provider.is_none() {
+            self.provider = chunk.provider.filter(|provider| !provider.is_empty());
         }
 
         // gg asks for one completion and reads one, exactly as `parse_response` takes the first
@@ -1747,6 +1876,7 @@ impl StreamAccumulator {
             finish_reason,
             usage,
             cost,
+            provider: self.provider,
             // The transport fills this in: the accumulator assembles one attempt and has no idea
             // how many earlier ones were thrown away.
             loop_aborts: LoopAborts::none(),
@@ -1771,6 +1901,9 @@ struct WireStreamChunk {
     /// same way, as the one [`parse_response`] finds in a `2xx` envelope.
     #[serde(default)]
     error: Option<WireError>,
+    /// OpenRouter's name for the upstream provider, which it stamps on every chunk.
+    #[serde(default)]
+    provider: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1931,6 +2064,7 @@ impl MockClient {
                 comparable: Some(0.0011),
                 actual: Some(0.0011),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let write_memory_call = ModelResponse {
@@ -1956,6 +2090,7 @@ impl MockClient {
                 comparable: Some(0.0015),
                 actual: Some(0.0015),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let add_scaffold_task = ModelResponse {
@@ -1979,6 +2114,7 @@ impl MockClient {
                 comparable: Some(0.0012),
                 actual: Some(0.0012),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let add_movement_task = ModelResponse {
@@ -2003,6 +2139,7 @@ impl MockClient {
                 comparable: Some(0.0012),
                 actual: Some(0.0012),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         // An intentionally cyclic edge: the movement task is already blocked by the scaffold
@@ -2029,6 +2166,7 @@ impl MockClient {
                 comparable: Some(0.0012),
                 actual: Some(0.0012),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let complete_scaffold_task = ModelResponse {
@@ -2049,6 +2187,7 @@ impl MockClient {
                 comparable: Some(0.0012),
                 actual: Some(0.0012),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let create_epic = ModelResponse {
@@ -2073,6 +2212,7 @@ impl MockClient {
                 comparable: Some(0.0013),
                 actual: Some(0.0013),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let create_render_issue = ModelResponse {
@@ -2100,6 +2240,7 @@ impl MockClient {
                 comparable: Some(0.0016),
                 actual: Some(0.0016),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let create_input_issue = ModelResponse {
@@ -2128,6 +2269,7 @@ impl MockClient {
                 comparable: Some(0.0016),
                 actual: Some(0.0016),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         // An intentionally cyclic edge: the input issue is already blocked by the render issue,
@@ -2154,6 +2296,7 @@ impl MockClient {
                 comparable: Some(0.0013),
                 actual: Some(0.0013),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let write_call = ModelResponse {
@@ -2177,6 +2320,7 @@ impl MockClient {
                 comparable: Some(0.0042),
                 actual: Some(0.0042),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -2249,6 +2393,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 120),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let read_level = ModelResponse {
@@ -2261,6 +2406,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(950, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let evict_level = ModelResponse {
@@ -2275,6 +2421,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(1200, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let reread_level = ModelResponse {
@@ -2287,6 +2434,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(1100, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let archive = ModelResponse {
@@ -2301,6 +2449,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let search = ModelResponse {
@@ -2313,6 +2462,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(400, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -2366,6 +2516,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let wait = ModelResponse {
@@ -2378,6 +2529,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(950, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -2472,6 +2624,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(800, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let spawn = ModelResponse {
@@ -2487,6 +2640,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let wait = ModelResponse {
@@ -2499,6 +2653,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(950, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -2537,6 +2692,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(500, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -2574,6 +2730,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(tokens, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let advance = ModelResponse {
@@ -2589,6 +2746,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Self::new(
@@ -2625,6 +2783,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(600, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let advance = ModelResponse {
@@ -2637,6 +2796,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Self::new(model_id, vec![illegal, advance])
@@ -2686,6 +2846,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(600, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let succeed = ModelResponse {
@@ -2698,6 +2859,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Self::new(model_id, vec![plan, succeed])
@@ -2730,6 +2892,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(600, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let condense_and_succeed = ModelResponse {
@@ -2749,6 +2912,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Self::new(model_id, vec![plan, condense_and_succeed])
@@ -2801,6 +2965,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(600, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let split = ModelResponse {
@@ -2813,6 +2978,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Self::new(
@@ -2854,6 +3020,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(500, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -2916,6 +3083,7 @@ impl MockClient {
                 comparable: Some(0.002),
                 actual: Some(0.002),
             }),
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -2928,6 +3096,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(900, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Self::new(model_id, vec![program, finish])
@@ -2957,6 +3126,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage,
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -2969,6 +3139,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage,
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Self::new(model_id, vec![runaway, finish])
@@ -3003,6 +3174,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(1000, 60),
             cost: None,
+                    provider: None,
                     loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -3015,6 +3187,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(1000, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Self::new(model_id, vec![program, finish])
@@ -3043,6 +3216,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(500, 40),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let finish = ModelResponse {
@@ -3054,6 +3228,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(520, 30),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Self::new(model_id, vec![program, finish])
@@ -3124,6 +3299,7 @@ impl ModelClient for MockClient {
                 finish_reason: FinishReason::Stop,
                 usage: TokenCounts::default(),
                 cost: None,
+                provider: None,
                 loop_aborts: LoopAborts::none(),
             });
         }
@@ -3143,6 +3319,7 @@ impl ModelClient for MockClient {
                 finish_reason: FinishReason::ToolCalls,
                 usage: TokenCounts::default(),
                 cost: None,
+                provider: None,
                 loop_aborts: LoopAborts::none(),
             });
         }
@@ -3291,6 +3468,7 @@ impl ModelClient for MockClient {
                     finish_reason: FinishReason::ToolCalls,
                     usage: TokenCounts::default(),
                     cost: None,
+                    provider: None,
                     loop_aborts: LoopAborts::none(),
                 });
             }
@@ -3327,6 +3505,7 @@ fn ending_turn(name: &str, text: &str, arguments: Value) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -3383,6 +3562,7 @@ fn issue_review_tool_turn(
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -3699,3 +3879,7 @@ mod tests;
 #[cfg(test)]
 #[path = "client.streaming.test.rs"]
 mod streaming_tests;
+
+#[cfg(test)]
+#[path = "client.timeout.test.rs"]
+mod timeout_tests;

@@ -111,20 +111,31 @@ target environment's `TCAB_R2_*` credentials rather than `wrangler`, and writes
 no lockfile: the keys are constructible, so the backend discovers what exists by
 listing that prefix at ingest.
 
-`capture-baselines <slug> [<version>] [--variant <slug>] [--all-variants] [--dry-run]`
-regenerates a case version's committed baseline
-[validation](/testing/end-to-end/instrumentation/) media. For each targeted
-variant it runs the case's `[build]` install then build in the variant's
-reference-implementation directory, drives every [scripted review
-item](/testing/end-to-end/manifests/#automated-validation) against that build,
-and writes each declared output under the version folder's
-`validation-baseline/<variant>/`. That directory is regenerated wholesale, so a
-renamed or removed output never lingers. The media is the expected-behavior half
-of the reviewer's side-by-side and is a fixed property of the case version.
+`capture-baselines <slug> [<version>] [--variant <slug>] [--all-variants]
+[--engine <slug>] [--dry-run]` regenerates a case version's committed baseline
+[validation](/testing/end-to-end/instrumentation/) media. A variant has one
+reference implementation per [engine](/components/core/engines/), so the unit it
+works in is the variant/engine pair. For each targeted pair it runs the case's
+`[build]` install then build in that reference-implementation directory,
+produces every [scripted review
+item](/testing/end-to-end/manifests/#automated-validation)'s declared outputs
+from it, and writes them under the version folder's
+`validation-baseline/<engine>/<variant>/`. That directory is regenerated
+wholesale, so a renamed or removed output never lingers. The media is the
+expected-behavior half of the reviewer's side-by-side and is a fixed property of
+the case version.
+
+How the outputs are produced follows the case, exactly as it does per run: a
+case shipping a validator project for the engine has its baseline recorded by
+running those suites against the reference implementation, and a case shipping
+none has its reference build served and driven in a browser. Either way both
+panes a reviewer compares come from the same scenario driven the same way, which
+is the only thing that makes the comparison mean anything.
 
 The command deploys nothing and writes no lockfile, so it takes no `--env` and
-needs no Cloudflare credentials, only the case's toolchain and a browser. It is
-the command to run while authoring or revising debug scripts.
+needs no Cloudflare credentials, only the case's toolchain — and a browser for a
+case decided by browser scripts. It is the command to run while authoring or
+revising validators.
 
 ### Analysis
 

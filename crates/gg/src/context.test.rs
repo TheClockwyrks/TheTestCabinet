@@ -727,6 +727,7 @@ fn signal_options() -> UsageSignalOptions {
     UsageSignalOptions {
         can_evict: true,
         program_language: None,
+        can_close_views: false,
         can_archive: true,
         top_file_views: 5,
         threshold_percent: 0,
@@ -1634,5 +1635,57 @@ fn a_region_is_the_window_a_read_actually_covered() {
             offset: 291,
             limit: 10
         })
+    );
+}
+
+/// The trailing contract notice: one instance, always the last rendered message, surviving a
+/// compaction reset (it is a slot, not thread material), cleared with `None`, and invisible to
+/// [`ends_on_assistant`](ContextModel::ends_on_assistant) — which asks whether the model was
+/// answered, a question constant furniture can never answer yes to.
+#[test]
+fn the_trailing_notice_renders_last_once_and_never_answers_the_model() {
+    let mut model = code_model(None);
+    model.set_system("sys");
+    model.set_trailing_notice(Some("Reminder: one bare program.".to_string()));
+    model.push_user_prompt("task");
+
+    model.begin_turn(1);
+    model.push_assistant(Some("a program".to_string()), vec![]);
+
+    let messages = model.messages();
+    let notices: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, message)| message.content.as_deref() == Some("Reminder: one bare program."))
+        .map(|(index, _)| index)
+        .collect();
+    assert_eq!(
+        notices,
+        vec![messages.len() - 1],
+        "the notice renders exactly once, after everything else"
+    );
+
+    // The window's last *answer* is still the assistant's own message: the notice does not count.
+    assert!(
+        model.ends_on_assistant(),
+        "constant trailing furniture is not an answer to the model"
+    );
+
+    // A compaction resets the thread, not the slots: the notice (and the system prompt) survive.
+    model.clear_ephemeral();
+    assert_eq!(
+        model.messages().last().and_then(|m| m.content.clone()),
+        Some("Reminder: one bare program.".to_string()),
+        "the notice survives a compaction reset"
+    );
+
+    // And clearing the slot removes it outright — what a succession to a tool-calling holder does.
+    model.set_trailing_notice(None);
+    assert!(
+        !model
+            .messages()
+            .iter()
+            .any(|m| m.content.as_deref() == Some("Reminder: one bare program.")),
+        "a cleared slot renders nothing"
     );
 }

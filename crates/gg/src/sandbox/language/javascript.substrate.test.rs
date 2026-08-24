@@ -91,6 +91,16 @@ fn run_scoped(
 
 /// The lines a successful program logged, with the program's own failure surfaced rather than
 /// swallowed.
+/// The throw the guest reported, which is how every failure of a program's own reaches gg on
+/// this arm — the guest reports over `feedback.report-error` and returns, so `result` is `Ok` and
+/// the error rides on it.
+fn thrown<'a>(outcome: &'a SandboxOutcome, why: &str) -> &'a crate::sandbox::outcome::ProgramError {
+    match &outcome.result {
+        Ok(result) => result.error.as_ref().expect(why),
+        Err(error) => panic!("{why}: the store died instead of the guest reporting — {error:?}"),
+    }
+}
+
 fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
@@ -156,7 +166,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "import { files } from \"gg\";\n",
         "\n",
         "const entries = files.listDir(\"src\").filter((e) => e.kind === \"file\");\n",
-        "const texts = entries.map((e) => files.readTextFile(`src/${e.name}`));\n",
+        "const texts = entries.map((e) => files.readFile(`src/${e.name}`).contents);\n",
         "const written = files.writeFile(\"out/summary.txt\", texts.join(\"\\n\"));\n",
         "console.log(JSON.stringify({ files: entries.map((f) => f.name), written }));\n",
     ));
@@ -182,12 +192,12 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
             .collect::<Vec<_>>(),
         [
             "files.list_dir",
-            "files.read_text_file",
-            "files.read_text_file",
+            "files.read_file",
+            "files.read_file",
             "files.write_file"
         ],
-        "and the roster names what the MODEL wrote, which is `readTextFile` twice — the log above \
-         names the read each of them was serviced by"
+        "and the roster names what the MODEL wrote — the log above names the read each call was \
+         serviced by"
     );
 
     // 3. The arm's variable, observed rather than inferred. `openText` takes two strings; this
@@ -203,18 +213,21 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "views.openText(1, 2);\n",
         "console.log(\"reached\");\n",
     ));
-    let error = outcome
-        .result
-        .as_ref()
-        .expect_err("an uncaught throw kills the guest, which the host reads as a trap");
-    let message = error.to_string();
+    let error = thrown(&outcome, "an uncaught throw fails the program");
+    let message = error.message.clone();
     assert!(
         message.contains("TypeError: expected a string, got a number"),
         "the SDK's own argument validation is what catches it, and it says what it wanted: {message}"
     );
     assert!(
-        message.contains("at openText (sdk:gg/views.js") && message.contains("(program.js:3:7)"),
-        "and the engine's frames name the SDK call and the model's own line: {message}"
+        message.contains("(program.js:3:7)"),
+        "and the engine's frames reach the model's own line, which is the line that names the \
+         call: {message}"
+    );
+    assert!(
+        !message.contains("sdk:"),
+        "the SDK's own frames are struck, because `sdk:gg/views.js` is not a file the model can \
+         open: {message}"
     );
     assert!(
         log.names().is_empty(),
@@ -229,7 +242,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
     );
 
     // 4. THE DOCUMENTED SPELLING. `import { files } from "gg";` is the line every documentation view
-    // of `gg.files` states, and `gg.files.readTextFile` is the name every search hit carries and the
+    // of `gg.files` states, and `gg.files.readFile` is the name every search hit carries and the
     // prompt quotes — the call site is that name with its leading `gg.` dropped, which is the one
     // difference the prompt's language rules spell out. One named binding per bound module, plus the
     // `ApiError` the aggregate exports beside them.
@@ -238,7 +251,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "import { session, shell, skills, tasks, views } from \"gg\";\n",
         "import { ApiError } from \"gg\";\n",
         "\n",
-        "views.openText(\"scratch\", files.readTextFile(\"notes.md\"));\n",
+        "views.openText(\"scratch\", files.readFile(\"notes.md\").contents);\n",
         "shell.shell(\"ls\");\n",
         "board.createEpic({ prefix: \"epc\", title: \"E\", description: \"D\" });\n",
         "tasks.addTask({ id: \"t1\", title: \"T\" });\n",
@@ -247,7 +260,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "delegation.sendMessage(\"agent-1\", \"more\");\n",
         "skills.readSkill(\"testing\");\n",
         "try {\n",
-        "  files.readTextFile(\"a.ts\", { offset: -1 });\n",
+        "  files.readFile(\"a.ts\", { offset: -1 });\n",
         "} catch (error) {\n",
         "  console.log(`${error instanceof ApiError} ${error.code}`);\n",
         "}\n",
@@ -348,7 +361,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "console.log(gg.memories.searchMemories([\"build\"])[0].read());\n",
         "gg.delegation.spawnSubagent({ agent: \"worker\", prompt: \"go\" }).send(\"more\");\n",
         "gg.views.openText(\"scratch\", \"shown\");\n",
-        "console.log(String(gg.views.current()[0].close()));\n",
+        "console.log(String(gg.views.close(\"scratch\")));\n",
     ));
     assert_eq!(
         logs(&outcome),
@@ -411,14 +424,16 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let (outcome, log) = run("const found = docs.search({ query: \"view\" });\n");
-    let error = outcome
-        .result
-        .as_ref()
-        .expect_err("an unbound identifier kills the guest");
-    let message = error.to_string();
+    let error = thrown(&outcome, "an unbound identifier fails the program");
+    let message = error.message.clone();
     assert!(
         message.contains("ReferenceError") && message.contains("docs is not defined"),
         "the engine's own sentence is what the model reads: {message}"
+    );
+    assert_eq!(
+        error.kind,
+        crate::sandbox::outcome::ProgramErrorKind::UnknownName,
+        "and a ReferenceError is reported as an unknown name: {error:?}"
     );
     assert!(
         message.contains("program.js:1:1"),
@@ -455,11 +470,9 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
         &all_operations(),
         &modules,
     );
-    let message = outcome
-        .result
-        .as_ref()
-        .expect_err("an unbound identifier kills the guest")
-        .to_string();
+    let message = thrown(&outcome, "an unbound identifier fails the program")
+        .message
+        .clone();
     assert!(
         message.contains("ReferenceError") && message.contains("csvTools is not defined"),
         "a module in scope is not a name in scope: {message}"
@@ -495,11 +508,9 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
 #[test]
 fn a_specifier_outside_the_documented_surface_names_the_ones_inside_it() {
     let (outcome, log) = run("import { readFile } from \"test-cabinet:gg/files\";\n");
-    let message = outcome
-        .result
-        .as_ref()
-        .expect_err("an unresolvable import kills the guest")
-        .to_string();
+    let message = thrown(&outcome, "an unresolvable import fails the program")
+        .message
+        .clone();
     assert!(
         message.contains("gg's own plumbing") && message.contains("import \"gg\""),
         "the refusal names what to write instead: {message}"
@@ -612,15 +623,18 @@ fn g8_a_runtime_failure_reaches_the_model() {
 
 import { files } from "gg";
 
-const text = files.readTextFile(
+const text = files.readFile(
   "missing.md",
 );
 console.log(text);
 "#,
-                names: &["read_text_file", "not-found", "missing.md"],
+                names: &["read_file", "not-found", "missing.md"],
                 located: Located::At("program.js:6:3"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                // The guest reads the `code` off the uncaught `ApiError` and reports it, so the
+                // turn is filed as the program fighting the API — as on Python, Ruby and C++ —
+                // and never as a sandbox trap.
+                recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -634,7 +648,7 @@ console.log(
                 names: &["TypeError", "toString"],
                 located: Located::At("program.js:5:3"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -649,7 +663,7 @@ step();
                 names: &["the third step did not finish"],
                 located: Located::At("program.js:4:13"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -664,7 +678,7 @@ deeper(0);
                 names: &["Maximum call stack size exceeded"],
                 located: Located::At("program.js:4:21"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::Abort,
@@ -680,9 +694,10 @@ console.log("after the exit");
                 located: Located::At("program.js:4:1"),
                 // The guest is not Node and binds no `process`, so a program cannot stop it. What
                 // the model reads is the engine's own `ReferenceError` at the line it reached for
-                // one, and the statements after it do not run.
+                // one, and the statements after it do not run. A `ReferenceError` is reported
+                // as an unknown name, which is what reaching for a name nothing bound is.
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramUnknownName),
             },
         ],
     );

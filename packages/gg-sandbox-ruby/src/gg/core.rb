@@ -22,11 +22,11 @@ module GG
     #
     # ```ruby
     # begin
-    #   notes = GG::Files.read_text_file("notes.md")
+    #   GG::Views.open_text("build log", log)
     # rescue GG::Core::ApiError => failure
-    #   raise unless failure.code == GG::Core::ApiErrorCode::NOT_FOUND
+    #   raise unless failure.code == GG::Core::ApiErrorCode::LIMIT_EXCEEDED
     #
-    #   notes = ""
+    #   GG::Views.open_text("build log (tail)", log[-40_000..])
     # end
     # ```
     class ApiError < StandardError

@@ -33,6 +33,47 @@ fn write_validator_project(version: &crate::test_case::TestCaseVersion, engine: 
         .expect("validator project config");
 }
 
+/// A review item whose one point is decided by the validator at `script_rel`.
+fn validated_item(id: &str, script_rel: &str) -> crate::test_case::ReviewItem {
+    crate::test_case::ReviewItem {
+        id: id.to_string(),
+        title: format!("The {id} point"),
+        text: String::new(),
+        reference: None,
+        proof: None,
+        sequences: Vec::new(),
+        frames: Vec::new(),
+        weight: 1,
+        graded: true,
+        domain: None,
+        sub_items: Vec::new(),
+        scored: true,
+        validation: Some(crate::test_case::ReviewValidation {
+            script: None,
+            script_rel: script_rel.to_string(),
+            outputs: Vec::new(),
+        }),
+    }
+}
+
+/// A variant carrying nothing of its own, so the case's common items are its whole
+/// checklist.
+fn bare_variant() -> crate::test_case::Variant {
+    crate::test_case::Variant {
+        slug: "base".to_string(),
+        name: "Base".to_string(),
+        description: None,
+        specs: Vec::new(),
+        workspace: None,
+        references: Vec::new(),
+        proofs: Vec::new(),
+        review_items: Vec::new(),
+        domains: Vec::new(),
+        voxel: None,
+        reference_impls: Default::default(),
+    }
+}
+
 #[test]
 fn a_case_shipping_a_validator_project_for_the_run_s_engine_runs_it() {
     let dir = tempfile::tempdir().expect("temp dir");
@@ -91,6 +132,61 @@ fn a_case_shipping_no_project_for_the_run_s_engine_is_driven_in_a_browser() {
         scripted_validation(&elsewhere, &artifacts),
         ScriptedValidation::Browser,
         "a project for another engine decides nothing about this run",
+    );
+}
+
+#[test]
+fn a_baseline_is_captured_by_the_same_path_the_run_would_use() {
+    // The reviewer's two panes only mean something if they came from the same
+    // scenario driven the same way, so the baseline capture asks the same question
+    // the per-run capture asks — does the case ship a validator project for this
+    // engine? — and answers it the same way. Here it does, so the reference
+    // implementation has the project run over it rather than being served to a
+    // browser.
+    //
+    // Nothing installs vitest into this scratch reference directory, so the runner
+    // reports every point as not run. That is the outcome under test: it is a
+    // *unit* result, which is what the project path produces, where the browser path
+    // would have returned `None` outright for want of anything to serve.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut version = version_rooted_at(dir.path());
+    version.build = Some(crate::test_case::BuildCommands {
+        install: "npm ci".to_string(),
+        build: "npm run build".to_string(),
+        module: None,
+    });
+    version.instrumentation = Some(crate::test_case::Instrumentation {
+        handle: "__carom".to_string(),
+        tick_hz: None,
+    });
+    version.common_review_items = vec![validated_item(
+        "serve-speed",
+        "validation/simple-2d/gameplay/serve-speed.test.ts",
+    )];
+    write_validator_project(&version, "simple-2d");
+
+    let reference = tempfile::tempdir().expect("a scratch reference implementation");
+    let baseline = tempfile::tempdir().expect("a scratch baseline directory");
+    let units = super::capture_baseline_media(
+        &version,
+        &bare_variant(),
+        "simple-2d",
+        reference.path(),
+        // A build directory that does not exist: the project path never serves it,
+        // and reaching for it would be the browser path taking over.
+        &reference.path().join("dist"),
+        baseline.path(),
+    )
+    .expect("the project path reports per unit rather than declining wholesale");
+
+    assert_eq!(units.len(), 1, "the case's one declared unit is reported");
+    assert!(!units[0].ran, "there was no vitest to run it with");
+    assert_eq!(units[0].outputs_present, 0);
+
+    assert!(
+        !reference.path().join("validation").exists(),
+        "the staged validator project is removed again: a reference implementation is \
+         committed, and a capture must leave it as it found it",
     );
 }
 

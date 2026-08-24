@@ -272,3 +272,458 @@ export type ModelListingOut = {
 export type LogoFetchInput = { url: string };
 
 export type LogoFetchOut = { logoSvg: string };
+
+/**
+ * The `POST /models/{slug}/probes` request body. Everything is optional: an
+ * empty body probes the default route with the default sampling.
+ */
+export type ProbeTriggerInput = {
+  /**
+   * Pin every call to this provider (`provider.order` with fallbacks
+   * disabled). Absent probes the default route.
+   */
+  provider: string | null;
+  /**
+   * Samples per condition (default 3, at most 8).
+   */
+  samples: number | null;
+  /**
+   * Completion-token cap per call (default 3500).
+   */
+  maxTokens: number | null;
+  /**
+   * Send the seeded spec views whole instead of trimmed (default false).
+   */
+  fullContext: boolean | null;
+};
+
+/**
+ * The `POST /models/{slug}/probes` response: the probe row, already running.
+ */
+export type ProbeTriggerResponse = { probe: ModelProbeOut };
+
+/**
+ * One probe, as every probe read returns it (the detail read adds the items
+ * and the request).
+ */
+export type ModelProbeOut = {
+  id: string;
+  /**
+   * The catalog slug the probe was triggered from.
+   */
+  modelSlug: string;
+  /**
+   * The OpenRouter slug the completions were requested under.
+   */
+  openrouterSlug: string;
+  /**
+   * The pinned provider, or null for the default route.
+   */
+  provider: string | null;
+  samples: number;
+  maxTokens: number;
+  fullContext: boolean;
+  /**
+   * `running`, `complete`, or `failed`.
+   */
+  status: string;
+  /**
+   * Why the probe failed, or null.
+   */
+  error: string | null;
+  /**
+   * `ready`, `ready-with-reminders`, `tool-call-overfit`, or `not-ready`;
+   * null until the probe completes.
+   */
+  verdict: string | null;
+  /**
+   * The base condition's clean-reply rate (0..=1), or null.
+   */
+  baseCleanRate: number | null;
+  /**
+   * The best variation condition's clean-reply rate (0..=1), or null.
+   */
+  bestVariationCleanRate: number | null;
+  /**
+   * Total USD spend across the probe's calls, as OpenRouter reported it.
+   */
+  spend: number;
+  createdAt: string;
+  finishedAt: string | null;
+};
+
+/**
+ * One completion call inside a probe: which provider served it, how it
+ * finished, its classification, and the model's raw reply.
+ */
+export type ModelProbeItemOut = {
+  id: string;
+  /**
+   * The prompt condition (`base`, `no-tools`, `notice`, `combo`).
+   */
+  condition: string;
+  sample: number;
+  /**
+   * The provider OpenRouter reported serving the call, or null on error.
+   */
+  provider: string | null;
+  finishReason: string | null;
+  nativeFinishReason: string | null;
+  /**
+   * The classified reply shape, or null when the call errored.
+   */
+  label: string | null;
+  /**
+   * Whether the reply counts as clean (a bare program over the gg modules).
+   */
+  clean: boolean;
+  /**
+   * The model's raw reply content, verbatim.
+   */
+  responseText: string;
+  /**
+   * The reply's separate reasoning stream, or null.
+   */
+  reasoningText: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  /**
+   * The call's USD cost, or null.
+   */
+  cost: number | null;
+  durationMs: number;
+  /**
+   * The transport or gateway error that voided the call, or null.
+   */
+  error: string | null;
+  createdAt: string;
+};
+
+/**
+ * The `GET /models/{slug}/probes` response, newest first.
+ */
+export type ModelProbesResponse = { probes: Array<ModelProbeOut> };
+
+/**
+ * The `GET /model-probes/{id}` response: the probe with everything the console
+ * shows — what was sent (the base request plus each condition's additions),
+ * every call's classification, and the raw replies.
+ */
+export type ModelProbeDetailResponse = {
+  probe: ModelProbeOut;
+  items: Array<ModelProbeItemOut>;
+  /**
+   * The base condition's message array exactly as sent.
+   */
+  requestMessages: Array<ProbeMessage>;
+  /**
+   * The matrix the items' `condition` names refer to.
+   */
+  conditions: Array<ProbeConditionOut>;
+  /**
+   * The clause the `no-tools`/`combo` conditions appended to the system
+   * prompt.
+   */
+  noToolsClause: string;
+  /**
+   * The trailing user message the `notice`/`combo` conditions appended.
+   */
+  noticeMessage: string;
+};
+
+/**
+ * One condition of the probe matrix, so the console can say what each item's
+ * request added on top of the base request.
+ */
+export type ProbeConditionOut = {
+  name: string;
+  /**
+   * Whether the condition appends the no-tools clause to the system prompt.
+   */
+  noToolsClause: boolean;
+  /**
+   * Whether the condition appends the trailing user notice.
+   */
+  trailingNotice: boolean;
+  /**
+   * Whether the condition counts as a variation in the verdict.
+   */
+  variation: boolean;
+};
+
+/**
+ * One chat message as sent to the provider.
+ */
+export type ProbeMessage = { role: string; content: string };
+
+/**
+ * The `GET /models/{slug}/probe-providers` response.
+ */
+export type ProbeProvidersResponse = {
+  /**
+   * The OpenRouter slug the providers were enumerated for.
+   */
+  openrouterSlug: string;
+  providers: Array<ProbeProviderOut>;
+};
+
+/**
+ * One provider route OpenRouter lists for the model.
+ */
+export type ProbeProviderOut = {
+  /**
+   * The provider's display name — the value a probe pins with.
+   */
+  name: string;
+  /**
+   * The route's context window in tokens, or null when unreported.
+   */
+  contextLength: number | null;
+};
+
+/**
+ * The `GET /stats/providers` response.
+ */
+export type ProviderStatsResponse = {
+  /**
+   * Every stored gg run with a recorded session summary, whether or not it
+   * recorded providers. A launch that died before a single turn records no
+   * summary and is not scanned.
+   */
+  runsScanned: number;
+  /**
+   * The runs among them whose summary carries provider slices — the
+   * denominator that makes sparse provider coverage read as sparse rather
+   * than as zero.
+   */
+  runsWithProviderData: number;
+  /**
+   * Run evidence: one entry per observed provider, providerless last.
+   */
+  providers: Array<ProviderStatsOut>;
+  /**
+   * Probe evidence, strictly separate from the run evidence: one entry per
+   * provider observed on model-probe items.
+   */
+  probes: Array<ProbeProviderStatsOut>;
+};
+
+/**
+ * One provider's run evidence: its per-model rows and their total.
+ */
+export type ProviderStatsOut = {
+  /**
+   * The provider's OpenRouter name, or null for the slice of calls that
+   * named none — a gateway that stamps no provider, or a turn whose call
+   * produced no reply to name one.
+   */
+  provider: string | null;
+  /**
+   * The per-model rows, largest first by calls, a modelless row last.
+   */
+  models: Array<ProviderModelStatsOut>;
+  /**
+   * The rows summed (`runs` counts distinct runs, not a sum of rows).
+   */
+  totals: ProviderCallStatsOut;
+};
+
+/**
+ * One provider's evidence for one model.
+ */
+export type ProviderModelStatsOut = {
+  /**
+   * The model id, or null for a slice recorded before the agent's first
+   * usage delta named one, on a run more than one model served.
+   */
+  modelId: string | null;
+  /**
+   * The row's figures.
+   */
+  stats: ProviderCallStatsOut;
+};
+
+/**
+ * The call/turn figures one provider row carries.
+ */
+export type ProviderCallStatsOut = {
+  /**
+   * Distinct runs contributing to this row.
+   */
+  runs: number;
+  /**
+   * Model calls that reported usage.
+   */
+  calls: number;
+  /**
+   * Every token class those calls reported, summed.
+   */
+  totalTokens: number;
+  /**
+   * Their comparable USD cost, summed — null only when no contributing
+   * slice reported one, so unreported stays unreported.
+   */
+  cost: number | null;
+  /**
+   * Length-capped replies the provider served.
+   */
+  rejected: number;
+  /**
+   * Turns attributed to the provider.
+   */
+  turns: number;
+  /**
+   * The turns among them that worked (progressed or finished).
+   */
+  working: number;
+  /**
+   * The errored turns, keyed by turn error type wire id.
+   */
+  errors: { [key in string]: number };
+};
+
+/**
+ * One provider's probe evidence.
+ */
+export type ProbeProviderStatsOut = {
+  /**
+   * The provider OpenRouter reported serving the items, or null for calls
+   * that errored before any provider served them.
+   */
+  provider: string | null;
+  /**
+   * The per-model rows, largest first by items.
+   */
+  models: Array<ProbeProviderModelOut>;
+};
+
+/**
+ * One provider's probe evidence for one probed model.
+ */
+export type ProbeProviderModelOut = {
+  /**
+   * The catalog slug the probe was triggered from.
+   */
+  modelSlug: string;
+  /**
+   * Completion calls on this (provider, model).
+   */
+  items: number;
+  /**
+   * The calls whose reply classified clean.
+   */
+  clean: number;
+  /**
+   * The calls that errored before classification.
+   */
+  errored: number;
+};
+
+/**
+ * The `GET /stats/model-accuracy` response.
+ */
+export type ModelAccuracyResponse = {
+  /**
+   * One entry per model with any evidence, largest evidence first.
+   */
+  models: Array<ModelAccuracyOut>;
+  /**
+   * Runs that could not be attributed to any single model: an older
+   * multi-model run with no per-model slices, in either execution mode.
+   */
+  unattributableRuns: number;
+};
+
+/**
+ * One model's accuracy figures, split by execution mode. Either half is null
+ * when no run of that mode contributed.
+ */
+export type ModelAccuracyOut = {
+  /**
+   * The model id, as the runs recorded it.
+   */
+  modelId: string;
+  /**
+   * The responses-as-code figures.
+   */
+  rac: RacAccuracyOut | null;
+  /**
+   * The tool-calling figures.
+   */
+  toolCalling: ToolCallingAccuracyOut | null;
+};
+
+/**
+ * A model's responses-as-code turn accounting.
+ */
+export type RacAccuracyOut = {
+  /**
+   * Distinct contributing runs.
+   */
+  runs: number;
+  /**
+   * Turns attributed to the model, whatever their outcome.
+   */
+  turns: number;
+  /**
+   * The turns that worked. Exact where per-model slices exist; on an older
+   * record it is turns minus errors, which counts a fatal turn as valid —
+   * an overcount of at most one turn per agent, tallied under
+   * [`approximate_runs`](Self::approximate_runs).
+   */
+  valid: number;
+  /**
+   * Turns the compiler rejected (the transpile kind).
+   */
+  compile: number;
+  /**
+   * Turns the program failed at runtime (program faults plus sandbox
+   * limits).
+   */
+  runtime: number;
+  /**
+   * Turns lost to the model API (the model-api kind).
+   */
+  modelErrors: number;
+  /**
+   * Turns that produced no completion at all.
+   */
+  missing: number;
+  /**
+   * The same errors keyed by turn error type wire id — the open breakdown
+   * the named groups above are derived from.
+   */
+  byType: { [key in string]: number };
+  /**
+   * The contributing runs whose figures came from the run-level rollup
+   * rather than per-model slices.
+   */
+  approximateRuns: number;
+};
+
+/**
+ * A model's tool-calling dispatch accounting.
+ */
+export type ToolCallingAccuracyOut = {
+  /**
+   * Distinct runs contributing dispatch totals.
+   */
+  runs: number;
+  /**
+   * Dispatched tool calls across them.
+   */
+  calls: number;
+  /**
+   * The dispatches that succeeded (calls minus the failures below).
+   */
+  ok: number;
+  /**
+   * The failed dispatches, keyed by call failure class wire id.
+   */
+  failures: { [key in string]: number };
+  /**
+   * Tool-calling runs with failure evidence but no recorded dispatch total
+   * — records that predate the total, whose rate cannot be stated.
+   */
+  runsWithoutCallTotals: number;
+};

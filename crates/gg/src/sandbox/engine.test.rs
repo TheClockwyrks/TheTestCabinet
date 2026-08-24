@@ -150,8 +150,8 @@ fn an_explicit_exit_is_named_without_inventing_its_status() {
     assert_eq!(
         failed,
         "the sandbox trapped: the program called exit with a non-zero status instead of returning; \
-         nothing after the call ran, and the status itself did not reach gg — what crosses the \
-         sandbox boundary is that the exit was a failure, not the number the program passed"
+         nothing after the call ran, and the status number does not cross the sandbox boundary — \
+         only that the exit was a failure"
     );
     // The number the model would have read is the one the adapter invented. A `1` here means every
     // `exit(n)` in the tree, and a sentence naming it would be gg reporting a program other than
@@ -340,7 +340,7 @@ fn the_ceilings_report_what_the_guest_said() {
         "the guest's own words must lead: {exit}"
     );
     assert!(
-        exit.ends_with("not the number the program passed"),
+        exit.ends_with("only that the exit was a failure"),
         "gg's account must follow: {exit}"
     );
 }
@@ -499,7 +499,6 @@ fn the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with() 
             "test-cabinet:gg/docs",
             "test-cabinet:gg/feedback",
             "test-cabinet:gg/files",
-            "test-cabinet:gg/helpers",
             "test-cabinet:gg/memories",
             "test-cabinet:gg/programs",
             "test-cabinet:gg/session",

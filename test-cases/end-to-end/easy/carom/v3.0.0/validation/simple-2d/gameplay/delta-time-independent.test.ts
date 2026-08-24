@@ -24,7 +24,7 @@
 // time of each drive is read from the runtime's own frame clock — runtime code no
 // build can misreport — and compared across the three schedules.
 
-import { afterEach, expect, it } from "vitest";
+import { afterEach, it } from "vitest";
 import {
   ConstantClock,
   JitterClock,
@@ -32,13 +32,15 @@ import {
   type Clock,
 } from "@test-cabinet/simple-2d";
 import { FIELD_CY, FIELD_H } from "../../src/constants";
-import type { CaromSnapshot } from "../../src/debug";
+import { assertEqual, assertLessThanOrEqual, assertNotNull } from "../assert";
 import {
-  PARKED_CY,
-  TICK_MS,
+  ball0,
   captureReplay,
   createHarness,
+  PARKED_CY,
   startPlaying,
+  TICK_MS,
+  type BallView,
   type Harness,
   type UntilResult,
 } from "../harness";
@@ -137,7 +139,7 @@ interface Outcome {
 }
 
 /** Which way a ball is travelling, coarsely, as a phrase an assertion compares. */
-function headingOf(ball: CaromSnapshot["ball"]): string {
+function headingOf(ball: BallView): string {
   const across =
     ball.vx > 0 ? "rightward" : ball.vx < 0 ? "leftward" : "stalled";
   const vertical =
@@ -173,8 +175,8 @@ async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
 
   let contacted = false;
   let banked = false;
-  let verticalSign = Math.sign(opening.ball.vy);
-  let lastInFlight = opening.ball;
+  let verticalSign = Math.sign(ball0(opening).vy);
+  let lastInFlight = ball0(opening);
   let scorer: "p1" | "p2" | null = null;
 
   /** The drive itself, so the recorded section is exactly this and no more. */
@@ -194,13 +196,13 @@ async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
         }
         // The ball is posed travelling left, so travelling right means the left
         // paddle sent it back.
-        if (s.ball.vx > 0) contacted = true;
-        const sign = Math.sign(s.ball.vy);
+        if (ball0(s).vx > 0) contacted = true;
+        const sign = Math.sign(ball0(s).vy);
         if (sign !== 0) {
           if (verticalSign !== 0 && sign !== verticalSign) banked = true;
           verticalSign = sign;
         }
-        lastInFlight = s.ball;
+        lastInFlight = ball0(s);
         return false;
       },
       { maxFrames: MAX_FRAMES, poll: POLL_FRAMES },
@@ -232,29 +234,35 @@ it("reaches the same outcome however the elapsed time is divided into frames", a
 
   // The comparison is only worth making if the reference drive did what the
   // scenario intends, so those two facts are asserted before anything is compared.
-  expect(reference.resolved).toBe(true);
-  expect(reference.scorer).not.toBeNull();
-  expect(reference.contacted).toBe(true);
+  assertEqual(reference.resolved, true);
+  assertNotNull(reference.scorer);
+  assertEqual(reference.contacted, true);
 
   for (const [index, run] of compared.entries()) {
     const { name } = SCHEDULES[index + 1];
 
-    expect(run.contacted, `${name}: comes off the paddle`).toBe(
+    assertEqual(
+      run.contacted,
       reference.contacted,
+      `${name}: comes off the paddle`,
     );
-    expect(run.banked, `${name}: banks off a wall`).toBe(reference.banked);
-    expect(run.scorer, `${name}: the same side scores`).toBe(reference.scorer);
-    expect(run.heading, `${name}: ends travelling the same way`).toBe(
+    assertEqual(run.banked, reference.banked, `${name}: banks off a wall`);
+    assertEqual(run.scorer, reference.scorer, `${name}: the same side scores`);
+    assertEqual(
+      run.heading,
       reference.heading,
+      `${name}: ends travelling the same way`,
     );
-    expect(
+    assertLessThanOrEqual(
       Math.abs(run.speed - reference.speed),
+      SPEED_TOLERANCE,
       `${name}: ends at the same speed`,
-    ).toBeLessThanOrEqual(SPEED_TOLERANCE);
+    );
     // The one fact a build that ignores the delta time it is given cannot fake.
-    expect(
+    assertLessThanOrEqual(
       Math.abs(run.elapsedMs - reference.elapsedMs),
+      reference.elapsedMs * ELAPSED_TOLERANCE,
       `${name}: takes the same game time`,
-    ).toBeLessThanOrEqual(reference.elapsedMs * ELAPSED_TOLERANCE);
+    );
   }
 });

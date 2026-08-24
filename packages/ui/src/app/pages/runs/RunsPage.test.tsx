@@ -393,6 +393,42 @@ describe("RunsPage global stop controls", () => {
     await waitFor(() => expect(rowNames()).toHaveLength(3));
 
     expect(screen.queryByRole("group", { name: "Stop runs" })).toBeNull();
+    // And the header does not lay its comment line out for a cluster that never
+    // arrives: the comment sits straight in the header rather than as one half of a
+    // row shared with something that renders nothing.
+    const comment = screen.getByText(
+      "// every result the cabinet has produced",
+    );
+    expect(comment.parentElement?.tagName).toBe("HEADER");
+  });
+
+  // The cluster used to ride the trailing edge of the tab strip, which worked until the
+  // strip grew a fifth tab: five tabs and three buttons is a bar that wraps onto a second
+  // row at an ordinary window width, and the row it wrapped onto pushed the page down. It
+  // sits on the header's comment line instead, which is a half-empty row already.
+  it("sits in the page header rather than in the tab strip", async () => {
+    renderConsole(TWO_WAITING);
+
+    const group = await screen.findByRole("group", { name: "Stop runs" });
+    const tabs = screen.getByRole("navigation", { name: "Runs sections" });
+    expect(tabs).not.toContainElement(group);
+    // On the comment line itself: the cluster and the comment share a parent, and that
+    // row is inside the page header.
+    const comment = screen.getByText(
+      "// every result the cabinet has produced",
+    );
+    expect(group.parentElement?.parentElement).toBe(comment.parentElement);
+    const header = comment.closest("header");
+    expect(header).not.toBeNull();
+
+    // And that row is the header's own, a sibling of the row the New-run button is on
+    // rather than a column of it. A header laid out as one column of somebody else's
+    // row gives its comment line only that column's width, which is not enough for the
+    // three buttons — they wrap onto a row of their own, which is the whole thing
+    // moving them here was meant to avoid.
+    const newRun = screen.getByRole("link", { name: "+ New run" });
+    expect(newRun.parentElement?.parentElement?.parentElement).toBe(header);
+    expect(comment.parentElement?.parentElement).toBe(header);
   });
 
   it("clears the waiting queue and reports how many it cancelled", async () => {

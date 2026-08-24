@@ -30,4 +30,5 @@ subscribes to.
 | [Audio](/engines/structured-2d/concepts/audio/) | Synthesized and file-backed cues, the first-interaction unlock, and the cue events. |
 | [Assets](/engines/structured-2d/concepts/assets/) | The single asset root, path resolution, and the load events. |
 | [Diagnostics](/engines/structured-2d/concepts/diagnostics/) | The instance and world registries, the overlay drawn in device space, and the frame metrics. |
-| [Host](/engines/structured-2d/concepts/host/) | The handle a built page publishes, what it carries, and how a build is confirmed to have booted. |
+| [Debug Surface](/engines/structured-2d/concepts/debug/) | The object `initialize` returns, whose poses and readings act on the live world and are driven from code. |
+| [Recording](/engines/structured-2d/concepts/recording/) | The wrapper over the context the pipeline draws through, per-frame inherited state, and independently drawable frames. |

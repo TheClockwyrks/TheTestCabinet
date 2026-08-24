@@ -1,45 +1,38 @@
-// Carom — pause/ball-continues: after unpausing, the ball carries on from exactly
+// pause/ball-continues — after unpausing, the ball carries on from exactly
 // where it was suspended.
 //
-// The fault this catches is a build that treats resuming as a fresh start: a
-// re-serve, or a jump back to the centre. So the ball is posed in mid-flight,
-// frozen, confirmed still, and then resumed — and where it ends up a known number
-// of frames later is compared against where its own preserved velocity would have
-// carried it from the paused position.
+// specs/ui.md: on `paused`, `back` resumes to `resumeScreen`, and each update
+// reads input first, then advances the screen the input left it on. So the
+// frame that delivers the resume is itself a `playing` frame, and it moves the
+// ball from its paused position by its preserved velocity times `dt`. The
+// fault this catches is a build that treats resuming as a fresh start: a
+// re-serve, or a jump back to the center.
 //
-// The window is one frame wide, deliberately. Resuming is itself a frame, and
-// whether a build simulates the frame that consumed the resume or starts from the
-// next one is not something the specification fixes; either is a continuation. A
-// teleport is a hundred pixels out and misses the window by any measure.
+// The ball is posed in mid-flight, clear of the obstacles so its path is a
+// straight line, frozen, confirmed still, and resumed with one real Escape
+// press; where it is after that one frame is read against the paused position
+// plus `v * dt`, within `MAX_SUBSTEP`, the most a sub-step moves the ball. A
+// teleport is a hundred units out and misses that by any measure.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
+import { MAX_SUBSTEP } from "../constants";
 import {
-  TICK_HZ,
   arrangeLiveBall,
+  ball0,
   captureReplay,
   createHarness,
+  TICK_HZ,
   type Harness,
 } from "../harness";
 
-/** Frames run after the resume key, the resuming frame included. */
-const RESUMED_TICKS = 24;
-
-/** How long the ball is left hanging before it is resumed. */
+/** Frames of flight before the pause, so the ball is demonstrably moving. */
+const FLIGHT_TICKS = 30; // 0.25 s
+/** Frames held paused, most of them before the recording opens. */
 const FROZEN_TICKS = 120; // 1 s
-
-/**
- * How much of the freeze is recorded, out of the whole of it.
- *
- * A recording that opened on the resume key would show a ball moving and nothing
- * to tell a reviewer it had ever stopped — the review item promises "the ball
- * resuming from where it was paused", and the "from where it was paused" half is
- * the still frames in front of it. The freeze still lasts exactly `FROZEN_TICKS`;
- * the split is only where the recorder is armed.
- */
 const HANGING_TICKS = 48; // 0.4 s
-
-/** Float slop, in logical px. The window itself is a whole frame of travel. */
-const SLOP = 0.5;
+/** Frames of the resumed flight recorded after the read, for the replay. */
+const RESUMED_TICKS = 24; // 0.2 s
 
 let h: Harness;
 
@@ -47,50 +40,44 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("resumes the ball from its paused position at its preserved velocity", async () => {
   await arrangeLiveBall(h, { x: 500, y: 360, vx: 400, vy: -120 });
 
-  await h.advance(30); // 0.25 s of visible flight
+  await h.advance(FLIGHT_TICKS);
   await h.tap("Escape");
-  const paused = h.snapshot();
-  expect(paused.screen).toBe("paused");
+  const paused = await h.snapshot();
+  assertEqual(paused.screen, "paused");
 
   await h.advance(FROZEN_TICKS - HANGING_TICKS);
 
-  const held = await captureReplay(h, "continues", async () => {
+  const read = await captureReplay(h, "continues", async () => {
     await h.advance(HANGING_TICKS);
     // The end of the freeze, read on exactly the frame it was read on before.
-    const still = h.snapshot();
+    const still = await h.snapshot();
 
-    await h.tap("Escape"); // resume, which is itself one frame
-    await h.advance(RESUMED_TICKS - 1);
-    return still;
+    await h.tap("Escape"); // resume: one frame, and a playing one
+    const resumed = await h.snapshot();
+    await h.advance(RESUMED_TICKS);
+    return { still, resumed };
   });
-  expect(held.ball.x).toBeCloseTo(paused.ball.x, 1);
-  expect(held.ball.y).toBeCloseTo(paused.ball.y, 1);
+  assertCloseTo(ball0(read.still).x, ball0(paused).x, 6);
+  assertCloseTo(ball0(read.still).y, ball0(paused).y, 6);
 
-  const resumed = h.snapshot();
-
-  expect(resumed.screen).toBe("playing");
-
-  // Where the paused velocity carries the paused position over the resumed span.
-  // The window is one frame wide because the frame that consumed the resume may
-  // or may not have been simulated, and either reading is a continuation.
-  const travel = (from: number, v: number): [number, number] => {
-    const a = from + (v * (RESUMED_TICKS - 1)) / TICK_HZ;
-    const b = from + (v * RESUMED_TICKS) / TICK_HZ;
-    return [Math.min(a, b) - SLOP, Math.max(a, b) + SLOP];
-  };
-  const [xLow, xHigh] = travel(paused.ball.x, paused.ball.vx);
-  const [yLow, yHigh] = travel(paused.ball.y, paused.ball.vy);
-
-  expect(resumed.ball.x).toBeGreaterThanOrEqual(xLow);
-  expect(resumed.ball.x).toBeLessThanOrEqual(xHigh);
-  expect(resumed.ball.y).toBeGreaterThanOrEqual(yLow);
-  expect(resumed.ball.y).toBeLessThanOrEqual(yHigh);
-  expect(resumed.ball.speed).toBeCloseTo(paused.ball.speed, 1);
+  assertEqual(read.resumed.screen, "playing");
+  const dt = 1 / TICK_HZ;
+  const expectedX = ball0(paused).x + ball0(paused).vx * dt;
+  const expectedY = ball0(paused).y + ball0(paused).vy * dt;
+  assertLessThanOrEqual(
+    Math.abs(ball0(read.resumed).x - expectedX),
+    MAX_SUBSTEP,
+  );
+  assertLessThanOrEqual(
+    Math.abs(ball0(read.resumed).y - expectedY),
+    MAX_SUBSTEP,
+  );
+  assertCloseTo(ball0(read.resumed).speed, ball0(paused).speed, 6);
 });

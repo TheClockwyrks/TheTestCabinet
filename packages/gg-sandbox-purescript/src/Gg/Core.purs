@@ -7,16 +7,16 @@
 -- |
 -- | ```
 -- | import Gg.Core as Gg.Core
--- | import Gg.Files as Gg.Files
+-- | import Gg.Docs as Gg.Docs
 -- |
--- | outcome <- Gg.Core.attempt (Gg.Files.readTextFile "notes.md" {})
+-- | outcome <- Gg.Core.attempt (Gg.Docs.search { query: "files" })
 -- | ```
 -- |
 -- | A failing call **throws** rather than handing back an `Either`. That is how effectful PureScript
 -- | expresses a failure that is usually fatal to the work in hand, and it keeps the happy path
--- | unwrapped: `read <- Gg.Files.readTextFile "main.purs" {}` binds a `String`. An expected failure is
--- | narrowed with `attempt`, which converts one gg failure into an `Either` and re-throws anything
--- | that is not gg's.
+-- | unwrapped: `page <- Gg.Docs.search { query: "files" }` binds a `Gg.Docs.DocSearch`. An expected
+-- | failure is narrowed with `attempt`, which converts one gg failure into an `Either` and re-throws
+-- | anything that is not gg's.
 module Gg.Core
   ( ApiError
   , ApiErrorCode(..)

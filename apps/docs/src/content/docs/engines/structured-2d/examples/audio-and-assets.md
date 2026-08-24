@@ -82,7 +82,7 @@ export function instance(): VaultInstance {
   return built;
 }
 
-export class VaultInstance extends GameInstance {
+export class VaultInstance extends GameInstance<null> {
   sheet: ImageBitmap | null = null;
   notice: string | null = null;
 
@@ -91,7 +91,7 @@ export class VaultInstance extends GameInstance {
     built = this;
   }
 
-  override initialize(api: InitApi): void {
+  override initialize(api: InitApi): null {
     api.audio.define(CUE.blip, {
       wave: "square",
       freq: 660,
@@ -103,6 +103,7 @@ export class VaultInstance extends GameInstance {
     api.events.on("asset:failed", (event) => {
       this.notice = `${event.path} unavailable: ${event.reason}`;
     });
+    return null;
   }
 }
 ```
@@ -163,7 +164,7 @@ async function load(api: LoadApi): Promise<void> {
   await api.assets.loadImage(PATH.banner).catch(() => null);
 }
 
-export const vault: GameDefinition = {
+export const vault: GameDefinition<null> = {
   instance: VaultInstance,
   levels: { [LEVEL]: { mode: VaultMode, load, actors: [...coins, notice] } },
   startLevel: LEVEL,

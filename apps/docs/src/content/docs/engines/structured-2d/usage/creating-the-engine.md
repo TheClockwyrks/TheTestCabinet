@@ -61,7 +61,7 @@ import { Ball, Paddle, Wall } from "./actors";
 import { MenuMode, MatchMode } from "./modes";
 import { HEIGHT, WIDTH } from "./constants";
 
-export const game: GameDefinition = {
+export const game: GameDefinition<null> = {
   instance: Arcade,
   startLevel: "title",
   levels: {
@@ -99,19 +99,22 @@ game needs.
 import { GameInstance } from "@test-cabinet/structured-2d";
 import type { InitApi } from "@test-cabinet/structured-2d";
 
-export class Arcade extends GameInstance {
+export class Arcade extends GameInstance<null> {
   best = 0;
 
-  async initialize(api: InitApi): Promise<void> {
+  override async initialize(api: InitApi): Promise<null> {
     api.input.register("up", { keys: ["KeyW", "ArrowUp"] });
     api.input.register("down", { keys: ["KeyS", "ArrowDown"] });
     api.audio.define("score", { freq: 660, durationMs: 90 });
     api.diagnostics.register("best", () => this.best);
+    return null;
   }
 }
 ```
 
-Leaving `instance` out of the definition uses `GameInstance` itself. A game that
+`initialize` returns the [debug surface](/engines/structured-2d/usage/debug/)
+a caller drives the build through, and a game with none returns `null`. Leaving
+`instance` out of the definition uses `GameInstance` itself. A game that
 declares bindings, cues, or assets supplies its own subclass.
 
 ## Create it once
@@ -165,9 +168,9 @@ engine.events.on("world:opened", (event) => {
 const instance = await engine.initialize();
 ```
 
-Reading `engine.instance` or `engine.world` before `initialize` resolves throws,
-naming the ordering, so the subscription is the way to observe the start level
-rather than a poll.
+Reading `engine.instance`, `engine.world`, or `engine.debug` before `initialize`
+resolves throws, naming the ordering, so the subscription is the way to observe
+the start level rather than a poll.
 
 ## The remaining options
 
@@ -251,9 +254,9 @@ await engine.run({ signal: controller.signal });
 ```
 
 `engine.destroy()` closes the world, which ends play for its controllers,
-actors, and game mode, then runs the instance's `shutdown`. It halts the loop,
-detaches every listener, and removes the host interface handle. It is
-idempotent, and it resolves any promise `run` returned.
+actors, and game mode, then runs the instance's `shutdown`. It halts the loop
+and detaches every listener. It is idempotent, and it resolves any promise `run`
+returned.
 
 ```ts
 engine.destroy();

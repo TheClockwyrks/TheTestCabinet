@@ -11,7 +11,8 @@
 // The chase is watched running first. Without that, a build whose AI never moved
 // at all would pass the freeze for the wrong reason.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   STILL_MAX,
   arrangeAiChase,
@@ -43,8 +44,8 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
 it("holds the AI paddle still while paused", async () => {
@@ -52,25 +53,25 @@ it("holds the AI paddle still while paused", async () => {
 
   // The precondition: the real opponent is chasing, so a still paddle later is
   // the pause's doing.
-  const start = h.snapshot().paddles.right.cy;
+  const start = (await h.snapshot()).paddles.right.cy;
 
   const held = await captureReplay(h, "frozen", async () => {
     await h.advance(CHASING_TICKS);
-    const chasing = h.snapshot().paddles.right.cy;
+    const chasing = (await h.snapshot()).paddles.right.cy;
 
     await h.tap("Escape");
-    const screen = h.snapshot().screen;
-    const paused = h.snapshot().paddles.right.cy;
+    const atPause = await h.snapshot();
+    const screen = atPause.screen;
+    const paused = atPause.paddles.right.cy;
 
     await h.advance(FROZEN_TICKS);
     return { chasing, screen, paused };
   });
 
-  expect(Math.abs(held.chasing - start)).toBeGreaterThan(STILL_MAX);
-  expect(held.screen).toBe("paused");
+  assertGreaterThan(Math.abs(held.chasing - start), STILL_MAX);
+  assertEqual(held.screen, "paused");
 
-  expect(h.snapshot().screen).toBe("paused");
-  expect(Math.abs(h.snapshot().paddles.right.cy - held.paused)).toBeLessThan(
-    STILL_MAX,
-  );
+  const after = await h.snapshot();
+  assertEqual(after.screen, "paused");
+  assertCloseTo(after.paddles.right.cy, held.paused, 6);
 });

@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useRef, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, NavLink } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
@@ -14,7 +14,12 @@ import { useModelConfig } from "../../data/useModelConfig";
 import { ModelProviderMark } from "../../components/ModelProviderMark";
 import { formatCompact, formatUsd, perMillion } from "../../format";
 import { routes } from "../../routes";
+import { ProvidersView } from "./ProvidersView";
 import styles from "./ModelsPage.module.scss";
+import exec from "../runs/RunExec.module.scss";
+// The Models section reuses the Test Cases page's tab-bar styles so the two
+// catalog-style surfaces read identically (the same borrow the Other page makes).
+import tabStyles from "../testcases/TestCasesPage.module.scss";
 
 // One column of the model catalog: its header and grid track, how it renders a
 // row, and — when sortable — the key it orders by. Every data column is optional
@@ -121,12 +126,34 @@ const MODEL_COLUMN_BY_ID = new Map(
   MODEL_COLUMNS.map((column) => [column.id, column]),
 );
 
+// The Models section's tabs, in display order. Each is its own route so the
+// selection is in the URL and survives a reload: the catalog itself at the
+// section root, and the per-provider statistics beside it.
+export type ModelsTab = "models" | "providers";
+
+const MODELS_TABS: ReadonlyArray<{
+  tab: ModelsTab;
+  label: string;
+  to: string;
+}> = [
+  { tab: "models", label: "Models", to: routes.models() },
+  { tab: "providers", label: "Providers", to: routes.modelsProviders() },
+];
+
+interface ModelsPageProps {
+  /** Which tab this route renders. Defaults to the catalog, so the section root
+   * (`/models`, the topbar target) needs no prop. */
+  tab?: ModelsTab;
+}
+
 // Models: the curated catalog as a dense, column-aligned table — one row per
 // model showing its provider, name, comparable per-token input/output prices,
 // and context window, each row linking to the model's detail page. Rows default
 // to catalog order; the headers can be clicked to sort by any column, columns are
 // user-resizable, and the optional columns can be shown/hidden via the picker.
-export function ModelsPage() {
+// The Providers tab beside it reports per-provider health folded from recorded
+// gg runs and probe evidence.
+export function ModelsPage({ tab = "models" }: ModelsPageProps) {
   const { models, status } = useModels();
   // The add affordance shows only where curating a model is possible (a signed-in
   // console with a config-capable backend); it is null (hidden) otherwise.
@@ -154,19 +181,53 @@ export function ModelsPage() {
   return (
     <PageLayout>
       <section className={styles.section}>
-        <div className={styles.header}>
-          <PromptHeader
-            command="--models"
-            blink
-            comment={<>// the models we put through the cabinet</>}
-          />
-          {config && (
-            <Link className={styles.addButton} to={routes.modelNew()}>
-              + Add model
-            </Link>
-          )}
+        <PromptHeader
+          command={tab === "models" ? "--models" : "--providers"}
+          blink
+          comment={
+            tab === "models" ? (
+              <>// the models we put through the cabinet</>
+            ) : (
+              <>// who served the calls, and how that went</>
+            )
+          }
+          titleActions={
+            tab === "models" && config ? (
+              <Link className={exec.primary} to={routes.modelNew()}>
+                + Add model
+              </Link>
+            ) : undefined
+          }
+        />
+
+        <div className={tabStyles.controls}>
+          <nav className={tabStyles.tabs} aria-label="Models sections">
+            {MODELS_TABS.map((entry) => (
+              <NavLink
+                key={entry.tab}
+                to={entry.to}
+                className={
+                  entry.tab === tab
+                    ? `${tabStyles.tab} ${tabStyles.tabActive}`
+                    : tabStyles.tab
+                }
+              >
+                {entry.label}
+              </NavLink>
+            ))}
+          </nav>
         </div>
 
+        {tab === "providers" ? <ProvidersView /> : renderCatalog()}
+      </section>
+    </PageLayout>
+  );
+
+  // The catalog tab's body, split out so the tabbed return above stays
+  // readable.
+  function renderCatalog() {
+    return (
+      <>
         {/* The three states are distinct and must read that way: a fetch in
             flight is a wait, an unreachable backend is a fault, and only a
             resolved-but-empty catalog is genuinely "no models yet". Reporting
@@ -226,9 +287,9 @@ export function ModelsPage() {
             </div>
           </div>
         )}
-      </section>
-    </PageLayout>
-  );
+      </>
+    );
+  }
 }
 
 // A per-token price cell, right-aligned to align like printed figures, or a muted

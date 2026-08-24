@@ -121,11 +121,34 @@ build they check. A validator imports the engine and the build's own game
 module, constructs the engine over a canvas and a clock of its own, and steps it
 an exact number of frames.
 
-Everything a check observes is therefore a live value it already holds: the game
-state the build returned, the frame counter and the accumulated simulated time,
+Everything a check observes is therefore a value it already holds: the current
+game state, the frame counter and the accumulated simulated time,
 the viewport, the events the engine broadcast, and the drawing context the game
-rendered through. A build publishes nothing for a check to find, so there is no
-surface a build could fail to install.
+rendered through. A build reaches a check through the engine it was given, so a
+run under an engine publishes nothing to the page it is drawn on.
+
+## The debug surface
+
+A case that drives its game from code fixes a debug surface: the operations that
+pose a situation and read it back, expressed over the game's own state. The
+game's `initialize` returns that surface beside the state it built, and the
+engine holds it and hands it back off its handle. A validator reads it from the
+engine it constructed.
+
+The surface travels through the engine because the engine is what both halves
+already hold. A game hands it over in the value its `initialize` returns, and a
+check reaches it through the engine it built, so the two meet without a global
+and a page carries no handle a build has to install.
+
+An engine states the exact member names in its own documentation, and the shape
+of the surface belongs to the case rather than to the engine: an engine holds
+whatever the game gave it and makes no claim about what is in it.
+
+Writing the surface is the build's own work, to the shape the case's
+instrumentation spec states, so a build whose surface is missing or departs from
+that spec fails the points a check behind it decides. That is the same rule
+[instrumentation](/testing/end-to-end/instrumentation/) applies to every
+model-implemented mechanism a verdict leans on.
 
 ## Recording
 
@@ -135,10 +158,12 @@ frame, so replaying it against a fresh drawing surface reproduces the picture
 the build drew.
 
 Each frame carries the drawing state it inherited alongside its own operations,
-which makes every frame drawable on its own. A player seeks to any frame without
-replaying the frames before it, and two recordings of the same scenario are
-scrubbed in step. Each engine's own page documents the exact format it writes
-and the version a player checks before drawing anything.
+and the recording carries the values its operations draw with, so every
+reference a frame makes resolves without any earlier frame. That makes every
+frame drawable on its own: a player seeks to any frame without replaying the
+frames before it, and two recordings of the same scenario are scrubbed in step.
+Each engine's own page documents the exact format it writes and the version a
+player checks before drawing anything.
 
 Recording is bracketed by the caller rather than by the engine's lifetime, so a
 validator captures the stretch of a scenario its check is about and nothing
@@ -233,7 +258,7 @@ directly supplies its own.
 A test case version declares the engines it supports, each with the range of
 engine versions it supports, in its manifest. A case that declares nothing
 supports `none` alone. The
-[manifest format](/testing/end-to-end/manifests/) carries the grammar.
+[manifest reference](/testing/end-to-end/manifests/) carries the grammar.
 
 Every entry names a slug the engine catalogue knows and a well-formed version
 range, both checked when the case resolves, before a run is spent. `none` is
@@ -250,12 +275,36 @@ running under an engine.
 
 ## Selecting an engine
 
-An engine is selected per run with `--engine` and defaults to `none`. The engine
-must resolve in the catalogue, must be one the case supports, and its catalogued
-version must fall inside the range the case declared for it; a run failing any of
-those is rejected before any container work begins. Both the engine slug and the
-exact engine version are recorded on the run, the version taken at seed time from
-the package store.
+An engine is selected per run and defaults to `none`. The CLI selects it with
+`--engine`; every enqueue endpoint carries it on the launch body alongside the
+harness, the model, and the orchestrator. A gg run carries it too, since a gg run
+builds inside a seeded workspace like any other run.
+
+The engine must resolve in the catalogue, must be one the case supports, and its
+catalogued version must fall inside the range the case declared for it; a run
+failing any of those is rejected before any container work begins. Both the
+engine slug and the exact engine version are recorded on the run, the version
+taken at seed time from the package store.
+
+The resolved-version response carries the case's declared support set, so a
+launcher offers exactly the engines the selected version supports and a host that
+resolves a case over HTTP holds the same gate a host reading the manifest from a
+checkout does.
+
+## Showing a run its own inputs
+
+A run's prompt and seeded specs are text rendered from the case version's
+templates under the engine that run selected. Any surface that shows a run what
+it was given renders from that run's own recorded case version and engine, so it
+reproduces the files that run's harness received. A frozen version is what makes
+this exact rather than approximate: the templates the rendering reads cannot have
+moved since the run.
+
+A surface showing a case rather than a run defaults to the engineless rendering,
+because nothing has selected an engine. A case's detail page offers the version
+and the engine as header selections beside the variant, so every rendering a
+version supports is readable. The selection is carried in the URL and every tab
+of the page shows the same selected coordinate.
 
 A run's engine is part of what makes its result comparable. Runs of one case
 under different engines measure different work and carry different available

@@ -11,7 +11,7 @@
 // reaches both.
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { drawFrame } from "./drawFrame";
+import { drawFrame, prepareRecording, type ReplayResources } from "./drawFrame";
 import { fetchRecording, type Recording } from "./format";
 import {
   REPLAY_SPEEDS,
@@ -25,6 +25,8 @@ import styles from "./ReplayPlayer.module.scss";
 export interface LoadedRecording {
   /** The recording, once it has arrived and been read. */
   readonly recording: Recording | null;
+  /** Its images, decoded — set with the recording, so the two never disagree. */
+  readonly resources: ReplayResources | null;
   /** Why there is no recording to show, written for a reviewer. */
   readonly error: string | null;
   /** Whether the fetch is still in flight. */
@@ -32,7 +34,20 @@ export interface LoadedRecording {
 }
 
 /**
- * Fetch and read the recording at `url`, or report why it cannot be played.
+ * Fetch the recording at `url`, decode what it draws with, or report why it
+ * cannot be played.
+ *
+ * The decode is part of the load rather than part of the draw: a recording's
+ * bitmaps are PNG data URLs, turning one back into pixels is asynchronous, and
+ * drawing a frame has to be synchronous for a scrub to keep up with a dragged
+ * thumb. So the recording is not handed on until its images are ready, and the two
+ * are held together — a canvas asked to draw a recording with another one's
+ * resources would resolve its sprites to the wrong pictures.
+ *
+ * A recording whose images do not decode still plays: `prepareRecording` reports a
+ * failed entry as `null` and the operations naming it are skipped and counted, so
+ * a missing sprite costs the sprite rather than the replay. Only a bitmap can fail
+ * that way; a pixel buffer carries its own bytes and is rebuilt from them.
  *
  * A `null` url is not an error — it is the caller saying there is nothing on this
  * side, which is how the review pair renders a case that ships no reference
@@ -41,30 +56,44 @@ export interface LoadedRecording {
 export function useRecording(url: string | null): LoadedRecording {
   const [state, setState] = useState<LoadedRecording>({
     recording: null,
+    resources: null,
     error: null,
     loading: url !== null,
   });
 
   useEffect(() => {
     if (url === null) {
-      setState({ recording: null, error: null, loading: false });
+      setState({
+        recording: null,
+        resources: null,
+        error: null,
+        loading: false,
+      });
       return;
     }
     let cancelled = false;
-    setState({ recording: null, error: null, loading: true });
-    fetchRecording(url).then(
-      (recording) => {
-        if (!cancelled) setState({ recording, error: null, loading: false });
-      },
-      (err: unknown) => {
-        if (cancelled) return;
-        setState({
-          recording: null,
-          error: err instanceof Error ? err.message : String(err),
-          loading: false,
-        });
-      },
-    );
+    setState({ recording: null, resources: null, error: null, loading: true });
+    fetchRecording(url)
+      .then(async (recording) => ({
+        recording,
+        resources: await prepareRecording(recording),
+      }))
+      .then(
+        ({ recording, resources }) => {
+          if (!cancelled) {
+            setState({ recording, resources, error: null, loading: false });
+          }
+        },
+        (err: unknown) => {
+          if (cancelled) return;
+          setState({
+            recording: null,
+            resources: null,
+            error: err instanceof Error ? err.message : String(err),
+            loading: false,
+          });
+        },
+      );
     return () => {
       cancelled = true;
     };
@@ -86,10 +115,13 @@ export function useRecording(url: string | null): LoadedRecording {
  */
 export function ReplayCanvas({
   recording,
+  resources,
   frame,
   label,
 }: {
   recording: Recording;
+  /** What `prepareRecording` returned for THIS recording. */
+  resources: ReplayResources;
   frame: number;
   /** Accessible label for the canvas (what is being replayed). */
   label: string;
@@ -118,24 +150,22 @@ export function ReplayCanvas({
       setNote("This browser did not give the player a 2D canvas to draw into.");
       return;
     }
-    const report = drawFrame(ctx, recording, shown);
+    const report = drawFrame(ctx, recording, resources, shown);
+    // "Parts" rather than "operations": the count covers the frame's own operations
+    // and the parts of the state it inherited alike — a style property, a step of a
+    // clip or a path, a transform, a dash — and calling all of them operations would
+    // have a reviewer looking for something in the frame's drawing that is not
+    // there.
+    //
     // `setNote` with the identical string is a no-op in React, so a recording that
     // reproduces cleanly (or reproduces the same gap every frame) does not
     // re-render the tree sixty times a second while it plays.
     setNote(
       report.skipped === 0
         ? null
-        : `${report.skipped} ${report.skipped === 1 ? "operation" : "operations"} in this frame could not be reproduced (${report.unreproducible.join(", ")}).`,
+        : `${report.skipped} ${report.skipped === 1 ? "part" : "parts"} of this frame could not be reproduced (${report.unreproducible.join(", ")}).`,
     );
-  }, [recording, shown]);
-
-  // What the ENGINE called this frame, rather than where it sits in the file: the
-  // frame counter and the simulated time it accumulated through. Shown under each
-  // pane because it is what tells a reviewer the two panes really are on the same
-  // moment — a shared scrub position puts them on the same index, and these two
-  // figures are the recordings' own answer to whether that index is the same frame
-  // of the same scenario.
-  const shot = recording.frames[shown];
+  }, [recording, resources, shown]);
 
   return (
     <>
@@ -149,11 +179,6 @@ export function ReplayCanvas({
         aria-label={label}
         role="img"
       />
-      {shot !== undefined && (
-        <p className={styles.readout}>
-          engine frame {shot.count} · {(shot.timeMs / 1000).toFixed(2)}s
-        </p>
-      )}
       {note !== null && <p className={styles.note}>{note}</p>}
     </>
   );
@@ -227,7 +252,7 @@ export function ReplayTransport({ clock }: { clock: ReplayClock }) {
  * same parts itself.
  */
 export function ReplayPlayer({ url, label }: { url: string; label: string }) {
-  const { recording, error, loading } = useRecording(url);
+  const { recording, resources, error, loading } = useRecording(url);
   const timeline = useMemo(() => timelineFor([recording]), [recording]);
   const clock = useReplayClock(timeline);
 
@@ -236,7 +261,7 @@ export function ReplayPlayer({ url, label }: { url: string; label: string }) {
       <p className={styles.error}>This replay cannot be played. {error}</p>
     );
   }
-  if (loading || recording === null) {
+  if (loading || recording === null || resources === null) {
     return <p className={styles.error}>Loading the replay…</p>;
   }
   if (recording.frames.length === 0) {
@@ -245,7 +270,12 @@ export function ReplayPlayer({ url, label }: { url: string; label: string }) {
 
   return (
     <div className={styles.player}>
-      <ReplayCanvas recording={recording} frame={clock.frame} label={label} />
+      <ReplayCanvas
+        recording={recording}
+        resources={resources}
+        frame={clock.frame}
+        label={label}
+      />
       <ReplayTransport clock={clock} />
     </div>
   );

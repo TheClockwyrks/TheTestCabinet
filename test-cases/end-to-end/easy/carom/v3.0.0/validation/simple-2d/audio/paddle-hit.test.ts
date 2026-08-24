@@ -8,13 +8,13 @@
 // gesture to fake, because a cue is announced whether or not anything could be
 // heard.
 //
-// That the event carries the cue's NAME is what makes this stronger than the
-// browser suite it replaces: that suite could only count the sounds a build
-// started, so a build that fired its scoring blip on every bounce passed. Here
+// The event carries the cue's NAME, so a build that fired its scoring blip on
+// every bounce is told apart from one that plays `paddle-hit` on a paddle hit:
 // the name and the frame are both read, and the frame is the collision's own.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { CUES, FIELD_CY } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   LEAD_TICKS,
   arrangePaddleHit,
@@ -45,7 +45,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("plays the paddle-hit cue on the frame of the contact", async () => {
@@ -77,8 +77,11 @@ it("plays the paddle-hit cue on the frame of the contact", async () => {
     return measured;
   });
 
-  expect(contact.rebound.hit).toBe(true);
-  expect(contact.cues.map((cue) => cue.cue)).toEqual([CUES.paddleHit]);
-  expect(contact.cues[0].frame).toBe(contact.frame);
-  expect(contact.cues[0].gain).toBeGreaterThan(0);
+  assertEqual(contact.rebound.hit, true);
+  assertDeepEqual(
+    contact.cues.map((cue) => cue.cue),
+    [CUES.paddleHit],
+  );
+  assertEqual(contact.cues[0].frame, contact.frame);
+  assertGreaterThan(contact.cues[0].gain, 0);
 });

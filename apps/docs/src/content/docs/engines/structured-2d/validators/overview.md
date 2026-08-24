@@ -35,8 +35,10 @@ off engine code as well.
 
 A case fixes the tag vocabulary, the level names, the action names, and the cue
 names in its own constants module, so a check names things every build of the
-case agrees on. Posing a situation runs through the same systems play uses, and
-the case supplies those scenario operations as functions over a `World`.
+case agrees on. Posing a situation runs through the build's debug surface, the
+value its game instance's `initialize` returned, which the engine hands back off
+`engine.debug`. The case's instrumentation spec states the surface's operations,
+and each pose arranges the live world through the same systems play uses.
 
 ## Pages
 
@@ -47,3 +49,4 @@ the case supplies those scenario operations as functions over a `World`.
 | [World and Actors](/engines/structured-2d/validators/world-and-actors/) | The level open, the match phase, which actors exist, which controller holds which pawn, and what a transition produced. |
 | [Rendering](/engines/structured-2d/validators/rendering/) | Pixel readback through `getImageData` and the recording proxy over the 2D context, both converted through the camera and the viewport. |
 | [Input and Audio](/engines/structured-2d/validators/input-and-audio/) | Dispatching key events at the harness event target and asserting on the cues a build played. |
+| [Recording](/engines/structured-2d/validators/recording/) | Arming the engine's recorder around a scenario and emitting it as the review item's media. |

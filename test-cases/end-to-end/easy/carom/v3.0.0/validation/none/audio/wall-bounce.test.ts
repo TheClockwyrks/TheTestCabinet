@@ -1,20 +1,28 @@
-// Carom — audio/wall-bounce: the `wall-bounce` cue plays on the frame the ball
-// reflects off a wall.
+// Carom — audio/wall-bounce: a cue sounds on the frame the ball reflects off a
+// wall.
 //
 // The top and bottom edges are the walls; the left and right edges are goals
 // (specs/playfield.md), so the ball is fired straight up into the top wall, which
 // is the shortest unambiguous wall event there is. The real collision reverses
 // its vertical velocity, and the frame that happens on is the frame the cue must
-// carry.
+// sound on.
 //
-// The cue's NAME is asserted as well as its arrival: the four cues exist so the
-// four events are told apart by ear (specs/ui.md), and a build that plays the
-// wrong one on a wall bounce has broken exactly that.
+// WHAT IS OBSERVED. The sound itself, not the synthesis: `audio-init.js` watches a
+// Web Audio source being started or an `<audio>` element being played, so a build
+// that makes its blips any way at all is read the same. `specs/ui.md` requires one
+// cue per event on the frame of the event, which is what the two assertions
+// below say. The cue's NAME is not observable from outside an engineless build,
+// so this cannot tell a build that plays its scoring blip on a wall apart from one
+// that plays the right one; that half is the reviewer's, by ear. The rising flight
+// crosses an empty column, so anything that sounds before the reflection is a
+// build sounding when nothing happened.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { CUES, FIELD_CX } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { FIELD_CX } from "../constants";
 import {
   arrangeLiveBall,
+  ball0,
   captureReplay,
   createHarness,
   watchCues,
@@ -36,7 +44,7 @@ const START_Y = 280;
  * Frames of the descending flight recorded after the reflection.
  *
  * The sweep stops on the frame the vertical velocity reverses, which is the frame
- * the cue must have played on and therefore where every reading has to be taken.
+ * the cue must have sounded on and therefore where every reading has to be taken.
  * Recording has no such constraint: the review item promises "the wall bounce
  * whose cue is checked", and a bounce is only legible once the ball is visibly
  * coming back down.
@@ -49,30 +57,31 @@ beforeEach(async () => {
   h = await createHarness();
 });
 
-afterEach(() => {
-  h.dispose();
+afterEach(async () => {
+  await h.dispose();
 });
 
-it("plays the wall-bounce cue on the frame of the reflection", async () => {
+it("sounds a cue on the frame of the reflection, and not before it", async () => {
   await arrangeLiveBall(h, { x: FIELD_CX, y: START_Y, vx: 0, vy: -500 });
+  // A browser opens no audio context without a user gesture, and a build is free
+  // to open its own only from a real DOM event. The key is bound to nothing.
+  await h.armAudio();
 
   const played = watchCues(h);
   const bounce = await captureReplay(h, "bounce", async () => {
-    const bounced = await h.until((s) => s.ball.vy > 0, { maxFrames: 120 });
-    // Read HERE, on the frame the sweep stopped: the frame number and the cues
-    // that had sounded by then are exactly what the assertions read before the
-    // descent below was recorded.
-    const measured = {
-      bounced,
-      frame: h.engine.frame().count,
-      cues: [...played],
-    };
+    const bounced = await h.until((s) => ball0(s).vy > 0, { maxFrames: 120 });
+    // Read HERE, on the frame the sweep stopped: the frame number and the sounds
+    // emitted by then are exactly what the assertions read before the descent
+    // below was recorded.
+    const measured = { bounced, frame: h.frame(), cues: [...played] };
     await h.advance(DESCENT_TICKS);
     return measured;
   });
 
-  expect(bounce.bounced.hit).toBe(true);
-  expect(bounce.cues.map((cue) => cue.cue)).toEqual([CUES.wallBounce]);
-  expect(bounce.cues[0].frame).toBe(bounce.frame);
-  expect(bounce.cues[0].gain).toBeGreaterThan(0);
+  assertEqual(bounce.bounced.hit, true);
+  assertGreaterThan(bounce.cues.length, 0);
+  assertDeepEqual(
+    bounce.cues.map((cue) => cue.frame),
+    bounce.cues.map(() => bounce.frame),
+  );
 });

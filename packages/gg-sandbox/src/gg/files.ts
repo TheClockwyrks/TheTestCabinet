@@ -1,25 +1,21 @@
 /**
- * Read, write, edit and list the files of the workspace.
+ * Read, write, edit, list and search the files of the workspace.
  *
- * Reading is the cheap direction of this sandbox and writing is the expensive one, so a program that
- * reads a dozen files to decide what to change is well shaped, while one that rewrites forty large
- * files in a single turn will exhaust its fuel budget.
- *
- * Nothing here places anything in the agent's context window. `gg.views.openFile` is the call that
- * does.
+ * Nothing here places anything in the agent's context window: every call hands its answer to the
+ * program, and a view is what puts something in front of the agent.
  */
 
 import * as raw from "test-cabinet:gg/files";
-import * as helpers from "test-cabinet:gg/helpers";
 import { U32_MAX, call, opts, uint } from "../internal/errors.js";
 import { asFileRead } from "../internal/lower.js";
+import { ApiError } from "./core.js";
 
 /** A text file's window, as the text arm of a `FileRead` carries it. */
 export interface TextFile {
   /** Names this arm of `FileRead` as the text one. */
   kind: "text";
 
-  /** The file's text, or just the requested window under a capped read policy. */
+  /** The file's text, or just the requested window where the read named one. */
   contents: string;
 
   /** The 1-based first line returned. */
@@ -88,6 +84,23 @@ export interface DirEntry {
   kind: EntryKind;
 }
 
+/** One line `search` matched: the file it is in, its 1-based line number, and the line itself. */
+export interface SearchMatch {
+  /** The file's path, relative to the workspace root, or absolute for a search rooted outside it. */
+  path: string;
+
+  /** The 1-based line number of the match within that file. */
+  line: number;
+
+  /**
+   * The matching line, without its line ending.
+   *
+   * A line longer than 200 characters is cut there and annotated in place as `foo (123 more
+   * chars...)`, so a match in a minified bundle costs a line rather than the bundle.
+   */
+  text: string;
+}
+
 /**
  * Read a file, as either a `TextFile` or an `ImageFile`.
  *
@@ -109,9 +122,9 @@ export interface DirEntry {
  * @ggop files.read_file
  * @param path The file to read, relative to the workspace or absolute.
  * @param options The window of lines to read; omit it to read the whole file.
- * @param options.offset The 1-based line to start at. Honoured only under a capped read policy.
- * @param options.limit How many lines to return from `offset`. Honoured only under a capped read
- * policy.
+ * @param options.offset The 1-based line to start at. Omitted, the read starts at the first line.
+ * @param options.limit How many lines to return from `offset`. Omitted, a capped read policy's
+ * default applies, or the read runs to the end of the file.
  * @returns the window of text that was read, or the picture's description where the bytes are an
  * image.
  * @throws `ApiError` with `invalid-argument` for an empty path, and `not-found` for a path that is
@@ -125,34 +138,7 @@ export function readFile(path: string, options?: { offset?: number; limit?: numb
 }
 
 /**
- * Read a text file and hand back its contents directly.
- *
- * `readFile` without the narrowing, for the common case: the same read, the same window, the same
- * cost.
- *
- * @ggop files.read_text_file
- * @param path The file to read, relative to the workspace or absolute.
- * @param options The window of lines to read; omit it to read the whole file.
- * @param options.offset The 1-based line to start at. Honoured only under a capped read policy.
- * @param options.limit How many lines to return from `offset`. Honoured only under a capped read
- * policy.
- * @returns the text that was read: the whole file, or the requested window under a capped read
- * policy.
- * @throws `ApiError` with `invalid-argument` when the path names a picture, which `readFile`
- * inspects instead and `gg.views.openFile` displays, and `not-found` for a path that is not there.
- */
-export function readTextFile(path: string, options?: { offset?: number; limit?: number }): string {
-  const o = opts<{ offset?: number; limit?: number }>("readTextFile", options);
-  const offset = uint("readTextFile", "offset", o?.offset, U32_MAX);
-  const limit = uint("readTextFile", "limit", o?.limit, U32_MAX);
-  return call(() => helpers.readTextFile(path, offset, limit));
-}
-
-/**
  * Write UTF-8 text to a file, creating parent directories and replacing what is there.
- *
- * Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in
- * one program exhausts its fuel budget, so a large rewrite is best split across several turns.
  *
  * @ggop files.write_file
  * @param path Where to write, relative to the workspace or absolute. Parent directories are created.
@@ -197,4 +183,46 @@ export function editFile(path: string, oldString: string, newString: string): vo
  */
 export function listDir(path?: string): DirEntry[] {
   return call(() => raw.listDir(path));
+}
+
+/**
+ * Search the workspace's files for a pattern, skipping everything the ignore files exclude.
+ *
+ * A grep over the project rather than over the disk. `query` is a regular expression tried against
+ * each line on its own, and every line it matches comes back with its path and 1-based line number,
+ * in path order and then line order. What `.gitignore`, `.ignore` and their kin exclude — nested
+ * files, negations and `.git/info/exclude` included, and `.git` itself — is never scanned and never
+ * returned, in a workspace that is a repository and in one that is not yet, so a match list holds
+ * the sources rather than `node_modules`, build output and the run's own bookkeeping. Dotfiles are
+ * otherwise searched like any other file, and a file that is not text (one carrying a NUL byte) is
+ * skipped rather than matched byte by byte.
+ *
+ * The result is bounded so one search cannot flood a turn: at most `limit` matches, 50 by default
+ * and never more than 200, and a matching line longer than 200 characters is cut there and annotated
+ * in place as `foo (123 more chars...)`. A list exactly `limit` long may have been cut, and there is
+ * no offset — a search is a question about where to point the other calls, not a way of reading a
+ * file — so the answer to a cut list is a narrower query or a narrower `path`.
+ *
+ * @ggop files.search
+ * @param query The pattern to look for: a regular expression in Rust syntax — `foo|bar`,
+ * `fn\s+update`, `(?i)todo` for a case-insensitive match — tried against each line on its own. It
+ * may not be blank.
+ * @param options Where to look and how many matches to return; omit it to search the whole
+ * workspace.
+ * @param options.path The directory to search under, or the one file to search, relative to the
+ * workspace or absolute. Omitted, the search starts at the workspace root.
+ * @param options.limit How many matches to return at most: 50 by default, and a request over 200 is
+ * answered with the first 200. It may not be zero.
+ * @returns every line the pattern matched, up to `limit`, in path order and then line order; empty
+ * when nothing matched.
+ * @throws `ApiError` with `invalid-argument` for a blank query, a pattern that does not parse, or a
+ * `limit` of zero, and `not-found` for a `path` that is not there.
+ */
+export function search(query: string, options?: { path?: string; limit?: number }): SearchMatch[] {
+  const o = opts<{ path?: string; limit?: number }>("search", options);
+  const limit = uint("search", "limit", o?.limit, U32_MAX);
+  if (limit === 0) {
+    throw new ApiError("search", "invalid-argument", "`limit` must be at least 1, got 0");
+  }
+  return call(() => raw.search(query, o?.path, limit));
 }

@@ -25,9 +25,10 @@ A program, written in TypeScript:
 import { files, session, views } from "gg";
 
 const specs = files.listDir("specs").filter((e) => e.kind === "file");
-const missing = specs.filter(
-  (e) => !files.readTextFile(`specs/${e.name}`).includes("## Rules"),
-);
+const missing = specs.filter((e) => {
+  const read = files.readFile(`specs/${e.name}`);
+  return read.kind === "text" && !read.contents.includes("## Rules");
+});
 views.openText("missing-rules", missing.map((e) => e.name).join("\n"));
 if (missing.length === 0) {
   session.finish(`Checked ${specs.length} spec files; each has rules.`);
@@ -66,9 +67,10 @@ halves a reply the transport delivered as a byte-identical copy of itself.
 
 Every repair is counted on the run and disclosed on the operator's stream. The
 model is told nothing about it. Healing runs before the turn does, because the
-loop needs the healed program in order to decide which assistant message to
-record. See [response healing](/gg/response-healing/) for the strategies, their
-decline rules, their configuration and their metrics.
+healed program is the assistant message the loop records: the model's own
+history carries the text that ran. See
+[response healing](/gg/response-healing/) for the strategies, their decline
+rules, their configuration and their metrics.
 
 ## Turn execution
 

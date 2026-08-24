@@ -62,4 +62,16 @@ public static partial class Files
     /// <param name="Name">The entry's bare name, which is not a path.</param>
     /// <param name="Kind">Whether it is a file, a directory, or something else.</param>
     public sealed record DirEntry(string Name, EntryKind Kind);
+
+    /// <summary>One line a search matched.</summary>
+    /// <param name="Path">
+    /// The file's path with <c>/</c> separators, relative to the workspace root or absolute for a
+    /// search rooted outside it.
+    /// </param>
+    /// <param name="Line">The 1-based line number of the match within that file.</param>
+    /// <param name="Text">
+    /// The matching line without its line ending, cut at 200 characters and annotated
+    /// <c>(N more chars...)</c> where longer.
+    /// </param>
+    public sealed record SearchMatch(string Path, uint Line, string Text);
 }

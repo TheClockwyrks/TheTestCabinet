@@ -43,6 +43,6 @@ await engine.run();
 | [Game Mode and Scoring](/engines/structured-2d/examples/game-mode-and-scoring/) | A subclassed game state and player state, a score kept on them, and a match moved through `waiting`, `playing`, and `over`. |
 | [Collision and Events](/engines/structured-2d/examples/collision-and-events/) | Colliders on channels with blocking and overlapping responses, a game applying its own response from `hit`, and a pickup consumed on `overlap:begin`. |
 | [Audio and Assets](/engines/structured-2d/examples/audio-and-assets/) | Loading a sprite and a produced audio file in a level's `load`, defining a synthesized cue, playing both while the match runs, and surfacing a failed load. |
-| [Diagnostics and Overlay](/engines/structured-2d/examples/diagnostics-and-overlay/) | Registering instance-level and world-level sources and reading them back while the game runs. |
-| [Validating a Game](/engines/structured-2d/examples/validating-a-game/) | A vitest suite that imports the build's own game definition, steps it with `engine.advance`, and checks the world, the events, and the pixels. |
+| [Diagnostics and Overlay](/engines/structured-2d/examples/diagnostics-and-overlay/) | Registering instance-level and world-level sources and what the overlay draws from them while the game runs. |
+| [Validating a Game](/engines/structured-2d/examples/validating-a-game/) | A vitest suite that imports the build's own game definition, poses scenarios through the debug surface its `initialize` returns, steps it with `engine.advance`, and checks the world, the events, and the pixels. |
 | [Scripted Clocks](/engines/structured-2d/examples/scripted-clocks/) | One scenario stepped under a constant, a repeating sequence, and a seeded jitter clock. |

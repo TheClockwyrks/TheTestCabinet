@@ -138,6 +138,19 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
     }
 }
 
+/// The throw a program did not catch, insisting the program ran and threw — the shape a refused
+/// call arrives in: the guest reports the uncaught `ApiError` with its class, rather than dying in
+/// a trap.
+fn uncaught(outcome: &SandboxOutcome) -> &crate::sandbox::ProgramError {
+    match &outcome.result {
+        Ok(result) => result
+            .error
+            .as_ref()
+            .expect("the program threw and did not catch it"),
+        Err(other) => panic!("expected an uncaught program throw, but the sandbox failed: {other}"),
+    }
+}
+
 /// The single line a program logged, parsed as JSON — the shape a program uses to hand back a value
 /// now that a returned one goes nowhere.
 fn logged_json(outcome: &SandboxOutcome) -> Value {
@@ -174,19 +187,23 @@ fn summary_of(completion: &ProgramCompletion) -> &str {
 /// **What the model reads when a program failed at run time.**
 ///
 /// This arm reports a failure by capture rather than interception: nothing in the guest catches a
-/// program's throw to describe it, so the engine's own rendering — its `name`, its `message`, the
-/// stack in the model's own coordinates, and whatever the thrown object carries — goes to standard
-/// error, the guest dies the way its runtime kills it, and gg puts what it said in front of the
-/// trap. So a program fault arrives as a [`Trap`](SandboxError::Trap) whose text is the engine's,
-/// and the assertions below read that text.
+/// program's throw to describe it, so what is reported over `feedback.report-error` is the
+/// engine's own rendering — its `name`, its `message`, the stack in the model's own coordinates,
+/// and whatever the thrown object carries. So a program fault arrives as a
+/// [`ProgramError`](crate::sandbox::outcome::ProgramError) whose text is the engine's, the guest
+/// returns normally, and the assertions below read that text.
 fn program_failure(outcome: &SandboxOutcome) -> String {
     match &outcome.result {
-        Ok(result) => panic!(
-            "the program did not fail; it logged {:?} and reported {:?}",
-            outcome.logs, result.error
-        ),
-        Err(SandboxError::Trap(said)) => said.clone(),
-        Err(other) => panic!("expected a program fault, but the sandbox failed: {other}"),
+        Ok(result) => match &result.error {
+            Some(error) => error.message.clone(),
+            None => panic!(
+                "the program did not fail; it logged {:?} and reported nothing",
+                outcome.logs
+            ),
+        },
+        Err(other) => {
+            panic!("expected a reported program fault, but the store died instead: {other}")
+        }
     }
 }
 
@@ -208,7 +225,7 @@ fn a_program_runs_typed_calls_in_order() {
     // capability exists for — it cannot be written at all against untyped tool output.
     let (outcome, log) = run(concat!(
         "import * as gg from \"gg\";\nconst files = gg.files.listDir(\"src\").filter((e) => e.kind === \"file\" && e.name.endsWith(\".ts\"));\n",
-        "const texts = files.map((e) => gg.files.readTextFile(`src/${e.name}`));\n",
+        "const texts = files.map((e) => { const r = gg.files.readFile(`src/${e.name}`); return r.kind === \"text\" ? r.contents : \"\"; });\n",
         "const written = gg.files.writeFile(\"out/summary.txt\", texts.join(\"\\n\"));\n",
         "console.log(JSON.stringify({ files: files.map((f) => f.name), written }));",
     ));
@@ -228,8 +245,8 @@ fn a_program_runs_typed_calls_in_order() {
             .collect::<Vec<_>>(),
         [
             "files.list_dir",
-            "files.read_text_file",
-            "files.read_text_file",
+            "files.read_file",
+            "files.read_file",
             "files.write_file"
         ],
         "the host's own record must match what the loop was actually asked to do"
@@ -280,7 +297,8 @@ fn a_program_runs_typed_calls_in_order() {
     //
     // One call per bound module, the directory every module carries, and the one gg name bound bare.
     let (outcome, log) = run(concat!(
-        "import * as gg from \"gg\";\ngg.views.openText(\"scratch\", gg.files.readTextFile(\"notes.md\"));\n",
+        "import * as gg from \"gg\";\nconst notes = gg.files.readFile(\"notes.md\");\n",
+        "gg.views.openText(\"scratch\", notes.kind === \"text\" ? notes.contents : \"\");\n",
         "gg.shell.shell(\"ls\");\n",
         "gg.board.createEpic({ prefix: \"epc\", title: \"E\", description: \"D\" });\n",
         "gg.tasks.addTask({ id: \"t1\", title: \"T\" });\n",
@@ -609,7 +627,8 @@ fn the_limits_stop_a_runaway_program() {
             "import * as gg from \"gg\";\n",
             "let total = 0;\n",
             "for (let i = 0; i < 20; i++) {\n",
-            "  const text = gg.files.readTextFile(`src/file-${i}.ts`);\n",
+            "  const read = gg.files.readFile(`src/file-${i}.ts`);\n",
+            "  const text = read.kind === \"text\" ? read.contents : \"\";\n",
             "  total += gg.files.writeFile(`src/file-${i}.ts`, text.replace(/alpha/g, \"beta\"));\n",
             "}\n",
             "console.log(total);",
@@ -982,7 +1001,8 @@ fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
 /// arrives as a bare record instead of a catchable `ApiError`.
 #[test]
 fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
-    // A run with NO tools at all still has `view`, and three of its four functions.
+    // A run with NO tools at all still has `view`, and the two of its functions that put something
+    // in the window.
     let outcome = run_as(
         "import * as gg from \"gg\";\ngg.views.openText(\"note\", \"what I found\");",
         EndingRole::Standard,
@@ -992,13 +1012,47 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "the program ran and said nothing"
     );
     let outcome = run_as(
-        "import * as gg from \"gg\";\nconsole.log(JSON.stringify(gg.views.current().length));",
+        "import * as gg from \"gg\";\ngg.views.openDocsView(\"openText\");",
         EndingRole::Standard,
     );
-    assert_eq!(logged_json(&outcome), json!(0));
+    assert!(
+        logs(&outcome).is_empty(),
+        "documentation opens for everyone"
+    );
+
+    // Closing a view is context management, bought by
+    // `agent-managed-context`; a run without it is refused — by gg's own sentence naming the
+    // call, and as the catchable `ApiError` every other withheld call arrives as, since the SDK is
+    // static and the membrane is the whole of the enforcement.
     let outcome = run_as(
-        "import * as gg from \"gg\";\nconsole.log(JSON.stringify(gg.views.close(\"nothing\")));",
+        "import * as gg from \"gg\";\ngg.views.close(\"nothing\");",
         EndingRole::Standard,
+    );
+    let error = uncaught(&outcome);
+    assert_eq!(
+        error.kind,
+        crate::sandbox::ProgramErrorKind::UnknownName,
+        "a withheld view call is the same class as any other name this agent does not hold"
+    );
+    assert!(
+        error.message.contains("`gg.views.close` is not available."),
+        "an agent without agent-managed-context is refused `gg.views.close`: {}",
+        error.message
+    );
+    let outcome = run_as(
+        "import * as gg from \"gg\";\ntry { gg.views.close(\"nothing\"); }\n\
+         catch (e) { console.log(JSON.stringify({ isApiError: e instanceof gg.core.ApiError, operation: (e as gg.core.ApiError).operation, code: (e as gg.core.ApiError).code })); }",
+        EndingRole::Standard,
+    );
+    assert_eq!(
+        logged_json(&outcome),
+        json!({ "isApiError": true, "operation": "close", "code": "unavailable" }),
+        "the refusal is the structured `unavailable` error, catchable like any other"
+    );
+
+    // With the capability on, closing a selector that is not open is an answer, not a failure.
+    let (outcome, _) = run(
+        "import * as gg from \"gg\";\nconsole.log(JSON.stringify(gg.views.close(\"nothing\")));",
     );
     assert_eq!(
         logged_json(&outcome),
@@ -1013,7 +1067,7 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "import * as gg from \"gg\";\ngg.views.openFile(\"src/a.ts\");",
         EndingRole::Standard,
     );
-    let said = program_failure(&outcome);
+    let said = uncaught(&outcome).message.clone();
     assert!(
         said.contains("`gg.views.openFile` is not available."),
         "an agent not granted the read is refused `gg.views.openFile`: {said}"
@@ -1034,41 +1088,25 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "`view.openFile` is a `read_file`, argument for argument"
     );
 
-    // What is open, as data. `JSON.stringify` is the assertion: a `u64` that reached the program as
-    // a `bigint` would throw here rather than merely reading oddly.
-    let (outcome, _) = run(
-        "import * as gg from \"gg\";\ngg.views.openFile(\"src/a.ts\");\n\
-         gg.views.openText(\"summary\", \"the body\");\n\
-         console.log(JSON.stringify(gg.views.current().map((v) => ({\n\
-             kind: v.kind, selector: v.selector, tokens: typeof v.tokens, region: v.region ?? null,\n\
-         }))));",
-    );
-    assert_eq!(
-        logged_json(&outcome),
-        json!([
-            { "kind": "file", "selector": "src/a.ts", "tokens": "number", "region": null },
-            { "kind": "text", "selector": "summary", "tokens": "number", "region": null },
-        ]),
-        "a whole-file read has no region, and no token count reaches a program as a `bigint`"
-    );
-
-    // Re-stating an intent replaces it: two `openText`s of one label are one view.
+    // Re-stating an intent replaces it: two `openText`s of one label are one view, which is
+    // what the close of that label reports.
     let (outcome, _) = run(
         "import * as gg from \"gg\";\ngg.views.openText(\"summary\", \"first\");\n\
          gg.views.openText(\"summary\", \"second\");\n\
-         console.log(JSON.stringify(gg.views.current().map((v) => v.selector)));",
+         console.log(JSON.stringify(gg.views.close(\"summary\")));",
     );
-    assert_eq!(logged_json(&outcome), json!(["summary"]));
+    assert_eq!(logged_json(&outcome), json!(1));
 
-    // Closing reports how many it closed, and leaves the rest.
+    // Closing reports how many it closed, and leaves the rest: `a` closes once, and `b` is
+    // still there for its own close to find.
     let (outcome, _) = run(
         "import * as gg from \"gg\";\ngg.views.openText(\"a\", \"x\");\n\
          gg.views.openText(\"b\", \"y\");\n\
          console.log(JSON.stringify({\n\
-             closed: gg.views.close(\"a\"), left: gg.views.current().map((v) => v.selector),\n\
+             closed: gg.views.close(\"a\"), left: gg.views.close(\"b\"),\n\
          }));",
     );
-    assert_eq!(logged_json(&outcome), json!({ "closed": 1, "left": ["b"] }));
+    assert_eq!(logged_json(&outcome), json!({ "closed": 1, "left": 1 }));
 
     // A refused view arrives as a catchable `ApiError` naming the call the program made, by the
     // key of the operation it wrote — the same identity every other failed call on this membrane

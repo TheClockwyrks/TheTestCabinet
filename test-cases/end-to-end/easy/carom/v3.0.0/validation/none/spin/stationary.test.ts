@@ -1,12 +1,15 @@
-// spin/stationary — a paddle that is not moving imparts no new spin.
+// spin/stationary — a paddle that is not moving imparts no spin.
 //
-// Spin comes from the paddle's vertical velocity at contact, so a still paddle
-// adds none and the return flies straight. The paddle pose is the precondition;
-// the bounce, and the spin it does or does not add, are the build's own physics.
+// specs/balls.md: on a paddle hit, `spin = clamp(spin + paddleVy *
+// SPIN_FROM_PADDLE, ...)`. A spinless ball struck by a paddle whose integrated
+// `vy` is 0 leaves with spin exactly 0; the margin is rounding room. The
+// paddle pose is the precondition; the bounce is the build's own.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { FIELD_CY } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual } from "../assert";
+import { FIELD_CY } from "../constants";
 import {
+  FACE_SHOT_SPEED,
   LEAD_TICKS,
   arrangePaddleHit,
   captureReplay,
@@ -16,23 +19,7 @@ import {
   type Harness,
 } from "../harness";
 
-/** The old browser suite's margin: spin is either imparted or it is not. */
-const SPIN_TOLERANCE = 0.5;
-
-/**
- * Frames of the return flight recorded after the contact.
- *
- * `drivePaddleHit` stops on the frame the ball comes off the paddle, because that
- * is the instant the reading has to be taken at — a frame later and spin has
- * already begun to curve the flight this check is about. That makes it a bad
- * place to stop RECORDING: the clip would end on the contact and a reviewer would
- * never see the shot it produced.
- *
- * So the reading stays exactly where it was and the flight is driven after it,
- * inside the same recorded section. Three quarters of a second is long enough for
- * a curve to be a curve and a straight return to be visibly straight, and short
- * enough that the ball is still on the field at the end of it.
- */
+/** Frames of the return flight recorded after the contact, for the replay. */
 const RETURN_TICKS = 90; // 0.75 s
 
 let harness: Harness;
@@ -41,16 +28,17 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("imparts no spin from a still paddle", async () => {
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FIELD_CY,
     vy: 0,
     ballY: FIELD_CY,
+    approachSpeed: FACE_SHOT_SPEED,
     leadTicks: LEAD_TICKS,
   });
 
@@ -62,6 +50,7 @@ it("imparts no spin from a still paddle", async () => {
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(Math.abs(contact.ball.spin)).toBeLessThanOrEqual(SPIN_TOLERANCE);
+  assertEqual(contact.hit, true);
+  assertCloseTo(contact.paddle.vy, 0, 6);
+  assertCloseTo(contact.ball.spin, 0, 6);
 });

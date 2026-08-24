@@ -33,6 +33,8 @@ pub mod ladder_rung;
 pub mod model;
 pub mod model_alias;
 pub mod model_price;
+pub mod model_probe;
+pub mod model_probe_item;
 pub mod publish_job;
 pub mod review;
 pub mod review_plan;

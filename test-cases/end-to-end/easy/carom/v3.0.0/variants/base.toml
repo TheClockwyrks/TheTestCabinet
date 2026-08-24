@@ -30,31 +30,34 @@ description = "Fixed obstacles and a single ball — the reference game."
 #
 # This is also what `tcab capture-baselines` drives to produce the baseline half of
 # this variant's validation media: the same vitest validator suites that decide a
-# run's points, run against the authored answer.
+# run's points, run against the authored answer. The validators are written from
+# the specs, never from the reference; the reference only demonstrates them passing.
 [reference_implementation]
 none = "references/none/base"
 "simple-2d" = "references/simple-2d/base"
 
-# Serve direction is declared per variant rather than commonly, and lives in the
-# case's COMMON `gameplay` category: a variant may reuse a common category's id to add
-# its own review items to it (see `merge_review_items` in the core), so base and gyre
-# — which both serve toward the receiver — contribute these points to Gameplay. It is
-# declared here rather than in `test-case.toml` because a variant that served some
-# other way could then simply add nothing, and the points would be absent for it
-# rather than wrong. The `format` is inherited from the case manifest
-# (`[review] format = 2`); a variant only adds `[[review.categories]]`.
+# The single served ball is declared per variant rather than commonly, and lives in
+# the case's COMMON `gameplay` category: a variant may reuse a common category's id to
+# add its own review items to it (see `merge_review_items` in the core), so base and
+# gyre — which are the same game apart from the obstacles — contribute these points to
+# Gameplay. They are declared here rather than in `test-case.toml` because multi is
+# not this game: it launches over the full circle, holds each ball on a timer of its
+# own, and keeps the field running through a point, so a common point would be a
+# point stated wrongly for it rather than a point it could add to. Multi states its
+# own versions in `variants/multi.toml`. The `format` is inherited from the case
+# manifest (`[review] format = 2`); a variant only adds `[[review.categories]]`.
 #
-# It is checked as three separate points — the very first serve of a match, and the
-# serve after a point is scored on each player — so a build fails exactly the rule it
-# breaks. base and gyre both serve toward the receiver, so both drive these same
-# shared scripts.
+# Serve direction is checked as three separate points — the very first serve of a
+# match, and the serve after a point is scored on each player — so a build fails
+# exactly the rule it breaks. base and gyre both serve toward the receiver, so both
+# drive these same shared scripts.
 [[review.categories]]
 id = "gameplay"
 title = "Gameplay"
 [[review.categories.items]]
 id = "serve-initial"
 title = "Initial serve direction"
-description = "The very first serve of a match always travels toward player one."
+description = "The first serve of a match leaves with vx < 0, toward player one."
 # Automated validation: start fresh matches and read the first serve's horizontal
 # direction (toward player one). See validation/<engine>/gameplay/serve-initial.test.ts.
 validation = { script = "gameplay/serve-initial.test.ts", outputs = [
@@ -63,7 +66,7 @@ validation = { script = "gameplay/serve-initial.test.ts", outputs = [
 [[review.categories.items]]
 id = "serve-after-p1"
 title = "Serve after scoring on player one"
-description = "After a point is scored on player one (player two scores), the next serve travels toward player one, the receiver."
+description = "After player two scores, the next serve leaves with vx < 0, toward player one."
 # Automated validation: drive a real point out the left goal, then read the next
 # serve's horizontal direction (toward player one). See
 # validation/<engine>/gameplay/serve-after-p1.test.ts.
@@ -73,10 +76,79 @@ validation = { script = "gameplay/serve-after-p1.test.ts", outputs = [
 [[review.categories.items]]
 id = "serve-after-p2"
 title = "Serve after scoring on player two"
-description = "After a point is scored on player two (player one scores), the next serve travels toward player two, the receiver."
+description = "After player one scores, the next serve leaves with vx > 0, toward player two."
 # Automated validation: drive a real point out the right goal, then read the next
 # serve's horizontal direction (toward player two). See
 # validation/<engine>/gameplay/serve-after-p2.test.ts.
 validation = { script = "gameplay/serve-after-p2.test.ts", outputs = [
   { id = "serve", name = "Serve toward player two after a point on player two", kind = "replay" },
+] }
+
+# The ball serves at a fixed speed and angle after a fixed pre-serve countdown.
+[[review.categories.items]]
+id = "serve-speed"
+title = "Serve speed"
+description = "A served ball leaves at SERVE_SPEED (520 units per second), within 1 percent."
+# Automated validation: start a fresh match, serve, and read the ball's launch speed.
+# See validation/<engine>/gameplay/serve-speed.test.ts.
+validation = { script = "gameplay/serve-speed.test.ts", outputs = [
+  { id = "serve", name = "A ball leaving at the serve speed", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "serve-angle"
+title = "Serve angle"
+description = "A served ball leaves at an angle from horizontal whose magnitude is SERVE_ANGLE (12 degrees), within 2 degrees."
+# Automated validation: start a fresh match, serve, and read the launch velocity's
+# angle from horizontal. See validation/<engine>/gameplay/serve-angle.test.ts.
+validation = { script = "gameplay/serve-angle.test.ts", outputs = [
+  { id = "serve", name = "A ball leaving at the serve angle", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "countdown-length"
+title = "Countdown length"
+description = "From match start, the ball is served on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed, within one frame."
+# Automated validation: start a match and advance until the ball serves, confirming
+# the hold lasts HOLD_TIME of simulated time on the validator's own clock. See
+# validation/<engine>/gameplay/countdown-length.test.ts.
+validation = { script = "gameplay/countdown-length.test.ts", outputs = [
+  { id = "countdown", name = "The pre-serve countdown running out", kind = "replay" },
+] }
+# Scoring is checked per side — one point for each goal — so a build that scores on
+# only one edge is caught rather than averaged away by the other.
+[[review.categories.items]]
+id = "scoring-p1"
+title = "Player one scores past the right goal"
+description = "A ball driven past the right goal edge increments player one's score by 1 and leaves player two's unchanged, and the screen returns to countdown with receiver right."
+# Automated validation: drive a real ball out the right goal and confirm player one's
+# score increments and player two's does not. See validation/<engine>/gameplay/scoring-p1.test.ts.
+validation = { script = "gameplay/scoring-p1.test.ts", outputs = [
+  { id = "goal", name = "Player one scoring past the right goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "scoring-p2"
+title = "Player two scores past the left goal"
+description = "A ball driven past the left goal edge increments player two's score by 1 and leaves player one's unchanged, and the screen returns to countdown with receiver left."
+# Automated validation: drive a real ball out the left goal and confirm player two's
+# score increments and player one's does not. See validation/<engine>/gameplay/scoring-p2.test.ts.
+validation = { script = "gameplay/scoring-p2.test.ts", outputs = [
+  { id = "goal", name = "Player two scoring past the left goal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "match-win"
+title = "Match win at 11, lead by 2"
+description = "From 10-9, a point to 11-9 sets winner to left, screen to matchover, and leaves the score at 11-9."
+# Automated validation: from 10-9, drive a real point across the goal to 11-9 and
+# confirm the match ends with the correct winner and final score. See
+# validation/<engine>/gameplay/match-win.test.ts.
+validation = { script = "gameplay/match-win.test.ts", outputs = [
+  { id = "game-over", name = "Match-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "deuce"
+title = "Deuce past 10-10"
+description = "From 10-10, a point to 11-10 leaves winner null and the screen on countdown, and a further point to 12-10 sets winner and screen to matchover."
+# Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
+# a further point to 12-10 must. See validation/<engine>/gameplay/deuce.test.ts.
+validation = { script = "gameplay/deuce.test.ts", outputs = [
+  { id = "deuce", name = "The deciding deuce point", kind = "replay" },
 ] }

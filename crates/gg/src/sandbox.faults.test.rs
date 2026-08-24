@@ -43,8 +43,8 @@ fn program_faults_are_reported_not_trapped() {
         concat!(
             "import * as gg from \"gg\";\n",
             "const entries = gg.files.listDir(\"src\");\n",
-            "const text = gg.files.readTextFile(\"missing.ts\");\n",
-            "console.log(text.length + entries.length);\n",
+            "const read = gg.files.readFile(\"missing.ts\");\n",
+            "console.log(read.kind + entries.length);\n",
         ),
         &all_operations(),
         SandboxLimits::AMPLE,
@@ -56,7 +56,7 @@ fn program_faults_are_reported_not_trapped() {
         // What was thrown, in the engine's own words,
         "ApiError: read_file: no such file `missing.ts`",
         // which call it was and why, off the properties the error carries,
-        "operation: \"read_text_file\"",
+        "operation: \"read_file\"",
         "code: \"not-found\"",
         // and the line of the program that made the call.
         "(program.ts:3:23)",
@@ -77,7 +77,7 @@ fn program_faults_are_reported_not_trapped() {
         concat!(
             "import * as gg from \"gg\";\n",
             "try {\n",
-            "  gg.files.readTextFile(\"missing.ts\");\n",
+            "  gg.files.readFile(\"missing.ts\");\n",
             "} catch (e) {\n",
             "  const failure = e as gg.core.ApiError;\n",
             "  console.log(JSON.stringify({ code: failure.code, operation: failure.operation, caught: true }));\n",
@@ -89,7 +89,7 @@ fn program_faults_are_reported_not_trapped() {
     );
     assert_eq!(
         logged_json(&outcome),
-        json!({ "code": "not-found", "operation": "read_text_file", "caught": true })
+        json!({ "code": "not-found", "operation": "read_file", "caught": true })
     );
 
     // A caught failure is still on the record, so the feedback can say a call failed even when the

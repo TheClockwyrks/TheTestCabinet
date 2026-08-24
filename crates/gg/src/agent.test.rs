@@ -191,7 +191,6 @@ fn no_code() -> CodeSetup {
         language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::AMPLE,
         healing: HealingConfig::SAFE_REPAIRS,
-        assistant_messages: AssistantMessageMode::None,
         doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
@@ -291,6 +290,7 @@ fn code_reply(text: &str) -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -598,6 +598,7 @@ fn no_amc() -> AmcSetup {
         archive_id: "archive-0".to_string(),
         can_evict: false,
         program_language: None,
+        can_close_views: false,
         can_archive: false,
         top_file_views: 0,
         signal_threshold_percent: 0,
@@ -630,6 +631,7 @@ fn amc_with(archive: Arc<Mutex<ArchiveStore>>) -> AmcSetup {
         can_evict: true,
         // These `drive` e2es are tool-calling agents, so there is no `view` object to point at.
         program_language: None,
+        can_close_views: false,
         can_archive: true,
         // The block on every turn: an e2e that archives and then reads the band fall would
         // otherwise have to fill three quarters of a window first.
@@ -651,6 +653,7 @@ fn looping_response() -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -754,6 +757,7 @@ impl ModelClient for WriteThenFailClient {
                 finish_reason: FinishReason::ToolCalls,
                 usage: TokenCounts::default(),
                 cost: None,
+                provider: None,
                 loop_aborts: LoopAborts::none(),
             })
         } else {
@@ -1285,6 +1289,7 @@ fn ending_call(id: &str, name: &str, arguments: serde_json::Value) -> ModelRespo
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -1957,14 +1962,27 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
             .all(|v| v.message().role == crate::model::Role::User),
         "a seeded view uses the same envelope a program's own view does"
     );
+    // Headed like one: the workspace-relative path the case provided, and the lines shown — the
+    // whole spec for a text file, the path alone for the mockup (a picture shows no lines).
     assert!(
-        views.iter().all(|v| v
+        views[0]
             .message()
             .content
             .as_deref()
             .unwrap_or("")
-            .starts_with("File\n----\n")),
-        "and is headed like one"
+            .starts_with("File: SPEC.md:1-3 of 3 lines\n----\n# The spec\n"),
+        "{:?}",
+        views[0].message().content
+    );
+    assert!(
+        views[1]
+            .message()
+            .content
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("File: reference/title.png\n----\n"),
+        "{:?}",
+        views[1].message().content
     );
     assert_eq!(
         views.iter().filter_map(|v| v.label()).collect::<Vec<_>>(),
@@ -2860,6 +2878,7 @@ fn the_signal_threshold_is_a_share_of_the_window_compaction_leaves() {
         ctx.refresh_context_usage_signal(UsageSignalOptions {
             can_evict: true,
             program_language: None,
+            can_close_views: false,
             can_archive: true,
             top_file_views: 5,
             threshold_percent: DEFAULT_SIGNAL_THRESHOLD_PERCENT,
@@ -2927,6 +2946,7 @@ fn read_skill_call(id: &str, name: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -2946,6 +2966,7 @@ fn text_only_response() -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -3125,6 +3146,7 @@ fn write_memory_call(id: &str, name: &str, body: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -3343,6 +3365,7 @@ fn create_memory_call(id: &str, name: &str, contents: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -3661,6 +3684,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     };
     let client = MockClient::new(
@@ -3810,6 +3834,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 finish_reason: FinishReason::ToolCalls,
                 usage: TokenCounts::default(),
                 cost: None,
+                provider: None,
                 loop_aborts: LoopAborts::none(),
             },
             stop_response(),
@@ -4067,6 +4092,7 @@ fn balloon_turn(id: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -4087,6 +4113,7 @@ fn compaction_script() -> Vec<ModelResponse> {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         },
         balloon_turn("c_ls"),
@@ -4503,6 +4530,8 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
             ))),
             &AgentFacts::default(),
         );
+        let (granted, _) =
+            crate::sandbox::resolve_operations(profile.operations.iter().map(String::as_str));
         AmcSetup::resolve(
             profile,
             &registry,
@@ -4516,6 +4545,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
                     &mut crate::validate::LaunchReport::Discarding,
                 )
             }),
+            &granted,
         )
     };
 
@@ -4549,10 +4579,26 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
             can_evict: true,
             // A tool-calling agent has no `view` object, so the block must not point at `view.close`.
             program_language: None,
+            can_close_views: false,
             can_archive: true,
             top_file_views: authored,
             threshold_percent: authored_threshold,
         }
+    );
+
+    // A code agent holds `views.close` exactly when its grant names it: the capability buys the
+    // call and the allowlist grants it, and the signal reads the grant rather than the mode.
+    let mut code = GgAgentConfig::root();
+    crate::tools::grant(&mut code, CAPABILITY_RESPONSES_AS_CODE);
+    crate::tools::grant(&mut code, CAPABILITY_AGENT_MANAGED_CONTEXT);
+    assert!(
+        resolve(&code).can_close_views,
+        "a code agent granted the capability's calls holds `views.close`"
+    );
+    code.operations.retain(|id| id != "views.close");
+    assert!(
+        !resolve(&code).can_close_views,
+        "an allowlist that omits `views.close` withholds it from the signal too"
     );
 
     // On, configured: the breakdown is as long as the profile asked for.
@@ -6134,6 +6180,7 @@ async fn spawn_is_refused_at_the_max_depth() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Box::new(MockClient::new(
@@ -6198,6 +6245,7 @@ async fn subagents_recurse_within_the_depth_cap() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let wait = ModelResponse {
@@ -6210,6 +6258,7 @@ async fn subagents_recurse_within_the_depth_cap() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Box::new(MockClient::new(
@@ -6293,6 +6342,7 @@ impl ModelClient for InboxProbeClient {
             finish_reason: FinishReason::Stop,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         })
     }
@@ -6324,6 +6374,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let message = ModelResponse {
@@ -6336,6 +6387,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let wait = ModelResponse {
@@ -6348,6 +6400,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Box::new(MockClient::new(
@@ -6398,7 +6451,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
     );
 }
 
-/// Messaging an agent that is not one of your subagents, or one that has already returned, is
+/// Messaging an agent that is not one of the sender's subagents, or one that has already returned, is
 /// refused with guidance rather than delivered.
 #[tokio::test]
 async fn send_message_refuses_unknown_and_finished_targets() {
@@ -6420,6 +6473,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let wait = ModelResponse {
@@ -6432,6 +6486,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let msg_finished = ModelResponse {
@@ -6444,6 +6499,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let msg_unknown = ModelResponse {
@@ -6456,6 +6512,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Box::new(MockClient::new(
@@ -6496,7 +6553,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
     assert!(
         refusals
             .iter()
-            .any(|s| s.contains("not one of your subagents")),
+            .any(|s| s.contains("not one of this agent's subagents")),
         "messaging an unknown agent is refused"
     );
 }
@@ -6549,6 +6606,7 @@ fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> ModelRes
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -9118,6 +9176,7 @@ impl ModelClient for VisionRefusingClient {
             tool_calls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         })
     }
@@ -9269,6 +9328,7 @@ impl ModelClient for ImageReadingClient {
             tool_calls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         })
     }
@@ -9364,6 +9424,17 @@ mod sandbox_tests;
 #[path = "agent.limits.test.rs"]
 mod limits_tests;
 
+/// The model-call **rejection loop** through the live session: a timed-out call and a
+/// length-capped reply recorded as error turns, kept out of the context and the run's metrics,
+/// and retried on the same turn — plus the append-only prompt invariant and the trailing
+/// contract notice, which those retries and every ordinary turn must both preserve.
+///
+/// Separate from `agent.limits.test.rs` because what these guard is the pre-turn seam — the loop
+/// between the model call and the turn that never happened — rather than the ceilings' own
+/// arithmetic, which those tests already hold.
+#[path = "agent.rejection.test.rs"]
+mod rejection_tests;
+
 /// The loop under an **operator cancellation** — the host's kill, driven through the live loop for
 /// the same reason the ceilings are: what these guard is that a killed run really stops, keeps what
 /// it accumulated, and still emits the epilogue a frozen view is rebuilt from.
@@ -9374,7 +9445,7 @@ mod limits_tests;
 mod cancel_tests;
 
 /// The seam between [response healing](crate::healing) and the loop: that what gg repaired is
-/// disclosed to the model, counted on the turn's telemetry, and — for a reply that never became a
+/// never disclosed to the model, is counted on the turn's telemetry, and — for a reply that never became a
 /// program — that nothing under `sandbox/` is entered at all.
 ///
 /// Healing's own suite proves the algorithm; these prove the wiring, which is the half a pure test

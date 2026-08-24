@@ -26,9 +26,9 @@ import gg.internal.ggText
  *
  * This run may offload shell output, and the `shell` tool's own description says which mode is in
  * force. Under `offload`, [ShellOutput.output] holds only the tail that fits and ends with a note
- * naming the two files the command's full standard output and standard error were written to. Those
- * files are readable by absolute path, so a `gg.files.readTextFile` of one, or a grep, is cheaper
- * than running the command again.
+ * naming the two files the command's full standard output and standard error were written to, with
+ * the shape of what went there — how many lines, how long they run. Those files are readable by
+ * absolute path, so reading a window of one, or a grep, is cheaper than running the command again.
  *
  * @ggop shell.shell
  * @param command The command line, run by `sh -c` with the workspace as its working directory.

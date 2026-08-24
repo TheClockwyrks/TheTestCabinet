@@ -421,6 +421,9 @@ async fn archive(
     // filename or inject a header.
     let disposition = format!("attachment; filename=\"run-{id}.tar.gz\"");
     tracing::info!(run.id = %id, bytes = archive.len(), "served run archive");
+    // The gzip *is* the resource here, so the response carries no `Content-Encoding`:
+    // declaring one would have the browser inflate the archive on the way to disk and
+    // leave a bare tar sitting under a `.tar.gz` name.
     Ok((
         [
             (header::CONTENT_TYPE, "application/gzip".to_string()),
@@ -477,7 +480,11 @@ async fn proof_file(
     let run_dir = state.store.run_dir(&id);
     let served = serve_proof_file(&run_dir, &file)
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no proof media `{file}`")))?;
-    Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
+    Ok(media_response(
+        served.content_type,
+        served.content_encoding,
+        served.body,
+    ))
 }
 
 /// `GET /runs/{id}/asset/{file}` — an asset-generation run's regenerated image,
@@ -491,7 +498,11 @@ async fn asset_file(
     let run_dir = state.store.run_dir(&id);
     let served = serve_asset_file(&run_dir, &file)
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no asset media `{file}`")))?;
-    Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
+    Ok(media_response(
+        served.content_type,
+        served.content_encoding,
+        served.body,
+    ))
 }
 
 /// `GET /runs/{id}/validation/{file}` — a run's synthesized validation media
@@ -507,7 +518,34 @@ async fn validation_file(
     let served = serve_validation_file(&run_dir, &file).ok_or_else(|| {
         ApiError::not_found(format!("run `{id}` has no validation media `{file}`"))
     })?;
-    Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
+    Ok(media_response(
+        served.content_type,
+        served.content_encoding,
+        served.body,
+    ))
+}
+
+/// Build a media response that declares both what the resource is and how the body
+/// is framed.
+///
+/// A recording is stored gzipped and served that way, so its response says
+/// `Content-Type: application/json` with `Content-Encoding: gzip` and the browser
+/// inflates it before the player ever sees it. The compression layer leaves a body
+/// that already declares an encoding alone, so a recording is never re-encoded on
+/// its way out.
+fn media_response(
+    content_type: &'static str,
+    content_encoding: Option<&'static str>,
+    body: Vec<u8>,
+) -> Response {
+    let mut response = ([(header::CONTENT_TYPE, content_type)], body).into_response();
+    if let Some(encoding) = content_encoding {
+        response.headers_mut().insert(
+            header::CONTENT_ENCODING,
+            header::HeaderValue::from_static(encoding),
+        );
+    }
+    response
 }
 
 /// `GET /runs/{id}/events.jsonl` — a finished run's recorded, normalized event

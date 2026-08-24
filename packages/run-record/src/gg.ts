@@ -529,7 +529,7 @@ export type GgCapabilityConfig = {
    * ordinary file views, which is a reading of absence rather than a substitution for it.
    *
    * A name the capability does not offer refuses the launch, and so does any name at all on one
-   * of the sixteen capabilities that offer none. `Option` on the wire so a configuration already
+   * of the seventeen capabilities that offer none. `Option` on the wire so a configuration already
    * stored in the database still deserializes and still opens in the editor: what a missing
    * required arm costs is the *launch*, not the parse. The
    * [authoring catalog](gg_authoring_catalog) is what writes one into a new document.
@@ -862,7 +862,17 @@ export type GgAgentApi = {
  */
 export type GgAgentApiFunction = {
   /**
-   * The name a program calls it by — `readFile`, `openDocsView`, `finish`.
+   * The name a program calls it by, **relative to its module**, in this arm's own spelling:
+   * a free function is its bare name — `readFile`, `openDocsView`, `finish` — and a method
+   * carries the receiver it hangs off, in the arm's own separator — `OpenView.close` on
+   * TypeScript, `OpenView#close` on Java, `open_view::close` on C++. Joining the module's
+   * [`path`](GgAgentApi::path) onto it with the arm's separator gives the catalogue's
+   * fully-qualified name (`gg.views.OpenView.close`), which is the key a documentation view
+   * opens by.
+   *
+   * Module-relative rather than bare so that two rows of one module never share a name: an
+   * arm that binds `close` as a free function **and** as a method on the value `current` lists
+   * reports `close` and `OpenView.close`, not `close` twice.
    */
   name: string;
   /**
@@ -2128,6 +2138,8 @@ export type GgTurnErrorType =
   | "model_response_loop"
   | "model_vision_unsupported"
   | "model_parse"
+  | "model_timeout"
+  | "model_length_capped"
   | "transpile_syntax"
   | "transpile_compile"
   | "transpile_unsupported"
@@ -2185,9 +2197,10 @@ export type GgCallFailure =
  * name, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly
  * that reason.
  *
- * Every application is disclosed to the model in its turn feedback — a repair the model is never
- * told about teaches it nothing and corrupts the very question a run of this shape asks, which is
- * whether models learn the contract.
+ * Every application is counted on the run record and reported on the operator's stream, and none
+ * of it is disclosed to the model: the model's history carries the healed program as its own reply,
+ * so the count answers the question a run of this shape asks — how often the model broke the
+ * contract — unperturbed by any correction.
  *
  * Two of the three are armed unless a configuration turns them off, because for those, repairing
  * is strictly safer than not: the reply they delete from could not have run as sent. The exception
@@ -2555,6 +2568,33 @@ export type GgUndocumentedCalls = {
 };
 
 /**
+ * The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly
+ * the length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.
+ *
+ * This bucket exists so the exclusion is visible rather than silent. A rejected reply's usage is
+ * deliberately kept **out** of the run's cost and turn metrics — a degenerate generation must not
+ * make a run look expensive or long — but the money was still spent, and "how often does this
+ * model cap out, and what does it cost?" is a question the owner asks of the durable record.
+ * Folded from the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.
+ */
+export type GgRejectedResponses = {
+  /**
+   * How many replies were rejected.
+   */
+  count: number;
+  /**
+   * The tokens the provider billed for them, summed — spend absent from the run's own
+   * [token totals](crate::metrics::TokenCounts) by design.
+   */
+  tokens: TokenMetrics;
+  /**
+   * Their cost, summed, when the provider reported any — spend absent from the run's recorded
+   * cost by design.
+   */
+  cost?: CostMetrics;
+};
+
+/**
  * One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable
  * tail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a
  * query can total or slice a gg run's spend per model without replaying the stream.
@@ -2588,6 +2628,68 @@ export type GgSlotCost = {
    * The cost accumulated on this slot/model, when any turn on it reported one.
    */
   cost?: CostMetrics;
+};
+
+/**
+ * One `(provider, model)` health slice in a [`GgSessionSummary`] — which upstream provider
+ * served a run's model calls, and how the calls it served went. Folded from the run's own
+ * stream: the [`Usage`](GgTelemetryKind::Usage) deltas contribute the calls with their tokens
+ * and cost, the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the length-capped
+ * replies, and the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the per-turn judgement,
+ * each attributed to the provider its own call named.
+ *
+ * Two invariants hold across a summary's slices: their [`turns`](Self::turns) sum to the
+ * [error rollup](GgErrorSummary::turns)'s denominator, and within a slice `turns` minus
+ * [`working`](Self::working) minus its error count is its fatal turns.
+ */
+export type GgProviderStat = {
+  /**
+   * OpenRouter's name for the upstream provider that served this slice's calls. `None` for the
+   * slice of calls that named none — a gateway that stamps no provider, or a turn whose call
+   * produced no reply to name one (a model timeout).
+   */
+  provider?: string;
+  /**
+   * The model this slice's agent was running on, as the agent's own
+   * [`Usage`](GgTelemetryKind::Usage) deltas named it. `None` for a turn or rejection recorded
+   * before the agent's first usage delta named one.
+   */
+  modelId?: string;
+  /**
+   * Model calls folded from the [`Usage`](GgTelemetryKind::Usage) deltas — the calls that
+   * reported usage. A call that reported neither tokens nor cost emits no delta and reaches
+   * only the turn figures below.
+   */
+  calls: number;
+  /**
+   * The tokens those calls reported, summed in the shared [`TokenCounts`] units.
+   */
+  tokens: TokenMetrics;
+  /**
+   * Their cost, summed, when any of them reported one.
+   */
+  cost?: CostMetrics;
+  /**
+   * Replies gg [rejected whole](GgRejectedResponses) — the length-capped ones — that this
+   * slice's provider served. `0`, and omitted, for the ordinary slice with none.
+   */
+  rejected?: number;
+  /**
+   * Turns attributed to this slice: each [`TurnOutcome`](GgTelemetryKind::TurnOutcome) lands on
+   * the provider its own call named, or on the providerless slice when it named none.
+   */
+  turns: number;
+  /**
+   * The turns among them that worked — a [progressed](GgTurnOutcome::Progressed) or
+   * [finished](GgTurnOutcome::Finished) outcome.
+   */
+  working: number;
+  /**
+   * The errored turns among them, keyed by [`GgTurnErrorType::wire_id`] — the same open,
+   * string-keyed breakdown [`GgErrorSummary::by_type`] is, and omitted when empty on the same
+   * terms.
+   */
+  errors?: { [key in string]: number };
 };
 
 /**
@@ -2762,6 +2864,39 @@ export type GgSessionSummary = {
    */
   errors: GgErrorSummary;
   /**
+   * Every **dispatched tool call** the run made, in either execution mode — one per
+   * [`ToolResult`](GgTelemetryKind::ToolResult) event, failed or not. This is the population
+   * [`GgErrorSummary::tool_failures`] classifies the failed half of, recorded so the successful
+   * half is derivable: `tool_calls` minus the failures is the calls that succeeded, and on a
+   * record that carries the figure it is at least the sum of the failures.
+   *
+   * `0` — and omitted — for a run that dispatched none, so a reader must treat a summary with
+   * failures but no total as one whose total was not recorded.
+   */
+  toolCalls?: number;
+  /**
+   * How many model replies gg **rejected whole** — the length-capped ones — and the spend they
+   * burned; see [`GgRejectedResponses`]. Their usage is excluded from the run's cost and turn
+   * metrics by design, so this rollup is where it lives instead. Omitted from the wire for the
+   * ordinary run that rejected nothing.
+   */
+  rejectedResponses?: GgRejectedResponses;
+  /**
+   * The longest reply, in characters, of any turn that **worked** (a progressed or finished
+   * outcome) — folded as a maximum over the
+   * [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events' `response_chars`. Recorded so an
+   * output ceiling can later be chosen from data rather than guessed: a cap below this figure
+   * would have truncated a reply that was doing its job. `0` — and omitted — for a run with no
+   * successful turn.
+   */
+  maxResponseChars?: number;
+  /**
+   * The same maximum in the provider's own unit: **completion tokens** (output plus reasoning,
+   * the figure an output cap is measured in). `0` — and omitted — for a run whose successful
+   * turns reported no usage.
+   */
+  maxResponseOutputTokens?: number;
+  /**
    * How many calls the run's models wrote **without ever having read the call's documentation**
    * — the run's [discovery rollup](GgUndocumentedCalls), folded from the same
    * [`CodeExecution`](GgTelemetryKind::CodeExecution) events
@@ -2797,6 +2932,14 @@ export type GgSessionSummary = {
    * turn).
    */
   slotCosts: Array<GgSlotCost>;
+  /**
+   * The per-`(provider, model)` health rollup for the run — which upstream providers served its
+   * model calls and how the calls each one served went; see [`GgProviderStat`]. One slice per
+   * pair observed, in key order with the providerless slice first. Empty — and omitted — when
+   * no call, turn or rejection was ever folded in, which includes every record from a client
+   * that reports no usage at all.
+   */
+  providerStats?: Array<GgProviderStat>;
   /**
    * The **effective toolset**: the exact set of tool names offered to the run's agent,
    * in the order they were presented to the model. This is what the run's
@@ -2913,7 +3056,7 @@ export type GgTelemetryKind =
        *
        * It is here because eleven arms legitimately spell one operation eleven ways, and by
        * design they do: an arm's surface answers to its own language, so `read_file`,
-       * `readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things
+       * `readFile` and `ReadFile` are all real spellings of things
        * gg has exactly one name for. A study comparing arms — or comparing two agents of one run
        * written in two languages — joins on this and on nothing else.
        *
@@ -2971,6 +3114,41 @@ export type GgTelemetryKind =
        * The cost of this accounting, when it could be determined.
        */
       cost?: CostMetrics;
+      /**
+       * The upstream **provider** that served the call, when the gateway reported one
+       * (OpenRouter's `provider` response field). A model id is served by several providers
+       * behind one name, and provider-shaped failures are only attributable — and a provider
+       * only blacklistable — if every call's spend names who served it.
+       */
+      provider?: string;
+    }
+  | {
+      type: "response_rejected";
+      /**
+       * Why the reply was rejected — the provider's own finish reason, today always
+       * `"length"`. A string so a future rejection class joins without a schema change.
+       */
+      reason: string;
+      /**
+       * The rejected reply's length in characters, measured by gg — the figure a later
+       * output ceiling would be judged against.
+       */
+      chars: number;
+      /**
+       * The usage the provider billed for the rejected call — spend the run's own metrics do
+       * not include, kept here so nothing is silently lost.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The rejected call's cost, when the provider reported one. Excluded from the run's
+       * recorded cost on the same terms as the tokens.
+       */
+      cost?: CostMetrics;
+      /**
+       * The upstream provider that served the rejected call, when the gateway named one — the
+       * attribution that makes a provider-shaped failure blacklistable.
+       */
+      provider?: string;
     }
   | {
       type: "context_breakdown";
@@ -3086,6 +3264,13 @@ export type GgTelemetryKind =
        * or synthesized response).
        */
       durationMs?: number;
+      /**
+       * The upstream **provider** that served the call, when the gateway reported one
+       * (OpenRouter's `provider` response field) — the request/response record's copy of the
+       * attribution the [`Usage`](Self::Usage) delta carries, so a provider-shaped reply is
+       * attributable from the message log alone.
+       */
+      provider?: string;
     }
   | {
       type: "turn_timing";
@@ -3887,6 +4072,22 @@ export type GgTelemetryKind =
        * the two, since a reply's final partial word is never counted as a word.
        */
       loopAbortChars?: number;
+      /**
+       * The reply's length in characters — the model's raw text, before any healing. Carried on
+       * every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum
+       * over the turns that **worked** (a progressed or finished outcome): the figure a later
+       * output ceiling would have to accommodate. `0` — and omitted — for a turn whose reply
+       * carried no text at all.
+       */
+      responseChars?: number;
+      /**
+       * The reply's **completion tokens** as the provider billed them (output plus reasoning —
+       * the figure a provider's output cap is measured in), the companion of
+       * [`response_chars`](Self::TurnOutcome::response_chars) and the second unit
+       * [`GgSessionSummary::max_response_output_tokens`] is folded in. `0` — and omitted —
+       * when the provider reported no usage.
+       */
+      responseOutputTokens?: number;
     }
   | {
       type: "limit_exceeded";
@@ -4052,7 +4253,7 @@ export type GgTelemetryEvent = {
        *
        * It is here because eleven arms legitimately spell one operation eleven ways, and by
        * design they do: an arm's surface answers to its own language, so `read_file`,
-       * `readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things
+       * `readFile` and `ReadFile` are all real spellings of things
        * gg has exactly one name for. A study comparing arms — or comparing two agents of one run
        * written in two languages — joins on this and on nothing else.
        *
@@ -4110,6 +4311,41 @@ export type GgTelemetryEvent = {
        * The cost of this accounting, when it could be determined.
        */
       cost?: CostMetrics;
+      /**
+       * The upstream **provider** that served the call, when the gateway reported one
+       * (OpenRouter's `provider` response field). A model id is served by several providers
+       * behind one name, and provider-shaped failures are only attributable — and a provider
+       * only blacklistable — if every call's spend names who served it.
+       */
+      provider?: string;
+    }
+  | {
+      type: "response_rejected";
+      /**
+       * Why the reply was rejected — the provider's own finish reason, today always
+       * `"length"`. A string so a future rejection class joins without a schema change.
+       */
+      reason: string;
+      /**
+       * The rejected reply's length in characters, measured by gg — the figure a later
+       * output ceiling would be judged against.
+       */
+      chars: number;
+      /**
+       * The usage the provider billed for the rejected call — spend the run's own metrics do
+       * not include, kept here so nothing is silently lost.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The rejected call's cost, when the provider reported one. Excluded from the run's
+       * recorded cost on the same terms as the tokens.
+       */
+      cost?: CostMetrics;
+      /**
+       * The upstream provider that served the rejected call, when the gateway named one — the
+       * attribution that makes a provider-shaped failure blacklistable.
+       */
+      provider?: string;
     }
   | {
       type: "context_breakdown";
@@ -4225,6 +4461,13 @@ export type GgTelemetryEvent = {
        * or synthesized response).
        */
       durationMs?: number;
+      /**
+       * The upstream **provider** that served the call, when the gateway reported one
+       * (OpenRouter's `provider` response field) — the request/response record's copy of the
+       * attribution the [`Usage`](Self::Usage) delta carries, so a provider-shaped reply is
+       * attributable from the message log alone.
+       */
+      provider?: string;
     }
   | {
       type: "turn_timing";
@@ -5026,6 +5269,22 @@ export type GgTelemetryEvent = {
        * the two, since a reply's final partial word is never counted as a word.
        */
       loopAbortChars?: number;
+      /**
+       * The reply's length in characters — the model's raw text, before any healing. Carried on
+       * every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum
+       * over the turns that **worked** (a progressed or finished outcome): the figure a later
+       * output ceiling would have to accommodate. `0` — and omitted — for a turn whose reply
+       * carried no text at all.
+       */
+      responseChars?: number;
+      /**
+       * The reply's **completion tokens** as the provider billed them (output plus reasoning —
+       * the figure a provider's output cap is measured in), the companion of
+       * [`response_chars`](Self::TurnOutcome::response_chars) and the second unit
+       * [`GgSessionSummary::max_response_output_tokens`] is folded in. `0` — and omitted —
+       * when the provider reported no usage.
+       */
+      responseOutputTokens?: number;
     }
   | {
       type: "limit_exceeded";
@@ -5249,6 +5508,8 @@ export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
   model_response_loop: "model looped every attempt",
   model_vision_unsupported: "model cannot see images",
   model_parse: "unparseable model response",
+  model_timeout: "model call timed out",
+  model_length_capped: "length-capped reply rejected",
   transpile_syntax: "syntax error",
   transpile_compile: "compiler rejected the program",
   transpile_unsupported: "unsupported program feature",
@@ -5275,6 +5536,8 @@ export const GG_TURN_ERROR_TYPE_BASE: Readonly<
   model_response_loop: "model_api",
   model_vision_unsupported: "model_api",
   model_parse: "model_api",
+  model_timeout: "model_api",
+  model_length_capped: "model_api",
   transpile_syntax: "transpile",
   transpile_compile: "transpile",
   transpile_unsupported: "transpile",
@@ -5300,6 +5563,8 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
   "model_response_loop",
   "model_vision_unsupported",
   "model_parse",
+  "model_timeout",
+  "model_length_capped",
   "transpile_syntax",
   "transpile_compile",
   "transpile_unsupported",

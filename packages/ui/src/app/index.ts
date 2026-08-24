@@ -16,6 +16,7 @@ export {
   useGalleryData,
   type ArenaApi,
   type ArenaWorkerOption,
+  type CaseVariantRef,
   type GalleryData,
   type GalleryDataInput,
   type HarnessAuth,
@@ -54,12 +55,14 @@ export {
   type SortDir,
 } from "./data/runQuery";
 export { useTestCases, type TestCasesState } from "./data/useTestCases";
+export { useTestCase, type TestCaseState } from "./data/useTestCase";
 export {
-  useTestCase,
+  useCaseVariant,
   useReviewModel,
-  type TestCaseState,
+  useRunVariant,
   type ReviewModelState,
-} from "./data/useTestCase";
+  type RunVariantState,
+} from "./data/useRunVariant";
 export { useModels, useFindModel, type ModelsState } from "./data/useModels";
 export { useFindReview } from "./data/writeups";
 
@@ -80,6 +83,17 @@ export {
   type ReferenceScreenshot,
 } from "./data/testCases";
 export { type ParsedWriteup, parseWriteup } from "./data/ratings";
+
+// The engine catalogue as the console names it: display names for the run
+// dimension, and the slug that means "no runtime" — which is also the engine a
+// surface renders for when it is showing a case rather than a run.
+export {
+  DEFAULT_ENGINE_SLUG,
+  ENGINES,
+  engineName,
+  orderEngines,
+  type EngineOption,
+} from "./data/engines";
 
 // Route builders/patterns, for hosts that link into the app (e.g. after a run
 // launches).

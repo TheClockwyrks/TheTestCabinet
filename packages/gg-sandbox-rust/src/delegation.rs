@@ -1,8 +1,8 @@
 //! Delegate work to child agents, and hand this session's own turn to another agent.
 //!
-//! [`wait_for_subagents`] can dominate a turn's wall clock — it blocks while real agents run — and
-//! the run's budget keeps ticking while it does. A program should therefore spawn broadly and wait
-//! once, rather than spawn-and-wait in a loop.
+//! Waiting on children can dominate a turn's wall clock — it blocks while real agents run — and the
+//! run's budget keeps ticking while it does. A program should therefore spawn broadly and wait once,
+//! rather than spawn-and-wait in a loop.
 //!
 //! The brief is where this arm's types earn their keep: a child is briefed either with a
 //! self-contained [`Brief::Prompt`] or with a board [`Brief::Issue`], and because that choice is an
@@ -21,7 +21,6 @@ pub(crate) const OPERATIONS: &[&str] = &[
     "exec",
     "fork",
 ];
-
 
 /// Delegate scoped work to a child agent and hand back its handle immediately.
 ///
@@ -100,9 +99,9 @@ pub fn send_message(agent_id: &str, message: &str) -> Result<(), ApiError> {
 /// Move the process this session is running inside on to another of its states.
 ///
 /// The state is named the way an agent to spawn is named. It is bound only when a state machine is
-/// driving the session and the current state has somewhere to go. Like
-/// [`context::compact`](crate::context::compact) it is registered rather than performed: the call
-/// validates the target, returns, and the program runs on to its end, because replacing the agent —
+/// driving the session and the current state has somewhere to go. Like a compaction it is
+/// registered rather than performed: the call validates the target, returns, and the program runs on
+/// to its end, because replacing the agent —
 /// and its window — mid-program would pull every remaining call out from under it. The first
 /// declaration in a turn is the one that stands.
 ///
@@ -124,7 +123,7 @@ pub fn transition_state(state: &str, note: Option<&str>) -> Result<(), ApiError>
 ///
 /// The named agent takes over with its own model, tools and instructions, keeping every capability
 /// the two of them share — the whole conversation above all, so it needs no catching up. Registered
-/// rather than performed, exactly as [`transition_state`] is and for the same reason: the window
+/// rather than performed, exactly as a state transition is and for the same reason: the window
 /// would otherwise be pulled out from under the program still composing into it. A session makes one
 /// succession per turn. It is bound only when this agent may make agent transitions and has agents it
 /// may become, and never while a state machine is driving the session.
@@ -138,8 +137,8 @@ pub fn transition_state(state: &str, note: Option<&str>) -> Result<(), ApiError>
 /// # Errors
 ///
 /// `InvalidArgument` for an agent this session may not become, `Refused` for a second succession in
-/// one turn, and `Unavailable` when this agent is running inside a machine, which is left by
-/// [`transition_state`] instead.
+/// one turn, and `Unavailable` when this agent is running inside a machine, which is left by a
+/// state transition instead.
 #[doc(alias = "ggop:delegation.exec")]
 pub fn exec(agent: &str, prompt: Option<&str>) -> Result<(), ApiError> {
     wire::lift(delegation::exec(agent, prompt))
@@ -152,9 +151,8 @@ pub fn exec(agent: &str, prompt: Option<&str>) -> Result<(), ApiError> {
 /// there.
 ///
 /// Its handle comes back immediately, but the copy itself starts once this turn's tool results are
-/// recorded, because the conversation it inherits has to be a complete one. So
-/// [`wait_for_subagents`] can only collect it on a later turn, and waiting on it in the program that
-/// made it never returns it.
+/// recorded, because the conversation it inherits has to be a complete one. So it can only be
+/// collected on a later turn, and waiting on it in the program that made it never returns it.
 ///
 /// # Arguments
 ///
@@ -163,8 +161,8 @@ pub fn exec(agent: &str, prompt: Option<&str>) -> Result<(), ApiError> {
 ///
 /// # Returns
 ///
-/// The copy's handle, immediately — before the copy itself has started, which is why
-/// [`wait_for_subagents`] collects it only on a later turn.
+/// The copy's handle, immediately — before the copy itself has started, which is why it can be
+/// collected only on a later turn.
 ///
 /// # Errors
 ///
@@ -183,8 +181,7 @@ pub fn fork(prompt: &str) -> Result<SubagentHandle, ApiError> {
 pub enum Brief<'a> {
     /// Self-contained instructions for a child that needs no other context.
     Prompt(&'a str),
-    /// The id of a board issue to brief the child from, as
-    /// [`board::create_issue`](crate::board::create_issue) returned it.
+    /// The id of a board issue to brief the child from, as the board assigned it.
     Issue(&'a str),
 }
 
@@ -221,8 +218,7 @@ impl SubagentHandle {
 /// How a child agent's loop ended — gg's own six words, as the tool-calling path also reports them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AgentStatus {
-    /// It finished normally, calling [`session::finish`](crate::session::finish), and its summary is
-    /// what it returned.
+    /// It finished normally, and its summary is what it returned.
     Completed,
     /// It reached the per-run turn ceiling.
     Exhausted,

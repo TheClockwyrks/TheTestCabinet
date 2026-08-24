@@ -121,6 +121,7 @@ fn a_file_view_carries_its_region_and_its_pictures() {
     let opened = ctx.open_file_view_deduped(
         "a.ts".to_string(),
         Some(region),
+        None,
         "export {}".to_string(),
         vec![image(4096)],
     );
@@ -134,11 +135,154 @@ fn a_file_view_carries_its_region_and_its_pictures() {
     // A picture is not a third view kind — it is a file view of an image file, so it is charged to
     // the same item and reclaimed with it.
     assert!(opened.tokens > estimate_image(&item.message().images[0]));
-    // The file heading stays the bare word: the read's own body already names the path.
+    // A view that shows no lines (here, none were reported) is headed by its path alone.
     assert_eq!(
         item.message().content.as_deref(),
-        Some("File\n----\nexport {}")
+        Some("File: a.ts\n----\nexport {}")
     );
+}
+
+// ---------------------------------------------------------------------------
+// Headings
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_paged_file_view_is_headed_by_its_path_and_the_lines_it_shows() {
+    let mut ctx = code_model();
+    let region = FileRegion {
+        offset: 100,
+        limit: 151,
+    };
+    ctx.open_file_view_deduped(
+        "foo/bar.ts".to_string(),
+        Some(region),
+        Some(ShownLines {
+            first: 100,
+            last: 250,
+            total: 400,
+        }),
+        "const x = 1;".to_string(),
+        Vec::new(),
+    );
+    assert_eq!(
+        bodies(&ctx),
+        vec!["File: foo/bar.ts:100-250 of 400 lines\n----\nconst x = 1;".to_string()]
+    );
+    // The lines are the heading's business, not the key's: the region alone still keys the view.
+    assert_eq!(
+        keys(&ctx),
+        vec![(
+            GgContextSource::FileView,
+            Some("foo/bar.ts".to_string()),
+            Some(region)
+        )]
+    );
+}
+
+#[test]
+fn a_whole_file_view_is_headed_one_to_its_total_line_count() {
+    let mut ctx = code_model();
+    ctx.open_file_view_deduped(
+        "src/main.ts".to_string(),
+        None,
+        Some(ShownLines {
+            first: 1,
+            last: 42,
+            total: 42,
+        }),
+        "export {}".to_string(),
+        Vec::new(),
+    );
+    assert_eq!(
+        bodies(&ctx),
+        vec!["File: src/main.ts:1-42 of 42 lines\n----\nexport {}".to_string()]
+    );
+    // A whole-file view's key is still `(path, None)`, so re-opening it supersedes it.
+    ctx.open_file_view_deduped(
+        "src/main.ts".to_string(),
+        None,
+        Some(ShownLines {
+            first: 1,
+            last: 43,
+            total: 43,
+        }),
+        "export {};\n".to_string(),
+        Vec::new(),
+    );
+    assert_eq!(ctx.open_file_views().len(), 1);
+    assert_eq!(
+        ctx.items().last().unwrap().message().content.as_deref(),
+        Some("File: src/main.ts:1-43 of 43 lines\n----\nexport {};\n")
+    );
+}
+
+#[test]
+fn a_seeded_spec_is_headed_by_its_workspace_relative_path_and_whole_range() {
+    let mut ctx = code_model();
+    // What autoload seeds: the case's workspace-relative path, the whole file, and the lines the
+    // read reported for it.
+    ctx.seed_file_view(
+        "specs/rules.md".to_string(),
+        Some(ShownLines {
+            first: 1,
+            last: 7,
+            total: 7,
+        }),
+        "# Carom\n".to_string(),
+        Vec::new(),
+        Retention::Pinned,
+    );
+    let item = &ctx.items()[0];
+    assert_eq!(item.label(), Some("specs/rules.md"));
+    assert_eq!(item.region(), None);
+    assert_eq!(
+        item.lines(),
+        Some(ShownLines {
+            first: 1,
+            last: 7,
+            total: 7,
+        })
+    );
+    assert_eq!(
+        item.message().content.as_deref(),
+        Some("File: specs/rules.md:1-7 of 7 lines\n----\n# Carom\n")
+    );
+}
+
+#[test]
+fn shown_lines_come_from_what_the_read_reported() {
+    use crate::tools::{ApiData, FileTextData};
+    let text = |first_line, last_line, total_lines| {
+        ApiData::FileText(FileTextData {
+            contents: String::new(),
+            first_line,
+            last_line,
+            total_lines,
+            byte_truncated: false,
+        })
+    };
+    // A paged read: the window it returned, and the file's own total.
+    assert_eq!(
+        ShownLines::of_read(Some(&text(100, 250, 1000))),
+        Some(ShownLines {
+            first: 100,
+            last: 250,
+            total: 1000,
+        })
+    );
+    // A whole-file read: `1-N of N lines`.
+    assert_eq!(
+        ShownLines::of_read(Some(&text(1, 42, 42))),
+        Some(ShownLines {
+            first: 1,
+            last: 42,
+            total: 42,
+        })
+    );
+    // An empty file shows no lines, and so carries no range.
+    assert_eq!(ShownLines::of_read(Some(&text(1, 0, 0))), None);
+    // A picture's sidecar is not a text window.
+    assert_eq!(ShownLines::of_read(None), None);
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +349,7 @@ fn reopening_across_turns_leaves_a_history_corpse_with_no_selector() {
         ctx.tokens_for(GgContextSource::TextView),
         ctx.items()[1].tokens() as u64
     );
-    assert_eq!(ctx.open_views().len(), 1);
+    assert_eq!(ctx.open_text_views().len(), 1);
 }
 
 #[test]
@@ -223,12 +367,14 @@ fn reopening_a_file_view_supersedes_only_the_same_page() {
     ctx.open_file_view_deduped(
         "a.ts".to_string(),
         Some(first),
+        None,
         "page 1".to_string(),
         Vec::new(),
     );
     ctx.open_file_view_deduped(
         "a.ts".to_string(),
         Some(second),
+        None,
         "page 2".to_string(),
         Vec::new(),
     );
@@ -236,11 +382,12 @@ fn reopening_a_file_view_supersedes_only_the_same_page() {
 
     // Two pages of one file are two views and must coexist — a program paging through a file is not
     // a program changing its mind.
-    assert_eq!(ctx.open_views().len(), 2);
+    assert_eq!(ctx.open_file_views().len(), 2);
 
     let opened = ctx.open_file_view_deduped(
         "a.ts".to_string(),
         Some(second),
+        None,
         "page 2 again".to_string(),
         Vec::new(),
     );
@@ -272,10 +419,17 @@ fn a_whole_file_view_and_a_paged_one_are_distinct_keys() {
         offset: 201,
         limit: 200,
     };
-    ctx.open_file_view_deduped("a.ts".to_string(), None, "whole".to_string(), Vec::new());
+    ctx.open_file_view_deduped(
+        "a.ts".to_string(),
+        None,
+        None,
+        "whole".to_string(),
+        Vec::new(),
+    );
     ctx.open_file_view_deduped(
         "a.ts".to_string(),
         Some(page),
+        None,
         "page".to_string(),
         Vec::new(),
     );
@@ -285,6 +439,7 @@ fn a_whole_file_view_and_a_paged_one_are_distinct_keys() {
     // itself on re-read without disturbing the page.
     ctx.open_file_view_deduped(
         "a.ts".to_string(),
+        None,
         None,
         "whole again".to_string(),
         Vec::new(),
@@ -316,6 +471,7 @@ fn a_view_supersedes_the_native_reads_of_the_same_page() {
     ctx.open_file_view_deduped(
         "a.ts".to_string(),
         None,
+        None,
         "as a view".to_string(),
         Vec::new(),
     );
@@ -346,6 +502,7 @@ fn a_locked_specification_is_never_superseded_out_of_its_band() {
 
     ctx.open_file_view_deduped(
         "specs/rules.md".to_string(),
+        None,
         None,
         "the rules".to_string(),
         Vec::new(),
@@ -396,12 +553,14 @@ fn a_superseded_image_view_stops_carrying_its_picture() {
     ctx.open_file_view_deduped(
         "mock/a.png".to_string(),
         None,
+        None,
         "a PNG".to_string(),
         vec![image(1_024)],
     );
     ctx.begin_turn(2);
     ctx.open_file_view_deduped(
         "mock/a.png".to_string(),
+        None,
         None,
         "a PNG, again".to_string(),
         vec![image(1_024)],
@@ -412,7 +571,11 @@ fn a_superseded_image_view_stops_carrying_its_picture() {
         2,
         "the retagged copy stays in the window"
     );
-    assert_eq!(ctx.open_views().len(), 1, "but only the live view is open");
+    assert_eq!(
+        ctx.open_file_views().len(),
+        1,
+        "but only the live view is open"
+    );
     assert_eq!(
         resident_images(&ctx),
         1,
@@ -444,18 +607,19 @@ fn re_opening_one_picture_every_turn_leaves_exactly_one_picture_resident() {
 
     // The workflow this exists for: a program re-renders a screenshot and looks at it again, turn
     // after turn. If a retired copy kept its bytes the window would end up holding twenty pictures
-    // that `view.current()` reports as one, and the run would upload all twenty on every request.
+    // for what is really one open view, and the run would upload all twenty on every request.
     for turn in 1..=20 {
         ctx.begin_turn(turn);
         ctx.open_file_view_deduped(
             "shot.png".to_string(),
+            None,
             None,
             format!("screenshot after turn {turn}"),
             vec![image(4_096)],
         );
     }
 
-    assert_eq!(ctx.open_views().len(), 1, "one view is open");
+    assert_eq!(ctx.open_file_views().len(), 1, "one view is open");
     assert_eq!(
         resident_images(&ctx),
         1,
@@ -491,11 +655,13 @@ fn a_picture_re_opened_inside_one_program_leaves_no_note_behind() {
     ctx.open_file_view_deduped(
         "shot.png".to_string(),
         None,
+        None,
         "first look".to_string(),
         vec![image(1_024)],
     );
     ctx.open_file_view_deduped(
         "shot.png".to_string(),
+        None,
         None,
         "second look".to_string(),
         vec![image(1_024)],
@@ -535,6 +701,7 @@ fn closing_a_text_view_leaves_the_other_bands_alone() {
     ctx.open_text_view("b".to_string(), "second".to_string());
     ctx.open_file_view_deduped(
         "a".to_string(),
+        None,
         None,
         "a file also called a".to_string(),
         Vec::new(),
@@ -615,6 +782,7 @@ fn closing_a_file_view_by_path_closes_every_page_of_it() {
             offset: 1,
             limit: 200,
         }),
+        None,
         "page 1".to_string(),
         Vec::new(),
     );
@@ -624,11 +792,13 @@ fn closing_a_file_view_by_path_closes_every_page_of_it() {
             offset: 201,
             limit: 200,
         }),
+        None,
         "page 2".to_string(),
         Vec::new(),
     );
     ctx.open_file_view_deduped(
         "b.ts".to_string(),
+        None,
         None,
         "another file".to_string(),
         Vec::new(),
@@ -651,93 +821,6 @@ fn closing_a_file_view_by_path_closes_every_page_of_it() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn open_views_reports_both_kinds_with_their_own_token_cost() {
-    let mut ctx = code_model();
-    ctx.begin_turn(1);
-    let region = FileRegion {
-        offset: 201,
-        limit: 200,
-    };
-    ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
-    ctx.open_file_view_deduped(
-        "a.ts".to_string(),
-        Some(region),
-        "export {}".to_string(),
-        Vec::new(),
-    );
-
-    let open = ctx.open_views();
-
-    assert_eq!(
-        open,
-        vec![
-            OpenViewInfo {
-                kind: ViewKind::Text,
-                selector: "summary".to_string(),
-                tokens: ctx.items()[0].tokens() as u64,
-                region: None,
-            },
-            OpenViewInfo {
-                kind: ViewKind::File,
-                selector: "a.ts".to_string(),
-                tokens: ctx.items()[1].tokens() as u64,
-                region: Some(region),
-            },
-        ]
-    );
-    // Every view is accounted, and the two bands together are what the views cost the window.
-    assert_eq!(
-        open.iter().map(|view| view.tokens).sum::<u64>(),
-        ctx.tokens_for(GgContextSource::TextView) + ctx.tokens_for(GgContextSource::FileView)
-    );
-}
-
-#[test]
-fn open_views_folds_duplicate_native_reads_into_one_entry() {
-    let mut ctx = code_model();
-    ctx.begin_turn(1);
-    ctx.push_file_view(Some("a.ts".to_string()), None, "c1", "once", Vec::new());
-    ctx.push_file_view(Some("a.ts".to_string()), None, "c2", "once", Vec::new());
-
-    let open = ctx.open_views();
-
-    // What closing the selector reclaims is both of them, so one entry carrying the combined cost is
-    // what the model needs to decide whether to.
-    assert_eq!(open.len(), 1);
-    assert_eq!(
-        open[0].tokens,
-        (ctx.items()[0].tokens() + ctx.items()[1].tokens()) as u64
-    );
-}
-
-#[test]
-fn open_views_omits_what_cannot_be_closed() {
-    let mut ctx = code_model();
-    ctx.push_file_view_with_retention(
-        Some("specs/rules.md".to_string()),
-        None,
-        "c1",
-        "the rules",
-        Vec::new(),
-        Retention::Pinned,
-    );
-    // A malformed native read has no selector at all, so no call could name it.
-    ctx.push_file_view(None, None, "c2", "unattributable", Vec::new());
-    ctx.begin_turn(1);
-    ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
-
-    assert_eq!(
-        ctx.open_views(),
-        vec![OpenViewInfo {
-            kind: ViewKind::Text,
-            selector: "summary".to_string(),
-            tokens: ctx.items()[2].tokens() as u64,
-            region: None,
-        }]
-    );
-}
-
-#[test]
 fn open_text_views_report_the_body_the_agent_supplied() {
     let mut ctx = code_model();
     ctx.begin_turn(1);
@@ -747,6 +830,7 @@ fn open_text_views_report_the_body_the_agent_supplied() {
     ctx.open_text_view("plan".to_string(), "fix the parser".to_string());
     ctx.open_file_view_deduped(
         "a.ts".to_string(),
+        None,
         None,
         "export {}".to_string(),
         Vec::new(),
@@ -799,6 +883,7 @@ fn views_render_into_the_prompt_in_the_order_they_were_opened() {
     ctx.push_assistant(Some("a program".to_string()), Vec::new());
     ctx.open_file_view_deduped(
         "a.ts".to_string(),
+        None,
         None,
         "export {}".to_string(),
         Vec::new(),
@@ -860,6 +945,7 @@ fn the_context_usage_signal_names_the_text_view_band_and_the_call_that_closes_it
     ctx.refresh_context_usage_signal(UsageSignalOptions {
         can_evict: true,
         program_language: Some(GgProgramLanguage::TypeScript),
+        can_close_views: true,
         can_archive: false,
         top_file_views: 3,
         threshold_percent: 0,
@@ -895,6 +981,7 @@ fn a_tool_calling_agent_is_never_pointed_at_view_close() {
     ctx.refresh_context_usage_signal(UsageSignalOptions {
         can_evict: true,
         program_language: None,
+        can_close_views: false,
         can_archive: false,
         top_file_views: 3,
         threshold_percent: 0,
@@ -910,4 +997,36 @@ fn a_tool_calling_agent_is_never_pointed_at_view_close() {
         .as_deref()
         .expect("the signal carries text");
     assert!(!text.contains("view.close"), "{text}");
+}
+
+/// **A code agent not granted `views.close` is not pointed at it either.** Closing a view is bought
+/// by agent-managed context and granted by the allowlist, so code mode alone no longer says the
+/// call exists; the block reads the grant, exactly as it reads the registry for `evict_file_view`.
+#[test]
+fn a_code_agent_without_the_close_grant_is_not_pointed_at_view_close() {
+    let mut ctx = code_model();
+    ctx.begin_turn(1);
+    ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
+    ctx.refresh_context_usage_signal(UsageSignalOptions {
+        can_evict: true,
+        program_language: Some(GgProgramLanguage::TypeScript),
+        can_close_views: false,
+        can_archive: false,
+        top_file_views: 3,
+        threshold_percent: 0,
+    });
+
+    let signal = ctx
+        .prompt_items()
+        .find(|item| item.slot == PromptSlot::ContextUsage)
+        .expect("a usage signal");
+    let text = signal
+        .message
+        .content
+        .as_deref()
+        .expect("the signal carries text");
+    assert!(
+        !text.contains("gg.views.close"),
+        "a call the agent was not granted is not named at it: {text}"
+    );
 }

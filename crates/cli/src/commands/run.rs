@@ -44,8 +44,8 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
     // field is omitted.
     let orchestrator = (args.orchestrator != "one-shot").then(|| args.orchestrator.clone());
     // The engine is omitted at its default for the same reason: `none` is what the
-    // backend assumes when the field is absent, so an engineless launch sends the
-    // payload a launcher that predates engines sent. The slug is not checked here —
+    // backend assumes when the field is absent, so an engineless launch says
+    // nothing about an engine at all. The slug is not checked here —
     // the core gates it (it must resolve, and the case must declare support) before
     // the driver spends a container on it, and doing it twice would mean two
     // catalogues to keep in step.

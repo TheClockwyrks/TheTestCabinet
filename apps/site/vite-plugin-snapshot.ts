@@ -28,6 +28,14 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 const VIRTUAL_ID = "virtual:tcab-snapshot";
 const RESOLVED_VIRTUAL_ID = "\0" + VIRTUAL_ID;
 
+// The engineless run's slug. It mirrors `DEFAULT_ENGINE_SLUG` in
+// `packages/ui/src/app/data/engines.ts`, restated rather than imported because this
+// plugin runs in the Vite config, outside the app bundle it would have to pull in
+// to reach it. A snapshot always carries the engineless rendering (it is a
+// variant's own `prompt`/`seededInputs`), so it is always one of the engines a
+// version's inputs can be read under.
+const NONE_ENGINE_SLUG = "none";
+
 // ---- Snapshot wire shapes (subset of design/v0.2.0-contracts.md §3) ----------
 
 interface SnapshotIndex {
@@ -192,6 +200,15 @@ interface SnapshotCaseFile {
     // The variant's own seeded spec files (additive to the common ones), bodies
     // inlined. Optional for snapshots written before specs were inlined.
     seededInputs?: SnapshotSeededInput[];
+    // The prompt and seeded specs re-rendered for each engine the version declares
+    // that vendors a runtime, keyed by engine slug. `prompt`/`seededInputs` above
+    // are the engineless rendering, which is also what a run on the `none` engine
+    // received, so the engineless engine is deliberately absent here. Absent
+    // entirely on a snapshot written before the field existed.
+    engineRenderings?: Record<
+      string,
+      { prompt: string; seededInputs?: SnapshotSeededInput[] }
+    >;
     // The variant's own reviewer checklist items (additive to the common ones).
     reviewItems?: SnapshotReviewItem[];
     // The variant's own scoring domains (additive to the common ones), rated only
@@ -233,9 +250,10 @@ interface SnapshotCaseFile {
   // the flat `<item>__<output>.<ext>` name the reviewer UI requests (`.png`/`.webm`);
   // `key` is the published object (a video transcoded to `.mp4`). Case-scoped, so the
   // gallery resolves the reviewer's baseline side-by-side from these keyed by
-  // slug/version/variant. Optional for snapshots written before automated validation
-  // existed.
+  // slug/version/engine/variant. Optional for snapshots written before automated
+  // validation existed.
   validationBaselines?: Array<{
+    engine: string;
     variant: string;
     file: string;
     key: string;
@@ -382,9 +400,9 @@ interface AssembledSnapshot {
   // never be read as "this model wrote no code".
   codeAnalysisUrls: Record<string, string>;
   // Resolved *baseline* automated-validation media URLs, keyed by a
-  // `<slug>/<version>/<variant>` subject key then by the flat `<item>__<output>.<ext>`
-  // name. Case-scoped, so keyed by subject rather than run id. The app's
-  // `validationBaselineUrl(subject, file)` reads this.
+  // `<slug>/<version>/<engine>/<variant>` subject key then by the flat
+  // `<item>__<output>.<ext>` name. Case-scoped, so keyed by subject rather than run
+  // id. The app's `validationBaselineUrl(subject, file)` reads this.
   validationBaselineUrls: Record<string, Record<string, string>>;
   // Resolved **asset-reference** media URLs — a published reference frame's image,
   // and the action log it was drawn from — keyed by a `<slug>/<version>/<variant>`
@@ -504,12 +522,23 @@ interface AssembledPackage {
   description: string;
 }
 
+// One variant's prompt and seeded specs as rendered under one engine — the pair a
+// run's Inputs tab shows, chosen by the engine that run recorded.
+interface AssembledRendering {
+  prompt: string;
+  seededInputs: AssembledSeededInput[];
+}
+
 interface AssembledVariant {
   slug: string;
   name: string;
   description: string | null;
   prompt: string;
   seededInputs: AssembledSeededInput[];
+  // The same pair re-rendered for each engine the version declares that vendors a
+  // runtime, keyed by engine slug. The engineless rendering is `prompt` and
+  // `seededInputs` above, so this holds every other engine.
+  engineRenderings: Record<string, AssembledRendering>;
   // The runtime packages a run of this variant ships (case-level, so the same on
   // every variant), each with its UI-only description.
   packages: AssembledPackage[];
@@ -553,6 +582,20 @@ interface AssembledTestCase {
   versions: string[];
   latestVersion: string;
   variants: AssembledVariant[];
+  // Every version OTHER than the latest, keyed by version, so a run's Inputs tab
+  // resolves the inputs the run itself was given rather than the latest version's.
+  // The latest version's variants are `variants` above; keeping them out of this
+  // map is what stops the bundle carrying them twice.
+  priorVariantsByVersion: Record<string, AssembledVariant[]>;
+  // Every version's variant identities (slug + name), latest included — the
+  // frame the detail header's variant selector is built from. Identities only,
+  // so nothing heavy is carried twice. `collapseCases` merges one entry per
+  // version into this map.
+  variantsByVersion: Record<string, { slug: string; name: string }[]>;
+  // The engines each published version's inputs can be read under, keyed by
+  // version — the engineless rendering plus every engine the snapshot carries a
+  // rendering for. `collapseCases` merges one entry per version into this map.
+  enginesByVersion: Record<string, string[]>;
   domains: AssembledDomain[];
   // The case's sprite-sheet declaration (frame size + named sequences), carried
   // through when the snapshot publishes it. Null for a non-sheet case (and for a
@@ -679,6 +722,41 @@ function toAssembledReview(
   };
 }
 
+// Inline one rendering's seeded spec bodies. Only text specs are published, so the
+// kind is fixed; the role tags a starter script apart from a prose spec.
+function mapSeededInputs(
+  specs: SnapshotSeededInput[] | undefined,
+): AssembledSeededInput[] {
+  return (specs ?? []).map((s) => ({
+    path: s.path,
+    kind: "text",
+    role: s.kind ?? "spec",
+    text: s.text,
+  }));
+}
+
+// The engines one version's inputs can be read under here. A case's prompt and
+// `.hbs` specs branch on the selected engine, so a version that supports more than
+// one has more than one set of inputs — and the snapshot publishes the engineless
+// rendering as the variant's own `prompt`/`seededInputs` plus one entry per other
+// engine under `engineRenderings`. The engineless slug is therefore always
+// readable, and the rest are exactly the keys the snapshot carries; a declared
+// engine the snapshot skipped is not offered, because there would be nothing to
+// show for it.
+//
+// The union runs across the version's variants rather than assuming they agree:
+// they are rendered from the same manifest, so in practice they do, but a union
+// cannot offer an engine some variant has no rendering for.
+function renderableEngines(variants: AssembledVariant[]): string[] {
+  const engines = new Set<string>([NONE_ENGINE_SLUG]);
+  for (const variant of variants) {
+    for (const engine of Object.keys(variant.engineRenderings)) {
+      engines.add(engine);
+    }
+  }
+  return [...engines];
+}
+
 function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
   // Reference screenshots are optional in the snapshot. Common references
   // (variant null / `_common`) apply to every variant; variant-scoped ones only
@@ -709,14 +787,22 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     // specs first, then its own), every body already rendered for the variant (a
     // template spec's conditionals resolved) — the same order a run is seeded and
     // the consoles present. Only text specs are inlined.
-    const seededInputs: AssembledSeededInput[] = (
-      variant.seededInputs ?? []
-    ).map((s) => ({
-      path: s.path,
-      kind: "text",
-      role: s.kind ?? "spec",
-      text: s.text,
-    }));
+    const seededInputs: AssembledSeededInput[] = mapSeededInputs(
+      variant.seededInputs,
+    );
+    // The same pair re-rendered under each engine the version declares that vendors
+    // a runtime. A case's prompt and `.hbs` specs branch on the selected engine, so
+    // this is what lets a run's Inputs tab show the text that run was handed rather
+    // than the engineless one.
+    const engineRenderings: Record<string, AssembledRendering> = {};
+    for (const [engine, rendering] of Object.entries(
+      variant.engineRenderings ?? {},
+    )) {
+      engineRenderings[engine] = {
+        prompt: rendering.prompt,
+        seededInputs: mapSeededInputs(rendering.seededInputs),
+      };
+    }
     // The verdict ids this version's errata exclude from scoring for this variant
     // (an erratum with `excludeFromScore` scoped case-wide or to this variant). These
     // points stay on the checklist but are marked non-scoring below, mirroring the
@@ -775,6 +861,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       description: variant.description,
       prompt: variant.prompt,
       seededInputs,
+      engineRenderings,
       packages,
       referenceScreenshots,
       reviewItems,
@@ -814,6 +901,19 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     versions: [file.version],
     latestVersion: file.version,
     variants,
+    // Filled by `collapseCases`, which is where a slug's other versions are in
+    // hand; one mapped file knows only its own.
+    priorVariantsByVersion: {},
+    // This version's own entry; `collapseCases` merges the slug's versions into
+    // one map.
+    variantsByVersion: {
+      [file.version]: variants.map((v) => ({ slug: v.slug, name: v.name })),
+    },
+    // This version's own entry; `collapseCases` merges the slug's versions into
+    // one map. Derived from the renderings this snapshot actually carries rather
+    // than from the case's declared `engines` (which it does not publish), so the
+    // Inputs tab offers exactly the renderings the site can show.
+    enginesByVersion: { [file.version]: renderableEngines(variants) },
     // The sprite-sheet declaration, so the asset Reference tab can play each named
     // sequence from the published reference frames. Null when the snapshot carries
     // none.
@@ -849,8 +949,31 @@ function collapseCases(
       }),
     );
     const newest = versions[0]!;
+    // Every version but the newest, keyed by version, so a run of an older version
+    // resolves the inputs it was itself given. The newest version's variants stay on
+    // `variants`, so nothing is carried twice.
+    const priorVariantsByVersion: Record<string, AssembledVariant[]> = {};
+    for (const version of versions.slice(1)) {
+      priorVariantsByVersion[version.latestVersion] = version.variants;
+    }
+    // Unlike the full variants, every version's engines and variant identities
+    // are kept — including the newest's — because the detail header looks the
+    // selected version up here whichever one it is, and a list of slugs costs
+    // nothing to carry twice.
+    const enginesByVersion: Record<string, string[]> = {};
+    const variantsByVersion: Record<
+      string,
+      { slug: string; name: string }[]
+    > = {};
+    for (const version of versions) {
+      Object.assign(enginesByVersion, version.enginesByVersion);
+      Object.assign(variantsByVersion, version.variantsByVersion);
+    }
     result.push({
       ...newest,
+      priorVariantsByVersion,
+      variantsByVersion,
+      enginesByVersion,
       versions: versions.map((v) => v.latestVersion),
       // Each version contributes 0 or 1 entry; `versions` is newest-first, so the
       // concatenation is already ordered newest changelog entry first.
@@ -990,14 +1113,15 @@ async function loadSnapshot(
     }
   }
 
-  // The case-scoped *baseline* validation media, keyed by a `<slug>/<version>/<variant>`
-  // subject key then the flat `<item>__<output>.<ext>` name the reviewer UI requests.
-  // Built from the per-version case files (not the collapsed catalog), so a run against
-  // any published version resolves its variant's baseline (a video's `.webm` request
-  // resolving to its published `.mp4` key).
+  // The case-scoped *baseline* validation media, keyed by a
+  // `<slug>/<version>/<engine>/<variant>` subject key then the flat
+  // `<item>__<output>.<ext>` name the reviewer UI requests. Built from the per-version
+  // case files (not the collapsed catalog), so a run against any published version
+  // resolves the baseline of the reference build it was compared against (a video's
+  // `.webm` request resolving to its published `.mp4` key).
   for (const file of caseFiles) {
     for (const baseline of file.validationBaselines ?? []) {
-      const subjectKey = `${file.slug}/${file.version}/${baseline.variant}`;
+      const subjectKey = `${file.slug}/${file.version}/${baseline.engine}/${baseline.variant}`;
       const byFile = validationBaselineUrls[subjectKey] ?? {};
       byFile[baseline.file] = joinUrl(base, baseline.key);
       validationBaselineUrls[subjectKey] = byFile;

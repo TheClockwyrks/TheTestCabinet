@@ -5,9 +5,11 @@
 // scores. Kept as its own check so a build that always serves one way fails the
 // side it gets wrong rather than averaging out across the two.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeGoal,
+  ball0,
   captureReplay,
   createHarness,
   driveGoal,
@@ -33,7 +35,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("serves toward player two after player one scores", async () => {
@@ -45,9 +47,9 @@ it("serves toward player two after player one scores", async () => {
   // direction only means anything beside the point that decided it.
   await captureReplay(harness, "serve", async () => {
     const point = await driveGoal(harness);
-    expect(point.hit).toBe(true);
-    expect(point.snapshot.score.p1).toBe(1);
-    expect(point.snapshot.screen).toBe("countdown");
+    assertEqual(point.hit, true);
+    assertEqual(point.snapshot.score.p1, 1);
+    assertEqual(point.snapshot.screen, "countdown");
 
     harness.debug.serve();
     const launched = await harness.until((s) => s.screen === "playing", {
@@ -56,10 +58,10 @@ it("serves toward player two after player one scores", async () => {
     });
     await harness.advance(FLIGHT_TICKS);
 
-    expect(launched.hit).toBe(true);
+    assertEqual(launched.hit, true);
     // Player two defends the RIGHT edge: the receiver is the player just scored
     // on.
-    expect(launched.snapshot.ball.vx).toBeGreaterThan(0);
+    assertGreaterThan(ball0(launched.snapshot).vx, 0);
   });
-  expect(harness.assetFailures).toEqual([]);
+  assertDeepEqual(harness.assetFailures, []);
 });

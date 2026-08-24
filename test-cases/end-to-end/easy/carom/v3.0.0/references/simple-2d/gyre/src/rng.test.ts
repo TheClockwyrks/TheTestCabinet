@@ -4,11 +4,17 @@
 // statistics of the draw.
 
 import { describe, expect, it } from "vitest";
-import { nextRandom, nextSign, type RandomSource } from "./rng";
+import { nextRandom, nextSign } from "./rng";
 
 function draws(seed: number, count: number): number[] {
-  const source: RandomSource = { rngState: seed };
-  return Array.from({ length: count }, () => nextRandom(source));
+  const values: number[] = [];
+  let rngState = seed;
+  for (let i = 0; i < count; i++) {
+    const [value, next] = nextRandom(rngState);
+    values.push(value);
+    rngState = next;
+  }
+  return values;
 }
 
 describe("nextRandom", () => {
@@ -28,26 +34,35 @@ describe("nextRandom", () => {
     }
   });
 
-  it("advances the source's state", () => {
-    const source: RandomSource = { rngState: 7 };
-    nextRandom(source);
-    expect(source.rngState).not.toBe(7);
-    expect(Number.isInteger(source.rngState)).toBe(true);
+  it("returns the next state beside the draw, leaving the seed as it was", () => {
+    const seed = 7;
+    const [, next] = nextRandom(seed);
+    expect(next).not.toBe(7);
+    expect(Number.isInteger(next)).toBe(true);
+    expect(seed).toBe(7);
+    // A pure function of its argument: the same state draws the same value.
+    expect(nextRandom(7)).toEqual(nextRandom(7));
   });
 });
 
 describe("nextSign", () => {
   it("returns only +1 or -1", () => {
-    const source: RandomSource = { rngState: 5 };
+    let rngState = 5;
     for (let i = 0; i < 100; i++) {
-      expect(Math.abs(nextSign(source))).toBe(1);
+      const [sign, next] = nextSign(rngState);
+      expect(Math.abs(sign)).toBe(1);
+      rngState = next;
     }
   });
 
   it("produces both signs over a run of draws", () => {
-    const source: RandomSource = { rngState: 5 };
+    let rngState = 5;
     const signs = new Set<number>();
-    for (let i = 0; i < 50; i++) signs.add(nextSign(source));
+    for (let i = 0; i < 50; i++) {
+      const [sign, next] = nextSign(rngState);
+      signs.add(sign);
+      rngState = next;
+    }
     expect(signs).toEqual(new Set([-1, 1]));
   });
 });

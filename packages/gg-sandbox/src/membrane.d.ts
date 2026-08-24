@@ -101,7 +101,7 @@ declare module "test-cabinet:gg/shell" {
 declare module "test-cabinet:gg/files" {
   /** A text file, or the window of one this run's read policy returned. */
   export interface TextRead {
-    /** The file's text, or just the requested window under a capped read policy. */
+    /** The file's text, or just the requested window where the read named one. */
     contents: string;
     /** The 1-based first line returned. */
     firstLine: number;
@@ -143,7 +143,7 @@ declare module "test-cabinet:gg/files" {
     kind: EntryKind;
   }
 
-  /** Read a workspace file. `offset`/`limit` apply only under a capped read policy. */
+  /** Read a workspace file. `offset`/`limit` are honoured under every read policy. */
   export function readFile(
     path: string,
     offset: number | undefined,
@@ -155,22 +155,27 @@ declare module "test-cabinet:gg/files" {
   export function editFile(path: string, oldString: string, newString: string): void;
   /** List a workspace directory, sorted by name. `undefined` lists the workspace root. */
   export function listDir(path: string | undefined): DirEntry[];
-}
 
-/**
- * The convenience wrappers built on a tool without being one.
- *
- * Imported rather than composed in the guest out of {@link readFile}, so the host can tell the two
- * apart: a helper the guest built would arrive as its wrapped tool's call and be recorded under a
- * function the model never wrote.
- */
-declare module "test-cabinet:gg/helpers" {
-  /** Read a text file's contents. A path naming a picture is `invalid-argument`. */
-  export function readTextFile(
-    path: string,
-    offset: number | undefined,
+  /** One line `search` matched: its file, its 1-based line number, and the line, clipped at 200 characters. */
+  export interface SearchMatch {
+    /** The file's path, relative to the workspace root, or absolute for a search rooted outside it. */
+    path: string;
+    /** The 1-based line number of the match within that file. */
+    line: number;
+    /** The matching line without its ending; over 200 characters it is cut and annotated in place. */
+    text: string;
+  }
+
+  /**
+   * Search the workspace's files for the regular expression `query`, honouring ignore files. An
+   * `undefined` path is the workspace root; an `undefined` limit is gg's default of 50, and 200 is
+   * the ceiling.
+   */
+  export function search(
+    query: string,
+    path: string | undefined,
     limit: number | undefined,
-  ): string;
+  ): SearchMatch[];
 }
 
 /** The authored skill library. */
@@ -565,6 +570,7 @@ declare module "test-cabinet:gg/views" {
     path: string,
     offset: number | undefined,
     limit: number | undefined,
+    maxLineChars: number | undefined,
   ): FileReadRaw;
   /** Open, or replace, the text view keyed by `label`. */
   export function openTextView(label: string, body: string): void;
@@ -572,8 +578,6 @@ declare module "test-cabinet:gg/views" {
   export function openDocsView(name: string): void;
   /** Close every view carrying `selector`, and return how many were closed. */
   export function closeView(selector: string): number;
-  /** What is open in the agent's window right now. Cannot fail. */
-  export function currentViews(): OpenViewRaw[];
 }
 
 /**

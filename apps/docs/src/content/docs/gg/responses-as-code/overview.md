@@ -45,8 +45,8 @@ two, so an A/B of the response shape is a comparison inside a single run.
 
 The capability id is `responses-as-code`. It is the responses-as-code agent
 type's settings panel in the [configuration](/gg/configurations/) editor, and
-the agent-type selector is its switch. Six parameters are read, and a profile
-that enables the capability writes all six:
+the agent-type selector is its switch. Five parameters are read, and a
+profile that enables the capability writes all five:
 
 | Param | Meaning |
 | --- | --- |
@@ -55,15 +55,14 @@ that enables the capability writes all six:
 | `maxMemoryBytes` | Guest linear-memory ceiling for one program, as a whole number of bytes. |
 | `docViewTypes` | Which SDK types opening a function's documentation opens beside it, as independent toggles keyed `return`, `parameters` and `errors`. `true` opens all three, `false` opens none, and an object names each of the three. |
 | `healing` | Which [response-healing](/gg/response-healing/) repairs are armed. |
-| `assistantMessages` | How the assistant turn is recorded: `response-healing` records the healed program that ran, `none` records the reply as the model sent it. |
 
-The six of them are what a responses-as-code arm is, so each is read off the
+The five of them are what a responses-as-code arm is, so each is read off the
 profile and none is chosen for it. Neither numeric param is clamped.
 
 An absent param refuses the launch, and so does one gg cannot honour exactly as
 written: a `timeoutSecs` that is not a positive number, a `maxMemoryBytes` that
-is not a positive whole number of bytes, a `language` or `assistantMessages`
-outside its own vocabulary, and a `docViewTypes` or `healing` carrying a key gg
+is not a positive whole number of bytes, a `language` outside its own
+vocabulary, and a `docViewTypes` or `healing` carrying a key gg
 does not recognise, a value that is not a boolean, or an object that leaves one
 of its keys out. The refusal names every such value in the configuration, so one
 pass fixes them all.
@@ -72,7 +71,7 @@ JSON has no integer type, so `5e8` and `500000000` are one `maxMemoryBytes`
 declaration. `500000000.5` names no count of bytes and is refused, since
 rounding it would run the guest at a ceiling nobody wrote.
 
-All six resolve per agent, from that agent's own profile. The language and the
+All five resolve per agent, from that agent's own profile. The language and the
 documentation-view flags land on that agent's `agent_surface`
 [event](/gg/telemetry/overview/), beside its execution mode. A root that opens
 every type a signature names and a reviewer subagent that opens none are one

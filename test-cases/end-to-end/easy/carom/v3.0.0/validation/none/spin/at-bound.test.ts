@@ -1,21 +1,21 @@
 // spin/at-bound — a paddle pinned against a bound imparts no spin.
 //
-// A paddle held into the top or bottom edge cannot move, so it is stationary and
-// adds no spin even while the movement input is still applied: the spin mechanic
-// reads the paddle's ACTUAL velocity, which the clamp has taken to zero. A build
-// that drives spin off the held input rather than the real motion fails here.
+// specs/playfield.md: a paddle pinned against a bound carries `vy = 0` while
+// the movement is held into it, because the clamp rewrites `vy` to the
+// distance actually covered. specs/balls.md reads that integrated `vy` at
+// contact, so the ball leaves with spin exactly 0. A build that reads the held
+// input rather than the real motion fails here.
 //
 // DISCRIMINATING. The same held velocity clear of the bound, where the paddle
-// really does move, must impart spin — so passing proves the build reads real
-// motion, not merely that it never adds spin at all.
+// really does move, imparts `PADDLE_SPEED * SPIN_FROM_PADDLE` (612) within five
+// percent, so passing proves the build reads real motion rather than never
+// adding spin at all.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
+import { PADDLE_MAX_CY, PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import {
-  PADDLE_MAX_CY,
-  PADDLE_SPEED,
-  SPIN_FROM_PADDLE,
-} from "../../src/constants";
-import {
+  FACE_SHOT_SPEED,
   LEAD_TICKS,
   arrangePaddleHit,
   captureReplay,
@@ -27,45 +27,24 @@ import {
   type Harness,
 } from "../harness";
 
-/** The approach `arrangePaddleHit` poses by default, in px/s. */
-const APPROACH_SPEED = 400;
 /**
  * The pinned contact's ball start.
  *
  * The paddle here must stay PINNED, so it cannot be led upstream the way a
- * swinging one is — leading it would unpin it and hand it back the very velocity
+ * swinging one is: leading it would unpin it and hand it back the very velocity
  * this check exists to deny. Only the ball is pushed back instead: its zero-lead
  * start plus the distance it covers over the run-up.
  */
-const BOUND_START_X = nearBallX("left") + APPROACH_SPEED * seconds(LEAD_TICKS);
-/**
- * The floor a real swing must clear. A full-speed swing imparts
- * `PADDLE_SPEED * SPIN_FROM_PADDLE`; two thirds of that is comfortably clear of
- * zero and comfortably below what the mechanic actually produces.
- */
-const SPIN_FLOOR = PADDLE_SPEED * SPIN_FROM_PADDLE * 0.65;
-/** A paddle the clamp has stopped reports zero velocity, to a float margin. */
-const STILL_TOLERANCE = 1;
-const SPIN_TOLERANCE = 0.5;
+const BOUND_START_X = nearBallX("left") + FACE_SHOT_SPEED * seconds(LEAD_TICKS);
+
+const EXPECTED_SPIN = PADDLE_SPEED * SPIN_FROM_PADDLE;
+const SPIN_TOLERANCE = EXPECTED_SPIN * 0.05;
 
 /** A contact clear of the bound, where a full-speed swing has room to travel. */
 const FREE_CONTACT_CY = 480;
 const FREE_CONTACT_BALL_Y = 500;
 
-/**
- * Frames of the return flight recorded after the contact.
- *
- * `drivePaddleHit` stops on the frame the ball comes off the paddle, because that
- * is the instant the reading has to be taken at — a frame later and spin has
- * already begun to curve the flight this check is about. That makes it a bad
- * place to stop RECORDING: the clip would end on the contact and a reviewer would
- * never see the shot it produced.
- *
- * So the reading stays exactly where it was and the flight is driven after it,
- * inside the same recorded section. Three quarters of a second is long enough for
- * a curve to be a curve and a straight return to be visibly straight, and short
- * enough that the ball is still on the field at the end of it.
- */
+/** Frames of the return flight recorded after the contact, for the replay. */
 const RETURN_TICKS = 90; // 0.75 s
 
 let harness: Harness;
@@ -74,18 +53,19 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
 it("imparts no spin from a bound-pinned paddle, but does from a free one", async () => {
   // The pinned contact: the paddle sits on the bottom clamp with the movement
   // still driving it further down, so it cannot move at all.
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: PADDLE_MAX_CY,
     vy: PADDLE_SPEED,
     ballY: PADDLE_MAX_CY,
+    approachSpeed: FACE_SHOT_SPEED,
     startX: BOUND_START_X,
   });
 
@@ -97,24 +77,27 @@ it("imparts no spin from a bound-pinned paddle, but does from a free one", async
     return rebound;
   });
 
-  expect(bound.hit).toBe(true);
-  expect(Math.abs(bound.paddle.vy)).toBeLessThanOrEqual(STILL_TOLERANCE);
-  expect(Math.abs(bound.ball.spin)).toBeLessThanOrEqual(SPIN_TOLERANCE);
+  assertEqual(bound.hit, true);
+  assertCloseTo(bound.paddle.cy, PADDLE_MAX_CY, 6);
+  assertCloseTo(bound.paddle.vy, 0, 6);
+  assertCloseTo(bound.ball.spin, 0, 6);
 
   // The control: the same held velocity, clear of the bound. The contact sits
-  // below mid-field so the run-up starts inside the top clamp — aimed at the
-  // centre the swing would have to begin above the field edge, where the clamp
-  // would pin it still, which is the very condition this half is the control FOR.
+  // below mid-field so the run-up starts inside the top clamp.
   await startPlaying(harness);
-  arrangePaddleHit(harness, "left", {
+  await arrangePaddleHit(harness, "left", {
     cy: FREE_CONTACT_CY,
     vy: PADDLE_SPEED,
     ballY: FREE_CONTACT_BALL_Y,
+    approachSpeed: FACE_SHOT_SPEED,
     leadTicks: LEAD_TICKS,
   });
 
   const free = await drivePaddleHit(harness, "left", { leadTicks: LEAD_TICKS });
 
-  expect(free.hit).toBe(true);
-  expect(free.ball.spin).toBeGreaterThan(SPIN_FLOOR);
+  assertEqual(free.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(free.ball.spin - EXPECTED_SPIN),
+    SPIN_TOLERANCE,
+  );
 });

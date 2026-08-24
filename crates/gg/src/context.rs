@@ -53,7 +53,7 @@ use test_cabinet_core::gg::{
 
 use crate::model::{ImageContent, Message, Role, ToolCall};
 use crate::prompts::{self, ContextPressureContext, UsageCategoryView, UsageFileView};
-use crate::tools::{ARCHIVE_THREAD_TOOL, EVICT_FILE_VIEW_TOOL};
+use crate::tools::{ARCHIVE_THREAD_TOOL, ApiData, EVICT_FILE_VIEW_TOOL};
 
 /// A small fixed per-message token allowance approximating the role tag and message
 /// framing a provider adds around the content (chat formats wrap each message in a few
@@ -144,6 +144,13 @@ pub struct ContextItem {
     /// `src/main.rs` and sometimes `src/main.rs@200+50` would make the same file un-evictable
     /// depending on how it had been read.
     region: Option<FileRegion>,
+    /// For a [`FileView`](GgContextSource::FileView) of a **text** file, the 1-based inclusive line
+    /// range the view shows and the file's total line count — what its [heading](item_heading)
+    /// reports after the path. Unlike [`region`](Self::region) it is set for a whole-file view too
+    /// (`1-N of N lines`), which is why it is a second field rather than a reading of the region:
+    /// the region is `None` for a whole file *by design*, so it cannot say how long the file is.
+    /// `None` for an image view, for a tool-calling read, and for every other kind of item.
+    lines: Option<ShownLines>,
     /// The [session turn](ContextModel::begin_turn) this item was pushed on — the number
     /// [`archive_thread`](ContextModel::archive_thread) selects ranges of, and the number a tool
     /// result's [turn header](ContextModel::turn_header) shows the model. `0` for everything seeded
@@ -191,16 +198,58 @@ impl ContextItem {
     pub fn region(&self) -> Option<FileRegion> {
         self.region
     }
+
+    /// The 1-based inclusive line range a text [file view](GgContextSource::FileView) shows, when
+    /// this item is one opened on the code path.
+    pub fn lines(&self) -> Option<ShownLines> {
+        self.lines
+    }
+}
+
+/// The 1-based inclusive line range a text [file view](GgContextSource::FileView) **shows**, and
+/// the file's total line count — the qualifier its [heading](item_heading) carries after the path,
+/// as `File: src/main.rs:100-250 of 400 lines`.
+///
+/// The range is what the read **actually returned**, exactly as a [`FileRegion`] is, and for the
+/// same reason: a heading that said what the call asked for would describe lines the body does not
+/// hold. The total is the file's, so a partial read is distinguishable from a full one without
+/// counting: a whole-file read shows `1-N of N lines`, and the first page of a longer file shows
+/// the same range over a larger total.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ShownLines {
+    /// The 1-based first line shown.
+    pub first: u64,
+    /// The 1-based last line shown, inclusive.
+    pub last: u64,
+    /// The file's total line count, which says how much of the file the range covers.
+    pub total: u64,
+}
+
+impl ShownLines {
+    /// The lines a read showed, from the [sidecar](ApiData) it reported — `None` for anything but a
+    /// text file, and for an **empty** file, which shows no lines (its read reports `last_line` of
+    /// `0`, before its `first_line`) and whose heading therefore carries the path alone.
+    pub fn of_read(data: Option<&ApiData>) -> Option<Self> {
+        match data {
+            Some(ApiData::FileText(text)) if text.last_line >= text.first_line => Some(Self {
+                first: text.first_line.into(),
+                last: text.last_line.into(),
+                total: text.total_lines.into(),
+            }),
+            _ => None,
+        }
+    }
 }
 
 /// The line window a **paged** `read_file` covered, as `offset`/`limit` — kept so a view can be
 /// re-opened over the same lines rather than from the top of the file.
 ///
 /// It is what the read **actually returned**, not what the call asked for. The two differ often
-/// enough to matter: an `offset`/`limit` on a call made under an
-/// [unlimited](crate::tools::ReadPolicy::Unlimited) policy is ignored by the tool and the whole file
-/// comes back, and a read that names no `limit` under a
-/// [default cap](crate::tools::ReadPolicy::DefaultCap) comes back as the cap's window.
+/// enough to matter: a read that names no `limit` under a
+/// [default cap](crate::tools::ReadPolicy::DefaultCap) comes back as the cap's window, a `limit`
+/// running past the end of the file comes back stopping at the file's end, and a window that
+/// covers the whole file — under the [unlimited](crate::tools::ReadPolicy::Unlimited) policy or
+/// any other — is no window at all.
 /// Recording the ask rather than the answer would give a view a window it does not have — two
 /// whole-file views recorded as two *different* windows, or a re-opened page that silently covers
 /// fewer lines than the one it replaces.
@@ -247,7 +296,7 @@ pub struct OpenFileView {
     pub region: Option<FileRegion>,
 }
 
-/// Which of the two [view](ContextModel::open_views) kinds a view is — the whole taxonomy, and
+/// Which of the two view kinds a view is — the whole taxonomy, and
 /// closed on purpose.
 ///
 /// Everything on disk is a file and everything a program can compute is a string, so a directory
@@ -353,23 +402,6 @@ pub struct ViewsClosed {
     pub earliest_removed: Option<usize>,
 }
 
-/// One view of either kind open in the window, as [`open_views`](ContextModel::open_views) reports
-/// it — what backs the model-facing `view.current()`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpenViewInfo {
-    /// Whether this is a file or a text view.
-    pub kind: ViewKind,
-    /// The view's selector: a file view's workspace path, or a text view's label.
-    pub selector: String,
-    /// The estimated tokens the view occupies. Views that share a selector *and* a region are
-    /// reported as one entry carrying their combined cost, because that is what closing the
-    /// selector reclaims.
-    pub tokens: u64,
-    /// The `offset`/`limit` window a **paged** file view covers; `None` for a whole-file view and
-    /// for every text view.
-    pub region: Option<FileRegion>,
-}
-
 /// What opening a view did to the window: whether it replaced a view that was already open, whether
 /// that replacement happened inside the current turn (so nothing was ever sent), and what the new
 /// item costs.
@@ -422,8 +454,12 @@ pub enum PromptSlot {
     /// the order it entered.
     Thread,
     /// The [context-usage signal](ContextModel::refresh_context_usage_signal) slot, rebuilt and
-    /// re-assigned after every turn, always last.
+    /// re-assigned after every turn, always last but for the contract notice.
     ContextUsage,
+    /// The [trailing contract notice](ContextModel::set_trailing_notice) slot — the constant
+    /// restatement of the responses-as-code reply contract, rendered after everything else so it
+    /// is the last thing the model reads on every request.
+    TrailingNotice,
 }
 
 /// One item of the live window as [`prompt_items`](ContextModel::prompt_items) hands it to
@@ -467,6 +503,9 @@ pub struct PromptItem<'a> {
     /// The `offset`/`limit` window a **paged** [file view](GgContextSource::FileView) covers,
     /// when this item is one and the read was paged.
     pub region: Option<FileRegion>,
+    /// The 1-based inclusive line range a text [file view](GgContextSource::FileView) opened on
+    /// the code path shows — what its [heading](item_heading) names after the path.
+    pub lines: Option<ShownLines>,
 }
 
 /// Estimates the token cost of context items. A trait so the estimator is **swappable**:
@@ -602,16 +641,20 @@ pub struct UsageSignalOptions {
     /// The [program language](GgProgramLanguage) this agent writes in, or `None` on the tool-calling
     /// path.
     ///
-    /// It decides two things at once, which is why it is one `Option` rather than a flag beside a
-    /// language. It is whether the agent has the **view-closing** call: under
-    /// [responses-as-code](crate::agent) the always-bound `view` object gives an agent the one call
-    /// that can close a [text view](GgContextSource::TextView), so without it the block can name a
-    /// `Text Views` band and offer no way to reclaim it — a category the agent cannot act on, which
-    /// is precisely what this struct exists to prevent. And it is how **every** call this block
-    /// points at is spelled: a code agent reclaims its window by calling a method on an API object,
-    /// so a block that named gg's tool names at it would be naming things its scope does not bind.
-    /// Two fields could disagree; this one cannot.
+    /// It is how **every** call this block points at is spelled: a code agent reclaims its window by
+    /// calling a method on an API object, so a block that named gg's tool names at it would be
+    /// naming things its scope does not bind.
     pub program_language: Option<GgProgramLanguage>,
+    /// Whether this agent holds the **view-closing** call, `views.close` — read off its grant, as
+    /// [`can_evict`](Self::can_evict) is read off the registry, so the block names the call exactly
+    /// when a program can make it.
+    ///
+    /// Only a [responses-as-code](crate::agent) agent can hold it, and not every one does: closing a
+    /// view is bought by agent-managed context and granted by the agent's allowlist, so a code
+    /// agent without either is shown a `Text Views` band it cannot act on — which is the defect
+    /// this block was rewritten to remove, and the reason this is a fact about the grant rather
+    /// than about the mode.
+    pub can_close_views: bool,
     /// Whether this agent has `archive_thread`, which decides whether the block closes by pointing at
     /// it — and, upstream of that, whether tool results carry
     /// [turn headers](ContextModel::turn_header) at all.
@@ -736,6 +779,11 @@ pub struct ContextModel {
     /// The [context-usage signal](Self::refresh_context_usage_signal), held in a slot of its own
     /// rather than among the [`items`](Self::items) — see that method for why.
     usage_signal: Option<ContextItem>,
+    /// The [trailing contract notice](Self::set_trailing_notice), held in a slot for the same
+    /// reasons the signal is — there can only ever be one, and it must always render last —
+    /// plus one of its own: it is **constant** for the life of the agent, so a slot set once is
+    /// the whole mechanism.
+    trailing_notice: Option<ContextItem>,
     /// The session turn items are currently being pushed on, set by [`begin_turn`](Self::begin_turn).
     /// `0` until the first turn opens, which is what leaves the opening context unnumbered.
     turn: u64,
@@ -761,6 +809,7 @@ impl ContextModel {
             window_limit,
             code_mode,
             usage_signal: None,
+            trailing_notice: None,
             turn: 0,
             turn_headers: false,
         }
@@ -818,7 +867,7 @@ impl ContextModel {
         label: Option<String>,
         region: Option<FileRegion>,
     ) {
-        let message = self.headed(source, label.as_deref(), message);
+        let message = self.headed(source, label.as_deref(), None, message);
         let tokens = self.estimator.estimate_message(&message);
         self.items.push(ContextItem {
             source,
@@ -827,6 +876,7 @@ impl ContextModel {
             tokens,
             label,
             region,
+            lines: None,
             turn: self.turn,
         });
     }
@@ -890,10 +940,17 @@ impl ContextModel {
     /// the append-only equality check ([`source_block_is`](Self::source_block_is)) — which heads the
     /// *incoming* candidate the same way — compares like against like.
     ///
-    /// `label` is the item's selector tag, which qualifies the heading of the one source whose
-    /// heading alone would not say *which* piece of material this is — see [`item_heading`].
-    fn headed(&self, source: GgContextSource, label: Option<&str>, message: Message) -> Message {
-        apply_code_heading(self.code_mode, source, label, message)
+    /// `label` is the item's selector tag, which qualifies the heading of every source whose
+    /// heading alone would not say *which* piece of material this is, and `lines` the line range a
+    /// text file view shows — see [`item_heading`].
+    fn headed(
+        &self,
+        source: GgContextSource,
+        label: Option<&str>,
+        lines: Option<ShownLines>,
+        message: Message,
+    ) -> Message {
+        apply_code_heading(self.code_mode, source, label, lines, message)
     }
 
     /// Bring the **mutable, single-block** `source` up to date with `message` (or with
@@ -987,7 +1044,7 @@ impl ContextModel {
             // the comparison — otherwise a code-mode block would never match its own rebuild and
             // would supersede every turn, thrashing the prompt cache the append-only rule protects.
             (Some(item), Some(message)) => {
-                item.message == self.headed(source, None, message.clone())
+                item.message == self.headed(source, None, None, message.clone())
             }
             _ => false,
         }
@@ -1034,6 +1091,7 @@ impl ContextModel {
             tokens,
             label: None,
             region: None,
+            lines: None,
             turn: self.turn,
         });
     }
@@ -1045,6 +1103,44 @@ impl ContextModel {
     /// [`HistoryModule::adopt`](crate::modules::HistoryModule).
     pub fn clear_system(&mut self) {
         self.system = None;
+    }
+
+    /// Set — or, with `None`, clear — the **trailing contract notice**: the constant one-or-two
+    /// sentence restatement of the [responses-as-code](crate::sandbox) reply contract, rendered
+    /// **after every other message** on every request this window produces. Measured as the single
+    /// most effective cross-model lever for keeping a tool-call-trained model answering with bare
+    /// programs, which is why it earns a permanent seat at the position models weight most.
+    ///
+    /// # It lives in a slot, not in the thread
+    ///
+    /// For the reasons the [context-usage signal](Self::refresh_context_usage_signal) does — there
+    /// can only ever be one, and everything a provider's prompt cache reads sits *before* it, so
+    /// the prompt stays append-only: each turn's new conversation is inserted ahead of the notice,
+    /// which re-renders at the new tail. Unlike the signal it never changes and never empties on
+    /// its own: it is set once per agent (a property of the **holder**, like the system prompt, so
+    /// a succession to a different execution mode clears it — see
+    /// [`HistoryModule::adopt`](crate::modules::HistoryModule)) and survives a compaction, which
+    /// resets the thread and not the slots.
+    ///
+    /// The [tail cache breakpoint deliberately does not land on it](crate::client::cache_breakpoints):
+    /// a prefix ending on a trailing slot message never recurs, so the tail marker walks back to
+    /// the newest conversation message and the notice rides outside the cached prefix — costing
+    /// its own few tokens per turn and nothing else.
+    pub fn set_trailing_notice(&mut self, text: Option<String>) {
+        self.trailing_notice = text.map(|text| {
+            let message = Message::system(text);
+            let tokens = self.estimator.estimate_message(&message);
+            ContextItem {
+                source: GgContextSource::System,
+                retention: Retention::Pinned,
+                message,
+                tokens,
+                label: None,
+                region: None,
+                lines: None,
+                turn: self.turn,
+            }
+        });
     }
 
     /// Seed the pinned [`UserPrompt`](GgContextSource::UserPrompt) (the build prompt).
@@ -1090,12 +1186,18 @@ impl ContextModel {
     /// own window — so the turn loop checks it and gives the model something to answer.
     ///
     /// Read off the assembled window rather than off the item list, so the
-    /// [context-usage signal](Self::refresh_context_usage_signal) and every other
-    /// [slot](PromptSlot) count as the messages they are.
+    /// [context-usage signal](Self::refresh_context_usage_signal) counts as the message it is —
+    /// with one deliberate exception: the [trailing contract notice](Self::set_trailing_notice)
+    /// is skipped, because it is **constant** furniture rendered after everything on every
+    /// request. It never answers the model — a window whose last real content is the assistant's
+    /// own message is in exactly the say-something-back state this predicate exists to detect,
+    /// notice or no notice, and counting the notice would make the predicate permanently false
+    /// for every agent that carries one.
     pub fn ends_on_assistant(&self) -> bool {
-        self.window_items()
+        self.slotted_window_items()
+            .filter(|(slot, _)| *slot != PromptSlot::TrailingNotice)
             .last()
-            .is_some_and(|item| item.message.role == Role::Assistant)
+            .is_some_and(|(_, item)| item.message.role == Role::Assistant)
     }
 
     /// Whether this window is a [code-mode](Self::set_code_mode) one.
@@ -1248,7 +1350,8 @@ impl ContextModel {
 
     /// Every item that is part of the live window, in the order it is sent: the
     /// [system prompt](Self::set_system), which is always first, then the conversation items, then
-    /// the [context-usage signal](Self::refresh_context_usage_signal), which is always last.
+    /// the [context-usage signal](Self::refresh_context_usage_signal), then the
+    /// [trailing contract notice](Self::set_trailing_notice), which is always last.
     ///
     /// The two ends are slots rather than thread items, so their position is a property of this
     /// iterator rather than something the pushes have to maintain.
@@ -1271,6 +1374,11 @@ impl ContextModel {
                 self.usage_signal
                     .iter()
                     .map(|item| (PromptSlot::ContextUsage, item)),
+            )
+            .chain(
+                self.trailing_notice
+                    .iter()
+                    .map(|item| (PromptSlot::TrailingNotice, item)),
             )
     }
 
@@ -1317,6 +1425,7 @@ impl ContextModel {
             retention: item.retention,
             turn: item.turn,
             region: item.region,
+            lines: item.lines,
         })
     }
 
@@ -1424,6 +1533,7 @@ impl ContextModel {
                     code_mode,
                     item.source,
                     item.label.as_deref(),
+                    item.lines,
                     Message::user(content).with_images(images),
                 );
                 item.tokens = estimator.estimate_message(&message);
@@ -1471,6 +1581,7 @@ impl ContextModel {
                 tokens,
                 label: None,
                 region: None,
+                lines: None,
                 turn: self.turn,
             }
         });
@@ -1568,11 +1679,12 @@ impl ContextModel {
                 crate::sandbox::CONTEXT_EVICT_FILE_VIEW,
                 EVICT_FILE_VIEW_TOOL,
             ),
-            can_close_views: options.program_language.is_some(),
+            can_close_views: options.can_close_views && options.program_language.is_some(),
             // The one call with no tool-calling counterpart at all: a native session has no `view`
             // object, which is why its clause does not render for one.
             close_view: options
                 .program_language
+                .filter(|_| options.can_close_views)
                 .map(|language| {
                     crate::sandbox::spell(
                         crate::sandbox::language(language),
@@ -1876,7 +1988,13 @@ impl ContextModel {
             return DocviewOpen::AlreadyOpen;
         }
         let superseded = self.supersede_view(GgContextSource::DocsView, &key, None);
-        let item = self.view_item(GgContextSource::DocsView, Message::user(body), key, None);
+        let item = self.view_item(
+            GgContextSource::DocsView,
+            Message::user(body),
+            key,
+            None,
+            None,
+        );
         let placed = self.place_view(item, superseded);
         DocviewOpen::Placed {
             tokens: placed.tokens,
@@ -1967,6 +2085,7 @@ impl ContextModel {
             Message::user(body),
             selector,
             None,
+            None,
         );
         self.place_view(item, superseded)
     }
@@ -2011,7 +2130,13 @@ impl ContextModel {
     /// item.
     pub fn open_text_view(&mut self, label: String, body: String) -> ViewOpened {
         let superseded = self.supersede_view(GgContextSource::TextView, &label, None);
-        let item = self.view_item(GgContextSource::TextView, Message::user(body), label, None);
+        let item = self.view_item(
+            GgContextSource::TextView,
+            Message::user(body),
+            label,
+            None,
+            None,
+        );
         self.place_view(item, superseded)
     }
 
@@ -2041,10 +2166,15 @@ impl ContextModel {
     /// `images` is what a read of a reference mockup carries — a picture is not a third view kind,
     /// it is a file view of an image file — and rides in the same item as the text, so closing the
     /// path reclaims both.
+    ///
+    /// `lines` is the line range the read showed ([`ShownLines::of_read`]), which the view's
+    /// [heading](item_heading) names after the path. It is **not** part of the key: the key is the
+    /// region, and a whole-file view's region is `None` however long the file is.
     pub fn open_file_view_deduped(
         &mut self,
         path: String,
         region: Option<FileRegion>,
+        lines: Option<ShownLines>,
         content: String,
         images: Vec<ImageContent>,
     ) -> ViewOpened {
@@ -2054,6 +2184,7 @@ impl ContextModel {
             Message::user(content).with_images(images),
             path,
             region,
+            lines,
         );
         self.place_view(item, superseded)
     }
@@ -2076,6 +2207,7 @@ impl ContextModel {
     pub fn seed_file_view(
         &mut self,
         path: String,
+        lines: Option<ShownLines>,
         content: String,
         images: Vec<ImageContent>,
         retention: Retention,
@@ -2086,6 +2218,7 @@ impl ContextModel {
             Message::user(content).with_images(images),
             path,
             None,
+            lines,
             retention,
         );
         self.place_view(item, superseded)
@@ -2105,8 +2238,16 @@ impl ContextModel {
         message: Message,
         selector: String,
         region: Option<FileRegion>,
+        lines: Option<ShownLines>,
     ) -> ContextItem {
-        self.view_item_with_retention(source, message, selector, region, Retention::Ephemeral)
+        self.view_item_with_retention(
+            source,
+            message,
+            selector,
+            region,
+            lines,
+            Retention::Ephemeral,
+        )
     }
 
     /// [`view_item`](Self::view_item) with the retention spelled out — the one seam
@@ -2117,9 +2258,10 @@ impl ContextModel {
         message: Message,
         selector: String,
         region: Option<FileRegion>,
+        lines: Option<ShownLines>,
         retention: Retention,
     ) -> ContextItem {
-        let message = self.headed(source, Some(&selector), message);
+        let message = self.headed(source, Some(&selector), lines, message);
         let tokens = self.estimator.estimate_message(&message);
         ContextItem {
             source,
@@ -2128,6 +2270,7 @@ impl ContextModel {
             tokens,
             label: Some(selector),
             region,
+            lines,
             turn: self.turn,
         }
     }
@@ -2234,8 +2377,8 @@ impl ContextModel {
     /// asymmetry is enormous in the other direction: a picture is re-uploaded whole on every
     /// subsequent request for as long as it is resident (up to `IMAGE_ATTACH_CAP`, 8 MiB, each), so
     /// an agent re-opening one screenshot across twenty turns would leave twenty copies of it in the
-    /// window and pay to upload all twenty on every request thereafter, while
-    /// [`open_views`](Self::open_views) — which reports what is *open* — showed it one. Nothing in
+    /// window and pay to upload all twenty on every request thereafter, while what is *open*
+    /// remained one view. Nothing in
     /// the accounting would name the other nineteen, and nothing the agent could close would reach
     /// them.
     ///
@@ -2254,6 +2397,7 @@ impl ContextModel {
         item.retention = Retention::Ephemeral;
         item.label = None;
         item.region = None;
+        item.lines = None;
         if item.message.strip_images() {
             match &mut item.message.content {
                 Some(content) => {
@@ -2264,51 +2408,6 @@ impl ContextModel {
             }
             item.tokens = self.estimator.estimate_message(&item.message);
         }
-    }
-
-    /// Every view **open** in the window, in the order it was opened — what backs the model-facing
-    /// `view.current()`.
-    ///
-    /// Views sharing a selector *and* a region are reported as one entry carrying their combined
-    /// cost, because that is what closing the selector reclaims. (Only a native `read_file` can
-    /// produce such a pair; the view API supersedes instead.)
-    ///
-    /// A [`Pinned`](Retention::Pinned) view is left out, for the same reason
-    /// [`open_file_views`](Self::open_file_views) and [`top_file_views`](Self::top_file_views) leave
-    /// it out: this is the list `view.close` acts on, and a locked autoloaded specification cannot
-    /// be closed. Offering the model an entry whose close silently reclaims nothing is worse than
-    /// not listing it.
-    pub fn open_views(&self) -> Vec<OpenViewInfo> {
-        let mut open: Vec<OpenViewInfo> = Vec::new();
-        for item in &self.items {
-            if item.retention.is_pinned() {
-                continue;
-            }
-            let kind = match item.source {
-                GgContextSource::FileView => ViewKind::File,
-                GgContextSource::TextView => ViewKind::Text,
-                GgContextSource::DocsView => ViewKind::Docs,
-                GgContextSource::SearchResults => ViewKind::Search,
-                _ => continue,
-            };
-            // A view whose selector is unknown (a malformed native read) is unnameable, so there is
-            // nothing useful to report about it.
-            let Some(selector) = item.label.clone() else {
-                continue;
-            };
-            match open.iter_mut().find(|view| {
-                view.kind == kind && view.selector == selector && view.region == item.region
-            }) {
-                Some(existing) => existing.tokens += item.tokens as u64,
-                None => open.push(OpenViewInfo {
-                    kind,
-                    selector,
-                    tokens: item.tokens as u64,
-                    region: item.region,
-                }),
-            }
-        }
-        open
     }
 
     /// The [text views](GgContextSource::TextView) currently open, **with their bodies**, newest
@@ -2412,10 +2511,23 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
 /// of them apart. A **read skill** shares the word and keeps the
 /// bare `Documentation`, because its body opens by naming the skill and it cannot be closed anyway.
 ///
-/// Every other band keeps the bare word, including [`FileView`](GgContextSource::FileView) —
-/// deliberately, because a file view's body opens with the read's own path header, so `File` plus
-/// the path would say the path twice.
-pub(crate) fn item_heading(source: GgContextSource, label: Option<&str>) -> Option<String> {
+/// A [`FileView`](GgContextSource::FileView) is qualified by its path, **the line range it shows
+/// and the file's total line count**: `File: src/main.rs:100-250 of 400 lines` for a paged read,
+/// `File: specs/rules.md:1-N of N lines` for a whole file — so a partial read is distinguishable
+/// from a full one. The body is the file's text and nothing else — the
+/// read's `[showing lines …]` footer is the only other place the window is stated, and only a paged
+/// read carries one — so the heading is where the model learns which file it is looking at and how
+/// much of it. The path is the selector the view was opened under, workspace-relative as the model
+/// (or the autoload seeding) wrote it, so it is also the handle a close takes. A view that shows no
+/// lines — a picture, whose body opens with the read's own path line, or an empty file — is headed
+/// by the path alone, `File: reference/board.png`.
+///
+/// Every other band keeps the bare word.
+pub(crate) fn item_heading(
+    source: GgContextSource,
+    label: Option<&str>,
+    lines: Option<ShownLines>,
+) -> Option<String> {
     let heading = code_heading(source)?;
     match (source, label) {
         (
@@ -2425,6 +2537,12 @@ pub(crate) fn item_heading(source: GgContextSource, label: Option<&str>) -> Opti
             | GgContextSource::Skill,
             Some(label),
         ) => Some(format!("{heading}: {label}")),
+        (GgContextSource::FileView, Some(path)) => Some(match lines {
+            Some(ShownLines { first, last, total }) => {
+                format!("{heading}: {path}:{first}-{last} of {total} lines")
+            }
+            None => format!("{heading}: {path}"),
+        }),
         _ => Some(heading.to_string()),
     }
 }
@@ -2439,12 +2557,13 @@ fn apply_code_heading(
     code_mode: bool,
     source: GgContextSource,
     label: Option<&str>,
+    lines: Option<ShownLines>,
     message: Message,
 ) -> Message {
     if !code_mode || message.role != Role::User {
         return message;
     }
-    let Some(heading) = item_heading(source, label) else {
+    let Some(heading) = item_heading(source, label, lines) else {
         return message;
     };
     let body = message.content.unwrap_or_default();
@@ -2494,14 +2613,14 @@ fn source_label(source: GgContextSource) -> &'static str {
 /// [`open_docviews`](ContextModel::open_docviews) report, and what re-opening either reproduces
 /// without heading it twice.
 ///
-/// The heading is derived from the item's own `(source, label)`, so the prefix stripped here is
+/// The heading is derived from the item's own `(source, label, lines)`, so the prefix stripped here is
 /// byte-for-byte the one [`apply_code_heading`] added rather than a guess at its shape. An item
 /// pushed outside code mode carries no heading, and one whose body happens not to start with its
 /// heading (a window that crossed from a code-mode agent to a tool-calling one and back) is
 /// returned untouched.
 fn view_body(item: &ContextItem) -> String {
     let content = item.message.content.clone().unwrap_or_default();
-    let Some(heading) = item_heading(item.source, item.label.as_deref()) else {
+    let Some(heading) = item_heading(item.source, item.label.as_deref(), item.lines) else {
         return content;
     };
     let stripped = content

@@ -7,23 +7,41 @@
 // wall-clock time passes: a check asks for a number of frames and gets exactly
 // that number, at exactly the deltas its clock supplied.
 //
-// WHAT A CHECK READS. The game's own state (through `src/debug.ts`'s `snapshot`),
-// the runtime's frame counter, the events the runtime broadcast, and — for the
-// rendering checks — the pixels on the canvas or the calls the 2D context
-// received. Nothing here fabricates an outcome: the scenario helpers below only
-// ARRANGE the world through `src/debug.ts`, and the real `update` the build wrote
-// is what runs from there.
+// WHAT A CHECK READS. The game's own state (through the debug surface's
+// `snapshot`), the runtime's frame counter, the events the runtime broadcast, and
+// — for the rendering checks — the pixels on the canvas or the calls the 2D
+// context received. Nothing here fabricates an outcome: the scenario helpers
+// below only ARRANGE the world through the debug surface, and the real `update`
+// the build wrote is what runs from there.
 //
-// WHY `src/debug.ts` RATHER THAN RAW ASSIGNMENT. The case supplies that module,
-// so its operations are the same in every build: `startMatch` opens on the
-// pre-serve countdown, a control op takes the paddles from the player and the AI,
-// a posed `vy` persists across frames, and `reset` gives everything back. Posing
-// through it is how a scenario is reproducible, and it is the seam the case's
-// specification documents.
+// WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
+// fixes its operations, so they mean the same thing in every build: `startMatch`
+// opens on the pre-serve countdown, a control op takes the paddles from the
+// player and the AI, a posed `vy` persists across frames, and `reset` gives
+// everything back. Posing through it is how a scenario is reproducible, and it is
+// the seam the case's specification documents. `surface.ts` is that
+// specification as types, and it is the only description of the surface this
+// harness reads: the build's own module for it is never imported.
+//
+// WHERE THE SURFACE COMES FROM. Off `engine.debug`, never built here. The build's
+// `initialize` returns it beside the state, as `[state, debug]`, and the runtime
+// holds the second element and returns it from `engine.debug`. Reading it back
+// off the runtime is the only way a surface reaches a check, so a build that
+// returned no surface, or a surface missing an operation, fails the checks that
+// reach the game through it. See `readDebugSurface`.
+//
+// HOW THE SURFACE IS DRIVEN. The runtime holds the state by value and hands it
+// out read-only, so the surface is pure: a pose takes the current state and
+// returns the next, a reading takes the current state and returns what it read
+// (`surface.ts`). A check still writes `h.debug.serve()` and `h.debug.snapshot()`,
+// because `h.debug` is a {@link Driver} over the raw surface: it runs each pose
+// through `engine.apply` and hands each reading `engine.state`. Nothing a check
+// does holds a writable state — `h.state` is the runtime's current value, read
+// fresh on every access, and the only way to change it is a pose.
 //
 // THE CLOCK. `ConstantClock(TICK_MS)` is the default, so one frame is one
-// 120 Hz tick and every duration below is a whole number of them — which is the
-// unit the tolerances in this suite were established in. A check that is
+// 120 Hz tick and every duration below is a whole number of them, which is the
+// unit a suite's frame-counted tolerance is stated in. A check that is
 // specifically about the step size (gameplay/delta-time-independent) builds its
 // own harnesses with clocks of its own.
 
@@ -31,21 +49,28 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
+import { createCanvas, type Canvas, type SKRSContext2D } from "@napi-rs/canvas";
 import { expect } from "vitest";
 import {
   ConstantClock,
   createEngine,
+  type CapturedImage,
   type Clock,
+  type DrawOp,
+  type DrawState,
+  type DrawValue,
+  type PathSegment,
   type Engine,
+  type Game,
   type RecordedFrame,
   type Recording,
+  type Resource,
   type SurfaceMetrics,
   type Viewport,
 } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 import {
   BALL_R,
-  COLOR,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
@@ -54,12 +79,60 @@ import {
   P1_X1,
   P2_X0,
 } from "../src/constants";
+import { BACKGROUND, game as build, type CaromState } from "../src/game";
+import { assertEqual, assertNotEqual, assertTruthy, fail } from "./assert";
 import {
-  createDebugApi,
+  READINGS,
+  type BallSnapshot,
   type CaromDebugApi,
   type CaromSnapshot,
-} from "../src/debug";
-import { game, type CaromState, type Mode, type Side } from "../src/game";
+  type Mode,
+  type Side,
+} from "./surface";
+
+export type { Mode, Side };
+
+/** The case's surface, bound to the state type the build declared. */
+export type CaromSurface = CaromDebugApi<CaromState>;
+
+/**
+ * The build's game, typed against the surface the CASE specifies.
+ *
+ * The build declares its own type for the surface its `initialize` returns, and
+ * that type is the build's: what a check holds it to is `surface.ts`, so the game
+ * is cast to the case's `Game<CaromState, CaromSurface>` here and the runtime is
+ * parameterized with it. A surface that departs from the specification is caught
+ * where a check reaches for the missing member, not by the build's own compiler.
+ */
+const game = build as unknown as Game<CaromState, CaromSurface>;
+
+/**
+ * A member of a pure surface, as a check calls it.
+ *
+ * A pose `(state, ...args) => S` becomes `(...args) => void`: the driver runs it
+ * through `engine.apply`, so the state it returns is the state the next frame
+ * receives. A reading `(state) => R` becomes `() => R`: the driver hands it
+ * `engine.state`. Anything else (`version`) is carried as it is.
+ */
+type Driven<S, M> = M extends (state: DeepReadonly<S>, ...args: infer A) => S
+  ? (...args: A) => void
+  : M extends (state: DeepReadonly<S>) => infer R
+    ? () => R
+    : M;
+
+/**
+ * The imperative reading of a pure surface: every member of `D`, minus its
+ * state argument, over the runtime that holds the state.
+ *
+ * Optional members stay optional, so a variant-only pose such as gyre's
+ * `setObstacleClock` is still `h.debug.setObstacleClock?.(t)`.
+ */
+export type Driver<S, D> = {
+  [K in keyof D]: Driven<S, NonNullable<D[K]>>;
+};
+
+/** The surface as every check drives it. */
+export type CaromDriver = Driver<CaromState, CaromSurface>;
 
 /**
  * The frame the suite steps in, in milliseconds.
@@ -88,12 +161,142 @@ export function angleDeg(v: { vx: number; vy: number }): number {
 }
 
 /* -------------------------------------------------------------------------- */
+/* The balls                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/** One ball, as a snapshot reports it. */
+export type BallView = BallSnapshot;
+
+/**
+ * The ball every shared scenario drives: the only one under `base` and `gyre`,
+ * and the first of the three under `multi`.
+ *
+ * The variants agree about what a ball IS and disagree only about how many there
+ * are, so a check about the ball — its bounce, its spin, its speed off a paddle —
+ * is the same check under all three, driven against ball zero. What makes that
+ * sound under `multi` is {@link parkSpares}, which puts the other two balls out
+ * of the scenario before it is posed, so the reading is of the driven ball alone.
+ *
+ * `CaromSnapshot` declares both shapes as optional, because which one a build
+ * reports is its variant's to decide. A build reporting neither fails by
+ * assertion here rather than throwing a `TypeError` several frames later, so the
+ * point names the fault.
+ */
+export function ball0(snapshot: CaromSnapshot): BallView {
+  const one = snapshot.ball ?? snapshot.balls?.[0];
+  assertTruthy(
+    one,
+    "snapshot() must report the ball as `ball` (base, gyre) or the balls as " +
+      "`balls` (multi); see specs/instrumentation.md",
+  );
+  return one as BallView;
+}
+
+/** Every ball a snapshot reports, in play order. */
+export function allBalls(snapshot: CaromSnapshot): BallView[] {
+  if (snapshot.balls !== undefined) return snapshot.balls;
+  return snapshot.ball === undefined ? [] : [snapshot.ball];
+}
+
+/** One recorded ball position, as `CaromState` declares it. */
+export interface TrailPoint {
+  x: number;
+  y: number;
+  t: number;
+}
+
+/** The two shapes a seeded `src/game.ts` holds the hold and the trail in. */
+interface StateShapes {
+  holdTimer?: number;
+  receiver?: Side;
+  trail?: TrailPoint[];
+  balls?: { holdTimer: number; trail: TrailPoint[] }[];
+}
+
+/** The highlighted menu item, read off the state the build declared. */
+export function menuIndex0(h: Harness): number {
+  return h.state.menuIndex;
+}
+
+/** The screen the pause menu resumes to, read off the state the build declared. */
+export function resumeScreen0(h: Harness): string {
+  return h.state.resumeScreen;
+}
+
+/**
+ * The side the next serve travels toward: `base` and `gyre` only, where the
+ * state declares `receiver` (specs/state.md).
+ */
+export function receiver0(h: Harness): Side {
+  const value = (h.state as unknown as StateShapes).receiver;
+  assertNotEqual(
+    value,
+    undefined,
+    "the state must hold the next serve's side as `receiver`; see specs/state.md",
+  );
+  return value as Side;
+}
+
+/**
+ * Seconds remaining of the driven ball's hold.
+ *
+ * `base` and `gyre` gate one ball on one match-wide `state.holdTimer`; `multi`
+ * gives every ball a hold of its own, so the driven ball's is `balls[0]`'s. Both
+ * are the same reading — how long until the ball this scenario drives leaves —
+ * and a check about the hold takes it through here.
+ */
+export function holdTimer0(h: Harness): number {
+  const shapes = h.state as unknown as StateShapes;
+  const value = shapes.holdTimer ?? shapes.balls?.[0]?.holdTimer;
+  assertEqual(
+    typeof value,
+    "number",
+    "the state must hold the pre-serve hold as `holdTimer` (base, gyre) or on " +
+      "each ball (multi); see specs/state.md",
+  );
+  return value as number;
+}
+
+/** The driven ball's recent positions, oldest first, as the state holds them. */
+export function trail0(h: Harness): TrailPoint[] {
+  const shapes = h.state as unknown as StateShapes;
+  const value = shapes.trail ?? shapes.balls?.[0]?.trail;
+  assertEqual(
+    Array.isArray(value),
+    true,
+    "the state must hold the motion trail as `trail` (base, gyre) or on each " +
+      "ball (multi); see specs/state.md",
+  );
+  return value as TrailPoint[];
+}
+
+/* -------------------------------------------------------------------------- */
 /* The harness                                                                */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Where a `fillText`/`strokeText` call put its text, read off the real context
+ * at the moment of the call: the current transform, so the anchor can be mapped
+ * to logical units whatever `translate`/`scale` the build applied, the measured
+ * width under the current font, and the alignment that places the run about
+ * its anchor.
+ */
+export interface TextGeometry {
+  transform: {
+    a: number;
+    b: number;
+    c: number;
+    d: number;
+    e: number;
+    f: number;
+  };
+  width: number;
+  textAlign: string;
+}
+
 /** One recorded operation on the 2D context, in the order the render made it. */
 export type DrawCall =
-  | { kind: "call"; method: string; args: unknown[] }
+  | { kind: "call"; method: string; args: unknown[]; text?: TextGeometry }
   | { kind: "set"; property: string; value: unknown };
 
 /** One cue the build played, as the runtime announced it. */
@@ -135,13 +338,31 @@ export interface UntilResult {
 }
 
 export interface Harness {
-  readonly engine: Engine<CaromState>;
-  /** The live state the game built. Read it, or pose it through `debug`. */
-  readonly state: CaromState;
-  /** The case's own debug surface, over this harness's state. */
-  readonly debug: CaromDebugApi;
+  readonly engine: Engine<CaromState, CaromSurface>;
+  /**
+   * The runtime's current state, read fresh on every access. Read it, or pose
+   * it through `debug`; nothing here can write to it.
+   */
+  readonly state: DeepReadonly<CaromState>;
+  /**
+   * The debug surface the BUILD returned beside its state, driven over the
+   * runtime: each pose runs through `engine.apply`, each reading is handed
+   * `engine.state`.
+   *
+   * The raw surface is read off `engine.debug` rather than built here — see
+   * {@link readDebugSurface} — and {@link driveSurface} is the wrapper.
+   */
+  readonly debug: CaromDriver;
   /** The real 2D context, for `getImageData`. Draw calls also reach it. */
   readonly ctx: SKRSContext2D;
+  /**
+   * The surface the runtime drew into, holding the last frame that ran.
+   *
+   * Exposed for {@link captureStill}, which encodes it: a still output is the
+   * picture the build actually put on the canvas, and the only place that picture
+   * exists is here.
+   */
+  readonly canvas: Canvas;
   /** Every call and property set the render made, oldest first. */
   readonly calls: DrawCall[];
   /** Every cue the build played, oldest first. */
@@ -216,7 +437,20 @@ function recorder(target: SKRSContext2D, calls: DrawCall[]): SKRSContext2D {
       const value = Reflect.get(object, property, object) as unknown;
       if (typeof value !== "function") return value;
       return (...args: unknown[]): unknown => {
-        calls.push({ kind: "call", method: String(property), args });
+        const method = String(property);
+        const call: DrawCall = { kind: "call", method, args };
+        if (
+          (method === "fillText" || method === "strokeText") &&
+          typeof args[0] === "string"
+        ) {
+          const m = object.getTransform();
+          call.text = {
+            transform: { a: m.a, b: m.b, c: m.c, d: m.d, e: m.e, f: m.f },
+            width: object.measureText(args[0]).width,
+            textAlign: object.textAlign,
+          };
+        }
+        calls.push(call);
         return (value as (...rest: unknown[]) => unknown).apply(object, args);
       };
     },
@@ -248,13 +482,136 @@ export function setsOf(
 }
 
 /**
+ * The debug surface the BUILD returned beside its state, read off the runtime
+ * that holds it.
+ *
+ * This is deliberately a READ and never a construction. The surface is the
+ * build's deliverable: its `initialize` returns `[state, debug]`
+ * (specs/instrumentation.md), the runtime keeps the second element, and
+ * `engine.debug` is the only way it reaches a check. Nothing here could stand in
+ * for it, because the build's own module for the surface is never imported.
+ *
+ * By the time this runs `engine.initialize()` has resolved, which is the one
+ * precondition `engine.debug` has: it holds whatever the build returned as the
+ * pair's second element, and a build that returned no pair at all never gets
+ * this far, because the runtime rejects `initialize` itself and the rejection
+ * fails the suite's `beforeEach` with the runtime's own message. Such a build
+ * does not run on the engine under any entry point, so it is not this harness's
+ * fault to report — which is why every suite's `afterEach` disposes its harness
+ * with `?.`: the hook then has nothing to add to that message.
+ *
+ * What IS decided here is a pair whose second element is no surface — a build
+ * that returned `[state, null]`, or something other than an object. That is a
+ * fault in the build and not in this harness, so it must not present as one:
+ *
+ * - It is NOT thrown from here. Every suite builds its harness in a
+ *   `beforeEach`, so a throw at this point would fail the hook and bury the real
+ *   verdict under the harness's own stack in the case's own file.
+ * - It is NOT swallowed either. {@link missingSurface} stands in for the
+ *   missing surface and fails, by assertion, at the moment a check first reaches
+ *   for an operation on it — naming the return the build owes.
+ *
+ * So the harness is built, teardown runs, and the fault lands exactly where
+ * specs/instrumentation.md says it should: on the points whose checks reach the
+ * game through the surface. A check that needs no surface is decided on its own
+ * merits, and `instrumentation/debug-api` names the missing surface outright.
+ */
+function readDebugSurface(
+  engine: Engine<CaromState, CaromSurface>,
+): CaromSurface {
+  const surface: unknown = engine.debug;
+  if (typeof surface !== "object" || surface === null) {
+    return missingSurface(
+      `engine.debug holds ${surface === null ? "null" : typeof surface}, ` +
+        `not an object`,
+    );
+  }
+  return surface as CaromSurface;
+}
+
+/**
+ * A stand-in for the surface a build never returned: every operation on it fails
+ * the check that reached for it, with the missing return named.
+ *
+ * A proxy rather than a hand-written stub, because the surface is not a closed
+ * list — the gyre variant adds `setObstacleClock` and `snapshot().obstacles`, and
+ * a stub written against the common surface would report a gyre-only operation as
+ * merely absent rather than as the consequence of the build's missing surface.
+ *
+ * Keys that belong to the RUNTIME rather than to a check are answered with
+ * `undefined` instead: awaiting the harness probes `then`, and vitest's own error
+ * formatting probes symbols and `constructor`. Failing those would replace the
+ * verdict below with noise from the machinery that was trying to report it.
+ */
+function missingSurface(reason: string): CaromSurface {
+  return new Proxy({} as CaromSurface, {
+    get: (_target, property): unknown => {
+      if (typeof property === "symbol") return undefined;
+      if (property === "then" || property === "constructor") return undefined;
+      return fail(SURFACE_REQUIREMENT, reason);
+    },
+  });
+}
+
+/**
+ * What the build owes when its surface is missing: the `Expected:` line of the
+ * failure every check that reaches for the surface lands on, beside what
+ * `engine.debug` was found holding instead.
+ */
+const SURFACE_REQUIREMENT =
+  "the debug surface src/game.ts's initialize returns beside its state, as " +
+  "[state, debug], which the engine hands back from engine.debug " +
+  "(specs/instrumentation.md)";
+
+/**
+ * The imperative reading of the raw surface, over the runtime that holds the
+ * state.
+ *
+ * A proxy, and a lazy one, for the same reason {@link missingSurface} is: the
+ * member is read off the raw surface at the moment a check reaches for it, so a
+ * missing surface or a missing operation fails the check that needed it and
+ * never the `beforeEach` that built the harness. A member that is not a
+ * function (`version`, or an operation the build left out) comes back as it
+ * is, which is what lets a variant slice test for its operation by `typeof`.
+ *
+ * A reading is called with `engine.state` and its result handed back. A pose is
+ * run through `engine.apply`, so the runtime stores what it returned and the
+ * next frame's `update` receives it; a pose that returns nothing is refused by
+ * the runtime with a message naming the rule.
+ */
+function driveSurface(
+  engine: Engine<CaromState, CaromSurface>,
+  raw: CaromSurface,
+): CaromDriver {
+  const readings: readonly string[] = READINGS;
+  return new Proxy({} as CaromDriver, {
+    get: (_target, property): unknown => {
+      if (typeof property === "symbol") return undefined;
+      if (property === "then" || property === "constructor") return undefined;
+      const member = (raw as unknown as Record<string, unknown>)[property];
+      if (typeof member !== "function") return member;
+      const op = member as (
+        state: DeepReadonly<CaromState>,
+        ...args: unknown[]
+      ) => unknown;
+      if (readings.includes(property)) {
+        return (): unknown => op.call(raw, engine.state);
+      }
+      return (...args: unknown[]): void => {
+        engine.apply((state) => op.call(raw, state, ...args) as CaromState);
+      };
+    },
+  });
+}
+
+/**
  * Build a runtime over a canvas of the harness's own, initialize the build's
  * game, and hand back everything a check reads.
  *
- * The options passed to the factory are the ones the specification fixes — the
- * design size, the background, and the touch layout — so one harness serves every
- * build of this case. Everything else the build decided lives inside
- * `src/game.ts`.
+ * The options passed to the factory are the ones the seeded `src/main.ts`
+ * passes — the design size, the build's exported `BACKGROUND`, and the touch
+ * layout — so one harness serves every build of this case. Everything else the
+ * build decided lives inside `src/game.ts`.
  */
 export async function createHarness(
   options: HarnessOptions = {},
@@ -283,12 +640,14 @@ export async function createHarness(
     events: () => keys,
   };
 
-  const engine = createEngine<CaromState>({
+  const engine = createEngine<CaromState, CaromSurface>({
     canvas: element,
     width: FIELD_W,
     height: FIELD_H,
     game,
-    background: COLOR.bg,
+    // The build's own field background, handed to the engine exactly as the
+    // seeded `src/main.ts` hands it (specs/overview.md).
+    background: BACKGROUND,
     layout: LAYOUT,
     clock: options.clock ?? new ConstantClock(TICK_MS),
     surface,
@@ -305,8 +664,8 @@ export async function createHarness(
     cues.push(played);
   });
 
-  const state = await engine.initialize();
-  const debug = createDebugApi(state);
+  await engine.initialize();
+  const debug = driveSurface(engine, readDebugSurface(engine));
 
   const dispatch = (type: "keydown" | "keyup", code: string): void => {
     keys.dispatchEvent(new KeyEvent(type, code));
@@ -314,9 +673,12 @@ export async function createHarness(
 
   const harness: Harness = {
     engine,
-    state,
+    get state() {
+      return engine.state;
+    },
     debug,
     ctx,
+    canvas,
     calls,
     cues,
     assetFailures,
@@ -373,7 +735,7 @@ export async function createHarness(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Replay capture                                                             */
+/* Evidence capture                                                           */
 /* -------------------------------------------------------------------------- */
 //
 // A review item may declare a `replay` OUTPUT beside its verdict: the frames the
@@ -451,25 +813,195 @@ const STAGED_PROJECT_DIR = "validation";
 const MAX_REPLAY_FRAMES = 300;
 
 /**
- * Where the running suite's `outputId` recording belongs, or `null` when nothing
- * is collecting media.
+ * Where the running suite's `outputId` output belongs, or `null` when nothing is
+ * collecting media.
  *
  * The suite is the one vitest is currently running rather than one the caller
  * names, because the two must not be able to disagree: a check that named its own
  * path would be free to write its evidence under some other point's address.
  *
- * The name carries both extensions, because a recording is a JSON document stored
- * gzipped: `.json` is what the bytes are and `.gz` is how they are framed. The
- * runner collects a `replay` output under exactly this name, so the two agree by
- * being the same statement of what a recording is.
+ * `extension` is the one the runner collects that OUTPUT KIND under — `json.gz`
+ * for a recording (a JSON document stored gzipped: `.json` is what the bytes are
+ * and `.gz` is how they are framed), `png` for a still. The suite and the runner
+ * agree by both stating the same thing about what the kind is.
  */
-function replayDestination(outputId: string): string | null {
+function mediaDestination(outputId: string, extension: string): string | null {
   const mediaDir = process.env[MEDIA_DIR_ENV];
   if (mediaDir === undefined || mediaDir === "") return null;
   const testPath = expect.getState().testPath;
   if (testPath === undefined) return null;
   const suite = relative(PROJECT_ROOT, testPath).split(sep).join("/");
-  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.json.gz`);
+  return join(mediaDir, STAGED_PROJECT_DIR, suite, `${outputId}.${extension}`);
+}
+
+/**
+ * A value's JSON with object keys in a fixed order, as the key a table
+ * deduplicates on.
+ *
+ * Two entries that mean the same thing have to serialize identically for a table
+ * to hold one copy of each, and the key order inside an argument the build passed
+ * is the build's own business rather than ours.
+ */
+function canonical(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
+    .join(",")}}`;
+}
+
+/** Add `entry` to a table if it is new, and answer where it lives. */
+function intern<T>(table: T[], at: Map<string, number>, entry: T): number {
+  const key = canonical(entry);
+  const found = at.get(key);
+  if (found !== undefined) return found;
+  const index = table.length;
+  table.push(entry);
+  at.set(key, index);
+  return index;
+}
+
+/**
+ * `frames` re-expressed against tables holding only what those frames name.
+ *
+ * DROPPING A FRAME DROPS THE LAST REFERENCE TO WHATEVER ONLY THAT FRAME DREW
+ * WITH. The four tables in front of a recording are shared by every frame in it,
+ * so carrying them over whole would put operations, states, gradients and images
+ * in the file that no surviving frame asks for — dead weight in a document whose
+ * whole point is to say each thing once, and the bulk of it in a game that draws
+ * procedurally and so repeats almost nothing between frames.
+ *
+ * Every entry here is reached from a kept frame, and every reference inside one
+ * is rewritten as it is reached, transitively: a frame names its own state and
+ * the states saved under it, whose clip and path segments and inherited fill name
+ * operations and resources, whose own creating calls may name images. What is
+ * deduplicated is the rewritten entry, so an operation two hundred frames issue
+ * identically is written once and named two hundred times, and every index a
+ * frame carries addresses the table it was interned into.
+ *
+ * Exported for the suite beside this file: a recording carrying an own field
+ * named `__proto__` is one the engine's recorder writes and this one has to
+ * rewrite as a field rather than as a prototype, and no drawing the reference
+ * implementation makes produces one.
+ */
+export function retable(
+  recording: Recording,
+  frames: readonly RecordedFrame[],
+): Recording {
+  const images: CapturedImage[] = [];
+  const imageAt = new Map<number, number>();
+  const resources: Resource[] = [];
+  const resourceAt = new Map<number, number>();
+  const ops: DrawOp[] = [];
+  const opAt = new Map<string, number>();
+  const states: DrawState[] = [];
+  const stateAt = new Map<string, number>();
+
+  const takeImage = (source: number): number => {
+    const found = imageAt.get(source);
+    if (found !== undefined) return found;
+    const index = images.length;
+    images.push(recording.images[source]);
+    imageAt.set(source, index);
+    return index;
+  };
+
+  const takeResource = (source: number): number => {
+    const found = resourceAt.get(source);
+    if (found !== undefined) return found;
+    const recipe = recording.resources[source];
+    // A recipe's own arguments were encoded when the value was used, so they can
+    // only name entries interned before it: rewriting one terminates and cannot
+    // re-enter this resource.
+    const rebuilt: Resource = {
+      make: { method: recipe.make.method, args: recipe.make.args.map(value) },
+      then: recipe.then.map(operation),
+    };
+    const index = resources.length;
+    resources.push(rebuilt);
+    resourceAt.set(source, index);
+    return index;
+  };
+
+  const value = (entry: DrawValue): DrawValue => {
+    if (Array.isArray(entry)) return entry.map(value);
+    if (entry === null || typeof entry !== "object") return entry;
+    const record = entry as Record<string, DrawValue>;
+    if (typeof record.$img === "number") {
+      return { $img: takeImage(record.$img) };
+    }
+    if (typeof record.$res === "number") {
+      return { $res: takeResource(record.$res) };
+    }
+    const rewritten: Record<string, DrawValue> = {};
+    for (const [key, held] of Object.entries(record)) {
+      // Defined rather than assigned: a build's own object may carry a field named
+      // `__proto__`, and assigning that name reaches the prototype setter instead
+      // of writing a field the document carries.
+      Object.defineProperty(rewritten, key, {
+        value: value(held),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return rewritten;
+  };
+
+  const operation = (op: DrawOp): DrawOp =>
+    op.op === "call"
+      ? { op: "call", method: op.method, args: op.args.map(value) }
+      : { op: "set", property: op.property, value: value(op.value) };
+
+  const segments = (list: readonly PathSegment[]): PathSegment[] =>
+    list.map((segment) => ({
+      transform: segment.transform,
+      ops: segment.ops.map(operation),
+    }));
+
+  const stateOf = (source: number): number => {
+    const state = recording.states[source];
+    const properties: Record<string, DrawValue> = {};
+    for (const [name, held] of Object.entries(state.properties)) {
+      Object.defineProperty(properties, name, {
+        value: value(held),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    return intern(states, stateAt, {
+      properties,
+      transform: state.transform,
+      lineDash: state.lineDash,
+      clip: segments(state.clip),
+      // A frame inherits the current path along with the clip: a canvas keeps its
+      // path across a frame boundary, and applying a clip leaves the clip outline
+      // current, so a state that stopped at the clip would leave a bare `fill`
+      // among the frame's operations filling that outline.
+      path: segments(state.path),
+    });
+  };
+
+  return {
+    ...recording,
+    images,
+    resources,
+    ops,
+    states,
+    frames: frames.map((frame) => ({
+      ...frame,
+      state: stateOf(frame.state),
+      stack: frame.stack.map(stateOf),
+      ops: frame.ops.map((op) =>
+        intern(ops, opAt, operation(recording.ops[op])),
+      ),
+    })),
+  };
 }
 
 /**
@@ -482,18 +1014,31 @@ function replayDestination(outputId: string): string | null {
  * what these outputs are named for. A rally is evidence that the ball accelerated
  * hit after hit, and the hits are spread across the whole of it.
  *
- * Thinning is legitimate because every frame in a recording is independently
- * renderable by construction: each carries the context state it inherited, so
- * dropping the frames between two kept ones cannot leave a frame undrawable. Each
- * kept frame's `deltaMs` is restated as the time since the frame kept before it,
- * so the deltas still sum to the section's elapsed time and a player pacing itself
- * off them runs at the speed the game really ran at. The frame `count` is left as
- * the host reported it, so a reader can see that frames were skipped rather than
- * being told a smooth lie.
+ * Thinning is legitimate because every frame in a recording is drawable on its
+ * own: a frame names the whole of the state it opened with and reaches everything
+ * it draws with through tables the recording shares, so dropping the frames
+ * between two kept ones cannot leave a frame undrawable. Each kept frame's
+ * `deltaMs` is restated as the time since the frame kept before it, so the deltas
+ * still sum to the section's elapsed time and a player pacing itself off them
+ * runs at the speed the game really ran at. The frame `count` is left as the host
+ * reported it, so a reader can see that frames were skipped rather than being
+ * told a smooth lie.
  *
  * The last frame is always kept, whatever the stride lands on: it is the frame the
  * check's sweep stopped at — the contact, the point, the rebound — and it is the
  * one a reviewer looks at first.
+ *
+ * Keeping it costs a frame rather than the cap. The stride rounds up, so a section
+ * whose length is an exact multiple of the cap strides over exactly that many
+ * frames and stops one stride short of the end: the last frame still has to come
+ * in, and the cap is a ceiling rather than a target. It takes the place of the
+ * final strided frame — the frame nearest it, so the swap opens the smallest gap
+ * available anywhere in the section — and is measured from where that frame was
+ * measured from, which is what keeps the kept deltas summing to the elapsed time.
+ *
+ * What survives is then re-expressed against tables of its own, because those
+ * tables are shared by every frame the recorder kept and a dropped frame takes
+ * the last reference to whatever only it drew with.
  */
 function thinReplay(recording: Recording): Recording {
   const { frames } = recording;
@@ -511,9 +1056,21 @@ function thinReplay(recording: Recording): Recording {
 
   for (let i = 0; i < frames.length; i += stride) keep(frames[i]);
   const last = frames[frames.length - 1];
-  if (kept[kept.length - 1].count !== last.count) keep(last);
+  if (kept[kept.length - 1].count !== last.count) {
+    if (kept.length >= MAX_REPLAY_FRAMES) {
+      // The stride spent the whole budget on the way to a frame short of the end.
+      // Drop the frame it stopped on, and put the moment back to the one before
+      // it: a kept frame's restated delta is measured from exactly that moment, so
+      // subtracting it recovers it, and the last frame's own delta then spans the
+      // gap the two of them leave.
+      const displaced = kept[kept.length - 1];
+      kept.length -= 1;
+      previousMs = displaced.timeMs - displaced.deltaMs;
+    }
+    keep(last);
+  }
 
-  return { ...recording, frames: kept };
+  return retable(recording, kept);
 }
 
 /**
@@ -526,15 +1083,13 @@ function thinReplay(recording: Recording): Recording {
  * already reported as absent, and that is the truthful reading of a section that
  * drew no frames.
  *
- * What lands on disk is gzip rather than raw JSON. The recording format is
- * deliberately repetitive: every frame restates the drawing state it inherited so
- * that any frame can be drawn without drawing the frames before it, and
- * consecutive frames of a game issue very nearly the same operations as each
- * other. That redundancy is what makes seeking and side-by-side scrubbing work,
- * and it is also almost exactly what gzip removes: a real capture stores tens of
- * times smaller. Compressing is what makes the property affordable, so a run's
- * whole set of recordings costs a few megabytes rather than a hundred. The
- * document inside is the same one, so nothing about the format has changed.
+ * What lands on disk is gzip rather than raw JSON. A recording is text made
+ * almost entirely of numbers, index lists and field names repeated once per
+ * frame, which is close to the shape gzip is best at: a real capture of this game
+ * stores about eight times smaller compressed. That is what keeps a run's whole
+ * set of recordings to a few megabytes. Every host that serves one declares the
+ * encoding, so the browser inflates it before the player sees it, and the
+ * document inside is the same one.
  *
  * Never throws. A directory that cannot be made or a file that cannot be written
  * says something about the machine the validators ran on, and failing the point
@@ -559,7 +1114,7 @@ function writeReplay(destination: string, recording: Recording): void {
  *
  * ```ts
  * const point = await captureReplay(harness, "goal", () => driveGoal(harness));
- * expect(point.hit).toBe(true);
+ * assertEqual(point.hit, true);
  * ```
  *
  * The assertions stay exactly where they were and read exactly what they did.
@@ -572,7 +1127,7 @@ export async function captureReplay<T>(
   outputId: string,
   scenario: () => T | Promise<T>,
 ): Promise<T> {
-  const destination = replayDestination(outputId);
+  const destination = mediaDestination(outputId, "json.gz");
   if (destination === null) return scenario();
 
   h.engine.startRecording();
@@ -584,14 +1139,42 @@ export async function captureReplay<T>(
   }
 }
 
+/**
+ * Keep the frame currently on the canvas as the review item's `outputId` output.
+ *
+ * The companion to {@link captureReplay}, for a point whose evidence is one
+ * PICTURE rather than a stretch of motion: which screen the game opened on, what
+ * colour it drew a paddle, where the letterbox bars fell. A recording of a still
+ * screen would be the same frame three hundred times over, and a reviewer looking
+ * at a menu wants to look at the menu.
+ *
+ * What is written is whatever the last frame that RAN left behind, so call it
+ * after the frame that poses the thing under test — an `advance(1)` following the
+ * arrangement — and before the assertions, so a check that fails still leaves the
+ * picture that shows why. Nothing here can change a verdict: outside a run the
+ * media directory is unset and this is a no-op, and a still that cannot be written
+ * is reported as an output that never turned up, which is a fact about the host
+ * rather than about the build.
+ */
+export function captureStill(h: Harness, outputId: string): void {
+  const destination = mediaDestination(outputId, "png");
+  if (destination === null) return;
+  try {
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, h.canvas.toBuffer("image/png"));
+  } catch (error) {
+    console.warn(`carom: could not write ${destination}: ${String(error)}`);
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Scenario helpers                                                           */
 /* -------------------------------------------------------------------------- */
 //
-// Each of these poses a situation through `src/debug.ts` and then lets the real
-// simulation run. They are the in-process descendants of the old browser suite's
-// `validation/_helpers.mjs`, and the geometry and the tolerances they encode are
-// the same ones that suite established.
+// Each of these poses a situation through the debug surface and then lets the real
+// simulation run. They fix only geometry: where a ball or a paddle is put. Every
+// threshold a check asserts is stated in the check itself, derived from the
+// figure or rule specs/ states for it.
 
 /** Off-lane parking height for a paddle a scenario must keep out of the way. */
 export const PARKED_CY = 150;
@@ -609,19 +1192,83 @@ export const CLEAR_LANE_Y = FIELD_CY;
  */
 export const LEAD_TICKS = 60; // 0.5 s at 120 Hz
 
-/** Park both paddles out of the mid-field lane so a shot down it is unobstructed. */
+/**
+ * Park both paddles out of the mid-field lane so a shot down it is unobstructed,
+ * and hold the obstacles upright.
+ *
+ * Under `gyre` the obstacles sway and turn with a clock that runs during the
+ * countdown, so by the time a scenario is posed they are a fraction of a degree
+ * off upright. `setObstacleClock(0)` puts them at their base centres, upright,
+ * and holds them there (specs/instrumentation.md), which is the pose at which
+ * gyre's oriented rule "reduces to the upright case" (specs/playfield.md) and a
+ * shared check about an obstacle face means the same thing in every variant.
+ * The operation is gyre's alone; the other variants' obstacles never move.
+ */
 export function clearPaddles(h: Harness): void {
   h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
   h.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
+  h.debug.setObstacleClock?.(0);
 }
 
 /**
- * Open a driven match and run it up to live play.
+ * Where a scenario parks the balls it is not about, in logical units.
+ *
+ * `multi` puts three balls on the field and every shared check is about one of
+ * them, so the other two are moved off the scenario before it is posed. These are
+ * the two corners of the LEFT goal channel: inside the field, so a parked ball
+ * scores nothing; behind the left paddle and clear of its x range at every
+ * height, so it is never struck; and hard against two walls, which is the one
+ * part of the field a driven ball does not cross. The shared scenarios aim down
+ * the mid-field lane at `FIELD_CY`, at a paddle face, or at an obstacle, and the
+ * one thing any of them sends past a goal edge leaves by the RIGHT one.
+ *
+ * A scenario that does drive a ball out of the left goal passes its own pair to
+ * {@link parkSpares} instead; see `multi/harness.ts`.
+ */
+export const SPARE_PARKS: readonly { x: number; y: number }[] = [
+  { x: BALL_R + 2, y: BALL_R + 2 },
+  { x: BALL_R + 2, y: FIELD_H - BALL_R - 2 },
+];
+
+/**
+ * Take every ball but the first out of the scenario, and report how many there
+ * were.
+ *
+ * Under `base` and `gyre` there is one ball and this does nothing. Under `multi`
+ * it poses balls one and two at {@link SPARE_PARKS}, motionless and spinless,
+ * which `specs/instrumentation.md` says of `setBall` is what takes a ball into
+ * live play and out of its hold — so they neither launch nor move again, and the
+ * check that follows reads a field with one moving ball on it, exactly as it does
+ * under the other two variants.
+ */
+export function parkSpares(
+  h: Harness,
+  parks: readonly { x: number; y: number }[] = SPARE_PARKS,
+): number {
+  const balls = allBalls(h.snapshot());
+  for (let index = 1; index < balls.length; index += 1) {
+    const park = parks[(index - 1) % parks.length];
+    h.debug.setBall(index, { ...park, vx: 0, vy: 0, spin: 0 });
+  }
+  return balls.length;
+}
+
+/**
+ * Open a driven match, put every ball but the first out of the way, and run it up
+ * to live play.
  *
  * `serve()` only expires the pre-serve hold; the LAUNCH is the build's own, on
  * the frame after. So this sweeps until the game reports live play, which is the
  * state every posed scenario below assumes — posing a ball while the game is
  * still counting down would have the build's serve overwrite the pose.
+ *
+ * The spares are parked between the match opening and the hold expiring, so under
+ * `multi` the one ball that launches is the one the scenario is about.
+ *
+ * Under `gyre` the obstacle clock is posed at `0` before the hold expires, so a
+ * scenario opens on upright obstacles at their base centres rather than on
+ * whatever fraction of a turn the countdown's frames happened to run; see
+ * {@link clearPaddles}. The operation is gyre's alone.
  */
 export async function startPlaying(
   h: Harness,
@@ -629,6 +1276,8 @@ export async function startPlaying(
 ): Promise<UntilResult> {
   h.debug.reset();
   h.debug.startMatch(mode);
+  parkSpares(h);
+  h.debug.setObstacleClock?.(0);
   h.debug.serve();
   return h.until((s) => s.screen === "playing", { maxFrames: 60, poll: 1 });
 }
@@ -736,7 +1385,7 @@ export function arrangePaddleHit(
 
 export interface PaddleHitResult {
   hit: boolean;
-  ball: CaromSnapshot["ball"];
+  ball: BallView;
   /** The struck paddle, at the instant of the rebound. */
   paddle: { cy: number; vy: number };
   snapshot: CaromSnapshot;
@@ -755,12 +1404,12 @@ export async function drivePaddleHit(
   const maxFrames = (options.maxFrames ?? 72) + (options.leadTicks ?? 0);
   const rebounded =
     side === "left"
-      ? (s: CaromSnapshot): boolean => s.ball.vx > 0
-      : (s: CaromSnapshot): boolean => s.ball.vx < 0;
+      ? (s: CaromSnapshot): boolean => ball0(s).vx > 0
+      : (s: CaromSnapshot): boolean => ball0(s).vx < 0;
   const swept = await h.until(rebounded, { maxFrames, poll: 1 });
   return {
     hit: swept.hit,
-    ball: swept.snapshot.ball,
+    ball: ball0(swept.snapshot),
     paddle: swept.snapshot.paddles[side],
     snapshot: swept.snapshot,
   };
@@ -795,7 +1444,7 @@ export async function driveRallySpeeds(
   let previousSign = -1; // the ball is launched toward the left paddle
 
   for (let hit = 0; hit < hits; hit += 1) {
-    const sign = Math.sign(h.snapshot().ball.vx);
+    const sign = Math.sign(ball0(h.snapshot()).vx);
     if (sign !== 0) previousSign = sign;
     const want = -previousSign;
 
@@ -806,12 +1455,13 @@ export async function driveRallySpeeds(
           leftPlay = true;
           return true;
         }
-        return Math.sign(s.ball.vx) === want && s.ball.vx !== 0;
+        const ball = ball0(s);
+        return Math.sign(ball.vx) === want && ball.vx !== 0;
       },
       { maxFrames: 600, poll: 6 },
     );
     if (leftPlay || !leg.hit) break;
-    speeds.push(leg.snapshot.ball.speed);
+    speeds.push(ball0(leg.snapshot).speed);
     previousSign = want;
   }
   return speeds;
@@ -896,12 +1546,13 @@ export async function driveAiScenario(
 
   const swept = await h.until(
     (s) => {
-      if (s.ball.vx > 0) sawIncoming = true;
+      const ball = ball0(s);
+      if (ball.vx > 0) sawIncoming = true;
       if (s.score.p1 > start) {
         result = "scored";
         return true;
       }
-      if (sawIncoming && s.ball.vx < 0 && s.ball.x < FIELD_W) {
+      if (sawIncoming && ball.vx < 0 && ball.x < FIELD_W) {
         result = "blocked";
         return true;
       }
@@ -989,8 +1640,8 @@ export function driveObstacleBounce(
 ): Promise<UntilResult> {
   const reversed =
     from === "left"
-      ? (s: CaromSnapshot): boolean => s.ball.vx < 0
-      : (s: CaromSnapshot): boolean => s.ball.vx > 0;
+      ? (s: CaromSnapshot): boolean => ball0(s).vx < 0
+      : (s: CaromSnapshot): boolean => ball0(s).vx > 0;
   return h.until(reversed, {
     maxFrames: options.maxFrames ?? 240,
     poll: options.poll ?? 1,
@@ -1021,7 +1672,9 @@ export async function arrangeLiveBall(
 // PLAYED, and what the keyboard did — needs three things the scenario helpers
 // above do not provide: a cue record stamped with the frame each cue fired on,
 // a colour sampler over the rendered canvas, and a way to ask what a single
-// frame's render actually asked the context for. They are gathered here rather
+// frame's render actually asked the context for. The palette is the build's
+// own (specs/overview.md), so nothing here knows a colour: the samplers compare
+// what was painted against what else was painted. They are gathered here rather
 // than folded in above so the two halves of this file stay separable.
 
 import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
@@ -1029,18 +1682,16 @@ import { OBSTACLE_CENTERS, P1_X0, P2_X1, TRAIL_TIME } from "../src/constants";
 /* ---- Controls tolerances -------------------------------------------------- */
 
 /**
- * A clearly non-trivial paddle displacement, in logical px.
+ * A clearly non-trivial paddle displacement, in logical units.
  *
  * The controls checks are about which paddle a key moves and which way, not how
- * fast — the speed is the `paddle-movement` category's point, and stating it in
- * both places would fail one build twice for one fault. At the specified 720 px/s
- * the 36-frame hold below travels 216 px, so this bound is crossed several times
- * over by any build in the right ballpark and never by one that did not move.
+ * fast: the speed is the `paddle-movement` category's point, and stating it in
+ * both places would fail one build twice for one fault. At PADDLE_SPEED the
+ * 36-frame hold `holdMove` defaults to travels 216 units, so this bound is
+ * crossed several times over by a build moving the right paddle the right way
+ * and never by one that did not move it.
  */
 export const MOVE_MIN = 40;
-
-/** How far a paddle a key must NOT touch may drift, in logical px. */
-export const STILL_MAX = 6;
 
 /* ---- Cues ----------------------------------------------------------------- */
 
@@ -1083,8 +1734,8 @@ export interface Rgb {
 }
 
 /**
- * The on-field points the colour checks sample, in logical px, valid on the
- * scene `arrangeColorScene` poses.
+ * The on-field points the visibility checks sample, in logical units, valid on
+ * the scene `arrangeColorScene` poses.
  *
  * Each sits well inside the shape it names — a paddle is 16 wide and an obstacle
  * 20, so a point on the centre line is 8 px from the nearest edge and the 4 px
@@ -1098,9 +1749,25 @@ export const COLOR_POINTS = {
   obstacle: OBSTACLE_CENTERS[0],
   /** A clean mid-field spot, clear of the paddles, both obstacles, and the net. */
   ball: { x: 300, y: FIELD_CY },
-  /** An empty patch of field, clear of every drawn element. */
-  background: { x: 500, y: 650 },
 } as const;
+
+/**
+ * Candidate patches of empty field, in logical units, clear of every element
+ * this specification places: the paddles, both obstacles at every gyre pose,
+ * the net, the parked ball, and the top of the field where the scores sit.
+ *
+ * The field is dark and every body on it is bright (specs/overview.md), but the
+ * mode label's copy and placement are the build's, so no single patch is
+ * guaranteed bare. The darkest of several is: a label is drawn to be read, so
+ * it is lighter than the field it sits on, and a patch it covers reads lighter
+ * than one it does not.
+ */
+export const FIELD_POINTS: readonly { x: number; y: number }[] = [
+  { x: 500, y: 650 },
+  { x: 200, y: 600 },
+  { x: 1000, y: 300 },
+  { x: 1100, y: 620 },
+];
 
 /**
  * The rendered colour at a logical point, averaged over a small cluster.
@@ -1133,25 +1800,51 @@ export function sampleColor(h: Harness, x: number, y: number): Rgb {
   };
 }
 
-/** A `#rrggbb` colour from `src/constants.ts`, as channels to compare against. */
-export function hexRgb(hex: string): Rgb {
-  const value = Number.parseInt(hex.replace("#", ""), 16);
-  return {
-    r: (value >> 16) & 0xff,
-    g: (value >> 8) & 0xff,
-    b: value & 0xff,
-  };
-}
-
 /** Euclidean distance between two colours, 0 to about 441. */
 export function colorDistance(a: Rgb, b: Rgb): number {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
 
-/** Every point in `COLOR_POINTS`, sampled off the canvas as it stands. */
+/** A colour's luminance, the reading the field is darkest on. */
+function luminance(c: Rgb): number {
+  return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+/**
+ * The bare field's colour: the darkest of the {@link FIELD_POINTS} patches,
+ * sampled off the canvas as it stands.
+ */
+export function sampleField(h: Harness): Rgb {
+  const samples = FIELD_POINTS.map((point) => sampleColor(h, point.x, point.y));
+  return samples.reduce((darkest, sample) =>
+    luminance(sample) < luminance(darkest) ? sample : darkest,
+  );
+}
+
+/**
+ * The build's exported `BACKGROUND`, rasterized: the color the engine clears
+ * the whole canvas to each frame (specs/overview.md), read back through the
+ * same canvas implementation the harness samples with, so a pixel the game
+ * never drew over compares against it exactly.
+ *
+ * The fill is repeated rather than applied once so a translucent color reads
+ * as the engine leaves it: the engine composites its clear over the previous
+ * frame every frame, which converges on the color's own channels, and a single
+ * fill over a transparent canvas would not.
+ */
+export function clearColor(): Rgb {
+  const probe = createCanvas(1, 1);
+  const ctx = probe.getContext("2d");
+  ctx.fillStyle = BACKGROUND;
+  for (let i = 0; i < 255; i += 1) ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return { r, g, b };
+}
+
+/** Every point in `COLOR_POINTS` and the bare field, sampled as they stand. */
 export function sampleScene(
   h: Harness,
-): Record<keyof typeof COLOR_POINTS, Rgb> {
+): Record<keyof typeof COLOR_POINTS | "background", Rgb> {
   return {
     leftPaddle: sampleColor(
       h,
@@ -1165,11 +1858,7 @@ export function sampleScene(
     ),
     obstacle: sampleColor(h, COLOR_POINTS.obstacle.x, COLOR_POINTS.obstacle.y),
     ball: sampleColor(h, COLOR_POINTS.ball.x, COLOR_POINTS.ball.y),
-    background: sampleColor(
-      h,
-      COLOR_POINTS.background.x,
-      COLOR_POINTS.background.y,
-    ),
+    background: sampleField(h),
   };
 }
 
@@ -1292,4 +1981,230 @@ export function drawnPoints(
     }
   }
   return points;
+}
+
+/* ---- Where a frame put its text ------------------------------------------- */
+
+/** One run of text a frame drew, and the logical x range its glyphs span. */
+export interface TextSpan {
+  text: string;
+  /** The anchor, in logical units. */
+  x: number;
+  y: number;
+  /** The horizontal extent of the glyphs, in logical units. */
+  left: number;
+  right: number;
+}
+
+/**
+ * Every run of text the frame drew, placed in logical units.
+ *
+ * A build may anchor its text through any `translate`/`scale` it likes and
+ * align it any way it likes, so the anchor is mapped through the transform the
+ * context held at the call and the run is extended about it by its measured
+ * width and `textAlign`. Which way a `start`/`end` alignment reads is the
+ * page's direction; this game draws no right-to-left text, so they are left and
+ * right.
+ */
+export function drawnTextSpans(h: Harness): TextSpan[] {
+  const view = h.engine.viewport();
+  const spans: TextSpan[] = [];
+  for (const call of h.calls) {
+    if (call.kind !== "call" || call.text === undefined) continue;
+    const [text, ax, ay] = call.args;
+    if (typeof text !== "string" || typeof ax !== "number") continue;
+    if (typeof ay !== "number") continue;
+    const { transform: m, width, textAlign } = call.text;
+    // Device-space anchor, then back through the engine's fit to logical units.
+    const deviceX = m.a * ax + m.c * ay + m.e;
+    const deviceY = m.b * ax + m.d * ay + m.f;
+    const x = (deviceX - view.offsetX) / view.scale;
+    const y = (deviceY - view.offsetY) / view.scale;
+    // The run's width under the same horizontal scale the anchor took.
+    const w = (width * Math.hypot(m.a, m.b)) / view.scale;
+    const before =
+      textAlign === "center"
+        ? w / 2
+        : textAlign === "right" || textAlign === "end"
+          ? w
+          : 0;
+    spans.push({ text, x, y, left: x - before, right: x - before + w });
+  }
+  return spans;
+}
+
+/* ---- The AI with nothing to defend ---------------------------------------- */
+
+/**
+ * A live Solo match with the ball travelling AWAY from the AI paddle, posed far
+ * from anything it could strike, and the AI paddle posed well off its home
+ * height, so what the real opponent does from here is governed by the homing
+ * rule alone (specs/modes/single-player.md).
+ */
+export async function arrangeAiHome(
+  h: Harness,
+  options: { paddleCy: number },
+): Promise<void> {
+  await startPlaying(h, "solo");
+  h.debug.setPaddle("left", { cy: PARKED_CY, vy: 0 });
+  h.debug.setPaddle("right", { cy: options.paddleCy, vy: 0 });
+  h.debug.setBall(0, { x: 1100, y: 200, vx: -300, vy: 0, spin: 0 });
+  h.debug.setAiControl(true);
+}
+
+/* ---- A shot at one obstacle face ------------------------------------------ */
+
+/** Which face of an axis-aligned obstacle a shot is aimed at. */
+export type Face = "left" | "right" | "top" | "bottom";
+
+/**
+ * Pose a straight shot at the midpoint of `face` of the axis-aligned obstacle
+ * `rect`, starting `runUp` units short of it and travelling at `speed`, with
+ * both paddles parked out of the way.
+ */
+export function arrangeFaceShot(
+  h: Harness,
+  rect: { x0: number; y0: number; x1: number; y1: number },
+  face: Face,
+  options: { runUp?: number; speed?: number } = {},
+): { vx: number; vy: number } {
+  const runUp = options.runUp ?? 180;
+  const speed = options.speed ?? 600;
+  const cx = (rect.x0 + rect.x1) / 2;
+  const cy = (rect.y0 + rect.y1) / 2;
+  const shot =
+    face === "left"
+      ? { x: rect.x0 - runUp, y: cy, vx: speed, vy: 0 }
+      : face === "right"
+        ? { x: rect.x1 + runUp, y: cy, vx: -speed, vy: 0 }
+        : face === "top"
+          ? { x: cx, y: rect.y0 - runUp, vx: 0, vy: speed }
+          : { x: cx, y: rect.y1 + runUp, vx: 0, vy: -speed };
+  clearPaddles(h);
+  h.debug.setBall(0, { ...shot, spin: 0 });
+  return { vx: shot.vx, vy: shot.vy };
+}
+
+/** Run the real collision until the component normal to `face` reverses. */
+export function driveFaceShot(
+  h: Harness,
+  face: Face,
+  options: UntilOptions = {},
+): Promise<UntilResult> {
+  const reversed: Record<Face, (s: CaromSnapshot) => boolean> = {
+    left: (s) => ball0(s).vx < 0,
+    right: (s) => ball0(s).vx > 0,
+    top: (s) => ball0(s).vy < 0,
+    bottom: (s) => ball0(s).vy > 0,
+  };
+  return h.until(reversed[face], {
+    maxFrames: options.maxFrames ?? 240,
+    poll: options.poll ?? 1,
+  });
+}
+
+/* ---- The trail, read off the canvas ------------------------------------- */
+
+/** An empty lane: below both obstacles, clear of the paddles and the net. */
+export const TRAIL_LANE_Y = 650;
+
+/** Where a trail drive poses the ball, and an empty patch of the same lane. */
+export const TRAIL_START_X = 300;
+export const TRAIL_BARE_X = 1100;
+
+/** Frames of flight before the frame that is read: longer than the trail's life. */
+export const TRAIL_FILL_TICKS = 24;
+
+/** How far a pixel must sit from the bare field to count as lit. */
+const LIT_MIN = 10;
+
+/**
+ * The widest run of bare field a streak may contain and still be one streak.
+ *
+ * A trail drawn from samples may be drawn sample by sample, and at the speed
+ * cap consecutive samples on the suite's clock are `SPEED_CAP / TICK_HZ`, about
+ * eight units, apart; a gap a little wider than that is still the same trail.
+ */
+const GAP_MAX = 12;
+
+/** How far behind the ball the lane is read, in logical units. */
+const TRAIL_SCAN = 240;
+
+/** The lane's bare pixels, by logical x, read with nothing drawn on it. */
+export type BareLane = Map<number, Rgb>;
+
+/** Where the lane scan starts behind the ball's center, and where it ends. */
+const TRAIL_SCAN_FROM = BALL_R + 3;
+const LANE_X0 = 20;
+
+/**
+ * Pose the ball in the empty lane at `speed`, fly it long enough to fill the
+ * trail, then record exactly one frame. The ball is returned as it was when that
+ * frame was drawn, along with the lane as it looked with nothing on it.
+ *
+ * The bare lane is read first, pixel by pixel, with the ball parked out of the
+ * scan at `TRAIL_BARE_X` for longer than the trail's life. Whatever the build
+ * draws on the field that is NOT the trail — a mode label whose copy and place
+ * are its own, a texture, a vignette — is in that reading too, so a lit pixel
+ * is one the flight changed, and nothing static can read as trail.
+ */
+export async function driveTrail(
+  h: Harness,
+  speed: number,
+): Promise<{ x: number; y: number; bare: BareLane }> {
+  await arrangeLiveBall(h, {
+    x: TRAIL_BARE_X,
+    y: TRAIL_LANE_Y,
+    vx: 0,
+    vy: 0,
+  });
+  await h.advance(TRAIL_FILL_TICKS);
+  const bare: BareLane = new Map();
+  for (let x = LANE_X0; x < TRAIL_BARE_X - 2 * BALL_R; x += 1) {
+    const [r, g, b] = h.pixel(x, TRAIL_LANE_Y);
+    bare.set(x, { r, g, b });
+  }
+  h.debug.setBall(0, {
+    x: TRAIL_START_X,
+    y: TRAIL_LANE_Y,
+    vx: speed,
+    vy: 0,
+    spin: 0,
+  });
+  await h.advance(TRAIL_FILL_TICKS);
+  h.calls.length = 0;
+  await h.advance(1);
+  const ball = ball0(h.snapshot());
+  return { x: ball.x, y: ball.y, bare };
+}
+
+/**
+ * How far behind the ball the unbroken run of lit pixels reaches along its lane,
+ * in logical units, measured from the ball's center.
+ *
+ * Each pixel is read against the same pixel of the bare lane, so whatever the
+ * build's palette and whatever else it draws there, a lit pixel is one the
+ * flight changed.
+ */
+export function trailReach(
+  h: Harness,
+  ball: { x: number; y: number; bare: BareLane },
+): number {
+  const ballX = Math.round(ball.x);
+  let reach = 0;
+  let gap = 0;
+  for (let d = TRAIL_SCAN_FROM; d <= TRAIL_SCAN; d += 1) {
+    const x = ballX - d;
+    const bare = ball.bare.get(x);
+    if (bare === undefined) break;
+    const [r, g, b] = h.pixel(x, TRAIL_LANE_Y);
+    if (colorDistance({ r, g, b }, bare) > LIT_MIN) {
+      reach = d;
+      gap = 0;
+    } else {
+      gap += 1;
+      if (gap > GAP_MAX) break;
+    }
+  }
+  return reach;
 }

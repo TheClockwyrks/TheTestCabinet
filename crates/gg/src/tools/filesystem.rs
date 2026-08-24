@@ -27,11 +27,11 @@
 //!
 //! How much of a file one `read_file` call may return is the first of those per-tool
 //! variables, selected by the read-file capability's *implementation* (see [`ReadPolicy`]):
-//! [unlimited](ReadPolicy::Unlimited) (the whole file, one call) or a
-//! [default cap](ReadPolicy::DefaultCap) (N lines unless the model explicitly asks for
-//! more). The capped mode takes `offset`/`limit` so the agent can page through a file; the
-//! unlimited mode offers neither, because there is nothing to page. An enabled capability names
-//! the mode and writes the cap it is conducted at; gg selects neither on an operator's behalf.
+//! [unlimited](ReadPolicy::Unlimited) (to the end of the file unless the model asks for a
+//! `limit`) or a [default cap](ReadPolicy::DefaultCap) (N lines unless the model explicitly asks
+//! for more). Both modes take `offset`/`limit` and honour them whenever they are given; the modes
+//! differ only in what a call that names no `limit` gets. An enabled capability names the mode and
+//! writes the cap it is conducted at; gg selects neither on an operator's behalf.
 //!
 //! Neither mode can refuse a whole-file read — see [`ReadPolicy`] for why that is a property
 //! rather than an accident.
@@ -57,6 +57,12 @@ use async_trait::async_trait;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Value, json};
+
+#[path = "filesystem.search.rs"]
+mod search;
+
+pub(crate) use search::clip_line;
+pub use search::{SEARCH_TOOL, SearchTool};
 
 use super::{
     ApiData, ArgumentError, DirEntryData, DirEntryKind, FileImageData, FileTextData, Tool,
@@ -127,8 +133,9 @@ const LINE_CAP_CONSEQUENCE: &str = "a cap of no lines would make every read retu
 /// answers with once the launch it was reading is already refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadPolicy {
-    /// Return the whole file in one call, with no `offset`/`limit` arguments — the control arm,
-    /// selected by [`unlimited`](READ_MODE_UNLIMITED).
+    /// Read to the end of the file when no `limit` is named — the control arm, selected by
+    /// [`unlimited`](READ_MODE_UNLIMITED). An `offset` and a `limit` are honoured exactly as under
+    /// the capped mode; the mode only decides what a call that names no `limit` gets.
     Unlimited,
     /// Return this many lines per call *by default*, honoring any larger `limit` the agent
     /// explicitly asks for. The cap is a nudge rather than a ceiling.
@@ -222,8 +229,9 @@ impl ReadPolicy {
     }
 
     /// The line cap in force, or `None` under [`Unlimited`](Self::Unlimited). Read by the tool
-    /// itself (to window a read) and by the [system prompt](crate::prompts), which states the cap
-    /// up front so the model is not left to discover it one truncated read at a time.
+    /// itself (to word the `limit` argument's default) and by the [system prompt](crate::prompts),
+    /// which states the cap up front so the model is not left to discover it one truncated read at
+    /// a time.
     ///
     /// [`LaunchRefused`](Self::LaunchRefused) answers `None` as well, because there is no cap to
     /// state and no run to state it in.
@@ -236,17 +244,19 @@ impl ReadPolicy {
 
     /// How many lines a call asking for `requested` lines actually gets. `None` for `requested`
     /// means the agent named no `limit`, so the mode's default applies; `None` in the return
-    /// means the whole file.
+    /// means to the end of the file.
     ///
-    /// A `requested` window is always honoured verbatim — no mode reduces one — which is what
-    /// makes a whole-file read reachable from every mode.
+    /// A `requested` window is always honoured verbatim — no mode reduces it and no mode ignores
+    /// it. The mode decides only what an absent `limit` means: the cap under the capped mode, the
+    /// end of the file under the unlimited one. That is what makes a whole-file read reachable from
+    /// every mode, and a paged read reachable from every mode too.
     fn window(&self, requested: Option<usize>) -> Option<usize> {
         match (*self, requested) {
+            (_, Some(want)) => Some(want),
             // A refused launch offers no window either, and nothing reaches this to be windowed.
-            (Self::Unlimited | Self::LaunchRefused, _) => None,
-            (Self::DefaultCap(cap), None) => Some(cap),
+            (Self::Unlimited | Self::LaunchRefused, None) => None,
             // The default cap is exactly the one the agent can talk its way past.
-            (Self::DefaultCap(_), Some(want)) => Some(want),
+            (Self::DefaultCap(cap), None) => Some(cap),
         }
     }
 }
@@ -328,7 +338,7 @@ pub fn resolve_path(cwd: &Path, path: &str) -> Result<PathBuf, String> {
     Ok(cwd.join(path))
 }
 
-/// The `path` argument's schema, worded once for all four filesystem tools: `lead` names what
+/// The `path` argument's schema, worded once for all five filesystem tools: `lead` names what
 /// the path points at, and the resolution rule is the same everywhere.
 fn path_param(lead: &str) -> Value {
     json!({
@@ -490,7 +500,7 @@ impl ReadFileTool {
 
         // The sidecar says the same three things the prose does — what it is, how big it is, and
         // whether the model is actually being shown it — so a structured caller never has to
-        // decide whether "cannot be shown to you" appearing in a sentence means it was withheld.
+        // decide whether "cannot be displayed" appearing in a sentence means it was withheld.
         let described = |shown: bool, why: Option<&str>| {
             ApiData::FileImage(FileImageData {
                 media_type: format.media_type.to_string(),
@@ -512,9 +522,9 @@ impl ReadFileTool {
             };
             return ToolOutcome::ok(
                 format!(
-                    "`{path}` is a {label} image ({human}). It cannot be shown to you: \
-                     {why}. Reading it again will not help — work from the written \
-                     specification, and treat any file named as a reference image the same way."
+                    "`{path}` is a {label} image ({human}); it cannot be displayed: {why}. \
+                     Re-reading will not help — work from the written specification, and treat \
+                     any file named as a reference image the same way."
                 ),
                 format!("{label} image, {human} (not shown: no image input)"),
             )
@@ -528,8 +538,8 @@ impl ReadFileTool {
             );
             return ToolOutcome::ok(
                 format!(
-                    "`{path}` is a {label} image ({human}). It is too large to display \
-                     (the limit is {}); work from the written specification instead.",
+                    "`{path}` is a {label} image ({human}); too large to display (limit {}). \
+                     Work from the written specification instead.",
                     human_bytes(IMAGE_ATTACH_CAP)
                 ),
                 format!("{label} image, {human} (too large to show)"),
@@ -549,8 +559,9 @@ impl ReadFileTool {
         .with_data(described(true, None))
     }
 
-    /// The whole-file read: gg's original behavior, offered under
-    /// [`Unlimited`](ReadPolicy::Unlimited).
+    /// The whole-file read: what [`Unlimited`](ReadPolicy::Unlimited) answers a call that names
+    /// neither `offset` nor `limit` with. Byte for byte the same text a window covering the file
+    /// returns, without the line splitting.
     fn read_whole(bytes: &[u8]) -> ToolOutcome {
         let total = bytes.len();
         let truncated = total > READ_FILE_CAP;
@@ -588,13 +599,14 @@ impl ReadFileTool {
         ))
     }
 
-    /// The windowed read the capped modes offer: `window` lines starting at the 1-based
-    /// `offset`, with a footer telling the agent what it is looking at and how to get the
-    /// rest.
+    /// The windowed read every mode offers: `window` lines starting at the 1-based `offset`,
+    /// with a footer telling the agent what it is looking at and how to get the rest. An
+    /// `offset` without a `limit` under the unlimited mode arrives here with a window of
+    /// `usize::MAX`, which reads from the offset to the end of the file.
     ///
     /// A window that happens to cover the whole file produces **no** footer, so a file
-    /// shorter than the cap reads identically under both modes and only files big
-    /// enough to actually be capped differ between arms.
+    /// shorter than the cap reads identically under both modes and only reads that were
+    /// actually windowed (a start past line 1, or an end short of the file) say so.
     fn read_window(bytes: &[u8], offset: usize, window: usize) -> ToolOutcome {
         let text = String::from_utf8_lossy(bytes);
         let lines: Vec<&str> = text.split_inclusive('\n').collect();
@@ -664,25 +676,14 @@ impl Tool for ReadFileTool {
 
     fn definition(&self) -> ToolDefinition {
         let path = path_param("File to read");
-        // The unlimited mode offers no paging arguments at all: with the whole file in
-        // every result there is nothing for the agent to page through, and offering knobs
-        // that never bind would misrepresent the arm.
-        let Some(cap) = self.policy.line_cap() else {
-            return ToolDefinition::new(
-                "read_file",
-                "Read a file.",
-                json!({
-                    "type": "object",
-                    "properties": { "path": path },
-                    "required": ["path"],
-                    "additionalProperties": false
-                }),
-            );
+        // Both modes offer the paging arguments and honour them; they differ only in what an
+        // absent `limit` means, which is stated on `limit` itself. The cap belongs on the
+        // argument that overrides it: the system prompt already tells a capped run's model how
+        // many lines a read returns.
+        let limit_description = match self.policy.line_cap() {
+            Some(cap) => format!("Lines to return (default {cap}; larger is allowed)."),
+            None => "Lines to return (default: to the end of the file).".to_string(),
         };
-
-        // The cap itself belongs on the argument that overrides it: the system prompt already
-        // tells this run's model how many lines a read returns.
-        let limit_description = format!("Lines to return (default {cap}; larger is allowed).");
 
         ToolDefinition::new(
             "read_file",
@@ -762,6 +763,10 @@ impl ReadFileTool {
 
         match self.policy.window(limit) {
             Some(window) => Self::read_window(&bytes, offset, window),
+            // No `limit` and no cap: an `offset` alone still windows the read — from that line
+            // to the end of the file, footer included — and only a call that named neither
+            // argument gets the file whole.
+            None if offset > 1 => Self::read_window(&bytes, offset, usize::MAX),
             None => Self::read_whole(&bytes),
         }
     }
@@ -1006,7 +1011,7 @@ impl ListDirTool {
         let path = path.unwrap_or_else(|| ".".to_string());
         let dir = match resolve_path(&ctx.workspace_dir, &path) {
             Ok(dir) => dir,
-            Err(why) => return invalid_argument(format!("`list_dir`: {why}")),
+            Err(why) => return invalid_argument(why),
         };
 
         let read = match std::fs::read_dir(&dir) {

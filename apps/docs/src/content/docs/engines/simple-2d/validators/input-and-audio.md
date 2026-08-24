@@ -45,10 +45,10 @@ a release.
 
 ```ts
 hold(h, "p1-up");
-await engine.advance(36);
+await h.engine.advance(36);
 release(h, "p1-up");
 
-expect(state.left.cy).toBeLessThan(FIELD_H / 2);
+expect(h.snapshot().paddles.left.cy).toBeLessThan(FIELD_H / 2);
 ```
 
 An edge is armed when an action's value goes from zero to non-zero, and the
@@ -75,10 +75,11 @@ after it.
 
 ```ts
 const cues: string[] = [];
-const off = engine.events.on("cue:played", ({ cue }) => cues.push(cue));
+const off = h.engine.events.on("cue:played", ({ cue }) => cues.push(cue));
 
-setBall(state, { x: P1_X1 + BALL_R, y: state.left.cy, vx: -600, vy: 0 });
-await engine.advance(10);
+const { left } = h.snapshot().paddles;
+h.setBall({ x: P1_X1 + BALL_R, y: left.cy, vx: -600, vy: 0 });
+await h.engine.advance(10);
 off();
 
 expect(cues).toContain("paddle-hit");

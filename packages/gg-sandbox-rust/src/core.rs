@@ -20,10 +20,10 @@ use crate::bindings::test_cabinet::gg::types as wire;
 /// A failure a program expects is an ordinary `match` on [`code`](Self::code):
 ///
 /// ```ignore
-/// match files::read_text_file("notes.md", files::ReadOptions::default()) {
-///     Ok(notes) => views::open_text("notes", &notes)?,
+/// match skills::read_skill("testing") {
+///     Ok(body) => views::open_text("skill", &body)?,
 ///     Err(failure) if failure.code == core::ApiErrorCode::NotFound => {
-///         files::write_file("notes.md", "")?;
+///         gg::log("no such skill");
 ///     }
 ///     Err(failure) => return Err(failure.into()),
 /// }

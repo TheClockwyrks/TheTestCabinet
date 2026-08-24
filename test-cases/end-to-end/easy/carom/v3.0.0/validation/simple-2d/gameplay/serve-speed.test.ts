@@ -6,17 +6,17 @@
 // is posed: `startMatch` opens the countdown and `serve` ends it, and what leaves
 // is whatever the build's own serve produced.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { SERVE_MAX_ANGLE, SERVE_SPEED } from "../../src/constants";
-import {
-  angleDeg,
-  captureReplay,
-  createHarness,
-  type Harness,
-} from "../harness";
+import { afterEach, beforeEach, it } from "vitest";
+import { SERVE_SPEED } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
+import { ball0, captureReplay, createHarness, type Harness } from "../harness";
 
-/** The old browser suite's margin: 15% of the spec speed. */
-const SPEED_TOLERANCE = SERVE_SPEED * 0.15;
+/**
+ * The review item's margin: one percent of SERVE_SPEED. The serve leaves at
+ * exactly SERVE_SPEED (specs/balls.md) and is read on the launch frame, on which
+ * it is not advanced.
+ */
+const SPEED_TOLERANCE = SERVE_SPEED * 0.01;
 
 /**
  * Frames of the pre-serve hold recorded before the hold is expired.
@@ -47,7 +47,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("serves the ball at the base serve speed", async () => {
@@ -67,14 +67,10 @@ it("serves the ball at the base serve speed", async () => {
     return swept;
   });
 
-  expect(launched.hit).toBe(true);
-  expect(
-    Math.abs(launched.snapshot.ball.speed - SERVE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
-  // The serve is within 30 degrees of horizontal, so the speed above is a real
-  // volley rather than a ball dropped down the field at the right magnitude.
-  expect(angleDeg(launched.snapshot.ball)).toBeLessThanOrEqual(
-    (SERVE_MAX_ANGLE * 180) / Math.PI,
+  assertEqual(launched.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(ball0(launched.snapshot).speed - SERVE_SPEED),
+    SPEED_TOLERANCE,
   );
-  expect(harness.assetFailures).toEqual([]);
+  assertDeepEqual(harness.assetFailures, []);
 });

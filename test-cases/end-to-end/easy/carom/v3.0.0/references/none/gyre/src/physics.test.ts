@@ -309,6 +309,23 @@ describe("oriented obstacles", () => {
     }
   });
 
+  it("pushes a center that ended up inside the rectangle clear of the nearest face", () => {
+    // Posed two units inside the long face of a tilted obstacle: the shallowest
+    // way out is along that face's normal, and the ball ends BALL_R off it.
+    const theta = 0.6;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+    const lx = OBSTACLE_HW - 2;
+    const b = ball({ x: A.x + lx * cos, y: A.y + lx * sin, vx: 0, vy: 0 });
+    const [left, right] = paddles();
+    const events = step(b, left, right, only(theta), FRAME);
+    expect(events.obstacle).toBe(true);
+    const dx = b.x - A.x;
+    const dy = b.y - A.y;
+    expect(dx * cos + dy * sin).toBeCloseTo(OBSTACLE_HW + BALL_R, 6);
+    expect(-dx * sin + dy * cos).toBeCloseTo(0, 6);
+  });
+
   it("never tunnels through a tilted obstacle at the speed cap", () => {
     // 0.2 s at the speed cap is ~196 px of travel in ONE call — far enough to
     // step clean over a 20 px bar if the frame were integrated in one go. The

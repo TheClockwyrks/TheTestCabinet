@@ -8,13 +8,14 @@ package gg;
  * same reason — a checked exception would put a {@code try} around every line of a composed program.
  *
  * <pre>{@code
+ * String name = "gg.docs.Docs.search";
  * try {
- *     Views.openText("notes", Files.readTextFile("NOTES.md"));
+ *     Views.openDocsView(name);
  * } catch (ApiError failure) {
  *     if (failure.code() != ApiErrorCode.NOT_FOUND) {
  *         throw failure;
  *     }
- *     Views.openText("notes", "there are no notes yet");
+ *     Views.openText("docs", "nothing on this surface is called " + name);
  * }
  * }</pre>
  *
@@ -61,8 +62,8 @@ public final class ApiError extends RuntimeException {
     /**
      * The call that failed, by the key of the operation this program reached for.
      *
-     * <p>{@code read_file} for {@code Files.readFile}, {@code read_text_file} for
-     * {@code Files.readTextFile}.
+     * <p>{@code open_text} for {@code Views.openText}, {@code open_docs_view} for
+     * {@code Views.openDocsView}.
      *
      * @return gg's own key for the call
      */

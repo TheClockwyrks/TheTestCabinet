@@ -1,17 +1,20 @@
-// paddle-movement/speed-solo-ai — the AI paddle's chase speed.
+// paddle-movement/speed-solo-ai — the AI paddle's chase speed in Solo.
 //
-// The REAL AI is handed control of its paddle and given a ball far down the field
-// to chase, and the distance it covers over a short window while chasing at full
-// speed is measured back into a speed. Nothing poses the AI's motion: its own
-// tracking, at its own pace, is what is measured.
+// specs/modes/single-player.md fixes the AI exactly: with the ball in flight
+// toward it, `target = ball.y - ball.vy * AI_REACT`, `diff = target - cy`, and
+// beyond the deadzone `vy = sign(diff) * min(AI_SPEED, |diff| / dt)`, then the
+// paddle integrates `vy * dt`. So a paddle far from its target moves at
+// exactly `AI_SPEED` (560 units per second) every frame until it is within
+// `AI_SPEED * dt` of the deadzone. The real AI is handed its paddle with a
+// level ball far down the field, and its displacement over a short window is
+// measured back into a speed; two percent is rounding room.
 //
-// The bound is a band rather than a figure. The AI eases off as it nears its
-// target and its speed is deliberately below the human's so it stays beatable, so
-// what a check can honestly require is that it chases at a competent,
-// non-trivial rate AND stays slower than a player.
+// The window: from `cy = 120` toward a target of 650 the paddle is over 500
+// units short, and covers 56 in the 12 frames measured.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import { PADDLE_SPEED } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
+import { AI_SPEED } from "../constants";
 import {
   arrangeAiChase,
   captureReplay,
@@ -20,20 +23,9 @@ import {
   type Harness,
 } from "../harness";
 
-/** The old browser suite's floor: a competent, non-trivial chase, in px/s. */
-const CHASE_FLOOR = 250;
+const SPEED_TOLERANCE = AI_SPEED * 0.02;
 
-/**
- * Frames of the chase recorded after the measured window.
- *
- * `driveAiChaseSpeed` measures over a tenth of a second, and that window has to
- * stay where it is: it is short enough that the AI is at full stride throughout,
- * which is what makes the reading a chase SPEED rather than an average over its
- * easing. Twelve frames is not a clip, though, and the review item promises "the
- * AI paddle chasing at its speed". So the rest of the chase is recorded after the
- * measurement, inside the same section — the AI is still short of the ball when
- * these run out, so what the clip shows is a paddle running the field down.
- */
+/** Frames of the chase recorded after the measured window, for the replay. */
 const CHASE_TICKS = 84; // 0.7 s
 
 let harness: Harness;
@@ -42,11 +34,11 @@ beforeEach(async () => {
   harness = await createHarness();
 });
 
-afterEach(() => {
-  harness.dispose();
+afterEach(async () => {
+  await harness.dispose();
 });
 
-it("chases the ball competently, and slower than a human paddle", async () => {
+it("chases the ball at AI_SPEED", async () => {
   await arrangeAiChase(harness);
 
   const chase = await captureReplay(harness, "move", async () => {
@@ -55,6 +47,6 @@ it("chases the ball competently, and slower than a human paddle", async () => {
     return measured;
   });
 
-  expect(chase.speed).toBeGreaterThan(CHASE_FLOOR);
-  expect(chase.speed).toBeLessThan(PADDLE_SPEED);
+  assertGreaterThan(chase.delta, 0); // toward the ball, down the field
+  assertLessThanOrEqual(Math.abs(chase.speed - AI_SPEED), SPEED_TOLERANCE);
 });

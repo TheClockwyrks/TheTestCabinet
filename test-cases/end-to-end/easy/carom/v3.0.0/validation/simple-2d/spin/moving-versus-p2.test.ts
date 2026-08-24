@@ -5,8 +5,9 @@
 // contact sits below mid-field for the same reason as its player-one sibling: the
 // swing needs room upstream to be travelling when it strikes.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   LEAD_TICKS,
   arrangePaddleHit,
@@ -19,7 +20,14 @@ import {
 
 const CONTACT_CY = 480;
 const CONTACT_BALL_Y = 500;
-const SPIN_FLOOR = PADDLE_SPEED * SPIN_FROM_PADDLE * 0.65;
+/**
+ * The expected spin and the review item's margin: `paddleVy * SPIN_FROM_PADDLE`
+ * with the paddle at PADDLE_SPEED (specs/balls.md), within five percent. The
+ * reading is taken on the frame of the contact, where the most the decay can
+ * have taken is one frame's worth, under one percent.
+ */
+const EXPECTED_SPIN = PADDLE_SPEED * SPIN_FROM_PADDLE;
+const SPIN_TOLERANCE = Math.abs(EXPECTED_SPIN) * 0.05;
 
 /**
  * Frames of the return flight recorded after the contact.
@@ -44,7 +52,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("curves the ball off a downward swing of player two's paddle", async () => {
@@ -64,6 +72,9 @@ it("curves the ball off a downward swing of player two's paddle", async () => {
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(contact.ball.spin).toBeGreaterThan(SPIN_FLOOR);
+  assertEqual(contact.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(contact.ball.spin - EXPECTED_SPIN),
+    SPIN_TOLERANCE,
+  );
 });

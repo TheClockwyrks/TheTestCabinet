@@ -34,6 +34,9 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
+        engines: vec![test_cabinet_core::EngineSupport::unbounded(
+            test_cabinet_core::engine::NONE_SLUG,
+        )],
         experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
@@ -64,7 +67,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             template: true,
             kind: Default::default(),
         }],
-        workspace: StoredWorkspace::ByEngine(std::collections::BTreeMap::from([(
+        workspace: StoredWorkspace(std::collections::BTreeMap::from([(
             "none".to_string(),
             vec![StoredWorkspaceFile {
                 source: "workspaces/base/package.json".to_string(),
@@ -172,29 +175,78 @@ fn missing_version_is_not_found() {
 }
 
 #[test]
-fn a_fresh_store_is_not_populated() {
+fn a_fresh_store_is_not_servable() {
     // The state a pod with an ephemeral /state boots into: the readiness latch must
     // read this as "do not serve yet".
     let (_dir, store) = temp_store();
-    assert!(!store.is_populated());
+    assert!(!store.holds_versions());
+    assert!(!store.is_servable());
+    // Nothing to rewrite, so this is a store to fill rather than one to repair.
+    assert!(!store.needs_reingest());
 }
 
 #[test]
-fn a_store_with_a_version_is_populated() {
+fn a_stamped_store_with_a_version_is_servable() {
     let (_dir, store) = temp_store();
     store
         .write_manifest(&sample_manifest("pong", "v1.0.0"))
         .unwrap();
-    assert!(store.is_populated());
+    store.set_store_format().unwrap();
+    assert!(store.holds_versions());
+    assert!(store.is_servable());
+    assert!(!store.needs_reingest());
 }
 
 #[test]
-fn a_slug_directory_without_a_manifest_is_not_populated() {
+fn a_store_written_in_another_record_format_needs_reingesting() {
+    // What a backend meets after a build changed the stored shapes: the versions are
+    // all there and none of them can be read, which must not read as servable.
+    let (dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    std::fs::create_dir_all(dir.path().join(".tcab")).unwrap();
+    std::fs::write(dir.path().join(".tcab").join("store-format"), "999").unwrap();
+    assert!(store.holds_versions());
+    assert!(!store.is_servable());
+    assert!(store.needs_reingest());
+}
+
+#[test]
+fn an_unstamped_store_with_a_version_needs_reingesting() {
+    // Nothing has claimed the versions are in a format this build reads, so they are
+    // treated as though they are not.
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    assert!(!store.is_servable());
+    assert!(store.needs_reingest());
+}
+
+#[test]
+fn a_slug_directory_without_a_manifest_holds_no_version() {
     // `list_versions` only counts a version with a manifest, so a half-built or
     // pruned-empty slug shell must not read as a servable catalog.
     let (dir, store) = temp_store();
     std::fs::create_dir_all(dir.path().join("test-cases").join("pong").join("v1.0.0")).unwrap();
-    assert!(!store.is_populated());
+    store.set_store_format().unwrap();
+    assert!(!store.holds_versions());
+    assert!(!store.is_servable());
+}
+
+#[test]
+fn a_manifest_from_another_record_format_reads_as_an_internal_error() {
+    // Distinct from a missing version: the file is there, and what it says cannot be
+    // turned into a record this build holds.
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    std::fs::write(store.manifest_path("pong", "v1.0.0"), "{\"slug\":\"pong\"}").unwrap();
+    let err = store.read_manifest("pong", "v1.0.0").unwrap_err();
+    assert!(matches!(err, BackendError::Internal(_)), "{err:?}");
+    assert!(err.to_string().contains("re-ingest"), "{err}");
 }
 
 #[test]
@@ -276,10 +328,14 @@ fn read_rendered_spec_renders_a_template_and_passes_plain_through() {
     // The template renders for the selected variant — its branch resolved, no
     // handlebars left — and differs between variants.
     let base = store
-        .read_rendered_spec("pong", "v1.0.0", &template, "base", "Base", None, None)
+        .read_rendered_spec(
+            "pong", "v1.0.0", &template, "base", "Base", None, None, None,
+        )
         .unwrap();
     let gyre = store
-        .read_rendered_spec("pong", "v1.0.0", &template, "gyre", "Gyre", None, None)
+        .read_rendered_spec(
+            "pong", "v1.0.0", &template, "gyre", "Gyre", None, None, None,
+        )
         .unwrap();
     assert_eq!(base, "# Field\nstatic\n");
     assert_eq!(gyre, "# Field\nrotating\n");
@@ -287,9 +343,57 @@ fn read_rendered_spec_renders_a_template_and_passes_plain_through() {
     // A plain spec is returned verbatim — never run through the engine, so a
     // brace-y body that is not a real template is untouched.
     let overview = store
-        .read_rendered_spec("pong", "v1.0.0", &plain, "base", "Base", None, None)
+        .read_rendered_spec("pong", "v1.0.0", &plain, "base", "Base", None, None, None)
         .unwrap();
     assert_eq!(overview, "# Overview {{not touched}}\n");
+}
+
+#[test]
+fn a_template_spec_renders_for_the_selected_engine() {
+    // A spec branches on the selected engine wherever the deliverable differs under
+    // it, so the body a reader is shown is only the body a run received when the
+    // read names that run's engine.
+    let (_dir, store) = temp_store();
+    store
+        .write_manifest(&sample_manifest("pong", "v1.0.0"))
+        .unwrap();
+    let dir = store.version_dir("pong", "v1.0.0");
+    std::fs::create_dir_all(dir.join("specs")).unwrap();
+    std::fs::write(
+        dir.join("specs/loop.md.hbs"),
+        "{{#if (eq engine.slug \"none\")}}Write the frame loop.{{else}}Use {{engine.name}}.{{/if}}\n",
+    )
+    .unwrap();
+    let spec = StoredSpec {
+        source: "specs/loop.md.hbs".to_string(),
+        dest: "specs/loop.md".to_string(),
+        template: true,
+        kind: Default::default(),
+    };
+    let simple_2d = test_cabinet_core::EngineCatalog::with_package_store("/nonexistent")
+        .resolve(&test_cabinet_core::engine::EngineSelection::new(
+            "simple-2d",
+        ))
+        .unwrap();
+
+    let engineless = store
+        .read_rendered_spec("pong", "v1.0.0", &spec, "base", "Base", None, None, None)
+        .unwrap();
+    let engined = store
+        .read_rendered_spec(
+            "pong",
+            "v1.0.0",
+            &spec,
+            "base",
+            "Base",
+            None,
+            None,
+            Some(&simple_2d),
+        )
+        .unwrap();
+
+    assert_eq!(engineless, "Write the frame loop.\n");
+    assert_eq!(engined, "Use Simple 2D.\n");
 }
 
 #[test]
@@ -313,37 +417,60 @@ fn reference_scope_and_view_are_validated() {
 fn validation_baseline_reads_committed_case_scoped_media() {
     let (_dir, store) = temp_store();
     // The committed baseline media lives under the version folder at
-    // `validation-baseline/<variant>/<item>__<output>.<ext>` (copied into the store
-    // at ingest like any other definition file). Serving reads it straight back.
+    // `validation-baseline/<engine>/<variant>/<item>__<output>.<ext>` (copied into
+    // the store at ingest like any other definition file). Serving reads it straight
+    // back.
     let baseline_dir = store
         .version_dir("pong", "v1.0.0")
         .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join("simple-2d")
         .join("base");
     std::fs::create_dir_all(&baseline_dir).unwrap();
     std::fs::write(baseline_dir.join("ball-spin__spin.webm"), b"clip").unwrap();
 
     assert_eq!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "base", "ball-spin__spin.webm")
+            .read_validation_baseline(
+                "pong",
+                "v1.0.0",
+                "simple-2d",
+                "base",
+                "ball-spin__spin.webm"
+            )
             .unwrap(),
         b"clip",
     );
-    // A missing file 404s (NotFound), and a traversal-y variant or file is rejected.
+    // The engine is part of the address, not decoration: the same variant under
+    // another engine is a different reference build, and its media is not this one's.
     assert!(matches!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "base", "nope.png")
+            .read_validation_baseline("pong", "v1.0.0", "none", "base", "ball-spin__spin.webm")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    // A missing file 404s (NotFound), and a traversal-y engine, variant or file is
+    // rejected.
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "base", "nope.png")
             .unwrap_err(),
         BackendError::NotFound(_)
     ));
     assert!(matches!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "..", "ball-spin__spin.webm")
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "..", "ball-spin__spin.webm")
             .unwrap_err(),
         BackendError::BadRequest(_)
     ));
     assert!(matches!(
         store
-            .read_validation_baseline("pong", "v1.0.0", "base", "a/b")
+            .read_validation_baseline("pong", "v1.0.0", "..", "base", "ball-spin__spin.webm")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "simple-2d", "base", "a/b")
             .unwrap_err(),
         BackendError::BadRequest(_)
     ));

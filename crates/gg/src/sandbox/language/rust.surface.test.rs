@@ -15,6 +15,8 @@
 //! `rustc` and a `Component::new`. So each function drives *many* statements rather than being one
 //! behaviour per function. Add a statement to an existing function rather than adding a function.
 
+use std::time::Duration;
+
 use serde_json::{Value, json};
 
 use super::substrate::{
@@ -151,6 +153,11 @@ fn crossings() -> Vec<Crossing> {
             tool: "list_dir",
             statement: r#"files::list_dir(Some("src"));"#,
             expected: || json!({ "path": "src" }),
+        },
+        Crossing {
+            tool: "search",
+            statement: r#"files::search("answer", files::SearchOptions { path: Some("src"), limit: Some(10) });"#,
+            expected: || json!({ "query": "answer", "path": "src", "limit": 10 }),
         },
         Crossing {
             tool: "read_skill",
@@ -428,15 +435,12 @@ fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too()
     let (outcome, log) = evaluate(
         &prepare(&whole(
             &["docs", "files", "session", "views"],
-            r####"    let window = files::ReadOptions { offset: Some(1), limit: Some(2) };
-    let text = files::read_text_file("notes.md", window)?;
-    let read = views::open_file("notes.md", window)?;
-    views::open_text("summary", &text)?;
+            r####"    let shown = views::ViewOptions { offset: Some(1), limit: Some(2), ..Default::default() };
+    let read = views::open_file("notes.md", shown)?;
+    views::open_text("summary", "eight files, two failing")?;
     views::open_docs_view("read_file")?;
     let closed = views::close("summary")?;
     let missing = views::close("never opened")?;
-    let open = views::current();
-    gg::log(format!("{} {:?}", open[0].selector, open[0].kind));
     gg::log(format!("{closed} {missing}"));
     gg::log(match read {
         files::FileRead::Text(file) => file.contents.lines().next().unwrap_or_default().to_string(),
@@ -468,24 +472,20 @@ fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too()
         canned_outcome,
     );
     let lines = logs(&outcome);
-    // What is still open is the file view, carrying the enum variant rather than the word the wire
-    // used; the text view the program closed is gone, and a documentation view is gg's to deliver on
-    // the next turn rather than something `current` reports.
-    assert_eq!(lines[0], "notes.md File");
     // Closing something that is not open is `0` rather than a failure, so a program that tidies up
     // unconditionally does not have to guard every call.
-    assert_eq!(lines[1], "1 0");
-    assert_eq!(lines[2], "contents of notes.md");
+    assert_eq!(lines[0], "1 0");
+    assert_eq!(lines[1], "contents of notes.md");
     // A search hands the program a page it can read in the turn that asked for it — the count, the
     // echoed offset, and the hits themselves. The double models no catalogue, so the honest page is
     // an empty one; what this proves is the crossing, which is the half no other test covers on this
     // arm. The ranking over a real catalogue is `docs::search`'s own to prove.
-    assert_eq!(lines[3], "0 0 0");
+    assert_eq!(lines[2], "0 0 0");
     // Closing documentation is the one part of this family a run buys, and this run did not: the
     // program is refused by the host under the call's own name rather than by a name that was never
     // in scope, because a compiled arm cannot withhold a name.
-    assert_eq!(lines[4], "Unavailable on close");
-    assert_eq!(lines[5], "Unavailable on close_all");
+    assert_eq!(lines[3], "Unavailable on close");
+    assert_eq!(lines[4], "Unavailable on close_all");
     // Every view the program opened is recorded, the documentation one and the search's own
     // included — a search puts its page in the window as well as handing it back.
     assert_eq!(
@@ -519,10 +519,10 @@ fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too()
     );
     assert_eq!(logs(&granted), ["0 0"]);
 
-    // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `views::open_file` performs. Neither has a tool name of its own, which is exactly the point —
-    // a helper is a spelling of the tool it is built on, and a view is a read gg also shows.
-    assert_eq!(log.names(), ["read_file", "read_file"]);
+    // One read reached gg's dispatch and arrived as `read_file`: the one `views::open_file`
+    // performs. It has no tool name of its own, which is exactly the point — a view is a read gg
+    // also shows.
+    assert_eq!(log.names(), ["read_file"]);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
@@ -592,7 +592,7 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_rust_too() {
 /// **Every inherent method reaches the operation it says it is an alias of, carrying the field its
 /// own receiver holds.**
 ///
-/// The five methods this SDK declares — `IssueCreated::wait`, `MemoryHit::read`, `OpenView::close`,
+/// The four methods this SDK declares — `IssueCreated::wait`, `MemoryHit::read`,
 /// `SubagentHandle::send` and `ProgramSummary::source` — are one line of body each: they take a
 /// field off the value they hang off and call the free function beside them with it. That one line
 /// is the thing no other gate can see. The catalogue records which operation each is an alias of and
@@ -606,9 +606,8 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_rust_too() {
 /// in.
 #[test]
 fn an_inherent_method_reaches_the_operation_it_is_an_alias_of() {
-    // Four of the five hang off a value a gg OPERATION produced, so the alias's own crossing lands in the
-    // log beside the crossing that made its receiver. `views::close` is the exception — a view is
-    // not a tool — and it is checked by what it answers instead.
+    // Three of the four hang off a value a gg OPERATION produced, so the alias's own crossing lands
+    // in the log beside the crossing that made its receiver.
     let (outcome, log) = evaluate(
         &prepare(&whole(
             &["board", "delegation", "memories", "views"],
@@ -624,8 +623,7 @@ fn an_inherent_method_reaches_the_operation_it_is_an_alias_of() {
     gg::log(child.id.clone());
 
     views::open_text("summary", "eight files, two failing")?;
-    let open = views::current();
-    gg::log(format!("{} {}", open[0].close()?, views::current().len()));
+    gg::log(format!("{}", views::close("summary")?));
 "####,
         )),
         &all_operations(),
@@ -640,8 +638,8 @@ fn an_inherent_method_reaches_the_operation_it_is_an_alias_of() {
             "EPIC-1 wait registered",
             "build-commands the memory contents",
             "agent-1",
-            // The view the method closed was the one it hung off, and nothing is left behind it.
-            "1 0",
+            // The close answered with the one view its label named.
+            "1",
         ]
     );
     assert_eq!(
@@ -695,8 +693,8 @@ fn a_failure_is_a_result_whether_it_is_matched_on_or_let_out() {
     let (outcome, _log) = run_with(
         &whole(
             &["files"],
-            r####"    match files::read_text_file("gone.rs", files::ReadOptions::default()) {
-        Ok(text) => gg::log(text),
+            r####"    match files::read_file("gone.rs", files::ReadOptions::default()) {
+        Ok(_) => gg::log("read it"),
         Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.operation)),
     }
     gg::log("carried on");
@@ -707,7 +705,7 @@ fn a_failure_is_a_result_whether_it_is_matched_on_or_let_out() {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.rs".to_string())
         },
     );
-    assert_eq!(logs(&outcome), ["NotFound on read_text_file", "carried on"]);
+    assert_eq!(logs(&outcome), ["NotFound on read_file", "carried on"]);
 
     // Let out with `?`: the program's own body returns `Result<(), Failure>`, so the failure ends
     // the turn — carrying the CODE the call itself failed with, which is the field the host
@@ -717,7 +715,7 @@ fn a_failure_is_a_result_whether_it_is_matched_on_or_let_out() {
         &whole(
             &["files"],
             r####"    gg::log("before");
-    files::read_text_file("gone.rs", files::ReadOptions::default())?;
+    files::read_file("gone.rs", files::ReadOptions::default())?;
     gg::log("after");
 "####,
         ),
@@ -728,7 +726,7 @@ fn a_failure_is_a_result_whether_it_is_matched_on_or_let_out() {
     );
     let reported = trap(&outcome);
     assert!(
-        reported.contains("`read_text_file` failed (not-found)"),
+        reported.contains("`read_file` failed (not-found)"),
         "the model reads gg's own sentence rather than a Rust type name: {reported}"
     );
     assert!(
@@ -879,7 +877,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     // diagnostic, at the model's own line.
     let diagnostic = refused(
         "fn main() -> Result<(), gg::Failure> {\n    \
-             let _ = files::read_text_file(\"a.md\", files::ReadOptions::default())?;\n    \
+             let _ = files::read_file(\"a.md\", files::ReadOptions::default())?;\n    \
              Ok(())\n}\n",
     );
     assert!(
@@ -899,11 +897,11 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     // end to end rather than only compiled, so what is asserted is that the call crossed.
     for source in [
         "fn main() -> Result<(), gg::Failure> {\n    \
-             let text = gg::files::read_text_file(\"a.md\", gg::files::ReadOptions::default())?;\n    \
-             gg::log(text);\n    Ok(())\n}\n",
+             let gg::files::FileRead::Text(file) = gg::files::read_file(\"a.md\", gg::files::ReadOptions::default())? else { return Ok(()) };\n    \
+             gg::log(file.contents);\n    Ok(())\n}\n",
         "use gg::files;\n\nfn main() -> Result<(), gg::Failure> {\n    \
-             let text = files::read_text_file(\"a.md\", files::ReadOptions::default())?;\n    \
-             gg::log(text);\n    Ok(())\n}\n",
+             let files::FileRead::Text(file) = files::read_file(\"a.md\", files::ReadOptions::default())? else { return Ok(()) };\n    \
+             gg::log(file.contents);\n    Ok(())\n}\n",
     ] {
         let (outcome, log) = run_with(source, &all_operations(), canned_outcome);
         assert!(
@@ -964,7 +962,7 @@ fn a_code_module_puts_no_name_in_a_programs_scope() {
     // question this arm answers the same way in both states.
     let refused = with_module(
         "fn main() -> Result<(), gg::Failure> {\n    \
-             let _ = files::read_text_file(\"a.md\", files::ReadOptions::default())?;\n    \
+             let _ = files::read_file(\"a.md\", files::ReadOptions::default())?;\n    \
              Ok(())\n}\n",
     )
     .expect_err("a module in scope brings no name of gg's with it");
@@ -1053,13 +1051,27 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     // worth stating rather than relying on: the operation is the identity and the name is the
     // spelling, and `shell.shell` is the one row where the two differ, since Rust does not stutter a
     // module's name into the function it holds.
+    //
+    // An operation counts as a tool's when its key is a tool's name AND gg binds it the way it binds
+    // that tool — bought by the tool's capability, or held by position for the one machine row —
+    // the second half because a key alone is ambiguous now that `files.search` and `docs.search`
+    // share one: the first is the `search` tool, the second is the always-bound docs carve-out, and
+    // a count that went by the key would report the tool bound twice.
     let functions = section(&catalogue, "functions");
     let mut bound: Vec<&str> = functions
         .iter()
         .filter(|entry| entry["aliasOf"].is_null())
         .map(|entry| text(entry, "operation"))
-        .filter_map(|operation| operation.split_once('.').map(|(_, key)| key))
-        .filter(|key| crate::sandbox::signatures::sandbox_operation_names().contains(key))
+        .filter_map(|operation| {
+            let (_, key) = operation.split_once('.')?;
+            let bought_by = crate::tools::tool_capability(key)?;
+            let as_tool = match crate::sandbox::operation_by_id(operation)?.binding {
+                crate::sandbox::Binding::Capability(capability) => capability == bought_by,
+                crate::sandbox::Binding::Machine => true,
+                crate::sandbox::Binding::Always | crate::sandbox::Binding::Ending(_) => false,
+            };
+            as_tool.then_some(key)
+        })
         .collect();
     bound.sort_unstable();
     let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();
@@ -1107,7 +1119,6 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
         [
             ("gg::board::IssueCreated::wait", "board.wait_for_issue"),
             ("gg::memories::MemoryHit::read", "memories.read_memory"),
-            ("gg::views::OpenView::close", "views.close"),
             (
                 "gg::delegation::SubagentHandle::send",
                 "delegation.send_message"
@@ -1233,4 +1244,40 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
             );
         }
     }
+}
+
+/// **The default execution ceiling is an infinite-loop guard, not a work ration**, proven on a
+/// compiled arm beside the interpreted proof in `python.substrate.test.rs`: a program that spends
+/// a whole model reply's worth of output on large writes — dozens of 64 KiB files in one program —
+/// completes with an order-of-magnitude margin under the 30 s default (`SandboxLimits::AMPLE`,
+/// the same figure the console seeds `timeoutSecs` with).
+#[test]
+fn dozens_of_large_writes_complete_far_inside_the_default_ceiling() {
+    let (outcome, log) = run_with(
+        &whole(
+            &["files"],
+            r####"    let body = "x".repeat(64 * 1024);
+    let mut total: u64 = 0;
+    for index in 0..48 {
+        total += files::write_file(&format!("out/f{index}.txt"), &body)?;
+    }
+    gg::log(format!("done {}", total > 0));
+"####,
+        ),
+        &all_operations(),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["done true"],
+        "48 large writes did not complete under the default ceiling: {:?}",
+        outcome.result
+    );
+    assert_eq!(log.calls().len(), 48, "every write crossed the membrane");
+    assert!(
+        outcome.elapsed < Duration::from_secs(10),
+        "48 × 64 KiB writes approached the default ceiling; the guard exists for loops that never \
+         end, not for programs that do a lot of honest work: {:?}",
+        outcome.elapsed
+    );
 }

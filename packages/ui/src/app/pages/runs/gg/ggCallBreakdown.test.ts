@@ -144,11 +144,11 @@ describe("ggCallBreakdown", () => {
       } as GgTelemetryKind),
       gg({
         type: "api_call",
-        operation: "views.current",
+        operation: "views.open_text",
       } as GgTelemetryKind),
       gg({
         type: "api_result",
-        operation: "views.current",
+        operation: "views.open_text",
         ok: true,
       } as GgTelemetryKind),
     ]);
@@ -158,13 +158,13 @@ describe("ggCallBreakdown", () => {
       "api",
       new Map([
         ["files.read_file", "gg.files.readFile"],
-        ["views.current", "gg.views.current"],
+        ["views.open_text", "gg.views.openText"],
       ]),
     );
     expect(api.surface).toBe("api");
     expect(api.calls).toEqual([
       { name: "gg.files.readFile", calls: 1, outputTokens: 0 },
-      { name: "gg.views.current", calls: 1, outputTokens: 0 },
+      { name: "gg.views.openText", calls: 1, outputTokens: 0 },
     ]);
     expect(api.totalCalls).toBe(2);
     // A code turn produces no tool-role messages, so there is nothing to attribute per

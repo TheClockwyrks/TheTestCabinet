@@ -3,8 +3,9 @@
 //
 // One scenario is driven three times — under a steady step, under an uneven
 // repeating pattern, and under a seeded jitter — and the three runs must agree.
-// The runtime's clock is replaceable, so the same posed situation can be replayed
-// at a different step size without touching the build.
+// The surface's `advance(seconds, frames)` takes the length of a frame as an
+// argument (specs/instrumentation.md), so the same posed situation can be
+// replayed at a different step size without touching the build.
 //
 // WHAT IS ASSERTED, AND WHAT DELIBERATELY IS NOT. Only outcomes that survive a
 // legitimate change in step size: whether the ball came off the paddle, whether
@@ -21,24 +22,25 @@
 // advancing a fixed amount per frame traces the very same path through the field
 // whatever the step size, and would agree with itself on every fact above. What
 // it cannot do is take the same amount of SIMULATED TIME to trace it. The elapsed
-// time of each drive is read from the runtime's own frame clock — runtime code no
-// build can misreport — and compared across the three schedules.
+// time of each drive is the time the harness ASKED for — the sum of the deltas it
+// handed `advance` — rather than anything the build reported, so a build cannot
+// answer this one by misreporting its own clock.
 
-import { afterEach, expect, it } from "vitest";
+import { afterEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual, assertNotNull } from "../assert";
+import { FIELD_CY, FIELD_H } from "../constants";
 import {
-  ConstantClock,
-  JitterClock,
-  SequenceClock,
-  type Clock,
-} from "../../src/host";
-import { FIELD_CY, FIELD_H } from "../../src/constants";
-import type { CaromSnapshot } from "../../src/debug";
-import {
-  PARKED_CY,
-  TICK_MS,
+  ball0,
   captureReplay,
+  ConstantClock,
   createHarness,
+  JitterClock,
+  PARKED_CY,
+  SequenceClock,
   startPlaying,
+  TICK_MS,
+  type BallView,
+  type Clock,
   type Harness,
   type UntilResult,
 } from "../harness";
@@ -137,7 +139,7 @@ interface Outcome {
 }
 
 /** Which way a ball is travelling, coarsely, as a phrase an assertion compares. */
-function headingOf(ball: CaromSnapshot["ball"]): string {
+function headingOf(ball: BallView): string {
   const across =
     ball.vx > 0 ? "rightward" : ball.vx < 0 ? "leftward" : "stalled";
   const vertical =
@@ -147,12 +149,12 @@ function headingOf(ball: CaromSnapshot["ball"]): string {
 
 const live: Harness[] = [];
 
-afterEach(() => {
-  while (live.length > 0) live.pop()?.dispose();
+afterEach(async () => {
+  while (live.length > 0) await live.pop()?.dispose();
 });
 
 /**
- * Pose the scenario on a fresh runtime driven by `clock`, and play it out.
+ * Pose the scenario on a fresh page driven by `clock`, and play it out.
  *
  * `replay` names the review item's output when this is the drive whose frames are
  * kept as evidence, and is absent for the drives that are only compared against.
@@ -162,19 +164,19 @@ async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
   live.push(harness);
 
   await startPlaying(harness);
-  harness.debug.setScore(0, 0);
-  harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
-  harness.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
-  harness.debug.setBall(0, BALL_START);
+  await harness.debug.setScore(0, 0);
+  await harness.debug.setPaddle("left", { cy: FIELD_CY, vy: 0 });
+  await harness.debug.setPaddle("right", { cy: PARKED_CY, vy: 0 });
+  await harness.debug.setBall(0, BALL_START);
 
-  const opening = harness.snapshot();
+  const opening = await harness.snapshot();
   const startScore = opening.score;
-  const startMs = harness.engine.frame().timeMs;
+  const startMs = harness.timeMs();
 
   let contacted = false;
   let banked = false;
-  let verticalSign = Math.sign(opening.ball.vy);
-  let lastInFlight = opening.ball;
+  let verticalSign = Math.sign(ball0(opening).vy);
+  let lastInFlight = ball0(opening);
   let scorer: "p1" | "p2" | null = null;
 
   /** The drive itself, so the recorded section is exactly this and no more. */
@@ -194,13 +196,13 @@ async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
         }
         // The ball is posed travelling left, so travelling right means the left
         // paddle sent it back.
-        if (s.ball.vx > 0) contacted = true;
-        const sign = Math.sign(s.ball.vy);
+        if (ball0(s).vx > 0) contacted = true;
+        const sign = Math.sign(ball0(s).vy);
         if (sign !== 0) {
           if (verticalSign !== 0 && sign !== verticalSign) banked = true;
           verticalSign = sign;
         }
-        lastInFlight = s.ball;
+        lastInFlight = ball0(s);
         return false;
       },
       { maxFrames: MAX_FRAMES, poll: POLL_FRAMES },
@@ -217,14 +219,14 @@ async function driveOnce(clock: Clock, replay?: string): Promise<Outcome> {
     scorer,
     heading: headingOf(lastInFlight),
     speed: lastInFlight.speed,
-    elapsedMs: harness.engine.frame().timeMs - startMs,
+    elapsedMs: harness.timeMs() - startMs,
     resolved: swept.hit,
   };
 }
 
 it("reaches the same outcome however the elapsed time is divided into frames", async () => {
-  // Driven one after another rather than together, so each runtime has the
-  // process to itself and a failure names one schedule.
+  // Driven one after another rather than together, so each page has the browser
+  // to itself and a failure names one schedule.
   const drives: Outcome[] = [];
   for (const schedule of SCHEDULES)
     drives.push(await driveOnce(schedule.clock(), schedule.replay));
@@ -232,29 +234,35 @@ it("reaches the same outcome however the elapsed time is divided into frames", a
 
   // The comparison is only worth making if the reference drive did what the
   // scenario intends, so those two facts are asserted before anything is compared.
-  expect(reference.resolved).toBe(true);
-  expect(reference.scorer).not.toBeNull();
-  expect(reference.contacted).toBe(true);
+  assertEqual(reference.resolved, true);
+  assertNotNull(reference.scorer);
+  assertEqual(reference.contacted, true);
 
   for (const [index, run] of compared.entries()) {
     const { name } = SCHEDULES[index + 1];
 
-    expect(run.contacted, `${name}: comes off the paddle`).toBe(
+    assertEqual(
+      run.contacted,
       reference.contacted,
+      `${name}: comes off the paddle`,
     );
-    expect(run.banked, `${name}: banks off a wall`).toBe(reference.banked);
-    expect(run.scorer, `${name}: the same side scores`).toBe(reference.scorer);
-    expect(run.heading, `${name}: ends travelling the same way`).toBe(
+    assertEqual(run.banked, reference.banked, `${name}: banks off a wall`);
+    assertEqual(run.scorer, reference.scorer, `${name}: the same side scores`);
+    assertEqual(
+      run.heading,
       reference.heading,
+      `${name}: ends travelling the same way`,
     );
-    expect(
+    assertLessThanOrEqual(
       Math.abs(run.speed - reference.speed),
+      SPEED_TOLERANCE,
       `${name}: ends at the same speed`,
-    ).toBeLessThanOrEqual(SPEED_TOLERANCE);
+    );
     // The one fact a build that ignores the delta time it is given cannot fake.
-    expect(
+    assertLessThanOrEqual(
       Math.abs(run.elapsedMs - reference.elapsedMs),
+      reference.elapsedMs * ELAPSED_TOLERANCE,
       `${name}: takes the same game time`,
-    ).toBeLessThanOrEqual(reference.elapsedMs * ELAPSED_TOLERANCE);
+    );
   }
 });

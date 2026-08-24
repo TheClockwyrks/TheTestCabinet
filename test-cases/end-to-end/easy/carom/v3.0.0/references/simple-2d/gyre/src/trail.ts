@@ -6,9 +6,13 @@
 // trail is a fixed slice of TIME rather than a fixed number of samples — which is
 // what makes the comet `src/render.ts` draws from it stretch as the ball speeds up
 // and collapse to nothing while the ball is held before a serve.
+//
+// Every function here returns a new trail; the one it was handed is never
+// touched.
 
 import { TRAIL_TIME } from "./constants";
 import type { CaromState, TrailSample } from "./game";
+import type { DeepReadonly } from "ts-essentials";
 
 /**
  * A cap on retained history, not on the trail's length.
@@ -19,20 +23,30 @@ import type { CaromState, TrailSample } from "./game";
  */
 const MAX_SAMPLES = 256;
 
-/** Record the ball's current position and drop everything outside the window. */
-export function recordTrail(state: CaromState): void {
-  state.trail.push({ x: state.ball.x, y: state.ball.y, t: state.simTime });
-  pruneTrail(state.trail, state.simTime);
+/** The state with the ball's current position recorded and the window applied. */
+export function recordTrail(state: DeepReadonly<CaromState>): CaromState {
+  const sample: TrailSample = {
+    x: state.ball.x,
+    y: state.ball.y,
+    t: state.simTime,
+  };
+  return {
+    ...state,
+    trail: pruneTrail([...state.trail, sample], state.simTime),
+  };
 }
 
-/** Drop the samples older than TRAIL_TIME, and any beyond the retention cap. */
-export function pruneTrail(trail: TrailSample[], now: number): void {
+/** The trail without the samples older than TRAIL_TIME, or beyond the cap. */
+export function pruneTrail(
+  trail: readonly TrailSample[],
+  now: number,
+): readonly TrailSample[] {
   let drop = 0;
   while (drop < trail.length && now - trail[drop].t > TRAIL_TIME) drop++;
-  if (drop > 0) trail.splice(0, drop);
-  if (trail.length > MAX_SAMPLES) {
-    trail.splice(0, trail.length - MAX_SAMPLES);
-  }
+  const inWindow = drop > 0 ? trail.slice(drop) : trail;
+  return inWindow.length > MAX_SAMPLES
+    ? inWindow.slice(inWindow.length - MAX_SAMPLES)
+    : inWindow;
 }
 
 /** The trail newest-first, which is the order the comet is built in. */

@@ -7,11 +7,17 @@
 // type](GgAgentMode) rather than a feature — in the settings panel the selected type
 // opens. The fields must be the same fields in all three, so there is one of them.
 
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
+import { ResetControl } from "../../../components/ResetControl";
 import { familyOf } from "../../../data/families";
-import { paramApplies, type CapSpec, type ParamSpec } from "./ggCatalog";
+import {
+  authoredImplementation,
+  paramApplies,
+  type CapSpec,
+  type ParamSpec,
+} from "./ggCatalog";
 import {
   capabilityDraftFor,
   capabilityGrantWarning,
@@ -21,7 +27,9 @@ import {
   statesFromDraft,
   togglesDraftValue,
   togglesOff,
+  featureBundleOffered,
   featureBundleOn,
+  paramDefault,
   type GgAgentDraft,
   type GgCapabilityDraft,
   type GgModelSlotDraft,
@@ -49,19 +57,99 @@ export function HelpTip({ text }: { text: string }) {
   );
 }
 
-// A field label with an optional help tooltip beside it.
+/**
+ * A field label with an optional help tooltip beside it, and — while the control it names
+ * has been moved off the value it opens at — a {@link ResetControl} to put it back.
+ *
+ * Every control in these grids is seeded with the figure it would run under, so the value
+ * is always in the field and never hidden behind an empty box the operator is expected to
+ * know the meaning of. The reset is the other half of that: it is the only thing on the
+ * form that says which of the figures on screen are still the authored ones.
+ */
 export function FieldLabel({
   label,
   hint,
+  htmlFor,
+  resetLabel,
+  modified = false,
+  onReset,
 }: {
-  label: ReactNode;
+  label: string;
   hint?: string;
+  /**
+   * The id of the control this names. Given one, the label text is a real `<label for>`
+   * and the badges beside it sit outside it; without one the caller is wrapping its own
+   * control in a `<label>`, or is naming a group rather than a control.
+   */
+  htmlFor?: string;
+  /**
+   * What the reset control names, where the label alone would not say which control it
+   * belongs to — a hook's timeout is "Timeout (seconds)" on every hook in the list.
+   * Defaults to `label`.
+   */
+  resetLabel?: string;
+  /** Whether the control this labels currently differs from the value it opens at. */
+  modified?: boolean;
+  onReset?: () => void;
 }) {
   return (
-    <span className={runExec.fieldLabel}>
-      {label}
+    <span className={`${runExec.fieldLabel} ${gg.fieldLabelRow}`}>
+      {htmlFor === undefined ? label : <label htmlFor={htmlFor}>{label}</label>}
       {hint && <HelpTip text={hint} />}
+      {modified && onReset && (
+        <ResetControl label={resetLabel ?? label} onReset={onReset} />
+      )}
     </span>
+  );
+}
+
+/**
+ * One field in a capability's param grid: its {@link FieldLabel} over the control, which
+ * the field hands an id to.
+ *
+ * The id is what makes the reset control possible at all. These fields used to be a
+ * `<label>` wrapped around their control, which is the shorter spelling and the wrong one
+ * here: a `<button>` is a *labelable* element, so a reset sat inside such a label becomes
+ * the control the label names, and the input it was meant to name loses its accessible
+ * name to it. Naming the control explicitly leaves the label row free to carry whatever
+ * badges belong beside a name.
+ */
+export function CapField({
+  label,
+  hint,
+  className,
+  resetLabel,
+  modified,
+  onReset,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  /** An extra class on the field wrapper, for a control that needs the whole grid row. */
+  className?: string;
+  resetLabel?: string;
+  modified?: boolean;
+  onReset?: () => void;
+  /** The control, given the id its label points at. */
+  children: (controlId: string) => ReactNode;
+}) {
+  const controlId = useId();
+  return (
+    <div
+      className={
+        className ? `${gg.capParamField} ${className}` : gg.capParamField
+      }
+    >
+      <FieldLabel
+        label={label}
+        hint={hint}
+        htmlFor={controlId}
+        resetLabel={resetLabel}
+        modified={modified}
+        onReset={onReset}
+      />
+      {children(controlId)}
+    </div>
   );
 }
 
@@ -285,44 +373,55 @@ export function CapabilityBody({
       {(params.length || cap.implementationLabel) && (
         <div className={gg.capParamGrid}>
           {cap.implementationLabel && (
-            <label className={gg.capParamField}>
-              <FieldLabel
-                label={cap.implementationLabel}
-                hint={cap.implementationHint}
-              />
-              {cap.implementationOptions ? (
-                <select
-                  className={runExec.select}
-                  value={implementation ?? ""}
-                  disabled={readOnly}
-                  onChange={(e) =>
-                    onUpdateCap({ implementation: e.target.value })
-                  }
-                >
-                  {cap.implementationOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  className={runExec.input}
-                  type="text"
-                  value={draft.implementation ?? ""}
-                  disabled={readOnly}
-                  onChange={(e) =>
-                    onUpdateCap({ implementation: e.target.value })
-                  }
-                  placeholder={cap.implementationPlaceholder ?? "default"}
-                  spellCheck={false}
-                />
-              )}
-            </label>
+            <CapField
+              label={cap.implementationLabel}
+              hint={cap.implementationHint}
+              modified={
+                !readOnly &&
+                (implementation ?? "") !== authoredImplementation(cap)
+              }
+              onReset={() =>
+                onUpdateCap({ implementation: authoredImplementation(cap) })
+              }
+            >
+              {(id) =>
+                cap.implementationOptions ? (
+                  <select
+                    id={id}
+                    className={runExec.select}
+                    value={implementation ?? ""}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      onUpdateCap({ implementation: e.target.value })
+                    }
+                  >
+                    {cap.implementationOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    id={id}
+                    className={runExec.input}
+                    type="text"
+                    value={draft.implementation ?? ""}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      onUpdateCap({ implementation: e.target.value })
+                    }
+                    placeholder={cap.implementationPlaceholder ?? "default"}
+                    spellCheck={false}
+                  />
+                )
+              }
+            </CapField>
           )}
           {params.map((p) => {
             if (p.kind === "toggles") {
               const off = togglesOff(p, draft.params?.[p.key]);
+              const seeded = paramDefault(p);
               return (
                 <div
                   key={p.key}
@@ -330,13 +429,27 @@ export function CapabilityBody({
                   role="group"
                   aria-label={p.label}
                 >
-                  <FieldLabel label={p.label} hint={p.hint} />
+                  <FieldLabel
+                    label={p.label}
+                    hint={p.hint}
+                    modified={
+                      !readOnly &&
+                      seeded !== undefined &&
+                      (draft.params?.[p.key] ?? "") !== seeded
+                    }
+                    onReset={
+                      seeded === undefined
+                        ? undefined
+                        : () => onSetParam(p.key, seeded)
+                    }
+                  />
                   <div className={gg.toggleList}>
                     {(p.options ?? []).map((o) => (
-                      // A member whose label cannot carry why it exists — the one repair
-                      // that is off unless armed — states it on hover rather than by
-                      // stretching every other label to make room for a clause only it
-                      // needs.
+                      // Every member's reason is on hover, including why the odd one out
+                      // starts switched off. The label says what the member *is*; which
+                      // way it currently sits is the checkbox's job, and annotating a
+                      // label with its own initial state only restates the control beside
+                      // it — wrongly, the moment the operator moves it.
                       <label
                         key={o.value}
                         className={gg.toggleItem}
@@ -408,79 +521,103 @@ export function CapabilityBody({
                 />
               );
             }
+            // The figure this control opens at, and therefore what a reset puts it back
+            // to. A param with none — responses-as-code's `language`, whose arm nobody
+            // may choose for the operator — offers no reset rather than a reset to a
+            // blank, which would read as an answer.
+            const seeded = paramDefault(p);
             return (
-              <label key={p.key} className={gg.capParamField}>
-                <FieldLabel label={p.label} hint={p.hint} />
-                {p.kind === "select" ? (
-                  <select
-                    className={runExec.select}
-                    value={draft.params?.[p.key] ?? ""}
-                    disabled={readOnly}
-                    onChange={(e) => onSetParam(p.key, e.target.value)}
-                  >
-                    {(p.options ?? []).map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : p.kind === "agent" ? (
-                  <select
-                    className={runExec.select}
-                    value={draft.params?.[p.key] ?? ""}
-                    disabled={readOnly}
-                    onChange={(e) => onSetParam(p.key, e.target.value)}
-                  >
-                    {/* An agent named by a stored param that no longer exists stays
+              <CapField
+                key={p.key}
+                label={p.label}
+                hint={p.hint}
+                modified={
+                  !readOnly &&
+                  seeded !== undefined &&
+                  (draft.params?.[p.key] ?? "") !== seeded
+                }
+                onReset={
+                  seeded === undefined
+                    ? undefined
+                    : () => onSetParam(p.key, seeded)
+                }
+              >
+                {(id) =>
+                  p.kind === "select" ? (
+                    <select
+                      id={id}
+                      className={runExec.select}
+                      value={draft.params?.[p.key] ?? ""}
+                      disabled={readOnly}
+                      onChange={(e) => onSetParam(p.key, e.target.value)}
+                    >
+                      {(p.options ?? []).map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : p.kind === "agent" ? (
+                    <select
+                      id={id}
+                      className={runExec.select}
+                      value={draft.params?.[p.key] ?? ""}
+                      disabled={readOnly}
+                      onChange={(e) => onSetParam(p.key, e.target.value)}
+                    >
+                      {/* An agent named by a stored param that no longer exists stays
                         selectable so the value round-trips until re-pointed. Live
                         profiles are offered by id, so renaming one never breaks the
                         param — and the id is shown beside the name because two profiles
                         may carry one name, which would leave the operator choosing
                         between two identical labels. */}
-                    {draft.params?.[p.key] &&
-                      !agents.some((a) => a.id === draft.params?.[p.key]) && (
-                        <option value={draft.params[p.key]}>
-                          {draft.params[p.key]} (missing)
+                      {draft.params?.[p.key] &&
+                        !agents.some((a) => a.id === draft.params?.[p.key]) && (
+                          <option value={draft.params[p.key]}>
+                            {draft.params[p.key]} (missing)
+                          </option>
+                        )}
+                      {agents.map((a) => (
+                        // Stored as the internal id, read as the slug: an `agent` param is a
+                        // reference, and the operator picks it by the name they wrote.
+                        <option key={a.id} value={a.id}>
+                          {a.name || "unnamed"} ({a.slug})
                         </option>
-                      )}
-                    {agents.map((a) => (
-                      // Stored as the internal id, read as the slug: an `agent` param is a
-                      // reference, and the operator picks it by the name they wrote.
-                      <option key={a.id} value={a.id}>
-                        {a.name || "unnamed"} ({a.slug})
-                      </option>
-                    ))}
-                  </select>
-                ) : p.kind === "text" ? (
-                  <input
-                    className={runExec.input}
-                    type="text"
-                    value={draft.params?.[p.key] ?? ""}
-                    disabled={readOnly}
-                    onChange={(e) => onSetParam(p.key, e.target.value)}
-                    placeholder={p.placeholder}
-                    spellCheck={false}
-                  />
-                ) : (
-                  <input
-                    className={runExec.input}
-                    type="number"
-                    min={0}
-                    max={
-                      p.kind === "fraction"
-                        ? 1
-                        : p.kind === "percent"
-                          ? 100
-                          : undefined
-                    }
-                    step={p.kind === "fraction" ? 0.05 : 1}
-                    value={draft.params?.[p.key] ?? ""}
-                    disabled={readOnly}
-                    onChange={(e) => onSetParam(p.key, e.target.value)}
-                    placeholder={p.placeholder}
-                  />
-                )}
-              </label>
+                      ))}
+                    </select>
+                  ) : p.kind === "text" ? (
+                    <input
+                      id={id}
+                      className={runExec.input}
+                      type="text"
+                      value={draft.params?.[p.key] ?? ""}
+                      disabled={readOnly}
+                      onChange={(e) => onSetParam(p.key, e.target.value)}
+                      placeholder={p.placeholder}
+                      spellCheck={false}
+                    />
+                  ) : (
+                    <input
+                      id={id}
+                      className={runExec.input}
+                      type="number"
+                      min={0}
+                      max={
+                        p.kind === "fraction"
+                          ? 1
+                          : p.kind === "percent"
+                            ? 100
+                            : undefined
+                      }
+                      step={p.kind === "fraction" ? 0.05 : 1}
+                      value={draft.params?.[p.key] ?? ""}
+                      disabled={readOnly}
+                      onChange={(e) => onSetParam(p.key, e.target.value)}
+                      placeholder={p.placeholder}
+                    />
+                  )
+                }
+              </CapField>
             );
           })}
         </div>
@@ -493,19 +630,21 @@ export function CapabilityBody({
         >
           <span className={runExec.fieldLabel}>Features</span>
           <div className={gg.featureList}>
-            {(cap.features ?? []).map((bundle) => (
-              <div key={bundle.label} className={gg.featureItem}>
-                <label className={gg.featureLabel}>
-                  <Switch
-                    checked={featureBundleOn(agent, bundle)}
-                    disabled={readOnly}
-                    onChange={(on) => onSetFeature(bundle, on)}
-                  />
-                  <span className={gg.featureName}>{bundle.label}</span>
-                </label>
-                {bundle.hint && <HelpTip text={bundle.hint} />}
-              </div>
-            ))}
+            {(cap.features ?? [])
+              .filter((bundle) => featureBundleOffered(agent, bundle))
+              .map((bundle) => (
+                <div key={bundle.label} className={gg.featureItem}>
+                  <label className={gg.featureLabel}>
+                    <Switch
+                      checked={featureBundleOn(agent, bundle)}
+                      disabled={readOnly}
+                      onChange={(on) => onSetFeature(bundle, on)}
+                    />
+                    <span className={gg.featureName}>{bundle.label}</span>
+                  </label>
+                  {bundle.hint && <HelpTip text={bundle.hint} />}
+                </div>
+              ))}
             {/* A feature that changes what an offered call demands, rather than which
                 calls the agent has: same box, same slider, a capability param behind it. */}
             {flags.map((flag) => (

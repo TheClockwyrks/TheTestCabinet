@@ -239,8 +239,8 @@ public final class GgCompiler {
             taken.error = true;
             taken.file = sources.isEmpty() ? null : sources.get(0).getName();
             taken.message = "`" + entryClass
-                    + "` is the name gg gives the class it reaches your program through. Declare "
-                    + "yours under another name.";
+                    + "` is reserved for gg's generated entry class. Declare the program's own "
+                    + "class under another name.";
             entries.add(taken);
             return Json.response(false, "kotlinc", entries,
                     Json.millis("kotlinc", afterKotlinc - started)

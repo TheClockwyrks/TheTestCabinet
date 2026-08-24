@@ -27,29 +27,6 @@ export const FIELD_CY = 360;
 /** The dashed decorative net. It has no collision. */
 export const NET_X = 640;
 
-// ---- Palette (specs/overview.md) -----------------------------------------
-
-export const COLOR = {
-  bg: "#0b0e14",
-  bgRaised: "#11151f",
-  p1: "#3ae7c4", // player one / left paddle
-  p2: "#ff5c8a", // player two / AI / right paddle
-  ball: "#f2f5f7",
-  obstacle: "#ffb454",
-  net: "#243044",
-  text: "#e6edf3",
-  textDim: "#8a94a6",
-  textFaint: "#4a5567",
-  panelBorder: "#20283a",
-} as const;
-
-/**
- * A system monospace stack: no downloaded web font, so the game renders
- * identically offline (specs/overview.md).
- */
-export const MONO =
-  '"DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
-
 // ---- Paddles -------------------------------------------------------------
 
 export const PADDLE_W = 16;
@@ -108,14 +85,17 @@ export const SERVE_SPEED = 520;
 export const SPEED_MULT = 1.04; // per paddle hit
 export const SPEED_CAP = 980;
 
+/**
+ * The most units a ball's center travels in one physics sub-step. A frame is cut
+ * into `max(1, ceil(speed * dt / MAX_SUBSTEP))` sub-steps (specs/balls.md).
+ */
+export const MAX_SUBSTEP = 4;
+
 /** The outgoing angle from horizontal at the very edge of a paddle: 55deg. */
 export const MAX_BOUNCE_ANGLE = (55 * Math.PI) / 180;
 
 /** The serve's small fixed vertical component. */
 export const SERVE_ANGLE = (12 * Math.PI) / 180;
-
-/** The bound `specs/balls.md` puts on a serve: within +/-30deg of horizontal. */
-export const SERVE_MAX_ANGLE = (30 * Math.PI) / 180;
 
 // ---- Spin (the signature mechanic) ---------------------------------------
 
@@ -126,35 +106,27 @@ export const SPIN_HALFLIFE = 0.8; // spin loses half its magnitude every 0.8 s
 // ---- Timing --------------------------------------------------------------
 
 export const HOLD_TIME = 1.0; // pre-serve hold, at match start and after a point
-export const TRAIL_TIME = 0.13; // seconds of recent travel the comet represents
+export const TRAIL_TIME = 0.13; // seconds of recent travel the motion trail draws
 
 // ---- AI ------------------------------------------------------------------
 
 export const AI_SPEED = 560; // deliberately slower than the human's 720
 export const AI_REACT = 0.12; // reaction lag time constant, in seconds
-export const AI_DEADZONE = 10; // stop tracking within this of the target
-export const AI_HOME_Y = FIELD_CY; // eased back to while the ball moves away
+export const AI_DEADZONE = 10; // stop within this of the target while defending
+export const AI_HOME_Y = FIELD_CY; // returned to while there is nothing to defend
+export const AI_HOME_DEADZONE = 18; // stop within this of AI_HOME_Y while returning
 
 // ---- Match rules ---------------------------------------------------------
 
 export const WIN_SCORE = 11;
 export const WIN_LEAD = 2;
 
-// ---- HUD layout ----------------------------------------------------------
-
-export const SCORE_P1_X = 520; // center x of player one's score
-export const SCORE_P2_X = 760; // center x of player two's score
-export const SCORE_TOP_Y = 40;
-export const SCORE_FONT_PX = 76;
-
 // ---- Screen copy (specs/ui.md) -------------------------------------------
 
 export const TITLE_TEXT = "CAROM";
-export const TAGLINE_TEXT = "NEON PADDLE DUEL";
 export const TITLE_ITEMS = ["SOLO", "VERSUS", "HOW TO PLAY"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const MATCHOVER_ITEMS = ["PLAY AGAIN", "MENU"] as const;
-export const MODE_LABEL = { solo: "SOLO", versus: "VERSUS" } as const;
 
 // ---- Input actions (specs/modes/*.md) ------------------------------------
 
@@ -209,3 +181,11 @@ export const CUES = {
 } as const;
 
 export type CueName = (typeof CUES)[keyof typeof CUES];
+
+// ---- Debug surface (specs/instrumentation.md) ----------------------------
+
+/** The version the debug surface reports as `version`. */
+export const CAROM_DEBUG_VERSION = 1;
+
+/** The seed `reset()` restores when the caller names none. */
+export const DEFAULT_SEED = 1;

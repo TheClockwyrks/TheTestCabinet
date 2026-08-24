@@ -59,9 +59,15 @@ the scalar types. A construct outside that set fails the guest's build by name.
 
 ## Failures
 
-A failure reaches the model as the engine's own words on standard error, which
-gg's membrane already routes into the model's feedback. The guest reports and
-then dies, so gg records a failed turn. Five shapes are covered:
+A failure reaches the model as the engine's own words: the guest reports the
+engine's rendering of the uncaught value over `feedback.report-error`, with the
+failure's class read off the value — `api-failure` with the wire's own code when
+the value carries an `ApiError`'s `code` and `operation`, `unknown-name` for a
+`ReferenceError`, `other` for anything else — and then returns normally. The
+turn is filed under `program_fault`, never as a `sandbox_trap`: an uncaught
+API failure is the program's fault, and a trap is reserved for a ceiling gg
+imposed. The one failure that still ends in a trap is gg's own execution
+budget, below. Five shapes are covered:
 
 - an uncaught throw, including an `ApiError` from a refused call. An error's own
   properties are rendered beside its message, which is how an `ApiError` names
@@ -72,10 +78,22 @@ then dies, so gg records a failed turn. Five shapes are covered:
 - a stack overflow, as `RangeError: Maximum call stack size exceeded` with the
   frames;
 - a runaway loop, as `InternalError: interrupted` naming the function that was
-  looping.
+  looping. This one is gg's execution ceiling rather than the program's fault,
+  so the guest writes the rendering to standard error and dies, and the turn is
+  filed as `sandbox_timeout` with the engine's words in front of gg's.
 
 One failure can arrive from more than one of the engine's channels. The guest
 reports each distinct rendering once.
+
+### Which frames the model reads
+
+A stack the SDK raised from carries the SDK's own frames — under the `sdk:`
+specifiers the loader resolves for the SDK alone, and a `native` frame for the
+membrane call itself — above the program's. Those name code the model cannot
+open, so the guest strikes them and closes the stack with a count of what it
+struck. What survives is every frame in `program.js` and in a loaded code
+module, which on the TypeScript and PureScript arms the host then reads back
+through the compiler's own map.
 
 ### A rejection is read after the queue drains
 

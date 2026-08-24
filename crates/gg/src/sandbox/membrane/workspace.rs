@@ -1,7 +1,7 @@
-//! The workspace half of the membrane: `shell`, the four file operations, and the one helper built on
-//! them.
+//! The workspace half of the membrane: `shell`, the five file operations, and the one helper built
+//! on them.
 //!
-//! These six are what almost every program touches, and two of them carry rules worth stating
+//! These seven are what almost every program touches, and two of them carry rules worth stating
 //! where they are implemented. `shell` reports a non-zero exit as a **value**, because branching on
 //! `result.exitCode` is the single most common thing a program does — and, for the same reason, a
 //! process that ran is recorded as a completed call however it exited.
@@ -15,18 +15,16 @@
 use std::time::Duration;
 
 use super::test_cabinet::gg::files::{
-    DirEntry, EntryKind, FileRead, Host as FilesHost, ImageRead, TextRead,
+    DirEntry, EntryKind, FileRead, Host as FilesHost, ImageRead, SearchMatch, TextRead,
 };
-use super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::test_cabinet::gg::shell::{Host as ShellHost, ShellOutput};
 use super::test_cabinet::gg::types::{ApiError, ErrorCode};
 use super::{MembraneState, OperationApi};
 use crate::sandbox::operations::OperationId;
 use crate::sandbox::operations::{
-    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_READ_TEXT_FILE, FILES_WRITE_FILE,
-    SHELL_SHELL,
+    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_SEARCH, FILES_WRITE_FILE, SHELL_SHELL,
 };
-use crate::tools::{ApiData, DirEntryData, DirEntryKind};
+use crate::tools::{ApiData, DirEntryData, DirEntryKind, SearchMatchData};
 
 /// gg's own default `shell` timeout, restated here because the membrane must clamp a value *before*
 /// the tool sees it — and a call that arrived at the tool with no timeout at all would be clamped
@@ -138,39 +136,22 @@ impl<A: OperationApi> FilesHost for MembraneState<A> {
             }
         })
     }
-}
 
-impl<A: OperationApi> HelpersHost for MembraneState<A> {
-    /// Read a text file's contents directly — `fs.readTextFile`.
-    ///
-    /// It is the same core read as `fs.readFile` and the same `read_file` tool underneath, and it is
-    /// **its own API function** with its own host binding, which is the whole reason this interface
-    /// exists. Composed in the guest out of `readFile`, as it once was, the host could not tell the
-    /// two apart: every `readTextFile` a program wrote would be recorded as a `readFile` its author
-    /// never typed, and `readTextFile` itself would report a zero — a console accusing a model of
-    /// ignoring the call it in fact used, which is the one reading the offered-versus-called
-    /// contrast exists to rule out.
-    ///
-    /// A picture is an `invalid-argument` rather than an empty string: the caller asked for text and
-    /// there is none, and the variant-returning `fs.readFile` is the call that inspects one.
-    fn read_text_file(
+    /// Search the workspace under the ignore files — `files.search`. The tool decides everything
+    /// about the query, the root and the bounds; this lowers the matches it found.
+    fn search(
         &mut self,
-        path: String,
-        offset: Option<u32>,
+        query: String,
+        path: Option<String>,
         limit: Option<u32>,
-    ) -> Result<String, ApiError> {
-        self.recorded(FILES_READ_TEXT_FILE, |state, rec| {
-            let (offset, limit) = read_window(offset, limit);
-            let outcome = state.call(rec, FILES_READ_TEXT_FILE, |api| {
-                api.read_file(path.clone(), offset, limit)
-            })?;
-            match file_read(state, FILES_READ_TEXT_FILE, outcome.data)? {
-                FileRead::Text(text) => Ok(text.contents),
-                FileRead::Image(image) => Err(ApiError {
-                    code: ErrorCode::InvalidArgument,
-                    operation: FILES_READ_TEXT_FILE.key.to_string(),
-                    message: format!("`{path}` is a {} image, not text", image.label),
-                }),
+    ) -> Result<Vec<SearchMatch>, ApiError> {
+        self.recorded(FILES_SEARCH, |state, rec| {
+            let outcome = state.call(rec, FILES_SEARCH, |api| api.search(query, path, limit))?;
+            match outcome.data {
+                Some(ApiData::SearchMatches(matches)) => {
+                    Ok(matches.into_iter().map(search_match).collect())
+                }
+                other => Err(state.missing_data(FILES_SEARCH, other.as_ref())),
             }
         })
     }
@@ -197,10 +178,10 @@ pub(super) fn read_window(
 /// What a read returned, as the membrane's `file-read` variant — or the defect diagnostic if the
 /// tool answered `ok` with no [structured sidecar](ApiData).
 ///
-/// Shared by `read-file`, `read-text-file` and [`open-file-view`](super::views), which differ in
-/// what gg does with the result and not at all in what the program is handed back — so `id` is the
-/// caller's own [operation](OperationId), and a defect diagnostic names the call the model wrote
-/// rather than the one of the three that happens to hold the helper.
+/// Shared by `read-file` and [`open-file-view`](super::views), which differ in what gg does with
+/// the result and not at all in what the program is handed back — so `id` is the caller's own
+/// [operation](OperationId), and a defect diagnostic names the call the model wrote rather than
+/// the other one.
 pub(super) fn file_read<A: OperationApi>(
     state: &mut MembraneState<A>,
     id: OperationId,
@@ -244,6 +225,12 @@ fn entry(entry: DirEntryData) -> DirEntry {
     }
 }
 
+/// One search match, as the membrane declares it.
+fn search_match(found: SearchMatchData) -> SearchMatch {
+    let SearchMatchData { path, line, text } = found;
+    SearchMatch { path, line, text }
+}
+
 /// The `timeout_secs` a `shell` call is actually made with: what the program asked for (or gg's
 /// default), bounded at both ends.
 ///
@@ -272,7 +259,8 @@ fn clamp_timeout(requested: Option<f64>, remaining: Option<Duration>) -> Result<
                 code: ErrorCode::InvalidArgument,
                 operation: SHELL_SHELL.key.to_string(),
                 message: format!(
-                    "`timeout_secs` is how many seconds the command may run for, so it must be a                      positive number; `{secs}` names no duration. Omit it to take gg's default of                      {DEFAULT_TIMEOUT_SECS}s."
+                    "`timeout_secs` must be a positive number of seconds (`{secs}` given); \
+                     omit it for the default of {DEFAULT_TIMEOUT_SECS}s."
                 ),
             });
         }

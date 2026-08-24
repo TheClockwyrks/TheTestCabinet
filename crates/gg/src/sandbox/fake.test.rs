@@ -28,7 +28,7 @@ use super::membrane::{MembraneState, RunEnding};
 use super::operations::{OperationId, capability_operations, gating_capabilities};
 use super::{OperationApi, ProgramScope, SandboxLimits};
 use crate::board::IssueStatus;
-use crate::context::{FileRegion, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind};
+use crate::context::{FileRegion, SEARCH_RESULTS_VIEW, ViewKind};
 use crate::discovery::CallDiscovery;
 use crate::docs::DocSearch;
 use crate::ending::EndingRole;
@@ -39,7 +39,8 @@ use crate::tasks::TaskStatus;
 use crate::tools::{
     ApiData, ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData, DirEntryData,
     DirEntryKind, FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData,
-    ShellData, SubagentHandleData, SubagentResultData, ToolFailure, ToolOutcome, UsagePair,
+    SearchMatchData, ShellData, SubagentHandleData, SubagentResultData, ToolFailure, ToolOutcome,
+    UsagePair,
 };
 
 /// The [program language](ProgramLanguage) the sandbox's own tests drive: **TypeScript**.
@@ -131,6 +132,12 @@ type Responder = dyn FnMut(&str, &Value) -> ToolOutcome + Send;
 /// Each method builds the *same* JSON the production [`LoopOperationApi`](crate::agent::LoopOperationApi)
 /// records for that call, logs it, and answers with the canned outcome — so every `log.args("tool")`
 /// assertion written against the old membrane keeps holding against the typed path.
+/// One view the fake holds open — just enough of one for `close_view` to count by selector.
+struct FakeOpenView {
+    kind: ViewKind,
+    selector: String,
+}
+
 pub(crate) struct FakeOperationApi {
     /// Where calls are recorded, shared with the test that built it.
     log: CallLog,
@@ -143,7 +150,7 @@ pub(crate) struct FakeOperationApi {
     /// view calls behave like one another — that an open is visible to a `current`, that a close
     /// removes what it names and reports how many — so the double models exactly that and no more.
     /// The caps are not modelled at all: they live in `LoopOperationApi`, which is where the window is.
-    views: Vec<OpenViewInfo>,
+    views: Vec<FakeOpenView>,
     /// The [program library](crate::programs) this double answers `programs.history` / `programs.get`
     /// from — a real one, because it is a small self-contained value with the retention already in
     /// it, and a second model of it here would be the thing that drifts.
@@ -310,15 +317,14 @@ impl FakeOperationApi {
         tokens: u64,
         region: Option<FileRegion>,
     ) -> SandboxViewOpened {
+        let _ = (tokens, region);
         let existing = self
             .views
             .iter()
             .position(|view| view.kind == kind && view.selector == selector);
-        let view = OpenViewInfo {
+        let view = FakeOpenView {
             kind,
             selector: selector.clone(),
-            tokens,
-            region,
         };
         match existing {
             Some(index) => self.views[index] = view,
@@ -379,6 +385,12 @@ impl OperationApi for FakeOperationApi {
     }
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome {
         self.call("list_dir", json!({ "path": path }))
+    }
+    fn search(&mut self, query: String, path: Option<String>, limit: Option<u32>) -> ToolOutcome {
+        self.call(
+            "search",
+            json!({ "query": query, "path": path, "limit": limit }),
+        )
     }
     fn read_skill(&mut self, name: String) -> ToolOutcome {
         self.call("read_skill", json!({ "name": name }))
@@ -663,11 +675,13 @@ impl OperationApi for FakeOperationApi {
         path: String,
         offset: Option<usize>,
         limit: Option<usize>,
+        max_line_chars: Option<usize>,
     ) -> ViewOpenOutcome {
-        let mut outcome = self.call(
-            "read_file",
-            json!({ "path": path, "offset": offset, "limit": limit }),
-        );
+        let mut args = json!({ "path": path, "offset": offset, "limit": limit });
+        if let Some(chars) = max_line_chars {
+            args["maxLineChars"] = json!(chars);
+        }
+        let mut outcome = self.call("read_file", args);
         if !outcome.ok {
             return ViewOpenOutcome {
                 outcome,
@@ -722,10 +736,6 @@ impl OperationApi for FakeOperationApi {
         let before = self.views.len();
         self.views.retain(|view| view.selector != selector);
         Ok((before - self.views.len()) as u32)
-    }
-
-    fn current_views(&mut self) -> Vec<OpenViewInfo> {
-        self.views.clone()
     }
 
     fn program_history(&mut self) -> Vec<ProgramSummary> {
@@ -792,6 +802,13 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
                     kind: DirEntryKind::Directory,
                 },
             ]),
+        ),
+        "search" => ToolOutcome::ok("src/a.ts:3: const answer = 42;", "1 matches").with_data(
+            ApiData::SearchMatches(vec![SearchMatchData {
+                path: "src/a.ts".to_string(),
+                line: 3,
+                text: "const answer = 42;".to_string(),
+            }]),
         ),
         "read_skill" => ToolOutcome::ok("the skill body", "read a skill"),
         "write_memory" | "update_memory" | "create_memory" | "edit_memory" | "delete_memory" => {

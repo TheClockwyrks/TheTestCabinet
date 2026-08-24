@@ -1,0 +1,47 @@
+// Carom — this build's look: the palette, the type, and the HUD layout.
+//
+// None of this is fixed by the specification, which asks only for a dark field,
+// bright bodies that stand apart from it and from each other, the scores near the
+// top, and a label naming the mode. Everything here is this build's own choice,
+// kept apart from `src/constants.ts` so the figures the specification fixes are
+// never mixed with the figures that are merely taste.
+
+/** Neon on charcoal. */
+export const COLOR = {
+  bg: "#0b0e14",
+  bgRaised: "#11151f",
+  p1: "#3ae7c4", // player one / left paddle
+  p2: "#ff5c8a", // player two / AI / right paddle
+  ball: "#f2f5f7",
+  obstacle: "#ffb454",
+  net: "#243044",
+  text: "#e6edf3",
+  textDim: "#8a94a6",
+  textFaint: "#4a5567",
+  panelBorder: "#20283a",
+} as const;
+
+/**
+ * The field background: what the runtime clears the canvas to each frame, so the
+ * letterbox bars around the field match the field itself.
+ */
+export const BACKGROUND = COLOR.bg;
+
+/**
+ * A system monospace stack: no downloaded web font, so the game renders
+ * identically offline.
+ */
+export const MONO =
+  '"DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
+
+// ---- HUD layout ----------------------------------------------------------
+
+export const SCORE_P1_X = 520; // center x of player one's score
+export const SCORE_P2_X = 760; // center x of player two's score
+export const SCORE_TOP_Y = 40;
+export const SCORE_FONT_PX = 76;
+
+// ---- Copy of this build's own --------------------------------------------
+
+export const TAGLINE_TEXT = "NEON PADDLE DUEL";
+export const MODE_LABEL = { solo: "SOLO", versus: "VERSUS" } as const;

@@ -1,13 +1,20 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
+import { Panel } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCase } from "../../data/useTestCase";
-import type { TestCaseDetail, VariantSummary } from "../../data/testCases";
+import { engineName } from "../../data/engines";
+import { useCaseVariant } from "../../data/useRunVariant";
 import { routes } from "../../routes";
-import { useSelectedVariant } from "../../pages/testcases/[slug]/useSelectedVariant";
+import { useSelectedCoordinate } from "../../pages/testcases/[slug]/useSelectedCoordinate";
+import {
+  VersionControl,
+  type CoordinateFreeTabContext,
+  type DetailTabContext,
+} from "../testcases/TestCaseDetailLayout";
 // A game jam shares the catalog data pipeline (and so the detail chrome) with a
 // test case; it reuses the test-case detail styles so the two read identically.
 import styles from "../testcases/TestCaseDetailLayout.module.scss";
@@ -25,35 +32,48 @@ export type JamDetailTab =
 interface JamDetailLayoutProps {
   /** Which tab the rendering page represents. */
   tab: JamDetailTab;
-  /** The tab body, given the resolved jam and the selected variant. */
-  children: (ctx: {
-    testCase: TestCaseDetail;
-    variant: VariantSummary;
-  }) => ReactNode;
+  /** The tab body, given the resolved jam and the anchored coordinate. */
+  children: (ctx: DetailTabContext) => ReactNode;
+  /** For a tab whose content does not depend on the resolved coordinate: the
+   * same body, rendered even when this host cannot resolve the coordinate (see
+   * {@link TestCaseDetailLayout}). */
+  fallback?: (ctx: CoordinateFreeTabContext) => ReactNode;
 }
 
 // Shared chrome for every game-jam detail tab: the title and metadata, the
-// page-level variant selector that drives all tabs at once, and the tab
-// navigation. Mirrors {@link TestCaseDetailLayout}, resolving the jam from the URL
-// slug and the variant from the query string, but omits the difficulty badge (a
-// jam isn't tiered — its theme reads through the tags instead) and the extra tabs
-// a jam has no data for.
-export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
+// page-level coordinate selectors that anchor all tabs at once, and the tab
+// navigation. Mirrors {@link TestCaseDetailLayout}, resolving the jam from the
+// URL slug and the coordinate from the query string, but omits the difficulty
+// badge (a jam isn't tiered — its theme reads through the tags instead) and the
+// extra tabs a jam has no data for. A jam is engineless, so the engine selector
+// never has a choice to offer and is left off.
+export function JamDetailLayout({
+  tab,
+  children,
+  fallback,
+}: JamDetailLayoutProps) {
   const { slug } = useParams<{ slug: string }>();
   const { search } = useLocation();
   const { canExecute } = useGalleryData();
   // Like the test-case detail layout, the jam tabs need the whole case, so the
   // one jam this route is about is fetched rather than carried in the listing.
-  const { testCase: resolved, status } = useTestCase(slug);
+  const { testCase: resolvedCase, status } = useTestCase(slug);
   // Only a game jam is reachable here; a slug that resolves to some other test
   // type is treated as not found so a jam URL can't surface a non-jam case.
-  const testCase = resolved?.testType === "game-jam" ? resolved : undefined;
+  const testCase =
+    resolvedCase?.testType === "game-jam" ? resolvedCase : undefined;
   // Called unconditionally (hook rules); it tolerates an undefined case and
-  // simply resolves no variant, which the guard below turns into the loading or
-  // not-found state.
-  const [variant, setVariant] = useSelectedVariant(testCase);
+  // simply resolves no coordinate, which the guard below turns into the loading
+  // or not-found state.
+  const coordinate = useSelectedCoordinate(testCase);
+  const resolved = useCaseVariant(
+    testCase?.slug ?? "",
+    coordinate.version,
+    coordinate.variant?.slug ?? "",
+    coordinate.engine,
+  );
 
-  if (!testCase || !variant) {
+  if (!testCase || !coordinate.variant) {
     // While the jam is still being fetched it isn't resolvable yet, so show the
     // branded full-body loading state (the topbar stays) rather than the
     // not-found text, which is reserved for a jam genuinely absent once the
@@ -72,7 +92,7 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
   }
 
   // Tab links carry the current query string so switching tabs preserves the
-  // selected variant.
+  // anchored coordinate (and any scope widening).
   const tabs: { key: JamDetailTab; label: string; to: string }[] = [
     {
       key: "overview",
@@ -111,7 +131,7 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
               label="All game jams"
             />
             <h1 className={styles.title}>{testCase.name}</h1>
-            <span className={styles.version}>{testCase.latestVersion}</span>
+            <VersionControl coordinate={coordinate} />
           </div>
         </div>
         <div className={styles.metaRow}>
@@ -127,25 +147,26 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
               <span className={styles.variantLabel}>Variant</span>
               <select
                 className={styles.variantSelect}
-                value={variant.slug}
-                onChange={(event) => setVariant(event.target.value)}
+                value={coordinate.variant.slug}
+                onChange={(event) => coordinate.setVariant(event.target.value)}
               >
-                {testCase.variants.map((entry) => (
+                {coordinate.variants.map((entry) => (
                   <option key={entry.slug} value={entry.slug}>
                     {entry.name}
                   </option>
                 ))}
               </select>
             </label>
-            {/* Only the consoles can launch runs; the selected variant carries
-                through so the run form opens on exactly what is being viewed. */}
+            {/* Only the consoles can launch runs; the anchored coordinate
+                carries through so the run form opens on exactly what is being
+                viewed. */}
             {canExecute && (
               <Link
                 className={styles.run}
                 to={routes.runNew({
                   slug: testCase.slug,
-                  version: testCase.latestVersion,
-                  variant: variant.slug,
+                  version: coordinate.version,
+                  variant: coordinate.variant.slug,
                 })}
               >
                 Run ▸
@@ -155,25 +176,65 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
         </div>
       </header>
 
-      <div className={styles.controls}>
-        <nav className={styles.tabs} aria-label="Game jam sections">
-          {tabs.map((entry) => (
-            <NavLink
-              key={entry.key}
-              to={{ pathname: entry.to, search }}
-              className={
-                entry.key === tab
-                  ? `${styles.tab} ${styles.tabActive}`
-                  : styles.tab
-              }
-            >
-              {entry.label}
-            </NavLink>
-          ))}
-        </nav>
-      </div>
-
-      {children({ testCase, variant })}
+      {resolved.status === "loading" ? (
+        <LoadingState size="section" label="Loading game jam…" />
+      ) : (
+        <>
+          <div className={styles.controls}>
+            <nav className={styles.tabs} aria-label="Game jam sections">
+              {tabs.map((entry) => (
+                <NavLink
+                  key={entry.key}
+                  to={{ pathname: entry.to, search }}
+                  className={
+                    entry.key === tab
+                      ? `${styles.tab} ${styles.tabActive}`
+                      : styles.tab
+                  }
+                >
+                  {entry.label}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+          {resolved.variant ? (
+            children({
+              testCase,
+              version: coordinate.version,
+              engine: coordinate.engine,
+              isLatest: coordinate.isLatest,
+              variant: resolved.variant,
+            })
+          ) : fallback ? (
+            fallback({
+              testCase,
+              version: coordinate.version,
+              engine: coordinate.engine,
+              isLatest: coordinate.isLatest,
+            })
+          ) : (
+            // A failed fetch and a host that genuinely lacks the rendering are
+            // different facts: only the failure offers a retry, and only the
+            // miss is stated as one. The header stays interactive either way.
+            <Panel>
+              <p className={styles.notFound}>
+                {resolved.status === "error"
+                  ? `Couldn't load ${coordinate.variant.name} at ${coordinate.version} on ${engineName(coordinate.engine)}.`
+                  : `This host cannot show ${coordinate.variant.name} at ${coordinate.version} on ${engineName(coordinate.engine)}.`}
+              </p>
+              {resolved.status === "error" && (
+                <button
+                  type="button"
+                  className={styles.retry}
+                  onClick={resolved.retry}
+                >
+                  Retry
+                </button>
+              )}
+            </Panel>
+          )}
+        </>
+      )}
     </PageLayout>
   );
 }

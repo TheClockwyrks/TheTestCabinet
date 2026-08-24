@@ -4,11 +4,17 @@
 // statistics of the draw.
 
 import { describe, expect, it } from "vitest";
-import { nextRandom, nextSign, type RandomSource } from "./rng";
+import { nextRandom, nextSign } from "./rng";
 
 function draws(seed: number, count: number): number[] {
-  const source: RandomSource = { rngState: seed };
-  return Array.from({ length: count }, () => nextRandom(source));
+  const values: number[] = [];
+  let state = seed;
+  for (let i = 0; i < count; i++) {
+    const [value, next] = nextRandom(state);
+    values.push(value);
+    state = next;
+  }
+  return values;
 }
 
 describe("nextRandom", () => {
@@ -28,26 +34,35 @@ describe("nextRandom", () => {
     }
   });
 
-  it("advances the source's state", () => {
-    const source: RandomSource = { rngState: 7 };
-    nextRandom(source);
-    expect(source.rngState).not.toBe(7);
-    expect(Number.isInteger(source.rngState)).toBe(true);
+  it("returns the generator's next state beside the draw", () => {
+    const [, next] = nextRandom(7);
+    expect(next).not.toBe(7);
+    expect(Number.isInteger(next)).toBe(true);
+  });
+
+  it("is a pure function of the state it is given", () => {
+    expect(nextRandom(7)).toEqual(nextRandom(7));
   });
 });
 
 describe("nextSign", () => {
   it("returns only +1 or -1", () => {
-    const source: RandomSource = { rngState: 5 };
+    let state = 5;
     for (let i = 0; i < 100; i++) {
-      expect(Math.abs(nextSign(source))).toBe(1);
+      const [sign, next] = nextSign(state);
+      expect(Math.abs(sign)).toBe(1);
+      state = next;
     }
   });
 
   it("produces both signs over a run of draws", () => {
-    const source: RandomSource = { rngState: 5 };
     const signs = new Set<number>();
-    for (let i = 0; i < 50; i++) signs.add(nextSign(source));
+    let state = 5;
+    for (let i = 0; i < 50; i++) {
+      const [sign, next] = nextSign(state);
+      signs.add(sign);
+      state = next;
+    }
     expect(signs).toEqual(new Set([-1, 1]));
   });
 });

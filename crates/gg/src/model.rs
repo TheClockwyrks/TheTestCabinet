@@ -259,6 +259,13 @@ pub struct ModelResponse {
     /// The turn's cost, when the provider reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<Cost>,
+    /// The upstream **provider** that served the call, when the gateway reported one —
+    /// OpenRouter's top-level `provider` response field. One model id is served by several
+    /// providers behind one name, and a provider-shaped failure (a stall, a habit of capping
+    /// output) is only attributable — and a provider only blacklistable — if every reply names
+    /// who served it. `None` for the scripted mock and for a gateway that named none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// What [loop detection](crate::loopguard) read and threw away before this reply arrived — how
     /// many *earlier* replies to this same call were abandoned, and how much generated output went
     /// with them.
@@ -437,6 +444,28 @@ pub enum ModelError {
         /// line for each discarded attempt describe the same event identically.
         detail: String,
     },
+    /// The call ran into gg's **per-call ceiling**
+    /// ([`MODEL_CALL_TIMEOUT`](crate::client::MODEL_CALL_TIMEOUT)) without producing a reply — a
+    /// stalled provider, not a refusal.
+    ///
+    /// The one `ModelError` the turn loop does **not** end the session on. The client surfaces a
+    /// timeout immediately rather than spending its own retry budget on it — every internal retry
+    /// of a stall costs the full ceiling again — and the loop records the turn as a
+    /// [`ModelTimeout`](TurnErrorType::ModelTimeout) error and asks again, so the retry that
+    /// bounds a stalled endpoint is the turn-level one the error ceilings govern.
+    #[error(
+        "model call timed out after {}s with no complete reply{}",
+        .after.as_secs(),
+        .provider.as_deref().map(|provider| format!(" (provider: {provider})")).unwrap_or_default()
+    )]
+    Timeout {
+        /// The ceiling that was hit.
+        after: std::time::Duration,
+        /// The upstream provider that was serving the stalled call, when the stream got far
+        /// enough to name one — what makes a provider-shaped stall blacklistable. `None` on the
+        /// buffering transport, whose reply arrives all at once or not at all.
+        provider: Option<String>,
+    },
 }
 
 impl ModelError {
@@ -459,7 +488,7 @@ impl ModelError {
     }
 
     /// The [turn error type](TurnErrorType) this failure is recorded as — the one place
-    /// `ModelError`'s seven shapes are mapped onto the taxonomy the run's error record publishes.
+    /// `ModelError`'s eight shapes are mapped onto the taxonomy the run's error record publishes.
     ///
     /// Exhaustive on purpose: a variant added above has to declare how it is *recorded*, not just
     /// how it reads. Every one of these lands under
@@ -478,6 +507,7 @@ impl ModelError {
             ModelError::ResponseLoop { .. } => TurnErrorType::ModelResponseLoop,
             ModelError::VisionUnsupported { .. } => TurnErrorType::ModelVisionUnsupported,
             ModelError::Parse(_) => TurnErrorType::ModelParse,
+            ModelError::Timeout { .. } => TurnErrorType::ModelTimeout,
         }
     }
 

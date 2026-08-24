@@ -29,29 +29,6 @@ use crate::error::{Error, Result};
 /// empty default (see [`GameJamManifest::into_case`]).
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 struct Manifest {
-    /// The **manifest format** this file is authored in. Defaults to
-    /// [`MANIFEST_FORMAT_LEGACY`], which is what every version authored before the
-    /// key existed is, so a manifest that declares nothing keeps resolving unchanged.
-    ///
-    /// The format decides how a case says which starter project a run is seeded
-    /// with, and therefore which cases may name an [engine](crate::engine) at all:
-    ///
-    /// * [`MANIFEST_FORMAT_LEGACY`] has one `workspace` directory for the whole case
-    ///   and cannot name an engine. A run of it is the engineless run, and the one
-    ///   workspace is the project that run is seeded with.
-    /// * [`MANIFEST_FORMAT_ENGINES`] has a `[workspaces]` table naming one directory
-    ///   **per engine** and no `workspace` key at all. A starter project is written
-    ///   against a runtime — its `package.json` depends on the engine, its
-    ///   case-owned modules are written against the engine's API — so one directory
-    ///   cannot stand for two engines, and the format that supports engines is the
-    ///   one that makes the per-engine directory the only way to say it.
-    ///
-    /// The two are exclusive in both directions, and resolution says so: a legacy
-    /// manifest declaring `[workspaces]`, an engine list, or an `[[engine]]` table is
-    /// rejected, and a [`MANIFEST_FORMAT_ENGINES`] manifest declaring `workspace` is
-    /// rejected. Neither is a silently-ignored key.
-    #[serde(default = "default_manifest_format")]
-    format: u32,
     /// The case's **stable identity**, recorded in every run and used as the
     /// definition-store key. **Required.** It is declared explicitly rather than
     /// derived from the folder name so identity is **decoupled from the folder**:
@@ -219,21 +196,20 @@ struct Manifest {
     #[serde(default, rename = "spec")]
     specs: Vec<ManifestSpec>,
     /// Optional starter **workspace** directory, relative to the version folder —
-    /// the [`MANIFEST_FORMAT_LEGACY`] spelling, and illegal under
-    /// [`MANIFEST_FORMAT_ENGINES`].
+    /// the [engineless](crate::engine::NONE_SLUG) spelling, and illegal for a case
+    /// that names an engine.
     ///
     /// Its contents are copied into the root of the run's workspace before the
     /// specs are seeded, giving every run a baseline project to build on (for
     /// example a `package.json`). A variant may override it with its own
     /// directory (see [`ManifestVariant::workspace`]). `None` seeds no starter
-    /// files. A legacy case supports no engine, so the one directory is the
+    /// files. A case naming one directory supports no engine, so it is the
     /// engineless run's project and resolution files it under
     /// [`NONE_SLUG`].
     #[serde(default)]
     workspace: Option<PathBuf>,
     /// The starter **workspace directory per engine**, relative to the version
-    /// folder — the [`MANIFEST_FORMAT_ENGINES`] spelling, and illegal under
-    /// [`MANIFEST_FORMAT_LEGACY`].
+    /// folder — the per-engine spelling, and illegal alongside `workspace`.
     ///
     /// Keyed by [engine](crate::engine) slug, and it must name exactly the engines
     /// the case supports: naming one it does not support is a typo, and omitting one
@@ -388,11 +364,6 @@ struct ManifestIdentity {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct GameJamManifest {
-    /// The **manifest format** this jam is authored in. See [`Manifest::format`]:
-    /// a jam names its starter project and its engines by exactly the same two
-    /// spellings a test case does, so it is gated by exactly the same rule.
-    #[serde(default = "default_manifest_format")]
-    format: u32,
     /// The jam's **stable identity** (the definition-store key). See
     /// [`Manifest::slug`].
     slug: String,
@@ -484,7 +455,6 @@ impl GameJamManifest {
     /// than duplicating it.
     fn into_case(self) -> (Manifest, ManifestVariant) {
         let manifest = Manifest {
-            format: self.format,
             slug: self.slug,
             name: self.name,
             difficulty: GAME_JAM_DIFFICULTY.to_string(),
@@ -1030,8 +1000,8 @@ struct ManifestVariant {
     #[serde(default, rename = "spec")]
     specs: Vec<ManifestSpec>,
     /// Optional starter **workspace** directory for this variant, relative to the
-    /// version folder — the [`MANIFEST_FORMAT_LEGACY`] spelling, and illegal under
-    /// [`MANIFEST_FORMAT_ENGINES`].
+    /// version folder — the [engineless](crate::engine::NONE_SLUG) spelling, and
+    /// illegal in a case that names an engine.
     ///
     /// When present it **replaces** the case's common workspace for runs of this
     /// variant (it is not additive), so a variant can ship a different baseline
@@ -1039,8 +1009,7 @@ struct ManifestVariant {
     #[serde(default)]
     workspace: Option<PathBuf>,
     /// The starter **workspace directory per engine** for this variant — the
-    /// [`MANIFEST_FORMAT_ENGINES`] spelling, and illegal under
-    /// [`MANIFEST_FORMAT_LEGACY`].
+    /// per-engine spelling, and illegal in a case that names one `workspace`.
     ///
     /// When present it **replaces** the case's whole `[workspaces]` table for runs
     /// of this variant, so it must itself name exactly the engines the case
@@ -1284,10 +1253,11 @@ struct ManifestReviewItem {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ManifestReviewValidation {
     /// The debug-driver script path, relative to the version folder (by convention
-    /// `validation/<item>.mjs`) under [`MANIFEST_FORMAT_LEGACY`], or relative to
-    /// the engine's validator project (for example `gameplay/serve-speed.test.ts`)
-    /// under [`MANIFEST_FORMAT_ENGINES`], where the case ships one project per
-    /// engine and the same point is decided by the same-named suite in each.
+    /// `validation/<item>.mjs`) for an engineless case, or relative to the engine's
+    /// validator project (for example `gameplay/serve-speed.test.ts`) for a case
+    /// that names one `[workspaces]` directory per engine and ships one validator
+    /// project per engine, where the same point is decided by the same-named suite
+    /// in each.
     /// Reporter-side — never seeded into a run.
     script: PathBuf,
     /// The media outputs the script produces, each captured from both the model's
@@ -2515,17 +2485,10 @@ pub struct WorkspaceFile {
 /// [`TestCaseVersion::engines`], so a run of any supported engine finds an entry;
 /// read one with [`TestCaseVersion::workspace_for`] rather than indexing.
 ///
-/// A [legacy](MANIFEST_FORMAT_LEGACY) case names one directory and supports no
-/// engine, so its files land under [`NONE_SLUG`] and the map has exactly that one
-/// key — which is why nothing downstream needs to know which format a case was
-/// authored in.
-///
-/// It deserializes from **either** shape: the map it serializes as, and the bare
-/// list a definition stored before workspaces were keyed by engine carries. Such a
-/// definition is a legacy case (nothing else could have been stored), so its list
-/// is read as the engineless project, exactly as resolving that manifest today
-/// produces.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+/// An engineless case names one directory and supports no engine, so its files
+/// land under [`NONE_SLUG`] and the map has exactly that one key — which is why
+/// nothing downstream needs to know which spelling a case was authored with.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EngineWorkspaces(BTreeMap<String, Vec<WorkspaceFile>>);
 
@@ -2566,22 +2529,6 @@ impl EngineWorkspaces {
 impl FromIterator<(String, Vec<WorkspaceFile>)> for EngineWorkspaces {
     fn from_iter<I: IntoIterator<Item = (String, Vec<WorkspaceFile>)>>(iter: I) -> Self {
         Self(iter.into_iter().collect())
-    }
-}
-
-impl<'de> Deserialize<'de> for EngineWorkspaces {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        /// The two shapes on the wire, told apart by their JSON kind alone.
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Wire {
-            ByEngine(BTreeMap<String, Vec<WorkspaceFile>>),
-            Engineless(Vec<WorkspaceFile>),
-        }
-        Ok(match Wire::deserialize(deserializer)? {
-            Wire::ByEngine(by_engine) => Self(by_engine),
-            Wire::Engineless(files) => Self(BTreeMap::from([(NONE_SLUG.to_string(), files)])),
-        })
     }
 }
 
@@ -3382,18 +3329,16 @@ pub struct Instrumentation {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReviewValidation {
     /// Absolute host path to the debug-driver script, for a case that has one —
-    /// a [legacy](MANIFEST_FORMAT_LEGACY) case, whose single script is driven in a
-    /// browser.
+    /// an engineless case, whose single script is driven in a browser.
     ///
-    /// `None` for a case that declares its validators **per engine** (see
-    /// [`MANIFEST_FORMAT_ENGINES`]): the same point is decided by the same-named
-    /// suite in each engine's validator project, so which file on the host decides
-    /// it is a property of the run's engine rather than of the case, and the
-    /// validator resolves it from [`Self::script_rel`] against the project it
-    /// staged.
+    /// `None` for a case that declares its validators **per engine**: the same
+    /// point is decided by the same-named suite in each engine's validator
+    /// project, so which file on the host decides it is a property of the run's
+    /// engine rather than of the case, and the validator resolves it from
+    /// [`Self::script_rel`] against the project it staged.
     pub script: Option<PathBuf>,
     /// The script path as the case declared it, kept for display in the run's
-    /// script list: version-folder-relative for a legacy case (for example
+    /// script list: version-folder-relative for an engineless case (for example
     /// `validation/ball-spin.mjs`), and relative to the engine's validator project
     /// for a per-engine case (for example `gameplay/serve-speed.test.ts`).
     pub script_rel: String,
@@ -3886,11 +3831,10 @@ struct EngineSupportRepr {
 
 /// Either spelling of an engine entry on the wire: a bare slug or the table.
 ///
-/// A resolved [`TestCaseVersion`] is serialized into the backend's definition
-/// store and read back, so the *stored* form has to keep accepting the plain
-/// string array every record written before engine ranges existed carries. Reading
-/// both spellings here is the same accommodation resolution makes for the manifest,
-/// and it costs one enum.
+/// An entry that pins no range is written as the bare slug the case authored, so
+/// the stored form stays as small as the declaration it came from; only an entry
+/// carrying a range needs the table. Reading both spellings here is the same
+/// accommodation resolution makes for the manifest, and it costs one enum.
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum EngineSupportWire {
@@ -3900,9 +3844,8 @@ enum EngineSupportWire {
 
 impl Serialize for EngineSupport {
     /// An unbounded entry serializes back to the bare slug it was read from, so a
-    /// case that pins nothing round-trips through the definition store unchanged
-    /// and older readers keep understanding it. Only an entry that actually
-    /// carries a range needs the table.
+    /// case that pins nothing round-trips through the definition store unchanged.
+    /// Only an entry that actually carries a range needs the table.
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         if self.is_bounded() {
             EngineSupportRepr {
@@ -4101,11 +4044,11 @@ pub struct TestCaseVersion {
     pub packages: Vec<String>,
     /// The [engines](crate::engine) a run of this version may be built on, each
     /// with the range of engine versions this version supports — from the
-    /// manifest's `engines` list and its `[[engine]]` tables, in declared order,
-    /// but always led by [`NONE_SLUG`], which every case supports whether it
-    /// declares it or not. So this is never empty: a version declaring nothing
-    /// resolves to exactly unbounded support for `none`, the engineless run every
-    /// case supports.
+    /// manifest's `engines` list and its `[[engine]]` tables, in declared order.
+    /// Never empty: a version declaring nothing resolves to exactly unbounded
+    /// support for [`NONE_SLUG`], the engineless run. A version that declares any
+    /// engine supports exactly what it declares, so one built against a runtime
+    /// may leave the engineless run out.
     ///
     /// It is the **compatibility gate** a run's `--engine` is checked against
     /// (see [`Self::supports_engine`] for the slug and
@@ -4113,12 +4056,11 @@ pub struct TestCaseVersion {
     /// description of what any engine provides, which the engine documents from
     /// its own package.
     ///
-    /// Defaulted on the wire so a definition store or backend that predates
-    /// engines deserializes as the engineless case rather than as one supporting
-    /// nothing at all, and each entry deserializes from either a bare slug or a
-    /// range-carrying object so records written before ranges existed keep
-    /// reading.
-    #[serde(default = "default_engines")]
+    /// Always present on the wire: resolution never produces an empty set — it
+    /// always leads with [`NONE_SLUG`] — so a payload without the field is one no
+    /// resolution wrote, and reading it as the engineless case would quietly
+    /// refuse every engine-backed run of that version. Each entry is written as a
+    /// bare slug when it pins no range and as a table when it does.
     pub engines: Vec<EngineSupport>,
     /// The variants this case offers, in declared order. At least one is always
     /// present.
@@ -4621,51 +4563,26 @@ impl TestCaseCatalog {
             )));
         }
 
-        // The manifest format, and the two spellings it decides between. A case says
-        // which starter project a run is seeded with in exactly one way, and which way
-        // is a property of the format rather than something a manifest may mix: the
-        // legacy `workspace` names one directory and admits no engine, and the engines
-        // format's `[workspaces]` names one directory per engine and is the only place
-        // an engine may be declared at all. Reading a key the case's format does not
+        // The two spellings of the starter project, and the one rule that decides
+        // between them. A case says which project a run is seeded with in exactly one
+        // way: `workspace` names one directory for the whole case and admits no
+        // engine, and `[workspaces]` names one directory PER ENGINE. A starter project
+        // is written against a runtime — its `package.json` depends on the engine, its
+        // case-owned modules are written against that engine's API — so one directory
+        // cannot stand for two engines, which makes the per-engine table the only way
+        // a case may name an [engine](crate::engine) at all. Mixing the two would be
+        // two answers to one question, and reading a key the case's shape does not
         // admit would be reading a declaration the author did not make, so each is
         // refused by name here rather than silently ignored.
-        if !MANIFEST_FORMATS.contains(&manifest.format) {
-            return Err(invalid(format!(
-                "`format` {} is not a manifest format; valid formats are: {}",
-                manifest.format,
-                MANIFEST_FORMATS
-                    .iter()
-                    .map(u32::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )));
-        }
         let declares_engine = !manifest.engines.is_empty() || !manifest.engine_tables.is_empty();
-        if manifest.format == MANIFEST_FORMAT_ENGINES {
-            if manifest.workspace.is_some() {
-                return Err(invalid(format!(
-                    "`workspace` is not a key of manifest format {MANIFEST_FORMAT_ENGINES}; a \
-                     starter project is written against a runtime, so declare one directory per \
-                     engine in a `[workspaces]` table instead"
-                )));
-            }
-        } else {
-            if !manifest.workspaces.is_empty() {
-                return Err(invalid(format!(
-                    "`[workspaces]` is a key of manifest format {MANIFEST_FORMAT_ENGINES}; \
-                     manifest format {} declares a single `workspace`, and a case wanting one \
-                     project per engine declares `format = {MANIFEST_FORMAT_ENGINES}`",
-                    manifest.format
-                )));
-            }
-            if declares_engine {
-                return Err(invalid(format!(
-                    "an engine may only be declared by manifest format \
-                     {MANIFEST_FORMAT_ENGINES}, which seeds one starter project per engine; \
-                     manifest format {} has a single `workspace` and runs engineless",
-                    manifest.format
-                )));
-            }
+        let per_engine = !manifest.workspaces.is_empty() || declares_engine;
+        if manifest.workspace.is_some() && per_engine {
+            return Err(invalid(
+                "`workspace` names one directory for the whole case, so it may not be declared \
+                 alongside `[workspaces]` or an engine; a starter project is written against a \
+                 runtime, so declare one directory per engine in a `[workspaces]` table instead"
+                    .to_string(),
+            ));
         }
 
         // Every declared path must stay inside the version folder, keeping the
@@ -4861,23 +4778,23 @@ impl TestCaseCatalog {
             variant_manifests
         };
 
-        // The format gate again, over the variant files: a variant spells its own
+        // The same gate again, over the variant files: a variant spells its own
         // starter project the same way its case does, so a variant reaching for the
-        // other format's key is refused by name exactly as the case would be.
+        // other spelling is refused by name exactly as the case would be.
         for variant in &variant_manifests {
-            if manifest.format == MANIFEST_FORMAT_ENGINES {
+            if per_engine {
                 if variant.workspace.is_some() {
                     return Err(invalid(format!(
-                        "variant `{}` declares `workspace`, which is not a key of manifest \
-                         format {MANIFEST_FORMAT_ENGINES}; declare one directory per engine in \
-                         a `[workspaces]` table instead",
+                        "variant `{}` declares `workspace`, but the case names one directory \
+                         per engine; declare the variant's own directories in a `[workspaces]` \
+                         table instead",
                         variant.slug
                     )));
                 }
             } else if !variant.workspaces.is_empty() {
                 return Err(invalid(format!(
-                    "variant `{}` declares `[workspaces]`, which is a key of manifest format \
-                     {MANIFEST_FORMAT_ENGINES}",
+                    "variant `{}` declares `[workspaces]`, but the case names one `workspace` \
+                     for the whole case and runs engineless",
                     variant.slug
                 )));
             }
@@ -6253,29 +6170,27 @@ impl TestCaseCatalog {
             Ok(resolved)
         };
         // The starter project, per engine. A project is written against a runtime,
-        // so the two manifest formats spell this differently and resolution reads
-        // whichever the case's `format` admits (the format gate above has already
-        // refused the other spelling):
+        // so the two spellings resolve differently and resolution reads whichever the
+        // case declared (the gate above has already refused the other one):
         //
-        //   * A legacy case names one `workspace` directory and supports `none`
+        //   * An engineless case names one `workspace` directory and supports `none`
         //     alone, so its files land under that slug and nothing downstream needs
-        //     to know which format the case was authored in.
-        //   * An engines-format case names a `[workspaces]` table covering exactly
-        //     the engines it supports, and each entry resolves the same way.
+        //     to know which spelling the case was authored in.
+        //   * A per-engine case names a `[workspaces]` table covering exactly the
+        //     engines it supports, and each entry resolves the same way.
         //
         // Either way an absent declaration seeds nothing, which is a case that hands
         // the model a bare repository.
-        let common_workspace: EngineWorkspaces = match manifest.format {
-            MANIFEST_FORMAT_ENGINES => {
-                resolve_engine_workspaces(&manifest.workspaces, &engine_slugs, "workspaces", None)?
-            }
-            _ => match &manifest.workspace {
+        let common_workspace: EngineWorkspaces = if per_engine {
+            resolve_engine_workspaces(&manifest.workspaces, &engine_slugs, "workspaces", None)?
+        } else {
+            match &manifest.workspace {
                 Some(dir) => EngineWorkspaces::from_iter([(
                     NONE_SLUG.to_string(),
                     resolve_workspace(dir, "workspace")?,
                 )]),
                 None => EngineWorkspaces::default(),
-            },
+            }
         };
 
         // The engine's `file:` dependency is written into the seeded workspace's
@@ -6637,14 +6552,15 @@ impl TestCaseCatalog {
                          pass/fail verdict to decide"
                     )));
                 }
-                // Where the declared script lives depends on the manifest format,
-                // because what a case declares does. A legacy case names one script
-                // under the version folder and a browser drives it. A per-engine case
-                // names a suite inside a validator project, and it ships one project
-                // per engine, so the same declaration must resolve in EVERY engine's
-                // project — a point decided under one engine and left to the reviewer
-                // under another would be the same case graded two ways.
-                let script = if manifest.format == MANIFEST_FORMAT_ENGINES {
+                // Where the declared script lives depends on how the case is
+                // authored, because what it declares does. An engineless case names
+                // one script under the version folder and a browser drives it. A
+                // per-engine case names a suite inside a validator project, and it
+                // ships one project per engine, so the same declaration must resolve
+                // in EVERY engine's project — a point decided under one engine and
+                // left to the reviewer under another would be the same case graded
+                // two ways.
+                let script = if per_engine {
                     if escapes_folder(&v.script) {
                         return Err(invalid(format!(
                             "{label} validation script `{}` escapes the version folder",
@@ -7181,29 +7097,28 @@ impl TestCaseCatalog {
             }
             let variant_domains: Vec<Domain> = effective_domains[domains.len()..].to_vec();
             // A variant's workspace, when declared, replaces the common workspace
-            // for this variant rather than layering on top of it — and under the
-            // engines format it replaces the whole per-engine table, so a variant
+            // for this variant rather than layering on top of it — and in a
+            // per-engine case it replaces the whole per-engine table, so a variant
             // that declares one covers every engine the case supports.
-            let workspace = match manifest.format {
-                MANIFEST_FORMAT_ENGINES => {
-                    if variant.workspaces.is_empty() {
-                        None
-                    } else {
-                        Some(resolve_engine_workspaces(
-                            &variant.workspaces,
-                            &engine_slugs,
-                            "workspaces",
-                            Some(&variant.slug),
-                        )?)
-                    }
+            let workspace = if per_engine {
+                if variant.workspaces.is_empty() {
+                    None
+                } else {
+                    Some(resolve_engine_workspaces(
+                        &variant.workspaces,
+                        &engine_slugs,
+                        "workspaces",
+                        Some(&variant.slug),
+                    )?)
                 }
-                _ => match &variant.workspace {
+            } else {
+                match &variant.workspace {
                     Some(dir) => Some(EngineWorkspaces::from_iter([(
                         NONE_SLUG.to_string(),
                         resolve_workspace(dir, "variant workspace")?,
                     )])),
                     None => None,
-                },
+                }
             };
 
             // A variant's reference implementation, when declared, is the authored
@@ -7929,40 +7844,6 @@ fn default_max_runtime_hours() -> f64 {
     1.0
 }
 
-/// The **legacy** manifest format: one `workspace` directory for the whole case,
-/// and no [engine](crate::engine) may be named.
-///
-/// It is what every version authored before the `format` key existed is, and what a
-/// manifest omitting the key still means, so a frozen version resolves exactly as it
-/// always did.
-pub const MANIFEST_FORMAT_LEGACY: u32 = 1;
-
-/// The manifest format that carries **engines**: a `[workspaces]` table naming one
-/// starter directory per engine, and no `workspace` key.
-///
-/// A starter project is written against a runtime, so the format that lets a case
-/// name an engine is the same format that makes the per-engine directory the only
-/// way to declare one.
-pub const MANIFEST_FORMAT_ENGINES: u32 = 2;
-
-/// Every manifest format a `test-case.toml` may declare, lowest first — what a
-/// refusal lists so an unknown value is one step from being fixed.
-const MANIFEST_FORMATS: &[u32] = &[MANIFEST_FORMAT_LEGACY, MANIFEST_FORMAT_ENGINES];
-
-/// The manifest format applied when a manifest omits `format`.
-fn default_manifest_format() -> u32 {
-    MANIFEST_FORMAT_LEGACY
-}
-
-/// The supported-engine set a [`TestCaseVersion`] deserializes to when the wire
-/// payload carries no `engines` field at all: the engineless run every case
-/// supports.
-///
-/// Resolution never produces an empty set — it always leads with
-/// [`NONE_SLUG`] — so the only way the field can be
-/// missing is a producer that predates engines. Defaulting to `["none"]` rather
-/// than to nothing keeps such a payload meaning "runs the way it always did"
-/// instead of "supports no engine at all", which would refuse every run of it.
 /// Parse one authored engine version out of an `[[engine]]` table, reporting the
 /// engine and the key when it is not a semantic version.
 ///
@@ -7979,10 +7860,6 @@ fn parse_engine_version(slug: &str, key: &str, raw: &str) -> std::result::Result
              carry all three components (for example `1.0.0`)"
         )
     })
-}
-
-fn default_engines() -> Vec<EngineSupport> {
-    vec![EngineSupport::unbounded(NONE_SLUG)]
 }
 
 /// The default `[canvas] background` applied when an asset-generation manifest

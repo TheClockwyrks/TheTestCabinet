@@ -2,38 +2,42 @@
 // is the whole story: the context the engine hands `render` is already cleared to
 // the background color and already carries the letterboxed, device-pixel-ratio
 // aware transform for the fixed design size, so nothing here scales, translates,
-// letterboxes, or looks at the canvas element. The look is neon-on-charcoal,
-// matching the palette in specs/overview.md.
+// letterboxes, or looks at the canvas element. The look is this build's own,
+// neon-on-charcoal, held in `src/theme.ts`.
 //
-// Rendering is a pure read of `CaromState`: nothing below writes to it.
+// Rendering is a read of `CaromState`, handed in as the `DeepReadonly` view the
+// engine gives `render`, so nothing below can write to it.
 
 import {
   BALL_R,
-  COLOR,
   FIELD_CX,
   FIELD_CY,
   FIELD_H,
   FIELD_W,
   HOLD_TIME,
   MATCHOVER_ITEMS,
-  MODE_LABEL,
-  MONO,
   NET_X,
   OBSTACLE_HH,
   OBSTACLE_HW,
   PADDLE_HALF,
   PADDLE_W,
   PAUSE_ITEMS,
-  SCORE_FONT_PX,
-  SCORE_P1_X,
-  SCORE_P2_X,
-  SCORE_TOP_Y,
-  TAGLINE_TEXT,
   TITLE_ITEMS,
   TITLE_TEXT,
 } from "./constants";
 import { paddleBounds } from "./entities";
 import type { CaromState } from "./game";
+import type { DeepReadonly } from "ts-essentials";
+import {
+  COLOR,
+  MODE_LABEL,
+  MONO,
+  SCORE_FONT_PX,
+  SCORE_P1_X,
+  SCORE_P2_X,
+  SCORE_TOP_Y,
+  TAGLINE_TEXT,
+} from "./theme";
 import { ribbon } from "./trail";
 
 /**
@@ -154,7 +158,7 @@ function drawNet(ctx: Ctx): void {
  * oriented rectangle the collision in `src/physics.ts` resolves against, rather
  * than an upright bar that happens to sit in the same place.
  */
-function drawObstacles(ctx: Ctx, state: CaromState): void {
+function drawObstacles(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   for (const o of state.obstacles) {
     ctx.save();
     ctx.translate(o.cx, o.cy);
@@ -174,7 +178,7 @@ function drawObstacles(ctx: Ctx, state: CaromState): void {
   }
 }
 
-function drawPaddles(ctx: Ctx, state: CaromState): void {
+function drawPaddles(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   glowRect(
     ctx,
     paddleBounds("left").x0,
@@ -206,7 +210,7 @@ function drawPaddles(ctx: Ctx, state: CaromState): void {
  * streak rather than as discrete dots. Its length is proportional to speed,
  * because the samples span a fixed slice of time.
  */
-function drawTrail(ctx: Ctx, state: CaromState): void {
+function drawTrail(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   // Newest first, and the newest sample IS where the ball is: the update records
   // the ball's position at the end of every frame, and the frame the engine draws
   // is the frame it just updated. There is no interpolation to do — a variable
@@ -294,7 +298,7 @@ function drawVignette(ctx: Ctx): void {
  */
 function drawField(
   ctx: Ctx,
-  state: CaromState,
+  state: DeepReadonly<CaromState>,
   alpha = 1,
   includePaddles = true,
 ): void {
@@ -308,11 +312,7 @@ function drawField(
 
 // ---- HUD ----------------------------------------------------------------
 
-function pad2(n: number): string {
-  return n < 10 ? `0${n}` : `${n}`;
-}
-
-function drawHud(ctx: Ctx, state: CaromState): void {
+function drawHud(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   const scoreOpts: TextOpts = {
     size: SCORE_FONT_PX,
     weight: 700,
@@ -321,8 +321,8 @@ function drawHud(ctx: Ctx, state: CaromState): void {
     align: "center",
     baseline: "top",
   };
-  drawText(ctx, pad2(state.score.p1), SCORE_P1_X, SCORE_TOP_Y, scoreOpts);
-  drawText(ctx, pad2(state.score.p2), SCORE_P2_X, SCORE_TOP_Y, scoreOpts);
+  drawText(ctx, `${state.score.p1}`, SCORE_P1_X, SCORE_TOP_Y, scoreOpts);
+  drawText(ctx, `${state.score.p2}`, SCORE_P2_X, SCORE_TOP_Y, scoreOpts);
 
   drawText(ctx, MODE_LABEL[state.mode], 32, 28, {
     size: 18,
@@ -380,7 +380,7 @@ function drawMenu(
 
 // ---- Screens ------------------------------------------------------------
 
-function drawTitle(ctx: Ctx, state: CaromState): void {
+function drawTitle(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   drawField(ctx, state, 0.28);
   // A posed decorative ball, off in the open field to the lower right so it clears
   // the title, the tagline, and the menu text.
@@ -422,7 +422,7 @@ function drawTitle(ctx: Ctx, state: CaromState): void {
   });
 }
 
-function drawHowTo(ctx: Ctx, state: CaromState): void {
+function drawHowTo(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   drawField(ctx, state, 0.16);
   drawVignette(ctx);
 
@@ -479,7 +479,7 @@ function drawHowTo(ctx: Ctx, state: CaromState): void {
   });
 }
 
-function drawMatchScene(ctx: Ctx, state: CaromState): void {
+function drawMatchScene(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   // The net and the obstacles sit under the vignette (atmospheric edge
   // darkening); the ball, its trail, and the paddles are drawn on top of it so the
   // moving pieces keep full neon brightness everywhere on the field.
@@ -502,7 +502,7 @@ export function countdownPhase(holdTimer: number): number {
   return (holdTimer % third) / third;
 }
 
-function drawCountdownOverlay(ctx: Ctx, state: CaromState): void {
+function drawCountdownOverlay(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   const num = countdownNumber(state.holdTimer);
   const phase = countdownPhase(state.holdTimer); // 1 -> 0 across each digit
   const pop = 0.7 + 0.3 * phase; // a gentle scale-in per digit
@@ -556,7 +556,7 @@ function drawOverlay(ctx: Ctx, opacity: number): void {
   ctx.restore();
 }
 
-function drawPause(ctx: Ctx, state: CaromState): void {
+function drawPause(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   drawMatchScene(ctx, state);
   drawOverlay(ctx, 0.72);
 
@@ -589,7 +589,7 @@ function drawPause(ctx: Ctx, state: CaromState): void {
   );
 }
 
-function drawMatchOver(ctx: Ctx, state: CaromState): void {
+function drawMatchOver(ctx: Ctx, state: DeepReadonly<CaromState>): void {
   drawField(ctx, state, 0.32);
   drawVignette(ctx);
   drawOverlay(ctx, 0.72);
@@ -651,7 +651,7 @@ function drawMatchOver(ctx: Ctx, state: CaromState): void {
  * first thing drawn is the field furniture rather than a background fill.
  */
 export function renderGame(
-  state: CaromState,
+  state: DeepReadonly<CaromState>,
   ctx2d: CanvasRenderingContext2D,
 ): void {
   const ctx = ctx2d as Ctx;

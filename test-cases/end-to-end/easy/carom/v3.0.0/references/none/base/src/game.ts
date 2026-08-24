@@ -28,6 +28,7 @@
 //     restores exactly these fields, so a scenario replays identically.
 
 import {
+  DEFAULT_SEED,
   FIELD_CX,
   FIELD_CY,
   HOLD_TIME,
@@ -44,7 +45,6 @@ import {
   FIELD_W,
 } from "./constants";
 import { defineCues } from "./audio";
-import { DEFAULT_SEED } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { integratePaddle, parkBall } from "./entities";
 import { updateAi } from "./ai";
@@ -64,7 +64,7 @@ import { step } from "./physics";
 import { renderGame } from "./render";
 import { nextSign } from "./rng";
 import { recordTrail } from "./trail";
-import type { Game, InitApi, RenderApi, UpdateApi } from "./host";
+import type { Game, InitApi, RenderApi, UpdateApi } from "./runtime";
 
 /**
  * The top-level state machine (specs/ui.md). `countdown` and `playing` both
@@ -240,12 +240,16 @@ export function createInitialState(): CaromState {
 // ---- Screen transitions -------------------------------------------------
 
 /**
- * Return to the title screen.
+ * Return to the title screen: every declared field back to its title-screen
+ * value, except the ones specs/ui.md keeps.
  *
- * `simTime` is deliberately untouched: it is accumulated simulation time, not a
- * property of the screen, and only a `reset()` starts it over.
+ * `simTime`, `muted`, `rngState`, and `driver` are deliberately untouched:
+ * accumulated time, a player preference, the generator's state, and the debug
+ * surface's hold on the paddles are not properties of the screen. Only the
+ * surface's `reset()` starts the first and the third over and clears the last,
+ * which is why it is built over this function in `src/debug.ts`.
  */
-function toTitle(state: CaromState): void {
+export function toTitle(state: CaromState): void {
   state.screen = "title";
   state.mode = "solo";
   state.menuIndex = 0;
@@ -263,9 +267,11 @@ function toTitle(state: CaromState): void {
 /**
  * Start a match. The match opens on the pre-serve countdown, with the first serve
  * of the match always aimed at player one, so it opens consistently
- * (specs/balls.md).
+ * (specs/balls.md). `SOLO` and `VERSUS` on the title, `RESTART` on the pause
+ * menu, `PLAY AGAIN` on the match-over screen, and the debug surface's
+ * `startMatch` all start a match through this one function.
  */
-function startMatch(state: CaromState, mode: Mode): void {
+export function startMatch(state: CaromState, mode: Mode): void {
   state.mode = mode;
   state.screen = "countdown";
   state.resumeScreen = "playing";
@@ -352,9 +358,12 @@ function handleInput(state: CaromState, api: UpdateApi): void {
         menuInput(state, api, PAUSE_ITEMS.length, (i) => selectPause(state, i));
       break;
     case "matchover":
-      menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
-        selectMatchOver(state, i),
-      );
+      // A menu is up, so Escape means `back` — which here is "to the title".
+      if (back(api)) toTitle(state);
+      else
+        menuInput(state, api, MATCHOVER_ITEMS.length, (i) =>
+          selectMatchOver(state, i),
+        );
       break;
   }
 }

@@ -1,7 +1,7 @@
 //! The answers that are Rust's own, and the lexer underneath them.
 //!
 //! What is deliberately **not** here is a second copy of the skeleton's tests. Fence stripping,
-//! prose stripping, the fixpoint loop, the honesty disclosure and the delete-only invariant are
+//! prose stripping, the fixpoint loop, the operator's record and the delete-only invariant are
 //! asserted once in `healing.test.rs` against every registered dialect, this one included. What this
 //! file asserts is the part that is Rust's — the lexer that reads text no other arm's can, and the
 //! two predicates whose lists are this dialect's own. Where an answer is only interesting beside

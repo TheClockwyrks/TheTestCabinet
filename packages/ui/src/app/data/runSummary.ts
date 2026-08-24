@@ -28,6 +28,12 @@ export function toRunSummary(
       variant: record.subject.variant,
       harnessSlug: record.subject.harnessSlug,
       harnessVersion: record.subject.harnessVersion,
+      // The engine the build was written against, and the runtime version vendored
+      // into the run repository. Lifted onto the card exactly as the variant is: the
+      // engine is a run dimension chosen beside it, and two runs of the same variant
+      // on different engines are not the same run to compare.
+      engineSlug: record.subject.engineSlug,
+      engineVersion: record.subject.engineVersion ?? null,
       modelId: record.subject.modelId,
       // The gg configuration the run was launched from, lifted off its capability
       // set exactly as the Rust `SubjectOut::from` does — a gg row in the run log

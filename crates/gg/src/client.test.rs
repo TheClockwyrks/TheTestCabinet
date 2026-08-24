@@ -21,8 +21,12 @@ fn build_request_body_uses_openai_tools_shape() {
         json!({ "type": "object", "properties": { "path": { "type": "string" } } }),
     )];
 
+    // A model that takes no cache markers, so the messages keep the bare-string shape and the
+    // assertions below stay about the one thing this test is for: the OpenAI tools encoding.
+    // (A marker-taking model's messages are all content arrays — see
+    // `a_marker_model_sends_every_content_message_as_parts`.)
     let body = build_request_body(
-        "anthropic/claude-opus-4-8",
+        "openai/gpt-5.6",
         &messages,
         &tools,
         None,
@@ -30,7 +34,7 @@ fn build_request_body_uses_openai_tools_shape() {
         false,
     );
 
-    assert_eq!(body["model"], json!("anthropic/claude-opus-4-8"));
+    assert_eq!(body["model"], json!("openai/gpt-5.6"));
     assert_eq!(body["messages"][0]["role"], json!("system"));
     assert_eq!(body["messages"][0]["content"], json!("sys"));
     assert_eq!(body["messages"][1]["role"], json!("user"));
@@ -207,10 +211,14 @@ fn build_request_body_sends_an_attached_image_as_a_content_part() {
     );
 }
 
-/// A text-only message that is **not** a cache breakpoint keeps the plain-string content shape,
-/// so the overwhelmingly common turn is byte-identical to what gg has always sent.
+/// On a **marker-taking** model every content-bearing message is the multi-part array, marked or
+/// not, so a rolling breakpoint arriving on (or leaving) a message never changes its serialized
+/// shape — the wire form of a sent message is a function of the message alone. The observed
+/// failure this pins down: as the grid advanced, a mid-prefix message flipped between a bare
+/// string and a one-element array between consecutive requests, and the run's cached prefix
+/// collapsed on the turn it moved.
 #[test]
-fn build_request_body_keeps_plain_content_without_images() {
+fn a_marker_model_sends_every_content_message_as_parts() {
     let messages = [
         Message::system("sys"),
         Message::user("build it"),
@@ -226,10 +234,20 @@ fn build_request_body_keeps_plain_content_without_images() {
         false,
     );
 
-    // The anchor (index 1) and the tail (index 3) are breakpoints; the untouched middle keeps
-    // the bare-string shape.
-    assert_eq!(body["messages"][0]["content"], json!("sys"));
-    assert_eq!(body["messages"][2]["content"], json!("on it"));
+    // Every message — breakpoint or not — carries the same one-element array shape…
+    for index in 0..messages.len() {
+        let parts = body["messages"][index]["content"]
+            .as_array()
+            .unwrap_or_else(|| panic!("message {index} is a content array"));
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0]["type"], json!("text"));
+    }
+    // …and only the breakpoints additionally carry a marker: the anchor (index 1) and the tail
+    // (index 3). The unmarked middle differs by metadata alone, never by shape.
+    assert!(body["messages"][1]["content"][0]["cache_control"].is_object());
+    assert!(body["messages"][3]["content"][0]["cache_control"].is_object());
+    assert!(body["messages"][0]["content"][0]["cache_control"].is_null());
+    assert!(body["messages"][2]["content"][0]["cache_control"].is_null());
 }
 
 /// A model that caches **implicitly** is sent no markers at all — and therefore the same bytes for
@@ -1000,6 +1018,7 @@ async fn mock_client_advances_through_script_then_terminates() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         },
         ModelResponse {
@@ -1008,6 +1027,7 @@ async fn mock_client_advances_through_script_then_terminates() {
             finish_reason: FinishReason::Stop,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         },
     ];
@@ -1249,4 +1269,51 @@ fn an_agents_two_clients_share_its_origin_and_differ_only_in_role() {
     assert_eq!(own.role, GgClientRole::Agent);
     assert_eq!(summarizer.role, GgClientRole::Compaction);
     assert_ne!(own, summarizer);
+}
+
+/// The gateway's `provider` field — who actually served the call — is recorded on the response,
+/// and its absence stays an absence rather than an empty string.
+#[test]
+fn parse_response_records_the_serving_provider() {
+    let served = r#"{
+        "provider": "DeepInfra",
+        "choices": [{ "message": { "role": "assistant", "content": "done" }, "finish_reason": "stop" }]
+    }"#;
+    assert_eq!(
+        parse_response(served).expect("parse").provider.as_deref(),
+        Some("DeepInfra")
+    );
+
+    let unnamed = r#"{
+        "choices": [{ "message": { "role": "assistant", "content": "done" }, "finish_reason": "stop" }]
+    }"#;
+    assert!(parse_response(unnamed).expect("parse").provider.is_none());
+}
+
+/// The **tail** breakpoint walks back past trailing `system`-role messages — gg's trailing slots,
+/// the context-usage signal and the contract notice, both re-rendered at the end of every request.
+/// A prefix ending on one never recurs (the next request has new conversation ahead of it), so a
+/// marker there writes a cache entry nothing ever reads; the tail's job is to land on the newest
+/// conversation message, whose prefix the very next turn extends and reads back.
+#[test]
+fn cache_breakpoints_walk_the_tail_past_trailing_system_slots() {
+    let messages = [
+        Message::system("sys"),
+        Message::user("build it"),
+        Message::assistant(Some("on it".to_string()), vec![]),
+        Message::user("carry on"),
+        // The trailing slots: the fullness signal and the contract notice.
+        Message::system("Context usage: 82% of the window."),
+        Message::system("Reminder: your entire reply must be one bare TypeScript program."),
+    ];
+    let breakpoints = cache_breakpoints(&messages);
+    assert_eq!(
+        breakpoints.last(),
+        Some(&3),
+        "the tail lands on the newest conversation message, not on a trailing slot: {breakpoints:?}"
+    );
+
+    // A window with no trailing slot keeps the tail on its true last message.
+    let bare = &messages[..4];
+    assert_eq!(cache_breakpoints(bare).last(), Some(&3));
 }

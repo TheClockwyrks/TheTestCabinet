@@ -53,10 +53,10 @@ gives the fully-qualified names, which are what everything gg prints uses:
 | --- | --- |
 | `gg.shell.shell(command: string, options?: { timeoutSecs?: number })` | `ShellOutput` |
 | `gg.files.readFile(path: string, options?: { offset?: number; limit?: number })` | `FileRead` |
-| `gg.files.readTextFile(path: string, options?: { offset?: number; limit?: number })` | `string` |
 | `gg.files.writeFile(path: string, contents: string)` | `number` (bytes written) |
 | `gg.files.editFile(path: string, oldString: string, newString: string)` | `void` |
 | `gg.files.listDir(path?: string)` | `DirEntry[]` |
+| `gg.files.search(query: string, options?: { path?: string; limit?: number })` | `SearchMatch[]` |
 | `gg.views.openText(label: string, body: string)` | `void` |
 | `gg.delegation.spawnSubagent(request: { agent: string } & ({ prompt: string } \| { issueId: string }))` | `SubagentHandle` |
 
@@ -73,7 +73,7 @@ states.
 ## Static binding
 
 Every function of the SDK is compiled, linked and callable in every program
-whatever the run enabled, and the SDK covers all 50 operations. Both ending
+whatever the run enabled, and the SDK covers all 51 operations. Both ending
 groups are declared on every agent, and the agent's role decides which of them
 the membrane accepts.
 
@@ -93,7 +93,7 @@ that created it.
 ## The capability gate
 
 `crates/gg/src/sandbox/operations.rs` holds this surface's whole model-facing
-vocabulary as 50 operations, and it is the only vocabulary the surface has. gg's
+vocabulary as 51 operations, and it is the only vocabulary the surface has. gg's
 tool names are the other surface's, are callable from no program, and decide
 nothing here.
 
@@ -102,18 +102,20 @@ the family it belongs to, whether the call takes input, and its `Binding`. A
 `Binding` is one of four things:
 
 - `Capability(id)`, bought by a gg capability the agent holds and named in that
-  agent's [allowlist](/gg/configurations/#granting-calls). 41 rows, and a
-  capability commonly buys several: `read-file` alone buys `files.read_file`,
-  `files.read_text_file` and `views.open_file`, which are three separately
-  documented, separately called and separately grantable operations over one
-  read.
+  agent's [allowlist](/gg/configurations/#granting-calls). 42 rows, and a
+  capability commonly buys several: `read-file` alone buys `files.read_file`
+  and `views.open_file`, which are two separately documented, separately called
+  and separately grantable operations over one read.
 - `Ending(role)`, bought by the agent's ending role. `session.finish` is
   `Standard`; `session.approve` and `session.request_changes` are `Review`.
 - `Machine`, bought by where the instance stands rather than by anything on its
   profile. Its one row is `delegation.transition_state`, held by an agent
   running a [machine](/gg/fsms/) state with somewhere to go.
 - `Always`, bound to every program whatever a run enables. `docs.search`,
-  `views.open_text`, `views.open_docs_view`, `views.close` and `views.current`.
+  `views.open_text` and `views.open_docs_view`: a run that grants nothing must
+  still be able to show its model something and to find what it holds.
+  `views.close` is not among them — closing a view is context management,
+  bought by `agent-managed-context`.
 
 Capability ids appear only in this table. No signature catalogue, no SDK and
 nothing a reflector emits carries one, so no arm asserts anything about gg's
@@ -204,7 +206,9 @@ function, and the entries are searchable and closable like any other.
 import * as csvTools from "lib:csvTools";
 import { files, views } from "gg";
 
-const rows = csvTools.parseCsv(files.readTextFile("data/vendor.csv"));
+const read = files.readFile("data/vendor.csv");
+if (read.kind !== "text") throw new Error("expected text");
+const rows = csvTools.parseCsv(read.contents);
 views.openText("rows", `${rows.length} rows, ${rows[0].length} columns`);
 ```
 

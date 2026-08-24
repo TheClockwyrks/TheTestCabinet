@@ -275,8 +275,11 @@ export interface ParamSpec {
   // value nobody may choose for the operator.
   defaultValue?: string;
   // Whether gg refuses a launch this param is absent from — which is every param but the
-  // four whose absence is itself a setting (compaction's `maxRetries`, `model` and
-  // `modelSlot`, and project management's `reviewers`). A required control always
+  // four gg reads a setting out of an absence for (compaction's `maxRetries`, `model` and
+  // `modelSlot`, and project management's `reviewers`). Optional is not the same as
+  // unseeded: `maxRetries` and agent-managed context's `signalThresholdPercent` are both
+  // written with the figure their absence already meant, so that every control in a
+  // capability's grid shows a value. A required control always
   // writes: it is seeded when the capability is switched on, filled in when a stored
   // configuration is short of it, and refused by the save gate when it is emptied. The
   // form reports it where the operator can still fix it, rather than letting the launch
@@ -684,17 +687,12 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
   {
     value: "drop-doubled-response",
     label:
-      "drop-doubled-response — halve a reply that is one program sent twice (starts off)",
+      "drop-doubled-response — halve a reply that is one program sent twice",
     seedOff: true,
     hint: "The one strategy a fresh capability starts switched off: the half it deletes is valid code under any other reading, so unlike every other repair here, not making it is the safer place to start. It fires only on a byte-exact doubling with nothing at all between the copies — a model that deliberately repeats a statement writes a separator, and any single character of separator makes the reply an odd number of bytes long, which the test declines on. Arm it for a model observed to concatenate its completion with itself.",
   },
 ];
 
-// How the assistant message a code turn records is derived from the model's reply
-// (`crates/gg/src/healing.rs`). Under responses-as-code the reply is a program healing
-// rewrites before running, so the transcript can store either what the model *sent* or
-// what gg actually *ran* — a lever a study slices on, and so a mode the configuration
-// names rather than one gg reads out of an empty field.
 // --- Program language ---------------------------------------------------------------
 //
 // Which language an agent writes its programs in. Every language offers the *same*
@@ -748,16 +746,6 @@ export const PROGRAM_LANGUAGE_OPTIONS: ReadonlyArray<{
 export const PROGRAM_LANGUAGE_HINT =
   "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed — the same signatures, annotations included — so an A/B across the two measures what checking a program before it runs is worth. Python is its own guest, a committed CPython, and its programs are checked by nothing before they run. Ruby is compiled to JavaScript by a committed Opal before it crosses, so its programs are read and refused before they run without their types ever being checked — the one arm that separates compiling a program from typing it. PureScript is compiled and fully type-checked by a real `purs` in the run image, against a library set gg carries, so it is the other end of that axis: a wrong argument shape, a missing case or a missing instance costs a diagnostic rather than a turn. Java is the only arm whose program passes through two compilers — `javac` and then TeaVM — inside a JVM gg keeps warm between programs, so it is both type-checked and the most expensive arm to compile, and a class outside TeaVM's classlib is a located compile error rather than a run-time surprise. Kotlin rides that same road from bytecode onwards and is the A/B against it: the same two compilers, the same guest and the same classlib, so what differs between the pair is the language and its SDK rather than the toolchain — a program here is a Kotlin script, and its surface expresses every optional argument as a default passed by name where Java's needs an overload. Rust and Swift are a different shape rather than a different language: neither ships a guest at all, because their compilers produce the program rather than something that later reads one, so each turn compiles the component it is then evaluated by. Rust's is the cheapest compile of any checked arm and its programs are ~25 KB; Swift's reply is compiled byte for byte, with no wrapper and no line offset, and is the one arm that pays more to instantiate a program than to compile it. C++ is the third of that shape and the cheapest of the three per turn, because the prelude its programs are compiled against is precompiled once per machine — its reply is compiled byte for byte too, it is the only arm whose guest has working exceptions, and it is the only one where undefined behavior can end a program with nothing to say about why. C# is neither shape: Roslyn compiles the reply to an IL assembly on the host in about a third of a second, the bytes cross as base64, and a committed guest holding a Mono IL interpreter and the whole .NET class library loads them — so it is type-checked like a compiled arm, costs one compiler and no engine work per turn like an interpreted one, and has the best error surface of any of them, because an unhandled exception arrives with its type, its message and its managed stack. There is no default: gg drives no run in a language nobody chose, so a code agent has to name one and a launch that omits it is refused.";
 
-export const ASSISTANT_MESSAGE_OPTIONS = [
-  { value: "response-healing", label: "Post-response healing" },
-  { value: "none", label: "No post-processing" },
-] as const;
-
-// What each assistant-message mode does — the detail lifted off the picker's option
-// labels into the field's help tooltip.
-export const ASSISTANT_MESSAGE_HINT =
-  "Post-response healing records the healed program gg actually ran whenever healing changed the reply, and the reply verbatim when it did not — so the model re-reads a program that compiled, and every line number it is given counts lines of a text it has seen. No post-processing records the reply exactly as the model sent it, which is what a study of a model's code-only compliance reads; it is knowingly inconsistent, because the locations gg reports still count lines of the healed text. Either way the reply as sent is kept on the turn's healing record for the run's operator.";
-
 // Which SDK types a documentation lookup opens beside the function it was asked for —
 // three INDEPENDENT toggles rather than one three-way arm, because what a return type
 // costs and what a declared failure buys are separate questions and a study slices on
@@ -777,7 +765,7 @@ export const DOC_VIEW_TYPES_OPTIONS: ReadonlyArray<{
   },
   {
     value: "parameters",
-    label: "parameters — the types its arguments declare (starts off)",
+    label: "parameters — the types its arguments declare",
     seedOff: true,
     hint: "The one of the three a fresh capability starts switched off: an argument's type is already written into the signature the agent is reading, so opening it is more context up front against fewer follow-up lookups. Like the other two, what the run does with it is whatever this switch says.",
   },
@@ -1401,9 +1389,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
     tools: ["read_file"],
-    // Three operations over one read: into a variable, as text, and straight into the
-    // agent's own window. gg buys all three with this one capability.
-    operations: ["files.read_file", "files.read_text_file", "views.open_file"],
+    // Two operations over one read: into a variable, and straight into the agent's own
+    // window. gg buys both with this one capability.
+    operations: ["files.read_file", "views.open_file"],
   },
   {
     id: "write-file",
@@ -1432,6 +1420,16 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     defaultOn: true,
     tools: ["list_dir"],
     operations: ["files.list_dir"],
+  },
+  {
+    id: "search",
+    name: "Search",
+    group: "Filesystem",
+    purpose:
+      "Search the workspace's files for a pattern and get back the matching lines with their path and line number. Honors ignore files: what `.gitignore` and its kin exclude is never scanned.",
+    defaultOn: true,
+    tools: ["search"],
+    operations: ["files.search"],
   },
   {
     id: RESPONSES_AS_CODE_CAP_ID,
@@ -1490,15 +1488,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         required: true,
         options: HEALING_STRATEGY_OPTIONS,
         hint: `Repairs gg makes to a reply before running it — deletion only, so a healed program is always a subsequence of what the model sent. The model is told nothing about a repair; every one of them is reported to the run's operator and counted on the run. ${EXHAUSTIVE_TOGGLES_HINT}`,
-      },
-      {
-        key: "assistantMessages",
-        label: "Assistant messages",
-        kind: "select",
-        required: true,
-        defaultValue: ASSISTANT_MESSAGE_OPTIONS[0].value,
-        options: ASSISTANT_MESSAGE_OPTIONS,
-        hint: ASSISTANT_MESSAGE_HINT,
       },
     ],
   },
@@ -1598,13 +1587,17 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits. This also defines the trigger: a compaction fires once the window is 1 − headroom full (the working window is full and only the headroom remains).",
       },
       {
-        // The second of the params whose absence is the setting, and the one whose
-        // absence is what almost every configuration wants: a compaction that
-        // reclaimed nothing is a run that is over, and retrying it is the exception.
+        // Optional to gg — an absent `maxRetries` is none — but seeded here all the same,
+        // and written down as the `0` it already meant. A field left blank to mean a
+        // figure the operator has to know is the one control in this grid that could not
+        // be read at a glance, and it sat next to a sibling that shows its own default;
+        // `0` on the screen and `0` in the document say the same thing to gg as an
+        // absence did, so the form says it rather than implying it.
         key: "maxRetries",
         label: "Max retries",
         kind: "number",
-        hint: "How many times gg compacts again after a boundary that left the window still at the threshold, before ending the agent as failed. Left unset it is none: one compaction, and an agent that boundary could not relieve has failed — which is the right setting unless a strategy is being studied whose first summary can come back nearly as long as the thread it replaced.",
+        defaultValue: "0",
+        hint: "How many times gg compacts again after a boundary that left the window still at the threshold, before ending the agent as failed. None is the right setting unless a strategy is being studied whose first summary can come back nearly as long as the thread it replaced: at 0 there is one compaction, and an agent that boundary could not relieve has failed.",
       },
       {
         key: "model",
@@ -1630,7 +1623,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Agent-managed context",
     group: "Context",
     purpose:
-      "The agent reclaims window space itself: evicting file views, archiving thread sections.",
+      "The agent reclaims window space itself: evicting file views, archiving thread sections, and — under responses as code — closing the views it opened and listing what is open.",
     params: [
       {
         key: "topFileViews",
@@ -1653,10 +1646,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       ownershipParam("what it has archived"),
     ],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
+    // The view call is responses-as-code only: a tool-calling agent has no `view`
+    // object, so it has no tool beside it. Closing a view is context management, which is
+    // why it is this capability's rather than bound to every program.
     operations: [
       "context.evict_file_view",
       "context.archive_thread",
       "context.search_archive",
+      "views.close",
     ],
     features: [
       {
@@ -1669,6 +1666,12 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         tools: ["archive_thread", "search_archive"],
         operations: ["context.archive_thread", "context.search_archive"],
         hint: "Archiving and searching the archive are granted together: an archive the agent cannot search back is unreadable.",
+      },
+      {
+        label: "Close views",
+        tools: [],
+        operations: ["views.close"],
+        hint: "Responses as code only — a tool-calling agent reclaims file views with the eviction slider and has no text views to close.",
       },
     ],
   },
@@ -2097,12 +2100,20 @@ export const OWNERSHIP_MODULE_KINDS: ReadonlySet<GgModuleKind> = new Set(
 // `capabilityEnabled` facet space, where "is the cost ceiling enabled?" would be a
 // dimension no study wants to slice its results by.
 
-// The two ceilings a run cannot be conducted without, and so the two a fresh
-// configuration is written with. Every other ceiling is unarmed when its field is empty —
-// gg arms no error ceiling, no turn ceiling, no runtime and no cost nobody wrote — while
-// these two have no "off" a run could proceed under: a run always has *some* pool, and the
-// capture journal is always being written.
+// The two ceilings a run cannot be conducted without. Every other ceiling is unarmed
+// when its field is empty — gg arms no error ceiling, no turn ceiling, no runtime and no
+// cost nobody wrote — while these two have no "off" a run could proceed under: a run
+// always has *some* pool, and the capture journal is always being written.
 export const AUTHORED_MAX_PARALLEL = 16;
+
+// The error-ceiling guardrails a fresh configuration is seeded with: five error turns in
+// a row, or a fifth of the last fifty turns, ends an agent. Unlike the two required
+// ceilings these are clearable — an emptied field is that ceiling unarmed, exactly as a
+// stored configuration that omitted it. The seeding is the console's; gg's own contract
+// still arms nothing a saved configuration does not write.
+export const AUTHORED_MAX_CONSECUTIVE_ERRORS = 5;
+export const AUTHORED_MAX_ERROR_RATE = 0.2;
+export const AUTHORED_ERROR_RATE_WINDOW = 50;
 
 // One execution ceiling's control. `key` is the wire field on
 // `GgCapabilitySet.limits`; `kind` is what makes the value legible *and* checkable
@@ -2121,11 +2132,11 @@ export interface RunLimitSpec {
   kind: "count" | "fraction" | "amount" | "mib";
   placeholder?: string;
   hint: string;
-  // What a fresh configuration's field is seeded with, and what an older stored one
-  // missing this ceiling is filled in with when it is opened. Only the two
-  // [required](RunLimitSpec.required) ceilings have one: the rest are unarmed while their
-  // field is empty, and seeding a figure into one of those would arm a ceiling nobody
-  // asked for.
+  // What a fresh configuration's field is seeded with — and, when the ceiling is
+  // [required](RunLimitSpec.required), what an older stored one missing it is filled in
+  // with when it is opened. An optional ceiling's figure is a clearable guardrail: it
+  // seeds fresh configurations only, because filling it into a stored document that left
+  // the ceiling out would arm one nobody asked for.
   defaultValue?: string;
   // Whether gg refuses a run this ceiling is absent from. True of the parallelism cap and
   // the journal ceiling, which bound something every run does, and of nothing else: an
@@ -2169,36 +2180,39 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     key: "maxRuntimeSecs",
     label: "Runtime (seconds)",
     kind: "count",
-    placeholder: "e.g. 5400",
-    hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. A run that spends it ends timed_out.",
+    placeholder: "no ceiling",
+    hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. Empty arms no such ceiling — the host caps the run's wall-clock either way. A run that spends a ceiling you set ends timed_out.",
   },
   {
     key: "maxConsecutiveErrors",
     label: "Consecutive errors",
     kind: "count",
     placeholder: "no ceiling",
-    hint: "How many error turns in a row end an agent. Empty arms no such ceiling: a run whose model errors every turn spends its turns, its runtime or its cost instead. A turn is an error when the work it declared could not be carried out — a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
+    defaultValue: String(AUTHORED_MAX_CONSECUTIVE_ERRORS),
+    hint: "How many error turns in a row end an agent. Seeded as a guardrail into a fresh configuration; clear the field to unarm the ceiling, and a run whose model errors every turn spends its turns, its runtime or its cost instead. A turn is an error when the work it declared could not be carried out — a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
   },
   {
     key: "maxErrorRate",
     label: "Error rate",
     kind: "fraction",
     placeholder: "no ceiling",
-    hint: "The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all, and neither is armed unless you write it.",
+    defaultValue: String(AUTHORED_MAX_ERROR_RATE),
+    hint: "The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all. Seeded with its window as a guardrail into a fresh configuration; clear both fields to unarm.",
   },
   {
     key: "errorRateWindow",
     label: "Error-rate window (turns)",
     kind: "count",
     placeholder: "no ceiling",
-    hint: "How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns.",
+    defaultValue: String(AUTHORED_ERROR_RATE_WINDOW),
+    hint: "How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns. Seeded with the rate as a guardrail into a fresh configuration; clear both fields to unarm.",
   },
   {
     key: "maxCost",
     label: "Cost (USD)",
     kind: "amount",
-    placeholder: "e.g. 25",
-    hint: "Ceiling on the whole run's accumulated cost, checked at each agent's turn boundary. The turn that crosses it completes, so the recorded cost can exceed it by up to one turn per running agent. A run whose model reports no cost is never stopped by it.",
+    placeholder: "no ceiling",
+    hint: "Ceiling on the whole run's accumulated cost, checked at each agent's turn boundary. Empty arms no such ceiling. The turn that crosses one completes, so the recorded cost can exceed it by up to one turn per running agent. A run whose model reports no cost is never stopped by it.",
   },
   {
     key: "replayMaxBytes",

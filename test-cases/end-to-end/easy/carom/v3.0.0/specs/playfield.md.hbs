@@ -2,16 +2,17 @@
 
 This file defines the geometry of the field and the objects in it, including how
 the ball collides with the obstacles. All positions and sizes are in the field's
-logical units, and every figure below is exported from `src/constants.ts` under
-the name it is given here.
+logical units, and every figure below carries the name this specification gives
+it.
 
 ## Playfield
 
 - The field spans the full `FIELD_W x FIELD_H` (`1280 x 720`) area.
 - The top wall (`y = 0`) and the bottom wall (`y = FIELD_H`) are solid, and the
   ball reflects off them.
-- The left and right edges are goals. A ball passing `x < 0` scores for player
-  two (right); a ball passing `x > FIELD_W` scores for player one (left).
+- The left and right edges are goals. A ball whose `x + BALL_R < 0` scores for
+  player two (right); a ball whose `x - BALL_R > FIELD_W` scores for player one
+  (left).
 - A dashed center net is drawn at `x = NET_X` (`640`) for decoration and has no
   collision.
 
@@ -22,14 +23,20 @@ the name it is given here.
 - The left (player one) paddle occupies `x` in `[P1_X0, P1_X1]` (`[48, 64]`), so
   `P1_X1` is its field-facing face. The right (player two or AI) paddle occupies
   `x` in `[P2_X0, P2_X1]` (`[1216, 1232]`), so `P2_X0` is its field-facing face.
-- A paddle moves only vertically. Its center `y` is clamped to
+- A paddle moves only vertically. Its center `cy` is clamped to
   `[PADDLE_MIN_CY, PADDLE_MAX_CY]` (`[55, 665]`), keeping the paddle fully on the
   field.
-- A paddle moves at `PADDLE_SPEED` (`720`) units per second while a movement
-  action is held and is otherwise stationary.
-- A paddle's velocity for the frame is its actual vertical velocity, which drives
-  the spin mechanic. A paddle pinned against a bound has a velocity of `0` while
-  the action is held.
+- A human-controlled paddle moves at `PADDLE_SPEED` (`720`) units per second
+  while a movement action is held and is otherwise stationary: with `up` and
+  `down` each `1` while held and `0` otherwise, `axis = down - up` and
+  `vy = axis * PADDLE_SPEED`.
+- Every mover of a paddle (input, the AI, and the debug driver) sets `vy` and then
+  integrates it the same way: `next = clamp(cy + vy * dt, PADDLE_MIN_CY,
+  PADDLE_MAX_CY)`; if the clamp changed the value and `dt > 0`, then
+  `vy = (next - cy) / dt`; then `cy = next`.
+- A paddle's `vy` after integration is its actual vertical velocity for the
+  frame, which is what the spin mechanic reads at contact. A paddle pinned against
+  a bound therefore carries `vy = 0` while the action is held into the bound.
 
 ## Obstacles
 {{#if (eq variant.slug "gyre")}}
@@ -67,8 +74,7 @@ moving when a ball is served. It is frozen while the game is paused, and it rese
 to `0` at the start of each match, so every match opens with both obstacles
 upright at their base centers.
 
-The obstacles are drawn rotated and shifted to match their current pose, in the
-neon obstacle styling.
+The obstacles are drawn rotated and shifted to match their current pose.
 
 ### Collision with oriented obstacles
 
@@ -129,13 +135,25 @@ the collision below resolves against.
 
 Treat each obstacle as an axis-aligned rectangle with half-extents
 `(OBSTACLE_HW, OBSTACLE_HH)` (`10, 70`), centered at its fixed center, the rounded
-corners cosmetic. When the ball strikes an obstacle, reflect the velocity
-component normal to the face it hit, so a hit on a left or right (vertical) face
-flips `vx` and a hit on a top or bottom (horizontal) face flips `vy`. Then push
-the ball out of the obstacle until it no longer overlaps.
+corners cosmetic. A ball is resolved against an obstacle by the following
+rule:
 
-An obstacle bounce leaves speed unchanged and preserves spin, so the spin keeps
-curving the ball after the bounce.
+1. Expand the rectangle `[x0, x1] x [y0, y1]` by `BALL_R` on every side. The ball
+   overlaps the obstacle when its center is strictly inside the expanded
+   rectangle.
+2. Compute the four penetration depths: `left = x - (x0 - BALL_R)`,
+   `right = (x1 + BALL_R) - x`, `top = y - (y0 - BALL_R)`,
+   `bottom = (y1 + BALL_R) - y`. The struck face is the one with the smallest
+   depth; on a tie the first of left, right, top, bottom wins.
+3. Place the ball with its center `BALL_R` off the struck face: `x = x0 - BALL_R`
+   for the left face, `x = x1 + BALL_R` for the right, `y = y0 - BALL_R` for the
+   top, `y = y1 + BALL_R` for the bottom.
+4. Reverse the velocity component normal to the struck face if it points into the
+   face (`vx > 0` into the left face, `vx < 0` into the right, `vy > 0` into the
+   top, `vy < 0` into the bottom); otherwise leave the velocity as it is.
+
+An obstacle bounce leaves speed and spin unchanged, so the spin keeps curving the
+ball after the bounce.
 {{/if}}
 
 ## Ball

@@ -114,24 +114,18 @@ describe("spin", () => {
 });
 
 describe("poseObstacles", () => {
-  it("writes both poses in place, keeping the slots it was given", () => {
-    const out: ObstacleState[] = [
-      { cx: 0, cy: 0, theta: 0 },
-      { cx: 0, cy: 0, theta: 0 },
-    ];
-    const first = out[0];
-    poseObstacles(out, 1.1);
-    expect(out[0]).toBe(first);
-    expect(out[0]).toEqual(obstaclePose(0, 1.1));
-    expect(out[1]).toEqual(obstaclePose(1, 1.1));
+  it("returns both poses for the clock, in the order of OBSTACLE_CENTERS", () => {
+    const poses = poseObstacles(1.1);
+    expect(poses).toHaveLength(OBSTACLE_CENTERS.length);
+    expect(poses[0]).toEqual(obstaclePose(0, 1.1));
+    expect(poses[1]).toEqual(obstaclePose(1, 1.1));
   });
 
-  it("fills an empty array and never grows past the obstacle count", () => {
-    const out: ObstacleState[] = [];
-    poseObstacles(out, 0.4);
-    expect(out).toHaveLength(OBSTACLE_CENTERS.length);
-    poseObstacles(out, 0.9);
-    expect(out).toHaveLength(OBSTACLE_CENTERS.length);
+  it("builds a fresh array every call rather than sharing one", () => {
+    const a: readonly ObstacleState[] = poseObstacles(0.4);
+    const b = poseObstacles(0.4);
+    expect(b).toEqual(a);
+    expect(b).not.toBe(a);
   });
 });
 

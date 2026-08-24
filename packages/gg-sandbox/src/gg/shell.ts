@@ -21,7 +21,8 @@ export interface ShellOutput {
    *
    * The ceiling is 16 KiB, or the run's configured line and character limits where shell output is
    * offloaded. An offloaded output that was cut ends with a note naming the two files that hold the
-   * whole of it.
+   * whole of it, and beneath each path the shape of that file: its line count, its 50th, 95th and
+   * 99th-percentile line lengths, and the length and line number of its five longest lines.
    */
   output: string;
 
@@ -36,9 +37,11 @@ export interface ShellOutput {
  * succeeded, and only a process that could not be launched, or one the timeout killed, throws.
  *
  * This run may **offload** shell output. Under `offload`, `output` holds only the tail that fits and
- * ends with a note naming the two files the command's full stdout and stderr were written to. Those
- * files are readable by absolute path, so a `gg.files.readTextFile` of one, or a grep, beats running
- * the command again.
+ * ends with a note naming the two files the command's full stdout and stderr were written to, each
+ * with the shape of what it holds — the line count, the 50th, 95th and 99th-percentile line lengths,
+ * and the five longest lines by length and line number — so a window can be aimed at the right
+ * region of a file nobody has seen. Those files are readable by absolute path, so reading one, or
+ * grepping it, beats running the command again.
  *
  * @ggop shell.shell
  * @param command The command line, run by `sh -c` with the workspace as its working directory.

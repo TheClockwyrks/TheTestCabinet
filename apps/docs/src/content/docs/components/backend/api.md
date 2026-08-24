@@ -63,8 +63,14 @@ still filling is alive and must not be restarted.
 
 ### `GET /readyz`
 
-Readiness probe. `200` once the definition store holds versions, `503` while it
-is still empty.
+Readiness probe. `200` once the definition store holds versions the running
+build can read, `503` otherwise.
+
+Two states hold it at `503`. An empty store has nothing to resolve against. A
+store stamped with another record format holds versions this build cannot read
+(see [Test case definitions](/components/backend/overview/#test-case-definitions)),
+and serving it would answer with whatever subset happened to be re-ingested
+since. Both are cleared by an ingest scan.
 
 Keep this separate from the `/healthz` liveness probe in every deployment. A
 backend whose definition store lives on an ephemeral volume starts with an empty
@@ -117,6 +123,12 @@ the case's others.
 for development iteration on a version no run has been published against. A
 version that published runs reference is immutable and is revised by adding a
 new version.
+
+A scan against a store stamped with another record format is promoted to a
+forced whole-catalog scan, whatever the request asked for: no version in such a
+store can be read, so there is nothing for a partial scan to leave coherent.
+This is what repairs a store after a backend upgrade that changed the record
+shapes, including from the incremental re-ingest a local stack runs.
 
 `catalogVersion` is an opaque token identifying the catalog content of a
 whole-catalog ingest, such as the calling build's commit. The backend records it
@@ -238,6 +250,10 @@ A representative response:
   "description": "## Carom\n…",
   "changelog": "…",
   "maxRuntimeSeconds": 1800,
+  // The engines this version supports, each with the version range it accepts.
+  // A launcher offers exactly this set; `minVersion` and `maxVersion` are
+  // present only on an engine the case pinned.
+  "engines": [{ "slug": "none" }, { "slug": "simple-2d", "minVersion": "1.0.0" }],
   "build": { "install": "npm ci", "build": "npm run build" },
   "promptTemplate": "…handlebars source…",
   "commonSpecs": [
@@ -294,6 +310,26 @@ such as an asset case's `tool`, `output`, and per-kind spec, and a simulation,
 match, or replay block. `404` if the version has not been ingested. Schema:
 [`backend-api/resolved-test-case-version.schema.json`](https://docs.testcabinet.ai/schema/backend-api/resolved-test-case-version.schema.json).
 
+#### Rendering for an engine
+
+An optional `engine` query parameter names the
+[engine](/components/core/engines/) each variant's `prompt` is rendered for. The
+[rendered specs route](#get-test-casesslugversionsversionspecsvariant) takes the
+same parameter, and the two are meant to be read together.
+
+A case's `prompt.hbs` and its `.hbs` specs branch on the selected engine, so one
+stored template renders into different text depending on the runtime the build is
+written against. The engine is therefore a rendering input rather than part of a
+version's identity, which is why it rides as a query parameter here while the
+[validation baseline
+route](#get-test-casesslugversionsversionvalidation-baselineenginevariantfile)
+carries it as a path segment; there it names a distinct stored directory.
+
+A caller showing a run passes the engine that run recorded, including the explicit
+`none`, so the reader sees the text that run's harness received. A caller showing
+a case passes nothing and gets the engineless rendering, which is what `none`
+renders to. An unrecognised slug is a `400`.
+
 ### `GET /test-cases/{slug}/versions/{version}/artifacts/{path...}`
 
 Fetch a single seeded artifact, a spec source or an asset file, by its
@@ -306,7 +342,9 @@ if the key is unknown for the version.
 
 The variant's full seeded spec set with each body already rendered for that
 variant, in seed order. This is the spec analogue of the inline prompt on the
-resolved version, and it is what a console shows on its Inputs tab.
+resolved version, and it is what a console shows on its Inputs tab. It takes the
+same optional `engine` query parameter, under the same rule: see [Rendering for
+an engine](#rendering-for-an-engine).
 
 ### `GET /test-cases/{slug}/versions/{version}/references/{scope}/{file}`
 
@@ -326,11 +364,14 @@ the [validator](/components/core/validation/) runs it. These files are
 reporter-side and are never seeded into the model's run container. The array is
 empty for a version that declares no scripted items.
 
-### `GET /test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}`
+### `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
 
-Fetch a variant's committed baseline validation media
+Fetch one reference build's committed baseline validation media
 (`<item>__<output>.<ext>`), synthesized from the reference implementation. This
-is the case-scoped invariant counterpart to a run's own validation media.
+is the case-scoped invariant counterpart to a run's own validation media. The
+engine is part of the address because a variant has one reference implementation
+per [engine](/components/core/engines/), and a run is only comparable against
+the one it was itself built on.
 
 ### `GET /game-jams/{slug}/prior-readmes?model=`
 
@@ -503,11 +544,18 @@ not a publishable failure, so the other selectors omit it.
 
 The offset mode additionally accepts:
 
-- Filters `testCase`, `model`, `harness`, `variant`, and `version`, each
-  narrowing to runs matching that lifted subject value. They AND together, so
-  `testCase=carom&model=…` is expressible, which the free-text `q` alone cannot
-  do. A variant slug is unique only within its case, so `variant` is paired with
-  `testCase`, the case-detail Runs tab's slice, as `version` normally is.
+- Filters `testCase`, `model`, `harness`, `variant`, `version`, and `engine`,
+  each narrowing to runs matching that lifted subject value. They AND together,
+  so `testCase=carom&model=…` is expressible, which the free-text `q` alone
+  cannot do. A variant slug is unique only within its case, so `variant` is
+  paired with `testCase`, the case-detail Runs tab's slice, as `version`
+  normally is. `engine` matches the engine slug the run was launched under, and
+  the engineless run records the slug `none`.
+- Filter `versions`, a comma-separated list of exact versions, narrowing to runs
+  matching any of them. This is the case-detail Runs tab's version scope: the
+  console computes the versions in the anchored `major.minor` or major line from
+  the catalog and sends the concrete list. Like `version`, it silences
+  `latestVersions`.
 - Current versions `latestVersions=true`, restricting every run to its case's
   current `major.minor`: the newest one that case has a run for within the
   selected `state` slice. A case version is frozen once it has runs, so an older
@@ -527,7 +575,13 @@ The offset mode additionally accepts:
   `rating`, `testType`, `testCase`, `harness`, `model`, or `variant`, with `dir`
   (`asc` or `desc`), tie-broken by run id. `model` orders by the run's model or
   configuration identity: a gg run sorts by the configuration it was launched
-  from, and everything else by its model id.
+  from, and everything else by its model id. `testCase` orders by the case's
+  **display name** — the name the listing shows, not the recorded slug — resolved
+  the same way each card's `caseName` is: the latest ingested manifest's `name`,
+  a case renamed on disk since the run was recorded (say a `pong` run, shown as
+  Carom) by its current name, and a slug the store does not know at all by the
+  slug itself. A column that displays names sorting by slugs would file Carom
+  under "p".
 
 `limit` defaults to 50 and is clamped to 200.
 
@@ -748,6 +802,137 @@ all. The scoped equivalent is a plan's or ladder's
 
 `cancel-active` and `cancel-all` discard work in progress, so a client confirms
 first; `cancel-waiting` throws nothing away and does not need to.
+
+## Model probes
+
+A model probe is a responses-as-code readiness check of one catalog model,
+answering whether the model can drive [gg](/gg/overview/)'s RaC mode before any
+run is spent on it. The backend replays gg's real RaC turn-1 request, an
+embedded fixture holding the system prompt, the Carom task, two seeded example
+programs with their results, and the spec views, trimmed by default. The replay
+goes through OpenRouter chat/completions with no tools array, across a fixed
+matrix of four prompt conditions: `base` (the request exactly as gg sends it),
+`no-tools` (an explicit no-tools clause appended to the system prompt), `notice`
+(a trailing user message restating the contract), and `combo` (both). Each
+condition is sampled several times with no temperature set.
+
+Each reply is classified heuristically (`clean-program`, `prose+program`,
+`program-no-gg`, `fenced`, `tool-token`, `xml-pseudo-tools`, `cot-leak`,
+`native-tool-call`, `empty`, `other`); a clean reply is a bare program importing
+from `"gg"`. The verdict thresholds are on the per-condition clean rates. Base
+and every variation at ≥ 80% is `ready`; a variation reaching 80% where base did
+not is `ready-with-reminders`; no variation reaching 80% while tool-call syntax
+appears under the variations is `tool-call-overfit`; anything else is
+`not-ready`.
+
+Probes are append-only history: a re-run is a new dated record. They are
+console-only data and never feed the public snapshot. A probe executes inside
+the backend process, so a backend restart fails any probe still `running`.
+
+### `POST /models/{slug}/probes`
+
+Trigger a probe. Requires a bearer token: the backend spends its own OpenRouter
+key (`TCAB_OPENROUTER_API_KEY`, see
+[Configuration](/components/backend/overview/#configuration)) on the caller's
+behalf. The request body is optional JSON, every field optional:
+
+```jsonc
+{
+  "provider": "…",     // pin every call to this provider (provider.order, fallbacks disabled)
+  "samples": 3,        // samples per condition (default 3, at most 8)
+  "maxTokens": 3500,   // completion-token cap per call
+  "fullContext": false // send the seeded spec views whole instead of trimmed
+}
+```
+
+Answers `202 Accepted` with the probe row already `running`; the probe executes
+in the backend and the row is read back by polling. `409` when a probe of the
+model is already running. `422` when the model has no OpenRouter slug to
+target: a probe targets a curated model's configured OpenRouter slug, falling
+back to the catalog slug itself when it reads as an OpenRouter id. `503` with
+code `openrouter_key_missing` when the backend has no key configured.
+
+### `GET /models/{slug}/probes`
+
+The model's probe history, newest first, under `probes`. Each probe carries its
+status (`running`, `complete`, or `failed`), verdict, base and best-variation
+clean rates, USD spend, and timestamps. An open read.
+
+### `GET /model-probes/{id}`
+
+One probe with its per-call items, the base request messages exactly as sent,
+the condition matrix, and the two variation texts. Each item records its
+condition, sample number, serving provider, finish reasons, classification
+label and clean flag, raw reply text with any separate reasoning text, token
+counts, USD cost, duration, and the error that voided the call. An open read.
+
+### `GET /models/{slug}/probe-providers`
+
+The providers OpenRouter lists for the model, as name and context length, for
+pinning a probe to one. Requires a bearer token, because it reaches a third
+party on the caller's behalf, like the OpenRouter form fill.
+
+## Provider and accuracy statistics
+
+Two aggregate reads fold cross-run statistics for the console's Providers view
+and the model detail's accuracy figures. Both fold from stored gg session
+summaries reached through the gg document index — the same per-id-reconciled,
+TTL-refreshed corpus the gg query endpoints read — so a request
+never re-parses the run store. Provider figures exist only on runs whose
+summary recorded `providerStats`; older runs are counted as scanned but
+contribute no provider rows, and a figure an older record omitted is never
+defaulted.
+
+### `GET /stats/providers`
+
+Per-provider health across every stored gg run, plus the probe store's
+per-provider evidence, kept strictly separate. An open read.
+
+Run evidence: one entry per upstream provider observed in any run's
+`providerStats` slices, each carrying its per-model rows and a total. A row
+reports contributing runs, calls with their summed tokens and USD cost,
+length-capped rejections, and the attributed turns split into working turns and
+an error breakdown keyed by turn error type. The `provider: null` entry
+collects the calls that named no provider — a gateway that stamps none, or a
+turn whose call produced no reply to name one — and sorts last; a `modelId:
+null` row is a slice recorded before the agent's first usage delta named its
+model, on a run more than one model served.
+
+Probe evidence: one entry per provider observed on
+[model-probe](#model-probes) items, per probed model: item count, clean-reply
+count, and errored calls. Probe rows are single-completion replays rather than
+full runs, which is why they are reported beside the run evidence rather than
+folded into it.
+
+The response also reports `runsScanned` (every stored gg run with a recorded
+session summary) and
+`runsWithProviderData`, so a consumer can present sparse provider coverage as
+sparse rather than as zero.
+
+### `GET /stats/model-accuracy`
+
+Per-model accuracy across every stored gg run, split by execution mode. An
+open read.
+
+For responses-as-code runs, a model's entry counts turns and splits them into
+valid (progressed or finished), compile errors, runtime errors (program faults
+plus sandbox limits), model-API errors, and missing completions, with the full
+per-type breakdown beside the named groups. Runs whose summaries carry
+`providerStats` contribute exact per-model figures; older single-model runs
+contribute the run-level error rollup with valid derived as turns minus errors
+(a fatal turn counts as valid there, so the figure can overcount by at most one
+turn per agent) and are tallied under `approximateRuns`.
+
+For tool-calling runs, a model's entry counts dispatched tool calls and splits
+them into ok and failed by failure class. A run contributes only when its
+summary recorded the `toolCalls` dispatch total; a tool-calling run with
+failure evidence but no recorded total is tallied under
+`runsWithoutCallTotals` instead.
+
+A run that cannot be attributed to a single model — an older multi-model run
+with no per-model slices — is counted once under the response's
+`unattributableRuns`. Models are ordered by evidence volume (responses-as-code
+turns plus tool calls), largest first.
 
 ## The console stream
 

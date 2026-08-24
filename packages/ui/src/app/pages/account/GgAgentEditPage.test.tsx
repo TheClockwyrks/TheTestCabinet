@@ -133,6 +133,18 @@ describe("GgAgentEditPage", () => {
     expect(screen.getByLabelText("Slot name")).toBeVisible();
   });
 
+  // The library entry's note is part of the agent's identity, so it belongs beside the
+  // name and slug on the Agent tab — not stacked above the tab strip, where it was one
+  // field of the form sitting outside the form.
+  it("edits the description on the Agent tab, beside the name it describes", () => {
+    renderPage();
+    const description = screen.getByPlaceholderText("what this agent is for");
+    expect(description).toBeVisible();
+    // Inside the tab strip's panel: leaving the Agent tab takes it with it.
+    openTab("Slots");
+    expect(screen.queryByPlaceholderText("what this agent is for")).toBeNull();
+  });
+
   it("saves the agent's own model slots on the agent, passthrough and all", async () => {
     createGgAgent.mockClear();
     renderPage();
@@ -153,7 +165,7 @@ describe("GgAgentEditPage", () => {
       screen.getByRole("combobox", { name: /Summarization strategy/i }),
       { target: { value: "handoff-compaction" } },
     );
-    fireEvent.change(screen.getByLabelText(/Model from/), {
+    fireEvent.change(screen.getByLabelText(/^Model from/), {
       target: { value: "model-slot" },
     });
 
@@ -175,7 +187,9 @@ describe("GgAgentEditPage", () => {
     // …and the compaction binding is pointed at the second slot, which is what stops it
     // being a declaration nothing defers to.
     openTab("Tools");
-    const slotPicker = screen.getByLabelText(/Model slot/) as HTMLSelectElement;
+    const slotPicker = screen.getByLabelText(
+      /^Model slot/,
+    ) as HTMLSelectElement;
     fireEvent.change(slotPicker, {
       target: {
         value: (

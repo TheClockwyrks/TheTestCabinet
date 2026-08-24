@@ -240,7 +240,7 @@ describe("apiCallSpellings", () => {
         description: "the workspace",
         functions: [
           { name: "readFile", operation: "files.read_file" },
-          { name: "readTextFile", operation: "files.read_text_file" },
+          { name: "writeFile", operation: "files.write_file" },
         ],
       },
       {
@@ -251,7 +251,7 @@ describe("apiCallSpellings", () => {
       },
     ]);
     expect(spellings.get("files.read_file")).toBe("gg.files.readFile");
-    expect(spellings.get("files.read_text_file")).toBe("gg.files.readTextFile");
+    expect(spellings.get("files.write_file")).toBe("gg.files.writeFile");
     expect(spellings.get("views.open_file")).toBe("gg.views.openFile");
   });
 
@@ -275,4 +275,5 @@ describe("apiCallSpellings", () => {
       "gg.delegation.sendMessage",
     );
   });
+
 });

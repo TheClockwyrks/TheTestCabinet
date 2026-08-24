@@ -1,53 +1,36 @@
-// Carom — input, as runtime actions.
+// Carom — input, as named runtime actions.
 //
-// The game never sees a KeyboardEvent. It declares NAMED ACTIONS with the keys
-// that drive them, and the runtime does the listening, the edge detection, and the
-// binding. Two consequences shape this file:
+// The game never sees a `KeyboardEvent`. It declares NAMED ACTIONS with the keys
+// that drive them (`BINDINGS` in `src/constants.ts`) and the runtime
+// (`src/keyboard.ts`) does the listening, the edge detection, and the binding.
+// Two consequences shape this file:
 //
 //   * Every read goes through the frame's `UpdateApi`. A held read (`value`) is
-//     what drives continuous paddle motion; an edge read (`pressed`) is what drives
-//     a menu move, a confirm, a pause, or a mute, exactly once per press.
+//     what drives continuous paddle motion; an edge read (`pressed`) is what
+//     drives a menu move, a confirm, a pause, or a mute, exactly once per press.
 //   * An edge is consumed by the first call that sees it and is discarded at the
 //     end of the frame it was armed in. So each edge is read in exactly ONE place
 //     per frame — `handleInput` in `src/game.ts` — and the reads below are worded
 //     to make that obvious.
-//
-// The action names are not free: they are the `dual-vertical` layout's own
-// vocabulary plus the menu vocabulary every layout carries, and `src/constants.ts`
-// lists them in the layout's order.
 
-import { ACTIONS, BINDINGS, LAYOUT, type ActionName } from "./constants";
-import { clamp } from "./entities";
-import type { InitApi, UpdateApi } from "./host";
+import { ACTIONS, BINDINGS, type ActionName } from "./constants";
+import type { InitApi, UpdateApi } from "./runtime";
 
-/**
- * Register every action, bound to its keys.
- *
- * The runtime's own layout vocabulary is checked against ACTIONS first, so an
- * action the layout speaks and Carom forgot is a hard failure at start-up rather
- * than a control that silently does nothing.
- */
+/** Register every action Carom speaks, bound to the keys `BINDINGS` gives it. */
 export function registerActions(api: InitApi): void {
-  const layout = api.input.layout();
-  if (layout === null) {
-    throw new Error(
-      `Carom: the runtime was built without the ${LAYOUT} layout`,
-    );
-  }
-  if (layout.actions.join() !== ACTIONS.join()) {
-    throw new Error(
-      `Carom: the ${layout.name} layout speaks [${layout.actions.join(", ")}], ` +
-        `but this build registers [${ACTIONS.join(", ")}]`,
-    );
-  }
   for (const action of ACTIONS) {
-    api.input.register(action, { keys: [...BINDINGS[action]] });
+    api.input.register(action, BINDINGS[action]);
   }
 }
 
-/** A held axis in `[-1, 1]`. Negative is up, matching the y-down field. */
+/** A held axis in `[-1, 1]`: `down - up`. Negative is up, matching the y-down field. */
 function axis(api: UpdateApi, up: ActionName, down: ActionName): number {
   return api.input.value(down) - api.input.value(up);
+}
+
+/** `1` while either of two actions is held, `0` otherwise. */
+function either(api: UpdateApi, a: ActionName, b: ActionName): number {
+  return api.input.value(a) || api.input.value(b) ? 1 : 0;
 }
 
 /** Player one's slider: the left paddle in Versus, the human's in Solo. */
@@ -62,12 +45,13 @@ export function p2Axis(api: UpdateApi): number {
 
 /**
  * Solo has no player two, so both sliders drive the one human paddle — which is
- * what makes `W`/`S` and the arrow keys interchangeable there
- * (specs/modes/single-player.md). Summing and clamping keeps opposite inputs
- * cancelling, so holding up on one side and down on the other stands still.
+ * what makes `W`/`S` and the arrow keys interchangeable there: `up` is held
+ * while either up action is, `down` while either down action is, and the axis
+ * is `down - up` (specs/modes/single-player.md). Opposite inputs cancel, so
+ * holding up on one side and down on the other stands still.
  */
 export function soloAxis(api: UpdateApi): number {
-  return clamp(p1Axis(api) + p2Axis(api), -1, 1);
+  return either(api, "p1-down", "p2-down") - either(api, "p1-up", "p2-up");
 }
 
 /**

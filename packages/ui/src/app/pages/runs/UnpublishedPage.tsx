@@ -5,6 +5,7 @@ import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
 import { RunsTabs } from "./RunsTabs";
+import { StopRunsControls, useCanStopRuns } from "./StopRunsControls";
 import { RunFilters } from "../../components/RunFilters";
 import { useRunFilters } from "../../components/useRunFilters";
 import { useResetPageOnChange } from "../../components/usePagedSearchParams";
@@ -39,6 +40,7 @@ const PAGE_SIZE = 20;
 export function UnpublishedPage() {
   const { queryRunSummaries, localIds, writeups } = useGalleryData();
   const { refreshToken } = useRunsRuntime();
+  const canStop = useCanStopRuns();
   const filters = useRunFilters();
   const { page, setPage, committedQuery, facets, latestVersions } = filters;
   const [result, setResult] = useState<RunQueryResult>({
@@ -120,6 +122,7 @@ export function UnpublishedPage() {
         command="--runs/unpublished"
         blink
         comment={<>// reviewed, not yet released</>}
+        actions={canStop ? <StopRunsControls /> : undefined}
       />
 
       <div className={styles.controls}>

@@ -10,6 +10,11 @@ import {
   DEFAULT_ORCHESTRATOR_SLUG,
   isGgOrchestrator,
 } from "../../data/orchestrators";
+import {
+  DEFAULT_ENGINE_SLUG,
+  engineName,
+  orderEngines,
+} from "../../data/engines";
 import { bindModelSlots, launchModelSlots } from "./gg/ggConfigDraft";
 import { useGgConfigs } from "./gg/useGgConfigs";
 import {
@@ -22,6 +27,7 @@ import { ModelCombobox } from "../../components/ModelCombobox";
 import { launchBatch, type LaunchItem } from "./launchBatch";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import { routes } from "../../routes";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useCaseCategory } from "../../runtime/useCaseCategory";
@@ -110,9 +116,10 @@ export function NewRunPage() {
   const { active: worker } = useWorkers();
   const { token } = useAuth();
   const runtime = useRunsRuntime();
-  // A test case's Run button links here with `?slug=…&version=…&variant=…` so the
-  // form opens with that case pre-selected; absent the params the catalog leads
-  // with its first case as before.
+  // A test case's Run button links here with `?slug=…&version=…&variant=…`
+  // (plus `?engine=…` for a non-default engine) so the form opens with that
+  // whole coordinate pre-selected; absent the params the catalog leads with its
+  // first case as before.
   const [params] = useSearchParams();
   // The case (if any) the form was navigated to with — a case's or jam's Run
   // button links here with `?slug=…`. Its presence is what distinguishes
@@ -145,6 +152,17 @@ export function NewRunPage() {
   // tab). Only consulted when gg is the chosen run mode.
   const { options: ggOptions } = useGgConfigs();
   const isGg = isGgOrchestrator(orchestrator);
+  // The engine the produced build is written against. It is a run dimension the
+  // *case* gates: a version declares the engines it supports and a run naming one
+  // outside that set is refused, so the picker offers the resolved version's set
+  // and the selection is held to it rather than trusted. Seeded from `?engine=`
+  // — a case detail page's Run action carries its whole anchored coordinate, so
+  // the form opens on exactly the rendering that was being viewed; the derived
+  // `engine` below already holds an unsupported (or absent) param to what the
+  // resolved version actually offers.
+  const [engineChoice, setEngineChoice] = useState(
+    () => params.get("engine") ?? DEFAULT_ENGINE_SLUG,
+  );
   const [maxRuntime, setMaxRuntime] = useState("");
   // The harness/model combinations to launch. The form starts with one empty row
   // so the single-run path is unchanged in feel; "Add combination" fans out.
@@ -291,6 +309,24 @@ export function NewRunPage() {
     );
   }, [isGg, ggOptions]);
 
+  // The engines the resolved version supports, in catalog order. Empty until the
+  // version resolves, which is also when the form cannot launch yet.
+  const engineOptions = useMemo(
+    () => orderEngines(sel.versionInfo?.engines ?? []),
+    [sel.versionInfo],
+  );
+  // The engine a launch actually carries. Derived rather than synced through an
+  // effect so switching to a case that supports a different set never leaves a
+  // render holding an engine that case would refuse: the operator's choice when the
+  // version still supports it, otherwise the engineless run, otherwise the first
+  // engine the version does support (a case built against a runtime need not offer
+  // the engineless run at all).
+  const engine =
+    engineOptions.find((slug) => slug === engineChoice) ??
+    engineOptions.find((slug) => slug === DEFAULT_ENGINE_SLUG) ??
+    engineOptions[0] ??
+    DEFAULT_ENGINE_SLUG;
+
   // Catalog versions are oldest-first; show the dropdown newest-first.
   const versions = [
     ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
@@ -322,6 +358,12 @@ export function NewRunPage() {
     sel.slug &&
     sel.version &&
     sel.variant &&
+    // A case or version switch leaves the previous version's variants and engines
+    // on screen until the new one resolves, so launching mid-resolution enqueues
+    // the case that is selected against a variant and an engine the case it
+    // replaced supported. Both are gated by the resolved version, so neither can
+    // be trusted while one is in flight.
+    !sel.loading &&
     combosValid &&
     !launching,
   );
@@ -362,6 +404,9 @@ export function NewRunPage() {
             version: sel.version,
             variant: sel.variant,
             capabilitySet,
+            // A gg run seeds and builds a workspace like any other run, so it
+            // carries the engine dimension on the same terms.
+            engine,
             // Omit the override entirely when blank so the case's default runtime
             // applies (the field is optional, not nullable).
             ...(maxRuntime ? { maxRuntimeSeconds: Number(maxRuntime) } : {}),
@@ -438,6 +483,7 @@ export function NewRunPage() {
           combo.modelId,
         ),
         orchestrator,
+        engine,
         maxRuntimeOverride: maxRuntime ? Number(maxRuntime) : null,
         retryCount,
       },
@@ -519,7 +565,15 @@ export function NewRunPage() {
         </p>
       )}
 
-      <div className={styles.fields}>
+      <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
+        Test
+      </p>
+      {/* What is being tested. The type, case, and version are universal, so they
+          fill the first row; the variant and the engine are what the resolved
+          version decides, so they share the second. The engine sits after the
+          variant and the grid's columns are fixed, so a case that offers a choice
+          of engine adds a field beside the variant rather than moving it. */}
+      <div className={`${styles.fields} ${styles.testFields}`}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Test case type</span>
           <select
@@ -579,6 +633,34 @@ export function NewRunPage() {
             ))}
           </select>
         </label>
+        {/* Offered only where there is something to choose. A version supporting a
+            single engine has already decided it, and `engine` resolves to that one
+            whether or not the field is on screen. */}
+        {engineOptions.length > 1 && (
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>Engine</span>
+            <select
+              className={styles.select}
+              value={engine}
+              onChange={(e) => setEngineChoice(e.target.value)}
+              title="The runtime the produced build is written against. A result is only comparable with another result on the same engine."
+            >
+              {engineOptions.map((slug) => (
+                <option key={slug} value={slug}>
+                  {engineName(slug)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+
+      <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
+        Run
+      </p>
+      {/* How the run is conducted, and how many of it to enqueue. None of this is
+          decided by the case, so it reflows on the shared auto-fit columns. */}
+      <div className={styles.fields}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Orchestrator</span>
           <select
@@ -794,6 +876,8 @@ export function NewRunPage() {
           );
         })}
       </div>
+      <SubmitNotice message={launchError ?? sel.error} />
+
       <div className={styles.actions}>
         <button
           type="button"
@@ -853,12 +937,6 @@ export function NewRunPage() {
             Go to runs list →
           </Link>
         </div>
-      )}
-
-      {(launchError || sel.error) && (
-        <p className={`${styles.notice} ${styles.error}`}>
-          {launchError ?? sel.error}
-        </p>
       )}
     </PageLayout>
   );

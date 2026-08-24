@@ -22,7 +22,8 @@ function recordingOf(count: number, deltaMs: number): Recording {
       timeMs: deltaMs * (i + 1),
       deltaMs,
       surface: { width: 800, height: 600 },
-      state: { properties: {}, transform: null, lineDash: null },
+      state: 0,
+      stack: [],
       ops: [],
     });
   }
@@ -31,6 +32,12 @@ function recordingOf(count: number, deltaMs: number): Recording {
     width: 800,
     height: 600,
     background: null,
+    images: [],
+    resources: [],
+    ops: [],
+    states: [
+      { properties: {}, transform: null, lineDash: null, clip: [], path: [] },
+    ],
     frames,
   };
 }

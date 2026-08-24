@@ -15,14 +15,16 @@
 // opponent, so a build that gets it right only in Versus fails here rather than
 // passing on the mode that happened to be tested.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
-import type { Mode } from "../../src/game";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
 import {
+  ball0,
   captureReplay,
   createHarness,
   startWithKeys,
   type Harness,
 } from "../harness";
+import type { Mode } from "../surface";
 
 /**
  * Frames of the pre-serve hold recorded before the hold is expired.
@@ -53,7 +55,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("serves toward player one to open a match", async () => {
@@ -62,8 +64,8 @@ it("serves toward player one to open a match", async () => {
       await startWithKeys(harness, mode);
       // The menu keys really did open a match, so the launch below belongs to a
       // match this check started rather than to a title screen that never left.
-      expect(harness.debug.snapshot().screen).toBe("countdown");
-      expect(harness.debug.snapshot().mode).toBe(mode);
+      assertEqual(harness.debug.snapshot().screen, "countdown");
+      assertEqual(harness.debug.snapshot().mode, mode);
 
       await harness.advance(HELD_TICKS);
       harness.debug.serve();
@@ -75,11 +77,11 @@ it("serves toward player one to open a match", async () => {
       // no assertion; the next mode opens with `debug.reset()` either way.
       await harness.advance(FLIGHT_TICKS);
 
-      expect(launched.hit).toBe(true);
+      assertEqual(launched.hit, true);
       // Player one defends the LEFT edge, so a serve toward player one travels
       // left: a strictly negative horizontal velocity.
-      expect(launched.snapshot.ball.vx).toBeLessThan(0);
+      assertLessThan(ball0(launched.snapshot).vx, 0);
     }
   });
-  expect(harness.assetFailures).toEqual([]);
+  assertDeepEqual(harness.assetFailures, []);
 });

@@ -5,7 +5,7 @@
 //!
 //! The seam's rule that neither an argument nor a result is a JSON document a program has to parse
 //! is a rule about the **model-facing** surface. This is the wire underneath it: a model writes
-//! `Files.readTextFile("notes.txt")` against a typed method, and what that method lowers into is
+//! `Files.readFile("notes.txt")` against a typed method, and what that method lowers into is
 //! gg's business, on both sides, forever. So the choice is made on what it costs the two ends rather
 //! than on what it reads like.
 //!

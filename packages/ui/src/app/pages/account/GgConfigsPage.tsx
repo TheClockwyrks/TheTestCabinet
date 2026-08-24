@@ -8,6 +8,7 @@ import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
 import { savedKey, useGgConfigs } from "../runs/gg/useGgConfigs";
+import { SubmitNotice } from "../../components/SubmitNotice";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -111,22 +112,20 @@ export function GgConfigsPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--gg-configs"
-          comment={<>// named capability sets to run gg with</>}
-        />
-        {token && (
-          <Link className={exec.primary} to={routes.accountGgConfigNew()}>
-            New configuration
-          </Link>
-        )}
-      </div>
+      <PromptHeader
+        command="--gg-configs"
+        comment={<>// named capability sets to run gg with</>}
+        titleActions={
+          token ? (
+            <Link className={exec.primary} to={routes.accountGgConfigNew()}>
+              + New configuration
+            </Link>
+          ) : undefined
+        }
+      />
       <AccountTabs active="ggConfigs" />
 
-      {(error || actionError) && (
-        <p className={`${exec.notice} ${exec.error}`}>{error ?? actionError}</p>
-      )}
+      <SubmitNotice message={error ?? actionError} />
 
       {/* No section heading: every configuration on this page is the operator's own,
           so "Your configurations" would be labelling the only thing there is. */}

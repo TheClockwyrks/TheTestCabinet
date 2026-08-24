@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunsTabs } from "../runs/RunsTabs";
+import { StopRunsControls, useCanStopRuns } from "../runs/StopRunsControls";
 import { useAuth } from "../../../client/auth";
 import { useGalleryData } from "../../data/galleryContext";
 import { routes } from "../../routes";
@@ -17,6 +18,7 @@ import exec from "../runs/RunExec.module.scss";
 export function ComparisonsIndexPage() {
   const { canExecute } = useGalleryData();
   const { token } = useAuth();
+  const canStop = useCanStopRuns();
 
   return (
     <PageLayout>
@@ -24,23 +26,20 @@ export function ComparisonsIndexPage() {
           shape the Runs tab gives "+ New run". Creating a comparison is
           console-only (it is saved to an account); the read-only static site
           renders the published list without it. */}
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--runs/comparisons"
-          comment={
-            <>
-              // the same benchmark under several configurations, side by side
-            </>
-          }
-        />
-        {canExecute && token && (
-          <div className={exec.headerActions}>
+      <PromptHeader
+        command="--runs/comparisons"
+        comment={
+          <>// the same benchmark under several configurations, side by side</>
+        }
+        titleActions={
+          canExecute && token ? (
             <Link className={exec.primary} to={routes.comparisonNew()}>
               + New comparison
             </Link>
-          </div>
-        )}
-      </div>
+          ) : undefined
+        }
+        actions={canStop ? <StopRunsControls /> : undefined}
+      />
 
       <RunsTabs active="comparisons" />
 

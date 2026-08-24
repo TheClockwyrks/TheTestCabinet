@@ -209,7 +209,11 @@ pub(super) struct Case {
     /// mechanism capture rather than interception, an uncaught throw on an arm with no exception
     /// mechanism reaching the host dies as a wasm trap and is recorded as
     /// [`SandboxTrap`](TurnErrorType::SandboxTrap) rather than as one of the three
-    /// `Program*` classes. Six arms moved across on this branch and every gate stayed green.
+    /// `Program*` classes. Six arms moved across on this branch and every gate stayed green — and
+    /// the ECMAScript arms later moved back, because a guest that can see the throw at its entry
+    /// point reports it: an uncaught failed call is
+    /// [`ProgramApiError`](TurnErrorType::ProgramApiError) there as on Python, Ruby and C++, and
+    /// `SandboxTrap` is reserved for a real ceiling or trap.
     ///
     /// It is therefore declared per cell rather than derived, and asserted for **every** cell
     /// including the ones [`KNOWN_HOLES`] holds a row for: a hole records what a model *reads*
@@ -353,7 +357,10 @@ const KNOWN_HOLES: &[Hole] = &[
 /// because it is the one a model meets most: a path that was right last turn and is not right now.
 pub(super) fn responder(name: &str, args: &Value) -> ToolOutcome {
     match name {
-        "read_file" => ToolOutcome::failed(
+        // `read_skill` fails the same way for the one arm whose read reaches the model through a
+        // functor lift: a direct string-returning call is what keeps that arm's fault located at
+        // the model's own line.
+        "read_file" | "read_skill" => ToolOutcome::failed(
             ToolFailure::NotFound,
             "no such file or directory: missing.md".to_string(),
         ),

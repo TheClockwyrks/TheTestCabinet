@@ -58,8 +58,8 @@ foreign import data Wire :: Type
 -- |
 -- | `operation` is the **gate** the failure is reported under when the run withheld the capability —
 -- | the gg operation whose absence takes the function away, which is not always the function's own
--- | name: `Gg.Files.readTextFile` and `Gg.Views.openFile` are both spellings of a read, so both
--- | refuse under `read_file`. Where nothing a run can withhold gates the call at all — an ending
+-- | name: `Gg.Views.openFile` is a spelling of a read, so it
+-- | refuses under `read_file`. Where nothing a run can withhold gates the call at all — an ending
 -- | call, which a role decides, or a program-library call, which a capability buys — the call's own
 -- | key stands in, since naming an operation that could not have been the reason would be worse than
 -- | naming none. `namespace` is gg's own name for the family holding the function; and `written` is

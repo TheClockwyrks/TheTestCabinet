@@ -38,20 +38,19 @@ fn emitted(source: &str) -> String {
 #[test]
 fn a_program_that_uses_the_sdk_correctly_compiles_clean() {
     let clean = r#"import { files, views, shell, docs, session, ApiError } from "gg";
-import { readTextFile } from "gg:files";
+import { listDir } from "gg:files";
 
 const context = "not gg's";
 const fs = 1;
 const view = null;
 
-const entries: files.DirEntry[] = files.listDir("src");
+const entries: files.DirEntry[] = listDir("src");
 const names: string[] = [];
 for (const entry of entries) {
   if (entry.kind === "file") names.push(entry.name);
 }
 const read = files.readFile("src/main.ts", { offset: 1, limit: 40 });
 if (read.kind === "text") views.openText("main", read.contents);
-views.openText("notes", readTextFile("notes.md"));
 const ran = shell.shell("ls", { timeoutSecs: 5 });
 views.openText("ls", ran.output);
 try {
@@ -88,7 +87,7 @@ session.finish(`saw ${names.length} files of ${found.total}`);
 /// by import" means when it is a property of the arm rather than a claim about it.
 #[test]
 fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
-    let text = diagnostics("files.readTextFile(\"a.ts\");\n")
+    let text = diagnostics("files.readFile(\"a.ts\");\n")
         .expect("`files` is not in scope without an import");
     assert!(
         text.contains("error TS2304") && text.contains("Cannot find name 'files'"),

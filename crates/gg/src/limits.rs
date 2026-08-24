@@ -325,6 +325,14 @@ pub enum TurnErrorType {
     ModelVisionUnsupported,
     /// A successful response could not be parsed into a reply.
     ModelParse,
+    /// The call ran into gg's [per-call ceiling](crate::client::MODEL_CALL_TIMEOUT) without
+    /// producing a reply — a stalled provider. The one model error the loop retries at the turn
+    /// level rather than ending the session on.
+    ModelTimeout,
+    /// The reply hit the provider's output cap (`finish_reason: length`) and was rejected whole —
+    /// presumed a degenerate generation, kept out of the context and the run's metrics, and
+    /// retried on the same terms as [`ModelTimeout`](Self::ModelTimeout).
+    ModelLengthCapped,
     /// The program is not valid source in its language.
     TranspileSyntax,
     /// The language's compiler read the whole program and rejected it — a type error, a borrow
@@ -366,7 +374,9 @@ impl TurnErrorType {
             | Self::ModelRetryExhausted
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
-            | Self::ModelParse => TurnErrorKind::ModelApi,
+            | Self::ModelParse
+            | Self::ModelTimeout
+            | Self::ModelLengthCapped => TurnErrorKind::ModelApi,
             Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
                 TurnErrorKind::Transpile
             }
@@ -392,6 +402,8 @@ impl TurnErrorType {
             Self::ModelResponseLoop => GgTurnErrorType::ModelResponseLoop,
             Self::ModelVisionUnsupported => GgTurnErrorType::ModelVisionUnsupported,
             Self::ModelParse => GgTurnErrorType::ModelParse,
+            Self::ModelTimeout => GgTurnErrorType::ModelTimeout,
+            Self::ModelLengthCapped => GgTurnErrorType::ModelLengthCapped,
             Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,
             Self::TranspileCompile => GgTurnErrorType::TranspileCompile,
             Self::TranspileUnsupported => GgTurnErrorType::TranspileUnsupported,

@@ -38,21 +38,51 @@ describe("PlayableEmbed", () => {
 });
 
 describe("ReferencePlayable", () => {
-  it("embeds the reference build inline when the variant declares one", () => {
+  it("embeds the anchored engine's reference build inline", () => {
     render(
       <ReferencePlayable
         referenceBuilds={{ none: BUILD }}
         variantName="Base"
+        engine="none"
+        version="v1.0.0"
       />,
     );
     expect(document.querySelector("iframe")?.getAttribute("src")).toBe(BUILD);
+    // The engine follows the page header's anchor; there is no switch here.
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
   });
 
   it("shows a placeholder when the variant declares no reference build", () => {
-    render(<ReferencePlayable referenceBuilds={{}} variantName="Base" />);
+    render(
+      <ReferencePlayable
+        referenceBuilds={{}}
+        variantName="Base"
+        engine="none"
+        version="v1.0.0"
+      />,
+    );
     expect(
       screen.getByText(/no reference implementation for this variant/i),
     ).toBeInTheDocument();
+    expect(document.querySelector("iframe")).toBeNull();
+  });
+
+  it("names the engines that do have builds when the anchored one has none", () => {
+    // Builds exist, just not for the anchored engine — say which coordinate
+    // lacks one and which engines to re-anchor to, rather than the flat "no
+    // reference implementation" of a variant with none at all.
+    render(
+      <ReferencePlayable
+        referenceBuilds={{ "simple-2d": BUILD }}
+        variantName="Base"
+        engine="none"
+        version="v1.2.0"
+      />,
+    );
+    expect(
+      screen.getByText(/no reference build for None at v1\.2\.0/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/published for Simple 2D/i)).toBeInTheDocument();
     expect(document.querySelector("iframe")).toBeNull();
   });
 });

@@ -1,8 +1,13 @@
-// Carom — canonical constants. CASE-PROVIDED. Do not edit.
+// Carom — the figures the specification fixes.
 //
-// Every figure the specification fixes is named here exactly once, so no number
-// in this build is a guess and no spec value is left to interpretation. The
-// game's own code, and the checks run against it, read the same names.
+// Every number, key binding, cue name, and piece of screen copy the specification
+// fixes is named here exactly once, so no value in this build is a guess and no
+// spec value is left to interpretation (specs/overview.md asks for exactly this).
+// Every other module reads its figures from here rather than restating them.
+//
+// Nothing about the LOOK is here. The palette, the type, and the HUD layout are
+// this build's own choices, and they live in `src/theme.ts` so the figures the
+// specification fixes and the figures this build chose are never confused.
 //
 // Every value is in the fixed 1280x720 logical-pixel coordinate space defined by
 // `specs/overview.md` (origin top-left, x right, y down). That space is the
@@ -26,29 +31,6 @@ export const FIELD_CY = 360;
 
 /** The dashed decorative net. It has no collision. */
 export const NET_X = 640;
-
-// ---- Palette (specs/overview.md) -----------------------------------------
-
-export const COLOR = {
-  bg: "#0b0e14",
-  bgRaised: "#11151f",
-  p1: "#3ae7c4", // player one / left paddle
-  p2: "#ff5c8a", // player two / AI / right paddle
-  ball: "#f2f5f7",
-  obstacle: "#ffb454",
-  net: "#243044",
-  text: "#e6edf3",
-  textDim: "#8a94a6",
-  textFaint: "#4a5567",
-  panelBorder: "#20283a",
-} as const;
-
-/**
- * A system monospace stack: no downloaded web font, so the game renders
- * identically offline (specs/overview.md).
- */
-export const MONO =
-  '"DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 
 // ---- Paddles -------------------------------------------------------------
 
@@ -144,11 +126,15 @@ export const SPEED_CAP = 980;
 /** The outgoing angle from horizontal at the very edge of a paddle: 55deg. */
 export const MAX_BOUNCE_ANGLE = (55 * Math.PI) / 180;
 
-/** The serve's small fixed vertical component. */
+/** The serve's angle from horizontal: 12deg, held in radians. */
 export const SERVE_ANGLE = (12 * Math.PI) / 180;
 
-/** The bound `specs/balls.md` puts on a serve: within +/-30deg of horizontal. */
-export const SERVE_MAX_ANGLE = (30 * Math.PI) / 180;
+/**
+ * The most units a ball's center travels in one physics sub-step. A frame is
+ * cut into `max(1, ceil(speed * dt / MAX_SUBSTEP))` sub-steps and collisions are
+ * resolved after each, so the ball cannot skip past an object in one move.
+ */
+export const MAX_SUBSTEP = 4;
 
 // ---- Spin (the signature mechanic) ---------------------------------------
 
@@ -166,38 +152,35 @@ export const TRAIL_TIME = 0.13; // seconds of recent travel the comet represents
 export const AI_SPEED = 560; // deliberately slower than the human's 720
 export const AI_REACT = 0.12; // reaction lag time constant, in seconds
 export const AI_DEADZONE = 10; // stop tracking within this of the target
-export const AI_HOME_Y = FIELD_CY; // eased back to while the ball moves away
+export const AI_HOME_Y = FIELD_CY; // returned to while the ball moves away
+export const AI_HOME_DEADZONE = 18; // stop returning home within this of AI_HOME_Y
 
 // ---- Match rules ---------------------------------------------------------
 
 export const WIN_SCORE = 11;
 export const WIN_LEAD = 2;
 
-// ---- HUD layout ----------------------------------------------------------
-
-export const SCORE_P1_X = 520; // center x of player one's score
-export const SCORE_P2_X = 760; // center x of player two's score
-export const SCORE_TOP_Y = 40;
-export const SCORE_FONT_PX = 76;
-
 // ---- Screen copy (specs/ui.md) -------------------------------------------
 
 export const TITLE_TEXT = "CAROM";
-export const TAGLINE_TEXT = "NEON PADDLE DUEL";
 export const TITLE_ITEMS = ["SOLO", "VERSUS", "HOW TO PLAY"] as const;
 export const PAUSE_ITEMS = ["RESUME", "RESTART", "QUIT TO MENU"] as const;
 export const MATCHOVER_ITEMS = ["PLAY AGAIN", "MENU"] as const;
-export const MODE_LABEL = { solo: "SOLO", versus: "VERSUS" } as const;
+
+// ---- Debug surface (specs/instrumentation.md) ----------------------------
+
+/** The surface's version, reported as `version` and bumped when it changes. */
+export const CAROM_DEBUG_VERSION = 1;
+
+/** The seed `reset()` restores when the caller names none. */
+export const DEFAULT_SEED = 1;
 
 // ---- Input actions (specs/modes/*.md) ------------------------------------
 
-/** Carom is two paddles facing each other: one vertical slider per side. */
-export const LAYOUT = "dual-vertical";
-
 /**
- * Every action Carom registers, in the `dual-vertical` layout's own order: the
- * layout's four movement actions followed by the menu vocabulary every layout
- * carries. This list must equal `TOUCH_LAYOUTS[LAYOUT].actions`.
+ * Every action Carom speaks: one vertical slider per side — Carom is two paddles
+ * facing each other — followed by the four menu actions. `src/input.ts` registers
+ * exactly this list with the runtime, each bound to the keys below.
  */
 export const ACTIONS = [
   "p1-up",

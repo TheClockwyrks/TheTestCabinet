@@ -9,7 +9,8 @@ validator chooses the shape of time the scenario runs under.
 
 Every example on this page uses the harness from
 [Validating a Game](/engines/simple-2d/examples/validating-a-game/), which
-accepts the clock as an option and installs it at construction.
+accepts the clock as an option and installs it at construction, poses the ball
+through `engine.apply`, and reads a snapshot off `engine.state`.
 
 ## Exact stepping with `ConstantClock`
 
@@ -27,15 +28,15 @@ const framesFor = (ms: number, stepMs: number): number => Math.round(ms / stepMs
 it("advances simulated time by the step it was given", async () => {
   const stepMs = 1000 / 240;
   const harness = await createHarness({ clock: new ConstantClock(stepMs) });
-  const { engine, state } = harness;
-  state.ball = { x: 320, y: 180, vx: 200, vy: 0 };
+  const { engine } = harness;
+  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
 
   await engine.advance(framesFor(1500, stepMs));
 
   expect(engine.frame().count).toBe(360);
   expect(engine.frame().timeMs).toBeCloseTo(1500, 6);
   expect(engine.frame().lastDeltaMs).toBeCloseTo(stepMs, 9);
-  expect(state.ball.x).toBeCloseTo(620, 3);
+  expect(harness.snapshot().ball.x).toBeCloseTo(620, 3);
 
   harness.dispose();
 });
@@ -78,13 +79,14 @@ it("delivers the pattern in order and repeats it", async () => {
 
 it("keeps the ball inside the field across a stutter", async () => {
   const harness = await createHarness({ clock: new SequenceClock(PATTERN) });
-  const { engine, state } = harness;
-  state.ball = { x: 600, y: 180, vx: 200, vy: 0 };
+  const { engine } = harness;
+  harness.setBall({ x: 600, y: 180, vx: 200, vy: 0 });
 
   await engine.advance(PATTERN.length * 4);
 
-  expect(state.ball.vx).toBe(-200);
-  expect(state.ball.x).toBeLessThanOrEqual(FIELD_WIDTH - BALL_RADIUS);
+  const { ball } = harness.snapshot();
+  expect(ball.vx).toBe(-200);
+  expect(ball.x).toBeLessThanOrEqual(FIELD_WIDTH - BALL_RADIUS);
 
   harness.dispose();
 });
@@ -109,14 +111,14 @@ import { expect, it } from "vitest";
 import { createHarness } from "./harness";
 
 interface Sampled {
-  x: number;
-  deltas: number[];
+  readonly x: number;
+  readonly deltas: readonly number[];
 }
 
 async function runFor(clock: Clock, frames: number): Promise<Sampled> {
   const harness = await createHarness({ clock });
-  const { engine, state } = harness;
-  state.ball = { x: 320, y: 180, vx: 200, vy: 0 };
+  const { engine } = harness;
+  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
 
   const deltas: number[] = [];
   for (let i = 0; i < frames; i += 1) {
@@ -124,7 +126,7 @@ async function runFor(clock: Clock, frames: number): Promise<Sampled> {
     deltas.push(engine.frame().lastDeltaMs);
   }
 
-  const x = state.ball.x;
+  const x = harness.snapshot().ball.x;
   harness.dispose();
   return { x, deltas };
 }
@@ -181,8 +183,8 @@ running it under jitter is one scenario rather than two.
 
 ```ts
 const harness = await createHarness({ clock: new ConstantClock(1000 / 120) });
-const { engine, state } = harness;
-state.ball = { x: 320, y: 180, vx: 200, vy: 0 };
+const { engine } = harness;
+harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
 await engine.advance(60);
 
 engine.setClock(new JitterClock(4, 40, 20260819));
@@ -208,28 +210,29 @@ import { BALL_RADIUS, FIELD_WIDTH, createHarness } from "./harness";
 import { advanceMs } from "./advance-ms";
 
 interface Outcome {
-  bounces: number;
-  vx: number;
-  x: number;
-  elapsedMs: number;
+  readonly bounces: number;
+  readonly vx: number;
+  readonly x: number;
+  readonly elapsedMs: number;
 }
 
 async function runScenario(clock: Clock): Promise<Outcome> {
   const harness = await createHarness({ clock });
-  const { engine, state } = harness;
+  const { engine } = harness;
 
-  let bounces = 0;
+  const played: string[] = [];
   engine.events.on("cue:played", ({ cue }) => {
-    if (cue === "bounce") bounces += 1;
+    played.push(cue);
   });
 
-  state.ball = { x: 320, y: 180, vx: 200, vy: 0 };
+  harness.setBall({ x: 320, y: 180, vx: 200, vy: 0 });
   await advanceMs(engine, 3000);
 
+  const { ball } = harness.snapshot();
   const outcome: Outcome = {
-    bounces,
-    vx: state.ball.vx,
-    x: state.ball.x,
+    bounces: played.filter((cue) => cue === "bounce").length,
+    vx: ball.vx,
+    x: ball.x,
     elapsedMs: engine.frame().timeMs,
   };
   harness.dispose();

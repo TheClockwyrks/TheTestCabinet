@@ -56,6 +56,7 @@ fn sample_request() -> GgRunRequest {
         capability_set: authored(GgCapabilitySet::minimal("mock/echo")),
         max_runtime_seconds: None,
         retry_count: None,
+        engine: None,
     }
 }
 
@@ -74,6 +75,26 @@ fn into_launch_body_fixes_harness_and_lifts_root_model() {
         .gg_capability_set
         .expect("the launch body carries the capability set");
     assert_eq!(set.root().resolved_model_id(), Some("mock/echo"));
+}
+
+#[test]
+fn into_launch_body_carries_the_selected_engine() {
+    // A gg run seeds and builds a workspace like any other run, so the engine
+    // dimension travels with it. Dropping it here makes every gg run an engineless
+    // run, which a case built against a runtime does not support at all.
+    let req = GgRunRequest {
+        engine: Some("simple-2d".to_string()),
+        ..sample_request()
+    };
+    let launch = req.into_launch_body().expect("the Root agent is bound");
+    assert_eq!(launch.engine.as_deref(), Some("simple-2d"));
+
+    // And a request naming none leaves the field absent, which is how the `none`
+    // default is spelled.
+    let launch = sample_request()
+        .into_launch_body()
+        .expect("the Root agent is bound");
+    assert_eq!(launch.engine, None);
 }
 
 #[test]

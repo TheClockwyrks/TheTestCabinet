@@ -91,8 +91,7 @@ unsafe extern "C" {
 ///
 /// The four modules missing from it are missing because none of their functions is a gg tool:
 /// `views`, `programs` and `session` are the model-facing carve-outs the WIT keeps outside the tool
-/// interfaces, `core` declares no function at all, and `files`'s helper `read_text_file` dispatches
-/// `read_file` rather than a name of its own.
+/// interfaces, and `core` declares no function at all.
 const OPERATIONS: &[&[&str]] = &[
     crate::files::OPERATIONS,
     crate::shell::OPERATIONS,

@@ -1,0 +1,48 @@
+// Carom — navigation/pause-escape: Escape on the pause menu resumes the match.
+//
+// One transition of the menu state machine specs/ui.md fixes. The match is
+// started from the title with menu keys and played into a live rally, then
+// paused with a real press, so the pause menu is reached the way a player
+// reaches it. Every key is a real key event dispatched at the target the engine
+// listens on, so the action is raised by the binding the case declares, and the
+// result is read back off the game's own state. The still is the frame the
+// press left.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { PAUSE_ITEMS } from "../../src/constants";
+import { assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  menuIndex0,
+  startWithKeys,
+  type Harness,
+} from "../harness";
+
+/** Past the 1.0 s pre-serve hold and into a live rally: 1.3 s at 120 Hz. */
+const RALLY_TICKS = 156;
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("resumes the paused match on Escape", async () => {
+  await startWithKeys(h, "versus");
+  await h.advance(RALLY_TICKS);
+  assertEqual(h.snapshot().screen, "playing");
+  await h.tap("Escape");
+  assertEqual(h.snapshot().screen, "paused");
+  assertEqual(menuIndex0(h), 0);
+  assertGreaterThan(PAUSE_ITEMS.length, 0);
+
+  await h.tap("Escape");
+  captureStill(h, "resumed");
+
+  assertEqual(h.snapshot().screen, "playing");
+});

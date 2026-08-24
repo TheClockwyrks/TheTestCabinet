@@ -349,6 +349,53 @@ fn a_program_error_is_recorded_once_with_its_kind() {
     assert_eq!(error.location.as_deref(), Some("line 3, column 1"));
 }
 
+/// **A reported throw is read back through the program's own source map**, exactly as the stderr
+/// path reads what a guest wrote on its way down.
+///
+/// The ECMAScript guest reports a throw with the engine's stack in the message, stated against the
+/// text it evaluated — `program.js` — which on the TypeScript arm is `tsc`'s output rather than
+/// the model's file. Without this, a message the guest reported would name coordinates the model
+/// cannot open while the same frame on the stderr path reads as `program.ts`.
+#[test]
+fn a_reported_throw_is_read_back_through_the_programs_own_map() {
+    // Generated line 1 column 1 is source line 3 column 1 — the same hand-written VLQ fixture
+    // `locate.test.rs` explains.
+    let map = serde_json::json!({
+        "version": 3,
+        "file": "program.js",
+        "sources": ["program.ts"],
+        "names": [],
+        "mappings": "AAEA",
+    });
+    use base64::Engine as _;
+    let encoded = base64::engine::general_purpose::STANDARD
+        .encode(serde_json::to_string(&map).expect("the map serialises"));
+    let source =
+        format!("const a = 1;\n//# sourceMappingURL=data:application/json;base64,{encoded}");
+    let locations = crate::sandbox::locate::Locations::read([(
+        "program.js".to_string(),
+        None,
+        source.as_str(),
+    )])
+    .expect("the source carries a map");
+
+    let log = CallLog::default();
+    let mut state = membrane(&log).locating(Some(locations));
+    state.report_error(feedback::ProgramError {
+        kind: ErrorKind::Other,
+        code: None,
+        message: "Error: boom\n    at inner (program.js:1:1)".to_string(),
+        location: Some("program.js:1:1".to_string()),
+    });
+
+    let error = state
+        .into_parts()
+        .program_error
+        .expect("the throw was recorded");
+    assert_eq!(error.message, "Error: boom\n    at inner (program.ts:3:1)");
+    assert_eq!(error.location.as_deref(), Some("program.ts:3:1"));
+}
+
 /// The record deliberately keeps no arguments: the loop already emits the same `Value` as `ToolCall`
 /// telemetry and hands it to the session recorder, so a second retained copy would be pure waste.
 #[test]

@@ -1735,10 +1735,7 @@ pub(super) fn engines_manifest_with(roots: &str, tables: &str, workspaces: &[&st
     } else {
         workspaces_table(workspaces)
     };
-    manifest_with(
-        &format!("format = 2\n{roots}"),
-        &format!("{tables}\n{table}"),
-    )
+    manifest_with(roots, &format!("{tables}\n{table}"))
 }
 
 #[test]
@@ -1863,7 +1860,7 @@ fn engines_declaring_only_none_need_no_workspace_at_all() {
 #[test]
 fn engines_are_end_to_end_only() {
     // `engines` is a root key, so it must precede the first table; prepend it.
-    let manifest = format!("format = 2\nengines = [\"simple-2d\"]\n{VALID_ASSET_MANIFEST}");
+    let manifest = format!("engines = [\"simple-2d\"]\n{VALID_ASSET_MANIFEST}");
     let err = asset_catalog(&manifest)
         .1
         .resolve("sprite", "v1.0.0")
@@ -2538,7 +2535,7 @@ fn variant_reference_implementation_round_trips_to_a_resolved_host_path() {
 /// never about a missing directory.
 fn two_engine_catalog(variant_extra: &str) -> (tempfile::TempDir, TestCaseCatalog) {
     let (dir, catalog) = catalog_with_manifest(
-        "format = 2\nengines = [\"none\", \"simple-2d\"]\n\
+        "engines = [\"none\", \"simple-2d\"]\n\
          [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
          [workspaces]\nnone = \"workspaces/none\"\n\"simple-2d\" = \"workspaces/simple-2d\"",
     );
@@ -3419,17 +3416,17 @@ fn errata_for_filters_case_wide_and_variant_scoped_entries() {
     );
 }
 
-// --- the manifest format ----------------------------------------------------
+// --- the two workspace spellings ---------------------------------------------
 //
-// A case says which starter project a run is seeded with in exactly one way, and
-// which way is a property of its `format`. These pin both halves of that gate: the
-// key each format admits, and the key each format refuses by name.
+// A case says which starter project a run is seeded with in exactly one way: one
+// `workspace` for the whole case, or one directory per engine in `[workspaces]`.
+// These pin both halves of that gate — what each spelling resolves as, and that a
+// case mixing them is refused by name.
 
 #[test]
-fn the_legacy_format_is_what_a_manifest_declaring_none_resolves_as() {
-    // Every version authored before the key existed omits it, and a frozen version
-    // cannot be edited — so the default must be the legacy shape, with the one
-    // `workspace` directory filed under the engineless run it is the project for.
+fn one_workspace_is_the_engineless_project() {
+    // A case naming a single `workspace` supports no engine, so its one directory
+    // is filed under the engineless run it is the project for.
     let manifest = manifest_with("workspace = \"workspaces/base\"\n", "");
     let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
@@ -3438,31 +3435,16 @@ fn the_legacy_format_is_what_a_manifest_declaring_none_resolves_as() {
     assert_eq!(
         version.common_workspace.engines().collect::<Vec<_>>(),
         vec!["none"],
-        "a legacy case's one project is the engineless run's",
+        "an engineless case's one project is the engineless run's",
     );
     let base = version.variant("base").expect("base");
     assert_eq!(version.workspace_for(base, "none").len(), 1);
 }
 
 #[test]
-fn an_unknown_format_is_rejected_by_name() {
-    let manifest = manifest_with("format = 7\n", "");
-    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
-    let err = catalog
-        .resolve("demo", "v1.0.0")
-        .expect_err("an unknown format is rejected");
-    let msg = format!("{err}");
-    assert!(
-        msg.contains("`format` 7 is not a manifest format"),
-        "got: {err}"
-    );
-    assert!(msg.contains("1, 2"), "the valid formats are named: {err}");
-}
-
-#[test]
-fn the_legacy_format_may_not_declare_an_engine() {
-    // A starter project is written against a runtime, so the format with one
-    // workspace cannot also name the engine that workspace would have to be for.
+fn one_workspace_may_not_be_declared_alongside_an_engine() {
+    // A starter project is written against a runtime, so a case with one workspace
+    // cannot also name the engine that workspace would have to be for.
     let manifest = manifest_with(
         "workspace = \"workspaces/base\"\nengines = [\"simple-2d\"]\n",
         "",
@@ -3470,41 +3452,33 @@ fn the_legacy_format_may_not_declare_an_engine() {
     let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/base/package.json", "{}")]);
     let err = catalog
         .resolve("demo", "v1.0.0")
-        .expect_err("an engine under the legacy format is rejected");
+        .expect_err("an engine alongside one `workspace` is rejected");
     assert!(
-        format!("{err}").contains("an engine may only be declared by manifest format 2"),
+        format!("{err}").contains("`workspace` names one directory for the whole case"),
         "got: {err}"
     );
 }
 
 #[test]
-fn the_legacy_format_may_not_declare_per_engine_workspaces() {
-    let manifest = manifest_with("", "[workspaces]\nnone = \"workspaces/none\"\n");
-    let (_dir, catalog) = catalog_with_files(&manifest, &[("workspaces/none/package.json", "{}")]);
+fn the_two_workspace_spellings_may_not_be_mixed() {
+    // The refusal is by name rather than by silently ignoring one of them, so an
+    // author who wrote both is told which one a case may keep.
+    let manifest = manifest_with(
+        "workspace = \"workspaces/base\"\n",
+        "[workspaces]\nnone = \"workspaces/none\"\n",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[
+            ("workspaces/base/package.json", "{}"),
+            ("workspaces/none/package.json", "{}"),
+        ],
+    );
     let err = catalog
         .resolve("demo", "v1.0.0")
-        .expect_err("`[workspaces]` under the legacy format is rejected");
+        .expect_err("`workspace` alongside `[workspaces]` is rejected");
     assert!(
-        format!("{err}").contains("`[workspaces]` is a key of manifest format 2"),
-        "got: {err}"
-    );
-}
-
-#[test]
-fn the_engines_format_may_not_declare_a_single_workspace() {
-    // The refusal is by name rather than by silently ignoring the key, so an author
-    // who wrote the wrong spelling is told which one this format takes.
-    let manifest = engines_manifest_with(
-        "engines = [\"none\"]\nworkspace = \"workspaces/base\"\n",
-        "",
-        &["none"],
-    );
-    let (_dir, catalog) = catalog_with_files(&manifest, ENGINE_WORKSPACE_FILES);
-    let err = catalog
-        .resolve("demo", "v1.0.0")
-        .expect_err("`workspace` under the engines format is rejected");
-    assert!(
-        format!("{err}").contains("`workspace` is not a key of manifest format 2"),
+        format!("{err}").contains("`workspace` names one directory for the whole case"),
         "got: {err}"
     );
 }
@@ -3526,7 +3500,7 @@ fn a_variant_may_not_mix_the_two_spellings_either() {
     );
     let err = catalog
         .resolve("demo", "v1.0.0")
-        .expect_err("a variant's `workspace` under the engines format is rejected");
+        .expect_err("a variant's `workspace` in a per-engine case is rejected");
     assert!(
         format!("{err}").contains("variant `base` declares `workspace`"),
         "got: {err}"
@@ -3534,9 +3508,9 @@ fn a_variant_may_not_mix_the_two_spellings_either() {
 }
 
 #[test]
-fn the_engines_format_seeds_one_project_per_engine() {
-    // The whole point of the format: a run of each engine is seeded the project
-    // written for that engine, and the two are different sets of files.
+fn a_per_engine_case_seeds_one_project_per_engine() {
+    // The whole point of the per-engine table: a run of each engine is seeded the
+    // project written for that engine, and the two are different sets of files.
     let manifest = engines_manifest_with(
         "engines = [\"none\", \"simple-2d\"]\n",
         "",

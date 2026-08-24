@@ -21,7 +21,7 @@
 //
 // # Why four, and why they are written here rather than generated
 //
-// The bridge is *designed* to need almost none. Forty-four of its forty-nine functions already fit a
+// The bridge is *designed* to need almost none. Forty-four of its fifty functions already fit a
 // shape the class library uses; two of those were made to fit by narrowing a `long` argument to an
 // `int` where the value is a `u32` anyway, and two by handing a record's numbers back as one array
 // rather than as an `out` parameter each — which the interpreter forces regardless, since it refuses
@@ -31,7 +31,7 @@
 // | Cookie | What needs it |
 // | --- | --- |
 // | `IIDIIII` | `Shell`, whose timeout is the surface's one `double` |
-// | `IIIIIIIIIII` | `UpdateIssue`, ten arguments |
+// | `IIIIIIIIIII` | `UpdateIssue` and `OpenFileView`, ten arguments each |
 // | `IIIIIIIIIIIII` | `RecordMemory` and `SearchDocs`, twelve each |
 // | `IIIIIIIIIIII` | `CreateIssue`, eleven |
 //
@@ -81,7 +81,7 @@ static void gg_invoke_iidiiii(void *target_func, MonoInterpMethodArguments *marg
   *(int *)mono_wasm_interp_method_args_get_retval(margs) = res;
 }
 
-/// `int f(void* × 10)` — `project.UpdateIssue`.
+/// `int f(void* × 10)` — `project.UpdateIssue`, and `view.OpenFileView` since its line cut.
 static void gg_invoke_i11(void *target_func, MonoInterpMethodArguments *margs) {
   typedef int (*T)(int, int, int, int, int, int, int, int, int, int);
   const int res = ((T)target_func)(GG_I(0), GG_I(1), GG_I(2), GG_I(3), GG_I(4), GG_I(5), GG_I(6),

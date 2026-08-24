@@ -269,7 +269,10 @@ scripts/reingest.sh --force     # re-ingest every case, ignoring change detectio
 ```
 
 The first run, or one after `rm .reingest-timestamp`, has no baseline and
-re-ingests everything. The script wraps the endpoint's streamed
+re-ingests everything. So does a run against a backend reporting an unservable
+store on `/healthz`, which is what a rebuilt backend reports when its record
+shapes changed: change detection watches the test cases, and the store went
+stale from a code change no test-case mtime records. The script wraps the endpoint's streamed
 (`Accept: application/x-ndjson`) progress feed; the raw call is:
 
 ```sh

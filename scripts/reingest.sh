@@ -21,9 +21,10 @@
 # one version no longer re-renders every version the case declares; a case with no
 # newer file in any version is skipped without touching the backend. The baseline is
 # captured BEFORE the scan and only advanced on success, so an edit made while an
-# ingest is in flight is still caught on the next run. Two escape hatches ignore the
-# baseline: `--force` (re-ingest everything regardless), and a missing marker file (a
-# first run, or `rm .reingest-timestamp`, re-ingests all).
+# ingest is in flight is still caught on the next run. Three escape hatches ignore the
+# baseline: `--force` (re-ingest everything regardless), a missing marker file (a
+# first run, or `rm .reingest-timestamp`, re-ingests all), and a backend reporting an
+# unservable store on /healthz (see the pre-flight below).
 #
 # Note the two distinct meanings of "force": the `--force` FLAG here controls the
 # CLIENT-side change detection (scan everything, skip the mtime filter), while the
@@ -87,6 +88,56 @@ for arg in "$@"; do
   esac
 done
 
+# Pull a JSON key's value out of one (non-nested) JSON line. Handles both string
+# (`"slug":"carom"`) and scalar (`"index":1`) values, is order independent, and
+# tolerates whitespace around the colon — so it reads both the compact NDJSON the
+# stream emits and a pretty-printed error body. Returns empty when the key is absent;
+# never fails under `set -e`.
+jval() { # jval <key> <line>
+  # A string value is captured in full — its body may legitimately contain commas
+  # and (backslash-escaped) quotes, e.g. an error `message` that quotes a JSON
+  # snippet like `add `"pkg": "file:…"``. Naively stopping at the first `"`/`,`
+  # (the old `[^,\"}]*`) truncated such messages mid-value, so match the whole
+  # quoted body honoring escapes (`\"`, `\\`, …) and then unescape it.
+  local str_re="\"$1\"[[:space:]]*:[[:space:]]*\"(([^\"\\]|\\\\.)*)\""
+  if [[ "$2" =~ $str_re ]]; then
+    local s="${BASH_REMATCH[1]}" bs=$'\001'
+    s="${s//\\\\/$bs}"    # protect escaped backslashes before unescaping the rest
+    s="${s//\\\"/\"}"     # \" -> "
+    s="${s//\\\//\/}"     # \/ -> /
+    s="${s//\\n/$'\n'}"   # \n -> newline
+    s="${s//\\t/$'\t'}"   # \t -> tab
+    s="${s//\\r/$'\r'}"   # \r -> carriage return
+    s="${s//$bs/\\}"      # restore literal backslashes
+    printf '%s' "$s"
+    return
+  fi
+  # A bare scalar (number, boolean, null) runs up to the next structural delimiter.
+  local scalar_re="\"$1\"[[:space:]]*:[[:space:]]*([^,\"}[:space:]]+)"
+  if [[ "$2" =~ $scalar_re ]]; then
+    printf '%s' "${BASH_REMATCH[1]}"
+  fi
+}
+
+# Ask the backend whether its store is servable before deciding what to send.
+#
+# Change detection watches the test cases, and that is not the only thing that can
+# leave the store unserved. A backend rebuilt with different stored record shapes
+# reads none of what it already holds, and an emptied volume holds nothing at all —
+# in both cases the catalog collapses to whatever has been ingested since, while no
+# test-case file has changed and an incremental run would ingest nothing. The
+# backend reports this as `storeReady: false` on /healthz, and the answer is the
+# same either way: ignore the baseline and re-ingest the whole catalog.
+#
+# Best-effort: an unreachable or unparseable /healthz leaves the decision to change
+# detection, and the POST below reports the transport failure with its own
+# diagnostics.
+store_unready=false
+health="$(curl -sS --connect-timeout 5 --max-time 10 "${backend}/healthz" 2>/dev/null || true)"
+if [[ "$(jval storeReady "$health")" == "false" ]]; then
+  store_unready=true
+fi
+
 # Snapshot "now" as the candidate next baseline, captured before we scan so any
 # concurrent edit is caught next time. Promoted onto $timestamp only on success.
 stamp_ref="$(mktemp)"
@@ -121,10 +172,12 @@ fi
 # than the baseline (`find -newer … -print -quit` stops at the first hit, so it is
 # cheap even on large cases). An empty result means nothing changed: report and exit
 # cleanly without bothering the backend.
-if [[ ${#slugs[@]} -eq 0 && ( "$force" == true || ! -e "$timestamp" ) ]]; then
+if [[ ${#slugs[@]} -eq 0 && ( "$force" == true || "$store_unready" == true || ! -e "$timestamp" ) ]]; then
   body='{"force": true}'
   if [[ "$force" == true ]]; then
     scope="every case (--force)"
+  elif [[ "$store_unready" == true ]]; then
+    scope="every case (the backend cannot serve its store)"
   else
     scope="every case (first run — no baseline yet)"
   fi
@@ -140,7 +193,7 @@ else
     if [[ -z "$dir" && -d "$jams_dir" ]]; then
       dir="$(find "$jams_dir" -mindepth 1 -maxdepth 1 -type d -name "$slug" -print -quit 2>/dev/null)"
     fi
-    if [[ "$force" == true || ! -e "$timestamp" || -z "$dir" || ! -d "$dir" ]]; then
+    if [[ "$force" == true || "$store_unready" == true || ! -e "$timestamp" || -z "$dir" || ! -d "$dir" ]]; then
       # --force / no baseline / a slug with no folder on disk: target the whole case
       # (a bare entry the backend expands to every version) and let it judge.
       to_ingest+=("$slug")
@@ -173,37 +226,6 @@ else
   body="{\"testCases\": [${cases%,}], \"force\": true}"
   scope="${to_ingest[*]}"
 fi
-
-# Pull a JSON key's value out of one (non-nested) JSON line. Handles both string
-# (`"slug":"carom"`) and scalar (`"index":1`) values, is order independent, and
-# tolerates whitespace around the colon — so it reads both the compact NDJSON the
-# stream emits and a pretty-printed error body. Returns empty when the key is absent;
-# never fails under `set -e`.
-jval() { # jval <key> <line>
-  # A string value is captured in full — its body may legitimately contain commas
-  # and (backslash-escaped) quotes, e.g. an error `message` that quotes a JSON
-  # snippet like `add `"pkg": "file:…"``. Naively stopping at the first `"`/`,`
-  # (the old `[^,\"}]*`) truncated such messages mid-value, so match the whole
-  # quoted body honoring escapes (`\"`, `\\`, …) and then unescape it.
-  local str_re="\"$1\"[[:space:]]*:[[:space:]]*\"(([^\"\\]|\\\\.)*)\""
-  if [[ "$2" =~ $str_re ]]; then
-    local s="${BASH_REMATCH[1]}" bs=$'\001'
-    s="${s//\\\\/$bs}"    # protect escaped backslashes before unescaping the rest
-    s="${s//\\\"/\"}"     # \" -> "
-    s="${s//\\\//\/}"     # \/ -> /
-    s="${s//\\n/$'\n'}"   # \n -> newline
-    s="${s//\\t/$'\t'}"   # \t -> tab
-    s="${s//\\r/$'\r'}"   # \r -> carriage return
-    s="${s//$bs/\\}"      # restore literal backslashes
-    printf '%s' "$s"
-    return
-  fi
-  # A bare scalar (number, boolean, null) runs up to the next structural delimiter.
-  local scalar_re="\"$1\"[[:space:]]*:[[:space:]]*([^,\"}[:space:]]+)"
-  if [[ "$2" =~ $scalar_re ]]; then
-    printf '%s' "${BASH_REMATCH[1]}"
-  fi
-}
 
 echo "Re-ingesting ${scope} via ${backend}/ingest (force)…"
 

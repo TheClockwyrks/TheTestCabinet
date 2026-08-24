@@ -8,7 +8,7 @@ module GG
   # Under responses as code a whole program's output would otherwise collapse into one anonymous
   # blob of logs, charged to one band, attributable to nothing and closable by nothing. A view
   # restores what tool calling gave for free: one message per view, carrying the band it is charged
-  # to and the selector it can be closed by. So `puts` reaches the run's operator and a view reaches
+  # to and the selector it is filed under. So `puts` reaches the run's operator and a view reaches
   # the model.
   module Views
     extend Surface::Operations
@@ -33,7 +33,7 @@ module GG
     end
     private_class_method :docs_name
 
-    # Read a file and place it in the context window, attributed to its path and closable by it.
+    # Read a file and place it in the context window, attributed to its path and filed under it.
     #
     # What comes back is exactly what `GG::Files.read_file` returns; the difference is the view.
     # That split is the point: reading gets bytes for the program, opening shows the file to the
@@ -45,18 +45,34 @@ module GG
     # Re-opening a picture that is already open replaces it rather than adding a second copy, which
     # is the same rule a page of a file follows.
     #
+    # The view's text body is held to the same 65,536-byte cap a `GG::Views.open_text` body is: a
+    # window that would carry more is refused, naming the size and the bound, and nothing is opened
+    # — never a truncation. The way out is a narrower window, with `offset` and `limit`, or
+    # `max_line_chars`, which cuts each line of the view longer than that many characters at that
+    # point and annotates it in place as `foo (123 more chars...)`, with the count of characters
+    # dropped. The cut is the view's alone — what this call returns and the file itself are
+    # untouched — and the byte cap is measured against the body after it, which is what lets a
+    # window over a log of enormous lines fit. Left out, lines arrive whole. A picture is not a text
+    # body and is not subject to the cap.
+    #
     # @param path [String] The file to open, relative to the workspace or absolute.
     # @param offset [Integer, nil] The 1-based line to start at.
     # @param limit [Integer, nil] How many lines to show from `offset`.
+    # @param max_line_chars [Integer, nil] The most characters of each line to show, 1 to 65,536;
+    #   a longer line is cut there and annotated with how many characters were dropped. Leave it
+    #   out to show lines whole.
     # @return [GG::Files::TextFile, GG::Files::ImageFile] the same thing `GG::Files.read_file`
     #   returns
-    # @raise [GG::Core::ApiError] `:not_found` for a missing path, and `:invalid_argument` for an
-    #   offset past the end of the file. The read is what fails; nothing is opened when it does.
-    def self.open_file(path, offset: nil, limit: nil)
+    # @raise [GG::Core::ApiError] `:not_found` for a missing path, `:invalid_argument` for an
+    #   offset past the end of the file or a `max_line_chars` of zero or over 65,536, and
+    #   `:limit_exceeded` — naming the size and the bound — for a text window over the cap. The
+    #   read is what fails; nothing is opened when it does.
+    def self.open_file(path, offset: nil, limit: nil, max_line_chars: nil)
       Wire.file_read(Wire.call("open_file", "views", "openFileView", [
                                  path,
                                  Wire.js(Check.uint("open_file", "offset", offset)),
-                                 Wire.js(Check.uint("open_file", "limit", limit))
+                                 Wire.js(Check.uint("open_file", "limit", limit)),
+                                 Wire.js(Check.uint("open_file", "max_line_chars", max_line_chars))
                                ]))
     end
     operation :open_file, "views.open_file", tool: "read_file"
@@ -78,13 +94,13 @@ module GG
     # ```
     #
     # @overload open_text(label, body)
-    #   @param label [String] What to file the view under. `GG::Views.close` takes it, and opening
-    #     the same label again replaces what it showed. It may not be empty.
+    #   @param label [String] What to file the view under; opening the same label again replaces
+    #     what it showed. It may not be empty.
     #   @param body [String] What to show. An empty body is allowed: it is how a program says that
     #     something it was showing is now empty.
     # @overload open_text(label, &body)
-    #   @param label [String] What to file the view under. `GG::Views.close` takes it, and opening
-    #     the same label again replaces what it showed. It may not be empty.
+    #   @param label [String] What to file the view under; opening the same label again replaces
+    #     what it showed. It may not be empty.
     #   @param body [String] A block returning what to show.
     # @return [nil]
     # @raise [GG::Core::ApiError] `:invalid_argument` for an empty label — a view with no selector
@@ -111,12 +127,11 @@ module GG
     # `Documentation` heading keyed by the entry's name, exactly as a file or a computed value
     # arrives — so it is not available in the turn it is asked for. Ask in one turn, use it in the
     # next. Opening a key that is already open does nothing at all — not a move, not a re-emit —
-    # so the band only ever grows, and `GG::Docs.close` is what takes a page back out, not
-    # `GG::Views.close`, which does not reach that band.
+    # so the band only ever grows, and nothing in this module takes a page back out of it.
     #
     # @param target [Symbol, String, Method] The entry to document, by its fully-qualified name
-    #   (`"GG::Files.read_file"`), by the name it is called by in its module, or as the method
-    #   itself. A module's own key is its path, `"GG::Files"`.
+    #   (`"GG::Views.open_text"`), by the name it is called by in its module, or as the method
+    #   itself. A module's own key is its path, `"GG::Views"`.
     # @return [nil]
     # @raise [GG::Core::ApiError] `:not_found` for an unknown or unbound name.
     def self.open_docs_view(target)
@@ -133,122 +148,23 @@ module GG
     # call. Closing a file view forgets what was read, not what exists; closing a text view discards
     # the only copy of what it held, so anything needed later belongs in a file or a memory first.
     #
-    # Documentation views are not reached from here. `GG::Docs.close` is what takes one away, and it
-    # is bought by a capability this call is not — so a sweep that included them would answer `0`
-    # for an agent that may not close one, which reads as a selector that named nothing.
+    # Documentation views are not reached from here: taking one away is a different call, bought
+    # by a capability of its own — so a sweep that included them would answer `0` for an agent that
+    # may not close one, which reads as a selector that named nothing.
+    #
+    # Closing a view is context management, bought by the `agent-managed-context` capability: an
+    # agent whose run did not enable it is refused.
     #
     # @param selector [String] What the view is filed under: a file's path, a text view's label, or
     #   `search results`.
     # @return [Integer] how many views were closed
     # @raise [GG::Core::ApiError] `:invalid_argument` for an empty selector, which names nothing
-    #   rather than everything — no call here closes the window wholesale.
+    #   rather than everything — no call here closes the window wholesale — and `:unavailable` for
+    #   an agent whose run did not buy `agent-managed-context`.
     def self.close(selector)
       Wire.call("close", "views", "closeView", [selector])
     end
     operation :close, "views.close"
 
-    # List what is open in the context window right now.
-    #
-    # Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and —
-    # for a paged file view — the `region` it covers. Reading it is what decides what to close when
-    # the window is filling up. What it enumerates is the context window's contents, not
-    # any module's functions.
-    #
-    # @return [Array<GG::Views::OpenView>] every view open in the context window
-    def self.current
-      Wire.call("current", "views", "currentViews", []).map do |view|
-        region = Wire.field(view, "region")
-        OpenView.new(
-          kind: Wire.symbol(`#{view}.kind`),
-          selector: Wire.field(view, "selector"),
-          tokens: Wire.integer(`#{view}.tokens`),
-          region: region.nil? ? nil : ViewRegion.new(
-            offset: Wire.field(region, "offset"),
-            limit: Wire.field(region, "limit")
-          )
-        )
-      end
-    end
-    operation :current, "views.current"
-
-    # Which of the three kinds a view is.
-    #
-    # The taxonomy is closed at three deliberately: everything on disk is a file, everything a
-    # program can compute is a string, and documentation is neither — gg holds it.
-    module ViewKind
-      # A file that was opened; its selector is the path.
-      FILE = :file
-
-      # A computed value; its selector is the label it was given.
-      TEXT = :text
-
-      # A module, function or type's documentation; its selector is that entry's key.
-      DOCS = :docs
-    end
-
-    # The window of lines a paged file view covers; absent for a whole-file view.
-    class ViewRegion
-      include Value
-
-      # @return [Integer] The 1-based first line the view shows.
-      attr_reader :offset
-
-      # @return [Integer] How many lines it shows.
-      attr_reader :limit
-
-      # @api private
-      def initialize(offset:, limit:)
-        @offset = offset
-        @limit = limit
-        freeze
-      end
-    end
-
-    # One view open in the context window, as `GG::Views.current` reports it.
-    class OpenView
-      include Value
-      extend Surface::Operations
-
-      # @return [GG::Views::ViewKind] Whether it is a file, text, or documentation view.
-      attr_reader :kind
-
-      # What closes it.
-      #
-      # A file's path, a text view's label or `search results` for `GG::Views.close`, and for a
-      # documentation view the key `GG::Docs.close` takes.
-      #
-      # @return [String] the selector this view is filed under
-      attr_reader :selector
-
-      # @return [Integer] Roughly what holding it costs, in tokens.
-      attr_reader :tokens
-
-      # @return [GG::Views::ViewRegion, nil] The line window a paged file view covers; `nil` for a
-      #   whole-file view and for text views.
-      attr_reader :region
-
-      # @api private
-      def initialize(kind:, selector:, tokens:, region:)
-        @kind = kind
-        @selector = selector
-        @tokens = tokens
-        @region = region
-        freeze
-      end
-
-      # Close this view, freeing the tokens it occupied.
-      #
-      # `GG::Views.close` with the selector already supplied, which is what makes tidying a window
-      # read as ordinary Ruby: `GG::Views.current.each(&:close)`.
-      #
-      # A documentation view is the one this does not take away, because `GG::Views.close` does not
-      # reach that band: `GG::Docs.close(selector)` is the call for one of those.
-      #
-      # @return [Integer] how many views were closed, counting every page of one file
-      def close
-        Views.close(@selector)
-      end
-      member_operation :close, "views.close"
-    end
   end
 end

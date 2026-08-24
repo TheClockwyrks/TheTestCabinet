@@ -174,7 +174,11 @@ describe("runSummaryPage", () => {
         harness: "amp",
         variant: "hard",
       }),
-      summary("c", { testCase: "meltdown", model: "openai/o1", harness: "codex" }),
+      summary("c", {
+        testCase: "meltdown",
+        model: "openai/o1",
+        harness: "codex",
+      }),
     ];
     expect(ids(runSummaryPage(runs, { q: "CLAUDE" }))).toEqual(["a"]);
     expect(ids(runSummaryPage(runs, { q: "hard" }))).toEqual(["b"]);
@@ -227,7 +231,9 @@ describe("runSummaryPage", () => {
   it("non-published state matches nothing (site holds only published)", () => {
     const runs = [summary("a"), summary("b")];
     expect(runSummaryPage(runs, { state: "review" }).total).toBe(0);
-    expect(runSummaryPage(runs, { state: "unpublished" }).summaries).toEqual([]);
+    expect(runSummaryPage(runs, { state: "unpublished" }).summaries).toEqual(
+      [],
+    );
     expect(runSummaryPage(runs, { state: "published" }).total).toBe(2);
     // `any` is the published + unpublished union, and the static index is entirely
     // published — so it collapses to the published slice rather than matching none.
@@ -285,11 +291,25 @@ describe("runSummaryPage", () => {
       summary("b", { testCase: "carom" }),
       summary("c", { testCase: "meltdown" }),
     ];
-    expect(ids(runSummaryPage(runs, { sort: "testCase", dir: "asc" }))).toEqual([
-      "b",
-      "c",
-      "a",
-    ]);
+    expect(ids(runSummaryPage(runs, { sort: "testCase", dir: "asc" }))).toEqual(
+      ["b", "c", "a"],
+    );
+  });
+
+  it("sorts testCase by the display name the column shows, not the slug", () => {
+    // A `pong` run is shown as Carom; by slug it would trail `meltdown` and
+    // `siege`, by name it leads both.
+    const runs = [
+      summary("a", { testCase: "siege" }),
+      { ...summary("b", { testCase: "pong" }), caseName: "Carom" },
+      summary("c", { testCase: "meltdown" }),
+    ];
+    expect(ids(runSummaryPage(runs, { sort: "testCase", dir: "asc" }))).toEqual(
+      ["b", "c", "a"],
+    );
+    expect(
+      ids(runSummaryPage(runs, { sort: "testCase", dir: "desc" })),
+    ).toEqual(["a", "c", "b"]);
   });
 
   it("sorts cost with NULLs last in either direction", () => {

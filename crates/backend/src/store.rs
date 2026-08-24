@@ -31,7 +31,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::test_case::{
-    AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
+    AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 
@@ -40,6 +40,18 @@ use crate::error::{BackendError, Result};
 /// The sidecar directory holding backend-generated metadata inside a keyed
 /// definition directory.
 const SIDECAR: &str = ".tcab";
+
+/// The version of the record shapes this build writes into the store, stamped on
+/// the store by every ingest scan and checked against on startup.
+///
+/// A stored record ([`StoredManifest`] and everything it holds) is this build's own
+/// serialization, so a store written by a build that shaped them differently cannot
+/// be read by this one. Bump this whenever a stored shape changes in a way an
+/// already-written record does not satisfy — a field added without a default, a
+/// removed alternative, a retyped key. The bump is what tells a backend meeting such
+/// a store to re-ingest the catalog instead of serving the subset that still
+/// happens to parse (see [`DefinitionStore::needs_reingest`]).
+pub const STORE_FORMAT: u32 = 1;
 
 /// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a gg run's
 /// session record. One constant, because the same string is the store slot
@@ -61,6 +73,34 @@ pub use test_cabinet_core::CODE_ANALYSIS_ARTIFACT;
 #[derive(Debug, Clone)]
 pub struct DefinitionStore {
     root: PathBuf,
+}
+
+/// Display names by case slug, as [`DefinitionStore::case_names`] builds them.
+pub type CaseNames = BTreeMap<String, String>;
+
+/// Test cases renamed on disk from their original inspired-by slug to their Test
+/// Cabinet name (`pong` → Carom). A run recorded under the OLD slug — historical,
+/// or already published — can no longer be found in the catalog by that slug, so
+/// its display name resolves through this table instead of degrading to the slug.
+///
+/// The console keeps the same table (`useTestCaseName.ts`, `RENAMED_SLUG_NAMES`)
+/// for the names it resolves on its own; a rename lands in both.
+pub const RENAMED_SLUG_NAMES: &[(&str, &str)] = &[
+    ("adversarial-pacman", "Foray"),
+    ("desktop-td", "Meltdown"),
+    ("galaga", "Spectra"),
+    ("klondike", "Cascade"),
+    ("pacman", "Fathom"),
+    ("performance-factorio", "Lattice"),
+    ("pong", "Carom"),
+    ("snake", "Coil"),
+];
+
+/// The display name a listing shows for a run of `slug`: the name
+/// [`DefinitionStore::case_names`] resolved, else the slug itself — a slug the
+/// store does not know degrades to the slug rather than to nothing.
+pub fn case_display_name(names: &CaseNames, slug: &str) -> String {
+    names.get(slug).cloned().unwrap_or_else(|| slug.to_string())
 }
 
 /// The resolved, store-relative manifest persisted alongside a copied test-case
@@ -201,6 +241,13 @@ pub struct StoredManifest {
     /// Common specs (`source` is a store-relative artifact key, `dest` the
     /// workspace destination, `template` whether it is a `.hbs` the runner renders).
     pub common_specs: Vec<StoredSpec>,
+    /// The [engines](test_cabinet_core::engine) a run of this version may select,
+    /// each with the version range it accepts. This is the gate the driver holds a
+    /// run's engine selection against, so it has to survive the trip through the
+    /// store: a version served without it would resolve as supporting the
+    /// engineless run alone, and every engine-backed run of it would be refused.
+    /// Ingest always writes it, so a stored record always carries it.
+    pub engines: Vec<EngineSupport>,
     /// Common starter workspace files (directory already expanded to individual
     /// files), per [engine](test_cabinet_core::engine), seeded into the run root for
     /// every variant that does not override the workspace. Defaulted for manifests
@@ -515,42 +562,20 @@ pub struct StoredWorkspaceFile {
 /// runtime: its `package.json` declares the engine's dependency and its case-owned
 /// modules are written against that engine's API. Ingest always writes the map, so
 /// that is what a stored manifest serializes as.
-///
-/// A manifest stored before the key was an engine map carries a bare list. Such a
-/// case supported no engine — nothing else could have been stored — so the list is
-/// read as the engineless project, which is exactly what re-ingesting that manifest
-/// produces.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum StoredWorkspace {
-    /// One set of starter files per engine slug.
-    ByEngine(BTreeMap<String, Vec<StoredWorkspaceFile>>),
-    /// A legacy flat list: the engineless project.
-    Engineless(Vec<StoredWorkspaceFile>),
-}
-
-impl Default for StoredWorkspace {
-    fn default() -> Self {
-        Self::ByEngine(BTreeMap::new())
-    }
-}
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct StoredWorkspace(pub BTreeMap<String, Vec<StoredWorkspaceFile>>);
 
 impl StoredWorkspace {
     /// Whether the case seeds no starter file for any engine.
     pub fn is_empty(&self) -> bool {
-        match self {
-            Self::ByEngine(by_engine) => by_engine.values().all(Vec::is_empty),
-            Self::Engineless(files) => files.is_empty(),
-        }
+        self.0.values().all(Vec::is_empty)
     }
 
-    /// Every file, whichever shape this is in — what an artifact sweep walks, where
-    /// the engine a file belongs to does not matter.
-    pub fn files(&self) -> Box<dyn Iterator<Item = &StoredWorkspaceFile> + '_> {
-        match self {
-            Self::ByEngine(by_engine) => Box::new(by_engine.values().flatten()),
-            Self::Engineless(files) => Box::new(files.iter()),
-        }
+    /// Every file of every engine — what an artifact sweep walks, where the engine
+    /// a file belongs to does not matter.
+    pub fn files(&self) -> impl Iterator<Item = &StoredWorkspaceFile> {
+        self.0.values().flatten()
     }
 }
 
@@ -945,17 +970,106 @@ impl DefinitionStore {
         Ok(out)
     }
 
+    /// The display name of every ingested case, keyed by slug — what a listing
+    /// shows for a run's case, and what a name-ordered listing sorts by (see
+    /// [`case_display_name`]).
+    ///
+    /// Each case's name is read from its **latest** ingested version, experimental
+    /// or not: a run exists for whatever version it ran, and its row shows that
+    /// case's current name either way. The renamed-slug fallbacks are folded in
+    /// under their old slugs so one lookup answers for a historical run too. A case
+    /// whose latest manifest cannot be read is left out (its runs then show and
+    /// sort by the slug) rather than failing the whole map, matching the catalog
+    /// listing.
+    ///
+    /// Walks the catalog and reads one manifest per case; call it once per request
+    /// that needs it, not per row.
+    pub fn case_names(&self) -> Result<CaseNames> {
+        let mut names: CaseNames = RENAMED_SLUG_NAMES
+            .iter()
+            .map(|(slug, name)| (slug.to_string(), name.to_string()))
+            .collect();
+        for (slug, versions) in self.list_cases()? {
+            let Some(latest) = versions.last() else {
+                continue;
+            };
+            match self.read_manifest(&slug, latest) {
+                Ok(manifest) => {
+                    names.insert(slug, manifest.name);
+                }
+                Err(error) => {
+                    tracing::error!(
+                        %slug,
+                        version = %latest,
+                        %error,
+                        "skipping case in the name map: its latest manifest could not be read"
+                    );
+                }
+            }
+        }
+        Ok(names)
+    }
+
     /// Whether the store holds at least one ingested test-case version.
     ///
-    /// The startup half of the readiness signal (see [`crate::readiness`]): an empty
-    /// store cannot resolve anything, so the backend must stay out of its Service
-    /// until an ingest fills it. A store root that cannot be read is reported as
-    /// unpopulated — "cannot tell" and "nothing there" both mean "do not serve yet".
+    /// A store root that cannot be read is reported as holding nothing — "cannot
+    /// tell" and "nothing there" lead to the same decision everywhere this is asked.
+    ///
+    /// Walks the catalog, so call it on startup and after an ingest rather than per
+    /// request.
+    pub fn holds_versions(&self) -> bool {
+        self.list_cases().is_ok_and(|cases| !cases.is_empty())
+    }
+
+    /// Whether the store can be served: it holds versions, and they are in the
+    /// record format this build reads.
+    ///
+    /// The startup half of the readiness signal (see [`crate::readiness`]). Neither
+    /// an empty store nor one written in another format can resolve a version, so
+    /// the backend stays out of its Service until an ingest leaves it servable.
     ///
     /// Walks the catalog, so call it on startup and after an ingest rather than per
     /// request; the probe reads the latch this seeds, not the filesystem.
-    pub fn is_populated(&self) -> bool {
-        self.list_cases().is_ok_and(|cases| !cases.is_empty())
+    pub fn is_servable(&self) -> bool {
+        self.format_is_current() && self.holds_versions()
+    }
+
+    /// Whether the store's records must be rewritten before it can be served: it
+    /// holds versions written in a record format other than [`STORE_FORMAT`].
+    ///
+    /// An ingest meeting this scans the whole catalog with `force`, whatever it was
+    /// asked for, because no stored version is readable and a partial scan would
+    /// leave the rest that way (see [`crate::ingest`]).
+    pub fn needs_reingest(&self) -> bool {
+        !self.format_is_current() && self.holds_versions()
+    }
+
+    /// Path to the store-root marker recording the record format its contents were
+    /// written in. Lives beside the catalog-version marker in the root-level
+    /// `.tcab/` sidecar, so it is wiped together with the store it describes.
+    fn store_format_path(&self) -> PathBuf {
+        self.root.join(SIDECAR).join("store-format")
+    }
+
+    /// Whether the store is stamped with the record format this build reads. An
+    /// unstamped store is not: nothing has claimed its contents are readable.
+    fn format_is_current(&self) -> bool {
+        std::fs::read_to_string(self.store_format_path())
+            .ok()
+            .and_then(|stamp| stamp.trim().parse::<u32>().ok())
+            .is_some_and(|stamp| stamp == STORE_FORMAT)
+    }
+
+    /// Stamp the store with the record format this build writes, which every
+    /// version it now holds is in. Called by an ingest scan that leaves the whole
+    /// store in that format.
+    pub fn set_store_format(&self) -> Result<()> {
+        let path = self.store_format_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, STORE_FORMAT.to_string())?;
+        Ok(())
     }
 
     /// List the ingested versions for a slug, ordered oldest-first by semantic
@@ -1048,6 +1162,10 @@ impl DefinitionStore {
     }
 
     /// Read a version's stored manifest.
+    ///
+    /// A manifest that is present but does not parse was written in another record
+    /// format, which is a store this build cannot serve rather than a missing
+    /// version, so it says so and names the repair (see [`Self::needs_reingest`]).
     pub fn read_manifest(&self, slug: &str, version: &str) -> Result<StoredManifest> {
         let path = self.manifest_path(slug, version);
         let bytes = std::fs::read(&path).map_err(|_| {
@@ -1055,7 +1173,12 @@ impl DefinitionStore {
                 "test-case version `{slug}@{version}` is not ingested"
             ))
         })?;
-        Ok(serde_json::from_slice(&bytes)?)
+        serde_json::from_slice(&bytes).map_err(|error| {
+            BackendError::Internal(format!(
+                "stored manifest for `{slug}@{version}` was written in another \
+                 record format ({error}); re-ingest the catalog"
+            ))
+        })
     }
 
     /// Persist a version's resolved manifest sidecar into its canonical directory.
@@ -1087,7 +1210,10 @@ impl DefinitionStore {
     /// live console (per request) and the public snapshot (per variant at publish)
     /// show rendered specs, the spec analogue of the already-rendered variant
     /// prompt. `voxel` is the variant's effective bounding volume (its own override
-    /// else the case's), or `None` for a non-voxel case.
+    /// else the case's), or `None` for a non-voxel case. `engine` is the engine the
+    /// rendering is for, which a caller displaying a *run*'s inputs sets to the
+    /// engine that run selected; `None` renders the engineless form, which is what a
+    /// caller showing a case rather than a run wants.
     #[allow(clippy::too_many_arguments)]
     pub fn read_rendered_spec(
         &self,
@@ -1098,6 +1224,7 @@ impl DefinitionStore {
         variant_name: &str,
         variant_description: Option<&str>,
         voxel: Option<&VoxelSpec>,
+        engine: Option<&test_cabinet_core::engine::ResolvedEngine>,
     ) -> Result<String> {
         let bytes = self.read_artifact(slug, version, &spec.source)?;
         let text = String::from_utf8(bytes).map_err(|err| {
@@ -1118,9 +1245,7 @@ impl DefinitionStore {
             variant_name,
             variant_description,
             voxel,
-            // Rendered for display off the stored manifest, outside any run, so
-            // there is no selected engine: the engineless form.
-            None,
+            engine,
         )?)
     }
 
@@ -1151,60 +1276,69 @@ impl DefinitionStore {
     }
 
     /// Read a stored **baseline** validation media file for a version:
-    /// `validation-baseline/<variant>/<file>`, where `<file>` is the flat
+    /// `validation-baseline/<engine>/<variant>/<file>`, where `<file>` is the flat
     /// `<item>__<output>.<ext>`.
     ///
     /// Baseline media is a fixed property of the case version — synthesized once at
-    /// `tcab publish-reference` time from the reference implementation, committed
+    /// `tcab capture-baselines` time from the reference implementation, committed
     /// under the version folder, and copied into the store at ingest (like any other
     /// committed definition file). It is served case-scoped, the invariant
     /// counterpart to a run's *actual* validation media (served run-scoped by the
     /// artifact service). Mirrors [`read_reference`](Self::read_reference).
+    ///
+    /// Keyed by engine as well as variant: a variant has one reference implementation
+    /// per engine, and the run being reviewed selected one of them.
     pub fn read_validation_baseline(
         &self,
         slug: &str,
         version: &str,
+        engine: &str,
         variant: &str,
         file: &str,
     ) -> Result<Vec<u8>> {
-        // `variant` and `file` are validated to be single, traversal-free path
-        // segments so a crafted request cannot read outside the baseline dir.
-        if !is_safe_segment(variant) || !is_safe_segment(file) {
+        // `engine`, `variant` and `file` are validated to be single, traversal-free
+        // path segments so a crafted request cannot read outside the baseline dir.
+        if !is_safe_segment(engine) || !is_safe_segment(variant) || !is_safe_segment(file) {
             return Err(BackendError::BadRequest(
-                "invalid validation-baseline variant or file".to_string(),
+                "invalid validation-baseline engine, variant or file".to_string(),
             ));
         }
         let path = self
             .version_dir(slug, version)
             .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(engine)
             .join(variant)
             .join(file);
         std::fs::read(&path).map_err(|_| {
-            BackendError::NotFound(format!("validation baseline `{variant}/{file}` not stored"))
+            BackendError::NotFound(format!(
+                "validation baseline `{engine}/{variant}/{file}` not stored"
+            ))
         })
     }
 
-    /// List a variant's committed **baseline** validation media file names (the flat
-    /// `<item>__<output>.<ext>`), sorted. Reads the directory
-    /// `validation-baseline/<variant>/` copied into the store at ingest; a variant with
-    /// no committed baseline media (the case declares no scripted items, or no
-    /// reference implementation was captured) yields an empty list. Used by the
+    /// List one reference build's committed **baseline** validation media file names
+    /// (the flat `<item>__<output>.<ext>`), sorted. Reads the directory
+    /// `validation-baseline/<engine>/<variant>/` copied into the store at ingest; a
+    /// build with no committed baseline media (the case declares no scripted items, or
+    /// no reference implementation was captured) yields an empty list. Used by the
     /// snapshot builder to publish the case-scoped baseline media, mirroring how
     /// `read_reference` baselines are exported.
     pub fn list_validation_baseline(
         &self,
         slug: &str,
         version: &str,
+        engine: &str,
         variant: &str,
     ) -> Result<Vec<String>> {
-        if !is_safe_segment(variant) {
+        if !is_safe_segment(engine) || !is_safe_segment(variant) {
             return Err(BackendError::BadRequest(
-                "invalid validation-baseline variant".to_string(),
+                "invalid validation-baseline engine or variant".to_string(),
             ));
         }
         let dir = self
             .version_dir(slug, version)
             .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(engine)
             .join(variant);
         let read = match std::fs::read_dir(&dir) {
             Ok(read) => read,

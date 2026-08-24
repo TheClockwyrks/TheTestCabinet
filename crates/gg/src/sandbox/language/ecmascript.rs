@@ -71,7 +71,8 @@ const CORE: &[u8] = include_bytes!(concat!(
 /// `wasm32-wasip1` is a preview1 target, and the target is not incidental: a guest compiled to
 /// `wasm32-unknown-unknown` has no standard error at all — std's own `cfg_select!` falls through to
 /// `unsupported.rs`, where a write is discarded and reported as a success — and standard error is
-/// this guest's whole failure surface.
+/// where this guest says its last words when gg's own execution budget kills it (every failure of
+/// the program's own is reported over `feedback.report-error` instead).
 const ADAPTER: &[u8] = include_bytes!(concat!(
     env!("GG_ARTIFACTS_TYPESCRIPT"),
     "/ecmascript.adapter.wasm"

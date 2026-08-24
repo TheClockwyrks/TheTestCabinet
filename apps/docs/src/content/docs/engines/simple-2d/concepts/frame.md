@@ -24,9 +24,20 @@ clock for itself.
 
 ## Update and render
 
-Each frame runs the update once and then the render once. The update advances
-the simulation by the delta it is given; the render draws the state the update
-left behind.
+Each frame runs the update once and then the render once. The update is handed
+the current state as a read-only view and returns the next state; the engine
+holds that value, and the render is handed it to draw. The state is therefore a
+value each frame replaces rather than an object each frame writes into, and
+`engine.state` reads whatever the most recent frame left.
+
+An update that returns `undefined` is refused and the engine keeps the state it
+had, because an update that mutated its view and returned nothing has advanced
+nothing the engine will read again. The refusal names the rule, and under
+`run` it reaches the host while the loop stays alive.
+
+Between frames a caller may pose the game through `engine.apply`, a transition
+of the same shape as the update: the current state in, the next state out. The
+next frame's update receives the state the transition left.
 
 After the render, the engine's own per-frame work runs: the debug overlay is
 drawn over the finished picture, and the input frame is closed so an
@@ -34,9 +45,11 @@ edge-triggered action is consumed exactly once.
 
 Each function receives only the part of the engine it may use. The update reads
 input and plays cues with nothing that draws; the render draws with nothing that
-reads input or plays a cue. A frame's audible and observable behavior therefore
-belongs entirely to the update, which is what makes a simulation examinable with
-no drawing surface taking part in the result.
+reads input or plays a cue, and holds a read-only view of the state, so the
+render cannot change the state and nothing but a transition advances it. A
+frame's audible and observable behavior therefore belongs entirely to the
+update, which is what makes a simulation examinable with no drawing surface
+taking part in the result.
 
 ## The clock
 
@@ -49,7 +62,7 @@ the game runs, or one step of an explicit advance. A clock that ignores the host
 timestamp therefore produces the same deltas under both, so the sequence a
 validator steps through synchronously is the sequence a reviewer watches play.
 
-A clock may decline a tick. Returning nothing leaves the simulation and the
+A clock may decline a tick. Returning `null` leaves the simulation and the
 frame counter untouched, which is how a clock paces below the rate its ticks
 arrive at.
 

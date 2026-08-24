@@ -270,7 +270,7 @@ class Summary:
         return f"{self.path}: {self.characters} characters"
 
 
-notes = gg.files.read_text_file("notes.md")
+notes = gg.files.read_file("notes.md").contents
 summary = Summary("notes.md", len(notes))
 print(summary.line)
 gg.views.open_text("notes", textwrap.dedent(notes))
@@ -366,8 +366,8 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let log = CallLog::default();
     let (outcome, _api) = crate::sandbox::run_program(
         python(),
-        r#"notes = gg.files.read_text_file("notes.md")
-gg.views.open_text("notes", notes)
+        r#"notes = gg.files.read_file("notes.md")
+gg.views.open_text("notes", notes.contents)
 "#,
         ProgramScope {
             capabilities: &all_capabilities(),
@@ -472,42 +472,39 @@ fn a_python_program_crosses_the_membrane_and_is_gated_by_the_host() {
     // directly. That is the *substrate's* proof and not a model-facing surface: what is being shown
     // is that a `result<T, api-error>` marshals both ways between CPython and gg's real `OperationApi`.
     let read = r#"
-from wit_world.imports import helpers
-text = helpers.read_text_file("notes.md", None, None)
+from wit_world.imports import skills
+text = skills.read_skill("layout")
 print(text.splitlines()[0])
 "#;
     let (outcome, log) = run_with(
         read,
-        &[crate::sandbox::operations::FILES_READ_TEXT_FILE],
+        &[crate::sandbox::operations::SKILLS_READ_SKILL],
         &[],
         SandboxLimits::AMPLE,
         canned_outcome,
     );
-    assert_eq!(logs(&outcome), ["contents of notes.md"]);
+    assert_eq!(logs(&outcome), ["the skill body"]);
     let calls = log.calls();
     assert_eq!(calls.len(), 1, "one call reached the host: {calls:?}");
-    assert_eq!(calls[0].name, "read_file");
-    assert_eq!(
-        calls[0].args,
-        json!({ "path": "notes.md", "offset": null, "limit": null })
-    );
+    assert_eq!(calls[0].name, "read_skill");
+    assert_eq!(calls[0].args, json!({ "name": "layout" }));
 
     // The same program with the call ungranted. Nothing in the guest hides the binding — every SDK
     // is static — so the refusal is the HOST's, and it arrives in Python as the wire's own typed
     // error rather than as prose. The identity it carries is the OPERATION's key
-    // (`read_text_file`): the read-file capability buys three of them, an allowlist grants them one
-    // at a time, and a refusal has to say which of the three the model reached for.
+    // (`read_skill`): an allowlist grants operations one at a time, and a refusal has to say
+    // which one the model reached for.
     let caught = r#"
-from wit_world.imports import helpers
+from wit_world.imports import skills
 from componentize_py_types import Err
 
 try:
-    helpers.read_text_file("notes.md", None, None)
+    skills.read_skill("layout")
 except Err as err:
     print(f"{err.value.code.name} {err.value.operation}")
 "#;
     let (outcome, log) = run_with(caught, &[], &[], SandboxLimits::AMPLE, canned_outcome);
-    assert_eq!(logs(&outcome), ["UNAVAILABLE read_text_file"]);
+    assert_eq!(logs(&outcome), ["UNAVAILABLE read_skill"]);
     assert!(
         log.calls().is_empty(),
         "a withheld tool never reaches the invoker: {:?}",
@@ -524,7 +521,7 @@ except Err as err:
     // with the throw: `unavailable` is the same fact — and the same recovery — as a name that was
     // never in scope, so it lands as `UnknownName` on every arm whatever raised it.
     let (outcome, _log) = run_with(
-        "from wit_world.imports import helpers\nhelpers.read_text_file('notes.md', None, None)",
+        "from wit_world.imports import skills\nskills.read_skill('layout')",
         &[],
         &[],
         SandboxLimits::AMPLE,
@@ -794,6 +791,41 @@ print("still here")
         budget * 3,
         parked.elapsed
     );
+
+    // And the other direction, pinned beside the ceiling it guards: the DEFAULT budget is a pure
+    // infinite-loop guard, never a work ration. A program that spends a whole model reply's worth
+    // of output on large writes — dozens of 64 KiB files in one program, the heaviest honest shape
+    // an interpreted arm has — must complete with an order-of-magnitude margin under the 30 s
+    // default (`SandboxLimits::AMPLE`, the same figure the console seeds `timeoutSecs` with).
+    let (outcome, log) = run_with(
+        r#"
+import gg
+
+body = "x" * (64 * 1024)
+total = 0
+for index in range(48):
+    total += gg.files.write_file(f"out/f{index}.txt", body)
+print("done", total > 0)
+"#,
+        &all_operations(),
+        &[],
+        SandboxLimits::AMPLE,
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["done True"],
+        "48 large writes did not complete under the default ceiling: {:?}",
+        outcome.result
+    );
+    assert_eq!(log.calls().len(), 48, "every write crossed the membrane");
+    assert!(
+        outcome.elapsed < Duration::from_secs(10),
+        "48 × 64 KiB writes approached the default ceiling on the slowest interpreted arm; the \
+         guard exists for loops that never end, not for programs that do a lot of honest work: \
+         {:?}",
+        outcome.elapsed
+    );
 }
 
 #[test]
@@ -896,7 +928,6 @@ fn the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
             "test-cabinet:gg/docs",
             "test-cabinet:gg/feedback",
             "test-cabinet:gg/files",
-            "test-cabinet:gg/helpers",
             "test-cabinet:gg/memories",
             "test-cabinet:gg/programs",
             "test-cabinet:gg/session",
@@ -944,7 +975,7 @@ fn the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
             .iter()
             .filter(|name| name.starts_with("test-cabinet:gg/"))
             .count(),
-        15,
+        14,
         "the whole gg half of the membrane, the shim's own feedback channel included"
     );
 
@@ -1169,6 +1200,11 @@ fn crossings() -> Vec<Crossing> {
             tool: "list_dir",
             program: "import gg\ngg.files.list_dir(\"src\")",
             expected: || json!({ "path": "src" }),
+        },
+        Crossing {
+            tool: "search",
+            program: "import gg\ngg.files.search(\"fn\\\\s+update\", path=\"src\", limit=20)",
+            expected: || json!({ "query": "fn\\s+update", "path": "src", "limit": 20 }),
         },
         Crossing {
             tool: "read_skill",
@@ -1806,7 +1842,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     // everywhere and could not type would be a key it has no use for.
     //
     // Asked of the module-level functions alone, and the exclusion is about what a member's key IS
-    // rather than about what this guest binds. `gg.views.OpenView.close` is a documentation key
+    // rather than about what this guest binds. `gg.board.IssueCreated.wait` is a documentation key
     // whose middle segment is a TYPE, and the capability namespace a program is handed carries the
     // module's functions rather than its types — so the key is a name to open a view by and never
     // an expression to write, which is why the entry's `call` is null. That the key resolves at all
@@ -1902,7 +1938,7 @@ fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
 /// **Every convenience method reaches the operation it says it is an alias of, keyed on the field
 /// its receiver really carries.**
 ///
-/// The five methods this SDK declares — `IssueCreated.wait`, `MemoryHit.read`, `OpenView.close`,
+/// The four methods this SDK declares — `IssueCreated.wait`, `MemoryHit.read`,
 /// `SubagentHandle.send` and `ProgramSummary.source` — are one line of body each: they take a field
 /// off the value they hang off and call the module-level function with it. That one line is
 /// precisely what no other gate can see. The catalogue records which operation each is an alias of,
@@ -1935,7 +1971,7 @@ child.send("prefer the simpler parser")
 print(child.id)
 
 gg.views.open_text("summary", "eight files, two failing")
-print(gg.views.current()[0].close(), len(gg.views.current()))
+print(gg.views.close("summary"))
 "#,
         &all_operations(),
         &[],
@@ -1950,8 +1986,8 @@ print(gg.views.current()[0].close(), len(gg.views.current()))
             "EPIC-1 wait registered",
             "build-commands the memory contents",
             "agent-1",
-            // The view the method closed was the one it hung off, and nothing is left behind it.
-            "1 0",
+            // The close answered with the one view its label named.
+            "1",
         ]
     );
     assert_eq!(
@@ -2044,9 +2080,7 @@ import gg
 
 gg.views.open_text("summary", "eight files, two failing")
 gg.views.open_text("scratch", "throwaway")
-open = gg.views.current()
-print(len(open), [v.selector for v in open], open[0].kind is gg.views.ViewKind.TEXT, open[0].tokens)
-print(gg.views.close("scratch"), gg.views.close("never opened"), len(gg.views.current()))
+print(gg.views.close("scratch"), gg.views.close("never opened"))
 
 # The documentation of a function, named by the FUNCTION rather than by a string — which works
 # because an SDK function's `__name__` is the name gg catalogues it under.
@@ -2054,7 +2088,7 @@ gg.views.open_docs_view(gg.files.read_file)
 gg.views.open_docs_view("write_file")
 
 whole = gg.views.open_file("notes.md")
-print(type(whole).__name__, [v.region for v in gg.views.current() if v.kind is gg.views.ViewKind.FILE])
+print(type(whole).__name__, whole.first_line, whole.last_line)
 "#,
         &all_operations(),
         &[],
@@ -2066,10 +2100,9 @@ print(type(whole).__name__, [v.region for v in gg.views.current() if v.kind is g
     assert_eq!(
         logs(&outcome),
         [
-            "2 ['summary', 'scratch'] True 6",
-            "1 0 1",
-            // A view covering the whole file carries no region, and this arm spells that `None`.
-            "TextFile [None]",
+            "1 0",
+            // A view covering the whole file hands back the same typed read a bare read does.
+            "TextFile 1 2",
         ]
     );
 
@@ -2092,9 +2125,8 @@ print(type(whole).__name__, [v.region for v in gg.views.current() if v.kind is g
         r#"
 import gg
 
-gg.views.open_file("notes.md", offset=2, limit=1)
-region = [v.region for v in gg.views.current() if v.kind is gg.views.ViewKind.FILE][0]
-print(type(region).__name__, region.offset, region.limit)
+page = gg.views.open_file("notes.md", offset=2, limit=1)
+print(type(page).__name__, page.first_line, page.last_line)
 "#,
         &all_operations(),
         &[],
@@ -2115,7 +2147,7 @@ print(type(region).__name__, region.offset, region.limit)
             }
         },
     );
-    assert_eq!(logs(&outcome), ["ViewRegion 2 1"]);
+    assert_eq!(logs(&outcome), ["TextFile 2 2"]);
 
     // A value that is neither a function nor a name is refused before the lookup, so a model is
     // never told that a function called "None" does not exist.
@@ -2354,5 +2386,52 @@ os._exit(
                 recorded: Some(TurnErrorType::SandboxTrap),
             },
         ],
+    );
+}
+
+/// The workspace search lowers each match to the model-facing dataclass, a `limit` of zero is
+/// refused on this side of the membrane, and `open_file`'s line cut crosses under the docs' name
+/// for it — added to the dispatch arguments only when the program wrote it.
+#[test]
+fn the_workspace_search_and_the_line_cut_cross_from_python() {
+    let (outcome, log) = run_with(
+        r#"
+import gg
+
+hits = gg.files.search("answer", path="src")
+print(len(hits), type(hits[0]).__name__, hits[0].path, hits[0].line, hits[0].text)
+try:
+    gg.files.search("answer", limit=0)
+except gg.core.ApiError as failure:
+    print(failure.operation, failure.code is gg.core.ApiErrorCode.INVALID_ARGUMENT)
+gg.views.open_file("notes.md", max_line_chars=40)
+gg.views.open_file("notes.md", offset=2, limit=1)
+"#,
+        &all_operations(),
+        &[],
+        SandboxLimits::AMPLE,
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["1 SearchMatch src/a.ts 3 const answer = 42;", "search True"]
+    );
+    assert_eq!(log.names(), ["search", "read_file", "read_file"]);
+    assert_eq!(
+        log.args("search"),
+        Some(json!({ "query": "answer", "path": "src", "limit": null }))
+    );
+    let reads: Vec<Value> = log
+        .calls()
+        .into_iter()
+        .filter(|call| call.name == "read_file")
+        .map(|call| call.args)
+        .collect();
+    assert_eq!(
+        reads,
+        [
+            json!({ "path": "notes.md", "offset": null, "limit": null, "maxLineChars": 40 }),
+            json!({ "path": "notes.md", "offset": 2, "limit": 1 }),
+        ]
     );
 }

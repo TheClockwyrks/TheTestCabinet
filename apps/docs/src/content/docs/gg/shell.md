@@ -83,11 +83,25 @@ does not is followed by:
 ```
 [Output truncated: last 200 lines]
 stdout: /tmp/gg-shell/cmd-41-0003.stdout
+  4812 lines; line length p50 74, p95 210, p99 1043
+  longest lines: 8301 chars @ 3117, 6114 @ 2988, 5902 @ 41, 4344 @ 42, 3011 @ 799
 stderr: /tmp/gg-shell/cmd-41-0003.stderr
+  12 lines; line length p50 38, p95 71, p99 80
+  longest lines: 80 chars @ 4, 71 @ 9, 68 @ 5, 55 @ 1, 52 @ 12
 ```
 
 When gg's 16 KiB byte cap cut the tail further, the first line says so as well:
 `[Output truncated: last 200 lines, capped at 16384 bytes]`.
+
+Beneath each path the note states the shape of the file it names: its total
+line count, its 50th/95th/99th-percentile line lengths, and the length and line
+number of its five longest lines. The tail says what happened last; the shape
+says where the bulk sits and which lines are pathological, so a model aims a
+windowed `read_file` or a `gg.views.openFile` window at the right region of a
+file it has never seen rather than paging from the top. Line lengths count
+characters, line numbers are 1-based, a tie between equally long lines goes to
+the earlier one, and a stream that printed nothing is described by its line
+count alone (`0 lines`).
 
 The note is part of the command's output rather than prose gg wraps around it,
 so a program that opens a view on `ShellOutput.output` puts the paths in front

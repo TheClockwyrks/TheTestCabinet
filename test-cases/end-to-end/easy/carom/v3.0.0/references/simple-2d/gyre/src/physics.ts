@@ -7,14 +7,15 @@
 // frames — which is the property the debug API in `src/debug.ts` leans on.
 //
 // To guarantee the ball never tunnels through a paddle, wall, or obstacle at high
-// speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP px
-// of travel) that the ball's center can never skip past an object in one move, and
+// speed, the integration is split into sub-steps short enough (<= MAX_SUBSTEP
+// units of travel) that the ball's center can never skip past an object in one move, and
 // collisions are resolved after each sub-step.
 
 import {
   BALL_R,
   FIELD_H,
   MAX_BOUNCE_ANGLE,
+  MAX_SUBSTEP,
   OBSTACLE_HH,
   OBSTACLE_HW,
   PADDLE_HALF,
@@ -27,15 +28,19 @@ import {
 } from "./constants";
 import { ballSpeed, clamp, paddleFrontX, paddleRect } from "./entities";
 import type { BallState, ObstacleState, PaddleState, Side } from "./game";
-
-/** Px of travel per collision sub-step. Below the smallest object half-extent. */
-const MAX_SUBSTEP = 4;
+import type { DeepReadonly } from "ts-essentials";
 
 /** What one step's collisions did, so the caller can play a cue per event. */
 export interface StepEvents {
   paddle: boolean;
   wall: boolean;
   obstacle: boolean;
+}
+
+/** What `step` returns: the ball after the step, and what it collided with. */
+export interface StepResult {
+  ball: BallState;
+  events: StepEvents;
 }
 
 /**
@@ -72,54 +77,65 @@ function collideCircleRect(
 }
 
 /**
+ * One collision's outcome: the ball it left behind and the event it was, or
+ * `null` when nothing was struck and the ball is as it was.
+ */
+type Contact = { ball: BallState; event: keyof StepEvents } | null;
+
+/**
  * The signature paddle bounce (specs/balls.md): the outgoing angle comes from the
  * contact point, the speed multiplies once and is capped, and the paddle's own
  * vertical motion at contact imparts spin.
  */
 function bounceOffPaddle(
   ball: BallState,
-  paddle: PaddleState,
+  paddle: DeepReadonly<PaddleState>,
   side: Side,
-): void {
+): BallState {
   const offset = clamp((ball.y - paddle.cy) / PADDLE_HALF, -1, 1);
   const theta = offset * MAX_BOUNCE_ANGLE;
   const speed = Math.min(ballSpeed(ball) * SPEED_MULT, SPEED_CAP);
   const dir = side === "left" ? 1 : -1; // horizontal, toward the opponent
-  ball.vx = dir * speed * Math.cos(theta);
-  ball.vy = speed * Math.sin(theta);
-  ball.spin = clamp(
-    ball.spin + paddle.vy * SPIN_FROM_PADDLE,
-    -SPIN_CLAMP,
-    SPIN_CLAMP,
-  );
   // Placed just off the front face so the same contact cannot re-trigger.
   const front = paddleFrontX(side);
-  ball.x = side === "left" ? front + BALL_R : front - BALL_R;
+  return {
+    x: side === "left" ? front + BALL_R : front - BALL_R,
+    y: ball.y,
+    vx: dir * speed * Math.cos(theta),
+    vy: speed * Math.sin(theta),
+    spin: clamp(
+      ball.spin + paddle.vy * SPIN_FROM_PADDLE,
+      -SPIN_CLAMP,
+      SPIN_CLAMP,
+    ),
+  };
 }
 
 function resolvePaddle(
   ball: BallState,
-  paddle: PaddleState,
+  paddle: DeepReadonly<PaddleState>,
   side: Side,
-  events: StepEvents,
-): void {
+): Contact {
   const hit = collideCircleRect(
     ball.x,
     ball.y,
     BALL_R,
     paddleRect(side, paddle.cy),
   );
-  if (!hit) return;
+  if (!hit) return null;
   if (hit.axis === "x") {
     // Front-face contact: the angle, speed, and spin mechanic.
-    bounceOffPaddle(ball, paddle, side);
-    events.paddle = true;
-  } else {
-    // The rare hit against a paddle's top or bottom cap: reflect like a wall.
-    ball.y = hit.place;
-    if (ball.vy * hit.normal < 0) ball.vy = -ball.vy;
-    events.wall = true;
+    return { ball: bounceOffPaddle(ball, paddle, side), event: "paddle" };
   }
+  // The rare hit against a paddle's top or bottom cap: reflect like a wall.
+  return {
+    ball: {
+      ...ball,
+      y: hit.place,
+      vy: ball.vy * hit.normal < 0 ? -ball.vy : ball.vy,
+    },
+    event: "wall",
+  };
 }
 
 /**
@@ -147,9 +163,8 @@ function resolvePaddle(
  */
 function resolveObstacle(
   ball: BallState,
-  obstacle: ObstacleState,
-  events: StepEvents,
-): void {
+  obstacle: DeepReadonly<ObstacleState>,
+): Contact {
   const cos = Math.cos(obstacle.theta);
   const sin = Math.sin(obstacle.theta);
   const dx = ball.x - obstacle.cx;
@@ -180,7 +195,7 @@ function resolveObstacle(
       nly = ly >= 0 ? 1 : -1;
     }
   } else {
-    if (dist2 >= BALL_R * BALL_R) return;
+    if (dist2 >= BALL_R * BALL_R) return null;
     const dist = Math.sqrt(dist2);
     nlx = ox / dist;
     nly = oy / dist;
@@ -193,48 +208,93 @@ function resolveObstacle(
   // Reflect only when the ball is actually moving into the surface, so a ball
   // already leaving is not caught and turned back around.
   const vn = ball.vx * nx + ball.vy * ny;
-  if (vn < 0) {
-    ball.vx -= 2 * vn * nx;
-    ball.vy -= 2 * vn * ny;
-  }
+  const vx = vn < 0 ? ball.vx - 2 * vn * nx : ball.vx;
+  const vy = vn < 0 ? ball.vy - 2 * vn * ny : ball.vy;
 
   // Place the center exactly BALL_R off the contact point along the normal.
   const contactX = obstacle.cx + (qx * cos - qy * sin);
   const contactY = obstacle.cy + (qx * sin + qy * cos);
-  ball.x = contactX + nx * BALL_R;
-  ball.y = contactY + ny * BALL_R;
-
-  events.obstacle = true;
+  return {
+    ball: {
+      x: contactX + nx * BALL_R,
+      y: contactY + ny * BALL_R,
+      vx,
+      vy,
+      spin: ball.spin,
+    },
+    event: "obstacle",
+  };
 }
 
-function resolveWalls(ball: BallState, events: StepEvents): void {
+function resolveWalls(ball: BallState): Contact {
   if (ball.y - BALL_R < 0 && ball.vy < 0) {
-    ball.y = BALL_R;
-    ball.vy = -ball.vy;
-    events.wall = true;
-  } else if (ball.y + BALL_R > FIELD_H && ball.vy > 0) {
-    ball.y = FIELD_H - BALL_R;
-    ball.vy = -ball.vy;
-    events.wall = true;
+    return { ball: { ...ball, y: BALL_R, vy: -ball.vy }, event: "wall" };
   }
+  if (ball.y + BALL_R > FIELD_H && ball.vy > 0) {
+    return {
+      ball: { ...ball, y: FIELD_H - BALL_R, vy: -ball.vy },
+      event: "wall",
+    };
+  }
+  return null;
 }
 
-/** Advance the ball by `dt` seconds and resolve every collision it makes. */
-export function step(
-  ball: BallState,
-  left: PaddleState,
-  right: PaddleState,
-  obstacles: readonly ObstacleState[],
-  dt: number,
-): StepEvents {
-  const events: StepEvents = { paddle: false, wall: false, obstacle: false };
+/**
+ * The ball after one collision, and the step's events with that collision
+ * recorded: the thread the sub-step's collisions are resolved along.
+ */
+function resolve(
+  current: StepResult,
+  collide: (ball: BallState) => Contact,
+): StepResult {
+  const contact = collide(current.ball);
+  if (!contact) return current;
+  return {
+    ball: contact.ball,
+    events: { ...current.events, [contact.event]: true },
+  };
+}
 
+/** Spin curves the flight and decays, then the position advances: one sub-step. */
+function move(ball: BallState, h: number, decay: number): BallState {
+  // 1. Spin curves the flight. Rotating the velocity vector at an angular rate
+  //    of `spin / speed` turns the path without changing the speed, which is
+  //    exactly what a lateral acceleration of magnitude |spin| does. A ball at
+  //    rest has no direction to turn.
+  const speed = ballSpeed(ball);
+  let vx = ball.vx;
+  let vy = ball.vy;
+  if (speed > 0) {
+    const dTheta = (ball.spin / speed) * h;
+    const c = Math.cos(dTheta);
+    const s = Math.sin(dTheta);
+    vx = ball.vx * c - ball.vy * s;
+    vy = ball.vx * s + ball.vy * c;
+  }
+  const spin = ball.spin * decay;
+
+  // 2. Advance the position by the elapsed time.
+  return { x: ball.x + vx * h, y: ball.y + vy * h, vx, vy, spin };
+}
+
+/**
+ * The ball advanced by `dt` seconds with every collision it makes resolved, and
+ * the events those collisions were.
+ */
+export function step(
+  ball: DeepReadonly<BallState>,
+  left: DeepReadonly<PaddleState>,
+  right: DeepReadonly<PaddleState>,
+  obstacles: DeepReadonly<readonly ObstacleState[]>,
+  dt: number,
+): StepResult {
   // The frame is cut into sub-steps short enough that the ball's center cannot
   // skip past an object in one move. Every part of the step below — the spin, the
   // integration, and the collisions — happens per SUB-step rather than per frame,
   // so the curve the ball actually travels is resolved to MAX_SUBSTEP px however
   // long the frame was. That is what keeps a rally on a 30 Hz display and the same
-  // rally on a 240 Hz one landing in the same place.
+  // rally on a 240 Hz one landing in the same place. `n` is computed from the
+  // speed at the start of the frame (specs/balls.md).
   const substeps = Math.max(1, Math.ceil((ballSpeed(ball) * dt) / MAX_SUBSTEP));
   const h = dt / substeps;
   // Half the magnitude every SPIN_HALFLIFE seconds. Compounding this per sub-step
@@ -242,32 +302,22 @@ export function step(
   // multiply: 0.5^(h/H) taken `substeps` times is 0.5^(dt/H).
   const decay = Math.pow(0.5, h / SPIN_HALFLIFE);
 
+  let current: StepResult = {
+    ball: { ...ball },
+    events: { paddle: false, wall: false, obstacle: false },
+  };
   for (let i = 0; i < substeps; i++) {
-    // 1. Spin curves the flight. Rotating the velocity vector at an angular rate
-    //    of `spin / speed` turns the path without changing the speed, which is
-    //    exactly what a lateral acceleration of magnitude |spin| does.
-    const speed = ballSpeed(ball);
-    if (speed > 1e-6 && ball.spin !== 0) {
-      const dTheta = (ball.spin / speed) * h;
-      const c = Math.cos(dTheta);
-      const s = Math.sin(dTheta);
-      const vx = ball.vx * c - ball.vy * s;
-      const vy = ball.vx * s + ball.vy * c;
-      ball.vx = vx;
-      ball.vy = vy;
-    }
-    ball.spin *= decay;
-
-    // 2. Advance the position by the elapsed time.
-    ball.x += ball.vx * h;
-    ball.y += ball.vy * h;
+    // 1–2. Spin, decay, and the move.
+    current = { ...current, ball: move(current.ball, h, decay) };
 
     // 3. Resolve every collision the move could have made.
-    resolveWalls(ball, events);
-    resolvePaddle(ball, left, "left", events);
-    resolvePaddle(ball, right, "right", events);
-    for (const obstacle of obstacles) resolveObstacle(ball, obstacle, events);
+    current = resolve(current, resolveWalls);
+    current = resolve(current, (b) => resolvePaddle(b, left, "left"));
+    current = resolve(current, (b) => resolvePaddle(b, right, "right"));
+    for (const obstacle of obstacles) {
+      current = resolve(current, (b) => resolveObstacle(b, obstacle));
+    }
   }
 
-  return events;
+  return current;
 }

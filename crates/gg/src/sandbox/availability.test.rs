@@ -394,18 +394,28 @@ fn nothing_here_narrows_the_ungated_surface() {
     assert!(unknown.is_empty(), "and names nothing it cannot resolve");
 
     let grants = super::super::Grants::new(Vec::new(), None, granted);
-    for id in [DOCS_SEARCH_ID, VIEWS_CURRENT_ID] {
+    for id in [DOCS_SEARCH_ID, VIEWS_OPEN_TEXT_ID] {
         let operation = super::super::operation(id).expect("a table row");
         assert!(
             grants.permits(operation),
             "`{id}` is bound to every program whatever a run enables"
         );
     }
+    // And the call that MANAGES the window is not among them: closing a view is bought by
+    // agent-managed context, so the bare profile is refused it.
+    let operation = super::super::operation(VIEWS_CLOSE_ID).expect("a table row");
+    assert!(
+        !grants.permits(operation),
+        "`{VIEWS_CLOSE_ID}` is context management, which a bare profile has not bought"
+    );
 }
 
-/// The two always-bound ids this module's last test reaches for, named here rather than imported
-/// into the whole file: they are the only operations it asks about that it does not narrow.
-use super::super::operations::{DOCS_SEARCH as DOCS_SEARCH_ID, VIEWS_CURRENT as VIEWS_CURRENT_ID};
+/// The ids this module's last test reaches for, named here rather than imported into the whole
+/// file: they are the only operations it asks about that it does not narrow.
+use super::super::operations::{
+    DOCS_SEARCH as DOCS_SEARCH_ID, VIEWS_CLOSE as VIEWS_CLOSE_ID,
+    VIEWS_OPEN_TEXT as VIEWS_OPEN_TEXT_ID,
+};
 
 /// **An allowlist entry that answers to no operation comes back**, because a name that grants
 /// nothing is a configuration error rather than an inert entry — and the launch is what says so.

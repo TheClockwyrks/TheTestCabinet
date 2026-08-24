@@ -39,6 +39,9 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
             model_id: model.to_string(),
             gg_capability_set: Some(GgCapabilitySet::minimal(model)),
             gg_summary: Some(GgSessionSummary {
+                rejected_responses: Default::default(),
+                max_response_chars: 0,
+                max_response_output_tokens: 0,
                 terminal_status: "completed".to_string(),
                 undocumented_calls: GgUndocumentedCalls::default(),
                 agents_spawned: 1,
@@ -57,6 +60,8 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
                 compile_ms: 0,
                 healing: Default::default(),
                 errors: Default::default(),
+                tool_calls: 0,
+                provider_stats: Vec::new(),
                 issues_created: 0,
                 issues_completed: 0,
                 slot_costs: Vec::new(),
@@ -158,6 +163,9 @@ fn manifest() -> StoredManifest {
         changelog: "Introduced.".to_string(),
         max_runtime_seconds: 1800,
         test_type: test_cabinet_core::TestType::EndToEnd,
+        engines: vec![test_cabinet_core::EngineSupport::unbounded(
+            test_cabinet_core::engine::NONE_SLUG,
+        )],
         experimental: false,
         build: Some(StoredBuild {
             install: "npm ci".to_string(),
@@ -188,7 +196,7 @@ fn manifest() -> StoredManifest {
             template: true,
             kind: Default::default(),
         }],
-        workspace: StoredWorkspace::ByEngine(std::collections::BTreeMap::from([(
+        workspace: StoredWorkspace(std::collections::BTreeMap::from([(
             "none".to_string(),
             vec![StoredWorkspaceFile {
                 source: "workspaces/base/package.json".to_string(),
@@ -910,4 +918,92 @@ async fn the_export_is_documents_and_never_a_replay_record() {
             }
         }
     }
+}
+
+#[tokio::test]
+async fn the_reconcile_builds_stats_facts_beside_the_documents() {
+    // The one parse pass feeds two consumers: prove that the facts corpus is
+    // reconciled on the same terms as the documents, that a new-format run's
+    // provider slices and dispatch total arrive intact, and that an old-format
+    // run is present with neither — absent, not defaulted — so the `/stats`
+    // folds can tell the two apart end to end.
+    use test_cabinet_core::gg::GgProviderStat;
+
+    use crate::stats::{fold_model_accuracy, fold_provider_stats};
+
+    let db = Db::connect_in_memory().await.unwrap();
+    let (_dir, store) = ingested_store();
+    let index = GgDocIndex::with_ttl(Duration::ZERO);
+
+    // A new-format responses-as-code run: one provider slice, exact turn
+    // accounting.
+    let mut new_format = gg_record("new1", "mock/echo");
+    {
+        let summary = new_format.subject.gg_summary.as_mut().unwrap();
+        summary.execution_mode = "responses_as_code".to_string();
+        summary.errors.turns = 3;
+        summary.errors.errors = 1;
+        summary.errors.transpile = 1;
+        summary.provider_stats = vec![GgProviderStat {
+            provider: Some("acme".to_string()),
+            model_id: Some("mock/echo".to_string()),
+            calls: 3,
+            turns: 3,
+            working: 2,
+            errors: [("transpile_compile".to_string(), 1)].into_iter().collect(),
+            ..GgProviderStat::default()
+        }];
+    }
+    db.push(&new_format, &RunLinks::default(), None)
+        .await
+        .unwrap();
+
+    // An old-format tool-calling run: the fixture default — no slices, no
+    // dispatch total.
+    db.push(&gg_record("old1", "mock/echo"), &RunLinks::default(), None)
+        .await
+        .unwrap();
+
+    let mut scores = CatalogScores::new(&store);
+    let facts = index
+        .facts(&db, &mut |run| scores.score(run))
+        .await
+        .unwrap();
+    assert_eq!(
+        facts.len(),
+        2,
+        "both runs carry a summary, so both have facts"
+    );
+
+    let (scanned, with_data, providers) = fold_provider_stats(&facts);
+    assert_eq!(scanned, 2);
+    assert_eq!(with_data, 1, "only the new-format run recorded providers");
+    assert_eq!(providers.len(), 1);
+    assert_eq!(providers[0].provider.as_deref(), Some("acme"));
+    assert_eq!(providers[0].totals.calls, 3);
+    assert_eq!(providers[0].totals.working, 2);
+
+    let accuracy = fold_model_accuracy(&facts);
+    assert_eq!(accuracy.unattributable_runs, 0);
+    assert_eq!(accuracy.models.len(), 1);
+    let entry = &accuracy.models[0];
+    assert_eq!(entry.model_id, "mock/echo");
+    let rac = entry
+        .rac
+        .as_ref()
+        .expect("the new-format run's rac figures");
+    assert_eq!((rac.turns, rac.valid, rac.compile), (3, 2, 1));
+    assert_eq!(rac.approximate_runs, 0);
+    assert!(
+        entry.tool_calling.is_none(),
+        "the old run recorded no dispatch total and no failures, so nothing is invented"
+    );
+
+    // The documents corpus is untouched by the second consumer.
+    let mut scores = CatalogScores::new(&store);
+    let docs = index
+        .documents(&db, &mut |run| scores.score(run))
+        .await
+        .unwrap();
+    assert_eq!(docs.len(), 2);
 }

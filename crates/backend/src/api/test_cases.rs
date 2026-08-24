@@ -7,10 +7,12 @@ mod tests;
 
 use axum::Json;
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use test_cabinet_core::content_labels::{self, ContentLabels};
+use test_cabinet_core::engine::{EngineCatalog, EngineSelection, ResolvedEngine};
 use test_cabinet_core::test_case::{
     AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
 };
@@ -39,12 +41,22 @@ use super::AppState;
 /// The metadata is read from each case's **latest visible version**, which is the
 /// one a listing describes. A case whose latest manifest cannot be read is
 /// skipped rather than failing the whole catalog — one unreadable sidecar should
-/// cost that case's card, not every case's.
+/// cost that case's card, not every case's. A store the running build cannot read
+/// at all is the other case entirely: it answers `503` naming the repair, because
+/// a listing of whichever versions happen to still parse is a wrong answer that
+/// looks like a right one (see
+/// [`needs_reingest`](crate::store::DefinitionStore::needs_reingest)).
 ///
 /// Experimental versions are omitted unless the deployment has opted in via
 /// `TCAB_BACKEND_ALLOW_EXPERIMENTAL` (see [`crate::config::Config::allow_experimental`]),
 /// so an experimental case a deployment has not enabled is not offered to the UI.
 pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogResponse>, ApiError> {
+    if state.store.needs_reingest() {
+        return Err(ApiError::unavailable(
+            "the definition store was written in another record format and holds no \
+             version this build can read; re-ingest the catalog",
+        ));
+    }
     let mut cases = Vec::new();
     for (slug, versions) in state
         .store
@@ -59,7 +71,10 @@ pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogRespon
         let manifest = match state.store.read_manifest(&slug, latest) {
             Ok(manifest) => manifest,
             Err(error) => {
-                tracing::warn!(
+                // The store is one this build reads, so a manifest inside it that
+                // does not read back is a defect in what ingest wrote, not a state
+                // to expect.
+                tracing::error!(
                     %slug,
                     version = %latest,
                     %error,
@@ -107,13 +122,59 @@ pub async fn versions(
     Ok(Json(VersionsResponse { slug, versions }))
 }
 
+/// The [engine](test_cabinet_core::engine) a version's templated text is rendered
+/// for: `?engine=<slug>` on [`resolve_version`] and [`variant_specs`].
+///
+/// A case version's `prompt.hbs` and its `.hbs` specs branch on the selected
+/// engine, so the same stored template renders into different text depending on
+/// which runtime the build is written against. The engine is therefore a
+/// *rendering* input, not part of a version's identity — a version makes no claim
+/// about an engine — which is why it rides as a query parameter here while the
+/// `validation-baseline` route carries it as a path segment (there it names a
+/// distinct stored directory).
+///
+/// A surface showing a **run** passes the engine that run recorded, so it reads
+/// the text that run's harness actually received. A surface showing a **case**
+/// passes nothing and gets the engineless form: a case is not a run, and nothing
+/// has selected an engine yet.
+#[derive(Debug, Default, Deserialize)]
+pub struct EngineQuery {
+    /// The engine slug to render for, or absent for the engineless form. An
+    /// unknown slug is a client error rather than a silent fallback.
+    #[serde(default)]
+    pub engine: Option<String>,
+}
+
+impl EngineQuery {
+    /// Resolve the requested slug against the built-in engine catalogue.
+    ///
+    /// `None` (the parameter was omitted) renders engineless. An explicit
+    /// [`NONE_SLUG`](test_cabinet_core::engine::NONE_SLUG) resolves to the built-in
+    /// engineless engine, which renders identically — a run that named `none` and a
+    /// surface that named nothing see the same text.
+    fn resolve(&self) -> Result<Option<ResolvedEngine>, ApiError> {
+        let Some(slug) = self.engine.as_deref() else {
+            return Ok(None);
+        };
+        EngineCatalog::new()
+            .resolve(&EngineSelection::new(slug))
+            .map(Some)
+            .map_err(|err| ApiError::bad_request(err.to_string()))
+    }
+}
+
 /// `GET /test-cases/{slug}/versions/{version}` — the full resolved manifest a
 /// runner needs, with store-relative keys and references resolved to rendered
 /// screenshot URLs.
+///
+/// `?engine=<slug>` (see [`EngineQuery`]) selects which engine each variant's
+/// `prompt` is rendered for; omitting it renders the engineless form.
 pub async fn resolve_version(
     State(state): State<AppState>,
     Path((slug, version)): Path<(String, String)>,
+    Query(query): Query<EngineQuery>,
 ) -> Result<Json<VersionResponse>, ApiError> {
+    let engine = query.resolve()?;
     let manifest = state
         .store
         .read_manifest(&slug, &version)
@@ -150,6 +211,7 @@ pub async fn resolve_version(
         &manifest,
         &reference_builds,
         &reference_sheets,
+        engine.as_ref(),
     )?))
 }
 
@@ -163,7 +225,7 @@ pub async fn artifact(
         .store
         .read_artifact(&slug, &version, &path)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&path, bytes, None))
+    Ok(bytes_response(&path, bytes))
 }
 
 /// `GET /test-cases/{slug}/versions/{version}/specs/{variant}` — the variant's
@@ -177,10 +239,15 @@ pub async fn artifact(
 /// [`artifact`] route serves. A plain spec is returned verbatim. A render error is
 /// exceptional (the same template renders at run time), so it surfaces as an
 /// internal error rather than silently dropping the spec.
+///
+/// `?engine=<slug>` (see [`EngineQuery`]) selects which engine the bodies are
+/// rendered for; omitting it renders the engineless form.
 pub async fn variant_specs(
     State(state): State<AppState>,
     Path((slug, version, variant)): Path<(String, String, String)>,
+    Query(query): Query<EngineQuery>,
 ) -> Result<Json<SpecsResponse>, ApiError> {
+    let engine = query.resolve()?;
     let manifest = state
         .store
         .read_manifest(&slug, &version)
@@ -219,6 +286,7 @@ pub async fn variant_specs(
                 &selected.name,
                 selected.description.as_deref(),
                 voxel,
+                engine.as_ref(),
             )?;
             Ok(SpecDocumentOut {
                 dest: spec.dest.clone(),
@@ -264,26 +332,30 @@ pub async fn reference(
         .store
         .read_reference(&slug, &version, &scope, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
-/// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}`
-/// — a case variant's committed **baseline** validation media (`{file}` is the flat
-/// `<item>__<output>.<ext>`). This is the invariant counterpart to a run's *actual*
-/// validation media (served run-scoped by the artifact service): synthesized once at
-/// `tcab publish-reference` time from the reference implementation and committed under
-/// the version folder, so the reviewer UI resolves it case-scoped (by
-/// slug/version/variant/item/output), not from any run tree. The content type follows
-/// the extension.
+/// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}`
+/// — one reference build's committed **baseline** validation media (`{file}` is the
+/// flat `<item>__<output>.<ext>`). This is the invariant counterpart to a run's
+/// *actual* validation media (served run-scoped by the artifact service): synthesized
+/// once at `tcab capture-baselines` time from the reference implementation and
+/// committed under the version folder, so the reviewer UI resolves it case-scoped (by
+/// slug/version/engine/variant/item/output), not from any run tree. The content type
+/// follows the extension.
+///
+/// The engine is part of the address because a variant has one reference
+/// implementation per engine: the run being reviewed selected an engine, and the
+/// expected-behavior media it is compared against has to have come from the same one.
 pub async fn validation_baseline(
     State(state): State<AppState>,
-    Path((slug, version, variant, file)): Path<(String, String, String, String)>,
+    Path((slug, version, engine, variant, file)): Path<(String, String, String, String, String)>,
 ) -> Result<Response, ApiError> {
     let bytes = state
         .store
-        .read_validation_baseline(&slug, &version, &variant, &file)
+        .read_validation_baseline(&slug, &version, &engine, &variant, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
 /// `GET /runs/{id}/proof/{file}` — a published run's proof media (`{file}` is
@@ -296,7 +368,7 @@ pub async fn run_proof(
         .store
         .read_run_proof(&id, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
 /// `POST /runs/{id}/proof/{file}` — store a published run's proof media, uploaded
@@ -326,7 +398,7 @@ pub async fn run_validation(
         .store
         .read_run_validation(&id, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
 /// `POST /runs/{id}/validation/{file}` — store a published run's synthesized *actual*
@@ -354,7 +426,7 @@ pub async fn run_asset(
         .store
         .read_run_asset(&id, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes, None))
+    Ok(bytes_response(&file, bytes))
 }
 
 /// `POST /runs/{id}/asset/{file}` — store a published asset-generation run's
@@ -381,7 +453,7 @@ pub async fn run_controller(
         .store
         .read_run_controller(&id)
         .map_err(ApiError::from)?;
-    Ok(bytes_response("controller.wasm", bytes, None))
+    Ok(bytes_response("controller.wasm", bytes))
 }
 
 /// `POST /runs/{id}/controller.wasm` — store an adversarial run's controller wasm,
@@ -477,7 +549,7 @@ pub async fn put_run_code_analysis(
 
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
-/// prompt the way a real run receives it.
+/// prompt the way a run on `engine` receives it.
 fn version_response(
     manifest: &StoredManifest,
     reference_builds: &std::collections::HashMap<
@@ -485,6 +557,7 @@ fn version_response(
         std::collections::BTreeMap<String, String>,
     >,
     reference_sheets: &std::collections::HashMap<String, Vec<u32>>,
+    engine: Option<&ResolvedEngine>,
 ) -> Result<VersionResponse, ApiError> {
     let reference_out = |scope: &str, r: &crate::store::StoredReference| ReferenceOut {
         view: r.view.clone(),
@@ -503,7 +576,7 @@ fn version_response(
                 slug: v.slug.clone(),
                 name: v.name.clone(),
                 description: v.description.clone(),
-                prompt: render_variant_prompt(manifest, v)?,
+                prompt: render_variant_prompt(manifest, v, engine)?,
                 specs: v.specs.iter().map(spec_out).collect(),
                 workspace: v.workspace.as_ref().map(workspaces_out),
                 references: v
@@ -536,6 +609,15 @@ fn version_response(
         changelog: manifest.changelog.clone(),
         max_runtime_seconds: manifest.max_runtime_seconds,
         test_type: manifest.test_type,
+        engines: manifest
+            .engines
+            .iter()
+            .map(|engine| EngineOut {
+                slug: engine.slug.clone(),
+                min_version: engine.min_version.as_ref().map(|v| v.to_string()),
+                max_version: engine.max_version.as_ref().map(|v| v.to_string()),
+            })
+            .collect(),
         build: manifest.build.as_ref().map(|build| BuildOut {
             install: build.install.clone(),
             build: build.build.clone(),
@@ -633,15 +715,16 @@ fn version_response(
 }
 
 /// Render a variant's prompt the way a real run receives it: the version's
-/// `prompt.hbs` template rendered against the variant and its seeded specs (the
-/// common specs followed by the variant's own, matching seed order). The
-/// in-container workspace path is the engine's fixed default, so this preview is
-/// identical to the run-time instruction. A template error is exceptional (the
-/// same template renders at run time), so surface it as an internal error rather
-/// than silently dropping the prompt.
+/// `prompt.hbs` template rendered against the variant, its seeded specs (the
+/// common specs followed by the variant's own, matching seed order), and the
+/// selected `engine`. The in-container workspace path is the engine's fixed
+/// default, so this rendering is identical to the run-time instruction. A template
+/// error is exceptional (the same template renders at run time), so surface it as
+/// an internal error rather than silently dropping the prompt.
 fn render_variant_prompt(
     manifest: &StoredManifest,
     variant: &crate::store::StoredVariant,
+    engine: Option<&ResolvedEngine>,
 ) -> Result<String, ApiError> {
     let spec_dests: Vec<String> = manifest
         .common_specs
@@ -662,12 +745,11 @@ fn render_variant_prompt(
         // The variant's own volume overrides the case's for its prompt, so the
         // gallery renders each size variant's brief at its actual dimensions.
         variant.voxel.as_ref().or(manifest.voxel.as_ref()),
-        // The gallery preview shows the standing prompt, with no prior game-jam
-        // entries in play, so it never carries the distinctness section.
+        // A version's prompt is the standing one, with no prior game-jam entries in
+        // play, so it never carries the distinctness section. Those are a property of
+        // the run, seeded from earlier entries by the same model.
         0,
-        // The gallery renders a case, not a run, and a run is what selects an
-        // engine — so the preview is the engineless form.
-        None,
+        engine,
     )
     .map_err(|err| ApiError::internal(err.to_string()))
 }
@@ -789,55 +871,49 @@ fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
 
 /// Map a stored starter project to the wire shape: one file list per
 /// [engine](test_cabinet_core::engine) slug.
-///
-/// A manifest stored before the key was an engine map carries a flat list; such a
-/// case supported no engine, so it is served under that slug and a runner reads the
-/// same project it always did.
 fn workspaces_out(
     workspace: &crate::store::StoredWorkspace,
 ) -> std::collections::BTreeMap<String, Vec<WorkspaceOut>> {
-    match workspace {
-        crate::store::StoredWorkspace::ByEngine(by_engine) => by_engine
-            .iter()
-            .map(|(engine, files)| (engine.clone(), files.iter().map(workspace_out).collect()))
-            .collect(),
-        crate::store::StoredWorkspace::Engineless(files) => std::collections::BTreeMap::from([(
-            test_cabinet_core::engine::NONE_SLUG.to_string(),
-            files.iter().map(workspace_out).collect(),
-        )]),
-    }
+    workspace
+        .0
+        .iter()
+        .map(|(engine, files)| (engine.clone(), files.iter().map(workspace_out).collect()))
+        .collect()
 }
 
-/// Build a raw-bytes response with a best-effort content type and length.
+/// Build a raw-bytes response for a stored file, labelled from its name.
 ///
-/// `content_encoding` is the codec the *body* is framed in — `Some("gzip")` when the
-/// bytes travel compressed — and is `None` for every response whose body is what its
-/// content type says it is. It is deliberately a parameter rather than something
-/// derived from `path`: the encoding is a property of the bytes in hand, not of the
-/// name they are served under, and the one route that compresses serves the same
-/// resource both ways depending on what the caller advertised (see
-/// [`run_artifact_response`]).
-fn bytes_response(path: &str, bytes: Vec<u8>, content_encoding: Option<&str>) -> Response {
-    let content_type = content_type_for(path);
+/// A name carries both answers a response has to give: what the resource is, and how
+/// the body is framed. `<name>.json.gz` is a JSON document travelling gzip-framed and
+/// is labelled as such, so a browser inflates it before any script sees it; every
+/// other name describes bytes that are already the resource (see
+/// [`labels_for`]).
+fn bytes_response(path: &str, bytes: Vec<u8>) -> Response {
+    labelled_response(labels_for(path), bytes)
+}
+
+/// Build a raw-bytes response under labels the caller already knows.
+///
+/// [`run_artifact_response`] is the one route whose framing is not implied by the
+/// name it serves under: it stores the document gzipped under a `.json` name and
+/// decides per request whether to hand that framing on, so it states the labels
+/// rather than deriving them.
+fn labelled_response(labels: ContentLabels, bytes: Vec<u8>) -> Response {
     let len = bytes.len();
     let mut response = (
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE, content_type.to_string()),
+            (header::CONTENT_TYPE, labels.content_type.to_string()),
             (header::CONTENT_LENGTH, len.to_string()),
         ],
         Body::from(bytes),
     )
         .into_response();
-    if let Some(encoding) = content_encoding {
-        // A malformed value is impossible here — every caller passes a static token —
-        // but an invalid header must never be the difference between serving the bytes
-        // and 500ing, so a bad one is simply not set.
-        if let Ok(value) = header::HeaderValue::from_str(encoding) {
-            response
-                .headers_mut()
-                .insert(header::CONTENT_ENCODING, value);
-        }
+    if let Some(encoding) = labels.content_encoding {
+        response.headers_mut().insert(
+            header::CONTENT_ENCODING,
+            header::HeaderValue::from_static(encoding),
+        );
     }
     response
 }
@@ -861,11 +937,10 @@ fn run_artifact_response(
     name: &str,
     stored: Vec<u8>,
 ) -> Result<Response, ApiError> {
-    let file = format!("{name}.json");
     let mut response = if !is_gzip(&stored) {
-        bytes_response(&file, stored, None)
+        labelled_response(ContentLabels::plain(JSON_CONTENT_TYPE), stored)
     } else if accepts_gzip(headers) {
-        bytes_response(&file, stored, Some("gzip"))
+        labelled_response(ContentLabels::gzipped(JSON_CONTENT_TYPE), stored)
     } else {
         let mut plain = Vec::new();
         std::io::Read::read_to_end(
@@ -877,7 +952,7 @@ fn run_artifact_response(
                 "decoding stored `{name}` artifact for a client that does not accept gzip: {e}"
             ))
         })?;
-        bytes_response(&file, plain, None)
+        labelled_response(ContentLabels::plain(JSON_CONTENT_TYPE), plain)
     };
     // The body genuinely varies by request header, so say so — a shared cache in front
     // of the backend must not hand a browser's gzipped copy to the gzip-unaware CLI.
@@ -930,34 +1005,36 @@ fn accepts_gzip(headers: &HeaderMap) -> bool {
     })
 }
 
-/// A best-effort content type from a path's extension.
-fn content_type_for(path: &str) -> &'static str {
+/// The content type and body framing for a stored file, from its name.
+fn labels_for(path: &str) -> ContentLabels {
     let ext = std::path::Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("");
     match ext.to_ascii_lowercase().as_str() {
-        "md" | "txt" => "text/plain; charset=utf-8",
-        "hbs" => "text/plain; charset=utf-8",
-        "html" => "text/html; charset=utf-8",
-        "json" => "application/json",
+        "md" | "txt" => ContentLabels::plain("text/plain; charset=utf-8"),
+        "hbs" => ContentLabels::plain("text/plain; charset=utf-8"),
+        "html" => ContentLabels::plain("text/html; charset=utf-8"),
+        "json" => ContentLabels::plain(JSON_CONTENT_TYPE),
         // A gzipped document served as it is stored — a validator's draw-command
-        // recording (`<name>.json.gz`). The body is not labelled with a content
-        // encoding, so nothing between the store and the player inflates it on the
-        // way past; the player decompresses what it fetched.
-        "gz" => "application/gzip",
-        "png" => "image/png",
-        "jpg" | "jpeg" => "image/jpeg",
-        "webp" => "image/webp",
-        "gif" => "image/gif",
-        "mp4" => "video/mp4",
-        "svg" => "image/svg+xml",
-        "css" => "text/css",
-        "js" | "mjs" => "text/javascript",
-        "wasm" => "application/wasm",
-        _ => "application/octet-stream",
+        // recording (`<name>.json.gz`), which is JSON travelling gzip-framed and is
+        // labelled that way, so the browser inflates it before the player sees it.
+        "gz" => content_labels::for_gz(path),
+        "png" => ContentLabels::plain("image/png"),
+        "jpg" | "jpeg" => ContentLabels::plain("image/jpeg"),
+        "webp" => ContentLabels::plain("image/webp"),
+        "gif" => ContentLabels::plain("image/gif"),
+        "mp4" => ContentLabels::plain("video/mp4"),
+        "svg" => ContentLabels::plain("image/svg+xml"),
+        "css" => ContentLabels::plain("text/css"),
+        "js" | "mjs" => ContentLabels::plain("text/javascript"),
+        "wasm" => ContentLabels::plain("application/wasm"),
+        _ => ContentLabels::plain("application/octet-stream"),
     }
 }
+
+/// The content type every JSON response this module serves carries.
+const JSON_CONTENT_TYPE: &str = "application/json";
 
 // --- Wire shapes (§1.2) -----------------------------------------------------
 
@@ -1023,6 +1100,9 @@ pub struct VersionResponse {
     changelog: String,
     max_runtime_seconds: u64,
     test_type: TestType,
+    /// The engines a run of this version may select. Never empty — a version that
+    /// declares none supports the engineless run.
+    engines: Vec<EngineOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
     build: Option<BuildOut>,
     /// The case's TypeScript toolchain commands, when it declares a `[toolchain]`
@@ -1181,6 +1261,29 @@ struct SpecDocumentOut {
     body: String,
     /// The seeded file's role (`spec`/`script`), for the Inputs-tab tag.
     kind: SpecKind,
+}
+
+/// One [engine](test_cabinet_core::engine) a run of this version may select, with
+/// the version range the case accepts it at. A launcher offers exactly this set,
+/// and the runner holds a run's selection against it before any container work.
+///
+/// Always the table spelling, so one shape answers both readers: a case that pins
+/// nothing carries the slug alone and omits the bounds.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct EngineOut {
+    slug: String,
+    /// The lowest engine version a run may select, inclusive. Absent when the case
+    /// pinned no floor.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    min_version: Option<String>,
+    /// The version support stops at, exclusive. Absent when the range is unbounded
+    /// above, which is the default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    max_version: Option<String>,
 }
 
 /// A runtime package a case ships into its runs, exposed for the console's Inputs

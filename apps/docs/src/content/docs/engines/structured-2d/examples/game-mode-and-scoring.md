@@ -64,10 +64,10 @@ import { ACTIONS, CUES, LEVELS, TAGS } from "./constants";
 import { Ball } from "./actors/ball";
 import { RallyMode } from "./levels/rally-mode";
 
-class RallyInstance extends GameInstance {
+class RallyInstance extends GameInstance<null> {
   matches = 0;
 
-  override initialize(api: InitApi): void {
+  override initialize(api: InitApi): null {
     for (const [name, binding] of Object.entries(ACTIONS)) {
       api.input.register(name, binding);
     }
@@ -76,10 +76,11 @@ class RallyInstance extends GameInstance {
     api.events.on("match:phase", ({ phase }) => {
       if (phase === "over") this.matches += 1;
     });
+    return null;
   }
 }
 
-export const rally: GameDefinition = {
+export const rally: GameDefinition<null> = {
   instance: RallyInstance,
   levels: {
     [LEVELS.rally]: { mode: RallyMode, actors: [{ type: Ball, tags: [TAGS.ball] }] },

@@ -111,10 +111,10 @@ fn closing_docviews_cannot_reach_a_read_skill() {
     );
 }
 
-/// A docview shows up in `view.current()` as its own kind, so a model deciding what to close can see
-/// it — and a read skill does not, because it cannot be closed.
+/// A docview is tracked as an open documentation view, keyed by the name it was opened under — and
+/// a read skill is not, because it cannot be closed.
 #[test]
-fn open_views_reports_a_docview_and_not_a_read_skill() {
+fn a_docview_is_tracked_and_a_read_skill_is_not() {
     let mut ctx = code_model();
     ctx.push(
         GgContextSource::Skill,
@@ -123,12 +123,12 @@ fn open_views_reports_a_docview_and_not_a_read_skill() {
     );
     ctx.open_docview("readFile".to_string(), "the function's docs".to_string());
 
-    let open: Vec<(ViewKind, String)> = ctx
-        .open_views()
+    let open: Vec<String> = ctx
+        .open_docviews()
         .into_iter()
-        .map(|view| (view.kind, view.selector))
+        .map(|view| view.key)
         .collect();
-    assert_eq!(open, vec![(ViewKind::Docs, "readFile".to_string())]);
+    assert_eq!(open, vec!["readFile".to_string()]);
 }
 
 // ---------------------------------------------------------------------------
@@ -791,14 +791,14 @@ fn a_search_view_is_reported_as_an_open_view_of_its_own_kind() {
         "3 matches for `file`".to_string(),
     );
 
-    let open = ctx.open_views();
-    let view = open
+    let view = ctx
+        .items()
         .iter()
-        .find(|view| view.kind == ViewKind::Search)
+        .find(|item| item.source() == GgContextSource::SearchResults)
         .expect("the search results are an open view");
-    assert_eq!(view.selector, SEARCH_RESULTS_VIEW);
-    assert!(view.tokens > 0);
-    assert_eq!(view.region, None);
+    assert_eq!(view.label(), Some(SEARCH_RESULTS_VIEW));
+    assert!(view.tokens() > 0);
+    assert_eq!(view.region(), None);
 }
 
 /// **A search-results view is NOT retained across archival**, where a documentation view is.

@@ -816,10 +816,21 @@ impl<A: OperationApi> MembraneState<A> {
     /// Frames are read back through this program's own [locations](Self::locating) on the way out,
     /// so what gg reports is what the model wrote rather than what its compiler emitted.
     pub(crate) fn stderr_kept(&self) -> String {
-        let said = self.stderr.kept();
+        self.relocated(self.stderr.kept())
+    }
+
+    /// `text`, with every frame in it read back through this program's own
+    /// [locations](Self::locating), or as it was when this arm has none.
+    ///
+    /// Applied to everything a guest reports that can carry a frame: what it wrote to standard
+    /// error, and the message and location of a throw it reports over `feedback.report-error`. The
+    /// ECMAScript guest reports a throw with the engine's own stack in the message, stated against
+    /// `program.js`; read here, a frame in it names `program.ts` at the model's own line, exactly
+    /// as the same frame would on the stderr path.
+    pub(crate) fn relocated(&self, text: String) -> String {
         match &self.locations {
-            Some(locations) => locations.rewrite(&said),
-            None => said,
+            Some(locations) => locations.rewrite(&text),
+            None => text,
         }
     }
 
@@ -974,15 +985,15 @@ impl<A: OperationApi> MembraneState<A> {
     /// Bridge one typed membrane call to gg's real toolset, turning a failed outcome into the typed
     /// error the program sees thrown.
     ///
-    /// This is what twenty-eight of the twenty-nine bound operations call. The twenty-ninth is `shell`,
-    /// which needs a non-`ok` outcome as a value — see [`call_raw`](Self::call_raw).
+    /// This is what twenty-seven of the twenty-eight bound operations call. The twenty-eighth is
+    /// `shell`, which needs a non-`ok` outcome as a value — see [`call_raw`](Self::call_raw).
     ///
     /// The [`Recording`] is the caller's proof that the API call it is servicing has already been
     /// recorded under its own identity, and `id` is that identity said again for the dispatch —
     /// the same [operation](OperationId) the bracket was opened with, because that is the call the
-    /// model wrote. What runs underneath may be shared: `files.read_file`, `files.read_text_file`
-    /// and `views.open_file` are three operations over one internal read, and each is recorded,
-    /// refused and reported as itself.
+    /// model wrote. What runs underneath may be shared: `files.read_file` and `views.open_file`
+    /// are two operations over one internal read, and each is recorded, refused and reported as
+    /// itself.
     fn call(
         &mut self,
         recording: Recording,
@@ -1165,13 +1176,15 @@ impl<A: OperationApi> MembraneState<A> {
     /// # Which record a cross-arm count must join on
     ///
     /// **The refusal roster, not the turn's error type.** The line above holds only for a guest
-    /// that hands the failure's code up with the throw, and two of the eleven do not. Measured: the
-    /// C# guest reports every uncaught managed exception as `error-kind.other` with no code at all
+    /// that hands the failure's code up with the throw — Python, Ruby, C++ and the three
+    /// ECMAScript-engine arms — and the other five do not. Measured: the C# guest reports every
+    /// uncaught managed exception as `error-kind.other` with no code at all
     /// (`packages/gg-sandbox-csharp/Sources/shell.c`'s `report`), so an uncaught refusal there is
-    /// `program_throw` — and so is an uncaught `not-found`; and Swift's top-level code is not a
+    /// `program_throw` — and so is an uncaught `not-found`; Swift's top-level code is not a
     /// `throws` context its shell can wrap, so an uncaught gg failure is not a program error at all
-    /// but a trapped store. Counting `program_unknown_name` across arms therefore reads correct on
-    /// nine and silently zero on those two.
+    /// but a trapped store, and Rust, Kotlin and Java die the same way. Counting
+    /// `program_unknown_name` across arms therefore reads correct on six and silently wrong on the
+    /// other five.
     ///
     /// What **is** uniform on all eleven is [`record_refusal`](Self::record_refusal) just below:
     /// every refusal is opened and closed as an API call and lands on the turn's roster under gg's
@@ -1297,10 +1310,9 @@ impl<A: OperationApi> MembraneState<A> {
     ///
     /// [`ApiError::operation`] carries the **operation's key**, never the name of whatever ran
     /// underneath. The field's name belongs to the failure type every call shares; what goes in it
-    /// is the call the program wrote, so `gg.files.readTextFile` reports `read_text_file` and
-    /// `gg.views.openFile` reports `open_file` even though one internal read serviced all three.
-    /// Reporting the internal name would put a word in front of the model that its SDK does not
-    /// spell and that no arm can type.
+    /// is the call the program wrote, so `gg.views.openFile` reports `open_file` even though the
+    /// read underneath it is the one `files.read_file` performs. Reporting the internal name would
+    /// put a word in front of the model that its SDK does not spell and that no arm can type.
     fn api_error(&self, id: OperationId, outcome: &ToolOutcome) -> ApiError {
         ApiError {
             code: error_code(outcome.failure),
@@ -1393,6 +1405,7 @@ fn data_kind(data: &ApiData) -> &'static str {
         ApiData::FileImage(_) => "fileImage",
         ApiData::BytesWritten(_) => "bytesWritten",
         ApiData::DirEntries(_) => "dirEntries",
+        ApiData::SearchMatches(_) => "searchMatches",
         ApiData::MemoryUsage(_) => "memoryUsage",
         ApiData::MemoryHits(_) => "memoryHits",
         ApiData::TaskUsage(_) => "taskUsage",

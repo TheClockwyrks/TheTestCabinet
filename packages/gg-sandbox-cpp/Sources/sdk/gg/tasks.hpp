@@ -28,8 +28,7 @@ namespace tasks {
 /// The field really has three states and an `std::optional<std::string>` could say only two of
 /// them, which is how a stringly interface ends up treating "clear it" and "set it to the empty
 /// string" as one request. A default-constructed value keeps the field, so a patch that says
-/// nothing about a description leaves it alone. `gg::board::update_issue` takes the same type for the
-/// same reason.
+/// nothing about a description leaves it alone.
 class text_edit {
  public:
   /// Leave the field as it is, which is what a default-constructed value does.

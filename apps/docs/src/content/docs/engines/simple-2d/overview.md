@@ -17,14 +17,19 @@ The engine owns the frame loop, the [clock](/engines/simple-2d/apis/clocks/)
 that decides what each frame's delta time is, the fit from the logical design
 size to the canvas, the input action registry and its bindings, the audio bus,
 the asset loader, the debug overlay together with the frame metrics it reports,
-and the draw-command recorder over the context the game draws through.
+the draw-command recorder over the context the game draws through, and the debug
+surface the game returned beside its state, held for a caller to read back.
 
 The game owns its simulation and its drawing, supplied as a
-[`Game<S>`](/engines/simple-2d/apis/game/): an `initialize` that builds the
-state, an `update` that advances it by a delta in seconds, and a `render` that
-draws it through a 2D context. The declarations the engine works from are made
-during initialization: action bindings, cue definitions, the assets the state
-holds, and the diagnostic sources the overlay reads.
+[`Game<S, D>`](/engines/simple-2d/apis/game/): an `initialize` that builds the
+state and the debug surface and returns them as `[state, debug]`, an `update`
+that takes the current state and a delta in seconds and returns the next state,
+and a `render` that draws that state through a 2D context. The engine holds the
+state by value and hands every reader a read-only view, so rendering cannot
+change the state and nothing but a transition advances it. The declarations the
+engine works from are made during initialization: action bindings, cue
+definitions, the assets the state holds, the diagnostic sources the overlay
+reads, and the debug surface a caller drives the build through.
 
 Each function receives only the part of the engine it may use, so a frame's
 audible and observable behavior belongs to the update and the picture belongs to
@@ -56,7 +61,9 @@ resolved, and the diagnostics are therefore read off engine code, and the frames
 a check depends on are exactly the frames it asked for.
 
 A case still declares the scenario its checks arrange, since setting up a
-situation runs through the game's own state.
+situation runs through the game's own state: a validator poses it through
+`engine.apply` and the build's debug surface, and reads it back off
+`engine.state`.
 
 The engine also captures what a build drew. A validator arms the
 [recorder](/engines/simple-2d/concepts/recording/) around the stretch of a

@@ -410,6 +410,62 @@ export interface PromptTurn {
   durationMs: number | null;
 }
 
+// How one responses-as-code turn's program fared, at the level an operator triages on:
+// it ran clean, its language's prepare step rejected it (a compile-time failure — a syntax
+// error, a type error, an unsupported feature), or it was admitted and then failed while
+// running (a throw, an unknown name, a sandbox ceiling). `other` is every remaining way a
+// turn can end badly — the model's reply was not a program, the session ended without a
+// completion — spelled out by the turn's own error kind on the entry.
+//
+// The three named statuses are exactly the split `GgTurnErrorKind` makes between
+// `transpile` (compile) and `program_fault` + `sandbox_limit` (runtime); the status is
+// derived from that kind rather than from the execution's own `ok`, because the execution
+// event carries a message but no class, and the turn outcome is what gg's own ceilings
+// judge the turn by.
+export type ProgramStatus = "success" | "compile" | "runtime" | "other";
+
+// One responses-as-code turn as a *program*: the reply the model wrote, whether it
+// compiled and ran, and what went wrong when it did not. The Programs view is built from
+// these — the itemized "did each response work?" companion to the Requests view, which
+// shows every message of every turn and buries the one question an operator of a code
+// agent asks first.
+//
+// One per `prompt` event (so `turn` is the same axis as `PromptTurn.turn`, and `responseId`
+// resolves in the same pool); the execution half attaches from the turn's `code_execution`
+// and its outcome from `turn_outcome`, both of which gg emits after the prompt and before
+// the next `turn_started`. A turn whose reply never reached the sandbox (healing found no
+// program in it) has no execution and is classified by its outcome alone.
+export interface ProgramTurn {
+  turn: number;
+  responseId: string | null;
+  status: ProgramStatus;
+  // The execution's failure message, verbatim from `code_execution.error` — the compiler's
+  // diagnostics or the runtime's throw. Null on a clean execution and when no program ran.
+  error: string | null;
+  // The turn's error kind and specific type from `turn_outcome`, when it was an error.
+  errorKind: GgTurnErrorKind | null;
+  errorType: GgTurnErrorType | null;
+  // Whether a `code_execution` was recorded for the turn at all.
+  executed: boolean;
+  // Everything the program printed (`code_execution.logs`), empty when nothing was.
+  logs: string[];
+  // How long the program ran, in milliseconds, when the sandbox timed it.
+  durationMs: number | null;
+  // What the program finished the run with, on the one turn that did.
+  finished: string | null;
+}
+
+// The status a turn's error kind implies — see {@link ProgramStatus}. No kind is a clean
+// run, which is what a turn with no error reports.
+export function programStatusOf(
+  kind: GgTurnErrorKind | null | undefined,
+): ProgramStatus {
+  if (kind == null) return "success";
+  if (kind === "transpile") return "compile";
+  if (kind === "program_fault" || kind === "sandbox_limit") return "runtime";
+  return "other";
+}
+
 // Where one turn's wall-clock went (`turn_timing`), split into the three phases every
 // turn passes through: assembling the prompt, waiting on the model, and handling the
 // response. The three are a partition of the turn — gg derives the response phase as
@@ -1349,6 +1405,11 @@ export interface DerivedGgState {
   // `context_message`/`prompt` events).
   messagePool: Map<string, PooledMessage>;
   prompts: PromptTurn[];
+  // One per turn of a responses-as-code agent's message log: the reply as a program and
+  // how it fared (see `ProgramTurn`). Folded for every agent — a tool-calling agent's
+  // entries are all `success` with nothing executed — and offered only where the agent
+  // answers in code.
+  programs: ProgramTurn[];
   // Per-turn phase timings, in turn order. Unlike `prompts` these are unconditional —
   // gg reports one per turn whatever the run's capabilities, and reports one even for a
   // turn that ended abnormally.
@@ -1791,6 +1852,12 @@ export function reduceGgEvents(
   // agent's partition of the stream every prompt's pointers resolve against these.
   const messagePool = new Map<string, PooledMessage>();
   const prompts: PromptTurn[] = [];
+  // The program list, and the entry the turn in progress is filling in: opened by the
+  // turn's `prompt`, closed by the next `turn_started`, so an execution or an outcome
+  // from a turn that logged no prompt (a model-error turn) attaches to nothing rather
+  // than to the previous turn's program.
+  const programs: ProgramTurn[] = [];
+  let openProgram: ProgramTurn | null = null;
   // One per `turn_timing` — the turn's three-phase wall-clock split (see `TurnTiming`).
   const turnTimings: TurnTiming[] = [];
   // Per-function API call counts, keyed `object.function` (see `DerivedGgState.apiCalls`).
@@ -1910,6 +1977,13 @@ export function reduceGgEvents(
   // carries rather than under a guess at the arm's spelling.
   const apiCallName = (agentId: string, operation: string): string =>
     feedSpellings.get(agentId)?.get(operation) ?? operation;
+  // The feed index of each agent's most recent assistant-message row. A turn's
+  // `assistant_message` arrives before its `code_execution`, and only the latter knows
+  // whether healing rewrote the reply — so when it says so, the row already showing the
+  // program that ran is marked as healed in place, and the reply as sent lands beneath it.
+  // Keyed by the emitting agent: a subagent's turn interleaved with its parent's must not
+  // mark the parent's message.
+  const lastAgentRow = new Map<string, number>();
   const foldFeedRows = (
     event: HarnessEvent,
     index: number,
@@ -1957,13 +2031,25 @@ export function reduceGgEvents(
         // below is that turn's other half.
         case "code_execution":
           if (gg.healing?.original !== undefined) {
+            const strategies = gg.healing.strategies?.join(", ") ?? "healing";
+            // The assistant message above is the program that ran, not what the model
+            // sent: say so on the row itself, so a reader scanning the feed knows the
+            // text was rewritten before reaching the row that carries the original.
+            const agentRow = lastAgentRow.get(emitter);
+            if (agentRow !== undefined) {
+              const row = feed[agentRow]!;
+              feed[agentRow] = {
+                ...row,
+                args: `healed by ${strategies} — this is the program that ran; the reply as sent is below`,
+              };
+            }
             feed.push({
               ...base,
               label: "healed",
               detail: gg.healing.original,
               args: `sent as ${gg.healing.original.split("\n").length} line${
                 gg.healing.original.split("\n").length === 1 ? "" : "s"
-              }; ran after ${gg.healing.strategies?.join(", ") ?? "healing"}`,
+              }; ran after ${strategies}`,
               tone: "system",
               collapsible: true,
             });
@@ -1973,7 +2059,12 @@ export function reduceGgEvents(
     }
     // Everything else is a row of its own — or none — decided by the event alone.
     const row = toFeedRow(event, index, profileName);
-    if (row) feed.push(row);
+    if (row) {
+      feed.push(row);
+      if (event.type === "gg" && event.event.type === "assistant_message") {
+        lastAgentRow.set(emitter, feed.length - 1);
+      }
+    }
   };
 
   events.forEach((event, index) => {
@@ -2018,6 +2109,7 @@ export function reduceGgEvents(
         // which needs context visibility) so the turn count is exact whatever the
         // run's capabilities.
         turnCount += 1;
+        openProgram = null;
         break;
       case "turn_outcome": {
         // One model request/response cycle ended, and gg says how. This is the same
@@ -2025,6 +2117,11 @@ export function reduceGgEvents(
         // "how error-prone was this configuration?" answerable for a run no ceiling
         // stopped.
         errors.turns += 1;
+        if (openProgram) {
+          openProgram.errorKind = gg.error ?? null;
+          openProgram.errorType = gg.errorType ?? null;
+          openProgram.status = programStatusOf(gg.error);
+        }
         // `error` is present exactly when the outcome is an error, so the kind is what is
         // keyed on rather than the outcome — that keeps `errors` equal to the sum of the
         // per-kind counters by construction.
@@ -2253,6 +2350,31 @@ export function reduceGgEvents(
           cost: gg.cost ?? null,
           durationMs: gg.durationMs ?? null,
         });
+        openProgram = {
+          turn: prompts.length - 1,
+          responseId: gg.responseId ?? null,
+          status: "success",
+          error: null,
+          errorKind: null,
+          errorType: null,
+          executed: false,
+          logs: [],
+          durationMs: null,
+          finished: null,
+        };
+        programs.push(openProgram);
+        break;
+      case "code_execution":
+        // The turn's program ran (or was rejected before it could). The status is left to
+        // the outcome that follows, which carries the class; this is the message and the
+        // output.
+        if (openProgram) {
+          openProgram.executed = true;
+          openProgram.error = gg.error ?? null;
+          openProgram.logs = gg.logs ?? [];
+          openProgram.durationMs = gg.durationMs ?? null;
+          openProgram.finished = gg.finished ?? null;
+        }
         break;
       case "api_call":
         // One model-facing call, counted under gg's own identity for what it does — the
@@ -2591,6 +2713,7 @@ export function reduceGgEvents(
     contextActions,
     messagePool,
     prompts,
+    programs,
     turnTimings,
     skills,
     memory,

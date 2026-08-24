@@ -81,6 +81,7 @@ import {
 import { ContextFillGraph } from "./ContextFillGraph";
 import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
+import { ProgramsView } from "./ProgramsView";
 import { RequestMetricsGraphs } from "./RequestMetricsGraphs";
 import { CompactionView } from "./CompactionView";
 import { LinkIcon, ModulesIcon } from "./ggIcons";
@@ -814,6 +815,16 @@ function FileContent({
           />
         </div>
       );
+    case "programs":
+      return (
+        <div className={panels.panelBody}>
+          <ProgramsView
+            programs={state.programs}
+            pool={state.messagePool}
+            live={live}
+          />
+        </div>
+      );
     case "metrics":
       return (
         <div className={panels.panelBody}>
@@ -849,7 +860,7 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
           <span className={runExec.sectionLabel}>gg activity</span>
           <button
             type="button"
-            className={runExec.followButton}
+            className={cx(runExec.followButton, runExec.followButtonCompact)}
             data-active={following ? "" : undefined}
             aria-pressed={following}
             onClick={() => setFollowing((on) => !on)}

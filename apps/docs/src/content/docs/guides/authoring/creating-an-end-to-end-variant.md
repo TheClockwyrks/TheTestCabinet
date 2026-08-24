@@ -91,15 +91,17 @@ Declare one only when the variant genuinely changes what the starter project mus
 hold, and build it from the common one so the two stay identical everywhere they
 are not deliberately different.
 
-Under [manifest format 2](/testing/end-to-end/manifests/#manifest-formats) that
-is a `[workspaces]` table naming one directory per engine, and it replaces the
-case's whole table, so a variant that declares one covers every engine the case
-supports. Under format 1 it is the single `workspace` key.
+In a case that names [engines](/testing/end-to-end/manifests/#the-starter-project)
+that is a `[workspaces]` table naming one directory per engine, and it replaces
+the case's whole table, so a variant that declares one covers every engine the
+case supports. In an engineless case it is the single `workspace` key.
 
 Gyre needs one: its state carries the obstacle clock and both obstacles' live
 poses, and its debug API adds a `setObstacleClock` operation, so each
-`workspaces/gyre/<engine>/` is the matching `workspaces/base/<engine>/` plus those
-three additions and the constants naming the sway and spin figures.
+`workspaces/gyre/<engine>/` is the matching `workspaces/base/<engine>/` with the
+constants naming the sway and spin figures and a README pointing at the specs
+that state those additions. The state and the surface themselves are the
+build's to write under every engine.
 
 A variant that changes only the rules, and not the shape of the state or the
 debug surface, declares no starter project and seeds the common one.
@@ -124,8 +126,8 @@ none = "references/none/gyre"
 "simple-2d" = "references/simple-2d/gyre"
 
 # One starter project per engine, replacing the case's whole `[workspaces]` table
-# for runs of this variant. Under manifest format 1 this is a single `workspace`
-# key instead.
+# for runs of this variant. In an engineless case this is a single `workspace` key
+# instead.
 [workspaces]
 none = "workspaces/gyre/none"
 "simple-2d" = "workspaces/gyre/simple-2d"
@@ -154,8 +156,8 @@ variants = [
 ]
 ```
 
-Under [manifest format 2](/testing/end-to-end/manifests/#manifest-formats) a
-`script` path is relative to the engine's validator project, and the case ships
+In a case that names [engines](/testing/end-to-end/manifests/#the-starter-project)
+a `script` path is relative to the engine's validator project, and the case ships
 that suite under `validation/<engine>/` for every engine it supports. Resolution
 holds the declaration against each of them, so one declaration decides the point
 the same way whichever engine ran. See

@@ -65,18 +65,23 @@ returned `total`. The debounced search field, the filters, and column-header
 sort travel as query parameters, so filtering and sorting happen in the backend;
 changing any of them re-queries and returns to page 0.
 
-Every run listing carries the same filter bar: the free-text field, the equality
-facets its route does not already pin (test case, version, harness, and model),
-and a "Current versions only" toggle that is on by default. The facets exist
-because `q` alone is one substring matched across the recorded identity columns,
-so it can express neither one case together with one model nor a test-case
-version at all; each facet is its own server-side equality filter, so the facets
-narrow each other and the search. The toggle scopes every case's runs to its
-current `major.minor`, since a case version is frozen once it has runs and an
-older minor is a different spec whose runs are not comparable, and it steps
-aside when an exact version is picked. The whole state lives in the URL (`?q=`,
-`?case=`, `?version=`, `?harness=`, `?model=`, `?latest=0`, `?page=`), so a
-narrowed listing is a link someone else can open.
+The cross-case run listings carry the same filter bar: the free-text field, the
+equality facets its route does not already pin (test case, version, harness, and
+model), and a "Current versions only" toggle that is on by default. The facets
+exist because `q` alone is one substring matched across the recorded identity
+columns, so it can express neither one case together with one model nor a
+test-case version at all; each facet is its own server-side equality filter, so
+the facets narrow each other and the search. The toggle scopes every case's runs
+to its current `major.minor`, since a case version is frozen once it has runs
+and an older minor is a different spec whose runs are not comparable, and it
+steps aside when an exact version is picked. The whole state lives in the URL
+(`?q=`, `?case=`, `?version=`, `?harness=`, `?model=`, `?latest=0`, `?page=`),
+so a narrowed listing is a link someone else can open.
+
+A test case's own Runs tab keeps the free-text field and the harness and model
+facets, but scopes version, variant, and engine relative to the page's [anchored
+coordinate](/components/ui/overview/#the-case-detail-coordinate) instead of
+carrying the version facet and the toggle.
 
 Those listings draw from the [`state=any`](/components/backend/api/#get-runs)
 slice, so a produced run, unpublished and therefore unreviewed, sorts and pages
@@ -163,11 +168,12 @@ to a pre-filtered listing. The board holds the console stream's [`runs`
 topic](/components/backend/api/#topics) open while it is on screen, which is what
 keeps the tallies and verdicts moving as runs finish under it.
 
-The Runs page carries the global counterparts to a plan's halt on the trailing
-edge of its tab bar: Clear pending, Kill active, and Stop all. These are scoped
-to nothing, stopping the cabinet rather than one plan, so the two that discard
-work in progress confirm first, and all three report how many runs they actually
-cancelled.
+Every page of the runs section carries the global counterparts to a plan's halt
+on the trailing edge of its page header: Clear pending, Kill active, and Stop
+all. These are scoped to nothing, stopping the cabinet rather than one plan, so
+the two that discard work in progress confirm first, and all three report how
+many runs they actually cancelled. The section's tab bar holds its tabs alone,
+which is what keeps it on one row as tabs are added.
 
 ## Deployment
 

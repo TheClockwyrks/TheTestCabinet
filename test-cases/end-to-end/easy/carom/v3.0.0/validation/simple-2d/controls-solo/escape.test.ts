@@ -15,7 +15,8 @@
 // listens on, so the action is raised by the binding the case declares rather
 // than by anything this check reaches into.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -47,7 +48,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
 });
 
 it("pauses a live Solo match when Escape is pressed", async () => {
@@ -56,13 +57,13 @@ it("pauses a live Solo match when Escape is pressed", async () => {
 
   await captureReplay(h, "pause", async () => {
     await h.advance(LIVE_TICKS);
-    expect(h.snapshot().screen).toBe("playing");
+    assertEqual(h.snapshot().screen, "playing");
 
     await h.tap("Escape");
-    expect(h.snapshot().screen).toBe("paused");
+    assertEqual(h.snapshot().screen, "paused");
 
     // And it stays paused: the press opened a screen, it did not blink one.
     await h.advance(PAUSED_TICKS);
   });
-  expect(h.snapshot().screen).toBe("paused");
+  assertEqual(h.snapshot().screen, "paused");
 });

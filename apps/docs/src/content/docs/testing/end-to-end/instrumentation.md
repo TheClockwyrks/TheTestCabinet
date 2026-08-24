@@ -34,8 +34,15 @@ surface, so the reliability rules below apply in full.
 An engine supplies the same control and inspection as engine code. A run under
 an engine is driven by a [validator](/components/core/validation/) that
 constructs the engine itself and holds the build's state, events, and drawing
-context as live values, and the case declares only the scenario setup that is
-specific to its game.
+context as live values. The build still writes the whole debug surface the
+case's instrumentation spec states; the engine is only the route by which a
+check reaches it.
+
+The global handle below belongs to the engineless run alone. Under an engine the
+build's `initialize` returns its
+[debug surface](/components/core/engines/) beside its state, the engine hands
+that value back off its handle, and a check reads the scenario operations from
+there, so the page the build draws on carries no handle.
 
 ## The reliability principle
 
@@ -68,8 +75,8 @@ to land in the second category, three ways.
   automatically. A model unreliable in a mechanic tends to be unreliable in
   reporting it, and the mismatch is the failure.
 
-Instrumentation attacks the objective half of a review, which is the half that
-is expensive to verify by hand. The subjective half stays with the reviewer (see
+Instrumentation decides the checklist, which is the part of a review that is
+expensive to verify by hand. The per-domain ratings stay with the reviewer (see
 [Human judgement](#human-judgement)).
 
 ## The debug API
@@ -271,14 +278,17 @@ an unambiguous fact, sets the item's verdict.
 A case marks a whole review item, or an individual sub-item, as an
 [automatically validated](/testing/end-to-end/manifests/#automated-validation)
 verdict unit by pointing it at a debug script that drives the declared handle.
-Per run, validation drives that script against the model's build to decide it
-and synthesize its actual media. The baseline half of the side-by-side is the
-same script driven against the case's reference implementation, a fixed property
-of the case version, so it is synthesized once by
+Per run, validation drives that script — or, under an
+[engine](/components/core/engines/), runs the case's validator suite — against
+the model's build to decide it and synthesize its actual media. The baseline
+half of the side-by-side is the same thing run against the case's reference
+implementation for that engine, a fixed property of the case version, so it is
+synthesized once by
 [`tcab capture-baselines`](/components/cli/overview/#commands) and committed
-under the version folder at `validation-baseline/<variant>/`. Run that command
-whenever you add or change a script, or change the reference implementation it
-drives; it needs only the case's toolchain and a browser.
+under the version folder at `validation-baseline/<engine>/<variant>/`. Run that
+command whenever you add or change a script or a validator suite, or change the
+reference implementation it runs against; it needs only the case's toolchain,
+and a browser for a case decided by browser scripts.
 
 Even for an item left to human judgement, the same instrumentation earns its
 place: the debug overlay gives a reviewer a read-only window into ground truth,
@@ -286,10 +296,10 @@ and the debug API gives the model a way to verify its own build.
 
 ## Human judgement
 
-Instrumentation makes the objective half of a review cheap and leaves the
-subjective half alone. Whether the art direction is coherent, whether the motion
+Instrumentation decides every checklist item and leaves the subjective
+judgement alone. Whether the art direction is coherent, whether the motion
 and audio feel right, and whether the game is enjoyable remain a human
-judgement. They are the [scoring
+judgement; behavior is never something a reviewer is asked to decide. They are the [scoring
 domains](/testing/end-to-end/evaluation/#review) rated on the
 flawless-to-broken scale, and the review a person writes is what frames a
 published run. Instrumentation also cannot catch a bug living in a subsystem

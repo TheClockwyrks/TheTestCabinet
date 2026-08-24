@@ -4,8 +4,8 @@ title: Diagnostics and Overlay
 
 A build that names the values a reviewer would otherwise read off the pixels: a
 phase, a score, a position, and a derived speed. Each is registered once during
-initialization as a function over the state the game is about to run, and the
-same values are readable from outside the page while the game runs.
+initialization as a function over the state, and the same values are readable
+from outside the page while the game runs.
 
 ## index.html
 
@@ -60,91 +60,93 @@ import type {
   RenderApi,
   UpdateApi,
 } from "@test-cabinet/simple-2d";
+import type { DeepReadonly } from "ts-essentials";
 
 const BALL = 8;
 const SPEED = 220;
 
 interface Ball {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
 }
 
 export interface RallyState {
-  phase: "serve" | "rally";
-  serveIn: number;
-  ball: Ball;
-  score: { left: number; right: number };
-  fps: number;
+  readonly phase: "serve" | "rally";
+  readonly serveIn: number;
+  readonly ball: Ball;
+  readonly score: { readonly left: number; readonly right: number };
+  readonly fps: number;
 }
 
 function serve(
-  state: RallyState,
+  state: DeepReadonly<RallyState>,
   width: number,
   height: number,
   vx: number,
-): void {
-  state.phase = "serve";
-  state.serveIn = 1;
-  state.ball = { x: width / 2, y: height / 2, vx, vy: SPEED / 2 };
+): RallyState {
+  return {
+    ...state,
+    phase: "serve",
+    serveIn: 1,
+    ball: { x: width / 2, y: height / 2, vx, vy: SPEED / 2 },
+  };
 }
 
-export const rally: Game<RallyState> = {
-  initialize(api: InitApi): RallyState {
+export const rally: Game<RallyState, null> = {
+  initialize(api: InitApi<RallyState>): [RallyState, null] {
     const { width, height } = api.viewport();
-    const state: RallyState = {
-      phase: "serve",
-      serveIn: 1,
-      ball: { x: width / 2, y: height / 2, vx: SPEED, vy: SPEED / 2 },
-      score: { left: 0, right: 0 },
-      fps: 0,
-    };
 
-    api.diagnostics.register("phase", () => state.phase);
-    api.diagnostics.register(
-      "score",
-      () => `${state.score.left} - ${state.score.right}`,
-    );
-    api.diagnostics.register("ball", () => ({
-      x: state.ball.x,
-      y: state.ball.y,
-    }));
-    api.diagnostics.register("speed", () =>
-      Math.hypot(state.ball.vx, state.ball.vy),
-    );
-    api.diagnostics.register("fps", () => state.fps);
+    api.diagnostics.register("phase", (s) => s.phase);
+    api.diagnostics.register("score", (s) => `${s.score.left} - ${s.score.right}`);
+    api.diagnostics.register("ball", (s) => ({ x: s.ball.x, y: s.ball.y }));
+    api.diagnostics.register("speed", (s) => Math.hypot(s.ball.vx, s.ball.vy));
+    api.diagnostics.register("fps", (s) => s.fps);
 
-    return state;
+    return [
+      {
+        phase: "serve",
+        serveIn: 1,
+        ball: { x: width / 2, y: height / 2, vx: SPEED, vy: SPEED / 2 },
+        score: { left: 0, right: 0 },
+        fps: 0,
+      },
+      null,
+    ];
   },
 
-  update(state: RallyState, api: UpdateApi, dt: number): void {
+  update(state: DeepReadonly<RallyState>, api: UpdateApi, dt: number): RallyState {
     const { width, height } = api.viewport();
-    const ball = state.ball;
-
-    state.fps = Math.round(1000 / Math.max(api.frame().lastDeltaMs, 1));
+    const fps = Math.round(1000 / Math.max(api.frame().lastDeltaMs, 1));
 
     if (state.phase === "serve") {
-      state.serveIn -= dt;
-      if (state.serveIn > 0) return;
-      state.phase = "rally";
+      const serveIn = state.serveIn - dt;
+      if (serveIn > 0) return { ...state, fps, serveIn };
     }
 
-    ball.x += ball.vx * dt;
-    ball.y += ball.vy * dt;
+    const x = state.ball.x + state.ball.vx * dt;
+    const y = state.ball.y + state.ball.vy * dt;
+    const vy = y < BALL || y > height - BALL ? -state.ball.vy : state.ball.vy;
+    const moved: RallyState = {
+      ...state,
+      phase: "rally",
+      fps,
+      ball: { ...state.ball, x, y, vy },
+    };
 
-    if (ball.y < BALL || ball.y > height - BALL) ball.vy = -ball.vy;
-
-    if (ball.x < BALL) {
-      state.score.right += 1;
-      serve(state, width, height, SPEED);
-    } else if (ball.x > width - BALL) {
-      state.score.left += 1;
-      serve(state, width, height, -SPEED);
+    if (x < BALL) {
+      const score = { ...moved.score, right: moved.score.right + 1 };
+      return serve({ ...moved, score }, width, height, SPEED);
     }
+    if (x > width - BALL) {
+      const score = { ...moved.score, left: moved.score.left + 1 };
+      return serve({ ...moved, score }, width, height, -SPEED);
+    }
+    return moved;
   },
 
-  render(state: RallyState, api: RenderApi): void {
+  render(state: DeepReadonly<RallyState>, api: RenderApi): void {
     const { ctx } = api;
     ctx.fillStyle = "#7fd1ff";
     ctx.beginPath();
@@ -156,18 +158,18 @@ export const rally: Game<RallyState> = {
 
 ## Sources over the state
 
-Each source closes over the `state` object `initialize` is about to return,
-which is the same value every frame reads and writes. The engine evaluates the
-sources on each read, so a line reports what the game holds at that instant
-rather than what it held at registration.
+Each source takes the state and reads off it. The engine evaluates the sources
+on each read, handing each one the state current at that moment, so a line
+reports what the game holds at that instant rather than the opening value
+`initialize` returned. `InitApi<RallyState>` is what types the argument.
 
 The five sources cover the shapes the overlay formats. A string prints as
 itself, an integer prints whole, a non-integer prints to three decimal places,
 and a small object prints as JSON.
 
-`fps` comes from the frame counter, so `update` captures it into the state and
-the source reads the field. `api.frame()` belongs to the frame the counter
-describes, and the source runs after that frame's render.
+`fps` comes from the frame counter, so `update` carries it in the state it
+returns and the source reads the field. `api.frame()` belongs to the frame the
+counter describes, and the source runs after that frame's render.
 
 ## Reading the values back
 
@@ -177,5 +179,5 @@ bindings.
 
 A check reads the same values by holding the engine rather than the page. It
 constructs the engine over this build's `rally` module, steps it with
-`engine.advance`, and reads `state` directly, so what it asserts on is the
-object the sources close over.
+`engine.advance`, and reads `engine.state`, so what it asserts on is the value
+the sources are handed.

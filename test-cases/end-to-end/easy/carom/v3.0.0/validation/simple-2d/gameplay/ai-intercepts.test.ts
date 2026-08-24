@@ -1,11 +1,15 @@
 // gameplay/ai-intercepts — the Solo opponent is competent.
 //
-// The REAL AI is handed control of its paddle and faced with a shot arriving a
-// moderate distance from where it starts: a noticeable but coverable gap at its
-// own movement speed. Its own tracking decides the outcome — nothing here poses
-// the AI's motion — and a reachable shot must be blocked.
+// The REAL AI is handed control of its paddle and faced with a level shot
+// arriving 200 units from where its center starts. Under the rule
+// (specs/modes/single-player.md) the target is the ball's own height, the
+// paddle closes the gap at AI_SPEED in 200 / 560 = 0.36 s, and the shot takes
+// (P2_X0 - BALL_R - 640) / 520 = 1.09 s to arrive, so the paddle is waiting on
+// the ball's line with most of a second to spare and must block it. Its own
+// tracking decides the outcome; nothing here poses the AI's motion.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   arrangeAiScenario,
   captureReplay,
@@ -36,7 +40,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("tracks down a reachable shot and blocks it", async () => {
@@ -48,5 +52,5 @@ it("tracks down a reachable shot and blocks it", async () => {
     return outcome;
   });
 
-  expect(result).toBe("blocked");
+  assertEqual(result, "blocked");
 });

@@ -1,0 +1,41 @@
+// Carom — navigation/space-confirms: Space confirms a menu item.
+//
+// One transition of the menu state machine specs/ui.md fixes. It starts from
+// the title, which `reset()` restores with `menuIndex` at 0. `confirm` is bound
+// to both Enter and Space (BINDINGS), and this drives the second. Every key is
+// a real key event dispatched at the target the engine listens on, so the
+// action is raised by the binding the case declares, and the result is read
+// back off the game's own state. The still is the frame the press left.
+
+import { afterEach, beforeEach, it } from "vitest";
+import { BINDINGS, TITLE_ITEMS } from "../../src/constants";
+import { assertContains, assertEqual } from "../assert";
+import {
+  captureStill,
+  createHarness,
+  menuIndex0,
+  type Harness,
+} from "../harness";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("opens the how-to screen when Space confirms the third title item", async () => {
+  h.debug.reset();
+  assertContains(BINDINGS.confirm, "Space");
+  assertEqual(TITLE_ITEMS[2], "HOW TO PLAY");
+  await h.tap("ArrowDown");
+  await h.tap("ArrowDown");
+  assertEqual(menuIndex0(h), 2);
+  await h.tap("Space");
+  captureStill(h, "howto");
+
+  assertEqual(h.snapshot().screen, "howto");
+});

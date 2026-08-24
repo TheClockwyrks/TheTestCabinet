@@ -45,7 +45,7 @@
 //! runs here at all.
 //!
 //! The programs below do call the SDK, and that is deliberate rather than incidental: `gg.log` and
-//! `files.readTextFile` are what a model writes, so a substrate proven with them is a substrate proven
+//! `files.readFile` are what a model writes, so a substrate proven with them is a substrate proven
 //! through the prebuilt `gg` module, the `import gg` the program itself writes and the `-I` that
 //! resolves it — every part of the arrangement a call really travels.
 //!
@@ -296,15 +296,15 @@ gg.log("short \(short.joined(separator: ","))")
 
 #[test]
 fn a_swift_program_dispatches_a_real_call_through_the_membrane() {
-    // `files.readTextFile` takes a string and hands one back, which is the shortest round trip this arm
-    // has through the membrane. What it proves is that a Swift program's arguments are lowered, that
+    // `files.readFile` takes a string and hands back a typed read, which is the shortest round
+    // trip this arm has through the membrane. What it proves is that a Swift program's arguments are lowered, that
     // gg's host dispatches the tool, and that what comes back is a value the program can compute
     // with — through the SDK a model really writes against, reached by the import it wrote itself.
     let program = r#"import gg
 
 do {
-    let contents = try files.readTextFile("notes.md")
-    let firstLine = contents.split(separator: "\n").first.map(String.init) ?? ""
+    guard case .text(let file) = try files.readFile("notes.md") else { fatalError("a picture") }
+    let firstLine = file.contents.split(separator: "\n").first.map(String.init) ?? ""
     gg.log("read \(firstLine.uppercased())")
 } catch let failure as core.ApiError where failure.code == .notFound {
     gg.log("no file")
@@ -312,7 +312,7 @@ do {
 "#;
     let (outcome, calls) = evaluate(
         &prepare(program),
-        &[crate::sandbox::operations::FILES_READ_TEXT_FILE],
+        &[crate::sandbox::operations::FILES_READ_FILE],
         RunEnding::None,
         false,
         canned_outcome,
@@ -662,7 +662,8 @@ fn a_code_module_writes_the_same_import_line_a_program_does() {
         source: "import gg
 
 public func show(_ path: String) throws {
-    try views.openText(path, body: try files.readTextFile(path))
+    guard case .text(let file) = try files.readFile(path) else { return }
+    try views.openText(path, body: file.contents)
 }
 "
         .to_string(),
@@ -863,7 +864,8 @@ struct Summary {
     var line: String { "\(path): \(characters) characters" }
 }
 
-let notes = try files.readTextFile("notes.md")
+guard case .text(let file) = try files.readFile("notes.md") else { fatalError("a picture") }
+let notes = file.contents
 let summary = Summary(path: "notes.md", characters: notes.count)
 gg.log(summary.line)
 try views.openText("notes", body: notes)
@@ -917,12 +919,12 @@ fn g8_a_runtime_failure_reaches_the_model() {
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 import gg
 
-let text = try files.readTextFile(
+let text = try files.readFile(
     "missing.md"
 )
-gg.log(text)
+gg.log("\(text)")
 "#,
-                names: &["read_text_file", "not-found", "missing.md"],
+                names: &["read_file", "not-found", "missing.md"],
                 located: Located::At("main.swift:4:"),
                 answered: Answered::AtRuntime,
                 recorded: Some(TurnErrorType::SandboxTrap),

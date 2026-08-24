@@ -116,6 +116,17 @@ function testCaseDetail(slug: string): TestCaseDetail {
     description: "A case the smoke test renders.",
     changelog: [{ version: "v2.0.0", body: "Initial." }],
     errata: [],
+    // Two versions and two engines, so the header's version and engine
+    // selectors are actually rendered on the walk rather than hidden as a
+    // single-choice case.
+    enginesByVersion: {
+      "v2.0.0": ["none", "simple-2d"],
+      "v1.0.0": ["none"],
+    },
+    variantsByVersion: {
+      "v2.0.0": [{ slug: "base", name: "Base" }],
+      "v1.0.0": [{ slug: "base", name: "Base" }],
+    },
     domains: [{ id: "approach", name: "Approach", description: null }],
     variants: [
       {
@@ -253,6 +264,15 @@ export function stockedGallery(runId: string): GalleryDataInput {
     testCases: testCases(),
     testCasesStatus: "ready",
     readTestCase: (slug) => Promise.resolve(testCaseDetail(slug)),
+    // The run Inputs tab resolves a run's OWN case version and engine through this
+    // rather than through the case catalog, so a stocked host has to answer it or
+    // the walk would only ever see that tab's empty state.
+    readCaseVariant: (ref) =>
+      Promise.resolve(
+        testCaseDetail(ref.slug)?.variants.find(
+          (variant) => variant.slug === ref.variant,
+        ) ?? null,
+      ),
     models: models(),
     modelsStatus: "ready",
     canExecute: true,
@@ -278,6 +298,7 @@ export function emptyGallery(_runId: string): GalleryDataInput {
     testCases: [],
     testCasesStatus: "ready",
     readTestCase: () => Promise.resolve(null),
+    readCaseVariant: () => Promise.resolve(null),
     models: [],
     modelsStatus: "ready",
     canExecute: true,
@@ -314,6 +335,10 @@ function backendClient(): BackendClient {
         storeReady: true,
       }),
     listModels: () => Promise.resolve([]),
+    // The Probes tab lists a model's probes on mount; with no probes it never
+    // reads a detail, so the detail read can refuse.
+    listModelProbes: () => Promise.resolve([]),
+    getModelProbe: () => Promise.reject(new Error("no probes in the fixture")),
     listTestCases: () => Promise.resolve([]),
     listVersions: () => Promise.resolve(["v2.0.0"]),
     resolveVersion: () => Promise.resolve(null),

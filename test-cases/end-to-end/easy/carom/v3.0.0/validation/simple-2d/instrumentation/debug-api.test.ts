@@ -1,40 +1,57 @@
-// Carom — instrumentation/debug-api: the debug and automation surface is present,
-// whole, and really backed by the state the build declared.
+// Carom — instrumentation/debug-api: the build returned its debug and automation
+// surface beside its state, and that surface is whole and really backed by the
+// state the build declared.
 //
-// `src/debug.ts` is the case's own module, so the operations exist in every build
-// by construction. What this item establishes is the half that is the build's:
-// that `CaromState` still holds what the surface reads and poses. A build that
-// hollowed out a field, renamed one, or stopped honouring the driver's hold over
-// the paddles produces a surface that is present and useless, and that is what a
-// snapshot read off a real, driven match catches.
+// TWO HALVES, AND BOTH ARE THE BUILD'S.
 //
-// The clock, the keyboard, and the overlay are the runtime's under this runtime, so
-// `window.__carom` carries no operation for any of them (specs/instrumentation.md
-// strikes `step`, `setAutoStep`, `keyDown`, `keyUp` and `press`), and demanding
-// them here would fail a perfectly conformant build. What remains is the list
-// below: the reads, and the control operations that pose a scenario in the game's
-// own world.
+// The first is the surface itself. specs/instrumentation.md specifies every
+// operation, and the build implements them and returns the finished surface
+// from `initialize`, beside the state, as `[state, debug]`. The runtime holds
+// the second element and returns it from `engine.debug`, and nothing else can
+// reach a check: a build that returned no surface leaves `engine.debug` with
+// nothing to hand over. That is what the first check below establishes, reading
+// the surface off the runtime the harness constructed, and the second holds it
+// to the version and the operation list the specification fixes.
+//
+// The second half is the state behind it. An operation that exists but reads a
+// field the build hollowed out, or poses one the game ignores, is a surface that
+// is present and useless, and that is what a snapshot read off a real, driven
+// match catches.
+//
+// The clock, the keyboard, and the overlay are the engine's under this engine,
+// so the surface carries no operation for any of them (specs/instrumentation.md),
+// and demanding one here would fail a perfectly conformant build. What it does
+// carry is the list in `surface.ts`: the reads, and the control operations that
+// pose a scenario in the game's own world.
 //
 // Every other automated item drives this surface to pose its own scenario, so a
-// state the build reshaped also shows up as those items failing to run. This one
-// names the fault plainly.
+// missing surface or a state the build reshaped also shows up as those items
+// failing to run. This one names the fault plainly.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY, HOLD_TIME } from "../../src/constants";
-import { CAROM_DEBUG_VERSION } from "../../src/debug";
-import { createHarness, startPlaying, type Harness } from "../harness";
-
-/** Every operation the surface must carry under this runtime. */
-const REQUIRED_OPS = [
-  "reset",
-  "snapshot",
-  "startMatch",
-  "serve",
-  "setScore",
-  "setPaddle",
-  "setBall",
-  "setAiControl",
-] as const;
+import {
+  assertCloseTo,
+  assertContains,
+  assertDeepEqual,
+  assertDoesNotThrow,
+  assertEqual,
+  assertGreaterThan,
+  assertHasProperty,
+  assertLessThanOrEqual,
+  assertNotEqual,
+  assertNotNull,
+  assertNull,
+} from "../assert";
+import {
+  ball0,
+  captureStill,
+  createHarness,
+  holdTimer0,
+  startPlaying,
+  type Harness,
+} from "../harness";
+import { CAROM_DEBUG_VERSION, REQUIRED_OPS } from "../surface";
 
 let h: Harness;
 
@@ -43,61 +60,101 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  h.dispose();
+  h?.dispose();
+});
+
+it("returns its debug surface beside its state from initialize", () => {
+  // `engine.debug` is whatever the build's `initialize` returned as the second
+  // element of `[state, debug]`, so reading it is the check: there is no page
+  // property to look for and nothing the harness could have supplied in the
+  // build's place. A build that returned `null` there has no surface.
+  assertDoesNotThrow(() => h.engine.debug);
+  assertNotNull(h.engine.debug);
+
+  // The runtime returns the value the game handed over, unchanged and unwrapped,
+  // so every read is the same object. It is the one the rest of this suite —
+  // and every other check in this directory — poses the game through: `h.debug`
+  // drives this object over the runtime, running each pose through
+  // `engine.apply` and handing `engine.state` to each reading.
+  assertEqual(h.engine.debug, h.engine.debug);
+  assertEqual(typeof h.engine.debug, "object");
 });
 
 it("carries a version and every required operation, as functions", () => {
-  const api = h.debug as unknown as Record<string, unknown>;
+  const api = h.engine.debug as unknown as Record<string, unknown>;
 
-  expect(typeof api.version).toBe("number");
-  expect(api.version).toBe(CAROM_DEBUG_VERSION);
+  assertEqual(typeof api.version, "number");
+  assertEqual(api.version, CAROM_DEBUG_VERSION);
   for (const op of REQUIRED_OPS) {
-    expect(typeof api[op]).toBe("function");
+    assertEqual(typeof api[op], "function");
   }
+});
+
+it("writes its operations in the shape of update: state in, state out", () => {
+  // The runtime hands the state out read-only and holds it by value, so an
+  // operation that mutated what it was given would change nothing the next
+  // frame sees. A pose returns the next state; a reading returns what it read;
+  // and neither writes to the state it was handed. The snapshot is read off
+  // the runtime's current value, and a pose is run through `engine.apply`.
+  const api = h.engine.debug;
+  const before = h.engine.state;
+
+  const snapshot = api.snapshot(before);
+  assertEqual(typeof snapshot, "object");
+  assertEqual(snapshot.screen, "title");
+
+  const posed = api.startMatch(before, "versus");
+  assertNotEqual(posed, undefined, "startMatch must return the next state");
+  assertNotEqual(posed, before);
+  // The runtime's state is untouched until a transition is applied…
+  assertEqual(api.snapshot(h.engine.state).screen, "title");
+  // …and the posed value is what it holds once one is.
+  h.engine.apply(() => posed);
+  assertEqual(h.snapshot().screen, "countdown");
 });
 
 it("reports the whole documented snapshot shape, from a live match", async () => {
   await startPlaying(h, "versus");
   await h.advance(36); // 0.3 s of real flight, so the reads are of live play
+  // The frame the snapshot below is read off: what the surface reports and what
+  // the build drew, at the same instant, so the two can be held against each other.
+  captureStill(h, "state");
 
   const snapshot = h.snapshot();
 
-  expect(typeof snapshot.version).toBe("number");
-  expect([
-    "title",
-    "howto",
-    "countdown",
-    "playing",
-    "paused",
-    "matchover",
-  ]).toContain(snapshot.screen);
-  expect(["solo", "versus"]).toContain(snapshot.mode);
-  expect(typeof snapshot.score.p1).toBe("number");
-  expect(typeof snapshot.score.p2).toBe("number");
-  expect(snapshot).toHaveProperty("winner");
-  expect(typeof snapshot.muted).toBe("boolean");
+  assertEqual(typeof snapshot.version, "number");
+  assertContains(
+    ["title", "howto", "countdown", "playing", "paused", "matchover"],
+    snapshot.screen,
+  );
+  assertContains(["solo", "versus"], snapshot.mode);
+  assertEqual(typeof snapshot.score.p1, "number");
+  assertEqual(typeof snapshot.score.p2, "number");
+  assertHasProperty(snapshot, "winner");
+  assertEqual(typeof snapshot.muted, "boolean");
 
   for (const side of ["left", "right"] as const) {
-    expect(typeof snapshot.paddles[side].cy).toBe("number");
-    expect(typeof snapshot.paddles[side].vy).toBe("number");
+    assertEqual(typeof snapshot.paddles[side].cy, "number");
+    assertEqual(typeof snapshot.paddles[side].vy, "number");
   }
 
   for (const field of ["x", "y", "vx", "vy", "speed", "spin"] as const) {
-    expect(typeof snapshot.ball[field]).toBe("number");
+    assertEqual(typeof ball0(snapshot)[field], "number");
   }
-  expect(typeof snapshot.ball.held).toBe("boolean");
-  expect(typeof snapshot.simTime).toBe("number");
+  assertEqual(typeof ball0(snapshot).held, "boolean");
+  assertEqual(typeof snapshot.simTime, "number");
 
   // Live values, not a shape filled with zeroes: the ball is in flight, so it is
   // no longer held and it is moving at the speed its serve gave it.
-  expect(snapshot.screen).toBe("playing");
-  expect(snapshot.ball.held).toBe(false);
-  expect(snapshot.ball.speed).toBeGreaterThan(0);
-  expect(snapshot.ball.speed).toBeCloseTo(
-    Math.hypot(snapshot.ball.vx, snapshot.ball.vy),
+  assertEqual(snapshot.screen, "playing");
+  assertEqual(ball0(snapshot).held, false);
+  assertGreaterThan(ball0(snapshot).speed, 0);
+  assertCloseTo(
+    ball0(snapshot).speed,
+    Math.hypot(ball0(snapshot).vx, ball0(snapshot).vy),
     6,
   );
-  expect(snapshot.simTime).toBeGreaterThan(0);
+  assertGreaterThan(snapshot.simTime, 0);
 });
 
 it("poses the game through the state the build declared", async () => {
@@ -105,31 +162,31 @@ it("poses the game through the state the build declared", async () => {
   h.debug.startMatch("versus");
   await h.advance(1);
   const opened = h.snapshot();
-  expect(opened.screen).toBe("countdown");
-  expect(opened.ball.held).toBe(true);
-  expect(h.state.holdTimer).toBeGreaterThan(0);
-  expect(h.state.holdTimer).toBeLessThanOrEqual(HOLD_TIME);
+  assertEqual(opened.screen, "countdown");
+  assertEqual(ball0(opened).held, true);
+  assertGreaterThan(holdTimer0(h), 0);
+  assertLessThanOrEqual(holdTimer0(h), HOLD_TIME);
 
   // A posed paddle stays where it was put, and a posed velocity persists across
   // frames rather than being a one-frame nudge.
   h.debug.setPaddle("left", { cy: 200, vy: 0 });
   h.debug.setPaddle("right", { cy: 500, vy: 0 });
   await h.advance(24);
-  expect(h.snapshot().paddles.left.cy).toBeCloseTo(200, 3);
-  expect(h.snapshot().paddles.right.cy).toBeCloseTo(500, 3);
+  assertCloseTo(h.snapshot().paddles.left.cy, 200, 3);
+  assertCloseTo(h.snapshot().paddles.right.cy, 500, 3);
 
   // A posed score is the score.
   h.debug.setScore(3, 4);
   await h.advance(1);
-  expect(h.snapshot().score).toEqual({ p1: 3, p2: 4 });
+  assertDeepEqual(h.snapshot().score, { p1: 3, p2: 4 });
 
   // And a reset returns the whole of it to the title.
   h.debug.reset();
   await h.advance(1);
   const title = h.snapshot();
-  expect(title.screen).toBe("title");
-  expect(title.score).toEqual({ p1: 0, p2: 0 });
-  expect(title.winner).toBeNull();
-  expect(title.paddles.left.cy).toBeCloseTo(FIELD_CY, 3);
-  expect(title.paddles.right.cy).toBeCloseTo(FIELD_CY, 3);
+  assertEqual(title.screen, "title");
+  assertDeepEqual(title.score, { p1: 0, p2: 0 });
+  assertNull(title.winner);
+  assertCloseTo(title.paddles.left.cy, FIELD_CY, 3);
+  assertCloseTo(title.paddles.right.cy, FIELD_CY, 3);
 });

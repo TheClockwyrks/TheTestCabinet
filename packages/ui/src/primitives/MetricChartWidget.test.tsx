@@ -80,6 +80,65 @@ describe("meanBars — the harness split", () => {
   });
 });
 
+describe("meanBars — the subgroup split", () => {
+  // The optional extra grouping axis: the metrics tab passes the run's engine
+  // when a case's charts are widened across engines.
+  const engineOf = (r: RunSummary) => {
+    const slug =
+      (r.subject as unknown as { engineSlug?: string }).engineSlug ?? "none";
+    return { key: slug, label: slug === "none" ? "None" : slug };
+  };
+  const withEngine = (
+    harness: string,
+    model: string,
+    engineSlug: string,
+    tokens: number,
+  ): RunSummary =>
+    ({
+      subject: { harnessSlug: harness, modelId: model, engineSlug },
+      metrics: { tokens },
+    }) as unknown as RunSummary;
+
+  it("keeps one pair's runs under two subgroups as two labelled bars", () => {
+    // Runs under different engines measure different work, so a widened chart
+    // splits them per engine rather than blending a 300/3000 mean.
+    const bars = meanBars(
+      [
+        withEngine("pi", "anthropic/claude-opus-4.8", "none", 300),
+        withEngine("pi", "anthropic/claude-opus-4.8", "simple-2d", 3000),
+      ],
+      value,
+      fmt,
+      undefined,
+      undefined,
+      engineOf,
+    );
+    expect(bars).toHaveLength(2);
+    const byLabel = new Map(bars.map((b) => [b.label, b.value]));
+    expect(byLabel.get("anthropic/claude-opus-4.8 · pi · None")).toBe(300);
+    expect(byLabel.get("anthropic/claude-opus-4.8 · pi · simple-2d")).toBe(
+      3000,
+    );
+  });
+
+  it("still averages runs sharing the pair AND the subgroup", () => {
+    const bars = meanBars(
+      [
+        withEngine("pi", "anthropic/claude-opus-4.8", "simple-2d", 200),
+        withEngine("pi", "anthropic/claude-opus-4.8", "simple-2d", 400),
+      ],
+      value,
+      fmt,
+      undefined,
+      undefined,
+      engineOf,
+    );
+    expect(bars).toHaveLength(1);
+    expect(bars[0]?.label).toBe("anthropic/claude-opus-4.8 · pi · simple-2d");
+    expect(bars[0]?.value).toBe(300);
+  });
+});
+
 describe("runBars — the harness split", () => {
   it("labels every per-run bar with its (model, harness) pair", () => {
     const bars = runBars(

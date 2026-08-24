@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { RATING_META, RATINGS, type Rating } from "../ratings";
 import { ChartWidget } from "./ChartWidget";
+import { orderBars, type ChartSort, type ChartTieBreak } from "./chartSort";
 import { stackedBarChart, type StackedBarSegment } from "./plot/charts";
 import type { ChartPalette } from "./plot/theme";
 
@@ -36,6 +37,15 @@ interface RatingsChartWidgetProps {
   models: readonly RatingCounts[];
   /** Name of the variant, for the empty-state message. */
   variantName: string;
+  /**
+   * The bar order. Defaults to `alphabetical`; `best` puts the highest mean
+   * rating first (flawless counts 0, broken 4, so the lowest mean wins).
+   */
+  sort?: ChartSort;
+  /** Mean points per bar label, splitting `best`-order ties. */
+  tieBreak?: ChartTieBreak;
+  /** Controls for the widget header's trailing edge (e.g. the order control). */
+  actions?: ReactNode;
 }
 
 // Reads the live rating colors from the theme, falling back to the static hexes
@@ -84,6 +94,22 @@ function ratingSegments(models: readonly RatingCounts[]): StackedBarSegment[] {
   });
 }
 
+// A model's mean rating across its runs, expressed as the mean RANK on the
+// best-to-worst `RATINGS` scale (flawless 0 … broken 4) — so a LOWER mean is a
+// better model, and the `best` order is an ascending sort like cost and tokens.
+// Null for a model with no rated runs at all, which sorts last.
+//
+// Exported for tests (the direction of the scale is easy to invert by accident).
+export function meanRatingRank(model: RatingCounts): number | null {
+  let weighted = 0;
+  let runs = 0;
+  RATINGS.forEach((rating, rank) => {
+    weighted += rank * model.counts[rating];
+    runs += model.counts[rating];
+  });
+  return runs === 0 ? null : weighted / runs;
+}
+
 // Integer-only y ticks: counts are whole numbers, so a fractional tick (0.5) is
 // meaningless. Labelling only integers keeps the axis honest without forcing an
 // explicit tick count.
@@ -100,12 +126,31 @@ export function RatingsChartWidget({
   title,
   models,
   variantName,
+  sort = "alphabetical",
+  tieBreak,
+  actions,
 }: RatingsChartWidgetProps) {
-  const segments = useMemo(() => ratingSegments(models), [models]);
+  // The models in the chosen order. Both the segment rows and the chart's x
+  // domain are built from it — Plot sorts a domain it infers itself, so the
+  // order has to be stated or it is silently overridden.
+  const ordered = useMemo(
+    () =>
+      orderBars(
+        models,
+        sort,
+        (model) => model.label,
+        meanRatingRank,
+        "lower",
+        tieBreak,
+      ),
+    [models, sort, tieBreak],
+  );
+  const segments = useMemo(() => ratingSegments(ordered), [ordered]);
+  const order = useMemo(() => ordered.map((model) => model.label), [ordered]);
 
   // Rating colors are read from the theme when <Chart> invokes the spec on the
-  // client, so the chart tracks a live theme swap. Memoized on the segments so
-  // it only re-plots when the data changes.
+  // client, so the chart tracks a live theme swap. Memoized on the segments and
+  // their order so it only re-plots when the data or the order changes.
   const spec = useMemo(
     () => (palette: ChartPalette) => {
       const colors = readRatingColors();
@@ -117,15 +162,17 @@ export function RatingsChartWidget({
         y: "runs",
         yTickFormat: integerTick,
         xTickRotate: LABEL_ROTATE,
+        xDomain: order,
       });
     },
-    [segments],
+    [segments, order],
   );
 
   return (
     <ChartWidget
       title={title}
       chartTitle={`${title} by model`}
+      actions={actions}
       spec={models.length === 0 ? undefined : spec}
       empty={`No reviewed runs of ${variantName} yet — ratings appear once runs have been reviewed.`}
     />

@@ -24,12 +24,12 @@ use crate::context::{ArchiveHit, ArchiveSearch, MessageRole, ReclaimReport};
 use crate::core::ApiError;
 use crate::delegation::{AgentStatus, Brief, SubagentHandle, SubagentResult};
 use crate::docs::{DocHit, DocKind, DocSearch};
-use crate::files::{DirEntry, EntryKind, FileRead, ImageFile, ReadOptions, TextFile};
+use crate::files::{DirEntry, EntryKind, FileRead, ImageFile, ReadOptions, SearchMatch, TextFile};
 use crate::memories::{MemoryHit, MemoryUsage};
 use crate::programs::ProgramSummary;
 use crate::shell::ShellOutput;
 use crate::tasks::{TaskPatch, TaskStatus, TaskUsage, TextEdit};
-use crate::views::{OpenView, ViewKind, ViewRegion};
+use crate::views::ViewOptions;
 
 /// Every call in this SDK ends here: the wire's error arm, lifted into the SDK's own.
 pub(crate) fn lift<T>(outcome: Result<T, gen::types::ApiError>) -> Result<T, ApiError> {
@@ -53,6 +53,13 @@ impl ReadOptions {
     /// The two window arguments, in the order every read on the wire takes them.
     pub(crate) fn window(self) -> (Option<u32>, Option<u32>) {
         (self.offset, self.limit)
+    }
+}
+
+impl ViewOptions {
+    /// The three window arguments, in the order `open-file-view` takes them.
+    pub(crate) fn window(self) -> (Option<u32>, Option<u32>, Option<u32>) {
+        (self.offset, self.limit, self.max_line_chars)
     }
 }
 
@@ -193,6 +200,15 @@ pub(crate) fn dir_entry(entry: gen::files::DirEntry) -> DirEntry {
     }
 }
 
+/// One line a search matched.
+pub(crate) fn search_match(found: gen::files::SearchMatch) -> SearchMatch {
+    SearchMatch {
+        path: found.path,
+        line: found.line,
+        text: found.text,
+    }
+}
+
 /// How much of the memory budget is used.
 pub(crate) fn memory_usage(usage: gen::memories::MemoryUsage) -> MemoryUsage {
     MemoryUsage {
@@ -311,23 +327,6 @@ pub(crate) fn doc_search(found: gen::docs::DocSearch) -> DocSearch {
     }
 }
 
-/// One view open in the window.
-pub(crate) fn open_view(view: gen::views::OpenView) -> OpenView {
-    OpenView {
-        kind: match view.kind {
-            gen::views::ViewKind::File => ViewKind::File,
-            gen::views::ViewKind::Text => ViewKind::Text,
-            gen::views::ViewKind::Docs => ViewKind::Docs,
-        },
-        selector: view.selector,
-        tokens: view.tokens,
-        region: view.region.map(|region| ViewRegion {
-            offset: region.offset,
-            limit: region.limit,
-        }),
-    }
-}
-
 /// One spawned child.
 pub(crate) fn subagent_handle(handle: gen::delegation::SubagentHandle) -> SubagentHandle {
     SubagentHandle {
@@ -363,4 +362,3 @@ pub(crate) fn program_summary(summary: gen::programs::ProgramSummary) -> Program
         error: summary.error,
     }
 }
-

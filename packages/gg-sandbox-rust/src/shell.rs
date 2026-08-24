@@ -13,7 +13,6 @@ use crate::wire;
 /// The gg tools this module dispatches — see [`files::OPERATIONS`](crate::files::OPERATIONS).
 pub(crate) const OPERATIONS: &[&str] = &["shell"];
 
-
 /// Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.
 ///
 /// A non-zero exit is not a failure: read [`exit_code`](ShellOutput::exit_code) on the result. Only a
@@ -22,8 +21,8 @@ pub(crate) const OPERATIONS: &[&str] = &["shell"];
 /// This run may **offload** shell output — the `shell` tool's own description says which mode is in
 /// force. Under `offload`, [`output`](ShellOutput::output) holds only the tail that fits and ends
 /// with a note naming the two files the command's full stdout and stderr were written to. Those
-/// files are readable by absolute path, so a [`read_text_file`](crate::files::read_text_file) of
-/// one, or a grep, is cheaper than re-running the command.
+/// files are readable by absolute path, so reading one, or a grep, is cheaper than re-running the
+/// command.
 ///
 /// # Arguments
 ///

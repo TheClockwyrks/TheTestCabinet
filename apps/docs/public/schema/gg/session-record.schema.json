@@ -588,6 +588,11 @@
           "const": "response_loop",
           "description": "Every attempt at the request was abandoned mid-stream by\n[loop detection](crate::gg::GgLoopDetection) — the model produced a repetition, not a reply,\non all of them. Retryable at the turn level and counted against the run's error ceiling,\nexactly like [`RetryExhausted`](Self::RetryExhausted), and kept apart from it because the\ntwo are diagnosed completely differently: one is the provider failing, the other is the\nmodel failing.\n\nThe record carries only the attempts that were *returned*, never the discarded ones: the\nrecorder journals the response a turn actually got, so a reply the guard abandoned never\nentered the context and correctly never enters the record either. The\n[`attempts`](GgSessionModelError::attempts) count is how many were discarded before the loop\ngave up.",
           "type": "string"
+        },
+        {
+          "const": "timeout",
+          "description": "The call ran into gg's **per-call ceiling** (five minutes) without producing a reply — a\nstalled provider or endpoint. Retryable at the turn level and counted against the run's\nerror ceiling; unlike every other class it never ends the session on its own.",
+          "type": "string"
         }
       ]
     },
@@ -638,7 +643,7 @@
       "type": "object"
     },
     "GgSessionPromptSlot": {
-      "description": "Which slot of gg's window model a [prompt item](GgSessionPromptItem) came from.\n\nThe window is not a flat list: two of its three positions are *slots* that are\nassigned rather than appended, precisely so they cannot accumulate duplicates.",
+      "description": "Which slot of gg's window model a [prompt item](GgSessionPromptItem) came from.\n\nThe window is not a flat list: every position but the thread is a *slot* that is\nassigned rather than appended, precisely so it cannot accumulate duplicates.",
       "oneOf": [
         {
           "const": "system",
@@ -653,6 +658,11 @@
         {
           "const": "context_usage",
           "description": "The context-usage signal slot, rebuilt and re-assigned after every turn.",
+          "type": "string"
+        },
+        {
+          "const": "trailing_notice",
+          "description": "The trailing contract-notice slot — the constant reminder of the\n[responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE) reply contract, rendered\nafter every other message so it is the last thing the model reads on every turn.",
           "type": "string"
         }
       ]

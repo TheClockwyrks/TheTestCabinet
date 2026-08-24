@@ -36,9 +36,11 @@ mod harness_config;
 mod ingest_api;
 mod jobs;
 mod ladders;
+mod model_probes;
 mod models;
 mod publish_jobs;
 mod runs;
+mod stats;
 mod test_cases;
 mod tournaments;
 
@@ -47,6 +49,7 @@ mod tournaments;
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.
+pub use crate::probe::ProbeMessage;
 pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{
     CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,
@@ -74,11 +77,24 @@ pub use ladders::{
     LadderRungInput, LadderRungOrderInput, LadderRungOutcome, LadderSchedule, RungTally,
     StoredClimberOut,
 };
+pub use model_probes::{
+    ModelProbeDetailResponse, ModelProbeItemOut, ModelProbeOut, ModelProbesResponse,
+    ProbeConditionOut, ProbeProviderOut, ProbeProvidersResponse, ProbeTriggerInput,
+    ProbeTriggerResponse,
+};
 pub use models::{
     AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
     ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
 };
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
+// The `/stats` response contract lives beside its folds in `crate::stats`
+// (the handlers in `api::stats` own only the corpus); re-exported here so the
+// generator names it the way it names every other response envelope.
+pub use crate::stats::{
+    ModelAccuracyOut, ModelAccuracyResponse, ProbeProviderModelOut, ProbeProviderStatsOut,
+    ProviderCallStatsOut, ProviderModelStatsOut, ProviderStatsOut, ProviderStatsResponse,
+    RacAccuracyOut, ToolCallingAccuracyOut,
+};
 
 /// Shared application state handed to every handler.
 #[derive(Clone)]
@@ -163,6 +179,27 @@ pub fn router(state: AppState) -> Router {
             "/models/{slug}",
             axum::routing::put(models::update).delete(models::delete),
         )
+        // Model probes: RaC-readiness checks of a catalog model (see
+        // `crate::probe`). Triggering and the provider enumeration are
+        // bearer-gated (they reach OpenRouter on the caller's behalf, the
+        // trigger spending real credit); the reads are open like the catalog.
+        // History lives under the model, one probe under its own id.
+        .route(
+            "/models/{slug}/probes",
+            get(model_probes::list).post(model_probes::trigger),
+        )
+        .route(
+            "/models/{slug}/probe-providers",
+            get(model_probes::providers),
+        )
+        .route("/model-probes/{id}", get(model_probes::get))
+        // The cross-run statistics reads: per-provider health and per-model
+        // accuracy, folded from stored gg summaries (through the document
+        // index) and the probe store. Open reads like the rest of the catalog
+        // — aggregate counts only. `/stats` is its own static namespace, so
+        // neither path can collide with a dynamic route.
+        .route("/stats/providers", get(stats::providers))
+        .route("/stats/model-accuracy", get(stats::model_accuracy))
         // Per-harness configuration (today: max parallelism). The list is an open
         // read; setting a harness's config requires a token.
         .route("/harness-config", get(harness_config::list))
@@ -202,12 +239,14 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/validation-files",
             get(test_cases::validation_files),
         )
-        // A case variant's committed baseline validation media (`<item>__<output>.<ext>`),
-        // synthesized once at publish-reference time from the reference implementation
-        // and served case-scoped — the invariant counterpart to a run's actual
-        // validation media (served run-scoped by the artifact service). A read.
+        // One reference build's committed baseline validation media
+        // (`<item>__<output>.<ext>`), synthesized once at capture-baselines time from
+        // the reference implementation and served case-scoped — the invariant
+        // counterpart to a run's actual validation media (served run-scoped by the
+        // artifact service). Keyed by engine as well as variant, because a variant has
+        // one reference implementation per engine. A read.
         .route(
-            "/test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}",
+            "/test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}",
             get(test_cases::validation_baseline),
         )
         // The gameplay READMEs of earlier runs of a game jam (matched on the same

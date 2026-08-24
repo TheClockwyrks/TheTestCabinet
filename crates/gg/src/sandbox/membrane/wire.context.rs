@@ -1,19 +1,19 @@
 //! The [wire](super)'s context half: the four context operations, the three documentation
-//! ones, the five view ones and the three the program library carries.
+//! ones, the four view ones and the three the program library carries.
 //!
-//! Two of these return without a `result` at all — `views.current` and, on the host side,
-//! `programs.history`'s sibling — because there is nothing for them to fail at. They still travel as
-//! an ordinary successful response, so the guest reads every answer the same way and no call is
-//! special-cased in a language that has no way to know which ones are.
+//! Every one of them can fail, if only at the gate every bracket asks: `programs.history` has
+//! nothing to fail at once it is granted, and still answers `unavailable` to an agent whose run did
+//! not buy it. So the guest reads every answer the same way and no call is special-cased in a
+//! language that has no way to know which ones are.
 
 use super::super::test_cabinet::gg::context::{
     ArchiveHit, ArchiveSearch, Host as ContextHost, MessageRole, ReclaimReport, TurnRange,
 };
 use super::super::test_cabinet::gg::docs::{DocHit, DocSearch, Host as DocsHost};
 use super::super::test_cabinet::gg::programs::{Host as ProgramsHost, ProgramSummary};
-use super::super::test_cabinet::gg::views::{Host as ViewsHost, OpenView, ViewKind, ViewRegion};
+use super::super::test_cabinet::gg::views::Host as ViewsHost;
 use super::super::{MembraneState, OperationApi};
-use super::wire_coding::{Value, argument, integer, optional, record, text, texts, wide};
+use super::wire_coding::{Value, argument, integer, optional, record, text, texts};
 use super::workspace::file_read;
 use super::{Answer, Failure};
 
@@ -187,8 +187,19 @@ pub(super) fn open_file_view<A: OperationApi>(
     let path = argument(arguments, op, 0)?.text("the path")?;
     let offset = argument(arguments, op, 1)?.optional_integer("the offset")?;
     let limit = argument(arguments, op, 2)?.optional_integer("the limit")?;
+    // The one trailing argument this wire reads leniently: a request that stops after `limit` is
+    // read as `max-line-chars` absent. The JVM SDKs pass all four once they spell the option; until
+    // then a three-argument request is a view with its lines whole, not a frame gg cannot read.
+    let max_line_chars = match arguments.get(3) {
+        Some(value) => value.optional_integer("the line cut")?,
+        None => None,
+    };
     Ok(file_read(ViewsHost::open_file_view(
-        state, path, offset, limit,
+        state,
+        path,
+        offset,
+        limit,
+        max_line_chars,
     )?))
 }
 
@@ -223,41 +234,6 @@ pub(super) fn close_view<A: OperationApi>(
 ) -> Answer {
     let selector = argument(arguments, op, 0)?.text("the selector")?;
     Ok(integer(ViewsHost::close_view(state, selector)?))
-}
-
-/// `views.current` — what is open. It cannot fail.
-pub(super) fn current_views<A: OperationApi>(state: &mut MembraneState<A>) -> Answer {
-    Ok(Value::List(
-        ViewsHost::current_views(state)
-            .into_iter()
-            .map(open_view)
-            .collect(),
-    ))
-}
-
-/// One `open-view`.
-fn open_view(view: OpenView) -> Value {
-    record([
-        (
-            "kind",
-            text(match view.kind {
-                ViewKind::File => "file",
-                ViewKind::Text => "text",
-                ViewKind::Docs => "docs",
-            }),
-        ),
-        ("selector", text(view.selector)),
-        ("tokens", wide(view.tokens)),
-        ("region", optional(view.region, view_region)),
-    ])
-}
-
-/// The `view-region` record.
-fn view_region(region: ViewRegion) -> Value {
-    record([
-        ("offset", integer(region.offset)),
-        ("limit", integer(region.limit)),
-    ])
 }
 
 // ---------------------------------------------------------------------------------------------

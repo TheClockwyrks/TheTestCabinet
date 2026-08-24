@@ -31,7 +31,21 @@ vi.mock("../../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 vi.mock("../../../components/PromptHeader", () => ({
-  PromptHeader: () => null,
+  // The header's chrome is not what these tests are about; its slots are, because a
+  // page's own actions live in them. Stub the chrome and pass the slots through, so a
+  // control that moves into the header does not silently vanish from the test.
+  PromptHeader: ({
+    titleActions,
+    actions,
+  }: {
+    titleActions?: ReactNode;
+    actions?: ReactNode;
+  }) => (
+    <>
+      {titleActions}
+      {actions}
+    </>
+  ),
 }));
 vi.mock("../../../components/KillRunControl", () => ({
   KillRunControl: () => null,
@@ -918,6 +932,60 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getAllByText(/views\.openText/).length).toBeGreaterThan(0);
   });
 
+  it("marks the assistant message of a healed turn and keeps the reply as sent beneath it", () => {
+    // Two responses-as-code turns: one healing rewrote, one it left alone. The model only
+    // ever re-reads the program that ran, so that is the text the `assistant_message`
+    // carries; the reply as sent survives on the turn's `code_execution` record alone.
+    // The operator has to be able to read both — a defect in healing and a mistake by
+    // the model look identical from either text on its own — and has to be told which
+    // agent rows were rewritten, without a clean turn wearing the same mark.
+    const healedProgram = "views.openText('n', '1');";
+    const cleanProgram = "shell.run('ls');";
+    renderMonitor([
+      sessionStarted(["shell", "filesystem"]),
+      roster("root", [held("history", "history-0")]),
+      gg({ type: "turn_started" }),
+      gg({ type: "assistant_message", text: healedProgram }),
+      gg({
+        type: "code_execution",
+        ok: true,
+        toolCalls: 1,
+        healing: {
+          strategies: ["strip-fences", "strip-prose"],
+          original: `Here it is:\n\`\`\`ts\n${healedProgram}\n\`\`\``,
+        },
+      }),
+      gg({ type: "turn_started" }),
+      gg({ type: "assistant_message", text: cleanProgram }),
+      gg({ type: "code_execution", ok: true, toolCalls: 1 }),
+    ]);
+    openTab("Instances");
+    openFile("root activity");
+    // The healed turn's agent row carries the program that ran, marked as healed and
+    // naming the repairs, so the reader knows the text below it is not what was sent.
+    const healedRow = screen
+      .getByText(healedProgram)
+      .closest("[data-event-type]") as HTMLElement;
+    expect(healedRow).toHaveAttribute("data-event-type", "agent");
+    expect(healedRow).toHaveTextContent(
+      "healed by strip-fences, strip-prose — this is the program that ran; the reply as sent is below",
+    );
+    // ...and the reply as the model sent it — prose and fence intact — is the HEALED
+    // row directly beneath, so the two texts can be read against each other.
+    expect(screen.getAllByText("HEALED")).toHaveLength(1);
+    expect(
+      screen.getByText("sent as 4 lines; ran after strip-fences, strip-prose"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Here it is:/).length).toBeGreaterThan(0);
+    // The clean turn wears no mark and adds no HEALED row: its agent row is the reply
+    // verbatim, and there is no second text to show.
+    const cleanRow = screen
+      .getByText(cleanProgram)
+      .closest("[data-event-type]") as HTMLElement;
+    expect(cleanRow).toHaveAttribute("data-event-type", "agent");
+    expect(cleanRow).not.toHaveTextContent(/healed/i);
+  });
+
   it("renders an agent's activity through the shared feed, in the layout the user picked", () => {
     useAppSettings.getState().setEventFeedStyle("stacked");
     renderMonitor();
@@ -1413,13 +1481,12 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText(/2 modules · 5 functions/)).toBeInTheDocument();
   });
 
-  it("counts three functions over one core as three functions", () => {
-    // The catalogue really does bind three functions over one read: `fs.readFile`,
-    // `fs.readTextFile` and `view.openFile` all run a `read_file`. That is a fact about the
-    // core they share and not about what the model wrote, so each of them is recorded — and
-    // counted — as itself. Reporting the tool's figure against all three said three calls
-    // where one happened, and left two functions the model never wrote reading exactly like
-    // the one it used.
+  it("counts two functions over one core as two functions", () => {
+    // The catalogue really does bind two functions over one read: `fs.readFile` and
+    // `view.openFile` both run a `read_file`. That is a fact about the core they share and
+    // not about what the model wrote, so each of them is recorded — and counted — as
+    // itself. Reporting the tool's figure against both said two calls where one happened,
+    // and left a function the model never wrote reading exactly like the one it used.
     renderMonitor([
       sessionStarted(["filesystem"]),
       gg({
@@ -1437,10 +1504,7 @@ describe("GgRunMonitorPage", () => {
             module: "files",
             path: "gg.files",
             description: "Read and write the workspace.",
-            functions: [
-              { name: "readFile", operation: "files.read_file" },
-              { name: "readTextFile", operation: "files.read_text_file" },
-            ],
+            functions: [{ name: "readFile", operation: "files.read_file" }],
           },
           {
             module: "views",
@@ -1464,13 +1528,11 @@ describe("GgRunMonitorPage", () => {
       "title",
       "gg.views.openFile was called 1 time.",
     );
-    // The two the model did not write. Under the old tool-keyed join both read as called
-    // once, because the read they share a core with had run.
-    for (const name of ["gg.files.readFile", "gg.files.readTextFile"]) {
-      const row = surfaceRow("offered apis", name);
-      expect(row).toHaveAttribute("data-uncalled");
-      expect(row).toHaveTextContent(`0×${name}`);
-    }
+    // The one the model did not write. Under the old tool-keyed join it read as called
+    // once, because the read it shares a core with had run.
+    const uncalled = surfaceRow("offered apis", "gg.files.readFile");
+    expect(uncalled).toHaveAttribute("data-uncalled");
+    expect(uncalled).toHaveTextContent("0×gg.files.readFile");
   });
 
   it("names the documentation arm a code instance was on", () => {
@@ -1572,7 +1634,7 @@ describe("GgRunMonitorPage", () => {
             description: "Read and write the workspace.",
             functions: [
               { name: "readFile", operation: "files.read_file" },
-              { name: "readTextFile", operation: "files.read_text_file" },
+              { name: "writeFile", operation: "files.write_file" },
             ],
           },
         ],
@@ -1581,12 +1643,12 @@ describe("GgRunMonitorPage", () => {
     openTab("Instances");
     openFile("root apis");
 
-    const row = surfaceRow("offered apis", "gg.files.readTextFile");
+    const row = surfaceRow("offered apis", "gg.files.writeFile");
     expect(row).toHaveAttribute("data-uncalled");
-    expect(row).toHaveTextContent(/^0×gg\.files\.readTextFile$/);
+    expect(row).toHaveTextContent(/^0×gg\.files\.writeFile$/);
     expect(row).toHaveAttribute(
       "title",
-      "gg.files.readTextFile was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
+      "gg.files.writeFile was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
     );
     // And the words the figure replaced are gone from the row entirely — not moved into the
     // hover text, which is where a replaced wording usually survives. The tooltip says the

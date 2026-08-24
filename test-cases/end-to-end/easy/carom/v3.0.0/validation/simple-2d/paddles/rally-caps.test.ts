@@ -4,8 +4,9 @@
 // ceiling: however many hits it runs, the ball plateaus at the cap and never
 // exceeds it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SPEED_CAP } from "../../src/constants";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeRally,
   captureReplay,
@@ -16,9 +17,10 @@ import {
 
 /** Enough hits, from the 500 px/s launch, to reach the ceiling and sit on it. */
 const MIN_HITS = 12;
-/** Float margins: on the peak, and on the settled final speed. */
-const OVERSHOOT_TOLERANCE = 1;
-const PLATEAU_TOLERANCE = 1;
+/** "Never exceeds it": a float margin on the peak, in units per second. */
+const OVERSHOOT_TOLERANCE = 1e-6;
+/** The review item's margin on the plateau: one percent of SPEED_CAP. */
+const PLATEAU_TOLERANCE = SPEED_CAP * 0.01;
 
 let harness: Harness;
 
@@ -27,7 +29,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("plateaus at the speed ceiling and never exceeds it", async () => {
@@ -37,11 +39,10 @@ it("plateaus at the speed ceiling and never exceeds it", async () => {
     driveRallySpeeds(harness),
   );
 
-  expect(speeds.length).toBeGreaterThanOrEqual(MIN_HITS);
-  expect(Math.max(...speeds)).toBeLessThanOrEqual(
-    SPEED_CAP + OVERSHOOT_TOLERANCE,
-  );
-  expect(Math.abs(speeds[speeds.length - 1] - SPEED_CAP)).toBeLessThanOrEqual(
+  assertGreaterThanOrEqual(speeds.length, MIN_HITS);
+  assertLessThanOrEqual(Math.max(...speeds), SPEED_CAP + OVERSHOOT_TOLERANCE);
+  assertLessThanOrEqual(
+    Math.abs(speeds[speeds.length - 1] - SPEED_CAP),
     PLATEAU_TOLERANCE,
   );
 });

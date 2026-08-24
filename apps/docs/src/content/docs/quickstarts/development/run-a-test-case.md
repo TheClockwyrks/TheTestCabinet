@@ -43,6 +43,9 @@ harness unchanged. The optional flags:
   terminal infrastructure error. The default is one retry; `0` disables retries.
 - `--orchestrator <slug>` selects the orchestrator that conducts the harness
   sessions. It defaults to `one-shot`; see `tcab orchestrators`.
+- `--engine <slug>` selects the [engine](/components/core/engines/) the produced
+  build is written against, one the case supports. It defaults to `none`; see
+  `tcab engines`.
 - `--out-dir <dir>` also writes the finished run record JSON there.
 
 The command prints the queued job id, streams the live

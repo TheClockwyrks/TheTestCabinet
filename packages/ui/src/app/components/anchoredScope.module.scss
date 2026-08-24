@@ -1,0 +1,28 @@
+@use "../styles/tokens" as t;
+
+// The anchored-scope control row the Runs, Leaderboard and Metrics tabs carry:
+// the version segments and the engine/variant wideners, laid out as one wrapping
+// row so a tab is followed by the same shape of control wherever one appears.
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-lg;
+  margin-bottom: t.$space-lg;
+}
+
+// One labelled control. The label is inline with its segments rather than above
+// them so the controls read as one row.
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// Muted, letter-spaced field names, matching the header selectors' labels.
+.label {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+}

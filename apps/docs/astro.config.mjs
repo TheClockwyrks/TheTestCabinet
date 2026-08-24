@@ -183,6 +183,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "quickstarts/devops/add-or-update-a-model",
+                "quickstarts/devops/probe-a-model",
                 "quickstarts/devops/publish-a-run",
                 "quickstarts/devops/publish-a-reference",
                 "quickstarts/devops/publish-errata",
@@ -572,6 +573,7 @@ export default defineConfig({
                     "engines/simple-2d/concepts/audio",
                     "engines/simple-2d/concepts/assets",
                     "engines/simple-2d/concepts/diagnostics",
+                    "engines/simple-2d/concepts/debug",
                     "engines/simple-2d/concepts/recording",
                   ],
                 },
@@ -599,6 +601,7 @@ export default defineConfig({
                     "engines/simple-2d/usage/actions",
                     "engines/simple-2d/usage/audio-and-assets",
                     "engines/simple-2d/usage/diagnostics",
+                    "engines/simple-2d/usage/debug",
                   ],
                 },
                 {
@@ -640,7 +643,7 @@ export default defineConfig({
                     "engines/structured-2d/apis/audio",
                     "engines/structured-2d/apis/assets",
                     "engines/structured-2d/apis/diagnostics",
-                    "engines/structured-2d/apis/host",
+                    "engines/structured-2d/apis/recording",
                   ],
                 },
                 {
@@ -660,7 +663,8 @@ export default defineConfig({
                     "engines/structured-2d/concepts/audio",
                     "engines/structured-2d/concepts/assets",
                     "engines/structured-2d/concepts/diagnostics",
-                    "engines/structured-2d/concepts/host",
+                    "engines/structured-2d/concepts/debug",
+                    "engines/structured-2d/concepts/recording",
                   ],
                 },
                 {
@@ -693,6 +697,7 @@ export default defineConfig({
                     "engines/structured-2d/usage/collision",
                     "engines/structured-2d/usage/audio-and-assets",
                     "engines/structured-2d/usage/diagnostics",
+                    "engines/structured-2d/usage/debug",
                   ],
                 },
                 {
@@ -705,6 +710,7 @@ export default defineConfig({
                     "engines/structured-2d/validators/world-and-actors",
                     "engines/structured-2d/validators/rendering",
                     "engines/structured-2d/validators/input-and-audio",
+                    "engines/structured-2d/validators/recording",
                   ],
                 },
               ],

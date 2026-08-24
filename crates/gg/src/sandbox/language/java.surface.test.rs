@@ -204,6 +204,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            statement: "Files.search(\"answer\", \"src\", 5);",
+            expected: || json!({ "query": "answer", "path": "src", "limit": 5 }),
+        },
+        Crossing {
             tool: "read_skill",
             statement: "Skills.readSkill(\"testing\");",
             expected: || json!({ "name": "testing" }),
@@ -464,14 +469,12 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
     // functions driven at the end of this function, every entry this arm's catalogue describes has
     // been driven through the real membrane.
     let (outcome, log) = run_as(
-        "String text = Files.readTextFile(\"notes.md\", 1, 2);\n\
-         Files.FileRead read = Views.openFile(\"notes.md\", 1, 2);\n\
-         Views.openText(\"summary\", text);\n\
+        "Files.FileRead read = Views.openFile(\"notes.md\", 1, 2);\n\
+         Views.openText(\"summary\", \"eight files, two failing\");\n\
          Views.openDocsView(\"readFile\");\n\
+         Views.openFile(\"wide.md\", 1, 2, 80);\n\
          int closed = Views.close(\"summary\");\n\
          int missing = Views.close(\"never opened\");\n\
-         List<Views.OpenView> open = Views.current();\n\
-         Gg.log(open.get(0).selector() + \" \" + open.get(0).kind());\n\
          Gg.log(closed + \" \" + missing);\n\
          Gg.log(switch (read) {\n\
          \x20   case Files.TextFile file -> file.contents().split(\"\\n\")[0];\n\
@@ -484,14 +487,10 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         canned_outcome,
     );
     let lines = logs(&outcome);
-    // What is still open is the file view, carrying the enum constant rather than the word the wire
-    // used; the text view the program closed is gone, and a documentation view is gg's to deliver on
-    // the next turn rather than something `current` reports.
-    assert_eq!(lines[0], "notes.md FILE");
     // Closing something that is not open is `0` rather than a failure, so a program that tidies up
     // unconditionally does not have to guard every call.
-    assert_eq!(lines[1], "1 0");
-    assert_eq!(lines[2], "contents of notes.md");
+    assert_eq!(lines[0], "1 0");
+    assert_eq!(lines[1], "contents of notes.md");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -499,7 +498,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
             .iter()
             .map(|view| view.selector.as_str())
             .collect::<Vec<_>>(),
-        ["notes.md", "summary", "readFile"]
+        ["notes.md", "summary", "readFile", "wide.md"]
     );
     assert!(
         matches!(
@@ -510,13 +509,24 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         outcome.completion
     );
 
-    // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `view.openFile` performs. Neither has a tool name of its own, which is exactly the point — a
-    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
+    // Two reads reached gg's dispatch and both arrived as `read_file`: the two `view.openFile`
+    // performs. Neither has a tool name of its own, which is exactly the point — a view is a
+    // read gg also shows you. The second carries the view's own line cut, which crosses only
+    // when the program wrote one.
     assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
+    );
+    let reads: Vec<Value> = log
+        .calls()
+        .into_iter()
+        .filter(|call| call.name == "read_file")
+        .map(|call| call.args)
+        .collect();
+    assert_eq!(
+        reads[1],
+        json!({ "path": "wide.md", "offset": 1, "limit": 2, "maxLineChars": 80 })
     );
 
     // The program library is bound from the capability rather than from a tool name, and a reviewer
@@ -584,7 +594,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          \x20       Delegation.spawnSubagent(\"subagent\", Delegation.Brief.prompt(\"go\"));\n\
          child.send(\"prefer the simpler parser\");\n\
          Views.openText(\"scratch\", \"body\");\n\
-         Gg.log(String.valueOf(Views.current().get(0).close()));\n\
+         Gg.log(String.valueOf(Views.close(\"scratch\")));\n\
          try {\n\
          \x20   new Programs.ProgramSummary(2, 1, 1, true, Optional.empty()).source();\n\
          } catch (ApiError failure) {\n\
@@ -689,7 +699,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         "the capability was granted and the closes still did not answer"
     );
 
-    // Exhaustive by construction, the way the crossing table is: a sixth member function added to
+    // Exhaustive by construction, the way the crossing table is: a fifth member function added to
     // this arm's SDK fails here rather than shipping as a name nothing has ever called.
     let mut catalogued: Vec<&str> = crate::sandbox::catalogue_functions(java_language())
         .iter()
@@ -704,7 +714,6 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
             "gg.delegation.Delegation.SubagentHandle#send",
             "gg.memories.Memories.MemoryHit#read",
             "gg.programs.Programs.ProgramSummary#source",
-            "gg.views.Views.OpenView#close",
         ],
         "every member function this arm catalogues needs a call in the program above"
     );
@@ -719,7 +728,7 @@ fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
     // exception, which is what makes the clause below work at all.
     let (outcome, _log) = run_with(
         "try {\n\
-         \x20   Files.readTextFile(\"gone.java\");\n\
+         \x20   Files.readFile(\"gone.java\");\n\
          } catch (ApiError failure) {\n\
          \x20   Gg.log(failure.code() + \" on \" + failure.operation());\n\
          }\n\
@@ -732,17 +741,14 @@ fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
             )
         },
     );
-    assert_eq!(
-        logs(&outcome),
-        ["NOT_FOUND on read_text_file", "carried on"]
-    );
+    assert_eq!(logs(&outcome), ["NOT_FOUND on read_file", "carried on"]);
 
     // And the half that no SDK could do for itself: one that ESCAPED kills the program the way its
     // runtime kills it, and what the model reads is the exception's own message — which is why
     // `ApiError` builds one carrying all three of gg's fields — and the model's own line.
     let (outcome, _log) = run_with(
         "Gg.log(\"before\");\n\
-         Files.readTextFile(\"gone.java\");\n\
+         Files.readFile(\"gone.java\");\n\
          Gg.log(\"after\");\n",
         &all_operations(),
         |_name: &str, _args: &Value| {
@@ -754,7 +760,7 @@ fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
     );
     let reported = trap(&outcome);
     assert!(
-        reported.contains("`read_text_file` failed (not-found): no such file: gone.java"),
+        reported.contains("`read_file` failed (not-found): no such file: gone.java"),
         "the model reads gg's own sentence about all three fields: {reported}"
     );
     assert!(
@@ -774,14 +780,10 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     //
     // The refusal is the **host's**: the SDK is one jar and every class on it compiles, so the call
     // reaches the membrane and comes back named the way this arm's catalogue names it.
-    let (outcome, log) = run_with(
-        "Files.readTextFile(\"src/Main.java\");\n",
-        &[],
-        canned_outcome,
-    );
+    let (outcome, log) = run_with("Files.readFile(\"src/Main.java\");\n", &[], canned_outcome);
     let reported = trap(&outcome);
     assert!(
-        reported.contains("`gg.files.Files.readTextFile` is not available."),
+        reported.contains("`gg.files.Files.readFile` is not available."),
         "the refusal names the call the way this arm's catalogue spells it: {reported}"
     );
     assert!(log.names().is_empty(), "and nothing reached gg's dispatch");
@@ -820,7 +822,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
     let diagnostic = refused(
         "public final class Program {\n\
          \x20   public static void main(String[] args) {\n\
-         \x20       String text = Files.readTextFile(\"a.md\");\n\
+         \x20       Files.FileRead text = Files.readFile(\"a.md\");\n\
          \x20   }\n\
          }\n",
     );
@@ -849,7 +851,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
          \n\
          public final class Program {\n\
          \x20   public static void main(String[] args) {\n\
-         \x20       Gg.log(gg.files.Files.readTextFile(\"a.md\"));\n\
+         \x20       Gg.log(((gg.files.Files.TextFile) gg.files.Files.readFile(\"a.md\")).contents());\n\
          \x20   }\n\
          }\n",
         "import gg.Gg;\n\
@@ -857,7 +859,7 @@ fn nothing_this_arm_offers_resolves_without_a_line_the_program_wrote() {
          \n\
          public final class Program {\n\
          \x20   public static void main(String[] args) {\n\
-         \x20       Gg.log(Files.readTextFile(\"a.md\"));\n\
+         \x20       Gg.log(((Files.TextFile) Files.readFile(\"a.md\")).contents());\n\
          \x20   }\n\
          }\n",
     ] {

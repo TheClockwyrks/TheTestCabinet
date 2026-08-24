@@ -10,9 +10,9 @@ import java.util.List;
 /**
  * Reclaim room in the agent's own context window.
  *
- * <p>Four calls, in the order a full window wants them: drop file views that are done with, move
- * whole turns into the archive, search the archive for what was moved, and — when none of that is
- * enough — compact.
+ * <p>In the order a full window wants them: drop file views that are done with, move whole turns
+ * into the archive and search it for what was moved, and — when none of that is enough — restart
+ * the window from a summary.
  *
  * <p>These are the only calls whose effect is on the conversation rather than on the workspace, and
  * they are worth making from a program precisely because a program can decide when: read a set of

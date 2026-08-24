@@ -31,11 +31,11 @@ use crate::review::Writeup;
 use crate::run_record::{PriorGameJamEntry, RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
-    EngineWorkspaces, Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind, ModelSpec,
-    OutputSpec, ParticleSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec,
-    ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec, SpecFile,
-    SpecKind, SubReviewItem, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant,
-    VoxelSpec, WorkspaceFile,
+    EngineSupport, EngineWorkspaces, Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind,
+    ModelSpec, OutputSpec, ParticleSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView,
+    ReplaySpec, ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec,
+    SpecFile, SpecKind, SubReviewItem, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec,
+    Variant, VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -1613,6 +1613,13 @@ struct VersionBody {
     max_runtime_seconds: u64,
     #[serde(default)]
     test_type: TestType,
+    /// The [engines](crate::engine) a run of this version may select, each with the
+    /// version range the case accepts it at. Required, and deliberately not
+    /// defaulted: a defaulted set says every case supports the engineless run alone,
+    /// which would refuse every engine-backed run of a case that supports one. A
+    /// backend that does not serve the field is a backend this driver cannot run
+    /// against.
+    engines: Vec<EngineSupport>,
     #[serde(default)]
     build: Option<BuildBody>,
     /// The case's TypeScript toolchain commands, when it declares a `[toolchain]`
@@ -1718,7 +1725,7 @@ impl VersionBody {
         // never reads it (it is site-facing only).
         let changelog_path = PathBuf::from("changelog.md");
         TestCaseVersion {
-            engines: vec![crate::EngineSupport::unbounded(crate::engine::NONE_SLUG)],
+            engines: self.engines,
             slug: self.slug,
             version: self.version,
             name: self.name,
@@ -1982,8 +1989,7 @@ fn proof_from(proof: &ProofBody) -> ProofFile {
     }
 }
 
-/// A best-effort content type for an uploaded proof media file, from its
-/// extension. Proof media is only ever an image or an `.mp4`.
+/// A best-effort content type for an uploaded media file, from its extension.
 fn content_type_for_file(file: &str) -> &'static str {
     let ext = Path::new(file)
         .extension()
@@ -1998,6 +2004,11 @@ fn content_type_for_file(file: &str) -> &'static str {
         "mp4" => "video/mp4",
         // The asset-generation action log uploads through this same path.
         "json" => "application/json",
+        // A validation recording (`<name>.json.gz`) uploads as the gzip file it is:
+        // the backend stores the bytes verbatim and labels them when it serves them,
+        // so the upload declares the document being handed over rather than a framing
+        // the receiver is expected to undo.
+        "gz" => "application/gzip",
         _ => "application/octet-stream",
     }
 }
@@ -2182,44 +2193,24 @@ struct WorkspaceFileBody {
     dest: String,
 }
 
-/// A starter project on the wire, in either shape the definition store holds it.
-///
-/// A case ships one project per [engine](crate::engine), so the current shape is a
-/// map keyed by engine slug. A definition stored before that carries a bare list,
-/// and such a case supports no engine (nothing else could have been stored), so its
-/// list is read as the engineless project — which is exactly what resolving that
-/// manifest produces today.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum WorkspaceBody {
-    ByEngine(std::collections::BTreeMap<String, Vec<WorkspaceFileBody>>),
-    Engineless(Vec<WorkspaceFileBody>),
-}
-
-impl Default for WorkspaceBody {
-    fn default() -> Self {
-        Self::ByEngine(std::collections::BTreeMap::new())
-    }
-}
+/// A starter project on the wire: a case ships one project per
+/// [engine](crate::engine), so it is a map keyed by engine slug.
+#[derive(Deserialize, Default)]
+#[serde(transparent)]
+struct WorkspaceBody(std::collections::BTreeMap<String, Vec<WorkspaceFileBody>>);
 
 impl WorkspaceBody {
     /// The resolved per-engine projects this body describes.
     fn resolve(&self) -> EngineWorkspaces {
-        match self {
-            Self::ByEngine(by_engine) => by_engine
-                .iter()
-                .map(|(engine, files)| {
-                    (
-                        engine.clone(),
-                        files.iter().map(workspace_from).collect::<Vec<_>>(),
-                    )
-                })
-                .collect::<EngineWorkspaces>(),
-            Self::Engineless(files) => EngineWorkspaces::from_iter([(
-                crate::engine::NONE_SLUG.to_string(),
-                files.iter().map(workspace_from).collect::<Vec<_>>(),
-            )]),
-        }
+        self.0
+            .iter()
+            .map(|(engine, files)| {
+                (
+                    engine.clone(),
+                    files.iter().map(workspace_from).collect::<Vec<_>>(),
+                )
+            })
+            .collect::<EngineWorkspaces>()
     }
 }
 

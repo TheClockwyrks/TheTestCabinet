@@ -7,8 +7,9 @@
 // ceiling, and the sequence must never decrease. The plateau AT the ceiling is
 // the sibling `rally-caps` check.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SPEED_CAP, SPEED_MULT } from "../../src/constants";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeRally,
   captureReplay,
@@ -19,8 +20,9 @@ import {
 
 /** Enough hits for the ratio to be read many times over below the ceiling. */
 const MIN_HITS = 12;
-/** The old browser suite's margins: on the ratio, and on a decrease in px/s. */
-const RATIO_TOLERANCE = 0.01;
+/** The review item's margin on the per-hit ratio: one percent of SPEED_MULT. */
+const RATIO_TOLERANCE = SPEED_MULT * 0.01;
+/** A float margin on "never decreases", in units per second. */
 const DECREASE_TOLERANCE = 0.5;
 
 let harness: Harness;
@@ -30,7 +32,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  harness.dispose();
+  harness?.dispose();
 });
 
 it("multiplies the ball's speed on every hit below the ceiling", async () => {
@@ -40,18 +42,17 @@ it("multiplies the ball's speed on every hit below the ceiling", async () => {
     driveRallySpeeds(harness),
   );
 
-  expect(speeds.length).toBeGreaterThanOrEqual(MIN_HITS);
+  assertGreaterThanOrEqual(speeds.length, MIN_HITS);
 
   for (let i = 1; i < speeds.length; i += 1) {
-    expect(speeds[i]).toBeGreaterThanOrEqual(
-      speeds[i - 1] - DECREASE_TOLERANCE,
-    );
+    assertGreaterThanOrEqual(speeds[i], speeds[i - 1] - DECREASE_TOLERANCE);
     // Only the hits that had room to accelerate: at the ceiling the multiply is
     // clamped, which is the sibling check's subject rather than this one's.
     if (speeds[i - 1] < SPEED_CAP / SPEED_MULT - 1) {
-      expect(
+      assertLessThanOrEqual(
         Math.abs(speeds[i] / speeds[i - 1] - SPEED_MULT),
-      ).toBeLessThanOrEqual(RATIO_TOLERANCE);
+        RATIO_TOLERANCE,
+      );
     }
   }
 });
