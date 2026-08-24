@@ -922,7 +922,7 @@ export function emptyDraft(): GgConfigDraft {
 //
 // A `toggles` param is a JSON object of independently switchable members, each with its
 // gg reads such a param one of two ways, and the catalog says which on the param itself
-// ([ParamSpec.toggleSet]). An `exhaustive` set — response healing's repairs, the SDK types
+// ([ParamSpec.toggleSet]). An `exhaustive` set — the SDK types
 // a documentation lookup opens — has to name EVERY member: gg arms no member an operator
 // did not write, so an object leaving one out refuses the launch. A `withholding` set —
 // the skills capability's built-ins — names only what is held BACK, and a member it does

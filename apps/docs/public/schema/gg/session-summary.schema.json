@@ -103,57 +103,6 @@
       ],
       "type": "object"
     },
-    "GgHealingSummary": {
-      "description": "The run's [response-healing](GgResponseHealing) rollup: how much of what the models sent had to\nbe repaired before it could run, and which repairs did the work.\n\nThe denominator for every rate here is [`code_executions`](GgSessionSummary::code_executions),\nwhich is one per code-shaped turn — the same event these counters are folded from, so numerator\nand denominator can never come from different mechanisms and drift. Every counter is `0`, and\n[`enabled`](Self::enabled) empty, for a tool-calling run, because healing never runs there.\n\nRead the per-strategy counts as **what gg's pipeline did**, not as what the model wrote: the\npipeline applies its strategies in a fixed order to a fixpoint, so which strategy gets the\ncredit for a response that several could have repaired is a property of that order.\n\n# What this rollup deliberately does not count\n\nA reply that defeated the pipeline entirely — one whose repairs never reached a fixpoint, so\nevery repair was discarded and the reply was compiled exactly as sent — contributes only to the\ndenominator here, exactly as a clean reply does. That fact lives on the turn's own\n[`GgResponseHealing::did_not_converge`] rather than being totted up per run, because it is a\ndiagnosis of one pathological response rather than a rate a study slices on. It is stated here,\nand on the docs page, so the gap is known rather than inferred from a rollup that looks\ncomplete.",
-      "properties": {
-        "applications": {
-          "description": "Total strategy applications; at least [`healed`](Self::healed), since one response may need\nseveral repairs.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "dropDoubledResponse": {
-          "description": "Applications of [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) — how often\na reply arrived as a byte-exact doubling of itself.\n\nZero for every run that did not **arm** the strategy, which is the default; read it together\nwith [`enabled`](Self::enabled) rather than as \"this model never doubled a reply\".",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "enabled": {
-          "description": "The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg\napplies them — the resolved configuration, recorded rather than left to be re-derived from\nthe capability set.\n\nThis is what makes the configuration legible from the telemetry alone. Every counter above\nis a measurement of what fired, and a run in which nothing fired is byte-identical whether\nits strategies were all armed or all disabled — so without this field a run with healing off\nand a run with healing on are indistinguishable in the data, and comparing the two means\ngoing back to the invocation files that produced them.\n\nEmpty means every strategy was disabled **for a responses-as-code run**, and means nothing\nat all for a tool-calling one, where healing never runs;\n[`execution_mode`](GgSessionSummary::execution_mode) is what tells those two apart.\n\nSerialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty\nlist is the one value this field exists to publish, so a key that vanished exactly when it\nmeant \"every strategy was off\" would leave the healing-off arm byte-identical on the wire to\na build with no such field, reopening one level down the very hole described above.",
-          "items": {
-            "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgHealingStrategy"
-          },
-          "type": "array"
-        },
-        "healed": {
-          "description": "Responses that had to be repaired for the program to run.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "stripFences": {
-          "description": "Applications of [`strip-fences`](GgHealingStrategy::StripFences) — the count that answers\n\"how often did this model still wrap its program in a code fence after being told not to?\".",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "stripProse": {
-          "description": "Applications of [`strip-prose`](GgHealingStrategy::StripProse).",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "required": [
-        "healed",
-        "applications",
-        "stripFences",
-        "stripProse",
-        "dropDoubledResponse",
-        "enabled"
-      ],
-      "type": "object"
-    },
     "GgLimitBreach": {
       "description": "One [execution ceiling](GgRunLimits) being breached: which one, what it was set to, what was\nactually observed, and where.\n\nEvery figure is an `f64` so one shape carries all five ceilings — a turn count, a number of\nseconds, a consecutive count, a fraction and an amount of money — and one aggregation can slice\nacross them without five parallel fields, four of which would be null on any given run.",
       "properties": {
@@ -376,7 +325,7 @@
       "type": "integer"
     },
     "codeExecutions": {
-      "description": "How many **code-shaped turns** the run took — one per\n[`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool\ncalling), so a non-zero count is the proof the code path actually ran.\n\nThis counts turns, not executions: a turn whose reply did not compile at all emits its event\nlike any other and is counted here, which is exactly what makes this the denominator for\nevery rate in the run's [healing rollup](Self::healing). Numerator and denominator are folded\nfrom the same event, so they cannot come from different mechanisms and drift.",
+      "description": "How many **programs** the run executed — one per\n[`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool\ncalling), so a non-zero count is the proof the code path actually ran.\n\nA submitted program that did not compile at all emits its event like any other and is\ncounted here, and a turn that submitted several programs contributes one count per program.",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
@@ -408,7 +357,7 @@
     },
     "errors": {
       "$ref": "#/$defs/GgErrorSummary",
-      "description": "How many of the run's turns failed, how badly they clustered, and how — the run's\n[error rollup](GgErrorSummary), folded from the\n[`TurnOutcome`](GgTelemetryKind::TurnOutcome) events every agent emitted.\n\nUnlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a\ntool-calling turn fails too, just in fewer ways."
+      "description": "How many of the run's turns failed, how badly they clustered, and how — the run's\n[error rollup](GgErrorSummary), folded from the\n[`TurnOutcome`](GgTelemetryKind::TurnOutcome) events every agent emitted.\n\nMeaningful in **both** execution modes: a tool-calling turn fails too, just in fewer\nways."
     },
     "executionMode": {
       "description": "Which **execution mode** the run's agents used — the durable record of whether the run was\ndriven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`\"responses_as_code\"`, the\nmodel emitted programs gg ran in the wasmtime sandbox) or traditional tool calling\n(`\"tool_calling\"`, the default). This is the effective-behavior companion to the\n[`cap.responses-as-code`](crate::gg_query) document field: that field slices by the\n*configured* capability, and this one records the mode the\nrun actually ran in, so \"does a code-shaped response help?\" is a durable, sliceable outcome\ndimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),\nnot derived from the telemetry stream.",
@@ -418,10 +367,6 @@
       "description": "The window fullness (`total_tokens / window_limit`) reported by the **last**\n[`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) of the run, when any carried a\nfullness figure. `None` when no window limit was known.",
       "format": "double",
       "type": ["number", "null"]
-    },
-    "healing": {
-      "$ref": "#/$defs/GgHealingSummary",
-      "description": "What gg had to do to the models' responses before it could run them — the run's\n[response-healing](GgHealingSummary) rollup, folded from the same\n[`CodeExecution`](GgTelemetryKind::CodeExecution) events\n[`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run."
     },
     "issueReviews": {
       "description": "How many [issue reviews](GgTelemetryKind::IssueReview) the run triggered — one per\n[`Requested`](GgIssueReviewPhase::Requested) phase (an issue whose acceptance was gated on\nits reviewers). `0` when no issue named reviewers.",
@@ -554,7 +499,6 @@
     "executionMode",
     "codeExecutions",
     "compileMs",
-    "healing",
     "errors",
     "undocumentedCalls",
     "issuesCreated",

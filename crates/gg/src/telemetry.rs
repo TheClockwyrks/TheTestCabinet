@@ -30,8 +30,8 @@ use std::io::Write;
 use std::sync::Arc;
 
 use test_cabinet_core::gg::{
-    GgHealingStrategy, GgLimitBreach, GgProgramLanguage, GgPromptRef, GgRunLimits,
-    GgSessionSummary, GgTelemetryEvent, GgTelemetryKind,
+    GgLimitBreach, GgProgramLanguage, GgPromptRef, GgRunLimits, GgSessionSummary, GgTelemetryEvent,
+    GgTelemetryKind,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use time::OffsetDateTime;
@@ -273,18 +273,6 @@ impl Emitter {
         self.summary.record_limits(limits);
     }
 
-    /// Record the [response-healing](crate::healing) strategies armed for this run on the shared
-    /// [summary tracker](SessionSummaryTracker), in the order gg applies them.
-    ///
-    /// A fourth configuration fact no event carries, recorded once (on the root's emitter) beside
-    /// the ceilings and only for a run that actually runs the pipeline. It is what lets a study
-    /// tell a healing-off configuration from a healing-on one without reading the invocation
-    /// files: every other healing figure counts what fired, and neither arm fires anything on a
-    /// clean run.
-    pub fn record_healing(&self, enabled: Vec<GgHealingStrategy>) {
-        self.summary.record_healing(enabled);
-    }
-
     /// Record the ceiling that stopped the **run** on the shared
     /// [summary tracker](SessionSummaryTracker), or `None` for a run that ended on its own terms.
     ///
@@ -446,6 +434,19 @@ impl EventSink for CapturingSink {
 /// did not touch a hundred and seventy call sites that assert nothing new.
 #[cfg(test)]
 pub type CollectingSink = CapturingSink;
+
+/// `n` and its noun, pluralised the English way.
+///
+/// `pub(crate)` because several seams render count-bearing clauses — the loop-detection log line,
+/// the code modules that failed to load, the programs a turn ran — and two spellings of "1
+/// program" in one run's reporting is exactly the drift a shared helper removes.
+pub(crate) fn plural(count: usize, noun: &str) -> String {
+    if count == 1 {
+        format!("{count} {noun}")
+    } else {
+        format!("{count} {noun}s")
+    }
+}
 
 #[cfg(test)]
 #[path = "telemetry.test.rs"]

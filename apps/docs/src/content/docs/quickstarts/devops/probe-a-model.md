@@ -6,9 +6,11 @@ title: Probe a Model
 
 A model probe checks whether a catalog model can drive [gg](/gg/overview/)'s
 responses-as-code mode. The backend replays gg's real RaC opening request
-through OpenRouter under four prompt conditions, classifies the shape of every
-reply, and reduces the results to a verdict. The probe is triggered from the
-model's Probes tab, and each run is a new dated record beside the earlier ones.
+through OpenRouter — the one `submit_program` tool offered and `tool_choice`
+forced to it, exactly as gg shapes the request — samples it several times,
+classifies the program each reply submitted, and reduces the results to a
+verdict. The probe is triggered from the model's Probes tab, and each run is a
+new dated record beside the earlier ones.
 
 ## Prerequisites
 
@@ -21,25 +23,24 @@ model's Probes tab, and each run is a new dated record beside the earlier ones.
 
 1. Sign in and open the model in the Models section.
 2. Open the Probes tab.
-3. Optionally pick a provider to pin the probe to, and adjust the samples per
-   condition. Left alone, the probe uses the model's default OpenRouter route
-   with three samples per condition.
+3. Optionally pick a provider to pin the probe to, and adjust the number of
+   calls. Left alone, the probe uses the model's default OpenRouter route with
+   three calls.
 4. Click Run probe. The probe appears in the history as running and completes in
    place.
 
 ## Read the verdict
 
-- `ready`: the model answers with a clean program under every condition. Run it
-  in RaC mode as-is.
-- `ready-with-reminders`: the model behaves once the contract is restated.
-  Enable cross-model prompt reminders for it.
-- `tool-call-overfit`: the model emits tool-call syntax even when the contract
-  is restated. It is not worth running in RaC mode.
-- `not-ready`: the model misses the clean-rate threshold for reasons that are
-  not tool-shaped. The raw replies say what they are.
+- `ready`: at least 80% of the calls submitted a clean program — a bare program
+  over the gg modules, with no fence and no prose inside the string. Run the
+  model in RaC mode.
+- `not-ready`: too few calls submitted a clean program. The per-call labels say
+  why — a fenced or prose-wrapped program string, a program that never imports
+  the gg modules, a reply that dodged the forced call, or an empty submission —
+  and the raw replies carry the evidence.
 
-Expanding a probe shows the per-condition results, each call's classification
-and raw reply, and the request as sent.
+Expanding a probe shows each call's classification, its submitted program and
+raw reply, and the request as sent.
 
 ## Next steps
 

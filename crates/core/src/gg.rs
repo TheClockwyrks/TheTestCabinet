@@ -1284,39 +1284,35 @@ pub const CAPABILITY_FORK: &str = "fork";
 /// pattern The Test Cabinet's [Foray](https://docs.testcabinet.ai/testing/adversarial/foray/architecture/)
 /// engine uses) rather than dispatching one discrete tool call at a time.
 ///
-/// When enabled, an agent's turn no longer offers the model native tool calls. The model's
-/// **whole reply is the program** — with no code fence, no extraction and no language tag — in which
+/// When enabled, an agent's turn offers the model exactly **one** native tool — `submit_program`,
+/// which takes a single `program` string — and the request **requires** a call to it (forced tool
+/// choice). The string passed to the tool **is** the program — no extraction, no repair, no
+/// language tag — in which
 /// each of the run's [tools](CAPABILITY_SHELL) is a **typed function** (`readFile(path, { limit })`,
 /// not a generic call by name), executed in a wasmtime **component** sandbox. Which
 /// [language](GgProgramLanguage) that program is written in is the capability's `language` param: a
 /// configuration knob a cross-language study slices its arms on, and a **required** one — an
 /// enabled capability that names no language refuses the launch rather than picking one. gg
-/// [heals](GgResponseHealing) the reply, prepares it for that language's guest, and runs it — bridging each
+/// prepares the submitted program for that language's guest and runs it — bridging each
 /// tool call the program makes to the real
 /// [`ToolRegistry`](https://docs.testcabinet.ai/gg/overview/) (so the tool runs in the container and
 /// its result flows back **into the program**) — and feeds the program's result (plus any error or
 /// fuel exhaustion) back into the context as the turn's outcome. The tool calls the program made
 /// still stream as ordinary [`ToolCall`](GgTelemetryKind::ToolCall)/[`ToolResult`](GgTelemetryKind::ToolResult)
-/// telemetry, and the turn itself is streamed as a [`CodeExecution`](GgTelemetryKind::CodeExecution)
+/// telemetry, and each submitted program is streamed as a [`CodeExecution`](GgTelemetryKind::CodeExecution)
 /// event. A program that calls a delegation tool still goes through the subagent
 /// [scheduler](CAPABILITY_SUBAGENTS).
 ///
 /// The session ends **only** when a program calls `finish(summary)` — a real function on the
 /// sandbox's model-facing surface rather than a rule about text — whose summary becomes the run's
-/// final text. Saying the work is done therefore ends nothing: a reply that is prose compiles (or
-/// fails to) like any other, and the run goes on until a program calls the ending function.
+/// final text. Saying the work is done therefore ends nothing: a submitted string that is prose
+/// fails to compile like any other, and the run goes on until a program calls the ending function.
 ///
-/// Responses are **healed** before they run: a conservative, deletion-only text repair that unwraps
-/// a fence the model added, drops explanatory prose from around the program, and halves a reply that
-/// arrived as one completion concatenated with a byte-identical copy of itself. What counts as a
-/// fence tag, or as a line of prose, belongs to the program language; the repairs themselves do not.
-/// Every application is [counted on the run](GgHealingSummary) and reported on the operator's
-/// stream, and none of it is disclosed to the model — a repaired reply is simply the reply that ran,
-/// and the one the model's own history carries — so the figures two configurations are compared on
-/// measure the model's compliance rather than its response to being corrected; each
-/// [strategy](GgHealingStrategy) is independently toggleable through the capability's `healing`
-/// param — the first two on unless turned off, and
-/// [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) off unless a run arms it.
+/// There is **no repair pass**: the submitted string is compiled exactly as sent. Text the model
+/// writes beside the tool call is recorded and surfaced as the assistant's message and is never
+/// parsed for code. A reply that carries **several** `submit_program` calls runs each program
+/// sequentially, in order, all of them regardless of whether an earlier one failed — and however
+/// many of them fail, at most **one** error is counted against the turn.
 ///
 /// Every tool the run offers is bound into the program's surface: there is no class of call a
 /// program is denied, so the toolset a program sees is exactly the toolset a JSON tool-calling
@@ -1367,15 +1363,6 @@ pub const PARAM_MAX_MEMORY_BYTES: &str = "maxMemoryBytes";
 /// each of the three, and one that leaves a key out is refused along with an absent param, a
 /// non-boolean toggle, and a key naming none of the three.
 pub const PARAM_DOC_VIEW_TYPES: &str = "docViewTypes";
-
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param: which
-/// [response-healing](GgHealingStrategy) repairs are armed for this agent.
-///
-/// An enabled capability writes it. `true` arms every strategy and `false` arms none; an object
-/// names each of them, and one that leaves a strategy out is refused along with an absent param, a
-/// non-boolean toggle, and a key naming no strategy. Reading `{"stripFences": false}` as a run
-/// with `strip-fences` armed would measure the arm its author was switching off.
-pub const PARAM_HEALING: &str = "healing";
 
 /// The stable id of the **program library** capability: gg keeps the source of every program a
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent has run, and hands the agent a `programs`
@@ -1702,14 +1689,6 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
                 (
                     PARAM_DOC_VIEW_TYPES,
                     json!({ "return": true, "parameters": false, "errors": true }),
-                ),
-                (
-                    PARAM_HEALING,
-                    json!({
-                        "strip-fences": true,
-                        "strip-prose": true,
-                        "drop-doubled-response": false,
-                    }),
                 ),
             ]),
         ),
@@ -4680,6 +4659,11 @@ pub enum GgTurnErrorType {
     /// session is nowhere near ending, and gg answers it by restating the compaction rather than by
     /// explaining how to finish — and it is answered differently, so it is recorded differently.
     MissingCompletionCompaction,
+    /// A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) turn made no `submit_program` call, so
+    /// the reply carried no program to run — the code-mode counterpart of
+    /// [`MissingCompletionNoCall`](Self::MissingCompletionNoCall), reached only when a provider
+    /// answers a request that required the call with a reply that does not make it.
+    MissingCompletionNoProgram,
 }
 
 impl GgTurnErrorType {
@@ -4687,7 +4671,7 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
@@ -4707,6 +4691,7 @@ impl GgTurnErrorType {
         Self::SandboxTrap,
         Self::MissingCompletionNoCall,
         Self::MissingCompletionCompaction,
+        Self::MissingCompletionNoProgram,
     ];
 
     /// The [base kind](GgTurnErrorKind) this type falls under.
@@ -4734,9 +4719,9 @@ impl GgTurnErrorType {
             Self::SandboxTimeout | Self::SandboxOutOfMemory | Self::SandboxTrap => {
                 GgTurnErrorKind::SandboxLimit
             }
-            Self::MissingCompletionNoCall | Self::MissingCompletionCompaction => {
-                GgTurnErrorKind::MissingCompletion
-            }
+            Self::MissingCompletionNoCall
+            | Self::MissingCompletionCompaction
+            | Self::MissingCompletionNoProgram => GgTurnErrorKind::MissingCompletion,
         }
     }
 
@@ -4767,6 +4752,7 @@ impl GgTurnErrorType {
             Self::SandboxTrap => "sandbox_trap",
             Self::MissingCompletionNoCall => "missing_completion_no_call",
             Self::MissingCompletionCompaction => "missing_completion_compaction",
+            Self::MissingCompletionNoProgram => "missing_completion_no_program",
         }
     }
 
@@ -4796,6 +4782,7 @@ impl GgTurnErrorType {
             Self::SandboxTrap => "sandbox trap",
             Self::MissingCompletionNoCall => "no work declared",
             Self::MissingCompletionCompaction => "compaction ignored",
+            Self::MissingCompletionNoProgram => "no program submitted",
         }
     }
 }
@@ -5025,12 +5012,13 @@ pub enum GgContextSource {
     Assistant,
     /// The output of a tool the agent called, fed back as a tool result.
     ///
-    /// **Tool calling only.** A
-    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) program has no tool
-    /// results: a call's value returns into the program, and the only thing that reaches the model
-    /// is a [view](Self::FileView) it opened. What gg has to say back to a code-mode agent is
-    /// therefore never tool output — it is a [compiler](Self::CompilerError) or
-    /// [runtime](Self::RuntimeError) error, or a [notice](Self::System).
+    /// On the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) surface this
+    /// band carries only the terse tool results answering the turn's `submit_program` calls (and
+    /// the refusal answering a call to a tool the mode does not offer): a **program's** calls have
+    /// no tool results — a call's value returns into the program, and the only thing a program
+    /// shows the model is a [view](Self::FileView) it opened. What gg has to say back about a
+    /// program is a [compiler](Self::CompilerError) or [runtime](Self::RuntimeError) error, or a
+    /// [notice](Self::System).
     ToolOutput,
     /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) program that failed
     /// to compile, carrying the compiler's error and nothing else.
@@ -5754,49 +5742,6 @@ pub struct GgReviewer {
     pub profile: String,
 }
 
-/// One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,
-/// independently toggleable repair gg may apply to a model's response before running it.
-///
-/// The wire values are the strategy ids, spelled exactly as the
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are
-/// (`{"healing": {"strip-fences": false}}`), because the id is one thing: a config key, a metric
-/// name, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly
-/// that reason.
-///
-/// Every application is counted on the run record and reported on the operator's stream, and none
-/// of it is disclosed to the model: the model's history carries the healed program as its own reply,
-/// so the count answers the question a run of this shape asks — how often the model broke the
-/// contract — unperturbed by any correction.
-///
-/// Two of the three are armed unless a configuration turns them off, because for those, repairing
-/// is strictly safer than not: the reply they delete from could not have run as sent. The exception
-/// is [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration
-/// arms it — see its own documentation for why that asymmetry exists.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GgHealingStrategy {
-    /// A Markdown code fence wrapping the program was removed — tagged or not, closed properly,
-    /// closed with prose glued onto the closing line (which CommonMark does not accept as a close,
-    /// so the prose would otherwise be swallowed into the program), or never closed at all. The
-    /// count that answers "how often did this model still wrap its program in a fence after being
-    /// told not to?".
-    StripFences,
-    /// Explanatory lines were removed from before and/or after the program body.
-    StripProse,
-    /// The whole reply was one completion concatenated with a byte-identical copy of itself, and the
-    /// trailing copy was deleted. The shape a provider produces when it emits (or a proxy records)
-    /// the same completion twice: the reply's text is exactly `X + X`, with no fence, no blank line
-    /// and no declaration to separate the halves.
-    ///
-    /// It is the one strategy that is **off unless a configuration arms it**: the half it deletes
-    /// is valid code under any reading other than "the transport duplicated this", so unlike the
-    /// other repairs here, applying it to a model that genuinely meant to do the work twice changes
-    /// behaviour rather than restoring it. An operator arms it for the models observed to exhibit
-    /// the defect.
-    DropDoubledResponse,
-}
-
 /// The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the
 /// axis a cross-language study compares its arms on.
 ///
@@ -5815,8 +5760,7 @@ pub enum GgHealingStrategy {
 /// (`{"language": "typescript"}`), because the id is one thing: a config key, a telemetry value,
 /// and the stem of the language's committed guest artifacts. Lower-case rather than this module's
 /// usual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is
-/// not a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the
-/// module default on the same grounds.
+/// not a spelling anybody would put in a configuration file.
 ///
 /// No language is the default. An agent with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
 /// switched on names one of these, and a launch that omits it is refused. The enum carries no
@@ -6168,118 +6112,6 @@ impl std::fmt::Display for GgProgramLanguage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.id())
     }
-}
-
-/// What gg had to do to a model's response before it could run it — the healing record of one
-/// code-shaped turn.
-///
-/// Healing is textual and conservative: it only ever **deletes**, so a healed program is always a
-/// subsequence of the response the model sent. The model is told nothing about a repair; this
-/// record and the run's operator stream are where every repair is disclosed.
-///
-/// A response that needed nothing carries the default and is omitted from the wire entirely, so
-/// the presence of this object *is* "something was unusual about this response".
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgResponseHealing {
-    /// Each strategy application, in the order applied — a strategy may appear more than once (two
-    /// nested fences are two applications), which is what makes this a count rather than a flag.
-    /// Empty for a clean response.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub strategies: Vec<GgHealingStrategy>,
-    /// Whether the healing pipeline failed to reach a fixpoint, so every repair was discarded and
-    /// the response ran exactly as sent.
-    ///
-    /// Carried so that the one response pathological enough to defeat the pipeline is
-    /// distinguishable from a clean one, which is otherwise byte-identical on the wire.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub did_not_converge: bool,
-    /// The reply **as the model sent it**, carried whenever healing rewrote it into something else.
-    ///
-    /// The program that ran is what the model's own history carries and what every reported line
-    /// number counts lines of, so this is the only surviving copy of the text healing started from
-    /// — and reading the two against each other is what tells a defect in healing apart from a
-    /// mistake by the model. It is for the run's operator; no model is ever shown it.
-    ///
-    /// Absent for a clean response, where the reply and the program are the same string.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub original: Option<String>,
-}
-
-impl GgResponseHealing {
-    /// Whether this response needed nothing at all — the `skip_serializing_if` predicate on
-    /// [`CodeExecution`](GgTelemetryKind::CodeExecution), so a clean turn's event carries no
-    /// `healing` key.
-    ///
-    /// Written against [`Default`] rather than field by field so a fact added later cannot be
-    /// forgotten here and quietly report an unusual response as an ordinary one.
-    pub fn is_clean(&self) -> bool {
-        *self == Self::default()
-    }
-}
-
-/// The run's [response-healing](GgResponseHealing) rollup: how much of what the models sent had to
-/// be repaired before it could run, and which repairs did the work.
-///
-/// The denominator for every rate here is [`code_executions`](GgSessionSummary::code_executions),
-/// which is one per code-shaped turn — the same event these counters are folded from, so numerator
-/// and denominator can never come from different mechanisms and drift. Every counter is `0`, and
-/// [`enabled`](Self::enabled) empty, for a tool-calling run, because healing never runs there.
-///
-/// Read the per-strategy counts as **what gg's pipeline did**, not as what the model wrote: the
-/// pipeline applies its strategies in a fixed order to a fixpoint, so which strategy gets the
-/// credit for a response that several could have repaired is a property of that order.
-///
-/// # What this rollup deliberately does not count
-///
-/// A reply that defeated the pipeline entirely — one whose repairs never reached a fixpoint, so
-/// every repair was discarded and the reply was compiled exactly as sent — contributes only to the
-/// denominator here, exactly as a clean reply does. That fact lives on the turn's own
-/// [`GgResponseHealing::did_not_converge`] rather than being totted up per run, because it is a
-/// diagnosis of one pathological response rather than a rate a study slices on. It is stated here,
-/// and on the docs page, so the gap is known rather than inferred from a rollup that looks
-/// complete.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgHealingSummary {
-    /// Responses that had to be repaired for the program to run.
-    pub healed: u64,
-    /// Total strategy applications; at least [`healed`](Self::healed), since one response may need
-    /// several repairs.
-    pub applications: u64,
-    /// Applications of [`strip-fences`](GgHealingStrategy::StripFences) — the count that answers
-    /// "how often did this model still wrap its program in a code fence after being told not to?".
-    pub strip_fences: u64,
-    /// Applications of [`strip-prose`](GgHealingStrategy::StripProse).
-    pub strip_prose: u64,
-    /// Applications of [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) — how often
-    /// a reply arrived as a byte-exact doubling of itself.
-    ///
-    /// Zero for every run that did not **arm** the strategy, which is the default; read it together
-    /// with [`enabled`](Self::enabled) rather than as "this model never doubled a reply".
-    pub drop_doubled_response: u64,
-    /// The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg
-    /// applies them — the resolved configuration, recorded rather than left to be re-derived from
-    /// the capability set.
-    ///
-    /// This is what makes the configuration legible from the telemetry alone. Every counter above
-    /// is a measurement of what fired, and a run in which nothing fired is byte-identical whether
-    /// its strategies were all armed or all disabled — so without this field a run with healing off
-    /// and a run with healing on are indistinguishable in the data, and comparing the two means
-    /// going back to the invocation files that produced them.
-    ///
-    /// Empty means every strategy was disabled **for a responses-as-code run**, and means nothing
-    /// at all for a tool-calling one, where healing never runs;
-    /// [`execution_mode`](GgSessionSummary::execution_mode) is what tells those two apart.
-    ///
-    /// Serialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty
-    /// list is the one value this field exists to publish, so a key that vanished exactly when it
-    /// meant "every strategy was off" would leave the healing-off arm byte-identical on the wire to
-    /// a build with no such field, reopening one level down the very hole described above.
-    pub enabled: Vec<GgHealingStrategy>,
 }
 
 /// The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.
@@ -6714,15 +6546,13 @@ pub struct GgSessionSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub program_language: Option<GgProgramLanguage>,
-    /// How many **code-shaped turns** the run took — one per
+    /// How many **programs** the run executed — one per
     /// [`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the
     /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool
     /// calling), so a non-zero count is the proof the code path actually ran.
     ///
-    /// This counts turns, not executions: a turn whose reply did not compile at all emits its event
-    /// like any other and is counted here, which is exactly what makes this the denominator for
-    /// every rate in the run's [healing rollup](Self::healing). Numerator and denominator are folded
-    /// from the same event, so they cannot come from different mechanisms and drift.
+    /// A submitted program that did not compile at all emits its event like any other and is
+    /// counted here, and a turn that submitted several programs contributes one count per program.
     pub code_executions: u64,
     /// How many milliseconds the run spent **compiling**, in total — its programs, the code halves
     /// of the skills and memories they brought into use, and the on-use scripts those queued.
@@ -6740,17 +6570,12 @@ pub struct GgSessionSummary {
     /// against a turn of arm B, and it is the only place that question is answerable — the per-turn
     /// time is on the events, but a query works on the run document.
     pub compile_ms: u64,
-    /// What gg had to do to the models' responses before it could run them — the run's
-    /// [response-healing](GgHealingSummary) rollup, folded from the same
-    /// [`CodeExecution`](GgTelemetryKind::CodeExecution) events
-    /// [`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run.
-    pub healing: GgHealingSummary,
     /// How many of the run's turns failed, how badly they clustered, and how — the run's
     /// [error rollup](GgErrorSummary), folded from the
     /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events every agent emitted.
     ///
-    /// Unlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a
-    /// tool-calling turn fails too, just in fewer ways.
+    /// Meaningful in **both** execution modes: a tool-calling turn fails too, just in fewer
+    /// ways.
     pub errors: GgErrorSummary,
     /// Every **dispatched tool call** the run made, in either execution mode — one per
     /// [`ToolResult`](GgTelemetryKind::ToolResult) event, failed or not. This is the population
@@ -7901,14 +7726,12 @@ pub enum GgTelemetryKind {
     /// before it could run it, what the program then did, and whether it ended the run.
     ///
     /// Emitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)
-    /// once per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's
-    /// own [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a
-    /// program at all** — prose, or an empty reply — which is prepared for the guest like anything
-    /// else and is reported the same way a program that did not compile is: `ok: false` and an
-    /// [`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per
-    /// code-shaped turn is the invariant, and it is what makes
-    /// [`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's
-    /// [healing rollup](GgHealingSummary).
+    /// once per **submitted program**, on the agent that emitted the reply, so it rides on that
+    /// agent's own [`agent_id`](GgTelemetryEvent::agent_id) — a turn that submitted several
+    /// programs emits one event per program, in submission order. That includes a submitted string
+    /// that was **not a program at all** — prose, or empty — which is prepared for the guest like
+    /// anything else and is reported the same way a program that did not compile is: `ok: false`
+    /// and an [`error`](Self::CodeExecution::error) carrying the compiler's diagnostic.
     ///
     /// The individual tool calls the program made still stream as ordinary
     /// [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the
@@ -7963,7 +7786,7 @@ pub enum GgTelemetryKind {
         ///
         /// Defaulted and omitted from the wire when nothing was recorded, so the presence of this
         /// object *is* "this turn called something it had not looked up".
-        // Omitted when empty and not an `Option`, so — like `healing` below — it declares its own
+        // Omitted when empty and not an `Option`, so it declares its own
         // optionality: the enum's `optional_fields` only reaches `Option<T>`, and a consumer
         // promised an object the wire does not always carry would read `undefined.calls`.
         #[serde(default, skip_serializing_if = "GgUndocumentedCalls::is_empty")]
@@ -8011,10 +7834,10 @@ pub enum GgTelemetryKind {
         ///
         /// Absent (an empty list) for a turn that logged nothing and for a reply that was not a
         /// program at all.
-        // Omitted from the wire when the program printed nothing, which is most turns — so, like
-        // `healing` below, it has to declare its own optionality: the enum's `optional_fields` only
-        // reaches `Option<T>`, and a consumer promised an array the record does not carry would
-        // read `undefined.length`.
+        // Omitted from the wire when the program printed nothing, which is most turns — so it
+        // has to declare its own optionality: the enum's `optional_fields` only reaches
+        // `Option<T>`, and a consumer promised an array the record does not carry would read
+        // `undefined.length`.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         logs: Vec<String>,
@@ -8062,16 +7885,6 @@ pub enum GgTelemetryKind {
         /// compared on what compiling cost them, which is the first thing such a study asks.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         compile_ms: Option<u64>,
-        /// What gg had to do to this reply before running it, and whether it was a program at all.
-        /// Defaulted and omitted from the wire for a clean response, so the presence of this
-        /// object *is* "something was unusual about this response".
-        // The enum's `optional_fields` only reaches `Option<T>` fields, so this — the one
-        // omitted field here that is not an `Option` — must declare its own optionality or the
-        // TypeScript binding would promise consumers an object the wire does not always carry.
-        // `optional = nullable` keeps the rendered type as-is and only adds the `?`.
-        #[serde(default, skip_serializing_if = "GgResponseHealing::is_clean")]
-        #[cfg_attr(feature = "contract", ts(optional = nullable))]
-        healing: GgResponseHealing,
     },
     /// How one agent turn ended, as gg judged it — the event that makes a run's **error rate**
     /// observable.
@@ -8151,7 +7964,9 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "is_zero_u64")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         loop_abort_chars: u64,
-        /// The reply's length in characters — the model's raw text, before any healing. Carried on
+        /// The reply's length in characters — the model's raw text plus, on a
+        /// responses-as-code turn, the `program` string of each `submit_program` call it made.
+        /// Carried on
         /// every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum
         /// over the turns that **worked** (a progressed or finished outcome): the figure a later
         /// output ceiling would have to accommodate. `0` — and omitted — for a turn whose reply

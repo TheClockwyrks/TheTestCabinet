@@ -2,8 +2,8 @@
 //! catalog model, read its history, and enumerate the providers it can be
 //! pinned to.
 //!
-//! The probe itself — the replayed gg turn-1 request, the condition matrix, the
-//! reply classification, and the verdict — is [`crate::probe`]; these handlers
+//! The probe itself — the replayed gg turn-1 request, the classification of
+//! each submitted program, and the verdict — is [`crate::probe`]; these handlers
 //! own only the HTTP surface and the row lifecycle. Triggering requires a
 //! bearer token (the backend spends the operator's OpenRouter credit on their
 //! behalf), as does the provider enumeration (a third-party reach, like the
@@ -34,7 +34,7 @@ pub struct ProbeTriggerInput {
     /// Pin every call to this provider (`provider.order` with fallbacks
     /// disabled). Absent probes the default route.
     pub provider: Option<String>,
-    /// Samples per condition (default 3, at most 8).
+    /// Completion calls (default 3, at most 8).
     pub samples: Option<i32>,
     /// Completion-token cap per call (default 3500).
     pub max_tokens: Option<i32>,
@@ -62,13 +62,10 @@ pub struct ModelProbeOut {
     pub status: String,
     /// Why the probe failed, or null.
     pub error: Option<String>,
-    /// `ready`, `ready-with-reminders`, `tool-call-overfit`, or `not-ready`;
-    /// null until the probe completes.
+    /// `ready` or `not-ready`; null until the probe completes.
     pub verdict: Option<String>,
-    /// The base condition's clean-reply rate (0..=1), or null.
-    pub base_clean_rate: Option<f64>,
-    /// The best variation condition's clean-reply rate (0..=1), or null.
-    pub best_variation_clean_rate: Option<f64>,
+    /// The probe's clean-submission rate (0..=1), or null.
+    pub clean_rate: Option<f64>,
     /// Total USD spend across the probe's calls, as OpenRouter reported it.
     pub spend: f64,
     pub created_at: String,
@@ -76,24 +73,28 @@ pub struct ModelProbeOut {
 }
 
 /// One completion call inside a probe: which provider served it, how it
-/// finished, its classification, and the model's raw reply.
+/// finished, the classified shape of the program it submitted, and the raw
+/// reply.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ModelProbeItemOut {
     pub id: String,
-    /// The prompt condition (`base`, `no-tools`, `notice`, `combo`).
-    pub condition: String,
     pub sample: i32,
     /// The provider OpenRouter reported serving the call, or null on error.
     pub provider: Option<String>,
     pub finish_reason: Option<String>,
     pub native_finish_reason: Option<String>,
-    /// The classified reply shape, or null when the call errored.
+    /// The classified shape of the submitted program, or null when the call
+    /// errored.
     pub label: Option<String>,
-    /// Whether the reply counts as clean (a bare program over the gg modules).
+    /// Whether the submitted program counts as clean (a bare program over the
+    /// gg modules).
     pub clean: bool,
-    /// The model's raw reply content, verbatim.
+    /// The program string the reply's first `submit_program` call carried, or
+    /// null.
+    pub program_text: Option<String>,
+    /// The reply's text content beside the call, verbatim.
     pub response_text: String,
     /// The reply's separate reasoning stream, or null.
     pub reasoning_text: Option<String>,
@@ -105,21 +106,6 @@ pub struct ModelProbeItemOut {
     /// The transport or gateway error that voided the call, or null.
     pub error: Option<String>,
     pub created_at: String,
-}
-
-/// One condition of the probe matrix, so the console can say what each item's
-/// request added on top of the base request.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct ProbeConditionOut {
-    pub name: String,
-    /// Whether the condition appends the no-tools clause to the system prompt.
-    pub no_tools_clause: bool,
-    /// Whether the condition appends the trailing user notice.
-    pub trailing_notice: bool,
-    /// Whether the condition counts as a variation in the verdict.
-    pub variation: bool,
 }
 
 /// The `POST /models/{slug}/probes` response: the probe row, already running.
@@ -139,23 +125,19 @@ pub struct ModelProbesResponse {
 }
 
 /// The `GET /model-probes/{id}` response: the probe with everything the console
-/// shows — what was sent (the base request plus each condition's additions),
-/// every call's classification, and the raw replies.
+/// shows — the request messages exactly as sent, every call's classification,
+/// the submitted programs, and the raw replies. The request also carried the
+/// `submit_program` tool definition with `tool_choice` forced to it; that
+/// constant pair is [`probe::submit_program_tool`] rather than a response
+/// field.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ModelProbeDetailResponse {
     pub probe: ModelProbeOut,
     pub items: Vec<ModelProbeItemOut>,
-    /// The base condition's message array exactly as sent.
+    /// The request's message array exactly as sent.
     pub request_messages: Vec<probe::ProbeMessage>,
-    /// The matrix the items' `condition` names refer to.
-    pub conditions: Vec<ProbeConditionOut>,
-    /// The clause the `no-tools`/`combo` conditions appended to the system
-    /// prompt.
-    pub no_tools_clause: String,
-    /// The trailing user message the `notice`/`combo` conditions appended.
-    pub notice_message: String,
 }
 
 /// The `GET /models/{slug}/probe-providers` response.
@@ -228,7 +210,7 @@ pub async fn trigger(
         )));
     }
 
-    let request_messages = probe::build_messages(&probe::CONDITIONS[0], full_context);
+    let request_messages = probe::build_messages(full_context);
     let row = model_probe::Model {
         id: cuid2::create_id(),
         model_slug: slug,
@@ -243,8 +225,7 @@ pub async fn trigger(
         status: "running".to_string(),
         error: None,
         verdict: None,
-        base_clean_rate: None,
-        best_variation_clean_rate: None,
+        clean_rate: None,
         spend: 0.0,
         created_at: now()?,
         finished_at: None,
@@ -319,9 +300,6 @@ pub async fn get(
         probe: probe_out(row),
         items,
         request_messages,
-        conditions: probe::CONDITIONS.iter().map(condition_out).collect(),
-        no_tools_clause: probe::NO_TOOLS_CLAUSE.to_string(),
-        notice_message: probe::NOTICE_MESSAGE.to_string(),
     }))
 }
 
@@ -392,8 +370,7 @@ fn probe_out(row: model_probe::Model) -> ModelProbeOut {
         status: row.status,
         error: row.error,
         verdict: row.verdict,
-        base_clean_rate: row.base_clean_rate,
-        best_variation_clean_rate: row.best_variation_clean_rate,
+        clean_rate: row.clean_rate,
         spend: row.spend,
         created_at: row.created_at,
         finished_at: row.finished_at,
@@ -404,13 +381,13 @@ fn probe_out(row: model_probe::Model) -> ModelProbeOut {
 fn item_out(row: model_probe_item::Model) -> ModelProbeItemOut {
     ModelProbeItemOut {
         id: row.id,
-        condition: row.condition,
         sample: row.sample,
         provider: row.provider,
         finish_reason: row.finish_reason,
         native_finish_reason: row.native_finish_reason,
         label: row.label,
         clean: row.clean,
+        program_text: row.program_text,
         response_text: row.response_text,
         reasoning_text: row.reasoning_text,
         prompt_tokens: row.prompt_tokens,
@@ -419,16 +396,6 @@ fn item_out(row: model_probe_item::Model) -> ModelProbeItemOut {
         duration_ms: row.duration_ms,
         error: row.error,
         created_at: row.created_at,
-    }
-}
-
-/// Map a matrix condition to the wire shape.
-fn condition_out(condition: &probe::ProbeCondition) -> ProbeConditionOut {
-    ProbeConditionOut {
-        name: condition.name.to_string(),
-        no_tools_clause: condition.no_tools_clause,
-        trailing_notice: condition.trailing_notice,
-        variation: condition.variation,
     }
 }
 

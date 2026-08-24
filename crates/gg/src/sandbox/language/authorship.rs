@@ -72,9 +72,8 @@
 //!   which the ECMAScript arms once did: beyond the names it bought, a top-level `return` ended the
 //!   program and every statement after it was dead. That is legal JavaScript, so nothing refused it
 //!   and the turn was recorded as a success — the shape a model drafting two programs and pasting
-//!   the second after the first lands in, kept as the `round2-*-two-drafts` fixtures in
-//!   `healing.test.rs`. A module has no function body to return from, so the language reports it
-//!   before anything runs.
+//!   the second after the first lands in. A module has no function body to return from, so the
+//!   language reports it before anything runs.
 //! * **A transform conditional on a construct the generated program does not contain.** An arm that
 //!   hoists a model's `import` lines only when it wrote one keeps the bytes of a program that wrote
 //!   none.

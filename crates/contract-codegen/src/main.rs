@@ -383,8 +383,7 @@ fn main() -> Result<()> {
                 gg::GgHookOutcomeKind,
                 gg::GgTurnOutcome, gg::GgTurnErrorKind, gg::GgTurnErrorType,
                 gg::GgCallFailure,
-                gg::GgHealingStrategy, gg::GgProgramLanguage,
-                gg::GgResponseHealing, gg::GgHealingSummary,
+                gg::GgProgramLanguage,
                 gg::GgErrorSummary, gg::GgUndocumentedCalls,
                 gg::GgRejectedResponses,
                 gg::GgSlotCost, gg::GgProviderStat, gg::GgSessionSummary,
@@ -558,8 +557,8 @@ fn main() -> Result<()> {
                 bapi::LogoFetchOut,
                 bapi::ProbeTriggerInput, bapi::ProbeTriggerResponse, bapi::ModelProbeOut,
                 bapi::ModelProbeItemOut, bapi::ModelProbesResponse, bapi::ModelProbeDetailResponse,
-                bapi::ProbeConditionOut, bapi::ProbeMessage, bapi::ProbeProvidersResponse,
-                bapi::ProbeProviderOut,
+                bapi::ProbeMessage, bapi::ProbeToolCall, bapi::ProbeToolFunction,
+                bapi::ProbeProvidersResponse, bapi::ProbeProviderOut,
                 bapi::ProviderStatsResponse, bapi::ProviderStatsOut, bapi::ProviderModelStatsOut,
                 bapi::ProviderCallStatsOut, bapi::ProbeProviderStatsOut, bapi::ProbeProviderModelOut,
                 bapi::ModelAccuracyResponse, bapi::ModelAccuracyOut, bapi::RacAccuracyOut,
@@ -715,12 +714,7 @@ fn main() -> Result<()> {
         SchemaDoc {
             rel_path: "gg/session-summary.schema.json",
             root: Some("GgSessionSummary"),
-            owns: &[
-                "GgSlotCost",
-                "GgHealingSummary",
-                "GgLimitBreach",
-                "GgLimitKind",
-            ],
+            owns: &["GgSlotCost", "GgLimitBreach", "GgLimitKind"],
             schema: root_schema::<gg::GgSessionSummary>(),
         },
         SchemaDoc {
@@ -765,13 +759,6 @@ fn main() -> Result<()> {
                 "GgArchiveEntry",
                 "GgIssueReviewPhase",
                 "GgReviewer",
-                // The per-turn healing record and its vocabulary ride on the
-                // `CodeExecution` event and appear nowhere else in the contract, so this
-                // document is their canonical home. The run-level rollup
-                // (`GgHealingSummary`) is the session summary's, and is referenced from
-                // there.
-                "GgResponseHealing",
-                "GgHealingStrategy",
                 // The program language an instance's surface reports. It is also the
                 // session summary's, but a telemetry reader must be able to resolve the
                 // reference without loading a second document.

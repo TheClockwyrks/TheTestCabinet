@@ -128,6 +128,10 @@ use crate::sandbox::{
 use crate::tasks::TaskStatus;
 use crate::tools::{ToolFailure, ToolOutcome};
 
+/// The deterministic id of the bootstrap's synthesized `submit_program` call — a shape the turn
+/// loop never mints, so the opening turn cannot collide with a real call's id.
+const BOOTSTRAP_CALL_ID: &str = "bootstrap-program";
+
 /// **The calls the bootstrap opens the documentation of** — the ones discovery and showing are made
 /// of, and nothing else.
 ///
@@ -250,8 +254,22 @@ pub(crate) async fn seed_bootstrap(
     );
 
     // Pushed **before** the program runs, so the window reads in the order the work happened: the
-    // reply, and then what its own calls placed.
-    context.push_assistant(Some(source.clone()), Vec::new());
+    // submission, its acknowledgement, and then what the program's own calls placed. The turn is
+    // shaped exactly as the model's own must be — a `submit_program` call answered by a `tool`
+    // result — so the first example of its own output a model reads is one in the protocol's
+    // shape.
+    context.push_assistant(
+        None,
+        vec![crate::completion::synthesized_submission(
+            BOOTSTRAP_CALL_ID,
+            &source,
+        )],
+    );
+    context.push_tool_result(
+        test_cabinet_core::gg::GgContextSource::ToolOutput,
+        BOOTSTRAP_CALL_ID,
+        crate::completion::SUBMIT_PROGRAM_ACK,
+    );
 
     // Owned copies of the grant: nothing borrowed from the caller survives the move onto the
     // blocking thread.

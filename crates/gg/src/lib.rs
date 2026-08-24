@@ -42,7 +42,6 @@ mod ending;
 mod fault;
 mod fsm;
 mod git;
-mod healing;
 mod hooks;
 mod knowledge;
 mod limits;

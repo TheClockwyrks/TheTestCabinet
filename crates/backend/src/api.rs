@@ -49,7 +49,7 @@ mod tournaments;
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.
-pub use crate::probe::ProbeMessage;
+pub use crate::probe::{ProbeMessage, ProbeToolCall, ProbeToolFunction};
 pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{
     CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,
@@ -79,8 +79,7 @@ pub use ladders::{
 };
 pub use model_probes::{
     ModelProbeDetailResponse, ModelProbeItemOut, ModelProbeOut, ModelProbesResponse,
-    ProbeConditionOut, ProbeProviderOut, ProbeProvidersResponse, ProbeTriggerInput,
-    ProbeTriggerResponse,
+    ProbeProviderOut, ProbeProvidersResponse, ProbeTriggerInput, ProbeTriggerResponse,
 };
 pub use models::{
     AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,

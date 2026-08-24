@@ -809,21 +809,19 @@ A model probe is a responses-as-code readiness check of one catalog model,
 answering whether the model can drive [gg](/gg/overview/)'s RaC mode before any
 run is spent on it. The backend replays gg's real RaC turn-1 request, an
 embedded fixture holding the system prompt, the Carom task, two seeded example
-programs with their results, and the spec views, trimmed by default. The replay
-goes through OpenRouter chat/completions with no tools array, across a fixed
-matrix of four prompt conditions: `base` (the request exactly as gg sends it),
-`no-tools` (an explicit no-tools clause appended to the system prompt), `notice`
-(a trailing user message restating the contract), and `combo` (both). Each
-condition is sampled several times with no temperature set.
+programs as `submit_program` calls with their acknowledgements and results, the
+spec views (trimmed by default), and the trailing contract notice. The replay
+goes through OpenRouter chat/completions with the one `submit_program` tool
+offered and `tool_choice` forced to it — the wire shape gg sends — and is
+sampled several times with no temperature set.
 
-Each reply is classified heuristically (`clean-program`, `prose+program`,
-`program-no-gg`, `fenced`, `tool-token`, `xml-pseudo-tools`, `cot-leak`,
-`native-tool-call`, `empty`, `other`); a clean reply is a bare program importing
-from `"gg"`. The verdict thresholds are on the per-condition clean rates. Base
-and every variation at ≥ 80% is `ready`; a variation reaching 80% where base did
-not is `ready-with-reminders`; no variation reaching 80% while tool-call syntax
-appears under the variations is `tool-call-overfit`; anything else is
-`not-ready`.
+Each reply's submitted `program` string is classified heuristically
+(`clean-program`, `prose+program`, `program-no-gg`, `fenced`, `tool-token`,
+`xml-pseudo-tools`, `cot-leak`, `empty`, `other`); a clean submission is a bare
+program importing from `"gg"`. A reply that submits nothing is labeled by how
+it dodged the forced call (`no-submission`, `stray-tool-call`, `no-program`).
+The verdict is on the clean rate: at least 80% clean is `ready`, anything else
+is `not-ready`, and the per-call labels say why.
 
 Probes are append-only history: a re-run is a new dated record. They are
 console-only data and never feed the public snapshot. A probe executes inside
@@ -839,7 +837,7 @@ behalf. The request body is optional JSON, every field optional:
 ```jsonc
 {
   "provider": "…",     // pin every call to this provider (provider.order, fallbacks disabled)
-  "samples": 3,        // samples per condition (default 3, at most 8)
+  "samples": 3,        // completion calls (default 3, at most 8)
   "maxTokens": 3500,   // completion-token cap per call
   "fullContext": false // send the seeded spec views whole instead of trimmed
 }
@@ -855,15 +853,16 @@ code `openrouter_key_missing` when the backend has no key configured.
 ### `GET /models/{slug}/probes`
 
 The model's probe history, newest first, under `probes`. Each probe carries its
-status (`running`, `complete`, or `failed`), verdict, base and best-variation
-clean rates, USD spend, and timestamps. An open read.
+status (`running`, `complete`, or `failed`), verdict, clean rate, USD spend,
+and timestamps. An open read.
 
 ### `GET /model-probes/{id}`
 
-One probe with its per-call items, the base request messages exactly as sent,
-the condition matrix, and the two variation texts. Each item records its
-condition, sample number, serving provider, finish reasons, classification
-label and clean flag, raw reply text with any separate reasoning text, token
+One probe with its per-call items and the request messages exactly as sent
+(the constant `submit_program` tool definition and forced `tool_choice` ride
+beside them on the wire to the provider). Each item records its sample number,
+serving provider, finish reasons, classification label and clean flag, the
+submitted program, the reply's own text with any separate reasoning text, token
 counts, USD cost, duration, and the error that voided the call. An open read.
 
 ### `GET /models/{slug}/probe-providers`
@@ -899,10 +898,10 @@ null` row is a slice recorded before the agent's first usage delta named its
 model, on a run more than one model served.
 
 Probe evidence: one entry per provider observed on
-[model-probe](#model-probes) items, per probed model: item count, clean-reply
-count, and errored calls. Probe rows are single-completion replays rather than
-full runs, which is why they are reported beside the run evidence rather than
-folded into it.
+[model-probe](#model-probes) items, per probed model: item count,
+clean-submission count, and errored calls. Probe rows are single-completion
+replays rather than full runs, which is why they are reported beside the run
+evidence rather than folded into it.
 
 The response also reports `runsScanned` (every stored gg run with a recorded
 session summary) and

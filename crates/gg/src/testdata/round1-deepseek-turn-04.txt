@@ -1,1 +1,0 @@
-Done. Created `MANIFEST.md` with the two files under `src/` — `a.ts` (5 lines) and `b.ts` (10 lines) — sorted by name. Confirmed with `ls -la` that the manifest file exists.

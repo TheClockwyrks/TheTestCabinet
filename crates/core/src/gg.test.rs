@@ -60,12 +60,6 @@ fn no_errors() -> serde_json::Value {
     serde_json::to_value(GgErrorSummary::default()).expect("serialize")
 }
 
-/// The zeroed [healing rollup](GgHealingSummary) every session summary carries, for a fixture
-/// whose subject is something else.
-fn no_healing() -> serde_json::Value {
-    serde_json::to_value(GgHealingSummary::default()).expect("serialize")
-}
-
 #[test]
 fn minimal_capability_set_binds_the_root_model_and_phase0_capabilities() {
     let set = GgCapabilitySet::minimal("anthropic/claude-opus-4.8");
@@ -1447,11 +1441,10 @@ fn empty_telemetry_variants_serialize_as_just_a_type() {
     );
 }
 
-/// The common code turn: a reply that needed nothing and did not end the run. Both new members are
-/// absent from the wire, so the presence of `healing` *is* "something was unusual about this
-/// response" and the presence of `finished` *is* "this turn ended the run".
+/// The common code turn: a program that ran and did not end the run. `finished` is absent from
+/// the wire on it, so the presence of `finished` *is* "this turn ended the run".
 #[test]
-fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
+fn a_code_execution_omits_finished_when_the_turn_did_not_end_the_run() {
     let kind = GgTelemetryKind::CodeExecution {
         undocumented_calls: GgUndocumentedCalls::default(),
         ok: true,
@@ -1464,7 +1457,6 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
         logs_suppressed: 0,
         compile_wait_ms: None,
         compile_ms: None,
-        healing: GgResponseHealing::default(),
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(
@@ -1481,10 +1473,10 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
     assert_eq!(kind, back);
 }
 
-/// The two turns the new members exist for: the one that ended the run, and the one whose reply
-/// was not a program at all (no duration figure, because nothing ran).
+/// The turn that ended the run, and the one whose submitted program was not a program at all (no
+/// duration figure, because nothing ran).
 #[test]
-fn a_code_execution_carries_the_completion_and_the_healing_record() {
+fn a_code_execution_carries_the_completion() {
     let finished = GgTelemetryKind::CodeExecution {
         undocumented_calls: GgUndocumentedCalls::default(),
         ok: true,
@@ -1497,13 +1489,6 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         logs_suppressed: 0,
         compile_wait_ms: None,
         compile_ms: None,
-        healing: GgResponseHealing {
-            strategies: vec![
-                GgHealingStrategy::StripFences,
-                GgHealingStrategy::StripProse,
-            ],
-            ..GgResponseHealing::default()
-        },
     };
     let value = serde_json::to_value(&finished).expect("serialize");
     assert_eq!(
@@ -1515,7 +1500,6 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
             "apiCalls": 1,
             "durationMs": 9_100,
             "finished": "Built the game and wrote MANIFEST.md.",
-            "healing": { "strategies": ["strip-fences", "strip-prose"] },
         })
     );
     assert_eq!(
@@ -1537,7 +1521,6 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         logs_suppressed: 0,
         compile_wait_ms: None,
         compile_ms: None,
-        healing: GgResponseHealing::default(),
     };
     let value = serde_json::to_value(&uncompiled).expect("serialize");
     assert_eq!(
@@ -1554,53 +1537,6 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
         uncompiled
     );
-}
-
-/// A response that defeated the pipeline is byte-identical to a clean one on every other fact, so
-/// `did_not_converge` alone must be enough to make the record worth carrying — otherwise the one
-/// pathological response is reported as "nothing was unusual".
-#[test]
-fn response_healing_is_clean_only_when_every_fact_is_at_its_default() {
-    assert!(GgResponseHealing::default().is_clean());
-
-    let stubborn = GgResponseHealing {
-        did_not_converge: true,
-        ..GgResponseHealing::default()
-    };
-    assert!(!stubborn.is_clean());
-    assert_eq!(
-        serde_json::to_value(&stubborn).unwrap(),
-        json!({ "didNotConverge": true })
-    );
-
-    assert!(
-        !GgResponseHealing {
-            strategies: vec![GgHealingStrategy::StripProse],
-            ..GgResponseHealing::default()
-        }
-        .is_clean()
-    );
-}
-
-/// A strategy id is one string doing three jobs — the `healing` param key, the telemetry value,
-/// and the metric name — so the kebab-case spelling is pinned here rather than left to the derive.
-#[test]
-fn healing_strategy_ids_are_the_kebab_case_config_keys() {
-    for (strategy, id) in [
-        (GgHealingStrategy::StripFences, "strip-fences"),
-        (GgHealingStrategy::StripProse, "strip-prose"),
-        (
-            GgHealingStrategy::DropDoubledResponse,
-            "drop-doubled-response",
-        ),
-    ] {
-        assert_eq!(serde_json::to_value(strategy).unwrap(), json!(id));
-        assert_eq!(
-            serde_json::from_value::<GgHealingStrategy>(json!(id)).unwrap(),
-            strategy,
-            "a stored telemetry value must read back as the strategy that wrote it"
-        );
-    }
 }
 
 /// A program-language id is one string doing three jobs — the `language` param's value, the
@@ -1822,10 +1758,10 @@ fn the_limit_exceeded_event_tags_as_limit_exceeded() {
     assert_eq!(kind, back);
 }
 
-/// The rollups a study slices on, on the wire: every healing counter and the resolved ceilings the
-/// run was actually bounded by, beside the breach that stopped it.
+/// The resolved ceilings the run was actually bounded by, on the wire, beside the breach that
+/// stopped it.
 #[test]
-fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the_run() {
+fn a_session_summary_carries_the_ceiling_that_stopped_the_run() {
     let mut summary: GgSessionSummary = serde_json::from_value(json!({
         "terminalStatus": "limit_exceeded",
         "agentsSpawned": 1,
@@ -1840,7 +1776,6 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
         "executionMode": "responses_as_code",
         "codeExecutions": 4,
         "compileMs": 0,
-        "healing": no_healing(),
         "errors": no_errors(),
         "undocumentedCalls": { "calls": 0 },
         "issuesCreated": 0,
@@ -1850,17 +1785,6 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
         "limits": {},
     }))
     .expect("deserialize");
-    summary.healing = GgHealingSummary {
-        healed: 3,
-        applications: 4,
-        strip_fences: 3,
-        strip_prose: 1,
-        enabled: vec![
-            GgHealingStrategy::StripFences,
-            GgHealingStrategy::StripProse,
-        ],
-        ..GgHealingSummary::default()
-    };
     summary.limits = GgRunLimits {
         max_turns: Some(12),
         max_consecutive_errors: Some(4),
@@ -1876,17 +1800,6 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
     });
 
     let value = serde_json::to_value(&summary).expect("serialize");
-    assert_eq!(
-        value["healing"],
-        json!({
-            "healed": 3,
-            "applications": 4,
-            "stripFences": 3,
-            "stripProse": 1,
-            "dropDoubledResponse": 0,
-            "enabled": ["strip-fences", "strip-prose"],
-        })
-    );
     assert_eq!(
         value["limits"],
         json!({ "maxTurns": 12, "maxConsecutiveErrors": 4 })
@@ -1979,7 +1892,7 @@ fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() 
         transpile: 3,
         program_fault: 3,
         sandbox_limit: 3,
-        missing_completion: 2,
+        missing_completion: 3,
         loop_aborts: 0,
         loop_abort_words: 0,
         loop_abort_chars: 0,
@@ -2209,61 +2122,6 @@ fn an_api_call_carries_the_operation_it_resolved_to() {
     assert_eq!(
         serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
         docs
-    );
-}
-
-/// **A run with healing off has to be visible on the wire**, and the assertion has to be made *on
-/// the wire* to prove it.
-///
-/// [`enabled`](GgHealingSummary::enabled) exists to tell two such configurations apart, and the one
-/// it exists for is the empty one: every counter reads `0` whether the strategies were all armed and
-/// never needed or all switched off. A `skip_serializing_if` here therefore deleted the field in
-/// exactly the case it was added for, and — because a struct-level `enabled.is_empty()` passes
-/// against a build that never wrote the key at all — the suite said so while a real healing-off run
-/// emitted a summary byte-identical to one from a build with no such field. So this asserts on
-/// [`serde_json::to_value`]: the key is **present**, and it is `[]`.
-#[test]
-fn the_disabled_healing_arm_serializes_as_a_present_empty_armed_set() {
-    let summary: GgSessionSummary = serde_json::from_value(json!({
-        "terminalStatus": "completed",
-        "agentsSpawned": 1,
-        "subagentCount": 0,
-        "maxSubagentDepth": 0,
-        "compactions": 0,
-        "ranOutOfContext": false,
-        "contextOverflowCount": 0,
-        "issueReviews": 0,
-        "reviewCycles": 0,
-        "issuesReopened": 0,
-        "executionMode": "responses_as_code",
-        "codeExecutions": 3,
-        "compileMs": 0,
-        "healing": no_healing(),
-        "errors": no_errors(),
-        "undocumentedCalls": { "calls": 0 },
-        "issuesCreated": 0,
-        "issuesCompleted": 0,
-        "slotCosts": [],
-        "effectiveTools": [],
-        "limits": {},
-    }))
-    .expect("deserialize");
-
-    let value = serde_json::to_value(&summary).expect("serialize");
-    let healing = &value["healing"];
-    assert!(
-        healing.get("enabled").is_some(),
-        "the healing-off arm must be readable from the record alone: {healing}"
-    );
-    assert_eq!(healing["enabled"], json!([]));
-
-    // And the armed arm still names its set, so the two arms differ on the wire rather than only in
-    // the invocation files that produced them.
-    let mut armed = summary.clone();
-    armed.healing.enabled = vec![GgHealingStrategy::StripFences];
-    assert_eq!(
-        serde_json::to_value(&armed).expect("serialize")["healing"]["enabled"],
-        json!(["strip-fences"])
     );
 }
 
@@ -2851,7 +2709,6 @@ fn the_authoring_catalog_never_names_a_program_language() {
             PARAM_TIMEOUT_SECS,
             PARAM_MAX_MEMORY_BYTES,
             PARAM_DOC_VIEW_TYPES,
-            PARAM_HEALING,
         ])
     );
 }
@@ -2898,36 +2755,6 @@ fn the_memories_entry_writes_the_scratchpads_limits() {
             "maxResults": 0,
         })
     );
-}
-
-/// The authored [`healing`](PARAM_HEALING) block names **every** strategy gg ships, in the spelling
-/// the strategy itself serializes to.
-///
-/// A block that left one out would be refused at launch, and one that misspelled a key would arm
-/// the arm its author was switching off — which is exactly the drift a literal written twice
-/// produces, so the two spellings are pinned against each other here.
-#[test]
-fn the_authored_healing_block_names_every_strategy_in_its_own_spelling() {
-    let entry = authored_capability(CAPABILITY_RESPONSES_AS_CODE).expect("in the catalog");
-    let healing = entry.params[PARAM_HEALING]
-        .as_object()
-        .expect("healing is a toggle set");
-    let declared: std::collections::BTreeSet<String> = healing.keys().cloned().collect();
-    let strategies: std::collections::BTreeSet<String> = [
-        GgHealingStrategy::StripFences,
-        GgHealingStrategy::StripProse,
-        GgHealingStrategy::DropDoubledResponse,
-    ]
-    .into_iter()
-    .map(|strategy| {
-        serde_json::to_value(strategy)
-            .expect("serialize")
-            .as_str()
-            .expect("a strategy serializes as its id")
-            .to_string()
-    })
-    .collect();
-    assert_eq!(declared, strategies);
 }
 
 /// A capability this crate constructs is **fully specified**: the catalog's arm, and every one of

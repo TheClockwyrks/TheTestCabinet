@@ -100,18 +100,12 @@ function ggTurnOutcomeDetail(
   return parts.join(" · ");
 }
 
-// A responses-as-code turn as one line: what gg had to do to the reply before it
-// could run it, what the program then did, and whether it ended the run.
-//
-// Under this protocol every assistant message is a page of TypeScript, so this
-// event is where a reviewer learns whether that page ran at all — and the healing
-// clause is the instruction-following signal the capability exists to measure
-// ("still fenced its program after being told not to"), which is why it is on the
-// feed rather than only in the aggregate.
+// A responses-as-code program as one line: what it did, and whether it ended the
+// run. Under this protocol every program a reply submits runs in the sandbox, so
+// this event is where a reviewer learns whether that program ran at all.
 function ggCodeExecutionDetail(
   event: Extract<GgTelemetryEvent, { type: "code_execution" }>,
 ): string {
-  const healing = event.healing;
   const parts: string[] = [];
   parts.push(event.ok ? "program ran" : "program failed");
   // `toolCalls` is the contract's historical name for "reached a dispatch"; a program has
@@ -122,9 +116,6 @@ function ggCodeExecutionDetail(
     parts.push(
       `${event.toolCalls} dispatched call${event.toolCalls === 1 ? "" : "s"}`,
     );
-  }
-  if (healing?.strategies?.length) {
-    parts.push(`healed: ${healing.strategies.join(", ")}`);
   }
   // Calls the model wrote without ever having opened the documentation of. Under
   // responses-as-code a signature is only knowable from a documentation view opened
@@ -142,9 +133,6 @@ function ggCodeExecutionDetail(
       }${named ? `: ${named}` : ""}`,
     );
   }
-  // The run rollup does not count a reply that defeated the pipeline, so this line
-  // is the only place it surfaces.
-  if (healing?.didNotConverge) parts.push("healing did not converge");
   // What the program printed is not shown to the model — `console.*` writes to whoever
   // is watching the run, and this event is the only record of it — so the count belongs
   // on the one line that describes the turn. The lines themselves are on the event for

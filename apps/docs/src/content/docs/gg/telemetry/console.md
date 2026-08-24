@@ -191,8 +191,9 @@ offered is the file above; the two are named apart because they are the two
 halves of one question. Like every read-out of what an agent did, the breakdown
 is taken on the surface that agent called on and says which in its caption: Tool
 calls for a tool-calling instance, API calls for a code-shaped one. The API view
-carries no per-entry token column: a code turn produces no tool-role messages, so
-there is nothing in the window to attribute per function.
+carries no per-entry token column: a program's calls return into the program, so
+the only tool-role messages a code turn leaves are its `submit_program`
+acknowledgements and there is nothing per-function in the window to attribute.
 
 Beside it sits the agent's Errors widget: its errored turns against the turns it
 took, its worst unbroken streak of them, its ranked

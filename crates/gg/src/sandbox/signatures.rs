@@ -856,7 +856,7 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
 /// [`catalogue_functions`], reached by the catalogue rather than by the arm that owns it.
 ///
 /// The split exists so that the projection can be tested against a **fixture** catalogue, which has
-/// no arm behind it: giving one an arm — a component, a checker, a healing dialect — to ask it one
+/// no arm behind it: giving one an arm — a component, a checker — to ask it one
 /// question about its own JSON would be a great deal of apparatus for a question that is about the
 /// JSON.
 ///

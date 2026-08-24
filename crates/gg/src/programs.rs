@@ -305,9 +305,9 @@ pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::Launc
 /// The launch-time `info` line naming which agents keep programs and how many each keeps, or `None`
 /// when no agent does.
 ///
-/// Emitted for the reason [`HealingConfig::armed_summary`](crate::healing::HealingConfig::armed_summary)
-/// is: the arm of a study without the library and the arm with it where no program ever reached back
-/// are indistinguishable in an operator's log otherwise. It is per agent because the capability is —
+/// Emitted for the reason [`RunLimits::armed_summary`](crate::limits::RunLimits::armed_summary)
+/// is — a resolved configuration an operator's log must name: the arm of a study without the
+/// library and the arm with it where no program ever reached back are indistinguishable otherwise. It is per agent because the capability is —
 /// a run may keep programs for its implementer and not for its reviewer, and a single number would
 /// describe neither.
 pub fn launch_summary(agents: &[GgAgentConfig]) -> Option<String> {

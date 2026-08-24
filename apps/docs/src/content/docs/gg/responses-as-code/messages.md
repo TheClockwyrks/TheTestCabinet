@@ -2,9 +2,16 @@
 title: "Messages"
 ---
 
-Every assistant turn is a program, and everything gg sends back is plain `user`
-text. The heading is the only thing telling the model what it is looking at, so
-the vocabulary is exactly three messages.
+An assistant turn submits its programs as `submit_program` tool calls, and gg
+answers each call with a terse `tool` result directly after the assistant
+message: `ok` for a call that carried a program — pushed before the program
+runs, so it is a receipt, never a verdict — the reason when a call carried no
+`program` string, and a redirect when the model called a tool this mode does
+not offer.
+
+Everything else gg sends back is plain `user` text. There the heading is the
+only thing telling the model what it is looking at, so the vocabulary is
+exactly three messages.
 
 | Heading | When | Body |
 | --- | --- | --- |

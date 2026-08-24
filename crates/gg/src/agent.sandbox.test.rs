@@ -496,24 +496,27 @@ async fn tool_calling_mode_is_unchanged_and_records_its_mode() {
 // What counts as a program, and what counts as "finished"
 // ---------------------------------------------------------------------------
 
-/// A model that emits a **native tool call** on a code turn — a reflex some models bring from their
-/// tool-use training, despite being offered no tool definitions at all — is ignored loudly, and the
-/// conversation stays valid.
+/// A model that calls a tool other than `submit_program` on a code turn — a reflex some models
+/// bring from their tool-use training — is refused loudly, and the conversation stays valid.
 ///
-/// Keeping the call would put an assistant `tool_calls` entry in the window that nothing ever
-/// answers, because the loop dispatches the *program*, not the call. That is the shape a provider
-/// rejects the whole request for, so it is dropped; the `warn` is what keeps it measurable.
+/// The call is answered by its own `tool` result (a redirect naming `submit_program`), never
+/// dispatched: every assistant `tool_calls` entry gets an answer, which is what keeps the request
+/// a conversation every provider accepts, and the `warn` is what keeps the anomaly measurable.
+/// The program the same reply submitted runs regardless.
 #[tokio::test]
-async fn a_native_tool_call_on_a_code_turn_is_ignored_loudly() {
+async fn a_stray_tool_call_on_a_code_turn_is_refused_loudly() {
     let dir = TempDir::new().unwrap();
     let mut script = program_script(&[
         "import * as gg from \"gg\";\ngg.files.writeFile(\"from-program.txt\", \"hi\");",
     ]);
-    script[0].tool_calls = vec![ToolCall {
+    // Pushed beside the reply's own `submit_program` call rather than in place of it: the stray
+    // call rides along with a legitimate submission, which is the shape a tool-habituated model
+    // actually produces.
+    script[0].tool_calls.push(ToolCall {
         id: "call_habit".to_string(),
         name: "write_file".to_string(),
         arguments: json!({ "path": "from-tool-call.txt", "contents": "hi" }),
-    }];
+    });
     script[0].finish_reason = FinishReason::ToolCalls;
     let (outcome, events, requests) =
         drive_recorded_code_run(&dir, code_set("mock/primary", json!({})), script).await;
@@ -533,10 +536,79 @@ async fn a_native_tool_call_on_a_code_turn_is_ignored_loudly() {
         events.iter().any(|e| matches!(
             &e.kind,
             GgTelemetryKind::Log { level, message }
-                if level == "warn" && message.contains("requested 1 native tool call(s)")
-                    && message.contains("write_file")
+                if level == "warn" && message.contains("the model called `write_file`")
         )),
         "the anomaly is named rather than silently swallowed"
+    );
+}
+
+/// A reply that makes **several** `submit_program` calls runs every program — sequentially, in
+/// submission order, whether or not an earlier one failed — and the turn counts **at most one**
+/// error, typed by the first failure.
+///
+/// The three submissions cover the whole rule in one scenario: the first writes a file and then
+/// throws (a runtime failure), the second is a program the transpiler refuses (a second failure
+/// that must not be the type recorded), and the third runs cleanly and reads what the first wrote,
+/// which is what proves the order and that a failure stops nothing.
+#[tokio::test]
+async fn several_submissions_all_run_in_order_and_count_one_error() {
+    let dir = TempDir::new().unwrap();
+    let mut script = program_script(&[
+        "import * as gg from \"gg\";\ngg.files.writeFile(\"first.txt\", \"1\");\nthrow new Error(\"first failed\");",
+    ]);
+    script[0].tool_calls.push(ToolCall {
+        id: "submit-second".to_string(),
+        name: crate::completion::SUBMIT_PROGRAM_TOOL.to_string(),
+        arguments: json!({ "program": "const x = ;" }),
+    });
+    script[0].tool_calls.push(ToolCall {
+        id: "submit-third".to_string(),
+        name: crate::completion::SUBMIT_PROGRAM_TOOL.to_string(),
+        arguments: json!({
+            "program": "import * as gg from \"gg\";\nconst read = gg.files.readFile(\"first.txt\");\ngg.files.writeFile(\"third.txt\", (read.kind === \"text\" ? read.contents : \"?\") + \"3\");"
+        }),
+    });
+    let (outcome, events, requests) =
+        drive_recorded_code_run(&dir, code_set("mock/primary", json!({})), script).await;
+
+    assert_eq!(outcome, SessionOutcome::Ran);
+    assert_eq!(ended_with(&events), "completed");
+    assert_valid_conversations(&requests);
+    // Every program ran, in submission order: the third read what the first wrote, and the
+    // transpile refusal between them stopped nothing.
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("third.txt")).unwrap(),
+        "13",
+        "the third program ran after the first, past the second's failure"
+    );
+    let summary = session_summary(&events).expect("a session summary");
+    // Three submissions plus the finishing turn's program, each its own execution.
+    assert_eq!(summary.code_executions, 4);
+    // The turn counts one error no matter how many of its programs failed, typed by the FIRST
+    // failure: the throw, not the transpile refusal after it.
+    assert_eq!(summary.errors.errors, 1, "at most one error per turn");
+    assert_eq!(summary.errors.program_fault, 1);
+    assert_eq!(
+        summary.errors.transpile, 0,
+        "the second failure is folded into the first, not counted beside it"
+    );
+    // The model is told the order once, up front, and both failures are fed back beneath it.
+    let turn2: String = requests[1]
+        .iter()
+        .filter_map(|m| m.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        turn2.contains("they ran in order"),
+        "the ordering notice reaches the next turn: {turn2}"
+    );
+    assert!(
+        turn2.contains("first failed"),
+        "the runtime failure is fed back: {turn2}"
+    );
+    assert!(
+        turn2.contains("Compiler error"),
+        "the transpile failure is fed back too: {turn2}"
     );
 }
 
@@ -592,8 +664,8 @@ async fn a_sandbox_failure_is_a_turn_outcome_not_a_crash() {
             &[
                 // Not parseable at all.
                 "const x = ;",
-                // A module feature the sandbox has no implementation of. Nothing in healing touches
-                // an import, so this reaches the transpiler exactly as the model wrote it and fails
+                // A module feature the sandbox has no implementation of. It reaches the
+                // transpiler exactly as the model wrote it and fails
                 // there, which is the shape this test is about.
                 "import {\n  readFileSync,\n} from \"node:fs\";\n1;",
             ],
@@ -1645,18 +1717,10 @@ async fn only_a_program_that_calls_finish_ends_the_session() {
         &dir,
         code_set("mock/primary", json!({})),
         vec![
-            // The modal round-1 terminal reply.
+            // The modal terminal reply: prose, submitted as the program.
             code_reply("The scaffold is already complete; nothing left to do."),
-            // An empty reply is not a completion either.
-            ModelResponse {
-                text: None,
-                tool_calls: Vec::new(),
-                finish_reason: FinishReason::Stop,
-                usage: TokenCounts::default(),
-                cost: None,
-                provider: None,
-                loop_aborts: LoopAborts::none(),
-            },
+            // An empty submission is not a completion either.
+            code_reply(""),
             // ...and only now does the run end, because the model wrote a program that says so.
             code_reply(FINISHING_PROGRAM),
         ],
@@ -1694,7 +1758,7 @@ async fn only_a_program_that_calls_finish_ends_the_session() {
         "the turn carried gg's verdict rather than the compiler's: {error}"
     );
 
-    // The empty reply is an empty program: it compiles, it runs, and it does nothing.
+    // The empty submission is an empty program: it compiles, it runs, and it does nothing.
     let (ok, tool_calls, _, error) = &executions[1];
     assert!(ok, "an empty program runs: {error:?}");
     assert_eq!(*tool_calls, 0);
@@ -2097,95 +2161,6 @@ async fn a_program_that_finishes_and_keeps_going_still_does_the_work() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// What the run records about its own configuration
-// ---------------------------------------------------------------------------
-
-/// **The healing configuration in force is on the launch log and on the session summary.**
-///
-/// Every other healing figure counts what *fired*, and a run in which nothing fired is
-/// byte-identical whether its strategies were all armed or all off — so without this the two arms of
-/// the comparison this subsystem exists to serve are indistinguishable in the telemetry, and a study
-/// has to go back to the invocation files that produced the runs.
-#[tokio::test]
-async fn the_armed_healing_strategies_are_logged_and_recorded() {
-    let dir = TempDir::new().unwrap();
-    let (_, events, _) = drive_recorded_code_run(
-        &dir,
-        code_set(
-            "mock/primary",
-            json!({
-                "healing": {
-                    "strip-fences": true,
-                    "strip-prose": false,
-                    "drop-doubled-response": false,
-                },
-            }),
-        ),
-        vec![code_reply(FINISHING_PROGRAM)],
-    )
-    .await;
-
-    let logs: Vec<String> = events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::Log { message, .. } => Some(message.clone()),
-            _ => None,
-        })
-        .collect();
-    let line = logs
-        .iter()
-        .find(|message| message.starts_with("response healing:"))
-        .unwrap_or_else(|| panic!("no healing line on the launch log: {logs:?}"));
-    assert_eq!(
-        line, "response healing: strip-fences",
-        "the log must name the armed set, and only the armed set"
-    );
-
-    let summary = session_summary(&events).expect("a run emits one session summary");
-    assert_eq!(
-        summary.healing.enabled,
-        vec![GgHealingStrategy::StripFences],
-        "the summary must carry the same resolved set the log named"
-    );
-}
-
-/// **The disabled arm says so explicitly, rather than by saying nothing — and it says it on the
-/// wire.**
-///
-/// `healing: false` and "this run happened not to need any repair" produce identical counters, and
-/// the whole reason the resolved set is recorded is to tell them apart. The assertion is therefore
-/// made against the **serialized** summary rather than the struct: a real healing-off run once
-/// emitted a summary carrying no `enabled` key at all — byte-identical to one from a build that had
-/// no such field — while a struct-level `enabled.is_empty()` passed happily over it. Reading the
-/// arm back out of the JSON is the only assertion that could have caught that, so it is the one
-/// made here.
-#[tokio::test]
-async fn the_disabled_healing_arm_is_named_on_the_log_and_empty_on_the_summary() {
-    let dir = TempDir::new().unwrap();
-    let (_, events, _) = drive_recorded_code_run(
-        &dir,
-        code_set("mock/primary", json!({ "healing": false })),
-        vec![code_reply(FINISHING_PROGRAM)],
-    )
-    .await;
-
-    assert!(
-        events.iter().any(|e| matches!(
-            &e.kind,
-            GgTelemetryKind::Log { message, .. } if message.starts_with("response healing: disabled")
-        )),
-        "a run with every strategy off must say so"
-    );
-    let summary = session_summary(&events).expect("a run emits one session summary");
-    let healing = &serde_json::to_value(&summary).expect("serialize the summary")["healing"];
-    assert_eq!(
-        healing.get("enabled"),
-        Some(&json!([])),
-        "the disabled arm must be readable from the recorded summary alone: {healing}"
-    );
-}
-
 /// **Views the program opened before it threw are still there on the next turn.**
 ///
 /// The property that makes a `Runtime error` carrying nothing but the error survivable. A program
@@ -2233,7 +2208,7 @@ async fn views_opened_before_a_throw_survive_into_the_next_prompt() {
     // `ContextModel::set_trailing_notice`) — carrying the error alone.
     let last = bodies.last().expect("the window is not empty");
     assert!(
-        last.starts_with("Reminder: your entire reply"),
+        last.starts_with("Reminder: take your turn with one `submit_program` call"),
         "the contract notice rides at the very tail: {last}"
     );
     let error = bodies

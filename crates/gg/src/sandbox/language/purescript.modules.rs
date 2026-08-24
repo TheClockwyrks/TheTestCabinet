@@ -35,9 +35,9 @@
 //!
 //! `purs` is a process, and the [compile](super::compile) that already runs one is the expensive
 //! half of this arm's turn. Reading a list of names must not be a second one. So this is a line scan
-//! over the [dialect's own mask](super::healing), and where it cannot tell, it says nothing.
+//! over the [dialect's own mask](super::mask), and where it cannot tell, it says nothing.
 
-use crate::healing::{CodeMask, Dialect, lines_with_offsets};
+use super::super::mask::{CodeMask, lines_with_offsets};
 
 use super::super::{ModuleExport, ModuleExportKind};
 
@@ -47,7 +47,7 @@ pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
     // inside a string literal from being read as a declaration; where the lexer lost its place there
     // is nothing better to do than read the lines, and the cost of being wrong is a name in a list
     // rather than a deletion.
-    let mask = super::healing::PURESCRIPT_DIALECT.code_mask(source);
+    let mask = super::mask::code_mask(source);
     let declared = declared(source, mask.as_ref());
     match export_list(source, mask.as_ref()) {
         Some(listed) => listed

@@ -20,7 +20,6 @@ fn code_on() -> CodeSetup {
         enabled: true,
         language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::AMPLE,
-        healing: HealingConfig::SAFE_REPAIRS,
         doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
@@ -502,10 +501,9 @@ async fn every_request_extends_the_previous_one_and_ends_on_the_contract_notice(
             .iter()
             .enumerate()
             .filter(|(_, message)| {
-                message
-                    .content
-                    .as_deref()
-                    .is_some_and(|content| content.starts_with("Reminder: your entire reply"))
+                message.content.as_deref().is_some_and(|content| {
+                    content.starts_with("Reminder: take your turn with one `submit_program`")
+                })
             })
             .map(|(index, _)| index)
             .collect();

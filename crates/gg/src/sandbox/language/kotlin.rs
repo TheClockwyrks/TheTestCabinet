@@ -7,10 +7,6 @@
 //! * [`compile`] — the host-side build, what it costs, what it shares, and the four ways it can end;
 //! * [`source`] — what gg does to a model's Kotlin before the compiler sees it (**nothing**), the one
 //!   convention that costs, and the code-module wrapper that is all that is left of a wrapper here;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates and the template-aware lexer — the two
-//!   predicates both answering differently from [Java's](super::java::healing), on the arm that
-//!   shares a compiler with it;
 //! * `packages/gg-sandbox-kotlin/src/` — the SDK, and every word of prose a model reads about it;
 //! * the **signature catalogue** — reflected out of that SDK's own KDoc by the compiler's own front
 //!   end, and generated into this build's `OUT_DIR` rather than committed anywhere (see
@@ -94,9 +90,6 @@ pub(super) mod compile;
 
 #[path = "kotlin.source.rs"]
 pub(super) mod source;
-
-#[path = "kotlin.healing.rs"]
-pub(super) mod healing;
 
 /// This arm's catalogue, reflected out of the SDK's own KDoc by
 /// `packages/gg-sandbox-kotlin/signatures.sh` — the compiler's own front end reading the same
@@ -266,10 +259,6 @@ impl ProgramLanguage for Kotlin {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::KOTLIN_DIALECT
     }
 
     /// [`view.openFile("src/Main.kt")`](self::open_file_statement), with the window as two

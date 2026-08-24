@@ -98,8 +98,8 @@
 //!
 //! # The prose gg *does* author, and why it is versioned like code
 //!
-//! What this module renders is this stage's product surface: the reply contract (your whole reply is
-//! the program), the ending contract (an explicit, role-shaped call ends a session and nothing else
+//! What this module renders is this stage's product surface: the reply contract (the program is
+//! submitted as the one required tool call), the ending contract (an explicit, role-shaped call ends a session and nothing else
 //! does), and the four turn feedbacks that answer a program that ran, one that did not compile, one
 //! the sandbox stopped, and a reply that was never a program at all. Each sentence in those exists
 //! because a real model got the contract wrong without it, so treat them as behaviour: change one
@@ -539,16 +539,6 @@ pub struct SystemContext {
     /// when [`subagents`](Self::subagents) is on.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub spawnable_agents: Vec<SpawnableAgentView>,
-    /// Whether [healing](crate::healing)'s fence-stripping strategy is armed this run.
-    ///
-    /// The prompt tells the model not to wrap its program in a code fence either way; what changes
-    /// is the *reason*. With stripping on, "a fence is a syntax error" is simply false — gg removes
-    /// it, without telling the model — and a model that tests the claim learns that gg's rules are
-    /// negotiable, which contaminates the instruction-following signal this capability exists to
-    /// measure. So the armed arm states the rule as the contract without dressing it up as a
-    /// compiler error, and says nothing of the repair: healing is counted for the operator, never
-    /// disclosed to the model.
-    pub fences_are_stripped: bool,
     /// How much of a file one `read_file` call returns, so a capped run says so up front — and, in
     /// either mode, whether this run's model can be shown an image.
     ///

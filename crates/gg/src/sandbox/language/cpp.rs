@@ -8,8 +8,7 @@
 //! * [`source`] — the one thing gg reads out of a reply, which is whether it defines `main`, and
 //!   what it writes around a **code module**: the named module and namespace its declarations are
 //!   opened inside, with the author's own `#include` lines hoisted above them;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of, whose lexer is also the one [`source`] reads a reply with;
+//! * [`mask`] — the byte-level scan [`source`] reads;
 //! * `packages/gg-sandbox-cpp/Sources/sdk/` — the SDK, hand-written and idiomatic, whose `///`
 //!   comments are the model-facing documentation and whose `//` comments are not;
 //! * `packages/gg-sandbox-cpp/signatures.sh` — the reflection, out of clang's own comment AST;
@@ -161,11 +160,11 @@ use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_F
 #[path = "cpp.compile.rs"]
 pub(super) mod compile;
 
+#[path = "cpp.mask.rs"]
+pub(super) mod mask;
+
 #[path = "cpp.source.rs"]
 pub(super) mod source;
-
-#[path = "cpp.healing.rs"]
-pub(super) mod healing;
 
 /// This arm's catalogue, reflected out of the SDK's own documentation comments by
 /// `packages/gg-sandbox-cpp/signatures.sh` — `clang++ -ast-dump=json`, which is clang's own comment
@@ -322,10 +321,6 @@ impl ProgramLanguage for Cpp {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::CPP_DIALECT
     }
 
     /// [`gg::views::open_file("src/main.cpp");`](self::open_file_statement) — with the window as the

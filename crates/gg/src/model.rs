@@ -276,7 +276,7 @@ pub struct ModelResponse {
     ///
     /// It rides on the *successful* response rather than being reported separately because a
     /// discarded attempt has no other carrier: the reply never enters the conversation, never
-    /// reaches the healing pipeline, and is not an error turn — the retry worked. What it *is* is
+    /// runs anything, and is not an error turn — the retry worked. What it *is* is
     /// generation that was paid for and thrown away, so the figures have to reach the turn loop
     /// somehow, and the answer that finally came back is the only thing the turn loop is handed.
     /// The loop logs them and counts them (see

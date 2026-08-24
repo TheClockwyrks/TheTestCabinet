@@ -1,1 +1,0 @@
-I have created `MANIFEST.md` at the workspace root listing all TypeScript files under `src/` sorted alphabetically by name (`src/index.ts` with 9 lines and `src/utils.ts` with 3 lines). I ran `ls -la` and confirmed that `MANIFEST.md` exists in the root directory.

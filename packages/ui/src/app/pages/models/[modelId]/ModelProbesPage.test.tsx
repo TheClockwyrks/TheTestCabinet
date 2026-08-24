@@ -62,8 +62,7 @@ const COMPLETE: ModelProbe = {
   status: "complete",
   error: null,
   verdict: "ready",
-  baseCleanRate: 1,
-  bestVariationCleanRate: 0.67,
+  cleanRate: 1,
   spend: 0.0123,
   createdAt: "2026-08-20T10:00:00Z",
   finishedAt: "2026-08-20T10:01:00Z",
@@ -75,33 +74,10 @@ const RUNNING: ModelProbe = {
   provider: null,
   status: "running",
   verdict: null,
-  baseCleanRate: null,
-  bestVariationCleanRate: null,
+  cleanRate: null,
   spend: 0,
   finishedAt: null,
 };
-
-const CONDITIONS = [
-  {
-    name: "base",
-    noToolsClause: false,
-    trailingNotice: false,
-    variation: false,
-  },
-  {
-    name: "no-tools",
-    noToolsClause: true,
-    trailingNotice: false,
-    variation: true,
-  },
-  {
-    name: "notice",
-    noToolsClause: false,
-    trailingNotice: true,
-    variation: true,
-  },
-  { name: "combo", noToolsClause: true, trailingNotice: true, variation: true },
-];
 
 function detailOf(probe: ModelProbe): ModelProbeDetail {
   return {
@@ -111,14 +87,14 @@ function detailOf(probe: ModelProbe): ModelProbeDetail {
         ? [
             {
               id: "item-1",
-              condition: "base",
               sample: 1,
               provider: "DeepInfra",
-              finishReason: "stop",
-              nativeFinishReason: "stop",
+              finishReason: "tool_calls",
+              nativeFinishReason: "tool_calls",
               label: "clean-program",
               clean: true,
-              responseText: "const game = gg.spawn();",
+              programText: 'import { files } from "gg";\nfiles.list(".");',
+              responseText: "",
               reasoningText: null,
               promptTokens: 1200,
               completionTokens: 340,
@@ -132,10 +108,23 @@ function detailOf(probe: ModelProbe): ModelProbeDetail {
     requestMessages: [
       { role: "system", content: "You are gg's responses-as-code agent." },
       { role: "user", content: "Build the game." },
+      {
+        role: "assistant",
+        tool_calls: [
+          {
+            id: "seed-program-1",
+            type: "function",
+            function: {
+              name: "submit_program",
+              arguments: JSON.stringify({
+                program: 'import { docs } from "gg";\ndocs.search({});',
+              }),
+            },
+          },
+        ],
+      },
+      { role: "tool", tool_call_id: "seed-program-1", content: "ok" },
     ],
-    conditions: CONDITIONS,
-    noToolsClause: "No tools are available in this session.",
-    noticeMessage: "Reply with a single program.",
   };
 }
 
@@ -215,16 +204,16 @@ describe("ModelProbesPage", () => {
   it("renders the probe history and the newest probe's detail", async () => {
     renderPage();
 
-    // The history row: verdict badge, provider, clean rates, spend.
+    // The history row: verdict badge, provider, clean rate, spend.
     expect(await screen.findAllByText("Ready")).not.toHaveLength(0);
     expect(screen.getAllByText("DeepInfra").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/base 100% · best/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/clean 100%/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("$0.0123").length).toBeGreaterThan(0);
 
-    // The newest probe is selected by default, so its detail loads: the
-    // per-condition rollup and the classified item.
+    // The newest probe is selected by default, so its detail loads: the rollup
+    // and the classified item with its submitted program.
     expect(await screen.findAllByText("clean-program")).not.toHaveLength(0);
-    expect(screen.getByText("no-tools")).toBeInTheDocument();
+    expect(screen.getByText(/files\.list/)).toBeInTheDocument();
   });
 
   it("hides the trigger and shows a notice when signed out", async () => {

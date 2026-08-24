@@ -78,12 +78,10 @@ Does not count:
 - A refused call: a compaction the loop is waiting for, a tool this run
   withholds, a spent wall-clock budget. It never reached the loop and is
   reported to the program as a value it can react to.
-- A healed reply. [Healing](/gg/response-healing/) repairs the message rather
-  than the turn, and heal counts and error counts are independent measurements.
 - A program that put nothing in its own window. It ran, and a value it returned
   is discarded and reported to the run's operator. The model hears a `Notice`
   saying its program put nothing in its context, and only when the turn would
-  otherwise end on the assistant's own message.
+  otherwise end on its own submission.
 - A tool-calling turn whose dispatched calls all failed. Every requested call
   was dispatched and answered, so nothing was cut short.
 - gg's own machinery failing, which covers the language's compiler failing to

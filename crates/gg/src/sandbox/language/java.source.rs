@@ -40,9 +40,7 @@
 //!
 //! Because the input is untrusted text a model wrote, and `import ` at the start of a line inside a
 //! text block is not an import. [`Lexer`] is the smallest thing that can tell code from a string,
-//! a character literal, a comment and a text block — the same reading the
-//! [healing dialect](super::healing) makes of a reply, arrived at independently because that one
-//! runs on text that is not yet known to be a program while this one runs on text about to be
+//! a character literal, a comment and a text block — a reading arrived at here for text about to be
 //! handed to javac.
 //!
 //! Everything it does is a **byte** comparison rather than a slice of the source, and that is not a

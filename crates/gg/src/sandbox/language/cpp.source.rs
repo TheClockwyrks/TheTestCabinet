@@ -5,8 +5,8 @@
 //!
 //! Nothing here rewrites a program's text. A C++ program is compiled
 //! [verbatim](super::compile::PROGRAM_FILE), so for that half this module is a *reader* rather than
-//! a lowering, and the lexer below is the same one the arm's
-//! [healing dialect](super::healing) reads a reply with — which is why it masks strings and
+//! a lowering, and the lexer below is the arm's own byte-level scan
+//! ([`mask`](super::mask)) — which is why it masks strings and
 //! comments properly rather than scanning the raw bytes.
 //!
 //! # A code module is a named C++ module exporting a namespace of the author's own file
@@ -781,16 +781,12 @@ fn find_token(bytes: &[u8], code: &[bool], from: usize, token: &[u8]) -> Option<
 /// A byte-for-byte mask of `source`: `true` where the byte is **code**, `false` where it is inside
 /// a string literal, a character literal, a raw string or a comment.
 ///
-/// The [dialect's own lexer](super::healing::scan), read leniently. That module owns the scan
-/// because healing is where the hardest questions are asked of it; what differs is only what the
-/// two readers do with a source that did not lex cleanly. Healing
-/// [declines](super::healing::code_mask) one, because a reading already known to be wrong is the
-/// worst possible basis for anything drawn from it. This reader takes the best reading whatever
-/// happened, because the question it answers — does this reply define `main` — has its errors safe
-/// in the accepting direction: a program masked wrongly is at worst one that is compiled and traps,
-/// which is exactly what not looking at all would have given.
+/// The [arm's own lexer](super::mask::scan), read leniently. This reader takes the best reading
+/// whatever happened to the scan, because the question it answers — does this reply define `main`
+/// — has its errors safe in the accepting direction: a program masked wrongly is at worst one that
+/// is compiled and traps, which is exactly what not looking at all would have given.
 pub(super) fn code_mask(source: &str) -> Vec<bool> {
-    super::healing::scan(source).code
+    super::mask::scan(source).code
 }
 
 #[cfg(test)]

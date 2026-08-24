@@ -7,8 +7,6 @@
 //!   they share, and the two failures they tell apart;
 //! * [`source`] — what gg writes around a model's Rust (nothing), the names a compile is written
 //!   under, and the reading of a code module's exports;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of, one of whose answers no other arm gives;
 //! * `packages/gg-sandbox-rust/` — the crate a program is compiled against: the SDK, the shell, the
 //!   curated library set, and the build that cuts them;
 //! * `rust.libraries.tar.gz`, `rust.adapter.wasm` and `rust.toolchain.json` — the compiled library
@@ -120,9 +118,6 @@ pub(super) mod compile;
 
 #[path = "rust.source.rs"]
 pub(super) mod source;
-
-#[path = "rust.healing.rs"]
-pub(super) mod healing;
 
 /// This arm's catalogue, reflected out of the SDK's own rustdoc by
 /// `packages/gg-sandbox-rust/signatures.sh` — `rustdoc`'s own JSON, read by `tools/signatures.py`.
@@ -269,10 +264,6 @@ impl ProgramLanguage for Rust {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::RUST_DIALECT
     }
 
     /// [`gg::views::open_file("src/main.rs", …)?;`](self::open_file_statement) — with the window

@@ -49,7 +49,8 @@ active.
 ### Never Enumerate Failure Conditions
 
 Do not attempt to enumerate failure conditions. If a mistake is frequently made
-and can be detected+fixed, it should be done through response healing. Any other
+and can be detected+fixed, it should be fixed mechanically by the harness (the
+forced `submit_program` tool call is that fix for reply shape). Any other
 type of error is a model error and must **NOT** be enumerated in the system
 prompt.
 

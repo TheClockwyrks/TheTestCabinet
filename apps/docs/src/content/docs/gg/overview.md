@@ -299,9 +299,6 @@ the console is [Configurations](/gg/configurations/).
 - [Languages](/gg/languages/overview/) — which language a program is written in,
   treated as an axis: the rules an agent-facing surface obeys in any language,
   what a language supplies to be registered, and what adding another one costs.
-- [Response healing](/gg/response-healing/) — the repairs gg makes to a reply
-  before running it as a program, counted on the run and shown to the operator
-  but never disclosed to the model.
 - [Program library](/gg/program-library/) — keep every program an agent runs, so
   it can fetch one back, patch it, and hand it over to be run again.
 - Close documentation (`docview-close`) — let an agent take a [documentation

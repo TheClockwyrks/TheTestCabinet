@@ -2,14 +2,15 @@
 //! model.
 //!
 //! A probe replays gg's real RaC turn-1 request against a model through
-//! OpenRouter (no tools array) across a fixed matrix of prompt conditions and
-//! reduces the classified replies to a verdict on whether the model can drive
-//! RaC at all. This row records what was launched — the catalog slug it was
-//! triggered from, the OpenRouter slug actually sent, an optional pinned
-//! provider, the sampling parameters, and the base request as sent — and the
-//! outcome: status, verdict, clean rates, and total spend. The per-call replies
-//! live in the sibling `model_probe_item` table. Probes are append-only history;
-//! re-running one adds a new row.
+//! OpenRouter — the one `submit_program` tool offered, `tool_choice` forced to
+//! it — samples it several times, classifies each submitted program, and
+//! reduces the results to a verdict on whether the model can drive RaC at all.
+//! This row records what was launched — the catalog slug it was triggered from,
+//! the OpenRouter slug actually sent, an optional pinned provider, the sampling
+//! parameters, and the request as sent — and the outcome: status, verdict,
+//! clean rate, and total spend. The per-call replies live in the sibling
+//! `model_probe_item` table. Probes are append-only history; re-running one
+//! adds a new row.
 
 use sea_orm::entity::prelude::*;
 
@@ -31,14 +32,14 @@ pub struct Model {
     /// The triggering account's id (from the auth service, via the verified
     /// bearer token).
     pub user_id: String,
-    /// Samples requested per condition.
+    /// Completion calls requested.
     pub samples: i32,
     /// The completion-token cap each call was sent with.
     pub max_tokens: i32,
     /// Whether the seeded spec views were sent whole rather than trimmed.
     pub full_context: bool,
-    /// The base condition's message array exactly as sent (JSON), so the console
-    /// can show what the model received even after the baked fixture changes.
+    /// The request's message array exactly as sent (JSON), so the console can
+    /// show what the model received even after the baked fixture changes.
     #[sea_orm(column_type = "Text")]
     pub request_json: String,
     /// `running`, `complete`, or `failed`.
@@ -46,17 +47,13 @@ pub struct Model {
     /// Why the probe failed, or `NULL`.
     #[sea_orm(column_type = "Text", nullable)]
     pub error: Option<String>,
-    /// The reduced verdict (`ready`, `ready-with-reminders`, `tool-call-overfit`,
-    /// `not-ready`), or `NULL` until the probe completes.
+    /// The reduced verdict (`ready` or `not-ready`), or `NULL` until the probe
+    /// completes.
     #[sea_orm(nullable)]
     pub verdict: Option<String>,
-    /// The base condition's clean-reply rate (0..=1), or `NULL` until complete.
+    /// The probe's clean-submission rate (0..=1), or `NULL` until complete.
     #[sea_orm(nullable)]
-    pub base_clean_rate: Option<f64>,
-    /// The best variation condition's clean-reply rate (0..=1), or `NULL` until
-    /// complete.
-    #[sea_orm(nullable)]
-    pub best_variation_clean_rate: Option<f64>,
+    pub clean_rate: Option<f64>,
     /// Total USD spend across the probe's completions, as OpenRouter reported it.
     pub spend: f64,
     /// RFC 3339 of when the probe was triggered.

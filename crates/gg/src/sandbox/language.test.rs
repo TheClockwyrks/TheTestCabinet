@@ -937,12 +937,8 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
         "the JavaScript catalogue dropped its type annotations"
     );
 
-    // The binding convention and the reading healing does.
+    // The binding convention.
     assert_eq!(ts.binding_name("csv-tools"), js.binding_name("csv-tools"));
-    assert_eq!(
-        ts.healing().program_fence_tags(),
-        js.healing().program_fence_tags(),
-    );
 
     // The one program that separates them: a call the SDK does not have is a compile error on the
     // checked arm and reaches the guest on the other, where the same text is what the engine
@@ -1069,8 +1065,8 @@ fn shared_artifacts(a: GgProgramLanguage, b: GgProgramLanguage) -> Option<&'stat
 
 /// **No language serves another language's artifacts**, except where the seam says so out loud.
 ///
-/// Three artifacts, each of which a consumer reaches through the trait object it was handed: the
-/// embedded component, the catalogue's spellings, and the healing dialect. A consumer that had kept
+/// Two artifacts, each of which a consumer reaches through the trait object it was handed: the
+/// embedded component, and the catalogue's spellings. A consumer that had kept
 /// a `static` of TypeScript's — the shape every one of these was in before the seam — would return
 /// the same value for both languages here.
 ///
@@ -1156,12 +1152,6 @@ fn no_language_serves_another_languages_artifacts() {
     assert_ne!(
         crate::sandbox::spell(ts, crate::sandbox::SESSION_REQUEST_CHANGES),
         crate::sandbox::spell(fixture, crate::sandbox::SESSION_REQUEST_CHANGES),
-    );
-
-    assert_ne!(
-        ts.healing().program_fence_tags(),
-        fixture.healing().program_fence_tags(),
-        "both languages recognise the same fenced blocks as their program"
     );
 }
 

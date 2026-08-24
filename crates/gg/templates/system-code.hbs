@@ -2,18 +2,22 @@
 
 {{/if}}## Responses as Code
 
-Each turn, your entire response is run as one {{language.displayName}} program. Reply
-with one legal {{language.displayName}} program and nothing else. All calls are
+Each turn, you take your turn by calling the `submit_program` tool. Its `program`
+string is run as one {{language.displayName}} program: pass one whole, legal
+{{language.displayName}} program — bare code, with no code fences around it and no
+prose inside it — and it is processed exactly as written. All calls are
 synchronous.
 
-There are no tools and no tool-calling protocol in this session. Tool-call syntax
-of any kind — native tool-call tokens, XML invoke blocks, JSON function-call
-objects — is an error: nothing dispatches it. Your reply is one bare program: no
-prose before or after it, and no code fences around it.
+`submit_program` is the only tool in this session, and every reply must call it.
+Each call is acknowledged with a tool result reading `ok`; what the program
+produced arrives as separate messages after it. Text you write alongside the
+call is recorded, but nothing reads code out of it: only the `program` string
+runs. If one reply makes several `submit_program` calls, the programs run
+sequentially, in order, every one of them.
 
 {{#if language.checker}}
 Your program is compiled by `{{language.checker}}` before it runs. A program it refuses
-is not executed: you get its diagnostics and write another program.
+is not executed: you get its diagnostics and submit another program.
 {{/if}}
 
 ## Views
@@ -26,34 +30,34 @@ turn after they're opened. Print statements are not shown.
 ## Language Rules
 
 {{#if (eq language.id "cpp")}}
-Your response is compiled verbatim, as a whole translation unit: the `#include`
+Your program is compiled verbatim, as a whole translation unit: the `#include`
 lines you need, then a `main()` function, which you must define.
 {{/if}}
 {{#if (eq language.id "csharp")}}
-Your response is compiled verbatim, as a whole compilation unit: the `using`
+Your program is compiled verbatim, as a whole compilation unit: the `using`
 lines you need, then top-level statements.
 {{/if}}
 {{#if (eq language.id "java")}}
-Your response is compiled verbatim, as one compilation unit: the `import` lines
+Your program is compiled verbatim, as one compilation unit: the `import` lines
 you need, then `public final class Program` with a
 `public static void main(String[] args)` in it, which is where your work goes.
 `main` may declare `throws`. Anything else you declare goes beside it in the same
 file, without `public` on it.
 {{/if}}
 {{#if (eq language.id "javascript")}}
-Your response is evaluated verbatim, as a whole JavaScript module. Each module
+Your program is evaluated verbatim, as a whole JavaScript module. Each module
 below is brought into scope by a named import binding that module alone, so a
 name gg prints — here, in a search hit, in a documentation view — is written at a
 call site with its leading `gg.` dropped.
 {{/if}}
 {{#if (eq language.id "kotlin")}}
-Your response is compiled verbatim, as one Kotlin file in the root package: the
+Your program is compiled verbatim, as one Kotlin file in the root package: the
 `import` lines you need, then a `fun main()` with no parameters, which is where
 your work goes. Anything else you declare goes beside it at the top level of the
 same file.
 {{/if}}
 {{#if (eq language.id "purescript")}}
-Your response is compiled verbatim, as one PureScript module: your own
+Your program is compiled verbatim, as one PureScript module: your own
 `module … where` header, the `import` lines you need, and a `main :: Effect Unit`
 written as a `do` block, which is where your work goes. The module name is yours
 to pick. Import each module below under its own full name, as in
@@ -61,25 +65,25 @@ to pick. Import each module below under its own full name, as in
 write.
 {{/if}}
 {{#if (eq language.id "python")}}
-Your response is executed exactly as you wrote it, as the whole of a `program.py`
+Your program is executed exactly as you wrote it, as the whole of a `program.py`
 with `__name__` set to `"__main__"`.
 {{/if}}
 {{#if (eq language.id "ruby")}}
-Your response is executed exactly as you wrote it, as the whole of a `program.rb`,
+Your program is executed exactly as you wrote it, as the whole of a `program.rb`,
 at its top level.
 {{/if}}
 {{#if (eq language.id "rust")}}
-Your response is compiled verbatim, as a whole Rust program, and must define
+Your program is compiled verbatim, as a whole Rust program, and must define
 `main`: `fn main() -> Result<(), gg::Failure> { … }` is where your work goes. A
 failure of your own is built from a sentence with
 `gg::program::message("no rows")`.
 {{/if}}
 {{#if (eq language.id "swift")}}
-Your response is compiled verbatim, as a whole Swift file. It is the top level of
+Your program is compiled verbatim, as a whole Swift file. It is the top level of
 a program, so bare statements run in the order you wrote them.
 {{/if}}
 {{#if (eq language.id "typescript")}}
-Your response is compiled verbatim, as a whole TypeScript module. Each module
+Your program is compiled verbatim, as a whole TypeScript module. Each module
 below is brought into scope by a named import binding that module alone, so a
 name gg prints — here, in a search hit, in a documentation view — is written at a
 call site with its leading `gg.` dropped.

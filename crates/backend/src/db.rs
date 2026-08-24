@@ -6365,8 +6365,7 @@ impl Db {
             status: Set(row.status),
             error: Set(row.error),
             verdict: Set(row.verdict),
-            base_clean_rate: Set(row.base_clean_rate),
-            best_variation_clean_rate: Set(row.best_variation_clean_rate),
+            clean_rate: Set(row.clean_rate),
             spend: Set(row.spend),
             created_at: Set(row.created_at),
             finished_at: Set(row.finished_at),
@@ -6409,13 +6408,13 @@ impl Db {
         model_probe_item::ActiveModel {
             id: Set(row.id),
             probe_id: Set(row.probe_id),
-            condition: Set(row.condition),
             sample: Set(row.sample),
             provider: Set(row.provider),
             finish_reason: Set(row.finish_reason),
             native_finish_reason: Set(row.native_finish_reason),
             label: Set(row.label),
             clean: Set(row.clean),
+            program_text: Set(row.program_text),
             response_text: Set(row.response_text),
             reasoning_text: Set(row.reasoning_text),
             prompt_tokens: Set(row.prompt_tokens),
@@ -6473,7 +6472,7 @@ impl Db {
     }
 
     /// Finish a probe: stamp its terminal status (`complete`/`failed`), the
-    /// verdict and clean rates when it completed, the failure message when it did
+    /// verdict and clean rate when it completed, the failure message when it did
     /// not, and the summed spend. Returns whether a row matched.
     #[allow(clippy::too_many_arguments)]
     pub async fn finish_model_probe(
@@ -6482,8 +6481,7 @@ impl Db {
         status: &str,
         error: Option<String>,
         verdict: Option<String>,
-        base_clean_rate: Option<f64>,
-        best_variation_clean_rate: Option<f64>,
+        clean_rate: Option<f64>,
         spend: f64,
         finished_at: &str,
     ) -> Result<bool> {
@@ -6491,14 +6489,7 @@ impl Db {
             .col_expr(model_probe::Column::Status, Expr::value(status))
             .col_expr(model_probe::Column::Error, Expr::value(error))
             .col_expr(model_probe::Column::Verdict, Expr::value(verdict))
-            .col_expr(
-                model_probe::Column::BaseCleanRate,
-                Expr::value(base_clean_rate),
-            )
-            .col_expr(
-                model_probe::Column::BestVariationCleanRate,
-                Expr::value(best_variation_clean_rate),
-            )
+            .col_expr(model_probe::Column::CleanRate, Expr::value(clean_rate))
             .col_expr(model_probe::Column::Spend, Expr::value(spend))
             .col_expr(model_probe::Column::FinishedAt, Expr::value(finished_at))
             .filter(model_probe::Column::Id.eq(id))

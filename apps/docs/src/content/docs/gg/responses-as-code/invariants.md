@@ -22,7 +22,8 @@ first mistake.
 
 The bytes gg compiles are the bytes the model sent. gg writes no prologue, no
 epilogue, no entry point and no import around them, and the compiled text is the
-text the next prompt carries back as that turn's assistant message.
+text the next prompt carries back inside that turn's own recorded
+`submit_program` call.
 
 A model writes whatever its language requires of a whole program. Where a
 language requires an entry point, the model declares it. Where a language
@@ -49,18 +50,15 @@ The program that uses a module is a model's reply, so the rule above reaches it
 in full. A module is made available the way an arm makes gg's SDK available, and
 the program names it the way it names anything else.
 
-## Response healing
+## No repair pass
 
-[Response healing](/gg/response-healing/) is the one pass between the reply and
-the compiler, and it only deletes. The healed text is
-the model's program for every purpose downstream: it is what compiles, what
-runs, what the [program library](/gg/program-library/) records, and what the next
-prompt carries as the assistant message.
-
-The reply as the model sent it is kept and shown to the run's operator, so a
-program that failed can be read against the text healing produced and a defect in
-healing told apart from a mistake by the model. The model is shown the healed
-program alone, so its own history is a history of replies that ran.
+Nothing sits between the submitted `program` string and the compiler. gg
+deletes nothing, inserts nothing and reorders nothing: the string the model
+passed to `submit_program` is what compiles, what runs, what the
+[program library](/gg/program-library/) records, and what the next prompt
+carries inside the model's own recorded call. Text beside the call is the
+assistant's message, surfaced and recorded verbatim, and never parsed for
+code.
 
 ## Everything a program uses, it imports
 
@@ -198,11 +196,12 @@ diagnostic its own program earned.
 
 ## The opening turn
 
-Every agent in this mode opens with an assistant message gg wrote, and gg runs
-that program. What the window then holds is what the program's own calls placed
-there, so the model's first example of a well-formed reply is one that provably
-ran. The result may be cached across the agents of a run, keyed by the language
-and the source.
+Every agent in this mode opens with a turn gg wrote in the protocol's own
+shape — a `submit_program` call carrying the program, answered by the fixed
+`ok` acknowledgement — and gg runs that program. What the window then holds is
+what the program's own calls placed there, so the model's first example of a
+well-formed reply is one that provably ran. The result may be cached across
+the agents of a run, keyed by the language and the source.
 
 A synthesized program that fails to compile or fails to run is gg's own defect
 and ends the run. A model handed a broken example as its model of a valid reply

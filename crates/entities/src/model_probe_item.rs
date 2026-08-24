@@ -1,10 +1,10 @@
 //! The `model_probe_item` table: one completion call inside a model probe.
 //!
-//! Each item is a single OpenRouter chat/completions call from one (condition,
-//! sample) cell of the probe's matrix: which provider actually served it, how it
-//! finished, the classified shape of the reply, and the model's raw response
-//! text (with any separate reasoning stream). A call the gateway refused stores
-//! the error instead of a classification.
+//! Each item is a single OpenRouter chat/completions call — one of the probe's
+//! samples: which provider actually served it, how it finished, the classified
+//! shape of the program the reply submitted, the submitted program itself, and
+//! the reply's own text (with any separate reasoning stream). A call the
+//! gateway refused stores the error instead of a classification.
 
 use sea_orm::entity::prelude::*;
 
@@ -16,9 +16,7 @@ pub struct Model {
     pub id: String,
     /// The owning probe's id.
     pub probe_id: String,
-    /// The prompt condition (`base`, `no-tools`, `notice`, `combo`).
-    pub condition: String,
-    /// The sample index within the condition, from 0.
+    /// The sample index within the probe, from 0.
     pub sample: i32,
     /// The provider OpenRouter reported serving the call, or `NULL` on error.
     #[sea_orm(nullable)]
@@ -29,13 +27,18 @@ pub struct Model {
     /// The provider-native finish reason, or `NULL`.
     #[sea_orm(nullable)]
     pub native_finish_reason: Option<String>,
-    /// The classified reply shape (`clean-program`, `tool-token`, …), or `NULL`
-    /// on error.
+    /// The classified shape of the submitted program (`clean-program`,
+    /// `fenced`, `no-submission`, …), or `NULL` on error.
     #[sea_orm(nullable)]
     pub label: Option<String>,
-    /// Whether the reply counts as clean (a bare program over the gg modules).
+    /// Whether the submitted program counts as clean (a bare program over the
+    /// gg modules).
     pub clean: bool,
-    /// The model's raw reply content, verbatim.
+    /// The program string the reply's first `submit_program` call carried, or
+    /// `NULL` when no usable program arrived.
+    #[sea_orm(column_type = "Text", nullable)]
+    pub program_text: Option<String>,
+    /// The reply's text content beside the call, verbatim (often empty).
     #[sea_orm(column_type = "Text")]
     pub response_text: String,
     /// The reply's separate reasoning stream, or `NULL` when none was returned.

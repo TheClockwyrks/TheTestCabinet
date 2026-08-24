@@ -150,11 +150,11 @@ use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
     CAPABILITY_SUBAGENTS, DEFAULT_SIGNAL_THRESHOLD_PERCENT, GG_WORKSPACE_SKILLS_DIR, GgAgentApi,
     GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCallFailure,
-    GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy, GgHookAgentKind,
-    GgHookEvent, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage,
-    GgResponseHealing, GgReviewer, GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope,
-    GgTelemetryKind, GgUndocumentedCalls, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR,
-    PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
+    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReviewer, GgRosterEntry,
+    GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgUndocumentedCalls,
+    PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -184,7 +184,6 @@ use crate::ending::{Ending, EndingRole};
 use crate::fault::{FaultLatch, panic_message};
 use crate::fsm::{FsmPosition, FsmSpec};
 use crate::git;
-use crate::healing::{self, Healed, HealingConfig, HealingStrategy, plural};
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
     AgentLimits, CeilingLatch, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome,
@@ -218,6 +217,7 @@ use crate::subagents::{
 };
 use crate::tasks::TasksRuntime;
 use crate::telemetry::Emitter;
+use crate::telemetry::plural;
 use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, ApiData, COMPACT_TOOL, EVICT_FILE_VIEW_TOOL,
@@ -1085,7 +1085,7 @@ pub(crate) async fn run_with_seams(
     root_emitter.emit(log("info", orch.limits.armed_summary()));
     root_emitter.record_limits(recorded_limits(&orch.limits, orch.config.max_parallel));
     // ...and the [generation-loop detector](crate::loopguard), when the root agent armed one. Said
-    // on the same terms as the ceilings and the healing set below — a resolved configuration that
+    // on the same terms as the ceilings above — a resolved configuration that
     // decides how the run behaves — and said only when it is armed, because a disarmed detector has
     // no configuration to name and every knob on the declaration is inert. Arming it also changes
     // the transport (a detector can only watch a reply that arrives in pieces), so this line is also
@@ -1093,27 +1093,16 @@ pub(crate) async fn run_with_seams(
     if let Some(config) = orch.loop_guard {
         root_emitter.emit(log("info", config.armed_summary()));
     }
-    // ...and, for a code-mode run, which response-healing strategies are armed. Recorded and logged
-    // beside the ceilings because it is the same kind of fact — a resolved configuration that
-    // decides how the run behaves — and because it is the one a comparison turns on: every healing
-    // figure gg reports counts what *fired*, and the arm in which nothing fired looks exactly like
-    // the arm in which nothing could. A tool-calling run says nothing, because healing never runs
-    // there and an armed set recorded for one would be an intention with no effect.
+    // ...and, for a code-mode run, the reply protocol in force — a resolved configuration that
+    // decides how the run behaves, logged so an operator reading the stream does not have to infer
+    // it from the shape of the requests.
     if orch.code.enabled {
-        root_emitter.emit(log("info", orch.code.healing.armed_summary()));
         root_emitter.emit(log(
             "info",
-            "assistant messages: recorded as the program that ran (the healed program where \
-             healing rewrote the reply, the reply verbatim otherwise)",
+            "responses-as-code: every request requires a `submit_program` tool call; the call's \
+             `program` string is compiled exactly as sent, and assistant text beside the call is \
+             recorded verbatim and never parsed for code.",
         ));
-        root_emitter.record_healing(
-            orch.code
-                .healing
-                .armed()
-                .into_iter()
-                .map(code::wire_strategy)
-                .collect(),
-        );
         // ...and the program library's retention, when any agent keeps one. It is on the same
         // footing as the two lines above — a resolved configuration a comparison toggles — and the
         // arm without it is otherwise indistinguishable in an operator's log from the arm with it
@@ -1659,8 +1648,8 @@ struct Orchestrator {
     /// when project management is off (launch validation refuses a board without one).
     merge_agent: Option<String>,
     /// The **root agent's** code setup: whether its turns are conducted as
-    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), the per-program sandbox ceilings, and the
-    /// armed [healing] strategies. Since responses-as-code is now a **per-agent** capability, each
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) and the per-program sandbox ceilings.
+    /// Since responses-as-code is now a **per-agent** capability, each
     /// agent's own setup is resolved from its profile at run time (see
     /// [`code_setup`](Self::code_setup)); this field carries the root's, used for the run-level
     /// launch log and the sandbox warm-up decision.
@@ -1797,7 +1786,7 @@ struct Orchestrator {
     /// left the capability disarmed (the default).
     ///
     /// Held for one purpose — the launch line that names the armed configuration — on exactly the
-    /// footing [`code.healing`](CodeSetup::healing) is held on: a resolved configuration fact worth
+    /// footing the armed ceilings are held on: a resolved configuration fact worth
     /// saying out loud once, resolved here so the line and the run can never describe different
     /// settings. It is deliberately **not** how any client gets its detector: loop detection is per
     /// agent, so each agent's own client resolves its own from the
@@ -1934,8 +1923,7 @@ impl Orchestrator {
     }
 
     /// Build the orchestrator for `invocation`, loading the shared skills library and token
-    /// estimator once and resolving the run-wide ceilings, deadline, healing strategies and
-    /// subagent caps.
+    /// estimator once and resolving the run-wide ceilings, deadline and subagent caps.
     ///
     /// `warnings` collects every operator-facing diagnostic the resolution produced that gg is none
     /// the less **honouring exactly as written** — an armed ceiling that can only fire on the last
@@ -2014,7 +2002,6 @@ impl Orchestrator {
         // run-level launch log and the sandbox warm-up decision key on. Every value read here was
         // read by `validate_launch` first, through these same resolvers, and refused the run if it
         // was one gg could not honour — so the sink is discarding and nothing is reformatted here.
-        let healing = healing::resolve_healing(set.root(), report);
         // Loop detection is per agent, so every profile's declaration is read here — not just the
         // root's — and each one's advisory warning is stamped with the agent it belongs to. What
         // survives as a warning is only the one cross-knob relationship gg arms exactly as declared
@@ -2069,7 +2056,6 @@ impl Orchestrator {
                 enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
                 language: sandbox::resolve_program_language(set.root(), report),
                 limits: sandbox::resolve_sandbox_limits(set.root(), report),
-                healing,
                 doc_view_types: crate::docs::resolve_doc_view_types(set.root(), report),
             },
             issue_worktrees: Mutex::new(BTreeMap::new()),
@@ -2269,8 +2255,8 @@ impl Orchestrator {
     }
 
     /// The per-agent [code setup](CodeSetup) for `profile`: whether its turns run as
-    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), and the sandbox ceilings and [healing]
-    /// strategies its own responses-as-code config resolves to.
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), and the sandbox ceilings its own
+    /// responses-as-code config resolves to.
     fn code_setup(&self, profile: &GgAgentConfig) -> CodeSetup {
         // A discarding sink: `validate_launch` read every one of these values off this same profile,
         // through these same resolvers, before the first turn and refused the run if any could not
@@ -2280,7 +2266,6 @@ impl Orchestrator {
             enabled: profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
             language: sandbox::resolve_program_language(profile, report),
             limits: sandbox::resolve_sandbox_limits(profile, report),
-            healing: healing::resolve_healing(profile, report),
             doc_view_types: crate::docs::resolve_doc_view_types(profile, report),
         }
     }
@@ -3596,7 +3581,7 @@ async fn drive_agent(
         }
 
         // This agent's execution mode (traditional tool calling vs a code-shaped reply) and the
-        // sandbox ceilings/healing behind it come from its **own profile**, so a run can mix agents
+        // sandbox ceilings behind it come from its **own profile**, so a run can mix agents
         // that call tools with agents that write programs. Resolved here, ahead of the modules,
         // because the window it opens is armed by it.
         let code = orch.code_setup(&profile);
@@ -6524,7 +6509,6 @@ impl Agent {
             assigned_issue: project
                 .as_ref()
                 .and_then(|project| project.assigned_issue.as_deref()),
-            fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
         });
         // The prompt an agent reasons under **is** the experiment, so there is no second prompt to
         // fall back to: gg used to swap its own built-in template in for an override that would not
@@ -6549,7 +6533,7 @@ impl Agent {
         // `ContextModel::set_trailing_notice`), so it restates the reply contract at the context
         // tail of every request without ever disturbing the append-only prompt ahead of it —
         // measured as the single most effective cross-model lever for keeping a
-        // tool-call-trained model answering with bare programs.
+        // tool-call-trained model on the reply contract.
         context.set_trailing_notice(
             code.enabled
                 .then(|| prompts::render_contract_notice(code.language)),
@@ -7124,11 +7108,15 @@ impl Agent {
             }
 
             // The offered toolset for this turn. In responses-as-code mode the model is offered
-            // **no** native tool definitions and there is nothing here to withhold: its surface is
-            // typed API functions it calls from inside a program, which the prompt names the modules
-            // of and the membrane gates. In the ordinary tool-calling mode the whole offered set
-            // goes out every turn: the tool list is part of the prompt a provider caches, so a
-            // toolset that varied turn to turn would rewrite the cached prefix.
+            // exactly **one** native tool — `submit_program` — and the request requires a call to
+            // it (forced tool choice); its working surface is typed API functions it calls from
+            // inside the submitted program, which the prompt names the modules of and the membrane
+            // gates. In the ordinary tool-calling mode the whole offered set goes out every turn:
+            // the tool list is part of the prompt a provider caches, so a toolset that varied turn
+            // to turn would rewrite the cached prefix.
+            let submit_tool = code
+                .enabled
+                .then(|| completion::submit_program_tool(code.language));
             let tools: Vec<ToolDefinition> = if code.enabled {
                 Vec::new()
             } else {
@@ -7177,6 +7165,7 @@ impl Agent {
                     client,
                     context,
                     &tools,
+                    submit_tool.as_ref(),
                     &tool_ctx.vision.support,
                     emitter,
                 )
@@ -7398,7 +7387,7 @@ impl Agent {
             // recorded at whichever of this loop's exits the turn eventually takes — and is empty
             // on a run that left the capability disarmed, which is the default.
             let loop_aborts = response.loop_aborts;
-            // The reply's size — measured on the raw reply, before healing — threaded to every
+            // The reply's size — its raw text, exactly as sent — threaded to every
             // record_turn of this turn so the outcome event carries it; see [`ResponseSize`].
             let response_size = ResponseSize::of(&response);
             if loop_aborts.any() {
@@ -7431,57 +7420,14 @@ impl Agent {
             // contribute to the run's spend while it is still running.
             limits.spend.add(response.cost);
 
-            // Record the assistant turn (text + any tool calls) into the context.
-            //
-            // In responses-as-code mode a turn *is* a program, and the model was offered no native
-            // tool definitions at all — so a `tool_calls` it emitted anyway (a reflex some models
-            // bring from their tool-use training) is never dispatched and never answered. Keeping
-            // it would leave an assistant `tool_calls` entry with no `tool` message following it,
-            // which an OpenAI-shaped provider rejects for the whole request on every later turn. It
-            // is therefore dropped from the window and named in a `warn`, so the anomaly is
-            // measurable rather than invisible.
-            if code.enabled && !response.tool_calls.is_empty() {
-                emitter.emit(log(
-                    "warn",
-                    format!(
-                        "the model requested {} native tool call(s) ({}) on a responses-as-code \
-                         turn, which offers none; they are ignored — the turn's program is what \
-                         runs.",
-                        response.tool_calls.len(),
-                        response
-                            .tool_calls
-                            .iter()
-                            .map(|call| call.name.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                    ),
-                ));
-            }
-            // Responses-as-code heals the reply *before* the assistant message is recorded, because
-            // the recorded message is the program that ran — the healed program whenever healing
-            // rewrote the reply. Healing is done here, once, and the `Healed` is handed to
-            // `run_code_turn` so the turn does not re-heal the same reply. On the tool-calling path
-            // there is no program and no healing; the reply is recorded as sent.
-            let healed = code.enabled.then(|| {
-                healing::heal(
-                    response.text.as_deref().unwrap_or_default(),
-                    &code.healing,
-                    sandbox::language(code.language).healing(),
-                )
-            });
-            // The text the assistant turn is recorded with — always the program that actually ran.
-            // On a code turn it is the healed program whenever healing changed anything
-            // (`rewritten()`); a reply healing left alone, and every tool-calling reply, is
-            // recorded verbatim. The model only ever re-reads this text: the raw reply of a
-            // rewritten turn never enters the context. It survives for the operator instead — on
-            // the turn's `code_execution` record (`healing.original`) and on the operator's
-            // stream — and no feedback to the model mentions the repair.
-            let assistant_text = match &healed {
-                Some(healed) if healed.rewritten() => Some(healed.program.clone()),
-                _ => response.text.clone(),
-            };
-            // The assistant-message event carries the same text the context records — what ran —
-            // and is emitted only now, after healing has settled which text that is.
+            // The assistant turn is recorded exactly as the model sent it, in **both** modes: its
+            // text (on a code turn, commentary — surfaced and recorded, never parsed for code) and
+            // every tool call it made. On a code turn the program itself travels inside the
+            // `submit_program` call's arguments, so the transcript the model re-reads carries its
+            // own submissions in exactly the shape it must produce them.
+            let assistant_text = response.text.clone();
+            // The assistant-message event carries the model's own text, exactly as the context
+            // records it.
             if let Some(text) = &assistant_text {
                 emitter.emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
                 last_text = Some(text.clone());
@@ -7493,17 +7439,9 @@ impl Agent {
             // intrinsic). Captured here,
             // *before* the assistant reply is appended, so `prompt_items` is exactly the
             // window that was sent this turn (post vision-recovery, if any). The reply is
-            // built the same way `push_assistant` will record it (no native tool calls in
-            // responses-as-code mode) and pooled too, so it reappears — id unchanged — as a
-            // request pointer on the next turn.
-            let reply = Message::assistant(
-                assistant_text.clone(),
-                if code.enabled {
-                    Vec::new()
-                } else {
-                    response.tool_calls.clone()
-                },
-            );
+            // built the same way `push_assistant` will record it and pooled too, so it reappears
+            // — id unchanged — as a request pointer on the next turn.
+            let reply = Message::assistant(assistant_text.clone(), response.tool_calls.clone());
             let reply_tokens = context.estimate(&reply);
             let has_reply = reply.content.is_some() || !reply.tool_calls.is_empty();
             let request: Vec<PromptItem<'_>> = context.prompt_items().collect();
@@ -7531,14 +7469,7 @@ impl Agent {
                 recorder.record_prompt_frame(&self.id, &request);
             }
 
-            context.push_assistant(
-                assistant_text,
-                if code.enabled {
-                    Vec::new()
-                } else {
-                    response.tool_calls.clone()
-                },
-            );
+            context.push_assistant(assistant_text, response.tool_calls.clone());
 
             // A pending **self-summarization** takes this turn whole, in either execution mode: the
             // reply *is* the summary, so no tool call is dispatched and no program is run. That is
@@ -7607,12 +7538,95 @@ impl Agent {
                 continue;
             }
 
-            // Responses-as-code turn: the model was offered no native tools, so its **whole reply**
-            // is a program. Run the healed program in the wasmtime sandbox — bridging every
+            // Responses-as-code turn: the request required a `submit_program` call, and each such
+            // call's `program` string is a program to run in the wasmtime sandbox — bridging every
             // typed call to the real toolset (and, for a delegation tool, the scheduler) — and act
             // on what the turn asks for. There is no implicit ending here: a session under this
             // capability ends only when a program calls `finish`, or when a ceiling stops the run.
             if code.enabled {
+                // Answer every call the reply made, directly after the assistant message that made
+                // them: a `tool` message per id is what keeps the transcript a conversation every
+                // OpenAI-shaped provider accepts, and it must directly follow the calls — the
+                // programs run *after* these are pushed, so everything a program produces (views,
+                // errors, notices) lands beneath the acknowledgements rather than between two of
+                // them. An acknowledgement therefore carries receipt, never outcome; a call that
+                // carried no program is answered with why, and a call to a tool this mode does not
+                // offer with the redirect.
+                let turn_call_ids: Vec<String> = response
+                    .tool_calls
+                    .iter()
+                    .map(|call| call.id.clone())
+                    .collect();
+                let mut submissions: Vec<code::SubmittedProgram> = Vec::new();
+                for call in &response.tool_calls {
+                    if call.name == completion::SUBMIT_PROGRAM_TOOL {
+                        let submission = code::submitted_program(call);
+                        context.push_tool_result(
+                            GgContextSource::ToolOutput,
+                            &call.id,
+                            match &submission.program {
+                                Ok(_) => completion::SUBMIT_PROGRAM_ACK.to_string(),
+                                Err(why) => why.clone(),
+                            },
+                        );
+                        submissions.push(submission);
+                    } else {
+                        emitter.emit(log(
+                            "warn",
+                            format!(
+                                "the model called `{}` on a responses-as-code turn, which offers \
+                                 no such tool; the call was refused.",
+                                call.name
+                            ),
+                        ));
+                        context.push_tool_result(
+                            GgContextSource::ToolOutput,
+                            &call.id,
+                            format!(
+                                "There is no tool named `{}` in this session. Submit your \
+                                 program with `{}`.",
+                                call.name,
+                                completion::SUBMIT_PROGRAM_TOOL
+                            ),
+                        );
+                    }
+                }
+                // A reply that submitted nothing runs nothing: the turn is an error, the model is
+                // told how to take its next one, and the loop asks again. Under forced tool choice
+                // this is a provider that did not honour the requirement, not the ordinary shape
+                // of a turn.
+                if submissions.is_empty() {
+                    context.push(
+                        GgContextSource::System,
+                        Retention::Ephemeral,
+                        Message::user(format!(
+                            "Your reply made no `{tool}` call, so nothing ran. Submit your next \
+                             turn's whole program as the `program` string of one `{tool}` call.",
+                            tool = completion::SUBMIT_PROGRAM_TOOL
+                        )),
+                    );
+                    if let Some(breach) = self.record_turn(
+                        &mut agent_limits,
+                        emitter,
+                        &limits,
+                        TurnOutcome::Error(TurnErrorType::MissingCompletionNoProgram),
+                        loop_aborts,
+                        response_size,
+                    ) {
+                        return self.stop_on_limit(
+                            emitter,
+                            &limits,
+                            breach,
+                            turn + 1,
+                            total_tokens,
+                            total_cost,
+                            true,
+                            last_report.as_deref(),
+                            last_text,
+                        );
+                    }
+                    continue;
+                }
                 // The window and the skills runtime are moved **out of the module set** for the
                 // turn: a program's calls act on the live window from a blocking thread, so they
                 // travel by value and are put back the moment the turn hands them over. The set is
@@ -7655,7 +7669,7 @@ impl Agent {
                 let turn_programs =
                     std::mem::replace(&mut programs, crate::programs::ProgramLibrary::disabled());
                 let (decision, state) = run_code_turn(
-                    healed.expect("code mode heals the reply before recording the assistant turn"),
+                    submissions,
                     &code,
                     limits.deadline,
                     &turn_ctx,
@@ -8001,15 +8015,15 @@ impl Agent {
                         }
                         // The turn must end on a message from gg. Usually it already does — a view
                         // the program opened, an error, a rebuilt state block — but a program that
-                        // ran cleanly and opened nothing new leaves this turn's assistant message
-                        // last, and a request whose final message is an assistant one is a request
-                        // asking the provider to *continue that message* rather than to answer it.
+                        // ran cleanly and opened nothing new leaves this turn's own submission —
+                        // the assistant message, or a `submit_program` acknowledgement — last,
+                        // which is a request that asks the provider for nothing new.
                         //
                         // Checked against the window rather than inferred from the outcome, because
                         // what lands last is not a property of the program alone: a re-opened view
                         // supersedes in place rather than appending, a compaction rewrites the
                         // window wholesale, and either can leave the turn ending where it started.
-                        if context.ends_on_assistant() {
+                        if context.ends_on_submission(&turn_call_ids) {
                             context.push(
                                 GgContextSource::System,
                                 Retention::Ephemeral,
@@ -9470,16 +9484,15 @@ impl AutoloadSetup {
 }
 
 /// How a run conducts its turns when [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) is on: the
-/// run-wide mode flag, the per-program [sandbox ceilings](SandboxLimits), and which [healing]
-/// strategies are armed.
+/// run-wide mode flag and the per-program [sandbox ceilings](SandboxLimits).
 ///
-/// Resolved once on the [orchestrator](Orchestrator) and handed to every agent, because all three
-/// are properties of *how a turn is conducted*, not of one agent — and grouped into one struct
+/// Resolved once on the [orchestrator](Orchestrator) and handed to every agent, because these are
+/// properties of *how a turn is conducted*, not of one agent — and grouped into one struct
 /// because a loop that took them separately would let two of them disagree at a call site.
 #[derive(Debug, Clone, Copy)]
 struct CodeSetup {
-    /// Whether the capability is on. When off, nothing in [`crate::sandbox`] or
-    /// [`crate::healing`] is reachable at all and the loop drives ordinary tool calling.
+    /// Whether the capability is on. When off, nothing in [`crate::sandbox`] is reachable at all
+    /// and the loop drives ordinary tool calling.
     enabled: bool,
     /// The [language](GgProgramLanguage) this agent writes its programs in — which decides how a
     /// reply is prepared, which prebuilt guest evaluates it, and how the SDK the prompt describes
@@ -9492,9 +9505,6 @@ struct CodeSetup {
     /// The execution timeout and linear-memory cap one program runs under, resolved from the
     /// capability's `timeoutSecs` / `maxMemoryBytes` params with their defaults.
     limits: SandboxLimits,
-    /// The [healing] strategies armed for this run — the lever that decides which
-    /// malformations of a reply gg repairs before compiling it, and which it lets fail.
-    healing: HealingConfig,
     /// Which SDK types an [`openDocsView`](crate::docs::DocsRuntime) of a function opens beside it —
     /// its return position, that plus its arguments, or none at all.
     ///
@@ -9927,8 +9937,8 @@ struct DriveSetup {
     read_policy: Option<ReadPolicy>,
     /// How much of a command's output one `shell` call returns.
     shell_offload: OffloadPolicy,
-    /// Whether this agent answers with programs rather than tool calls, and the sandbox ceilings
-    /// and [healing] behind that.
+    /// Whether this agent answers with programs rather than tool calls, and the sandbox
+    /// ceilings behind that.
     code: CodeSetup,
     /// The run's [discovery warning latch](crate::discovery), shared by every agent.
     ///
@@ -11022,10 +11032,6 @@ struct PromptInputs<'a> {
     /// brief describes the work, not the protocol, and the board-authoring section it would have
     /// read the protocol from is (rightly) not rendered for a profile that may not author the board.
     assigned_issue: Option<&'a str>,
-    /// Whether [healing]'s fence-stripping strategy is armed, which decides how the prompt states
-    /// the no-code-fence rule — as a contract whose breach gg silently repairs (never disclosing the
-    /// repair to the model), or as a syntax error the model will be handed.
-    fences_are_stripped: bool,
 }
 
 /// Whether `agent` was granted the call gg spells `tool` on the tool-calling surface and
@@ -11471,7 +11477,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
         set,
         ending_role,
         assigned_issue,
-        fences_are_stripped,
     } = inputs;
     // Every section below asks only "is this the code arm?"; exactly one place — the template
     // choice, and the spellings inside it — needs to know which language, so the flag is derived
@@ -11567,7 +11572,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
                 .map(str::to_string),
             subagents: offers_spawn,
             spawnable_agents,
-            fences_are_stripped,
             read_file,
             skills: skill_views(skills, program_language),
             // The strategy decides what the section says: what memory *is* on this run differs
@@ -11777,12 +11781,21 @@ async fn autoload_specifications(
     }
 
     if context.code_mode() {
+        // The synthesized turn takes exactly the shape the model's own turns must: a
+        // `submit_program` call carrying the program, answered by the fixed acknowledgement, with
+        // the views the program opened beneath it.
+        let call_id = "autoload-program";
         context.push_assistant(
-            Some(open_file_program(
-                language,
-                seeded.iter().map(|(rel, _)| rel),
-            )),
-            Vec::new(),
+            None,
+            vec![completion::synthesized_submission(
+                call_id,
+                &open_file_program(language, seeded.iter().map(|(rel, _)| rel)),
+            )],
+        );
+        context.push_tool_result(
+            GgContextSource::ToolOutput,
+            call_id,
+            completion::SUBMIT_PROGRAM_ACK,
         );
         for (rel, outcome) in seeded {
             // The path is the workspace-relative one the case provided, so the view's heading
@@ -12127,10 +12140,11 @@ async fn complete_with_vision_recovery(
     client: &dyn ModelClient,
     context: &mut ContextModel,
     tools: &[ToolDefinition],
+    required: Option<&ToolDefinition>,
     vision: &Arc<VisionSupport>,
     emitter: &Emitter,
 ) -> Result<ModelResponse, ModelError> {
-    let err = match client.complete(&context.messages(), tools).await {
+    let err = match model_request(client, &context.messages(), tools, required).await {
         Ok(response) => return Ok(response),
         Err(err) => err,
     };
@@ -12152,7 +12166,23 @@ async fn complete_with_vision_recovery(
             ),
         ));
     }
-    client.complete(&context.messages(), tools).await
+    model_request(client, &context.messages(), tools, required).await
+}
+
+/// One model request in the shape this turn requires: the ordinary offered toolset, or — on a
+/// responses-as-code turn — the one `submit_program` tool with the reply **required** to call it
+/// ([`ModelClient::complete_requiring`]), which is the wire form of the protocol rather than a
+/// preference the model may decline.
+async fn model_request(
+    client: &dyn ModelClient,
+    messages: &[Message],
+    tools: &[ToolDefinition],
+    required: Option<&ToolDefinition>,
+) -> Result<ModelResponse, ModelError> {
+    match required {
+        Some(tool) => client.complete_requiring(messages, tool).await,
+        None => client.complete(messages, tools).await,
+    }
 }
 
 /// The line appended to a tool result whose image was [stripped](ContextModel::strip_images).
@@ -12187,9 +12217,10 @@ fn record_usage(response: &ModelResponse, emitter: &Emitter, profile_id: &str, m
 }
 
 /// The size of the reply a turn was judged on, in the two units an output ceiling is judged in:
-/// its raw text in **characters** (before any healing — the model's actual output), and its
-/// **completion tokens** as the provider billed them (output plus reasoning, which is the figure a
-/// provider's output cap is measured against).
+/// its generated **characters** — the reply's text plus, on a responses-as-code turn, the
+/// `program` string of each `submit_program` call it made, which is where such a turn's real
+/// output travels — and its **completion tokens** as the provider billed them (output plus
+/// reasoning, which is the figure a provider's output cap is measured against).
 ///
 /// Threaded into [`record_turn`](Agent::record_turn) so the turn's outcome event carries it and
 /// [`GgSessionSummary::max_response_chars`](test_cabinet_core::gg::GgSessionSummary) /
@@ -12210,14 +12241,27 @@ impl ResponseSize {
         Self::default()
     }
 
-    /// Measure `response` — the raw reply, before healing touches it.
+    /// Measure `response` — the raw reply, exactly as sent: its text, plus the `program` string
+    /// of every `submit_program` call it carried.
     fn of(response: &ModelResponse) -> Self {
+        let text = response
+            .text
+            .as_deref()
+            .map(|text| text.chars().count() as u64)
+            .unwrap_or(0);
+        let programs: u64 = response
+            .tool_calls
+            .iter()
+            .filter(|call| call.name == completion::SUBMIT_PROGRAM_TOOL)
+            .filter_map(|call| {
+                call.arguments
+                    .get("program")
+                    .and_then(|value| value.as_str())
+            })
+            .map(|program| program.chars().count() as u64)
+            .sum();
         Self {
-            chars: response
-                .text
-                .as_deref()
-                .map(|text| text.chars().count() as u64)
-                .unwrap_or(0),
+            chars: text.saturating_add(programs),
             output_tokens: response
                 .usage
                 .output

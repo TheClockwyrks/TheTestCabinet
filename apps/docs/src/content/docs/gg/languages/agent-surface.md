@@ -289,5 +289,5 @@ gg has and offers them differently: one is filed under a module gg has no word
 for, two are methods on the types they operate on, one is bound twice as an
 alias, and every name is spelled another way. The gate accepts all of it, and
 the test asserts the reshape is real. The fixture carries its own preparation
-step, healing dialect and bootstrap program, and it has no wire id, so it can
+step and bootstrap program, and it has no wire id, so it can
 never be configured, recorded or run, and no prompt segment is gated on it.

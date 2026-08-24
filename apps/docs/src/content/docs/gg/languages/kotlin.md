@@ -238,16 +238,3 @@ shared body states that a program is compiled before it runs, that one the
 compiler refuses is not executed, and that a call the run withheld compiles and
 fails when it runs. The library set is carried by a compile failure rather than
 by the prompt.
-
-## Healing dialect
-
-The fence tags are `kotlin`, `kt` and `kts`; the script extension stays on the
-list because a model that reached for it has still written Kotlin. A backtick is
-code punctuation
-here, because Kotlin has backquoted identifiers, so a line carrying one is never
-deleted as prose. A `#` line is prose and is deleted, because Kotlin has no `#`
-token at all and one left in a program is a syntax error. A `;` says almost
-nothing, since Kotlin statements end at the newline, so the reading of "this
-line is code" rests on the keyword clause, the call clause, a chain-continuation
-clause and a line carrying an assignment. The dialect's lexer declines when a
-string, comment, character literal or backquoted name is unterminated.

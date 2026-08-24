@@ -206,15 +206,16 @@ body states that a program is compiled before it runs and one the compiler
 refuses is not executed. The declared library set is carried by a compile
 failure rather than by the prompt.
 
-## Healing dialect
+## Code mask
 
-The healing dialect reads `ruby` and `rb` as the fence tags of a program. A `#`
-line is never prose, because a Ruby comment and a Markdown heading are the same
-byte. The lexical mask reads five string shapes: `'…'`, `"…"` with `#{…}`
-interpolation delimited by brace counting, `` `…` ``, the `%w[…]`/`%q(…)` family
-and `<<~EOS` heredocs, beside `#` line comments and `=begin`/`=end` blocks. A
-regular-expression literal is not read, since `/…/` cannot be told from division
-without a parse, and the scan declines where it loses its place.
+The arm keeps one byte-level lexer, `ruby.mask.rs`, answering which bytes of a
+source are code. It reads five string shapes: `'…'`, `"…"` with `#{…}`
+interpolation, backtick command literals, the `%w[…]` family, and heredocs —
+and `#` line comments plus column-zero `=begin`/`=end` blocks. A regex literal
+is the one shape it deliberately does not read: `/…/` cannot be told from
+division without a parse, so a regex carrying a quote makes the scan decline.
+Its reader is the [code-module analysis](#the-sdk-and-the-signature-catalogue),
+which must not take a `def` written into a string for one the module declares.
 
 ## The idiomatic Ruby surface
 

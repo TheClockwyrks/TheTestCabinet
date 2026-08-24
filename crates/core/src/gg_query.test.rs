@@ -19,8 +19,7 @@ use crate::code_analysis::{
 use crate::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_SHELL,
     CAPABILITY_SKILLS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgErrorSummary,
-    GgHealingSummary, GgRunLimits, GgSessionSummary, GgSlotCost, GgUndocumentedCalls,
-    ROOT_PROFILE_ID,
+    GgRunLimits, GgSessionSummary, GgSlotCost, GgUndocumentedCalls, ROOT_PROFILE_ID,
 };
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::run_record::{
@@ -388,7 +387,6 @@ fn session_summary() -> GgSessionSummary {
         program_language: None,
         code_executions: 0,
         compile_ms: 0,
-        healing: GgHealingSummary::default(),
         errors: GgErrorSummary {
             turns: 20,
             errors: 3,
@@ -822,10 +820,6 @@ fn the_whole_session_summary_is_queryable_without_an_enum_arm() {
     assert_eq!(
         doc.get("summary.finalFullness"),
         Some(&GgValue::Number(0.42))
-    );
-    assert_eq!(
-        doc.get("summary.healing.healed"),
-        Some(&GgValue::Number(0.0))
     );
     // The three top-level aliases the language's own vocabulary leans on.
     assert_eq!(

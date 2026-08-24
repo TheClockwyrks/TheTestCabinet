@@ -284,7 +284,7 @@ export type ProbeTriggerInput = {
    */
   provider: string | null;
   /**
-   * Samples per condition (default 3, at most 8).
+   * Completion calls (default 3, at most 8).
    */
   samples: number | null;
   /**
@@ -332,18 +332,13 @@ export type ModelProbeOut = {
    */
   error: string | null;
   /**
-   * `ready`, `ready-with-reminders`, `tool-call-overfit`, or `not-ready`;
-   * null until the probe completes.
+   * `ready` or `not-ready`; null until the probe completes.
    */
   verdict: string | null;
   /**
-   * The base condition's clean-reply rate (0..=1), or null.
+   * The probe's clean-submission rate (0..=1), or null.
    */
-  baseCleanRate: number | null;
-  /**
-   * The best variation condition's clean-reply rate (0..=1), or null.
-   */
-  bestVariationCleanRate: number | null;
+  cleanRate: number | null;
   /**
    * Total USD spend across the probe's calls, as OpenRouter reported it.
    */
@@ -354,14 +349,11 @@ export type ModelProbeOut = {
 
 /**
  * One completion call inside a probe: which provider served it, how it
- * finished, its classification, and the model's raw reply.
+ * finished, the classified shape of the program it submitted, and the raw
+ * reply.
  */
 export type ModelProbeItemOut = {
   id: string;
-  /**
-   * The prompt condition (`base`, `no-tools`, `notice`, `combo`).
-   */
-  condition: string;
   sample: number;
   /**
    * The provider OpenRouter reported serving the call, or null on error.
@@ -370,15 +362,22 @@ export type ModelProbeItemOut = {
   finishReason: string | null;
   nativeFinishReason: string | null;
   /**
-   * The classified reply shape, or null when the call errored.
+   * The classified shape of the submitted program, or null when the call
+   * errored.
    */
   label: string | null;
   /**
-   * Whether the reply counts as clean (a bare program over the gg modules).
+   * Whether the submitted program counts as clean (a bare program over the
+   * gg modules).
    */
   clean: boolean;
   /**
-   * The model's raw reply content, verbatim.
+   * The program string the reply's first `submit_program` call carried, or
+   * null.
+   */
+  programText: string | null;
+  /**
+   * The reply's text content beside the call, verbatim.
    */
   responseText: string;
   /**
@@ -406,55 +405,52 @@ export type ModelProbesResponse = { probes: Array<ModelProbeOut> };
 
 /**
  * The `GET /model-probes/{id}` response: the probe with everything the console
- * shows — what was sent (the base request plus each condition's additions),
- * every call's classification, and the raw replies.
+ * shows — the request messages exactly as sent, every call's classification,
+ * the submitted programs, and the raw replies. The request also carried the
+ * `submit_program` tool definition with `tool_choice` forced to it; that
+ * constant pair is [`probe::submit_program_tool`] rather than a response
+ * field.
  */
 export type ModelProbeDetailResponse = {
   probe: ModelProbeOut;
   items: Array<ModelProbeItemOut>;
   /**
-   * The base condition's message array exactly as sent.
+   * The request's message array exactly as sent.
    */
   requestMessages: Array<ProbeMessage>;
-  /**
-   * The matrix the items' `condition` names refer to.
-   */
-  conditions: Array<ProbeConditionOut>;
-  /**
-   * The clause the `no-tools`/`combo` conditions appended to the system
-   * prompt.
-   */
-  noToolsClause: string;
-  /**
-   * The trailing user message the `notice`/`combo` conditions appended.
-   */
-  noticeMessage: string;
 };
 
 /**
- * One condition of the probe matrix, so the console can say what each item's
- * request added on top of the base request.
+ * One chat message as sent to the provider — the OpenAI chat/completions shape, which is why an
+ * assistant message may carry `tool_calls` and a `tool` message answers one by `tool_call_id`,
+ * and why those two keys stay snake_case on the wire.
  */
-export type ProbeConditionOut = {
+export type ProbeMessage = {
+  role: string;
+  content?: string;
+  tool_calls?: Array<ProbeToolCall>;
+  tool_call_id?: string;
+};
+
+/**
+ * One tool call on an assistant message, in the chat/completions wire shape.
+ */
+export type ProbeToolCall = {
+  id: string;
+  type: string;
+  function: ProbeToolFunction;
+};
+
+/**
+ * The function half of a tool call: the tool's name and its JSON-encoded arguments string.
+ */
+export type ProbeToolFunction = {
   name: string;
   /**
-   * Whether the condition appends the no-tools clause to the system prompt.
+   * The call's arguments as the JSON-encoded string the wire carries.
    */
-  noToolsClause: boolean;
-  /**
-   * Whether the condition appends the trailing user notice.
-   */
-  trailingNotice: boolean;
-  /**
-   * Whether the condition counts as a variation in the verdict.
-   */
-  variation: boolean;
+  arguments: string;
 };
-
-/**
- * One chat message as sent to the provider.
- */
-export type ProbeMessage = { role: string; content: string };
 
 /**
  * The `GET /models/{slug}/probe-providers` response.

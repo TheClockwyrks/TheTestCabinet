@@ -189,23 +189,15 @@ whose author annotated nothing carries neither list. Those names are what a
 function's [documentation view](/gg/responses-as-code/views/) opens the types of,
 resolved against the module's own declarations first and this arm's SDK second.
 
-## Healing dialect
+## Code mask
 
-The dialect answers [response healing](/gg/response-healing/)'s lexical
-questions in Python's terms:
-
-- the fence tags read as the program are `python`, `py`, `python3`, `py3`, `pyw`
-  and `ipython`;
-- a line is code when it opens a block with a block keyword and a trailing `:`,
-  opens with a statement keyword, a closer, a `#` or a `@`, ends open, assigns
-  to a name-shaped target, or opens with a call;
-- statement keywords are matched case-sensitively at an identifier boundary and
-  are keywords alone, which keeps `If you want to…` prose while `if x:` is code;
-- `#` is listed among the characters no prose line contains, so a `#` line
-  survives as a comment;
-- the code mask lexes single, double and triple-quoted strings, comments and
-  backslash escapes, reads an f-string's substitutions as string text, and
-  declines when a string is still open at a newline or at end of input.
+The arm keeps one byte-level lexer, `python.mask.rs`, answering which bytes of a
+source are code rather than string or comment text — including triple-quoted
+strings and f-strings, whose substitutions are read as string bytes so the scan
+cannot lose its place on a 3.12-style nested quote. Its reader is the
+[code-module analysis](#code-modules), which must not take a `def` written
+inside a docstring for one the module declares; a source that does not lex
+cleanly declines the mask, and the analysis then reads the lines as they stand.
 
 ## Prompt segment
 

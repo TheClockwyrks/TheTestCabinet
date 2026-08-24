@@ -83,7 +83,7 @@ gate.
 component and its build, the interpreter shim, the SDK, the signature catalogue and the
 reflection that produces it, the error reporting, the library set, end-to-end execution through gg's own
 linker, membrane and store, and — in `crates/gg/src/sandbox/language/python.rs` and its
-siblings — the `ProgramLanguage` implementation, the healing dialect, this arm's gated language
+siblings — the `ProgramLanguage` implementation, this arm's gated language
 segment of the two shared prompt templates (`crates/gg/templates/system-code.hbs` and
 `crates/gg/templates/code-nothing-shown.hbs`, which every language reaches its own paragraphs of
 through an `eq` on `language.id`), and the `bootstrap_program` that writes the program gg's opening

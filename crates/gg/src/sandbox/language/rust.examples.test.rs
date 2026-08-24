@@ -239,7 +239,6 @@ fn everything_on() -> SystemContext {
             description: "a file you opened a view of".to_string(),
         }],
         custom_instructions: None,
-        fences_are_stripped: true,
         read_file: ReadFileView {
             offered: true,
             line_cap: Some(250),

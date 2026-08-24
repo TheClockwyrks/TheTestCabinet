@@ -1066,8 +1066,10 @@ pub fn build_request_body(
 /// Build the request body for a turn that **must** be answered with a call to `tool`: the one tool
 /// offered, and `tool_choice` naming it rather than `"auto"`.
 ///
-/// Its one caller is [handoff compaction](crate::compaction::HandoffCompactor), which has a single
-/// shot at a structured answer and no next turn in which to ask again. Pure, like
+/// Two callers require a call: every responses-as-code turn, whose reply must be a
+/// `submit_program` call ([`ModelClient::complete_requiring`]), and
+/// [handoff compaction](crate::compaction::HandoffCompactor), which has a single shot at a
+/// structured answer and no next turn in which to ask again. Pure, like
 /// [`build_request_body`], so the wire shape is unit tested without network.
 ///
 /// `stream` carries the same meaning it has on [`build_request_body`], so the agent's transport
@@ -3037,19 +3039,45 @@ impl MockClient {
     /// language](test_cabinet_core::gg::GgProgramLanguage) this mock is written against. A second language's offline script would be a second set of programs beside these,
     /// which is what makes the language the axis rather than a fact of the mock.
     ///
-    /// 1. a first turn whose **whole reply** is a program — it calls `listDir`, then **loops** over
+    /// 1. a first turn submitting a program — it calls `listDir`, then **loops** over
     ///    a list of names and, for each that ends in `.txt` (a **conditional**), calls `writeFile` —
-    ///    so gg heals it (there is nothing to heal), prepares it for the guest, runs it in the wasmtime
+    ///    which gg prepares for the guest, runs in the wasmtime
     ///    sandbox, and bridges its composed `list_dir`/`write_file` calls to the real toolset (the
     ///    [`MOCK_CODE_LEVEL_FILES`] appear in the workspace, the `.md` name is skipped); the program
     ///    opens a view of the files it wrote;
     /// 2. a second program that calls `finish`, which is the only thing that ends a code-mode
     ///    session — there is no prose turn gg would read as "done", because under this capability
-    ///    every reply is a program.
+    ///    a turn's work arrives only as a submitted program.
     ///
     /// Selected in production by a mock `model_id` naming `responses-as-code` (see
     /// [`mock_client_for`]), so the code path is drivable offline through the real binary with the
     /// `responses-as-code` capability enabled.
+    /// A scripted **responses-as-code** reply: `program` submitted as the `submit_program` tool
+    /// call the protocol requires, under the deterministic id `id`, with `usage`/`cost` as given.
+    ///
+    /// The scripts below build every code-mode turn through this, so a scripted run produces
+    /// exactly the wire shape a real provider must: no assistant text, one required call.
+    fn code_submission(
+        id: &str,
+        program: String,
+        usage: TokenCounts,
+        cost: Option<Cost>,
+    ) -> ModelResponse {
+        ModelResponse {
+            text: None,
+            tool_calls: vec![ToolCall {
+                id: id.to_string(),
+                name: crate::completion::SUBMIT_PROGRAM_TOOL.to_string(),
+                arguments: serde_json::json!({ "program": program }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage,
+            cost,
+            provider: None,
+            loop_aborts: LoopAborts::none(),
+        }
+    }
+
     pub fn with_responses_as_code_script(model_id: impl Into<String>) -> Self {
         let usage = |input: u64, output: u64| TokenCounts {
             uncached_input: Some(input),
@@ -3060,8 +3088,9 @@ impl MockClient {
         // A program with a loop, a conditional, a typed annotation (which only runs because the
         // types are stripped), and several composed tool calls: list the directory, then write a
         // file per `.txt` name, skipping the `.md` one.
-        let program = ModelResponse {
-            text: Some(format!(
+        let program = Self::code_submission(
+            "mock-code-work",
+            format!(
                 "import * as gg from \"gg\";\n\
                  const entries = gg.files.listDir(\".\");\n\
                  const names: string[] = [\"{}\", \"{}\", \"notes.md\", \"{}\"];\n\
@@ -3075,30 +3104,21 @@ impl MockClient {
                  console.log(`the workspace held ${{entries.length}} entr(ies) to begin with`);\n\
                  gg.views.openText(\"written\", written.join(\"\\n\"));\n",
                 MOCK_CODE_LEVEL_FILES[0], MOCK_CODE_LEVEL_FILES[1], MOCK_CODE_LEVEL_FILES[2],
-            )),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
-            usage: usage(1200, 90),
-            cost: Some(Cost {
+            ),
+            usage(1200, 90),
+            Some(Cost {
                 comparable: Some(0.002),
                 actual: Some(0.002),
             }),
-            provider: None,
-            loop_aborts: LoopAborts::none(),
-        };
-        let finish = ModelResponse {
-            text: Some(
-                "import * as gg from \"gg\";\n\
-                 gg.session.finish(\"The level files are written; the game scaffold is complete.\");\n"
-                    .to_string(),
-            ),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
-            usage: usage(900, 30),
-            cost: None,
-            provider: None,
-            loop_aborts: LoopAborts::none(),
-        };
+        );
+        let finish = Self::code_submission(
+            "mock-code-finish",
+            "import * as gg from \"gg\";\n\
+             gg.session.finish(\"The level files are written; the game scaffold is complete.\");\n"
+                .to_string(),
+            usage(900, 30),
+            None,
+        );
         Self::new(model_id, vec![program, finish])
     }
 
@@ -3118,30 +3138,20 @@ impl MockClient {
             output: Some(40),
             reasoning: None,
         };
-        let runaway = ModelResponse {
-            text: Some(
-                "let x = 0;\nwhile (true) {\n  x += 1;\n}\nconsole.log(String(x));\n".to_string(),
-            ),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
+        let runaway = Self::code_submission(
+            "mock-runaway",
+            "let x = 0;\nwhile (true) {\n  x += 1;\n}\nconsole.log(String(x));\n".to_string(),
             usage,
-            cost: None,
-            provider: None,
-            loop_aborts: LoopAborts::none(),
-        };
-        let finish = ModelResponse {
-            text: Some(
-                "import * as gg from \"gg\";\n\
-                 gg.session.finish(\"I kept the scaffold simple; the game is ready.\");\n"
-                    .to_string(),
-            ),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
+            None,
+        );
+        let finish = Self::code_submission(
+            "mock-runaway-finish",
+            "import * as gg from \"gg\";\n\
+             gg.session.finish(\"I kept the scaffold simple; the game is ready.\");\n"
+                .to_string(),
             usage,
-            cost: None,
-            provider: None,
-            loop_aborts: LoopAborts::none(),
-        };
+            None,
+        );
         Self::new(model_id, vec![runaway, finish])
     }
 
@@ -3162,34 +3172,24 @@ impl MockClient {
             output: Some(output),
             reasoning: None,
         };
-        let program = ModelResponse {
-            text: Some(
-                "import * as gg from \"gg\";\n\
-                 const child = gg.delegation.spawnSubagent({ agent: \"subagent\", prompt: \"Write the greeting file.\" });\n\
-                 const results = gg.delegation.waitForSubagents([child.id]);\n\
-                 gg.views.openText(\"summaries\", results.map((r) => r.summary).join(\"\\n\"));\n"
-                    .to_string(),
-            ),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
-            usage: usage(1000, 60),
-            cost: None,
-                    provider: None,
-                    loop_aborts: LoopAborts::none(),
-        };
-        let finish = ModelResponse {
-            text: Some(
-                "import * as gg from \"gg\";\n\
-                 gg.session.finish(\"The subagent finished; the greeting is in place.\");\n"
-                    .to_string(),
-            ),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
-            usage: usage(1000, 40),
-            cost: None,
-            provider: None,
-            loop_aborts: LoopAborts::none(),
-        };
+        let program = Self::code_submission(
+            "mock-parent-work",
+            "import * as gg from \"gg\";\n\
+             const child = gg.delegation.spawnSubagent({ agent: \"subagent\", prompt: \"Write the greeting file.\" });\n\
+             const results = gg.delegation.waitForSubagents([child.id]);\n\
+             gg.views.openText(\"summaries\", results.map((r) => r.summary).join(\"\\n\"));\n"
+                .to_string(),
+            usage(1000, 60),
+            None,
+        );
+        let finish = Self::code_submission(
+            "mock-parent-finish",
+            "import * as gg from \"gg\";\n\
+             gg.session.finish(\"The subagent finished; the greeting is in place.\");\n"
+                .to_string(),
+            usage(1000, 40),
+            None,
+        );
         Self::new(model_id, vec![program, finish])
     }
 
@@ -3207,30 +3207,24 @@ impl MockClient {
             output: Some(output),
             reasoning: None,
         };
-        let program = ModelResponse {
-            text: Some(format!(
+        let program = Self::code_submission(
+            "mock-child-work",
+            format!(
                 "import * as gg from \"gg\";\n\
                  gg.files.writeFile(\"{MOCK_SUBAGENT_FILE}\", \"hello from the subagent\\n\");\n"
-            )),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
-            usage: usage(500, 40),
-            cost: None,
-            provider: None,
-            loop_aborts: LoopAborts::none(),
-        };
-        let finish = ModelResponse {
-            text: Some(format!(
+            ),
+            usage(500, 40),
+            None,
+        );
+        let finish = Self::code_submission(
+            "mock-child-finish",
+            format!(
                 "import * as gg from \"gg\";\ngg.session.finish({});\n",
                 serde_json::json!(MOCK_SUBAGENT_RETURN)
-            )),
-            tool_calls: Vec::new(),
-            finish_reason: FinishReason::Stop,
-            usage: usage(520, 30),
-            cost: None,
-            provider: None,
-            loop_aborts: LoopAborts::none(),
-        };
+            ),
+            usage(520, 30),
+            None,
+        );
         Self::new(model_id, vec![program, finish])
     }
 }

@@ -1,10 +1,11 @@
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { SegmentedControl, Spinner, StatusGlyph } from "@test-cabinet/ui";
 import type {
   ModelProbe,
   ModelProbeDetail,
   ModelProbeItem,
   ModelProbeProvider,
+  ModelProbeToolCall,
   ModelProbeTriggerInput,
   ModelProbeVerdict,
 } from "../../../../client/types";
@@ -28,12 +29,12 @@ const DEFAULT_SAMPLES = 3;
 const DEFAULT_MAX_TOKENS = 3500;
 
 // The Probes tab (`/models/:modelId/probes`): responses-as-code readiness
-// probes of the model — the backend replays gg's real RaC turn-1 request over a
-// fixed prompt-condition matrix via OpenRouter, classifies each reply, and
-// stores a verdict. The tab is one page: trigger controls (signed-in only) at
-// the top, the probe history below, and the selected probe's full detail — the
-// per-condition rollup, every call's classification and raw reply, and the
-// request as sent.
+// probes of the model — the backend replays gg's real RaC turn-1 request via
+// OpenRouter with the `submit_program` tool offered and forced, classifies each
+// submitted program, and stores a verdict. The tab is one page: trigger
+// controls (signed-in only) at the top, the probe history below, and the
+// selected probe's full detail — the rollup, every call's classification with
+// its submitted program and raw reply, and the request as sent.
 export function ModelProbesPage() {
   return (
     <ModelDetailLayout tab="probes">
@@ -299,7 +300,7 @@ function ProbeTriggerForm({
           title={
             samplesOk
               ? maxTokensOk
-                ? "Replay gg's RaC turn-1 request across the condition matrix and classify each reply"
+                ? "Replay gg's RaC turn-1 request and classify each submitted program"
                 : "Max tokens must be between 256 and 16000"
               : "Samples must be between 1 and 8"
           }
@@ -314,32 +315,23 @@ function ProbeTriggerForm({
 
 // ---- History -----------------------------------------------------------------
 
-const VERDICT_META: Record<
-  ModelProbeVerdict,
-  { label: string; title: string }
-> = {
+// Total over whatever verdict string the store holds, so a history row never
+// fails to render on a verdict this build does not name.
+const VERDICT_META: Record<string, { label: string; title: string }> = {
   ready: {
     label: "Ready",
-    title: "Clean bare programs without prompt variations",
-  },
-  "ready-with-reminders": {
-    label: "Ready with reminders",
-    title: "Clean only with a no-tools clause or trailing notice added",
-  },
-  "tool-call-overfit": {
-    label: "Tool-call overfit",
-    title: "Keeps reaching for tool calls instead of writing the program",
+    title: "The forced submit_program call carries a clean bare program",
   },
   "not-ready": {
     label: "Not ready",
-    title: "No condition produced a usable share of clean programs",
+    title: "Too few calls carried a clean program; the labels say why",
   },
 };
 
 // A probe's verdict as a color-coded chip, following the `RatingBadge`
 // pattern (one element, tone selected by data attribute).
 function VerdictBadge({ verdict }: { verdict: ModelProbeVerdict }) {
-  const meta = VERDICT_META[verdict];
+  const meta = VERDICT_META[verdict] ?? { label: verdict, title: "" };
   return (
     <span className={styles.verdict} data-verdict={verdict} title={meta.title}>
       {meta.label}
@@ -412,8 +404,7 @@ function ProbeHistory({
               )}
             </span>
             <span className={styles.rowRates}>
-              base {formatRate(probe.baseCleanRate)} · best{" "}
-              {formatRate(probe.bestVariationCleanRate)}
+              clean {formatRate(probe.cleanRate)}
             </span>
             <span className={styles.rowSpend}>{formatSpend(probe.spend)}</span>
           </button>
@@ -443,14 +434,13 @@ function ProbeDetail({ detail }: { detail: ModelProbeDetail }) {
           <span className={styles.failed}>Failed</span>
         )}
         <span className={styles.summaryFact}>
-          base {formatRate(probe.baseCleanRate)} · best variation{" "}
-          {formatRate(probe.bestVariationCleanRate)}
+          clean {formatRate(probe.cleanRate)}
         </span>
         <span className={styles.summaryFact}>{formatSpend(probe.spend)}</span>
       </div>
       <p className={styles.configLine}>
         {probe.openrouterSlug} via {probe.provider ?? "the default route"} ·{" "}
-        {probe.samples} sample{probe.samples === 1 ? "" : "s"} per condition ·{" "}
+        {probe.samples} call{probe.samples === 1 ? "" : "s"} ·{" "}
         {probe.maxTokens} max tokens · {probe.fullContext ? "full" : "trimmed"}{" "}
         context
       </p>
@@ -486,34 +476,14 @@ function distinct(values: (string | null)[]): string {
 }
 
 function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
-  // Items grouped per matrix condition, in the matrix's own order — computed
-  // client-side, since the wire carries the flat item list only.
-  const rollup = useMemo(
-    () =>
-      detail.conditions.map((condition) => {
-        const items = detail.items.filter(
-          (item) => item.condition === condition.name,
-        );
-        return {
-          condition,
-          items,
-          clean: items.filter((item) => item.clean).length,
-        };
-      }),
-    [detail],
-  );
-  const ordered = useMemo(
-    () => rollup.flatMap((group) => group.items),
-    [rollup],
-  );
-
+  const { items } = detail;
+  const clean = items.filter((item) => item.clean).length;
   return (
     <>
       <div className={styles.tableWrap}>
         <table className={styles.rollup}>
           <thead>
             <tr>
-              <th>Condition</th>
               <th>Clean</th>
               <th>Labels</th>
               <th>Providers</th>
@@ -521,30 +491,17 @@ function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
             </tr>
           </thead>
           <tbody>
-            {rollup.map(({ condition, items, clean }) => (
-              <tr key={condition.name}>
-                <td className={styles.conditionCell}>
-                  {condition.name}
-                  {condition.variation && (
-                    <span
-                      className={styles.variationTag}
-                      title="Counts as a variation in the verdict"
-                    >
-                      variation
-                    </span>
-                  )}
-                </td>
-                <td>{items.length === 0 ? "—" : `${clean}/${items.length}`}</td>
-                <td>{distinct(items.map((item) => item.label))}</td>
-                <td>{distinct(items.map((item) => item.provider))}</td>
-                <td>{distinct(items.map((item) => item.finishReason))}</td>
-              </tr>
-            ))}
+            <tr>
+              <td>{items.length === 0 ? "—" : `${clean}/${items.length}`}</td>
+              <td>{distinct(items.map((item) => item.label))}</td>
+              <td>{distinct(items.map((item) => item.provider))}</td>
+              <td>{distinct(items.map((item) => item.finishReason))}</td>
+            </tr>
           </tbody>
         </table>
       </div>
 
-      {ordered.length === 0 ? (
+      {items.length === 0 ? (
         <p className={styles.empty}>
           {detail.probe.status === "running"
             ? "No calls recorded yet."
@@ -552,7 +509,7 @@ function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
         </p>
       ) : (
         <ul className={styles.items}>
-          {ordered.map((item) => (
+          {items.map((item) => (
             <ProbeItemRow key={item.id} item={item} />
           ))}
         </ul>
@@ -561,8 +518,9 @@ function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
   );
 }
 
-// One call, collapsed to its classification line; expanding reveals the raw
-// reply (and reasoning stream) verbatim.
+// One call, collapsed to its classification line; expanding reveals the
+// submitted program, the reply text beside the call, and any reasoning stream,
+// all verbatim.
 function ProbeItemRow({ item }: { item: ModelProbeItem }) {
   return (
     <li>
@@ -572,9 +530,7 @@ function ProbeItemRow({ item }: { item: ModelProbeItem }) {
             status={item.error ? "none" : item.clean ? "pass" : "fail"}
             label={item.error ? "Errored" : item.clean ? "Clean" : "Not clean"}
           />
-          <span className={styles.itemCondition}>
-            {item.condition} #{item.sample}
-          </span>
+          <span className={styles.itemCondition}>call #{item.sample}</span>
           <span className={styles.itemLabel}>
             {item.label ?? (item.error ? "error" : "—")}
           </span>
@@ -603,51 +559,70 @@ function ProbeItemRow({ item }: { item: ModelProbeItem }) {
               <pre className={styles.raw}>{item.reasoningText}</pre>
             </>
           )}
-          <h3 className={styles.rawTitle}>Response</h3>
+          <h3 className={styles.rawTitle}>Program</h3>
           <pre className={styles.raw}>
-            {item.responseText === "" ? "(empty)" : item.responseText}
+            {item.programText ?? "(no program submitted)"}
           </pre>
+          {item.responseText !== "" && (
+            <>
+              <h3 className={styles.rawTitle}>Reply text</h3>
+              <pre className={styles.raw}>{item.responseText}</pre>
+            </>
+          )}
         </div>
       </details>
     </li>
   );
 }
 
-// What was sent: the base condition's message array verbatim, then the
-// additions the variation conditions layer on top of it.
+// What was sent: the request's message array verbatim. An assistant message's
+// submit_program calls render their program strings, decoded from the wire's
+// JSON-encoded arguments; the constant tools/tool_choice pair rides on every
+// request and is stated in the closing note.
 function ProbeRequest({ detail }: { detail: ModelProbeDetail }) {
-  const withClause = detail.conditions
-    .filter((condition) => condition.noToolsClause)
-    .map((condition) => condition.name);
-  const withNotice = detail.conditions
-    .filter((condition) => condition.trailingNotice)
-    .map((condition) => condition.name);
   return (
     <div className={styles.request}>
       {detail.requestMessages.map((message, index) => (
         <div key={index}>
           <h3 className={styles.rawTitle}>{message.role}</h3>
-          <pre className={styles.raw}>{message.content}</pre>
+          {message.content != null && (
+            <pre className={styles.raw}>{message.content}</pre>
+          )}
+          {(message.tool_calls ?? []).map((call) => (
+            <div key={call.id}>
+              <h3 className={styles.rawTitle}>
+                {call.function.name}{" "}
+                <span className={styles.rawNote}>call {call.id}</span>
+              </h3>
+              <pre className={styles.raw}>{callProgram(call)}</pre>
+            </div>
+          ))}
         </div>
       ))}
-      <div>
-        <h3 className={styles.rawTitle}>
-          No-tools clause{" "}
-          <span className={styles.rawNote}>
-            appended to the system prompt by {withClause.join(", ") || "—"}
-          </span>
-        </h3>
-        <pre className={styles.raw}>{detail.noToolsClause}</pre>
-      </div>
-      <div>
-        <h3 className={styles.rawTitle}>
-          Trailing notice{" "}
-          <span className={styles.rawNote}>
-            appended as a user message by {withNotice.join(", ") || "—"}
-          </span>
-        </h3>
-        <pre className={styles.raw}>{detail.noticeMessage}</pre>
-      </div>
+      <p className={styles.rawNote}>
+        The request also offers the submit_program tool — its one string
+        parameter is the program to run — and forces tool_choice to it, exactly
+        as gg sends it.
+      </p>
     </div>
   );
+}
+
+// A call's program string, decoded from the wire's JSON-encoded arguments;
+// falls back to the raw arguments when they do not decode.
+function callProgram(call: ModelProbeToolCall): string {
+  try {
+    const parsed: unknown = JSON.parse(call.function.arguments);
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      "program" in parsed &&
+      typeof (parsed as { program: unknown }).program === "string"
+    ) {
+      return (parsed as { program: string }).program;
+    }
+  } catch {
+    /* fall through to the raw arguments */
+  }
+  return call.function.arguments;
 }

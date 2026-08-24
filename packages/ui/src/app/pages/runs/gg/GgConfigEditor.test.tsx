@@ -723,44 +723,6 @@ describe("the skills capability's built-in skills", () => {
   });
 });
 
-// Response healing's strategies are a `toggles` control whose members each sit at their
-// own default arm — two on, `drop-doubled-response` off. A subtractive control could not
-// express arming the last one at all, so what the checkbox does is only visible by
-// rendering it and clicking.
-describe("the responses-as-code agent's healing strategies", () => {
-  function healingBoxes(): HTMLInputElement[] {
-    const group = screen.getByRole("group", { name: "Response healing" });
-    return within(group).getAllByRole("checkbox") as HTMLInputElement[];
-  }
-
-  it("opens a fresh capability with the one seeded-off repair off and every other one on", () => {
-    renderCaps(draftWith("responses-as-code", "", {}, "rac"));
-    const boxes = healingBoxes();
-    const doubled = boxes.find((box) =>
-      box.parentElement?.textContent?.includes("drop-doubled-response"),
-    )!;
-    expect(doubled.checked).toBe(false);
-    expect(boxes.filter((box) => !box.checked)).toEqual([doubled]);
-  });
-
-  it("arms the seeded-off repair without moving any of the others", () => {
-    renderCaps(draftWith("responses-as-code", "", {}, "rac"));
-    const doubled = healingBoxes().find((box) =>
-      box.parentElement?.textContent?.includes("drop-doubled-response"),
-    )!;
-    // Why this one starts the opposite way to every other member is on hover, where
-    // every member's reason lives; the checkbox itself is the readout of which way it sits.
-    expect(doubled.parentElement).toHaveAttribute(
-      "title",
-      expect.stringContaining("starts switched off"),
-    );
-    fireEvent.click(doubled);
-    expect(doubled.checked).toBe(true);
-    // And nothing else moved with it.
-    expect(healingBoxes().every((box) => box.checked)).toBe(true);
-  });
-});
-
 // A capability's feature sliders can, between them, name every call it offers — so an
 // operator can switch a capability on and then switch all of it back off, and be left
 // with a card that reads as configured and an agent that can call none of it. Nothing

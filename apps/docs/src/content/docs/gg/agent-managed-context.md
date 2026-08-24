@@ -203,9 +203,10 @@ Headers are attached only for an agent that actually has `archive_thread`.
 Without archival they would be a per-result tax on the window buying the model
 nothing.
 
-Under responses as code hardly anything carries one, because a program's calls
-return into the program and the turn leaves no tool results behind. Everything
-gg puts in such a window is a headed `user` message: a
+Under responses as code the only tool results a turn leaves are its
+`submit_program` acknowledgements, which carry the header like any other tool
+result; a program's calls return into the program and leave nothing else to
+head. Everything else gg puts in such a window is a headed `user` message: a
 `File: <path>:<lines> of <N> lines`, a `View: <label>` or a
 `Documentation: <name>` view the program opened, or one
 of gg's own messages, each named by its selector rather than by a turn number. The exception

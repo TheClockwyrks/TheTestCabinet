@@ -1177,27 +1177,34 @@ impl ContextModel {
         self.code_mode = code_mode;
     }
 
-    /// Whether the last thing in the window is an [assistant](GgContextSource::Assistant) turn —
-    /// that is, whether gg has said nothing back since the model last spoke.
+    /// Whether the last thing in the window is this turn's own **submission** — the assistant's
+    /// message, or a `tool` result answering one of `call_ids`, the ids of the calls that turn
+    /// made.
     ///
-    /// A request in that state does not ask the provider a question; it asks it to *continue* the
-    /// assistant message it ends on. Under [responses-as-code](crate::sandbox) that is reachable
-    /// without anything having gone wrong — a program may compile, run, and put nothing new in its
-    /// own window — so the turn loop checks it and gives the model something to answer.
+    /// A request in that state does not ask the provider a question. Under
+    /// [responses-as-code](crate::sandbox) it is reachable without anything having gone wrong — a
+    /// program may compile, run, and put nothing new in its own window, leaving the assistant
+    /// message (or one of the turn's `submit_program` acknowledgements, which directly follow it)
+    /// last — so the turn loop checks it and gives the model something to answer. Anything later —
+    /// a view, an error, a rebuilt state block — is gg answering, and the predicate is false.
     ///
-    /// Read off the assembled window rather than off the item list, so the
-    /// [context-usage signal](Self::refresh_context_usage_signal) counts as the message it is —
-    /// with one deliberate exception: the [trailing contract notice](Self::set_trailing_notice)
-    /// is skipped, because it is **constant** furniture rendered after everything on every
-    /// request. It never answers the model — a window whose last real content is the assistant's
-    /// own message is in exactly the say-something-back state this predicate exists to detect,
-    /// notice or no notice, and counting the notice would make the predicate permanently false
-    /// for every agent that carries one.
-    pub fn ends_on_assistant(&self) -> bool {
+    /// Read off the assembled window rather than off the item list, with one deliberate exception:
+    /// the [trailing contract notice](Self::set_trailing_notice) is skipped, because it is
+    /// **constant** furniture rendered after everything on every request and never answers the
+    /// model.
+    pub fn ends_on_submission(&self, call_ids: &[String]) -> bool {
         self.slotted_window_items()
             .filter(|(slot, _)| *slot != PromptSlot::TrailingNotice)
             .last()
-            .is_some_and(|(_, item)| item.message.role == Role::Assistant)
+            .is_some_and(|(_, item)| match item.message.role {
+                Role::Assistant => true,
+                Role::Tool => item
+                    .message
+                    .tool_call_id
+                    .as_deref()
+                    .is_some_and(|id| call_ids.iter().any(|call| call == id)),
+                _ => false,
+            })
     }
 
     /// Whether this window is a [code-mode](Self::set_code_mode) one.

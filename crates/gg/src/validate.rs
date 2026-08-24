@@ -52,8 +52,7 @@
 //!   offer. It grants nothing, it is not a typo, and it is the legitimate shared-document case.
 //! - A `params` key known to the capability but unused by the arm its `implementation` selected —
 //!   the deliberate "one shared params block per sweep" case.
-//! - The `info` lines reporting what *is* in force: the armed ceilings, the healing set, the loop
-//!   detector.
+//! - The `info` lines reporting what *is* in force: the armed ceilings, the loop detector.
 //!
 //! # The resolver contract
 //!
@@ -114,8 +113,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE,
     COMPACTION_PARAM_MODEL, COMPACTION_PARAM_MODEL_SLOT, COMPACTION_STRATEGY_MEMORY,
     FSM_PARAM_STATES, GG_CAPABILITY_CATALOG, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
-    GgSubagentScope, MEMORY_PARAM_SCOPE, PARAM_BUILT_INS, PARAM_DOC_VIEW_TYPES, PARAM_HEALING,
-    PARAM_KEEP, PARAM_LANGUAGE, PARAM_LINE_CAP, PARAM_MAX_CHARS, PARAM_MAX_COUNT, PARAM_MAX_DEPTH,
+    GgSubagentScope, MEMORY_PARAM_SCOPE, PARAM_BUILT_INS, PARAM_DOC_VIEW_TYPES, PARAM_KEEP,
+    PARAM_LANGUAGE, PARAM_LINE_CAP, PARAM_MAX_CHARS, PARAM_MAX_COUNT, PARAM_MAX_DEPTH,
     PARAM_MAX_EPICS, PARAM_MAX_ISSUES, PARAM_MAX_LEN_DESCRIPTION, PARAM_MAX_LEN_INDEX,
     PARAM_MAX_LEN_PER_MEMORY, PARAM_MAX_LINES, PARAM_MAX_MEMORY_BYTES, PARAM_MAX_RESULTS,
     PARAM_MAX_RETRIES, PARAM_MAX_TASKS, PARAM_MAX_TOTAL_LEN, PARAM_MODE, PARAM_REVIEWERS,
@@ -881,10 +880,6 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
                 PARAM_DOC_VIEW_TYPES,
                 Requirement::Required("which of a function's types open beside its documentation"),
             ),
-            (
-                PARAM_HEALING,
-                Requirement::Required("which response-healing repairs are armed"),
-            ),
         ],
     ),
     (
@@ -1160,7 +1155,6 @@ fn check_set(set: &GgCapabilitySet, report: &mut LaunchReport) {
             crate::tools::check_launch(agent, report);
             crate::sandbox::check_launch(agent, report);
             crate::docs::check_launch(agent, report);
-            crate::healing::check_launch(agent, report);
             crate::skills::builtin::check_launch(agent, report);
             crate::prompts::check_launch(agent, report);
             crate::agent::check_launch(agent, report);

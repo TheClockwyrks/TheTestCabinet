@@ -48,23 +48,6 @@ fn the_documentation_is_where_the_gate_looks_for_it() {
     );
 }
 
-/// Every spelling [`ARMS`] maps is one the arm it names would itself read as a program.
-///
-/// The table is a second place a language's fence tags are written down, and the first is the arm's
-/// own [healing dialect](Dialect::program_fence_tags). This holds the two together, so a page
-/// tagging a block the way gg's own healing reads it cannot be routed to a different compiler here.
-#[test]
-fn every_tag_is_one_its_arm_would_heal() {
-    for (tag, arm) in ARMS {
-        let dialect = language(*arm).healing();
-        assert!(
-            dialect.program_fence_tags().contains(tag),
-            "the documentation gate compiles a ```{tag} block as {arm}, but {arm}'s own healing \
-             dialect does not read `{tag}` as one of its programs"
-        );
-    }
-}
-
 /// No tag is mapped twice, and no arm is unreachable through a spelling.
 ///
 /// A duplicate entry means the second is dead, and an arm with no spelling is an arm whose

@@ -167,9 +167,8 @@ impl LoopGuardConfig {
     /// The one `info` line a run with the detector armed logs at launch, naming the configuration in
     /// force.
     ///
-    /// The counterpart of [`RunLimits::armed_summary`](crate::limits::RunLimits::armed_summary) and
-    /// [`HealingConfig::armed_summary`](crate::healing::HealingConfig::armed_summary), emitted for
-    /// the same reason: loop detection changes an agent's *transport* as well as its policy, and an
+    /// The counterpart of [`RunLimits::armed_summary`](crate::limits::RunLimits::armed_summary),
+    /// emitted for the same reason: loop detection changes an agent's *transport* as well as its policy, and an
     /// operator reading a log should not have to infer either from the absence of a message. There
     /// is no "disarmed" spelling here because a disarmed detector resolves to no configuration at
     /// all — the [caller](resolve_loop_guard) has nothing to summarise.

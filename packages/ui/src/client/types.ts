@@ -143,16 +143,12 @@ export interface ModelListing {
 export type ModelProbeStatus = "running" | "complete" | "failed";
 
 /** A completed probe's overall reading of the model's RaC readiness. */
-export type ModelProbeVerdict =
-  | "ready"
-  | "ready-with-reminders"
-  | "tool-call-overfit"
-  | "not-ready";
+export type ModelProbeVerdict = "ready" | "not-ready";
 
 /** One responses-as-code readiness probe of a catalog model: gg's real RaC
- * turn-1 request replayed over a fixed prompt-condition matrix, each reply
- * classified, and a verdict stored. Mirrors the backend `ModelProbeOut`
- * (`crates/backend/src/api/model_probes.rs`). */
+ * turn-1 request replayed with the `submit_program` tool offered and forced,
+ * each submitted program classified, and a verdict stored. Mirrors the backend
+ * `ModelProbeOut` (`crates/backend/src/api/model_probes.rs`). */
 export interface ModelProbe {
   id: string;
   /** The catalog slug the probe was triggered from. */
@@ -161,7 +157,7 @@ export interface ModelProbe {
   openrouterSlug: string;
   /** The pinned provider, or null for the default route. */
   provider: string | null;
-  /** Samples per condition. */
+  /** Completion calls requested. */
   samples: number;
   /** Completion-token cap per call. */
   maxTokens: number;
@@ -172,10 +168,8 @@ export interface ModelProbe {
   error: string | null;
   /** Null until the probe completes. */
   verdict: ModelProbeVerdict | null;
-  /** The base condition's clean-reply rate (0..=1), or null. */
-  baseCleanRate: number | null;
-  /** The best variation condition's clean-reply rate (0..=1), or null. */
-  bestVariationCleanRate: number | null;
+  /** The probe's clean-submission rate (0..=1), or null. */
+  cleanRate: number | null;
   /** Total USD spend across the probe's calls, as OpenRouter reported it. */
   spend: number;
   createdAt: string;
@@ -183,25 +177,29 @@ export interface ModelProbe {
 }
 
 /** One completion call inside a probe: which provider served it, how it
- * finished, its classification, and the model's raw reply. Mirrors the backend
- * `ModelProbeItemOut`. The known `label` values are `clean-program`,
- * `prose+program`, `program-no-gg`, `fenced`, `tool-token`, `xml-pseudo-tools`,
- * `cot-leak`, `native-tool-call`, `empty`, and `other`; typed open so a newly
- * classified shape still renders. */
+ * finished, the classified shape of the program it submitted, and the raw
+ * reply. Mirrors the backend `ModelProbeItemOut`. The known `label` values are
+ * `clean-program`, `prose+program`, `program-no-gg`, `fenced`, `tool-token`,
+ * `xml-pseudo-tools`, `cot-leak`, `empty`, `other`, `no-submission`,
+ * `stray-tool-call`, and `no-program`; typed open so a newly classified shape
+ * still renders. */
 export interface ModelProbeItem {
   id: string;
-  /** The prompt condition (`base`, `no-tools`, `notice`, `combo`). */
-  condition: string;
   sample: number;
   /** The provider OpenRouter reported serving the call, or null on error. */
   provider: string | null;
   finishReason: string | null;
   nativeFinishReason: string | null;
-  /** The classified reply shape, or null when the call errored. */
+  /** The classified shape of the submitted program, or null when the call
+   * errored. */
   label: string | null;
-  /** Whether the reply counts as clean (a bare program over the gg modules). */
+  /** Whether the submitted program counts as clean (a bare program over the gg
+   * modules). */
   clean: boolean;
-  /** The model's raw reply content, verbatim. */
+  /** The program string the reply's first `submit_program` call carried, or
+   * null. */
+  programText: string | null;
+  /** The reply's text content beside the call, verbatim. */
   responseText: string;
   /** The reply's separate reasoning stream, or null. */
   reasoningText: string | null;
@@ -215,38 +213,31 @@ export interface ModelProbeItem {
   createdAt: string;
 }
 
-/** One message of the probe's base request, exactly as sent. */
-export interface ModelProbeMessage {
-  role: string;
-  content: string;
+/** One tool call on a probe request message, in the chat/completions wire
+ * shape. */
+export interface ModelProbeToolCall {
+  id: string;
+  type: string;
+  function: { name: string; arguments: string };
 }
 
-/** One condition of the probe matrix, so the console can say what each item's
- * request added on top of the base request. */
-export interface ModelProbeCondition {
-  name: string;
-  /** Whether the condition appends the no-tools clause to the system prompt. */
-  noToolsClause: boolean;
-  /** Whether the condition appends the trailing user notice. */
-  trailingNotice: boolean;
-  /** Whether the condition counts as a variation in the verdict. */
-  variation: boolean;
+/** One message of the probe's request, exactly as sent — the chat/completions
+ * wire shape, which is why `tool_calls` and `tool_call_id` stay snake_case. */
+export interface ModelProbeMessage {
+  role: string;
+  content?: string | null;
+  tool_calls?: ModelProbeToolCall[] | null;
+  tool_call_id?: string | null;
 }
 
 /** The `GET /model-probes/{id}` response: the probe with everything the console
- * shows — what was sent (the base request plus each condition's additions),
- * every call's classification, and the raw replies. */
+ * shows — the request messages exactly as sent, every call's classification,
+ * the submitted programs, and the raw replies. */
 export interface ModelProbeDetail {
   probe: ModelProbe;
   items: ModelProbeItem[];
-  /** The base condition's message array exactly as sent. */
+  /** The request's message array exactly as sent. */
   requestMessages: ModelProbeMessage[];
-  /** The matrix the items' `condition` names refer to. */
-  conditions: ModelProbeCondition[];
-  /** The clause the `no-tools`/`combo` conditions appended to the system prompt. */
-  noToolsClause: string;
-  /** The trailing user message the `notice`/`combo` conditions appended. */
-  noticeMessage: string;
 }
 
 /** The `POST /models/{slug}/probes` request body. Everything is optional: an
@@ -254,7 +245,7 @@ export interface ModelProbeDetail {
 export interface ModelProbeTriggerInput {
   /** Pin every call to this provider. Absent probes the default route. */
   provider?: string;
-  /** Samples per condition (default 3, at most 8). */
+  /** Completion calls (default 3, at most 8). */
   samples?: number;
   /** Completion-token cap per call (default 3500, 256..=16000). */
   maxTokens?: number;

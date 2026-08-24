@@ -185,15 +185,21 @@ segment and no other arm's.
 
 ## The code arm
 
-The opening section states the reply contract: the model's whole reply is one
-legal program in this run's language and nothing else, run as that program every
-turn. It also states that the session has no tools and no tool-calling protocol:
-tool-call syntax of any kind — native tool-call tokens, XML invoke blocks, JSON
-function-call objects — is an error nothing dispatches, and the reply is one bare
-program with no prose around it and no code fences. Tool-call-trained models
-reach for that syntax by reflex, and the runtime really does dispatch none of it:
-a code turn offers no tool definitions, and a native tool call emitted anyway is
-dropped from the window with a warning.
+The opening section states the reply contract: the model takes every turn with
+a `submit_program` call whose `program` string is one whole, legal program in
+this run's language, as bare code with no fences around it and no prose inside
+it, processed exactly as written. It states that `submit_program` is the only
+tool in the session and that every reply must call it, that each call is
+acknowledged with a tool result reading `ok` with what the program produced
+arriving as separate messages after it, that text written beside the call is
+recorded but nothing reads code out of it, and that a reply carrying several
+calls runs every program sequentially, in submission order.
+
+The runtime holds every one of those statements. The request offers exactly the
+one tool and requires a call to it through forced tool choice; a call to any
+other tool name is answered with a tool result redirecting to `submit_program`;
+and a reply that submits no program is an error turn, answered with how to take
+the next one.
 
 Three rules follow it, stated for every arm, because none of them is visible in
 a signature and each costs a turn to discover by trying it:
@@ -231,10 +237,11 @@ what the run granted.
 ### The trailing contract notice
 
 The reply contract is also restated at the very end of every request, as one
-constant `Notice`-style sentence: the reply is one bare program in this run's
-language, with no prose, no fences and no tool calls. Measured across models,
-this trailing restatement is the single most effective lever for keeping a
-tool-call-trained model on the contract, so it earns a permanent seat at the
+constant sentence: take the turn with one `submit_program` call whose `program`
+string is one whole, bare program in this run's language, with no fences and no
+prose inside it, and text outside the call is not processed. Measured across
+models, this trailing restatement is the single most effective lever for keeping
+a tool-call-trained model on the contract, so it earns a permanent seat at the
 position models weight most.
 
 It is a [slot](/gg/context-visibility/#slots) rather than a thread item: one

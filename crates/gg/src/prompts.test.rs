@@ -87,7 +87,6 @@ fn full_system() -> SystemContext {
         custom_instructions: None,
         subagents: false,
         spawnable_agents: Vec::new(),
-        fences_are_stripped: true,
         read_file: ReadFileView {
             offered: true,
             line_cap: Some(250),
@@ -1721,13 +1720,13 @@ const REQUIRED_SECTIONS: &[&str] = &[
 /// present: the number itself is a tool-calling line, because a code run learns its ceiling from
 /// the refusal that reports the breach.
 ///
-/// Three [`SystemContext`] fields are **not** set, and the omission is not an oversight:
-/// `autoload_specs`, `persistence` and `fences_are_stripped` are read by no template in
+/// Two [`SystemContext`] fields are **not** set, and the omission is not an oversight:
+/// `autoload_specs` and `persistence` are read by no template in
 /// `crates/gg/templates/` — the prompt rewrites that folded the old sections into the intro left
 /// them behind. Turning them on here would render nothing, so no gate below can cover them; they
 /// are either sections the templates should regain or fields that should go, and that is a decision
 /// rather than a test fix. It is the same decision it was: the rewrite that stripped the code arm
-/// down to what nothing else can say did not settle it either, and did not add a fourth to the list
+/// down to what nothing else can say did not settle it either, and did not add a third to the list
 /// — the shell view it *did* leave unread was deleted outright.
 ///
 /// The **ending call is spelled the way `language` spells it**, because it is the one call in a code
@@ -2183,7 +2182,7 @@ fn every_language_prompt_states_what_the_run_configured() {
 /// the one word that carries it.
 ///
 /// These are the statements a program's author has to have read *before* writing the program: that
-/// the reply is one whole program and nothing else, that a call blocks rather than returning a
+/// only the submitted `program` string runs, that a call blocks rather than returning a
 /// promise, that a view is the only channel out of one and printing is not, that anything a view
 /// holds is read on the turn after the one that asked for it, and that an ending is taken back if
 /// the program then throws. None of them is visible in a catalogue, none of them can be recovered by
@@ -2206,16 +2205,19 @@ fn every_language_prompt_states_what_the_run_configured() {
 /// believe the second is false. Two sentences for one rule is two things to keep in step.
 const REQUIRED_RULES: &[(&str, &str)] = &[
     // The reply contract. It is first because everything else is a rule about a program, and this
-    // is the sentence that says the reply *is* one: legal code in this run's language, whole, with
-    // no prose wrapped around it.
+    // is the sentence that says what the program *is*: the `submit_program` call's `program`
+    // string, and nothing gg reads code out of anything else the model writes.
     (
-        "that the whole reply is the program and nothing else",
-        "and nothing else",
+        "that only the submitted program string runs",
+        "only the `program` string",
     ),
-    // One program, not several. A model that appends a second draft of its next turn writes a
-    // reply the arm rejects as a redeclaration, and the diagnostic names the redeclared binding
+    // One whole program per call. A model that pastes a second draft after the first writes a
+    // string the arm rejects as a redeclaration, and the diagnostic names the redeclared binding
     // rather than the count, so the count is a thing the prompt has to have said first.
-    ("that the reply is exactly one program", "is run as one"),
+    (
+        "that the submitted string is exactly one program",
+        "is run as one",
+    ),
     // Every call blocks. The alternative reading — that a call returns something to be awaited — is
     // the one a model brings with it, and a program written under it does its work in a callback
     // that never runs.

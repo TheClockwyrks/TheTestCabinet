@@ -2,22 +2,26 @@
 title: "Programs"
 ---
 
-An agent in this execution mode answers each turn by writing one program. This
-page covers the reply gg accepts, how that reply becomes an executed program,
+An agent in this execution mode answers each turn by submitting a program
+through the one tool its requests offer — and require: `submit_program`. This
+page covers the submission gg accepts, how it becomes an executed program,
 the outcomes a turn can have, and how a session is ended from inside a program.
 
-## The reply gg accepts
+## The submission gg accepts
 
-The model's whole reply is the program. The first character of the reply is the
-first character of its code, and the reply carries no fence, no `ts` tag and no
-prose around the code. gg runs no analysis of its own to decide whether a reply
-is a program. The reply is healed, then prepared by the agent's program
-language, and that language's compiler or parser is what accepts or refuses it.
+Every request offers exactly one tool, `submit_program`, and pins the
+provider's tool choice to it, so a reply answers with a call. The call's
+`program` string **is** the program: bare code, with no fence around it and no
+prose inside it, processed exactly as written. gg runs no analysis of its own
+to decide whether the string is a program — it is prepared by the agent's
+program language, and that language's compiler or parser is what accepts or
+refuses it. Text the model writes alongside the call is surfaced and recorded
+as its assistant message, and nothing more: gg never reads code out of it.
 
-The reply is a whole program in its language. It imports what it calls, gg's SDK
-and a module the agent loaded alike, and it declares the entry point its
-language requires of a program that runs. gg compiles it as it stands, on the
-terms in [invariants](/gg/responses-as-code/invariants/).
+The submitted string is a whole program in its language. It imports what it
+calls, gg's SDK and a module the agent loaded alike, and it declares the entry
+point its language requires of a program that runs. gg compiles it as it
+stands, on the terms in [invariants](/gg/responses-as-code/invariants/).
 
 A program, written in TypeScript:
 
@@ -50,41 +54,54 @@ Four rules govern what such a program can do with what it computed.
 - A value the program returns is discarded.
 - An ending call ends the session, and nothing else does.
 
-Every reply is compiled and gg judges none of them. Prose does not compile and
-earns a `Compiler error`. Two programs pasted together earn the redeclaration
-error that is what is wrong with them. A reply of comments, or an empty reply,
-is a program that compiles, runs and does nothing. A turn whose reply failed to
-compile is an error turn, so a configured
+Every submitted string is compiled and gg judges none of them. Prose does not
+compile and earns a `Compiler error`. Two programs pasted into one string earn
+the redeclaration error that is what is wrong with them. A submission of
+comments, or an empty one, is a program that compiles, runs and does nothing. A
+turn whose submission failed to compile is an error turn, so a configured
 [error ceiling](/gg/execution-limits/) can stop a model that has started
-answering in prose.
+submitting prose. A reply that makes **no** `submit_program` call at all runs
+nothing and is an error turn of its own (`missing_completion_no_program`).
 
-## Response healing
+Each call is acknowledged in the transcript by its own `tool` result, pushed
+directly after the assistant message and before anything runs — `ok` for a call
+that carried a program (a receipt, never a verdict), the reason when a call
+carried no `program` string, a redirect when the model called a tool this mode
+does not offer. What a program produces lands beneath the acknowledgements as
+its own messages.
 
-Between the raw reply and the preparation step sits a deletion-only healing
-pass. It unwraps a Markdown fence a model wrapped its program in, drops
-explanatory lines around the program, and, for a run that arms the strategy,
-halves a reply the transport delivered as a byte-identical copy of itself.
+## Several submissions in one reply
 
-Every repair is counted on the run and disclosed on the operator's stream. The
-model is told nothing about it. Healing runs before the turn does, because the
-healed program is the assistant message the loop records: the model's own
-history carries the text that ran. See
-[response healing](/gg/response-healing/) for the strategies, their decline
-rules, their configuration and their metrics.
+A reply may carry several `submit_program` calls. gg runs each program
+sequentially, in submission order, against the same live window — and runs
+**all** of them, whether or not an earlier one failed: each was submitted
+before any ran, and skipping one would silently discard work the model
+committed to. Each program emits its own `code_execution` event.
+
+However many of them fail, the turn records **at most one error**: the run's
+ceilings see one outcome per model call, and the type recorded is the first
+failure's. When more than one program ran, a `Notice` states the count and that
+error messages follow submission order.
+
+A program that ends the session stops the sequence — the ending stands, and
+programs submitted after it are not run, which the operator's stream records.
+The declarations programs defer to the loop merge across the sequence: issue
+waits and forks accumulate, the last compaction stands, the first succession
+stands.
 
 ## Turn execution
 
-1. Heal the reply. Healing deletes only, and never refuses a reply.
-2. Prepare the healed reply for the agent's language. The language's own
+1. Read the `program` string out of the `submit_program` call, exactly as sent.
+2. Prepare it for the agent's language. The language's own
    compiler or parser reads it, and a program it rejects is not executed.
 3. Instantiate the guest and evaluate the program. Each call the program
    composes crosses the typed membrane into gg's tools, is gated, dispatched
    and streamed as an ordinary `ToolCall`/`ToolResult` pair.
 4. Record the source that executed, with the turn's verdict, for an agent whose
    profile enabled the [program library](/gg/program-library/).
-5. Report to the operator, and emit the turn's `code_execution` event. The
-   event is emitted whether the turn succeeded or not, including a turn whose
-   reply never compiled.
+5. Report to the operator, and emit the program's `code_execution` event. The
+   event is emitted whether the program succeeded or not, including one whose
+   source never compiled.
 6. Read the ending flag before interpreting the result. An ending that survived
    ends the session here.
 7. Assemble the turn's notices, then classify the outcome.

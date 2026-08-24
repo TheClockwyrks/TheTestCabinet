@@ -244,14 +244,6 @@ compiler refuses is not executed, and that a call the run withheld compiles and
 fails when it runs. The library set TeaVM can translate is carried by a compile
 failure rather than by the prompt.
 
-## Healing dialect
-
-The healing dialect reads a `#` line as prose and deletes it, because Java has
-no `#` token at all, and treats a backtick as prose punctuation rather than
-code. A leading `*` is not read as code, because it opens a Javadoc
-continuation line and a model's bullet list alike. Its program fence tags are
-`java` and `jav`. No predicate parses.
-
 ## Code modules
 
 A code module is a class body rather than a whole compilation unit. Its

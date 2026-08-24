@@ -31,14 +31,13 @@ const DECLARED_CONSECUTIVE_ERRORS: u64 = 5;
 /// of ending the run, and therefore an error turn under this protocol.
 const PROSE: &str = "The scaffold is already complete; nothing left to do.";
 
-/// A [`CodeSetup`] with responses-as-code on and every healing strategy armed — a real run's
+/// A [`CodeSetup`] with responses-as-code on — a real run's
 /// default, so a prose reply is classified here exactly as it would be in production.
 fn code_on() -> CodeSetup {
     CodeSetup {
         enabled: true,
         language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::AMPLE,
-        healing: HealingConfig::SAFE_REPAIRS,
         doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
@@ -1874,8 +1873,8 @@ async fn the_session_summary_carries_the_error_rollup_its_stream_reported() {
 // Loop detection: configuration
 // ---------------------------------------------------------------------------
 
-/// **An armed detector names its configuration in the launch log**, beside the ceilings and the
-/// healing set — the same kind of fact, said the same way, before the first turn.
+/// **An armed detector names its configuration in the launch log**, beside the ceilings — the
+/// same kind of fact, said the same way, before the first turn.
 ///
 /// Arming it also switches that agent's transport to streaming, which is why the line is worth
 /// having at all: a run that streams and a run that does not are otherwise indistinguishable from

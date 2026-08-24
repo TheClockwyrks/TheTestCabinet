@@ -1020,9 +1020,10 @@ function OverviewFile({
 // so it sits on the header beside the caption instead of being wedged in as a first row.
 //
 // The token-share columns are dropped on the API surface, and their absence is the honest
-// reading rather than a gap: a responses-as-code turn produces no tool-role messages at
-// all, so there is no per-function material in the window to attribute and the bar would
-// be pinned at zero on every row beside a `0 · 0%` (see `ggCallBreakdown`).
+// reading rather than a gap: a responses-as-code turn's only tool-role messages are its
+// fixed `submit_program` acknowledgements, so there is no per-function material in the
+// window to attribute and the bar would be pinned at zero on every row beside a `0 · 0%`
+// (see `ggCallBreakdown`).
 function AgentCallsPanel({
   breakdown,
   responses,

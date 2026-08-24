@@ -190,7 +190,6 @@ fn no_code() -> CodeSetup {
         enabled: false,
         language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::AMPLE,
-        healing: HealingConfig::SAFE_REPAIRS,
         doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
@@ -280,14 +279,24 @@ impl ModelClient for SharedMockClient {
     }
 }
 
-/// One model turn whose **whole reply** is `text` — the shape a
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) turn takes, where the reply *is* the program
-/// and there is nothing around it.
+/// One model turn that submits `text` as its program — the shape a
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) turn takes: a `submit_program` tool call
+/// whose `program` string is the program, with no assistant text beside it.
+///
+/// The call ids are minted from a process-wide counter so every scripted call is unique: the loop
+/// answers each id with a tool result, and two calls sharing an id would make the recorded
+/// conversation ambiguous about which result answers which call.
 fn code_reply(text: &str) -> ModelResponse {
+    static CALL_IDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let id = CALL_IDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     ModelResponse {
-        text: Some(text.to_string()),
-        tool_calls: Vec::new(),
-        finish_reason: FinishReason::Stop,
+        text: None,
+        tool_calls: vec![ToolCall {
+            id: format!("submit-{id}"),
+            name: crate::completion::SUBMIT_PROGRAM_TOOL.to_string(),
+            arguments: serde_json::json!({ "program": text }),
+        }],
+        finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
         provider: None,
@@ -1883,7 +1892,7 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
 /// gets instead is one program calling `view.openFile` per spec, and the file views that program
 /// opened, arriving headed exactly as a real `view.openFile` would deliver them.
 #[tokio::test]
-async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
+async fn autoload_seeds_a_code_agent_with_a_submitted_program() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("SPEC.md"), "# The spec\n\nBuild a game.\n").unwrap();
     std::fs::create_dir_all(dir.path().join("reference")).unwrap();
@@ -1913,35 +1922,43 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
     .await
     .expect("every provided file is readable");
 
-    // One assistant turn, and it is a program naming both files in seeding order.
-    let assistant: Vec<String> = context
+    // One assistant turn, shaped exactly as the model's own turns must be: no text, one
+    // `submit_program` call whose `program` string opens both files in seeding order.
+    let assistant: Vec<&crate::model::Message> = context
         .items()
         .iter()
         .filter(|item| item.source() == GgContextSource::Assistant)
-        .map(|item| item.message().content.clone().unwrap_or_default())
+        .map(|item| item.message())
         .collect();
+    assert_eq!(assistant.len(), 1, "one synthesized turn seeds every spec");
+    assert_eq!(assistant[0].content, None);
+    assert_eq!(assistant[0].tool_calls.len(), 1);
+    let call = &assistant[0].tool_calls[0];
+    assert_eq!(call.name, crate::completion::SUBMIT_PROGRAM_TOOL);
     assert_eq!(
-        assistant,
-        vec![
+        call.arguments.get("program").and_then(|v| v.as_str()),
+        Some(
             "import { views } from \"gg\";\n\nviews.openFile(\"SPEC.md\");\nviews.openFile(\"reference/title.png\");\n"
-                .to_string()
-        ],
+        ),
         "one program opens every spec, in order"
     );
 
-    // And it carries no tool calls at all — the invariant a code-mode transcript holds everywhere
-    // else, which the old synthesized `read_file` pair was the single exception to.
-    assert!(
-        context
-            .items()
-            .iter()
-            .filter(|item| item.source() == GgContextSource::Assistant)
-            .all(|item| item.message().tool_calls.is_empty()),
-        "a code-mode assistant turn never carries tool calls"
+    // The call is answered by the fixed acknowledgement, directly after the assistant turn, so
+    // the seeded transcript is a conversation every provider accepts.
+    let acks: Vec<&crate::model::Message> = context
+        .items()
+        .iter()
+        .map(|item| item.message())
+        .filter(|message| message.role == crate::model::Role::Tool)
+        .collect();
+    assert_eq!(acks.len(), 1);
+    assert_eq!(acks[0].tool_call_id.as_deref(), Some(call.id.as_str()));
+    assert_eq!(
+        acks[0].content.as_deref(),
+        Some(crate::completion::SUBMIT_PROGRAM_ACK)
     );
 
-    // The views arrive as headed `user` messages — what `view.openFile` pushes — not as `tool`
-    // results answering a call id that would dangle.
+    // The views arrive as headed `user` messages — what `view.openFile` pushes.
     let views: Vec<&crate::context::ContextItem> = context
         .items()
         .iter()
@@ -2453,7 +2470,6 @@ impl DisabledRuntimes {
             set: &self.set,
             ending_role: EndingRole::Standard,
             assigned_issue: None,
-            fences_are_stripped: true,
         }
     }
 }
@@ -9281,15 +9297,6 @@ mod rejection_tests;
 /// exactly the terms `agent.limits.test.rs` is separate from `limits.test.rs`.
 #[path = "agent.cancel.test.rs"]
 mod cancel_tests;
-
-/// The seam between [response healing](crate::healing) and the loop: that what gg repaired is
-/// never disclosed to the model, is counted on the turn's telemetry, and — for a reply that never became a
-/// program — that nothing under `sandbox/` is entered at all.
-///
-/// Healing's own suite proves the algorithm; these prove the wiring, which is the half a pure test
-/// cannot reach.
-#[path = "agent.healing.test.rs"]
-mod healing_tests;
 
 /// The **briefs gg generates for the agents it delegates to**, and the ending each one teaches.
 ///

@@ -781,7 +781,6 @@ export default defineConfig({
                 "gg/hooks",
                 // A property of responses as code: the counted, disclosed
                 // repairs gg makes to a reply before running it as a program.
-                "gg/response-healing",
                 // Likewise: what gg keeps of the programs it has already run.
                 "gg/program-library",
                 "gg/result-aggregation",

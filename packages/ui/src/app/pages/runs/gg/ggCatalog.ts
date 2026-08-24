@@ -13,7 +13,6 @@
 import type {
   GgAgentConfig,
   GgCapabilitySet,
-  GgHealingStrategy,
   GgHookEvent,
   GgLoopDetection,
   GgModuleKind,
@@ -653,45 +652,6 @@ export const AUTOLOAD_LOCKED_OPTIONS = [
 // field's help tooltip.
 export const AUTOLOAD_LOCKED_HINT =
   "Not locked injects the specs as ordinary file reads that compaction may summarize away and agent-managed context may evict. Locked pins them into the window verbatim across every compaction boundary and spares them from eviction.";
-
-// The response-healing strategies, in the order gg's pipeline applies them — the
-// conservative, deletion-only repairs gg makes to a model's reply before running it
-// as a program. Each is independently switchable, and switching one off is a
-// configuration worth running against its opposite in its own right ("how much worse
-// does this model do when we stop unwrapping its fences?"), which is why they are
-// toggles in the form rather than a single on/off for the lot.
-//
-// `value` is typed as the contract's `GgHealingStrategy`, so a strategy added to or
-// renamed in `crates/core/src/gg.rs` is a compile error here rather than a control
-// that writes a key gg reports as unknown.
-//
-// A configuration states all three, and gg arms none of them for it. All but one are
-// *seeded* on when the capability is switched on, because for those the repair is strictly
-// safer than not making it: the reply they delete from could not have run as sent.
-// `drop-doubled-response` is the exception, and carries its own
-// [seedOff](ParamSpec.options) flag rather than being a special case in the form.
-export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
-  value: GgHealingStrategy;
-  label: string;
-  seedOff?: boolean;
-  hint?: string;
-}> = [
-  {
-    value: "strip-fences",
-    label: "strip-fences — unwrap a Markdown code fence around the whole reply",
-  },
-  {
-    value: "strip-prose",
-    label: "strip-prose — drop explanatory text before or after the program",
-  },
-  {
-    value: "drop-doubled-response",
-    label:
-      "drop-doubled-response — halve a reply that is one program sent twice",
-    seedOff: true,
-    hint: "The one strategy a fresh capability starts switched off: the half it deletes is valid code under any other reading, so unlike every other repair here, not making it is the safer place to start. It fires only on a byte-exact doubling with nothing at all between the copies — a model that deliberately repeats a statement writes a separator, and any single character of separator makes the reply an odd number of bytes long, which the test declines on. Arm it for a model observed to concatenate its completion with itself.",
-  },
-];
 
 // --- Program language ---------------------------------------------------------------
 //
@@ -1433,15 +1393,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         required: true,
         options: DOC_VIEW_TYPES_OPTIONS,
         hint: DOC_VIEW_TYPES_HINT,
-      },
-      {
-        key: "healing",
-        label: "Response healing",
-        kind: "toggles",
-        toggleSet: "exhaustive",
-        required: true,
-        options: HEALING_STRATEGY_OPTIONS,
-        hint: `Repairs gg makes to a reply before running it — deletion only, so a healed program is always a subsequence of what the model sent. The model is told nothing about a repair; every one of them is reported to the run's operator and counted on the run. ${EXHAUSTIVE_TOGGLES_HINT}`,
       },
     ],
   },

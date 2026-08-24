@@ -1,39 +1,32 @@
 //! Model probes: responses-as-code readiness checks run against a catalog model.
 //!
-//! Some models are so overfit on native tool calling that, handed gg's RaC
-//! contract ("your entire reply is one TypeScript program", no tools array),
-//! they emit tool-call token syntax, XML pseudo-tool markup, or prose anyway,
-//! and every RaC run on them is wasted. A probe answers that cheaply before any
-//! run is launched: it replays gg's real RaC turn-1 request through OpenRouter's
-//! chat/completions — with no tools array — across a fixed matrix of prompt
-//! conditions, classifies the shape of every reply, and reduces the results to a
-//! verdict.
+//! A responses-as-code turn is a forced [`submit_program`](SUBMIT_PROGRAM_TOOL) tool call whose
+//! `program` string is one whole, bare program over the gg modules. A model can hold that call
+//! shape and still be unusable — fencing the program inside the string, opening it with prose,
+//! never importing the modules, or dodging the forced choice entirely — and every RaC run on such
+//! a model is wasted. A probe answers that cheaply before any run is launched: it replays gg's
+//! real RaC turn-1 request through OpenRouter's chat/completions, with the one `submit_program`
+//! tool offered and `tool_choice` forced to it exactly as gg shapes the request, samples it
+//! several times, classifies each submitted program, and reduces the results to a verdict.
 //!
-//! The turn-1 request is the embedded fixture `probe/fixtures/gg-rac-turn1.json`
-//! (its provenance is recorded inside it): the system-code prompt, the Carom
-//! task, two seeded example programs with their results, and the case's spec
-//! views, which are trimmed by default to keep a probe cheap. The matrix is the
-//! `base` condition (the request exactly as gg sends it) plus three variations
-//! that restate the contract — an explicit no-tools clause in the system prompt
-//! (`no-tools`), a trailing user notice (`notice`), and both at once (`combo`) —
-//! because a model that only behaves under the variations is usable with
-//! cross-model prompt reminders, while one that emits tool syntax even then is
-//! not worth running in RaC mode at all.
+//! The request is the embedded fixture `probe/fixtures/gg-rac-turn1.json` (its provenance is
+//! recorded inside it): the system-code prompt, the Carom task, two seeded example programs as
+//! synthesized `submit_program` calls answered by their `ok` acknowledgements, the case's spec
+//! views (trimmed by default to keep a probe cheap), and the trailing contract notice.
 //!
-//! Classification is heuristic, over the reply text (labels in [`classify`]);
-//! `clean` means a bare program whose first line is code and that imports from
-//! `"gg"`. The verdict thresholds are on the per-condition clean rates: every
-//! condition at ≥ 80% is `ready`; a variation reaching 80% where base did not is
-//! `ready-with-reminders`; tool-call syntax surviving the variations is
-//! `tool-call-overfit`; anything else is `not-ready`.
+//! Classification reads the first `submit_program` call's `program` string (labels in
+//! [`classify`]); [`clean-program`](LABEL_CLEAN) means the string is a bare program whose first
+//! line is code and that imports from `"gg"`. A reply that submitted nothing is labeled by how it
+//! dodged ([`no-submission`](LABEL_NO_SUBMISSION), [`stray-tool-call`](LABEL_STRAY_TOOL_CALL),
+//! [`no-program`](LABEL_NO_PROGRAM)). The verdict is on the clean rate: at least 80% clean is
+//! `ready`, anything else is `not-ready`, and the per-call labels say why.
 //!
-//! The runner executes as a detached task inside the backend process, appending
-//! one `model_probe_item` row per call and finishing the `model_probe` row with
-//! the verdict and the summed spend. Calls are sequential, uncapped by
-//! temperature (the provider default, matching how gg calls the model), and each
-//! carries a fresh session/prompt-cache key so provider routing stays natural.
-//! The HTTP endpoint is a parameter so tests can stand in a local server; the
-//! real base is [`DEFAULT_COMPLETIONS_ENDPOINT`].
+//! The runner executes as a detached task inside the backend process, appending one
+//! `model_probe_item` row per call and finishing the `model_probe` row with the verdict and the
+//! summed spend. Calls are sequential, uncapped by temperature (the provider default, matching
+//! how gg calls the model), and each carries a fresh session/prompt-cache key so provider routing
+//! stays natural. The HTTP endpoint is a parameter so tests can stand in a local server; the real
+//! base is [`DEFAULT_COMPLETIONS_ENDPOINT`].
 
 use std::sync::{Arc, LazyLock};
 use std::time::Instant;
@@ -49,10 +42,9 @@ use crate::db::Db;
 /// The OpenRouter chat/completions endpoint probes call in production.
 pub const DEFAULT_COMPLETIONS_ENDPOINT: &str = "https://openrouter.ai/api/v1/chat/completions";
 
-/// Samples per condition when the trigger names none.
+/// Completion calls when the trigger names no sample count.
 pub const DEFAULT_SAMPLES: i32 = 3;
-/// The most samples per condition a trigger may request (a probe is a cheap
-/// check, not a benchmark).
+/// The most calls a trigger may request (a probe is a cheap check, not a benchmark).
 pub const MAX_SAMPLES: i32 = 8;
 /// The completion-token cap when the trigger names none. Generous for a first
 /// program, tight enough that a runaway reply stays cheap.
@@ -65,60 +57,47 @@ pub const MAX_MAX_TOKENS: i32 = 16_000;
 /// (about 17k prompt tokens).
 const TRIM_CHARS: usize = 1500;
 
-/// The `no-tools` variation: an explicit clause appended to the system prompt.
-pub const NO_TOOLS_CLAUSE: &str = "\n\n## No tools\n\nYou have NO tools and there is no tool-calling protocol. Tool-call syntax of any kind (XML tags, `<|...|>` tokens, function-call markup, JSON tool calls) is an error. Your entire reply must be one bare TypeScript program and nothing else: no prose before it, no markdown fences around it.";
+/// The one tool a responses-as-code request offers, and requires.
+pub const SUBMIT_PROGRAM_TOOL: &str = "submit_program";
 
-/// The `notice` variation: a trailing user message restating the contract.
-pub const NOTICE_MESSAGE: &str = "Notice\n----\nReminder: your entire reply is executed as one TypeScript program. Reply with one legal TypeScript program and nothing else — no prose, no markdown fences, no tool-call syntax of any kind.";
-
-/// One cell family of the probe matrix: a named prompt condition.
-#[derive(Debug, Clone, Copy)]
-pub struct ProbeCondition {
-    /// The condition's wire name (`base`, `no-tools`, `notice`, `combo`).
-    pub name: &'static str,
-    /// Whether [`NO_TOOLS_CLAUSE`] is appended to the system prompt.
-    pub no_tools_clause: bool,
-    /// Whether [`NOTICE_MESSAGE`] is appended as a trailing user message.
-    pub trailing_notice: bool,
-    /// Whether this condition is a variation (everything but `base`).
-    pub variation: bool,
+/// The [`submit_program`](SUBMIT_PROGRAM_TOOL) definition the request offers, in the
+/// chat/completions wire shape — the same name, description and schema gg's own completion module
+/// builds for the TypeScript arm (`crates/gg/src/completion.rs`), stated here because the backend
+/// does not depend on the gg crate.
+pub fn submit_program_tool() -> serde_json::Value {
+    serde_json::json!({
+        "type": "function",
+        "function": {
+            "name": SUBMIT_PROGRAM_TOOL,
+            "description": "Run this turn's program. `program` must be one whole TypeScript \
+                            program; it is compiled and executed exactly as written.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "program": {
+                        "type": "string",
+                        "description": "The complete TypeScript program to run.",
+                    }
+                },
+                "required": ["program"],
+                "additionalProperties": false,
+            },
+        },
+    })
 }
 
-/// The fixed probe matrix, in execution order.
-pub const CONDITIONS: [ProbeCondition; 4] = [
-    ProbeCondition {
-        name: "base",
-        no_tools_clause: false,
-        trailing_notice: false,
-        variation: false,
-    },
-    ProbeCondition {
-        name: "no-tools",
-        no_tools_clause: true,
-        trailing_notice: false,
-        variation: true,
-    },
-    ProbeCondition {
-        name: "notice",
-        no_tools_clause: false,
-        trailing_notice: true,
-        variation: true,
-    },
-    ProbeCondition {
-        name: "combo",
-        no_tools_clause: true,
-        trailing_notice: true,
-        variation: true,
-    },
-];
-
-/// One message of the embedded turn-1 fixture. `source` records which gg event
-/// produced it (only `file_view` messages are trimmed); it is never sent.
+/// One message of the embedded turn-1 fixture. `source` records which gg event produced it (only
+/// `file_view` messages are trimmed); it is never sent.
 #[derive(Debug, Clone, Deserialize)]
 struct FixtureMessage {
     role: String,
     source: String,
-    content: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Vec<ProbeToolCall>,
+    #[serde(default)]
+    tool_call_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,63 +112,89 @@ static FIXTURE: LazyLock<Vec<FixtureMessage>> = LazyLock::new(|| {
         .messages
 });
 
-/// One chat message as sent to the provider.
+/// One chat message as sent to the provider — the OpenAI chat/completions shape, which is why an
+/// assistant message may carry `tool_calls` and a `tool` message answers one by `tool_call_id`,
+/// and why those two keys stay snake_case on the wire.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ProbeMessage {
     pub role: String,
-    pub content: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub tool_calls: Vec<ProbeToolCall>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub tool_call_id: Option<String>,
 }
 
-/// Build one condition's message array from the fixture: trim the spec views
-/// (unless `full_context`), then apply the condition's contract restatements.
-pub fn build_messages(condition: &ProbeCondition, full_context: bool) -> Vec<ProbeMessage> {
-    let mut messages: Vec<ProbeMessage> = FIXTURE
+/// One tool call on an assistant message, in the chat/completions wire shape.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ProbeToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub function: ProbeToolFunction,
+}
+
+/// The function half of a tool call: the tool's name and its JSON-encoded arguments string.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ProbeToolFunction {
+    pub name: String,
+    /// The call's arguments as the JSON-encoded string the wire carries.
+    pub arguments: String,
+}
+
+/// Build the request's message array from the fixture: trim the spec views unless `full_context`.
+pub fn build_messages(full_context: bool) -> Vec<ProbeMessage> {
+    FIXTURE
         .iter()
         .map(|m| {
-            let mut content = m.content.clone();
-            if !full_context && m.source == "file_view" && content.len() > TRIM_CHARS {
-                let mut cut = TRIM_CHARS;
-                while !content.is_char_boundary(cut) {
-                    cut -= 1;
+            let content = m.content.clone().map(|mut content| {
+                if !full_context && m.source == "file_view" && content.len() > TRIM_CHARS {
+                    let mut cut = TRIM_CHARS;
+                    while !content.is_char_boundary(cut) {
+                        cut -= 1;
+                    }
+                    content.truncate(cut);
                 }
-                content.truncate(cut);
-            }
+                content
+            });
             ProbeMessage {
                 role: m.role.clone(),
                 content,
+                tool_calls: m.tool_calls.clone(),
+                tool_call_id: m.tool_call_id.clone(),
             }
         })
-        .collect();
-    if condition.no_tools_clause
-        && let Some(system) = messages.first_mut()
-    {
-        system.content.push_str(NO_TOOLS_CLAUSE);
-    }
-    if condition.trailing_notice {
-        messages.push(ProbeMessage {
-            role: "user".to_string(),
-            content: NOTICE_MESSAGE.to_string(),
-        });
-    }
-    messages
+        .collect()
 }
 
-/// The label a reply the gateway answered with native `tool_calls` gets, ahead
-/// of any text heuristic: the model bypassed the text channel entirely.
-pub const LABEL_NATIVE_TOOL_CALL: &str = "native-tool-call";
-/// The label for a clean reply: a bare program over the gg modules.
+/// The label for a clean submission: the `program` string is a bare program over the gg modules.
 pub const LABEL_CLEAN: &str = "clean-program";
+/// The label for a reply that made no tool call at all despite the forced choice.
+pub const LABEL_NO_SUBMISSION: &str = "no-submission";
+/// The label for a reply whose calls named some other tool and never
+/// [`submit_program`](SUBMIT_PROGRAM_TOOL).
+pub const LABEL_STRAY_TOOL_CALL: &str = "stray-tool-call";
+/// The label for a [`submit_program`](SUBMIT_PROGRAM_TOOL) call whose arguments carried no
+/// `program` string.
+pub const LABEL_NO_PROGRAM: &str = "no-program";
 
-/// Classify the shape of a reply's text. Heuristic, in priority order:
+/// Classify the shape of a submitted `program` string. Heuristic, in priority order:
 ///
 /// - `empty` — nothing but whitespace.
 /// - `tool-token` — raw tool-call token markers (`<|…|>`).
 /// - `xml-pseudo-tools` — XML-ish tool-call markup (`<function…>`, `<tool_call>`,
 ///   `<invoke …>`, …).
-/// - `cot-leak` — chain-of-thought markers leaked into the content.
-/// - `fenced` — a markdown code fence anywhere.
-/// - `clean-program` — the first line is code and the reply imports from `"gg"`.
+/// - `cot-leak` — chain-of-thought markers leaked into the program.
+/// - `fenced` — a markdown code fence anywhere; gg compiles the string exactly as sent, so a
+///   fence is part of the program and the compiler refuses it.
+/// - `clean-program` — the first line is code and the program imports from `"gg"`.
 /// - `prose+program` — imports from `"gg"` but opens with prose.
 /// - `program-no-gg` — opens as code but never imports the gg modules.
 /// - `other` — anything else.
@@ -255,94 +260,48 @@ pub fn is_clean(label: &str) -> bool {
     label == LABEL_CLEAN
 }
 
-/// Whether a label is tool-call-shaped (the overfit signature).
-pub fn is_tool_syntax(label: &str) -> bool {
-    matches!(
-        label,
-        "tool-token" | "xml-pseudo-tools" | LABEL_NATIVE_TOOL_CALL
-    )
-}
-
-/// The clean-rate threshold every verdict tier is measured against.
+/// The clean-rate threshold the verdict is measured against.
 const CLEAN_THRESHOLD: f64 = 0.8;
 
 /// A probe's reduced outcome.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Reduction {
-    /// `ready`, `ready-with-reminders`, `tool-call-overfit`, or `not-ready`.
+    /// `ready` or `not-ready`.
     pub verdict: &'static str,
-    /// The base condition's clean rate, when it produced any scored call.
-    pub base_clean_rate: Option<f64>,
-    /// The best variation's clean rate, when any variation produced a scored
-    /// call.
-    pub best_variation_clean_rate: Option<f64>,
+    /// The clean rate over the scored calls, when any call was scored.
+    pub clean_rate: Option<f64>,
 }
 
-/// One scored call, as the reduction sees it: its condition name and label. A
-/// call that errored has no label and is excluded from the rates.
+/// One scored call, as the reduction sees it: its label. A call that errored has
+/// no label and is excluded from the rate.
 #[derive(Debug, Clone)]
 pub struct ScoredCall {
-    pub condition: String,
     pub label: Option<String>,
 }
 
-/// Reduce a probe's calls to its verdict:
-///
-/// - base and every variation ≥ 80% clean → `ready`;
-/// - a variation reaches 80% where base did not → `ready-with-reminders`;
-/// - no variation reaches 80% and tool-call syntax appears under the
-///   variations → `tool-call-overfit`;
-/// - otherwise → `not-ready` (the failures are not tool-shaped; the raw replies
-///   say what they are).
+/// Reduce a probe's calls to its verdict: a clean rate of at least 80% over the
+/// scored calls is `ready`, anything else is `not-ready` (the per-call labels
+/// and raw replies say why).
 pub fn reduce(calls: &[ScoredCall]) -> Reduction {
-    let rate = |name: &str| {
-        let scored: Vec<&ScoredCall> = calls
-            .iter()
-            .filter(|c| c.condition == name && c.label.is_some())
-            .collect();
-        if scored.is_empty() {
-            return None;
-        }
-        let clean = scored
-            .iter()
-            .filter(|c| c.label.as_deref().is_some_and(is_clean))
-            .count();
-        Some(clean as f64 / scored.len() as f64)
-    };
-    let base = rate("base");
-    let variation_rates: Vec<Option<f64>> = CONDITIONS
+    let scored: Vec<&ScoredCall> = calls.iter().filter(|c| c.label.is_some()).collect();
+    if scored.is_empty() {
+        return Reduction {
+            verdict: "not-ready",
+            clean_rate: None,
+        };
+    }
+    let clean = scored
         .iter()
-        .filter(|c| c.variation)
-        .map(|c| rate(c.name))
-        .collect();
-    let best_variation = variation_rates
-        .iter()
-        .filter_map(|r| *r)
-        .fold(None::<f64>, |best, r| Some(best.map_or(r, |b| b.max(r))));
-
-    let all_ready = base.is_some_and(|r| r >= CLEAN_THRESHOLD)
-        && !variation_rates.is_empty()
-        && variation_rates
-            .iter()
-            .all(|r| r.is_some_and(|r| r >= CLEAN_THRESHOLD));
-    let verdict = if all_ready {
-        "ready"
-    } else if best_variation.is_some_and(|r| r >= CLEAN_THRESHOLD) {
-        "ready-with-reminders"
-    } else if calls.iter().any(|c| {
-        c.label.as_deref().is_some_and(is_tool_syntax)
-            && CONDITIONS
-                .iter()
-                .any(|cond| cond.variation && cond.name == c.condition)
-    }) {
-        "tool-call-overfit"
-    } else {
-        "not-ready"
-    };
+        .filter(|c| c.label.as_deref().is_some_and(is_clean))
+        .count();
+    let rate = clean as f64 / scored.len() as f64;
     Reduction {
-        verdict,
-        base_clean_rate: base,
-        best_variation_clean_rate: best_variation,
+        verdict: if rate >= CLEAN_THRESHOLD {
+            "ready"
+        } else {
+            "not-ready"
+        },
+        clean_rate: Some(rate),
     }
 }
 
@@ -352,17 +311,25 @@ pub struct ProbeReply {
     pub provider: Option<String>,
     pub finish_reason: Option<String>,
     pub native_finish_reason: Option<String>,
+    /// The reply's text content — commentary beside the call, recorded and never classified.
     pub content: String,
     pub reasoning: Option<String>,
+    /// Every tool call the reply made, whatever it named.
     pub tool_calls: usize,
+    /// The calls among them that named [`submit_program`](SUBMIT_PROGRAM_TOOL).
+    pub submit_calls: usize,
+    /// The first `submit_program` call's `program` string, when it carried one.
+    pub program: Option<String>,
     pub prompt_tokens: Option<i64>,
     pub completion_tokens: Option<i64>,
     pub cost: Option<f64>,
 }
 
-/// Build one call's chat/completions request body. `provider` pins the route
-/// (`provider.order` with fallbacks disabled); the fresh `session_key` keeps
-/// routing natural instead of cache-sticky.
+/// Build one call's chat/completions request body: the fixture conversation, the one
+/// [`submit_program`](submit_program_tool) tool, and `tool_choice` forced to it — the same wire
+/// shape gg's `build_required_tool_request_body` sends. `provider` pins the route
+/// (`provider.order` with fallbacks disabled); the fresh `session_key` keeps routing natural
+/// instead of cache-sticky.
 pub fn request_body(
     openrouter_slug: &str,
     messages: &[ProbeMessage],
@@ -377,6 +344,11 @@ pub fn request_body(
         "max_tokens": max_tokens,
         "session_id": session_key,
         "prompt_cache_key": session_key,
+        "tools": [submit_program_tool()],
+        "tool_choice": {
+            "type": "function",
+            "function": { "name": SUBMIT_PROGRAM_TOOL },
+        },
     });
     if let Some(provider) = provider {
         body["provider"] = serde_json::json!({
@@ -387,9 +359,10 @@ pub fn request_body(
     body
 }
 
-/// Parse a gateway response body into the parts the probe records. A body that
-/// carries an `error` member (OpenRouter reports some provider faults inside a
-/// 200) is an `Err` with its serialized detail.
+/// Parse a gateway response body into the parts the probe records — including the first
+/// `submit_program` call's `program` string, which is what gets classified. A body that carries an
+/// `error` member (OpenRouter reports some provider faults inside a 200) is an `Err` with its
+/// serialized detail.
 pub fn parse_reply(body: &serde_json::Value) -> Result<ProbeReply, String> {
     if let Some(error) = body.get("error") {
         return Err(format!("gateway error: {error}"));
@@ -404,6 +377,34 @@ pub fn parse_reply(body: &serde_json::Value) -> Result<ProbeReply, String> {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
+    let empty = Vec::new();
+    let calls = message
+        .get("tool_calls")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty);
+    let mut submit_calls = 0usize;
+    let mut program: Option<String> = None;
+    for call in calls {
+        let function = call.get("function");
+        let name = function
+            .and_then(|f| f.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        if name == SUBMIT_PROGRAM_TOOL {
+            submit_calls += 1;
+            if program.is_none() {
+                program = function
+                    .and_then(|f| f.get("arguments"))
+                    .and_then(|v| v.as_str())
+                    .and_then(|args| serde_json::from_str::<serde_json::Value>(args).ok())
+                    .and_then(|args| {
+                        args.get("program")
+                            .and_then(|p| p.as_str())
+                            .map(str::to_string)
+                    });
+            }
+        }
+    }
     let usage = body.get("usage").cloned().unwrap_or_default();
     Ok(ProbeReply {
         provider: string_of(body.get("provider")),
@@ -415,22 +416,23 @@ pub fn parse_reply(body: &serde_json::Value) -> Result<ProbeReply, String> {
             .unwrap_or_default()
             .to_string(),
         reasoning: string_of(message.get("reasoning")),
-        tool_calls: message
-            .get("tool_calls")
-            .and_then(|v| v.as_array())
-            .map_or(0, |a| a.len()),
+        tool_calls: calls.len(),
+        submit_calls,
+        program,
         prompt_tokens: usage.get("prompt_tokens").and_then(|v| v.as_i64()),
         completion_tokens: usage.get("completion_tokens").and_then(|v| v.as_i64()),
         cost: usage.get("cost").and_then(|v| v.as_f64()),
     })
 }
 
-/// Label one parsed reply: a native tool call outranks the text heuristics.
+/// Label one parsed reply: the submitted program's [`classify`] shape, or how the reply dodged the
+/// forced call when nothing usable was submitted.
 pub fn label_reply(reply: &ProbeReply) -> &'static str {
-    if reply.tool_calls > 0 {
-        LABEL_NATIVE_TOOL_CALL
-    } else {
-        classify(&reply.content)
+    match &reply.program {
+        Some(program) => classify(program),
+        None if reply.submit_calls > 0 => LABEL_NO_PROGRAM,
+        None if reply.tool_calls > 0 => LABEL_STRAY_TOOL_CALL,
+        None => LABEL_NO_SUBMISSION,
     }
 }
 
@@ -445,7 +447,7 @@ pub struct ProbeRunner {
 }
 
 impl ProbeRunner {
-    /// Execute one probe to completion: run the matrix sequentially, append an
+    /// Execute one probe to completion: run the samples sequentially, append an
     /// item row per call, and finish the probe row with its verdict and spend.
     /// Every fault is recorded on the rows; nothing is returned.
     pub async fn run(&self, probe: model_probe::Model) {
@@ -453,23 +455,20 @@ impl ProbeRunner {
         let mut spend = 0.0_f64;
         let mut first_error: Option<String> = None;
         let mut any_scored = false;
-        for condition in &CONDITIONS {
-            let messages = build_messages(condition, probe.full_context);
-            for sample in 0..probe.samples {
-                let (item, cost) = self.one_call(&probe, condition, sample, &messages).await;
-                spend += cost;
-                if item.label.is_some() {
-                    any_scored = true;
-                } else if first_error.is_none() {
-                    first_error = item.error.clone();
-                }
-                calls.push(ScoredCall {
-                    condition: condition.name.to_string(),
-                    label: item.label.clone(),
-                });
-                if let Err(err) = self.db.insert_model_probe_item(item).await {
-                    tracing::error!(probe.id = %probe.id, error = %err, "recording probe item");
-                }
+        let messages = build_messages(probe.full_context);
+        for sample in 0..probe.samples {
+            let (item, cost) = self.one_call(&probe, sample, &messages).await;
+            spend += cost;
+            if item.label.is_some() {
+                any_scored = true;
+            } else if first_error.is_none() {
+                first_error = item.error.clone();
+            }
+            calls.push(ScoredCall {
+                label: item.label.clone(),
+            });
+            if let Err(err) = self.db.insert_model_probe_item(item).await {
+                tracing::error!(probe.id = %probe.id, error = %err, "recording probe item");
             }
         }
         let finished_at = now_rfc3339();
@@ -481,8 +480,7 @@ impl ProbeRunner {
                     "complete",
                     None,
                     Some(reduction.verdict.to_string()),
-                    reduction.base_clean_rate,
-                    reduction.best_variation_clean_rate,
+                    reduction.clean_rate,
                     spend,
                     &finished_at,
                 )
@@ -497,7 +495,6 @@ impl ProbeRunner {
                     Some(format!("every probe call failed; first error: {error}")),
                     None,
                     None,
-                    None,
                     spend,
                     &finished_at,
                 )
@@ -508,12 +505,11 @@ impl ProbeRunner {
         }
     }
 
-    /// One (condition, sample) call: send, parse, classify; an error becomes an
-    /// unlabeled item carrying the fault. Returns the item and the call's cost.
+    /// One sample call: send, parse, classify; an error becomes an unlabeled
+    /// item carrying the fault. Returns the item and the call's cost.
     async fn one_call(
         &self,
         probe: &model_probe::Model,
-        condition: &ProbeCondition,
         sample: i32,
         messages: &[ProbeMessage],
     ) -> (model_probe_item::Model, f64) {
@@ -531,13 +527,13 @@ impl ProbeRunner {
         let mut item = model_probe_item::Model {
             id: cuid2::create_id(),
             probe_id: probe.id.clone(),
-            condition: condition.name.to_string(),
             sample,
             provider: None,
             finish_reason: None,
             native_finish_reason: None,
             label: None,
             clean: false,
+            program_text: None,
             response_text: String::new(),
             reasoning_text: None,
             prompt_tokens: None,
@@ -556,6 +552,7 @@ impl ProbeRunner {
                 item.provider = reply.provider;
                 item.finish_reason = reply.finish_reason;
                 item.native_finish_reason = reply.native_finish_reason;
+                item.program_text = reply.program;
                 item.response_text = reply.content;
                 item.reasoning_text = reply.reasoning;
                 item.prompt_tokens = reply.prompt_tokens;

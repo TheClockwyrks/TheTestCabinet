@@ -238,19 +238,11 @@ body states that a program is compiled before it runs, that one `purs` refuses
 is not executed, and that a call the run withheld compiles and fails when it
 runs. The library set is carried by a compile failure rather than by the prompt.
 
-## Healing dialect
+## Code mask
 
-Two of the dialect's lexical answers are this language's own. A `#` line is
-prose and is deleted, because PureScript comments with `--` and `{- … -}` and
-`#` is an ordinary operator. A `--` line is always code. The carve-out is a
-pipeline continuation: an indented single `#` applied to a lower-case name and
-an argument is kept.
-
-A call written by juxtaposition carries no bracket, operator, keyword or dot, so
-`"` is on the dialect's non-prose character list and the prose test reads the
-shape English is written in, a leading capital or terminal punctuation. Two
-lexer rules keep the rest of a line readable. A run of dashes opens a comment
-only when what follows is not a symbol character, since `-->` is a definable
-operator, and a `'` is a prime on an identifier unless it opens a character
-literal that closes within the few bytes one can. The scan that reads a code
-module's exports reads the same mask.
+The arm keeps one byte-level lexer, `purescript.mask.rs`, answering which bytes
+of a source are code: `"…"` with escapes, `"""…"""` raw strings, `-- …` line
+comments — recognised only where the dashes are not part of an operator like
+`-->` — and nested `{- … -}` block comments, with the prime-versus-character
+rule for `'`. Its reader is the code-module analysis, which must not take a
+declaration written into a string for one the module makes.

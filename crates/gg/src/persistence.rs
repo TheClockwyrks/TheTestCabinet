@@ -273,9 +273,9 @@ impl PersistenceSetup {
 /// The same shape [autoload](crate::agent) seeds a test case's specifications with, and for the same
 /// reason: a file view the model can act on is a turn it could have taken, not a narrated summary of
 /// one. That means the *envelope* follows the run's protocol — a synthesized `read_file` call/result
-/// pair on the tool-calling path, a synthesized program opening a file view on the
-/// [responses-as-code](crate::sandbox) path, where there are no tools to call and an assistant turn
-/// is a program. Each view is read through this agent's own `read_policy` — and an agent that
+/// pair on the tool-calling path, and on the [responses-as-code](crate::sandbox) path a synthesized
+/// `submit_program` call whose program opens the file view, acknowledged the way every submission
+/// is. Each view is read through this agent's own `read_policy` — and an agent that
 /// configures none re-opens nothing, because it is offered no read at all. So a re-opened window is the same
 /// size the agent's own reads are, and a paged view is re-read over the region it covered rather than
 /// from the top of the file. The views are ordinary [ephemeral](crate::context::Retention::Ephemeral)
@@ -339,7 +339,19 @@ pub async fn restore_file_views(
             // One program per restored view rather than one for all of them: a restore is a list of
             // windows, not a single opening brief, and a per-view program keeps each assistant turn
             // paired with the view it produced even when a later read fails and is skipped.
-            context.push_assistant(Some(open_file_call(language, view)), Vec::new());
+            let call_id = format!("{RESTORED_CALL_PREFIX}-{index}");
+            context.push_assistant(
+                None,
+                vec![crate::completion::synthesized_submission(
+                    &call_id,
+                    &open_file_call(language, view),
+                )],
+            );
+            context.push_tool_result(
+                test_cabinet_core::gg::GgContextSource::ToolOutput,
+                &call_id,
+                crate::completion::SUBMIT_PROGRAM_ACK,
+            );
             let lines = ShownLines::of_read(outcome.data.as_ref());
             context.seed_file_view(
                 view.path.clone(),

@@ -99,7 +99,7 @@
 //! [`all_languages`] is *derived* from [`GgProgramLanguage::ALL`] rather than being a second list
 //! somebody has to remember to extend. Adding a variant to the core enum therefore fails to compile
 //! until this module has an arm for it, and the new arm is instantly in every iteration — the drift
-//! gates, the healing invariant, the opening turn. `ALL` itself is not a list anyone can
+//! gates, the opening turn. `ALL` itself is not a list anyone can
 //! forget either: [`GgProgramLanguage::ordinal`] is a second exhaustive `match` whose every arm is
 //! checked against `ALL` in a `const` block, so a variant that never reached the list is a build
 //! failure rather than a language every gate here silently skips.
@@ -147,6 +147,10 @@ mod comments;
 mod heads;
 
 pub use diagnostics::library_set;
+
+/// The shared [code-mask](mask::CodeMask) vocabulary the per-language byte lexers fill in.
+#[path = "language/mask.rs"]
+mod mask;
 
 #[path = "language/typescript.rs"]
 mod typescript;
@@ -703,13 +707,6 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// catalogue read under the wrong stem would be a prompt describing a sandbox nobody has.
     fn catalogue(&self) -> &'static SignatureCatalogue;
 
-    /// The dialect [response healing](crate::healing) asks its language-shaped questions of.
-    ///
-    /// Healing is not part of the sandbox and does not import it — the trait is declared over there
-    /// and implemented over here, so the arrow points one way and this module is the only thing that
-    /// knows both halves exist.
-    fn healing(&self) -> &'static dyn crate::healing::Dialect;
-
     /// The one statement a program writes to open a view of `path` — the whole file, or one
     /// `offset`/`limit` [window](FileWindow) of it — as this language spells it, terminated the way
     /// this language terminates a statement.
@@ -806,17 +803,6 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// Not a concatenation of two generated statements: on several arms a program is one module,
     /// one `main` or one translation unit, so two programs do not add up to one.
     fn bootstrap_program(&self, modules: &[&str], docs: &[&str]) -> String;
-
-    /// Replies this language contributes to the delete-only invariant corpus.
-    ///
-    /// `#[cfg(test)]`, and on the trait rather than beside the tests so that a language cannot be
-    /// registered without contributing replies its own [dialect](Self::healing) has to survive. It
-    /// delegates to [`Dialect::fixtures`](crate::healing::Dialect::fixtures), which is where a
-    /// language actually authors them.
-    #[cfg(test)]
-    fn healing_fixtures(&self) -> &'static [&'static str] {
-        self.healing().fixtures()
-    }
 
     /// A **code module** in this language's own syntax, carrying `name` somewhere its prepared
     /// artifact will still hold it — the subject the gates over this seam drive this language's
@@ -1295,7 +1281,7 @@ const UNUSED: GgProgramLanguage = GgProgramLanguage::TypeScript;
 ///
 /// Read literally — with only surrounding whitespace forgiven — and [refused](crate::validate) on
 /// mismatch, for a sharper version of the reason
-/// [`resolve_healing`](crate::healing::resolve_healing) is: reading `"pythn"`
+/// [`resolve_doc_view_types`](crate::docs::resolve_doc_view_types) is: reading `"pythn"`
 /// as Python would be bad, but reading it as TypeScript would record the run under a language nobody
 /// chose — and the language is the very axis a cross-language study slices on. [`UNUSED`] comes back
 /// anyway to keep the resolver total for the per-turn calls that re-read it.
@@ -1313,7 +1299,7 @@ const UNUSED: GgProgramLanguage = GgProgramLanguage::TypeScript;
 /// merely knows the names of.
 ///
 /// Per **agent**, like [`resolve_sandbox_limits`](super::resolve_sandbox_limits) and
-/// [`resolve_healing`](crate::healing::resolve_healing): responses-as-code is a per-agent
+/// [`resolve_doc_view_types`](crate::docs::resolve_doc_view_types): responses-as-code is a per-agent
 /// capability, so one run may drive a root in one language and a reviewer in another.
 ///
 /// A value that **is** written is read whether the capability is switched **on or off**, like every

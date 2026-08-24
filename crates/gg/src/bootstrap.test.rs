@@ -7,9 +7,9 @@
 //!    one listing of the [modules the opening turn covers](BOOTSTRAP_MODULES) and a documentation
 //!    view of every bootstrap call in the window — asserted from the window itself rather than from
 //!    what the generator claims.
-//! 2. **It is the arm's own program, and it is what ran.** The assistant message beside those views
-//!    is the source that was executed, in that arm's syntax, so a model copying its own transcript
-//!    copies something that works.
+//! 2. **It is the arm's own program, and it is what ran.** The `submit_program` call beside those
+//!    views carries the source that was executed, in that arm's syntax, so a model copying its own
+//!    transcript copies something that works.
 //! 3. **A failure of it is gg's**, and it refuses the run rather than opening a model on a window
 //!    that never got its surface.
 //! 4. **It is not a turn**: nothing here begins one, counts one, or times one.
@@ -148,12 +148,19 @@ fn labels(ctx: &ContextModel, source: GgContextSource) -> Vec<String> {
         .collect()
 }
 
-/// The assistant turns in the window, in order.
+/// The programs the window's assistant turns submitted, in order — each read out of its turn's
+/// `submit_program` call, which is where a code-mode transcript carries a program.
 fn programs(ctx: &ContextModel) -> Vec<String> {
     ctx.items()
         .iter()
         .filter(|item| item.source() == GgContextSource::Assistant)
-        .filter_map(|item| item.message().content.clone())
+        .flat_map(|item| item.message().tool_calls.iter())
+        .filter_map(|call| {
+            call.arguments
+                .get("program")
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        })
         .collect()
 }
 

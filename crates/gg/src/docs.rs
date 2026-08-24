@@ -333,8 +333,7 @@ fn doc_view_types_locus() -> String {
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's
 /// [`docViewTypes`](PARAM_DOC_VIEW_TYPES) param.
 ///
-/// The param states a **whole flag set**, not a delta, exactly as
-/// [`healing`](crate::healing::resolve_healing) does. Every setting of the three is defensible and
+/// The param states a **whole flag set**, not a delta. Every setting of the three is defensible and
 /// none is obviously right, which is what makes them something to measure rather than something to
 /// choose — so a set naming two of the three has not said what the third arm was.
 ///

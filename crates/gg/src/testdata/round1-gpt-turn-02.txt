@@ -1,1 +1,0 @@
-Created `MANIFEST.md` with the files under `src/`, sorted by name and including line counts. Ran `ls -la` and confirmed that `MANIFEST.md` exists.

@@ -241,13 +241,3 @@ shared body states that a program is compiled before it runs, that one `rustc`
 refuses is not executed, and that a call the run withheld compiles and fails
 when it runs. The library set is carried by a compile failure rather than by the
 prompt.
-
-## Healing dialect
-
-These are the lexical answers [healing](/gg/response-healing/) asks this arm
-for. A `'` opens a character literal only when one character and a closing `'`
-follow it, so `&'static str` is a lifetime and an apostrophe in prose is
-punctuation. A string literal may span newlines, and a raw string carries its
-own counted fence (`r"…"`, `r#"…"#`, with `b` and `c` prefixes). Rust has no
-backtick in its grammar, so a lead-in written as an inline code span is
-deletable.

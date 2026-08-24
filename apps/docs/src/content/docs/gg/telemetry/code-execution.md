@@ -2,10 +2,10 @@
 title: "Code execution"
 ---
 
-One `code_execution` event rides on the stream per code-shaped turn of a
-[responses-as-code](/gg/responses-as-code/overview/) run, including a turn whose
-reply never compiled. That inclusion is what makes its count the exact
-denominator for every healing rate. A run with the capability off emits none.
+One `code_execution` event rides on the stream per **submitted program** of a
+[responses-as-code](/gg/responses-as-code/overview/) run — a turn that submitted
+several programs emits one event per program, in submission order — including a
+program whose source never compiled. A run with the capability off emits none.
 
 ## What the event carries
 
@@ -20,7 +20,6 @@ denominator for every healing rate. A run with the capability off emits none.
 | `logs` / `logsSuppressed` | Every line the program logged, and how many lines the capture caps dropped. Both omitted for a turn that printed nothing. |
 | `compileWaitMs` | What this program spent obtaining the sandbox's compiled component. |
 | `compileMs` | What this turn's [language](/gg/languages/overview/) spent compiling for it. |
-| `healing` | What gg had to repair before it could run the reply. Omitted entirely for a clean one. |
 | `undocumentedCalls` | How many of the turn's calls the model wrote without holding a [documentation view](/gg/responses-as-code/views/#undocumented-calls) of them from an earlier turn, and a count per gg operation id. Omitted entirely for a turn that made none. |
 
 ## Logs and the operator-facing record

@@ -10,8 +10,9 @@ rule is the same in both execution modes and is not configurable.
 A model that loops emitting prose therefore trips the run's
 [consecutive-error and error-rate ceilings](/gg/execution-limits/) and stops
 early with a diagnosis rather than running to exhaustion. On the tool-calling
-path each text-only reply is an error turn. Under responses as code prose is
-compiled like anything else, and the turn fails at compilation.
+path each text-only reply is an error turn. Under responses as code a reply
+that makes no `submit_program` call is the same error turn: only a submitted
+`program` string is ever compiled, and reply text never is.
 
 ## Ending calls
 

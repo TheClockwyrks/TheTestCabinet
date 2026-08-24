@@ -10,8 +10,8 @@
 //!   [theirs](LIB_IMPORT);
 //! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own top
 //!   level to say what its namespace offers;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, and the mask;
+//! * [`mask`] — the byte-level code mask [`modules`] reads, so a name written into a string or
+//!   a docstring is never taken for a declaration;
 //! * [`COMPONENT`] — the `componentize-py` guest, CPython 3.14 linked
 //!   against `crates/gg/wit/gg-sandbox.wit`, built by `packages/gg-sandbox-python/build.sh`;
 //! * the **signature catalogue** — reflected out of that guest's hand-written SDK with `griffe`,
@@ -111,8 +111,8 @@ use crate::sandbox::operations::{DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_F
 #[path = "python.modules.rs"]
 mod modules;
 
-#[path = "python.healing.rs"]
-pub(super) mod healing;
+#[path = "python.mask.rs"]
+pub(super) mod mask;
 
 /// The interpreter component: the Python guest in `packages/gg-sandbox-python`, built by that
 /// package's `build.sh` with `componentize-py`.
@@ -255,10 +255,6 @@ impl ProgramLanguage for Python {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::PYTHON_DIALECT
     }
 
     /// [`gg.views.open_file("src/main.py")`](self::open_file_statement), with the window as keyword

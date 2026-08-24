@@ -293,19 +293,6 @@
   }
 }
 
-.conditionCell {
-  white-space: nowrap;
-}
-
-.variationTag {
-  margin-left: t.$space-xs;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-sm;
-  padding: 0 t.$space-xs;
-}
-
 .items {
   list-style: none;
   margin: 0;

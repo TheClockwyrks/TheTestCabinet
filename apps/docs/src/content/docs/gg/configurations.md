@@ -245,7 +245,7 @@ biggest lever a study has. A machine is namable everywhere an ordinary profile
 is: as the root, as a roster target, as an issue's implementer.
 
 The selected type opens its own settings where a capability's would sit, being
-the sandbox ceilings and [response healing](/gg/response-healing/) for RaC and
+the sandbox ceilings for RaC and
 the state table for FSM, and filters the capability list below it. A capability
 only one type reads is listed only under that type. [Program
 library](/gg/program-library/) and Close documentation are offered to a RaC

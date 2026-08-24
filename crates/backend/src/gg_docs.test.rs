@@ -58,7 +58,6 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
                 program_language: None,
                 code_executions: 0,
                 compile_ms: 0,
-                healing: Default::default(),
                 errors: Default::default(),
                 tool_calls: 0,
                 provider_stats: Vec::new(),

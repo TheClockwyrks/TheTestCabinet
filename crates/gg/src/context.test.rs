@@ -1631,7 +1631,7 @@ fn a_region_is_the_window_a_read_actually_covered() {
 
 /// The trailing contract notice: one instance, always the last rendered message, surviving a
 /// compaction reset (it is a slot, not thread material), cleared with `None`, and invisible to
-/// [`ends_on_assistant`](ContextModel::ends_on_assistant) — which asks whether the model was
+/// [`ends_on_submission`](ContextModel::ends_on_submission) — which asks whether the model was
 /// answered, a question constant furniture can never answer yes to.
 #[test]
 fn the_trailing_notice_renders_last_once_and_never_answers_the_model() {
@@ -1658,7 +1658,7 @@ fn the_trailing_notice_renders_last_once_and_never_answers_the_model() {
 
     // The window's last *answer* is still the assistant's own message: the notice does not count.
     assert!(
-        model.ends_on_assistant(),
+        model.ends_on_submission(&[]),
         "constant trailing furniture is not an answer to the model"
     );
 

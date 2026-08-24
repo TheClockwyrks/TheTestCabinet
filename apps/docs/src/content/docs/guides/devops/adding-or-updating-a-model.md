@@ -188,10 +188,11 @@ change is live at once, and the snapshot picks it up on the next publish.
 A model probe is a responses-as-code readiness check, run from the model's
 Probes tab. It answers whether the model can drive [gg](/gg/overview/)'s RaC
 mode at all: the backend replays gg's real RaC opening request against the
-model's OpenRouter slug and classifies the shape of every reply, because some
-models emit tool-call syntax even with no tools offered and waste every RaC run.
-The verdict says whether to run the model as-is, run it with cross-model prompt
-reminders, or keep it out of RaC mode.
+model's OpenRouter slug — the `submit_program` tool offered and forced, as gg
+sends it — and classifies the program every reply submitted, because a model
+can hold the call shape and still fence or prose-wrap the program string and
+waste every RaC run. The verdict says whether to run the model in RaC mode or
+keep it out.
 
 Run a probe when a new model is introduced, and again after pinning a new
 provider, since providers can serve the same model differently. The steps are in

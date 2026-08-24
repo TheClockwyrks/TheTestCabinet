@@ -1351,9 +1351,6 @@ describe("gg filesystem capabilities", () => {
   });
 });
 
-// The `responses-as-code` capability's `healing` param: a `toggles` control whose members
-// each sit at their own default — two on, `drop-doubled-response` off — so only the ones
-// an operator MOVES are ever written, in whichever direction they moved.
 const CODE = "responses-as-code";
 
 // The one param a code agent cannot leave out: gg drives no run in a language nobody
@@ -1361,10 +1358,6 @@ const CODE = "responses-as-code";
 // refuses and the form refuses to save. The fixtures below are about some *other* param,
 // and carry this so they are documents that could really have been stored.
 const LANG = "typescript";
-
-function healingOf(s: GgCapabilitySet): unknown {
-  return setCaps(s).find((cap) => cap.id === CODE)?.params?.healing;
-}
 
 // The program language: the catalog's one required param, and the only one whose empty
 // field is an error rather than a deferral to gg.
@@ -1431,12 +1424,6 @@ describe("gg program language", () => {
   });
 });
 
-// The `healing` toggles draft of the (single) agent, which holds the ids of the strategies
-// switched OFF.
-function healingDraft(draft: GgConfigDraft): string | undefined {
-  return draftCaps(draft)[CODE]?.params?.healing;
-}
-
 // A draft whose one agent is a code agent with the language answered — the fixture every
 // assertion about a responses-as-code param starts from, since the capability is
 // specified in every respect but that one.
@@ -1452,122 +1439,9 @@ function codeDraft(): GgConfigDraft {
   return draft;
 }
 
-describe("gg response-healing toggles", () => {
-  it("writes every strategy, because gg arms none of them itself", () => {
-    // An exhaustive toggle set: gg refuses a `healing` object that leaves a strategy
-    // unnamed, so what the editor saves is the whole membership as the checkboxes are
-    // showing it. A freshly switched-on capability shows the authored arms.
-    const draft = codeDraft();
-    expect(healingDraft(draft)).toBe("drop-doubled-response");
-    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
-      "strip-fences": true,
-      "strip-prose": true,
-      "drop-doubled-response": false,
-    });
-  });
-
-  it("round-trips the strategies a configuration switches off", () => {
-    const configured = capSet([
-      {
-        id: CODE,
-        enabled: true,
-        params: {
-          language: LANG,
-          healing: {
-            "strip-fences": true,
-            "strip-prose": false,
-            "drop-doubled-response": false,
-          },
-        },
-      },
-    ]);
-    const draft = draftFromCapabilitySet(configured);
-    expect(healingDraft(draft)).toBe("strip-prose,drop-doubled-response");
-    expect(draftCaps(draft)[CODE]?.extraParams).toEqual({});
-    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
-      "strip-fences": true,
-      "strip-prose": false,
-      "drop-doubled-response": false,
-    });
-  });
-
-  it("reads the `false` shorthand as every strategy off", () => {
-    const configured = capSet([
-      { id: CODE, enabled: true, params: { language: LANG, healing: false } },
-    ]);
-    const draft = draftFromCapabilitySet(configured);
-    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
-      "strip-fences": false,
-      "strip-prose": false,
-      "drop-doubled-response": false,
-    });
-  });
-
-  it("reads the `true` shorthand as every strategy on, exactly as gg does", () => {
-    // The two scalar shorthands are gg's own and they are symmetric: `true` is every
-    // strategy armed — `drop-doubled-response` included — and `false` is every one off.
-    // Reading `true` as anything less would show an operator a repair unticked while the
-    // run armed it.
-    const configured = capSet([
-      { id: CODE, enabled: true, params: { language: LANG, healing: true } },
-    ]);
-    const draft = draftFromCapabilitySet(configured);
-    expect(healingDraft(draft)).toBe("");
-    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
-      "strip-fences": true,
-      "strip-prose": true,
-      "drop-doubled-response": true,
-    });
-  });
-
-  it("preserves an object that leaves a strategy unnamed in the passthrough", () => {
-    // gg refuses such a document, and there is no arm the editor could show for the
-    // strategy nobody wrote — so it is carried through untouched rather than repaired into
-    // something the operator did not write.
-    const configured = capSet([
-      {
-        id: CODE,
-        enabled: true,
-        params: { language: LANG, healing: { "strip-fences": false } },
-      },
-    ]);
-    const draft = draftFromCapabilitySet(configured);
-    expect(healingDraft(draft)).toBe("drop-doubled-response");
-    expect(draftCaps(draft)[CODE]?.extraParams).toEqual({
-      healing: { "strip-fences": false },
-    });
-    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
-      "strip-fences": false,
-    });
-  });
-
-  it("preserves a value the control cannot represent in the passthrough", () => {
-    const configured = capSet([
-      {
-        id: CODE,
-        enabled: true,
-        params: { language: LANG, healing: { stripProse: false } },
-      },
-    ]);
-    const draft = draftFromCapabilitySet(configured);
-    // The checkboxes open at the authored arms, since there is nothing here they could
-    // stand for — and the passthrough is what the save writes, so what the operator did
-    // not see is not replaced by what they did.
-    expect(draftCaps(draft)[CODE]?.params?.healing).toBe(
-      "drop-doubled-response",
-    );
-    expect(draftCaps(draft)[CODE]?.extraParams).toEqual({
-      healing: { stripProse: false },
-    });
-    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
-      stripProse: false,
-    });
-  });
-});
-
 // The `skills` capability's `builtIns` param: the one **withholding** toggle set in the
-// form, over the twelve skills gg ships for its own tool families. It reads the opposite
-// way round from `healing`: the object names what is held BACK, and a family it does not
+// form, over the twelve skills gg ships for its own tool families: the object names what
+// is held BACK, and a family it does not
 // mention is offered — which is the property worth pinning, because a control that
 // recorded the ON members would make each saved configuration an explicit opt-in to a list
 // gg is free to grow.
@@ -1668,7 +1542,7 @@ describe("gg built-in skill toggles", () => {
 
 // The `responses-as-code` capability's `docViewTypes` param: which SDK types a
 // documentation lookup opens beside the function it was asked for. Three INDEPENDENT
-// toggles reading exactly like `healing` above — an exhaustive set naming all three — and
+// toggles as an exhaustive set naming all three — and
 // whose per-agent scoping is the point: a root that opens everything a signature names and
 // a reviewer that opens nothing are the same configuration.
 

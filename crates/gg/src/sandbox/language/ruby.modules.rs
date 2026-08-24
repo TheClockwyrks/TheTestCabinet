@@ -45,9 +45,9 @@
 //!
 //! There is no Ruby on the host that costs less than [a process](super::compile), which is a great
 //! deal more than reading a list of names may cost. So this is a line scan over the
-//! [dialect's own mask](super::healing), and where it cannot tell, it says nothing.
+//! [dialect's own mask](super::mask), and where it cannot tell, it says nothing.
 
-use crate::healing::{CodeMask, Dialect, lines_with_offsets};
+use super::super::mask::{CodeMask, lines_with_offsets};
 
 use super::super::{ModuleExport, ModuleExportKind};
 
@@ -57,7 +57,7 @@ pub(super) fn exports(source: &str) -> Vec<ModuleExport> {
     // inside a heredoc from being read as a definition; where the lexer lost its place there is
     // nothing better to do than read the lines, and the cost of being wrong is a name in a list
     // rather than a deletion.
-    let mask = super::healing::RUBY_DIALECT.code_mask(source);
+    let mask = super::mask::code_mask(source);
     let lines: Vec<&str> = source.lines().collect();
     let mut out: Vec<ModuleExport> = Vec::new();
     let mut private = false;

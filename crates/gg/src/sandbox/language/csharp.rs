@@ -9,8 +9,6 @@
 //!   program references;
 //! * [`source`] — what gg writes around a **code module**, and the lexer that lets it look at C#
 //!   without parsing it;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of, whose lexer is [`source`]'s;
 //! * `packages/gg-sandbox-csharp/src/Gg/` — that SDK, and the XML documentation comments every word
 //!   a model reads is reflected out of;
 //! * `packages/gg-sandbox-csharp/Sources/` — the guest's C: the shell, the bridge, the trampolines;
@@ -177,9 +175,6 @@ pub(super) mod sdk;
 #[path = "csharp.source.rs"]
 pub(super) mod source;
 
-#[path = "csharp.healing.rs"]
-pub(super) mod healing;
-
 /// **The guest** — Mono's IL interpreter, the .NET class libraries and ICU, as one self-contained
 /// wasm component exporting gg's `sandbox` world.
 ///
@@ -343,10 +338,6 @@ impl ProgramLanguage for CSharp {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::CSHARP_DIALECT
     }
 
     /// [`Gg.Views.OpenFile("src/Program.cs");`](self::open_file_statement) — with the window as the
