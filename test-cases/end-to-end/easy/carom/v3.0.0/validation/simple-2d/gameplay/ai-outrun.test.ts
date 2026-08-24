@@ -8,8 +8,9 @@
 // moving at the rule's speed is about 135 units short when the ball passes, so
 // player one scores. An AI that moves faster than it should blocks it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_MAX_CY, SPEED_CAP } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   arrangeAiScenario,
   captureReplay,
@@ -54,5 +55,5 @@ it("lets a fast shot placed out of reach get past it", async () => {
     return outcome;
   });
 
-  expect(result).toBe("scored");
+  assertEqual(result, "scored");
 });

@@ -9,7 +9,8 @@
 // frames apart. The turn between them is the rate times that span, within the
 // same 0.01 radians `obstacles-spin` allows.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { OBSTACLE_SPIN_RATE } from "../constants";
 import {
   captureReplay,
@@ -38,21 +39,22 @@ afterEach(async () => {
 
 it("turns the obstacles while the countdown runs", async () => {
   await startWithKeys(harness, "versus");
-  expect((await harness.snapshot()).screen).toBe("countdown");
+  assertEqual((await harness.snapshot()).screen, "countdown");
   const opening = await readObstacles(harness);
 
   await captureReplay(harness, "countdown", async () => {
     await harness.advance(SPAN_TICKS);
   });
 
-  expect((await harness.snapshot()).screen).toBe("countdown");
+  assertEqual((await harness.snapshot()).screen, "countdown");
   const later = await readObstacles(harness);
   const expectedTurn = OBSTACLE_SPIN_RATE * seconds(SPAN_TICKS);
   for (const [i, before] of opening.entries()) {
     const after = later[i]!;
-    expect(
+    assertLessThanOrEqual(
       Math.abs(angleDelta(after.theta, before.theta + expectedTurn)),
+      ANGLE_TOLERANCE,
       `obstacle ${i} turned OBSTACLE_SPIN_RATE * elapsed during the countdown`,
-    ).toBeLessThanOrEqual(ANGLE_TOLERANCE);
+    );
   }
 });

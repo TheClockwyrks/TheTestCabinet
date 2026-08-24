@@ -7,8 +7,9 @@
 // the instant of the rebound, and the review item's 0.1 percent is a float
 // margin rather than slack.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLES, OBSTACLE_CENTERS } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeObstacleBounce,
   ball0,
@@ -66,8 +67,9 @@ it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
     return rebound;
   });
 
-  expect(bank.hit).toBe(true);
-  expect(Math.abs(ball0(bank.snapshot).speed - before)).toBeLessThanOrEqual(
+  assertEqual(bank.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(ball0(bank.snapshot).speed - before),
     SPEED_TOLERANCE,
   );
 });

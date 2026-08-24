@@ -155,6 +155,27 @@ declare module "test-cabinet:gg/files" {
   export function editFile(path: string, oldString: string, newString: string): void;
   /** List a workspace directory, sorted by name. `undefined` lists the workspace root. */
   export function listDir(path: string | undefined): DirEntry[];
+
+  /** One line `search` matched: its file, its 1-based line number, and the line, clipped at 200 characters. */
+  export interface SearchMatch {
+    /** The file's path, relative to the workspace root, or absolute for a search rooted outside it. */
+    path: string;
+    /** The 1-based line number of the match within that file. */
+    line: number;
+    /** The matching line without its ending; over 200 characters it is cut and annotated in place. */
+    text: string;
+  }
+
+  /**
+   * Search the workspace's files for the regular expression `query`, honouring ignore files. An
+   * `undefined` path is the workspace root; an `undefined` limit is gg's default of 50, and 200 is
+   * the ceiling.
+   */
+  export function search(
+    query: string,
+    path: string | undefined,
+    limit: number | undefined,
+  ): SearchMatch[];
 }
 
 /**
@@ -565,6 +586,7 @@ declare module "test-cabinet:gg/views" {
     path: string,
     offset: number | undefined,
     limit: number | undefined,
+    maxLineChars: number | undefined,
   ): FileReadRaw;
   /** Open, or replace, the text view keyed by `label`. */
   export function openTextView(label: string, body: string): void;

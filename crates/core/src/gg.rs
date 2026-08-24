@@ -148,6 +148,16 @@ pub const CAPABILITY_EDIT_FILE: &str = "edit-file";
 /// the run workspace (the `list_dir` tool).
 pub const CAPABILITY_LIST_DIR: &str = "list-dir";
 
+/// The stable id of the search capability: the agent's ability to search the run workspace's
+/// files for a pattern and get back the matching lines, each with its path and 1-based line
+/// number (the `search` tool; `files.search` under responses as code).
+///
+/// The search honours ignore files — what `.gitignore` and its kin exclude is never scanned and
+/// never returned — because a search is a question about the project rather than about the disk.
+/// Like the four editor primitives it is its own capability, so a study can withhold it without
+/// disturbing them, and it is on in a fresh configuration.
+pub const CAPABILITY_SEARCH: &str = "search";
+
 /// The stable id of the context-window-override capability: when on, the agent's model is
 /// measured against the smaller window this capability's `windowLimit` param declares
 /// instead of the model's full [catalog window](GgContextSourceUsage). It is a **narrowing**
@@ -1435,27 +1445,6 @@ pub const PARAM_DOC_VIEW_TYPES: &str = "docViewTypes";
 /// with `strip-fences` armed would measure the arm its author was switching off.
 pub const PARAM_HEALING: &str = "healing";
 
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `assistantMessages` param:
-/// which form of a reply is recorded as the assistant's message, one of
-/// [`ASSISTANT_MESSAGE_MODES`]. An enabled capability writes it, and an absent or unrecognized one
-/// refuses the launch.
-pub const PARAM_ASSISTANT_MESSAGES: &str = "assistantMessages";
-
-/// The [`assistantMessages`](PARAM_ASSISTANT_MESSAGES) mode recording the reply exactly as the
-/// model sent it, with no post-processing.
-pub const ASSISTANT_MESSAGES_NONE: &str = "none";
-
-/// The [`assistantMessages`](PARAM_ASSISTANT_MESSAGES) mode recording the **healed program that
-/// ran** — the text the turn was actually conducted on, with the reply as sent kept beside it for
-/// the operator.
-pub const ASSISTANT_MESSAGES_RESPONSE_HEALING: &str = "response-healing";
-
-/// Both assistant-message modes, in the spelling a launch refusal offers back.
-/// [`response-healing`](ASSISTANT_MESSAGES_RESPONSE_HEALING) is first, and is what the
-/// [authoring catalog](gg_authoring_catalog) writes into a new document.
-pub const ASSISTANT_MESSAGE_MODES: [&str; 2] =
-    [ASSISTANT_MESSAGES_RESPONSE_HEALING, ASSISTANT_MESSAGES_NONE];
-
 /// The stable id of the **program library** capability: gg keeps the source of every program a
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent has run, and hands the agent a `programs`
 /// object to reach back for one, patch it, and hand it back to be run.
@@ -1563,6 +1552,7 @@ pub const GG_CAPABILITY_CATALOG: &[&str] = &[
     CAPABILITY_WRITE_FILE,
     CAPABILITY_EDIT_FILE,
     CAPABILITY_LIST_DIR,
+    CAPABILITY_SEARCH,
     CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
     CAPABILITY_AUTOLOAD_SPECS,
     CAPABILITY_AGENT_PERSISTENCE,
@@ -1593,7 +1583,7 @@ pub struct GgAuthoredCapability {
     pub id: &'static str,
     /// The arm a new document selects.
     ///
-    /// `None` for the sixteen capabilities that offer no arms to select between, and `None` for
+    /// `None` for the seventeen capabilities that offer no arms to select between, and `None` for
     /// [autoload specifications](CAPABILITY_AUTOLOAD_SPECS), whose only arm is
     /// [`locked`](AUTOLOAD_LOCKED_IMPL) and whose *unwritten* implementation is itself the
     /// declaration that the seeded specifications are ordinary file views. The remaining four —
@@ -1679,6 +1669,7 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
         entry(CAPABILITY_WRITE_FILE, None, none()),
         entry(CAPABILITY_EDIT_FILE, None, none()),
         entry(CAPABILITY_LIST_DIR, None, none()),
+        entry(CAPABILITY_SEARCH, None, none()),
         entry(
             CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
             None,
@@ -1789,10 +1780,6 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
                         "strip-prose": true,
                         "drop-doubled-response": false,
                     }),
-                ),
-                (
-                    PARAM_ASSISTANT_MESSAGES,
-                    json!(ASSISTANT_MESSAGES_RESPONSE_HEALING),
                 ),
             ]),
         ),
@@ -3309,11 +3296,12 @@ fn default_agents() -> Vec<GgAgentConfig> {
 /// The default enabled capabilities: the shell and the four filesystem tools
 /// ([`read-file`](CAPABILITY_READ_FILE), [`write-file`](CAPABILITY_WRITE_FILE),
 /// [`edit-file`](CAPABILITY_EDIT_FILE) and [`list-dir`](CAPABILITY_LIST_DIR)) the core agent
-/// loop needs to build a test case, plus [skills](CAPABILITY_SKILLS),
-/// [memories](CAPABILITY_MEMORIES), and [tasks](CAPABILITY_TASKS).
+/// loop needs to build a test case, the [search](CAPABILITY_SEARCH) that finds where to point
+/// them, plus [skills](CAPABILITY_SKILLS), [memories](CAPABILITY_MEMORIES), and
+/// [tasks](CAPABILITY_TASKS).
 ///
 /// Each filesystem tool is its own capability, so each carries its own implementation and
-/// params and can be varied one at a time; all four are on by default.
+/// params and can be varied one at a time; all five are on by default.
 ///
 /// The [context-window override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) is deliberately *not*
 /// here: it is an opt-in narrowing lever a study turns on when it wants to measure a model
@@ -3338,6 +3326,7 @@ fn default_capabilities() -> Vec<GgCapabilityConfig> {
         GgCapabilityConfig::enabled(CAPABILITY_WRITE_FILE),
         GgCapabilityConfig::enabled(CAPABILITY_EDIT_FILE),
         GgCapabilityConfig::enabled(CAPABILITY_LIST_DIR),
+        GgCapabilityConfig::enabled(CAPABILITY_SEARCH),
         GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
         GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
         GgCapabilityConfig::enabled(CAPABILITY_TASKS),
@@ -3357,6 +3346,7 @@ const DEFAULT_TOOLS: &[&str] = &[
     "write_file",
     "edit_file",
     "list_dir",
+    "search",
     "read_skill",
     "write_memory",
     "update_memory",
@@ -3384,6 +3374,7 @@ const DEFAULT_OPERATIONS: &[&str] = &[
     "files.write_file",
     "files.edit_file",
     "files.list_dir",
+    "files.search",
     "skills.read_skill",
     "memories.write_memory",
     "memories.update_memory",
@@ -3441,7 +3432,7 @@ pub struct GgCapabilityConfig {
     /// ordinary file views, which is a reading of absence rather than a substitution for it.
     ///
     /// A name the capability does not offer refuses the launch, and so does any name at all on one
-    /// of the sixteen capabilities that offer none. `Option` on the wire so a configuration already
+    /// of the seventeen capabilities that offer none. `Option` on the wire so a configuration already
     /// stored in the database still deserializes and still opens in the editor: what a missing
     /// required arm costs is the *launch*, not the parse. The
     /// [authoring catalog](gg_authoring_catalog) is what writes one into a new document.

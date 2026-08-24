@@ -15,7 +15,8 @@
 // all — so the whole path from a physical key to a paused match is exercised,
 // which makes this check stronger here rather than weaker.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -56,13 +57,13 @@ it("pauses a live Solo match when KeyP is pressed", async () => {
 
   await captureReplay(h, "pause", async () => {
     await h.advance(LIVE_TICKS);
-    expect((await h.snapshot()).screen).toBe("playing");
+    assertEqual((await h.snapshot()).screen, "playing");
 
     await h.tap("KeyP");
-    expect((await h.snapshot()).screen).toBe("paused");
+    assertEqual((await h.snapshot()).screen, "paused");
 
     // And it stays paused: the press opened a screen, it did not blink one.
     await h.advance(PAUSED_TICKS);
   });
-  expect((await h.snapshot()).screen).toBe("paused");
+  assertEqual((await h.snapshot()).screen, "paused");
 });

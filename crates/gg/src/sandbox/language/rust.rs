@@ -276,7 +276,7 @@ impl ProgramLanguage for Rust {
     }
 
     /// [`gg::views::open_file("src/main.rs", …)?;`](self::open_file_statement) — with the window
-    /// as the two fields of this arm's options struct.
+    /// as two of the three fields of this arm's options struct.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEWS_OPEN_FILE), path, window)
     }
@@ -405,9 +405,9 @@ const RESERVED: [&str; 51] = [
     "unsafe", "unsized", "use", "virtual", "where", "while", "yield", "gen",
 ];
 
-/// `gg::views::open_file("src/main.rs", gg::files::ReadOptions::default())?;`, or the same call with
-/// a `gg::files::ReadOptions { offset: Some(400), limit: Some(200) }` for a window — with the call
-/// itself already spelled by the language that asked.
+/// `gg::views::open_file("src/main.rs", gg::views::ViewOptions::default())?;`, or the same call with
+/// a `gg::views::ViewOptions { offset: Some(400), limit: Some(200), ..Default::default() }` for a
+/// window — with the call itself already spelled by the language that asked.
 ///
 /// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
 /// into the agent's own transcript and read by the model as an example of its own output, so
@@ -415,13 +415,15 @@ const RESERVED: [&str; 51] = [
 /// the `?`, which is not decoration — the `fn main` it lives in returns `Result<(), gg::Failure>`,
 /// and a call whose `Result` went unused would be the model's first example of ignoring a failure.
 ///
-/// The window is the two fields of this arm's options struct, written out rather than left to
-/// `..Default::default()`: `gg::files::ReadOptions` has exactly two fields and this statement sets
-/// both, so a functional-update tail would be a construction a Rust author would not write.
+/// The window is two of the three fields of this arm's options struct, and the third — the cut a
+/// view's long lines get — is left to a `..Default::default()` tail: `gg::views::ViewOptions` has a
+/// field this statement does not set, and writing `max_line_chars: None` out beside two `Some`s is
+/// a construction a Rust author would not write where the language's own idiom for "the rest as
+/// default" exists.
 ///
 /// The struct is written **in full**, `gg::` and all, for the reason every synthesized call is: gg
 /// writes no `use` line into a program and there is none above this statement, so a bare
-/// `ReadOptions` — or a module-qualified `files::ReadOptions` — would be a text gg put in the
+/// `ViewOptions` — or a module-qualified `views::ViewOptions` — would be a text gg put in the
 /// model's own transcript that does not compile.
 ///
 /// The path is rendered through [`serde_json`] so a quote or a backslash in one cannot produce a
@@ -432,10 +434,11 @@ pub(super) fn open_file_statement(
     window: Option<FileWindow>,
 ) -> String {
     let path = serde_json::Value::String(path.to_string());
-    let options = format!("{SDK_CRATE}::files::ReadOptions");
+    let options = format!("{SDK_CRATE}::views::ViewOptions");
     match window {
         Some(window) => format!(
-            "{open_file}({path}, {options} {{ offset: Some({}), limit: Some({}) }})?;",
+            "{open_file}({path}, {options} {{ offset: Some({}), limit: Some({}), \
+             ..Default::default() }})?;",
             window.offset, window.limit
         ),
         None => format!("{open_file}({path}, {options}::default())?;"),

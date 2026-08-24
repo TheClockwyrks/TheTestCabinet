@@ -7,7 +7,8 @@
 // snapshot does not report `resumeScreen`, so it is read the way a player reads
 // it: resuming returns to the countdown rather than to live play.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -28,14 +29,14 @@ afterEach(async () => {
 it("pauses when the pause key is pressed during the countdown", async () => {
   await startWithKeys(harness, "solo");
 
-  expect((await harness.snapshot()).screen).toBe("countdown");
+  assertEqual((await harness.snapshot()).screen, "countdown");
 
   // `tap` presses, releases, and runs the one frame that delivers the edge.
   await harness.tap("Escape");
   await captureStill(harness, "paused");
 
-  expect((await harness.snapshot()).screen).toBe("paused");
+  assertEqual((await harness.snapshot()).screen, "paused");
 
   await harness.tap("Escape");
-  expect((await harness.snapshot()).screen).toBe("countdown");
+  assertEqual((await harness.snapshot()).screen, "countdown");
 });

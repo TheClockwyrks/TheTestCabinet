@@ -11,8 +11,9 @@
 // (specs/ui.md). Matching is by substring, because a selected entry is commonly
 // drawn with a marker beside it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PAUSE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -37,15 +38,15 @@ afterEach(() => {
 it("opens a pause menu drawing every pause item", async () => {
   await startWithKeys(h, "versus");
   await h.advance(RALLY_TICKS);
-  expect(h.snapshot().screen).toBe("playing");
+  assertEqual(h.snapshot().screen, "playing");
 
   await h.tap("Escape");
   h.calls.length = 0;
   await h.advance(1);
   captureStill(h, "pause");
 
-  expect(h.snapshot().screen).toBe("paused");
+  assertEqual(h.snapshot().screen, "paused");
   for (const item of PAUSE_ITEMS) {
-    expect(drewText(h.calls, item)).toBe(true);
+    assertEqual(drewText(h.calls, item), true);
   }
 });

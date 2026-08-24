@@ -10,7 +10,12 @@
 // pose: it poses the CLOCK and reads what the build's own update made of it.
 // A rotation is about the obstacle's own center, so `cx` stays on the base x.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertDeepEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { angleDelta, poseObstacles, type ObstaclePose } from "./harness";
@@ -54,14 +59,15 @@ it("rotates both obstacles about their own centers at OBSTACLE_SPIN_RATE", async
     const expected = OBSTACLE_SPIN_RATE * t;
     for (const [i, base] of OBSTACLE_CENTERS.entries()) {
       const pose = samples[k]![i]!;
-      expect(
+      assertLessThanOrEqual(
         Math.abs(angleDelta(pose.theta, expected)),
+        THETA_TOLERANCE,
         `obstacle ${i} at t = ${t}: theta`,
-      ).toBeLessThanOrEqual(THETA_TOLERANCE);
-      expect(pose.cx, `obstacle ${i} at t = ${t}: cx`).toBeCloseTo(base.x, 6);
+      );
+      assertCloseTo(pose.cx, base.x, 6, `obstacle ${i} at t = ${t}: cx`);
     }
   }
 
   // Nothing the page threw or logged as an error while this harness drove it.
-  expect(harness.pageErrors).toEqual([]);
+  assertDeepEqual(harness.pageErrors, []);
 });

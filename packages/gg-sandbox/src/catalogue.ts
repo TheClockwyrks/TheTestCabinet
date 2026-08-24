@@ -96,6 +96,7 @@ export const OPERATION_BOUND: Readonly<Record<string, string>> = {
   "files.write_file": "write_file",
   "files.edit_file": "edit_file",
   "files.list_dir": "list_dir",
+  "files.search": "search",
   "skills.read_skill": "read_skill",
   "memories.write_memory": "write_memory",
   "memories.update_memory": "update_memory",

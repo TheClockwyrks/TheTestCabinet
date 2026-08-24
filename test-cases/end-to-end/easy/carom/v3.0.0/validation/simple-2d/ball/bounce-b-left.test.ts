@@ -12,8 +12,14 @@
 // struck carries the ball on from the face, so the center is read within one
 // frame of travel of the face, on the near side of it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BALL_R, OBSTACLES } from "../../src/constants";
+import {
+  assertCloseTo,
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   arrangeFaceShot,
   ball0,
@@ -59,10 +65,10 @@ it("banks the ball off obstacle B's left face", async () => {
     return rebound;
   });
 
-  expect(bank.hit).toBe(true);
+  assertEqual(bank.hit, true);
   const ball = ball0(bank.snapshot);
-  expect(ball.vx).toBeCloseTo(-shot.vx, 6);
-  expect(ball.vy).toBeCloseTo(shot.vy, 6);
-  expect(ball.x).toBeLessThanOrEqual(PLACED + 1e-6);
-  expect(ball.x).toBeGreaterThanOrEqual(PLACED - FRAME_TRAVEL);
+  assertCloseTo(ball.vx, -shot.vx, 6);
+  assertCloseTo(ball.vy, shot.vy, 6);
+  assertLessThanOrEqual(ball.x, PLACED + 1e-6);
+  assertGreaterThanOrEqual(ball.x, PLACED - FRAME_TRAVEL);
 });

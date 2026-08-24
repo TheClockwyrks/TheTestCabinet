@@ -5,7 +5,8 @@
 // under normal player control and opens on the countdown — and the pause key is
 // pressed THERE, with no time run first.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -27,13 +28,13 @@ afterEach(() => {
 it("pauses when the pause key is pressed during the countdown", async () => {
   await startWithKeys(harness, "solo");
 
-  expect(harness.snapshot().screen).toBe("countdown");
+  assertEqual(harness.snapshot().screen, "countdown");
 
   // `tap` presses, releases, and runs the one frame that delivers the edge.
   await harness.tap("Escape");
   captureStill(harness, "paused");
 
-  expect(harness.snapshot().screen).toBe("paused");
+  assertEqual(harness.snapshot().screen, "paused");
   // `pause` sets `resumeScreen` to the screen it left (specs/ui.md).
-  expect(resumeScreen0(harness)).toBe("countdown");
+  assertEqual(resumeScreen0(harness), "countdown");
 });

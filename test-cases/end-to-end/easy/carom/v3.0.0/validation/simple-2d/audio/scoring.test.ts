@@ -10,8 +10,9 @@
 // announces the point apart from one that plays a bounce blip as the ball leaves
 // the field.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { CUES } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
@@ -61,9 +62,12 @@ it("plays the score cue on the frame the point lands", async () => {
     return measured;
   });
 
-  expect(point.scored.hit).toBe(true);
-  expect(point.scored.snapshot.score).toEqual({ p1: 1, p2: 0 });
-  expect(point.cues.map((cue) => cue.cue)).toEqual([CUES.score]);
-  expect(point.cues[0].frame).toBe(point.frame);
-  expect(point.cues[0].gain).toBeGreaterThan(0);
+  assertEqual(point.scored.hit, true);
+  assertDeepEqual(point.scored.snapshot.score, { p1: 1, p2: 0 });
+  assertDeepEqual(
+    point.cues.map((cue) => cue.cue),
+    [CUES.score],
+  );
+  assertEqual(point.cues[0].frame, point.frame);
+  assertGreaterThan(point.cues[0].gain, 0);
 });

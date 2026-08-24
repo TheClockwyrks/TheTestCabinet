@@ -65,15 +65,12 @@
 //! all, deliberately; see its own documentation for why it has no hook.
 
 use serde_json::{Map, Value};
-use test_cabinet_core::gg::{
-    ASSISTANT_MESSAGE_MODES, ASSISTANT_MESSAGES_NONE, ASSISTANT_MESSAGES_RESPONSE_HEALING,
-    CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig,
-};
+use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
 
-/// The two params this module reads, re-exported from the crate that owns gg's configuration
+/// The param this module reads, re-exported from the crate that owns gg's configuration
 /// vocabulary: the spelling a document is written in and the spelling gg reads it by are one
 /// constant, so a key cannot be renamed on one side of the wire alone.
-pub use test_cabinet_core::gg::{PARAM_ASSISTANT_MESSAGES, PARAM_HEALING};
+pub use test_cabinet_core::gg::PARAM_HEALING;
 
 // ---------------------------------------------------------------------------------------------
 // The language dialect
@@ -515,157 +512,11 @@ fn healing_locus() -> String {
     crate::validate::param_locus(CAPABILITY_RESPONSES_AS_CODE, PARAM_HEALING)
 }
 
-/// How the assistant message gg *records* for a code turn is derived from the model's reply — the
-/// half of responses-as-code that decides what the **next** turn's prompt shows the model of *this*
-/// turn.
-///
-/// Under responses-as-code the reply is a program, and [healing](heal) rewrites it before it runs.
-/// That leaves a choice with no analogue on the tool-calling path: is the assistant turn the model
-/// re-reads next turn the reply it *sent*, or the program gg actually *ran*?
-///
-/// The healed text is the program of record, which is the case for recording what ran: every line
-/// number a model is handed counts lines of that text — a compiler's diagnostic, a runtime's
-/// location, the frame under a panic — so a history carrying the *other* text hands the model
-/// coordinates into something it has never seen. The case for the reply as sent is that a study of
-/// a model's code-only compliance wants to read what the model actually wrote. Both are defensible,
-/// which is why the profile states which one it ran. The reply as sent survives either way, on the
-/// operator's side, which is where reading the two against each other belongs.
-///
-/// Whichever mode is chosen, healing still runs, is still counted on the run record and is still
-/// reported on the operator's stream — and the model is still told nothing of it: no turn's feedback
-/// mentions a repair. The mode governs only the stored assistant message, never whether a reply is
-/// repaired before it runs. A profile that enables the capability names one of the two; neither is
-/// gg's to pick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AssistantMessageMode {
-    /// **No post-processing.** The assistant message is the reply exactly as the model returned it,
-    /// byte for byte. Healing still repairs the reply before running it, but that repair does not
-    /// leak into the recorded message — so the transcript shows what the model actually wrote, which
-    /// is what a study of a model's code-only compliance wants to read.
-    ///
-    /// It is knowingly inconsistent rather than neutral: a reply that could not have compiled sits
-    /// in the model's own history while every location gg reports counts lines of the healed text.
-    /// It is one arm of a study, and it is also what an agent that takes no code turn at all
-    /// carries: there is no healed program to record in place of a reply.
-    None,
-    /// **Post-response healing.** The assistant message is the [healed](Healed::program) program —
-    /// what gg actually compiled and ran — whenever healing rewrote the reply, and the reply
-    /// verbatim when it did not ([`Healed::rewritten`] is false). The model then re-reads a clean,
-    /// running program next turn rather than the malformed one it sent.
-    ResponseHealing,
-}
-
-impl AssistantMessageMode {
-    /// The two modes, in the spelling a [refusal](crate::validate) offers back — the one array,
-    /// shared with the document's own vocabulary.
-    pub const ALL: [&'static str; 2] = ASSISTANT_MESSAGE_MODES;
-
-    /// The mode a resolver hands back once it has [refused the launch](crate::validate), and the
-    /// mode an agent that takes no code turn carries.
-    ///
-    /// Both are the same statement: gg post-processes nothing it was not told to. No transcript is
-    /// ever written under it, because the run it belongs to does not start.
-    pub const LAUNCH_REFUSED: Self = Self::None;
-}
-
-/// Resolve the [assistant-message mode](AssistantMessageMode) from the
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's
-/// [`assistantMessages`](PARAM_ASSISTANT_MESSAGES) param.
-///
-/// | `params.assistantMessages` | Mode |
-/// | --- | --- |
-/// | `"response-healing"` | [`ResponseHealing`](AssistantMessageMode::ResponseHealing) — the healed program that ran |
-/// | `"none"` | [`None`](AssistantMessageMode::None) — no post-processing |
-/// | absent / `null` / anything else | **refused** — the launch does not start |
-///
-/// Read literally — with only surrounding whitespace forgiven — and [refused](crate::validate) on
-/// mismatch for the same reason [`resolve_healing`] is: the value is contract-visible (the console's
-/// capability catalogue writes it, persisted run data records it), so a typo must stop the run
-/// rather than record it under a mode nobody chose. An absent value is refused on the same terms,
-/// because the two modes are the arms of a comparison and picking one for an operator is picking
-/// which arm their run measured. The mode comes back anyway to keep the resolver total for the
-/// per-turn calls that re-read it.
-///
-/// An **absent** capability records replies exactly as the model sent them, since there is no
-/// healed program to record in their place. A capability that is present and **disabled** requires
-/// no mode of itself, and a mode written on one is read exactly as an enabled one's is.
-pub fn resolve_assistant_messages(
-    profile: &GgAgentConfig,
-    report: &mut crate::validate::LaunchReport,
-) -> AssistantMessageMode {
-    let Some(capability) = profile.capability(CAPABILITY_RESPONSES_AS_CODE) else {
-        return AssistantMessageMode::None;
-    };
-    let value = if capability.enabled {
-        let Some(value) = crate::validate::required_param(
-            &capability.params,
-            CAPABILITY_RESPONSES_AS_CODE,
-            PARAM_ASSISTANT_MESSAGES,
-            report,
-        ) else {
-            return AssistantMessageMode::LAUNCH_REFUSED;
-        };
-        value
-    } else {
-        match capability
-            .params
-            .get(PARAM_ASSISTANT_MESSAGES)
-            .filter(|value| !value.is_null())
-        {
-            Some(value) => value,
-            None => return AssistantMessageMode::None,
-        }
-    };
-
-    match value {
-        Value::String(mode) if mode.trim() == ASSISTANT_MESSAGES_NONE => AssistantMessageMode::None,
-        Value::String(mode) if mode.trim() == ASSISTANT_MESSAGES_RESPONSE_HEALING => {
-            AssistantMessageMode::ResponseHealing
-        }
-        other => {
-            report.report(
-                crate::validate::LaunchDefect::run_level(
-                    crate::validate::param_locus(
-                        CAPABILITY_RESPONSES_AS_CODE,
-                        PARAM_ASSISTANT_MESSAGES,
-                    ),
-                    crate::validate::as_written(other),
-                    format!(
-                        "the `{PARAM_ASSISTANT_MESSAGES}` param names which form of a reply is \
-                         recorded as the assistant's message; gg has no such mode, and recording \
-                         the model's own text under the healed-program arm's name would make the \
-                         two arms indistinguishable in the transcript."
-                    ),
-                )
-                .known(AssistantMessageMode::ALL),
-            );
-            AssistantMessageMode::LAUNCH_REFUSED
-        }
-    }
-}
-
 /// The responses-as-code capability's healing half of the
-/// [launch pass](crate::validate::validate_launch): the [strategies](resolve_healing) and the
-/// [assistant-message mode](resolve_assistant_messages) `profile` declares, read exactly as the run
-/// will read them.
+/// [launch pass](crate::validate::validate_launch): the [strategies](resolve_healing) `profile`
+/// declares, read exactly as the run will read them.
 pub fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
     resolve_healing(profile, report);
-    resolve_assistant_messages(profile, report);
-}
-
-/// The launch-time `info` line naming the [assistant-message mode](AssistantMessageMode) a code run
-/// records under — the counterpart of [`HealingConfig::armed_summary`], and emitted for the same
-/// reason: the two arms are otherwise indistinguishable in an operator's log.
-pub fn assistant_messages_summary(mode: AssistantMessageMode) -> String {
-    match mode {
-        AssistantMessageMode::None => "assistant messages: recorded as the model sent them (no \
-                                       post-processing)"
-            .to_string(),
-        AssistantMessageMode::ResponseHealing => {
-            "assistant messages: recorded as the healed program that ran (post-response healing)"
-                .to_string()
-        }
-    }
 }
 
 /// How many times the pipeline may run its rewriting strategies before it gives up on reaching a

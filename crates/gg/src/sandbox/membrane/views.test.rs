@@ -21,7 +21,7 @@ fn opening_a_file_view_dispatches_a_read_file() {
     let mut state = membrane(&log);
 
     let read = state
-        .open_file_view("src/a.ts".to_string(), None, None)
+        .open_file_view("src/a.ts".to_string(), None, None, None)
         .expect("the file is read and shown");
 
     match read {
@@ -73,7 +73,7 @@ fn a_paged_file_view_reports_its_region() {
     });
 
     state
-        .open_file_view("src/a.ts".to_string(), Some(201), Some(200))
+        .open_file_view("src/a.ts".to_string(), Some(201), Some(200), None)
         .expect("the page is read and shown");
 
     let views = state.current_views().expect("granted, so it answers");
@@ -100,7 +100,7 @@ fn a_failed_read_opens_no_view_and_is_reported_as_a_refusal() {
     });
 
     let error = state
-        .open_file_view("nope.ts".to_string(), None, None)
+        .open_file_view("nope.ts".to_string(), None, None, None)
         .expect_err("the read failed, so nothing is shown");
     assert_eq!(error.code, ErrorCode::NotFound);
 
@@ -122,7 +122,7 @@ fn a_view_of_a_picture_reports_it_as_shown() {
     let mut state = membrane(&log);
 
     let read = state
-        .open_file_view("mock.png".to_string(), None, None)
+        .open_file_view("mock.png".to_string(), None, None, None)
         .expect("the picture is read and shown");
     match read {
         FileRead::Image(image) => {
@@ -260,7 +260,7 @@ fn a_spent_budget_refuses_the_read_but_not_the_report() {
         .expect("and it is in the window");
 
     let error = state
-        .open_file_view("src/a.ts".to_string(), None, None)
+        .open_file_view("src/a.ts".to_string(), None, None, None)
         .expect_err("but a read is a read");
     assert_eq!(error.code, ErrorCode::LimitExceeded);
 }
@@ -283,7 +283,7 @@ fn a_run_without_read_file_cannot_open_a_file_view() {
     let mut state = membrane_with(&log, &granted, None, canned_outcome);
 
     let error = state
-        .open_file_view("src/a.ts".to_string(), None, None)
+        .open_file_view("src/a.ts".to_string(), None, None, None)
         .expect_err("reading is withheld this run");
     assert_eq!(error.code, ErrorCode::Unavailable);
     assert!(log.names().is_empty(), "it never reached the api");
@@ -307,4 +307,24 @@ fn the_view_report_is_capped_and_the_overflow_is_counted() {
     let parts = state.into_parts();
     assert_eq!(parts.view_refusals.len(), MAX_RECORDED_VIEW_EVENTS);
     assert_eq!(parts.views_suppressed, 25);
+}
+
+/// `max-line-chars` crosses to the api beside the window, as the view's own option: the loop is
+/// what cuts and caps, and this file only has to hand it over unchanged.
+#[test]
+fn a_line_cut_crosses_to_the_api_beside_the_window() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+
+    state
+        .open_file_view("src/a.ts".to_string(), Some(5), Some(40), Some(120))
+        .expect("the read runs");
+
+    let calls = log.calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "read_file");
+    assert_eq!(
+        calls[0].args,
+        serde_json::json!({ "path": "src/a.ts", "offset": 5, "limit": 40, "maxLineChars": 120 })
+    );
 }

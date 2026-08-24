@@ -8,7 +8,8 @@
 // the ball's line with most of a second to spare and must block it. Its own
 // tracking decides the outcome; nothing here poses the AI's motion.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   arrangeAiScenario,
   captureReplay,
@@ -51,5 +52,5 @@ it("tracks down a reachable shot and blocks it", async () => {
     return outcome;
   });
 
-  expect(result).toBe("blocked");
+  assertEqual(result, "blocked");
 });

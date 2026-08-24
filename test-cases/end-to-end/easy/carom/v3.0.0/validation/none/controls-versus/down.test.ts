@@ -25,7 +25,13 @@
 // travels is the `paddle-movement` category's, and asserting it in both places
 // would cost one build two items for one fault.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertContains,
+  assertGreaterThan,
+  assertLessThan,
+} from "../assert";
 import {
   MOVE_MIN,
   STILL_MAX,
@@ -66,7 +72,7 @@ afterEach(async () => {
 
 it("moves player two's right paddle down while ArrowDown is held, and stops on release", async () => {
   await startWithKeys(h, "versus");
-  expect(["countdown", "playing"]).toContain((await h.snapshot()).screen);
+  assertContains(["countdown", "playing"], (await h.snapshot()).screen);
 
   const moved = await captureReplay(h, "move", async () => {
     await h.advance(REST_TICKS);
@@ -80,9 +86,9 @@ it("moves player two's right paddle down while ArrowDown is held, and stops on r
     return { ...held, stopped };
   });
 
-  expect(moved.delta).toBeGreaterThan(MOVE_MIN);
+  assertGreaterThan(moved.delta, MOVE_MIN);
 
   // The other player's paddle is not this key's to move.
-  expect(Math.abs(moved.otherDelta.left)).toBeLessThan(STILL_MAX);
-  expect((await h.snapshot()).paddles.right.cy).toBeCloseTo(moved.stopped, 6);
+  assertLessThan(Math.abs(moved.otherDelta.left), STILL_MAX);
+  assertCloseTo((await h.snapshot()).paddles.right.cy, moved.stopped, 6);
 });

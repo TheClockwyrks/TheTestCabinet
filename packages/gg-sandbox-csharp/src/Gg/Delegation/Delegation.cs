@@ -105,12 +105,14 @@ public static partial class Delegation
     /// <remarks>
     /// <para>
     /// The successor takes over from the next turn with its own model, tools and instructions,
-    /// keeping every capability the two share — the whole conversation above all. Registered exactly
-    /// as <see cref="TransitionState"/> is, and for the same reason.
+    /// keeping every capability the two share — the whole conversation above all. Registered rather
+    /// than performed, exactly as a state transition is and for the same reason: the call validates
+    /// the successor and returns, the program runs on to its end, and the succession happens after
+    /// that.
     /// </para>
     /// <para>
-    /// The first declaration of a succession stands, so an <c>Exec</c> after a
-    /// <see cref="TransitionState"/>, or a second <c>Exec</c>, is refused.
+    /// The first declaration of a succession in a turn stands, so a second <c>Exec</c> — or one
+    /// after a state transition — is refused.
     /// </para>
     /// </remarks>
     /// <param name="agent">The agent to become, drawn from the set this agent may become.</param>
@@ -118,8 +120,8 @@ public static partial class Delegation
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.InvalidArgument"/> names an agent outside that set,
     /// <see cref="ApiErrorCode.Refused"/> means a succession was already declared this turn, and
-    /// <see cref="ApiErrorCode.Unavailable"/> means this agent is running inside a machine, which
-    /// leaves by <see cref="TransitionState"/> instead.
+    /// <see cref="ApiErrorCode.Unavailable"/> means this agent is running inside a state machine,
+    /// which leaves by a transition instead.
     /// </exception>
     /// <ggop>delegation.exec</ggop>
     public static void Exec(string agent, string? prompt = null) =>
@@ -133,8 +135,8 @@ public static partial class Delegation
     /// </para>
     /// <para>
     /// Its handle comes back immediately, and the copy itself starts once this turn's results are
-    /// recorded — the conversation it inherits has to be a complete one — so
-    /// <see cref="WaitForSubagents()"/> can only collect it on a later turn.
+    /// recorded — the conversation it inherits has to be a complete one — so a wait can only collect
+    /// it on a later turn.
     /// </para>
     /// </remarks>
     /// <param name="prompt">What this copy is to do differently.</param>

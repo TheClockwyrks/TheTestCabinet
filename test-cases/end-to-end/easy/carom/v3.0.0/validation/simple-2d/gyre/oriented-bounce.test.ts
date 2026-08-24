@@ -14,8 +14,9 @@
 // Both shots are the build's own physics: the ball is posed and then flown, and
 // the outgoing velocity is read at the instant the bounce resolves.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   ball0,
   captureReplay,
@@ -99,25 +100,27 @@ it("reflects a level shot about the face's normal, upright and tilted", async ()
   // 1. Upright: a vertical face returns the level shot level.
   const upright = (await poseObstacles(harness, 0))[0]!;
   const straight = await shootLevelAt(harness, upright);
-  expect(straight.hit, "the upright shot should reach the obstacle").toBe(true);
-  expect(
+  assertEqual(straight.hit, true, "the upright shot should reach the obstacle");
+  assertLessThanOrEqual(
     degreesOff(straight, reflectedHeading(0)),
+    ANGLE_TOLERANCE_DEG,
     "an upright face should send the shot straight back",
-  ).toBeLessThanOrEqual(ANGLE_TOLERANCE_DEG);
+  );
 
   // 2. The same shot against the face turned a quarter turn.
   const tilted = (await poseObstacles(harness, TILT_T))[0]!;
-  expect(Math.abs(tilted.theta - Math.PI / 4)).toBeLessThanOrEqual(0.01);
+  assertLessThanOrEqual(Math.abs(tilted.theta - Math.PI / 4), 0.01);
   const deflected = await captureReplay(harness, "oriented", async () => {
     const shot = await shootLevelAt(harness, tilted);
     await harness.advance(DEPARTURE_TICKS);
     return shot;
   });
-  expect(deflected.hit, "the tilted shot should reach the obstacle").toBe(true);
-  expect(
+  assertEqual(deflected.hit, true, "the tilted shot should reach the obstacle");
+  assertLessThanOrEqual(
     degreesOff(deflected, reflectedHeading(Math.PI / 4)),
+    ANGLE_TOLERANCE_DEG,
     "a tilted face should send the shot along the reflection about its normal",
-  ).toBeLessThanOrEqual(ANGLE_TOLERANCE_DEG);
+  );
 
-  expect(harness.assetFailures).toEqual([]);
+  assertDeepEqual(harness.assetFailures, []);
 });

@@ -10,9 +10,9 @@
 // harness variant-agnostic. The narrowing is safe by construction: these checks
 // only ever run against a gyre build, whose specification requires exactly these.
 
-import { expect } from "vitest";
+import { assertEqual, assertLength } from "../assert";
 import { OBSTACLE_CENTERS, OBSTACLE_SWAY_PERIOD } from "../constants";
-import type { Harness } from "../harness";
+import { failSurface, type Harness } from "../harness";
 
 /** One obstacle's live pose, as `snapshot().obstacles` reports it. */
 export interface ObstaclePose {
@@ -67,13 +67,14 @@ const probed = new WeakSet<Harness>();
  */
 export async function setObstacleClock(h: Harness, t: number): Promise<void> {
   if (!probed.has(h)) {
-    expect(h.surfaceFault).toBeNull();
+    if (h.surfaceFault !== null) failSurface(h.surfaceFault);
     const { ops } = await h.probe(["setObstacleClock"]);
-    expect(
+    assertEqual(
       ops.setObstacleClock,
+      "function",
       "gyre requires setObstacleClock on the window.__carom surface the build " +
         "installs (specs/instrumentation.md)",
-    ).toBe("function");
+    );
     probed.add(h);
   }
   await (
@@ -85,12 +86,14 @@ export async function setObstacleClock(h: Harness, t: number): Promise<void> {
 export async function readObstacles(h: Harness): Promise<ObstaclePose[]> {
   const snapshot = await h.snapshot();
   const obstacles = snapshot.obstacles;
-  expect(
+  assertEqual(
     Array.isArray(obstacles),
+    true,
     "gyre requires snapshot().obstacles (specs/instrumentation.md)",
-  ).toBe(true);
-  expect(obstacles).toHaveLength(OBSTACLE_CENTERS.length);
-  return obstacles as ObstaclePose[];
+  );
+  const poses = obstacles as ObstaclePose[];
+  assertLength(poses, OBSTACLE_CENTERS.length);
+  return poses;
 }
 
 /** The smallest signed difference between two angles, in radians. */

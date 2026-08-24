@@ -14,7 +14,12 @@
 // advances on the same update. One frame either side is the room allowed, for
 // that frame and for the rounding of 120 subtractions of a hundred-and-twentieth.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { HOLD_TIME } from "../constants";
 import {
   ball0,
@@ -53,8 +58,8 @@ it("holds the ball for the pre-serve countdown, then serves", async () => {
   await startWithKeys(harness, "versus");
 
   const start = await harness.snapshot();
-  expect(start.screen).toBe("countdown");
-  expect(ball0(start).held).toBe(true);
+  assertEqual(start.screen, "countdown");
+  assertEqual(ball0(start).held, true);
 
   // The hold itself, from the frame after the menu confirm to the launch: the
   // countdown running out is the whole of what this point is about.
@@ -67,9 +72,7 @@ it("holds the ball for the pre-serve countdown, then serves", async () => {
     return launched;
   });
 
-  expect(served.hit).toBe(true);
-  expect(Math.abs(served.frames - HOLD_TICKS)).toBeLessThanOrEqual(
-    TOLERANCE_TICKS,
-  );
-  expect(ball0(served.snapshot).speed).toBeGreaterThan(1);
+  assertEqual(served.hit, true);
+  assertLessThanOrEqual(Math.abs(served.frames - HOLD_TICKS), TOLERANCE_TICKS);
+  assertGreaterThan(ball0(served.snapshot).speed, 1);
 });

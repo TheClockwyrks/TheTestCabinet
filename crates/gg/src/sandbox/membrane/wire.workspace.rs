@@ -1,4 +1,4 @@
-//! The [wire](super)'s workspace half: `shell`, the five file operations and the one skill
+//! The [wire](super)'s workspace half: `shell`, the six file operations and the one skill
 //! read.
 //!
 //! Every function here is the same three steps — read the arguments out of the decoded request, call
@@ -8,7 +8,7 @@
 //! calls, which is the whole point of calling them.
 
 use super::super::test_cabinet::gg::files::{
-    DirEntry, EntryKind, FileRead, Host as FilesHost, ImageRead, TextRead,
+    DirEntry, EntryKind, FileRead, Host as FilesHost, ImageRead, SearchMatch, TextRead,
 };
 use super::super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::super::test_cabinet::gg::shell::{Host as ShellHost, ShellOutput};
@@ -90,6 +90,23 @@ pub(super) fn list_dir<A: OperationApi>(
     ))
 }
 
+/// `files.search` — search the workspace under the ignore files.
+pub(super) fn search<A: OperationApi>(
+    state: &mut MembraneState<A>,
+    op: &str,
+    arguments: &[Value],
+) -> Answer {
+    let query = argument(arguments, op, 0)?.text("the query")?;
+    let path = argument(arguments, op, 1)?.optional_text("the path")?;
+    let limit = argument(arguments, op, 2)?.optional_integer("the limit")?;
+    Ok(Value::List(
+        FilesHost::search(state, query, path, limit)?
+            .into_iter()
+            .map(search_match)
+            .collect(),
+    ))
+}
+
 /// `skills.read_skill` — read an authored skill.
 pub(super) fn read_skill<A: OperationApi>(
     state: &mut MembraneState<A>,
@@ -163,6 +180,15 @@ fn dir_entry(entry: DirEntry) -> Value {
                 EntryKind::Other => "other",
             }),
         ),
+    ])
+}
+
+/// One `search-match`.
+fn search_match(found: SearchMatch) -> Value {
+    record([
+        ("path", text(found.path)),
+        ("line", integer(found.line)),
+        ("text", text(found.text)),
     ])
 }
 

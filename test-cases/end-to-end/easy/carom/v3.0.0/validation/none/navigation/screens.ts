@@ -9,7 +9,7 @@
 // code to make the transition, and through the surface where only a posed
 // precondition (a score one short of the win) can reach it in bounded time.
 
-import { expect } from "vitest";
+import { assertEqual } from "../assert";
 import { WIN_SCORE } from "../constants";
 import {
   arrangeGoal,
@@ -27,14 +27,14 @@ export const INTO_PLAY_TICKS = 156; // 1.3 s
 export async function reachPlaying(h: Harness, mode: Mode): Promise<void> {
   await startWithKeys(h, mode);
   await h.advance(INTO_PLAY_TICKS);
-  expect((await h.snapshot()).screen).toBe("playing");
+  assertEqual((await h.snapshot()).screen, "playing");
 }
 
 /** Open a `mode` match with keys, run it into live play, and pause it. */
 export async function reachPaused(h: Harness, mode: Mode): Promise<void> {
   await reachPlaying(h, mode);
   await h.tap("Escape");
-  expect((await h.snapshot()).screen).toBe("paused");
+  assertEqual((await h.snapshot()).screen, "paused");
 }
 
 /** Open the how-to screen from the title with keys. */
@@ -43,7 +43,7 @@ export async function reachHowto(h: Harness): Promise<void> {
   await h.tap("ArrowDown"); // SOLO -> VERSUS
   await h.tap("ArrowDown"); // VERSUS -> HOW TO PLAY
   await h.tap("Enter");
-  expect((await h.snapshot()).screen).toBe("howto");
+  assertEqual((await h.snapshot()).screen, "howto");
 }
 
 /**
@@ -56,8 +56,8 @@ export async function reachMatchover(h: Harness, mode: Mode): Promise<void> {
   await h.debug.setScore(WIN_SCORE - 1, 0);
   await arrangeGoal(h, "right");
   const ended = await driveGoal(h);
-  expect(ended.hit).toBe(true);
+  assertEqual(ended.hit, true);
   const over = await h.snapshot();
-  expect(over.screen).toBe("matchover");
-  expect(over.winner).toBe("left");
+  assertEqual(over.screen, "matchover");
+  assertEqual(over.winner, "left");
 }

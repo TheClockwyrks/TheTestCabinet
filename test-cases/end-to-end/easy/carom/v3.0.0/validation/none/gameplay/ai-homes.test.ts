@@ -10,7 +10,12 @@
 // then on. It covers the 222 units it needs in 0.4 s; three quarters of a
 // second is watched.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertLessThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { AI_HOME_DEADZONE, AI_HOME_Y, FIELD_CX, FIELD_CY } from "../constants";
 import {
   arrangeAiScenario,
@@ -43,7 +48,7 @@ it("returns toward AI_HOME_Y and stops within AI_HOME_DEADZONE of it", async () 
     return (await harness.snapshot()).paddles.right;
   });
 
-  expect(home.cy).toBeLessThan(START_CY);
-  expect(Math.abs(home.cy - AI_HOME_Y)).toBeLessThanOrEqual(AI_HOME_DEADZONE);
-  expect(home.vy).toBeCloseTo(0, 6);
+  assertLessThan(home.cy, START_CY);
+  assertLessThanOrEqual(Math.abs(home.cy - AI_HOME_Y), AI_HOME_DEADZONE);
+  assertCloseTo(home.vy, 0, 6);
 });

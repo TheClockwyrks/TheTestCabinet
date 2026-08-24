@@ -13,7 +13,12 @@
 // bounds below are generous against a uniform draw and unreachable by a build
 // that aims its launches.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { launchAngleDeg, readBalls } from "./harness";
 
@@ -71,7 +76,7 @@ async function launchesUnder(
     maxFrames: 20,
     poll: 1,
   });
-  expect(launched.hit).toBe(true);
+  assertEqual(launched.hit, true);
   return readBalls(launched.snapshot).map((ball) => ({
     speed: ball.speed,
     vx: ball.vx,
@@ -86,10 +91,11 @@ it("draws every launch over the whole circle rather than aiming it", async () =>
     // No two launches of one match share an angle: each is drawn afresh.
     for (let i = 0; i < match.length; i += 1) {
       for (let j = i + 1; j < match.length; j += 1) {
-        expect(
+        assertGreaterThan(
           Math.abs(match[i].angle - match[j].angle),
+          SHARED_DEG,
           `seed ${seed}: balls ${i} and ${j} share a launch angle`,
-        ).toBeGreaterThan(SHARED_DEG);
+        );
       }
     }
     launches.push(...match);
@@ -100,15 +106,17 @@ it("draws every launch over the whole circle rather than aiming it", async () =>
       Math.abs(launch.angle) > FLAT_DEG &&
       Math.abs(launch.angle) < 180 - FLAT_DEG,
   );
-  expect(steep.length).toBeGreaterThanOrEqual(STEEP_MIN);
+  assertGreaterThanOrEqual(steep.length, STEEP_MIN);
 
   // Both ways across the field: a launch is not aimed at a receiver.
-  expect(
+  assertGreaterThanOrEqual(
     launches.filter((launch) => launch.vx > 0).length,
-  ).toBeGreaterThanOrEqual(EACH_WAY_MIN);
-  expect(
+    EACH_WAY_MIN,
+  );
+  assertGreaterThanOrEqual(
     launches.filter((launch) => launch.vx < 0).length,
-  ).toBeGreaterThanOrEqual(EACH_WAY_MIN);
+    EACH_WAY_MIN,
+  );
 
   // One opening, kept for the reviewer: three balls leaving their home points on
   // three unrelated headings.

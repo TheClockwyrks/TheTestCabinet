@@ -48,8 +48,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_DOCVIEW_CLOSE,
     CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_LIST_DIR,
     CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgProgramLanguage,
+    CAPABILITY_READ_FILE, CAPABILITY_SEARCH, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgProgramLanguage,
 };
 
 use crate::ending::EndingRole;
@@ -124,6 +124,9 @@ pub const FILES_EDIT_FILE: OperationId = OperationId::new("files", "edit_file");
 
 /// List a workspace directory.
 pub const FILES_LIST_DIR: OperationId = OperationId::new("files", "list_dir");
+
+/// Search the workspace's files for a pattern, under the ignore files.
+pub const FILES_SEARCH: OperationId = OperationId::new("files", "search");
 
 /// Read an authored skill.
 pub const SKILLS_READ_SKILL: OperationId = OperationId::new("skills", "read_skill");
@@ -354,7 +357,7 @@ pub enum Binding {
               arm binds and watch every arm fail, then excuse them and watch it pass."
 )]
 pub enum Applicability {
-    /// Every registered language offers it. The default, and the state of all 50 today.
+    /// Every registered language offers it. The default, and the state of all 51 today.
     Universal,
     /// Every registered language offers it **except** these, each paired with the reason — prose,
     /// required, and reviewed. An exemption naming a language that in fact binds the operation is
@@ -523,6 +526,12 @@ pub const OPERATIONS: &[Operation] = &[
         FILES_LIST_DIR,
         FAMILY_FILESYSTEM,
         Binding::Capability(CAPABILITY_LIST_DIR),
+        TAKES_INPUT
+    ),
+    operation!(
+        FILES_SEARCH,
+        FAMILY_FILESYSTEM,
+        Binding::Capability(CAPABILITY_SEARCH),
         TAKES_INPUT
     ),
     operation!(

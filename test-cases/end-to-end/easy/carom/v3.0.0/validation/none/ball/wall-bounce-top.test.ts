@@ -14,7 +14,13 @@
 // the frame. The path is down the middle of the field, clear of both
 // obstacles and the parked paddles.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { BALL_R, FIELD_CX } from "../constants";
 import {
   arrangeLiveBall,
@@ -51,7 +57,7 @@ afterEach(async () => {
 it("reverses vy at the top wall and leaves vx and the speed unchanged", async () => {
   await arrangeLiveBall(harness, SHOT);
   const before = ball0(await harness.snapshot());
-  expect(before.speed).toBeCloseTo(FACE_SHOT_SPEED, 6);
+  assertCloseTo(before.speed, FACE_SHOT_SPEED, 6);
 
   const bounce = await captureReplay(harness, "bounce", async () => {
     const rebound = await harness.until((s) => ball0(s).vy > 0, {
@@ -62,11 +68,11 @@ it("reverses vy at the top wall and leaves vx and the speed unchanged", async ()
     return rebound;
   });
 
-  expect(bounce.hit).toBe(true);
+  assertEqual(bounce.hit, true);
   const after = ball0(bounce.snapshot);
-  expect(after.vy).toBeCloseTo(-before.vy, 6);
-  expect(after.vx).toBeCloseTo(before.vx, 6);
-  expect(after.speed).toBeCloseTo(before.speed, 6);
-  expect(after.y).toBeGreaterThanOrEqual(BALL_R - 1e-6);
-  expect(after.y).toBeLessThanOrEqual(BALL_R + FRAME_TRAVEL);
+  assertCloseTo(after.vy, -before.vy, 6);
+  assertCloseTo(after.vx, before.vx, 6);
+  assertCloseTo(after.speed, before.speed, 6);
+  assertGreaterThanOrEqual(after.y, BALL_R - 1e-6);
+  assertLessThanOrEqual(after.y, BALL_R + FRAME_TRAVEL);
 });

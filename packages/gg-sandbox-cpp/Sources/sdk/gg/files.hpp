@@ -16,14 +16,14 @@
 
 namespace gg {
 
-/// Read, write, edit and list the files of the workspace.
+/// Read, write, edit, list and search the files of the workspace.
 ///
 /// Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
 /// that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
 /// large files in a single turn will exhaust its fuel budget.
 ///
-/// Nothing here places anything in the agent's context window. `gg::views::open_file` is the call that
-/// does.
+/// Nothing here places anything in the agent's context window: showing something is what the
+/// `gg::views` module is for.
 ///
 /// <ggmodule>files</ggmodule>
 namespace files {
@@ -96,6 +96,36 @@ enum class entry_kind {
   directory,
   /// Everything that is neither, a symlink among them.
   other,
+};
+
+/// Where a search looks and how many matches it returns; `{}` is the whole workspace, 50 matches.
+///
+/// An aggregate filled in with designated initialisers, which is what C++ offers in place of named
+/// arguments: `gg::files::search("(?i)todo", {.path = "src", .limit = 100})`.
+struct search_options {
+  /// The directory or file to search, relative to the workspace or absolute.
+  ///
+  /// Empty searches the whole workspace, and a file searches that one file.
+  std::optional<std::string_view> path;
+  /// How many matches to return at most; empty takes gg's default of 50.
+  ///
+  /// The ceiling is 200, and a larger limit is clamped to it rather than refused.
+  std::optional<std::uint32_t> limit;
+};
+
+/// One line a search matched.
+struct search_match {
+  /// The file's path, relative to the workspace root, with `/` separators.
+  ///
+  /// Absolute for a search rooted outside the workspace.
+  std::string path;
+  /// The 1-based line number of the match within that file.
+  std::uint32_t line{};
+  /// The matching line, without its line ending.
+  ///
+  /// Longer than 200 characters, it is cut there and annotated in place as
+  /// `foo (123 more chars...)`.
+  std::string text;
 };
 
 /// One entry a directory listing found.
@@ -183,6 +213,35 @@ void edit_file(std::string_view path, std::string_view old_string, std::string_v
 /// \throws gg::core::api_error `not_found` for a directory that is not there, and `invalid_argument`
 ///   for a path that is given but empty.
 std::vector<files::dir_entry> list_dir(std::optional<std::string_view> path = std::nullopt);
+
+/// Search the workspace's files for a regular expression, and hand back every line that matches.
+///
+/// `query` is a regular expression in Rust's syntax — `foo|bar`, `fn [a-z_]+`, `(?i)todo` for a
+/// case-insensitive match — matched against each line on its own, and every line it matches comes
+/// back as a `gg::files::search_match` carrying the file's path, the 1-based line number and the
+/// line itself, in path order and then line order. It is this sandbox's grep, and it honours ignore
+/// files: whatever `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude
+/// — nested files and negations included — is never scanned and never returned, `.git` itself is
+/// skipped, dotfiles are searched, and none of it needs a repository to be there. A file that is
+/// not text (one carrying a NUL byte) is skipped too.
+///
+/// A matching line longer than 200 characters is cut there and annotated in place as
+/// `foo (123 more chars...)`. The result is a value for the program and places nothing in the
+/// context window. A vector exactly `limit` long may have been cut — there is no offset to page
+/// with, so narrowing the query or the path is what shows the rest: a search says where to point a
+/// read, and is not a way of reading a file.
+///
+/// <ggop>files.search</ggop>
+///
+/// \param query The regular expression to match each line against, in Rust's syntax; `(?i)` makes
+///   it case-insensitive.
+/// \param options Where to search and how many matches to return; `{}` searches the whole workspace
+///   for the first 50.
+/// \returns every matching line up to the limit, in path order and then line order; nothing
+///   matching is an empty vector, not a failure.
+/// \throws gg::core::api_error `invalid_argument` for a blank query, one that is not a valid
+///   pattern, or a limit of `0`, and `not_found` for a path that is not there.
+std::vector<files::search_match> search(std::string_view query, files::search_options options = {});
 
 }  // namespace files
 

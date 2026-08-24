@@ -739,7 +739,7 @@ async fn capture_output(stdout: &str, stderr: &str, offload: &OffloadPolicy) -> 
     if truncated {
         body.push_str(&separator(&body));
         body.push_str(&format!(
-            "[Output truncated: {}{}]\nstdout: {}\nstderr: {}",
+            "[Output truncated: {}{}]\nstdout: {}{}\nstderr: {}{}",
             limits.describe(),
             if byte_cut {
                 format!(", capped at {MAX_OUTPUT_BYTES} bytes")
@@ -747,7 +747,9 @@ async fn capture_output(stdout: &str, stderr: &str, offload: &OffloadPolicy) -> 
                 String::new()
             },
             paths.stdout.display(),
+            describe_shape(stdout),
             paths.stderr.display(),
+            describe_shape(stderr),
         ));
     }
     Captured {
@@ -765,6 +767,60 @@ fn describe_exit_code(code: Option<i32>) -> String {
         Some(code) => code.to_string(),
         None => "(terminated by signal)".to_string(),
     }
+}
+
+/// The shape of one offloaded file, printed beneath the path that names it in the truncation note:
+/// its total line count, its 50th/95th/99th-percentile line lengths (in characters), and the length
+/// and 1-based line number of its five longest lines. The tail says what happened last; the shape
+/// says where the bulk sits and which lines are pathological, so a model can aim a windowed view at
+/// the right region of a file it has never seen rather than paging from the top.
+///
+/// Percentiles are nearest-rank (the length at rank `round(p × lines)`, 1-clamped), so they are
+/// always a length some line actually has. The longest-lines list is longest first, a tie going to
+/// the earlier line, and lists every line when the file has fewer than five. A stream that printed
+/// nothing is just `0 lines` — there is no length distribution to describe.
+fn describe_shape(text: &str) -> String {
+    let lengths: Vec<usize> = text.lines().map(|line| line.chars().count()).collect();
+    let count = lengths.len();
+    if count == 0 {
+        return "\n  0 lines".to_string();
+    }
+
+    let mut sorted = lengths.clone();
+    sorted.sort_unstable();
+    let percentile = |p: f64| {
+        let rank = ((p * count as f64).round() as usize).clamp(1, count);
+        sorted[rank - 1]
+    };
+
+    let mut longest: Vec<(usize, usize)> = lengths
+        .iter()
+        .enumerate()
+        .map(|(index, &length)| (length, index + 1))
+        .collect();
+    longest.sort_unstable_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    longest.truncate(5);
+    let longest = longest
+        .iter()
+        .enumerate()
+        .map(|(rank, (length, line))| {
+            // "chars" once, on the first entry, names the unit for the whole list.
+            if rank == 0 {
+                format!("{length} chars @ {line}")
+            } else {
+                format!("{length} @ {line}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!(
+        "\n  {count} line{}; line length p50 {}, p95 {}, p99 {}\n  longest lines: {longest}",
+        if count == 1 { "" } else { "s" },
+        percentile(0.50),
+        percentile(0.95),
+        percentile(0.99),
+    )
 }
 
 /// The blank line that separates a body from the note appended to it — nothing at all when the body

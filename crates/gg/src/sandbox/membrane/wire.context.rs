@@ -187,8 +187,19 @@ pub(super) fn open_file_view<A: OperationApi>(
     let path = argument(arguments, op, 0)?.text("the path")?;
     let offset = argument(arguments, op, 1)?.optional_integer("the offset")?;
     let limit = argument(arguments, op, 2)?.optional_integer("the limit")?;
+    // The one trailing argument this wire reads leniently: a request that stops after `limit` is
+    // read as `max-line-chars` absent. The JVM SDKs pass all four once they spell the option; until
+    // then a three-argument request is a view with its lines whole, not a frame gg cannot read.
+    let max_line_chars = match arguments.get(3) {
+        Some(value) => value.optional_integer("the line cut")?,
+        None => None,
+    };
     Ok(file_read(ViewsHost::open_file_view(
-        state, path, offset, limit,
+        state,
+        path,
+        offset,
+        limit,
+        max_line_chars,
     )?))
 }
 

@@ -10,7 +10,8 @@
 // paddle that integrates `vy * dt` exactly covers `PADDLE_SPEED * window`; two
 // percent is rounding room on that.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { PADDLE_SPEED } from "../constants";
 import {
   captureReplay,
@@ -52,8 +53,9 @@ it("moves the human paddle at the paddle speed while KeyS is held", async () => 
     return held;
   });
 
-  expect(moved.delta).toBeGreaterThan(0);
-  expect(
+  assertGreaterThan(moved.delta, 0);
+  assertLessThanOrEqual(
     Math.abs(speedOverTicks(moved.delta, TICKS) - PADDLE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
+    SPEED_TOLERANCE,
+  );
 });

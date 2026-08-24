@@ -9,8 +9,9 @@
 // what is read back is where the build put its balls rather than where a check
 // put them.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BALL_COUNT, BALL_HOMES } from "../../src/constants";
+import { assertCloseTo, assertEqual, assertLength } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { readBalls, waitingAtHomes } from "./harness";
 
@@ -29,9 +30,9 @@ it("parks three balls on their own home points and holds them at match start", a
   await h.advance(1);
 
   const title = readBalls(h.snapshot());
-  expect(title).toHaveLength(BALL_COUNT);
-  expect(waitingAtHomes(title)).toBe(true);
-  for (const ball of title) expect(ball.held).toBe(false);
+  assertLength(title, BALL_COUNT);
+  assertEqual(waitingAtHomes(title), true);
+  for (const ball of title) assertEqual(ball.held, false);
 
   h.debug.startMatch("versus");
   await h.advance(1);
@@ -41,14 +42,14 @@ it("parks three balls on their own home points and holds them at match start", a
   captureStill(h, "field");
 
   const opened = readBalls(h.snapshot());
-  expect(opened).toHaveLength(BALL_COUNT);
-  expect(waitingAtHomes(opened)).toBe(true);
-  for (const ball of opened) expect(ball.held).toBe(true);
+  assertLength(opened, BALL_COUNT);
+  assertEqual(waitingAtHomes(opened), true);
+  for (const ball of opened) assertEqual(ball.held, true);
 
   // Each ball is on ITS OWN home, in play order, rather than three balls stacked
   // on one point.
   for (const [index, ball] of opened.entries()) {
-    expect(ball.x).toBeCloseTo(BALL_HOMES[index].x, 0);
-    expect(ball.y).toBeCloseTo(BALL_HOMES[index].y, 0);
+    assertCloseTo(ball.x, BALL_HOMES[index].x, 0);
+    assertCloseTo(ball.y, BALL_HOMES[index].y, 0);
   }
 });

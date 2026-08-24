@@ -125,6 +125,15 @@ the lines below it the detail. Each function documents the arguments it takes,
 the failures it raises and the value it returns, and states the preconditions,
 postconditions and invariants it holds.
 
+An entry's prose is held to one cross-reference rule: it may name another
+function only when that function is offered whenever this one is, which is a
+function bound to every program or one bought by the same capability as the
+entry itself. Any other reference is dropped from the comment rather than
+hedged, since a documentation view describes a surface its reader can call and
+a comment cannot know what a given run withheld. A model reaches the neighbours
+a comment leaves unnamed through module search and the module's own function
+briefs.
+
 Every registered arm emits schema 1: three provenance lines naming the schema,
 the language it was generated for and what it was reflected out of, then four
 sections. A catalogue must declare its schema, and gg refuses any number but 1.

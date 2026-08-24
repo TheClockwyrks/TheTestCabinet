@@ -58,6 +58,12 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Value, json};
 
+#[path = "filesystem.search.rs"]
+mod search;
+
+pub(crate) use search::clip_line;
+pub use search::{SEARCH_TOOL, SearchTool};
+
 use super::{
     ApiData, ArgumentError, DirEntryData, DirEntryKind, FileImageData, FileTextData, Tool,
     ToolContext, ToolFailure, ToolOutcome, invalid_argument, required_str, saturating_u32,
@@ -332,7 +338,7 @@ pub fn resolve_path(cwd: &Path, path: &str) -> Result<PathBuf, String> {
     Ok(cwd.join(path))
 }
 
-/// The `path` argument's schema, worded once for all four filesystem tools: `lead` names what
+/// The `path` argument's schema, worded once for all five filesystem tools: `lead` names what
 /// the path points at, and the resolution rule is the same everywhere.
 fn path_param(lead: &str) -> Value {
     json!({

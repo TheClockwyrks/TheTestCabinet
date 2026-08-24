@@ -23,7 +23,7 @@ namespace gg {
 ///
 /// ```cpp
 /// auto source = gg::programs::get();
-/// source.replace(source.find("gg::files::read_fil("), 20, "gg::files::read_file(");
+/// source.replace(source.find("gg::views::open_tex("), 20, "gg::views::open_text(");
 /// gg::programs::rerun(source);
 /// ```
 ///

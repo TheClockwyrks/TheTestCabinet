@@ -20,7 +20,13 @@
 // reflects against the upright box whatever it draws passes the first and fails
 // the second.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertDeepEqual,
+  assertEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { OBSTACLE_SPIN_RATE, SERVE_SPEED } from "../constants";
 import {
   ball0,
@@ -97,12 +103,13 @@ it("reflects about the face's normal at its current orientation", async () => {
   // 1. Upright. A vertical face returns a level shot level.
   const upright = (await poseObstacles(harness, 0))[0]!;
   const straight = await shootLevelAt(harness, upright);
-  expect(straight.hit, "the upright shot reaches the obstacle").toBe(true);
-  expect(
+  assertEqual(straight.hit, true, "the upright shot reaches the obstacle");
+  assertLessThanOrEqual(
     angleBetween(straight, reflectedLevel(upright.theta)),
+    ANGLE_TOLERANCE,
     "an upright face returns the shot level",
-  ).toBeLessThanOrEqual(ANGLE_TOLERANCE);
-  expect(straight.speed).toBeCloseTo(SERVE_SPEED, 3);
+  );
+  assertCloseTo(straight.speed, SERVE_SPEED, 3);
 
   // 2. The same shot against the face turned a quarter turn.
   const tilted = (await poseObstacles(harness, TILT_T))[0]!;
@@ -111,13 +118,14 @@ it("reflects about the face's normal at its current orientation", async () => {
     await harness.advance(DEPARTURE_TICKS);
     return shot;
   });
-  expect(deflected.hit, "the tilted shot reaches the obstacle").toBe(true);
-  expect(
+  assertEqual(deflected.hit, true, "the tilted shot reaches the obstacle");
+  assertLessThanOrEqual(
     angleBetween(deflected, reflectedLevel(tilted.theta)),
+    ANGLE_TOLERANCE,
     "a tilted face reflects the shot about its own normal",
-  ).toBeLessThanOrEqual(ANGLE_TOLERANCE);
-  expect(deflected.speed).toBeCloseTo(SERVE_SPEED, 3);
+  );
+  assertCloseTo(deflected.speed, SERVE_SPEED, 3);
 
   // Nothing the page threw or logged as an error while this harness drove it.
-  expect(harness.pageErrors).toEqual([]);
+  assertDeepEqual(harness.pageErrors, []);
 });

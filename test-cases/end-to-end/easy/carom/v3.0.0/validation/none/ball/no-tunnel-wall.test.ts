@@ -8,7 +8,12 @@
 // that integrates a whole coarse frame at once puts it there. Every frame is
 // sampled, so the earliest frame the ball was travelling back is the one read.
 
-import { afterEach, expect, it } from "vitest";
+import { afterEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { BALL_R, FIELD_CX, FIELD_H, SPEED_CAP } from "../constants";
 import { ball0, captureReplay, clearPaddles, type Harness } from "../harness";
 import { DEPARTURE_MS, framesFor, harnessAt, STEPS_MS } from "./no-tunnel";
@@ -42,14 +47,16 @@ it("rebounds off a wall at the ceiling speed and stays on the field", async () =
       return swept;
     });
 
-    expect(rebound.hit, `${stepMs} ms frames: rebounds`).toBe(true);
-    expect(
+    assertEqual(rebound.hit, true, `${stepMs} ms frames: rebounds`);
+    assertGreaterThanOrEqual(
       ball0(rebound.snapshot).y,
+      BALL_R - 1e-6,
       `${stepMs} ms frames: inside the top wall`,
-    ).toBeGreaterThanOrEqual(BALL_R - 1e-6);
-    expect(
+    );
+    assertLessThanOrEqual(
       ball0(rebound.snapshot).y,
+      FIELD_H - BALL_R + 1e-6,
       `${stepMs} ms frames: inside the bottom wall`,
-    ).toBeLessThanOrEqual(FIELD_H - BALL_R + 1e-6);
+    );
   }
 });

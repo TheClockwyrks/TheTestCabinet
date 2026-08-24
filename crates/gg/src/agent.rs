@@ -184,7 +184,7 @@ use crate::ending::{Ending, EndingRole};
 use crate::fault::{FaultLatch, panic_message};
 use crate::fsm::{FsmPosition, FsmSpec};
 use crate::git;
-use crate::healing::{self, AssistantMessageMode, Healed, HealingConfig, HealingStrategy, plural};
+use crate::healing::{self, Healed, HealingConfig, HealingStrategy, plural};
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
     AgentLimits, CeilingLatch, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome,
@@ -1103,7 +1103,8 @@ pub(crate) async fn run_with_seams(
         root_emitter.emit(log("info", orch.code.healing.armed_summary()));
         root_emitter.emit(log(
             "info",
-            healing::assistant_messages_summary(orch.code.assistant_messages),
+            "assistant messages: recorded as the program that ran (the healed program where \
+             healing rewrote the reply, the reply verbatim otherwise)",
         ));
         root_emitter.record_healing(
             orch.code
@@ -2069,7 +2070,6 @@ impl Orchestrator {
                 language: sandbox::resolve_program_language(set.root(), report),
                 limits: sandbox::resolve_sandbox_limits(set.root(), report),
                 healing,
-                assistant_messages: healing::resolve_assistant_messages(set.root(), report),
                 doc_view_types: crate::docs::resolve_doc_view_types(set.root(), report),
             },
             issue_worktrees: Mutex::new(BTreeMap::new()),
@@ -2281,7 +2281,6 @@ impl Orchestrator {
             language: sandbox::resolve_program_language(profile, report),
             limits: sandbox::resolve_sandbox_limits(profile, report),
             healing: healing::resolve_healing(profile, report),
-            assistant_messages: healing::resolve_assistant_messages(profile, report),
             doc_view_types: crate::docs::resolve_doc_view_types(profile, report),
         }
     }
@@ -7473,11 +7472,6 @@ impl Agent {
             // contribute to the run's spend while it is still running.
             limits.spend.add(response.cost);
 
-            if let Some(text) = &response.text {
-                emitter.emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
-                last_text = Some(text.clone());
-            }
-
             // Record the assistant turn (text + any tool calls) into the context.
             //
             // In responses-as-code mode a turn *is* a program, and the model was offered no native
@@ -7505,11 +7499,10 @@ impl Agent {
                 ));
             }
             // Responses-as-code heals the reply *before* the assistant message is recorded, because
-            // the recorded message may be the healed program rather than the raw reply — that is the
-            // `assistantMessages` lever (see `AssistantMessageMode`). Healing is done here, once, and
-            // the `Healed` is handed to `run_code_turn` so the turn does not re-heal the same reply.
-            // On the tool-calling path there is no program and no healing; the reply is recorded as
-            // sent.
+            // the recorded message is the program that ran — the healed program whenever healing
+            // rewrote the reply. Healing is done here, once, and the `Healed` is handed to
+            // `run_code_turn` so the turn does not re-heal the same reply. On the tool-calling path
+            // there is no program and no healing; the reply is recorded as sent.
             let healed = code.enabled.then(|| {
                 healing::heal(
                     response.text.as_deref().unwrap_or_default(),
@@ -7517,19 +7510,23 @@ impl Agent {
                     sandbox::language(code.language).healing(),
                 )
             });
-            // The text the assistant turn is recorded with. Under post-response healing it is the
-            // healed program gg actually ran — but only when healing changed anything
-            // (`rewritten()`); a reply healing left alone is recorded verbatim. Under
-            // no-post-processing (and on the tool-calling path) it is always the raw reply. The
-            // healing that runs regardless is never disclosed to the model: it is counted on the
-            // turn's `code_execution` record and logged on the operator's stream, and no feedback
-            // mentions it.
-            let assistant_text = match (&healed, code.assistant_messages) {
-                (Some(healed), AssistantMessageMode::ResponseHealing) if healed.rewritten() => {
-                    Some(healed.program.clone())
-                }
+            // The text the assistant turn is recorded with — always the program that actually ran.
+            // On a code turn it is the healed program whenever healing changed anything
+            // (`rewritten()`); a reply healing left alone, and every tool-calling reply, is
+            // recorded verbatim. The model only ever re-reads this text: the raw reply of a
+            // rewritten turn never enters the context. It survives for the operator instead — on
+            // the turn's `code_execution` record (`healing.original`) and on the operator's
+            // stream — and no feedback to the model mentions the repair.
+            let assistant_text = match &healed {
+                Some(healed) if healed.rewritten() => Some(healed.program.clone()),
                 _ => response.text.clone(),
             };
+            // The assistant-message event carries the same text the context records — what ran —
+            // and is emitted only now, after healing has settled which text that is.
+            if let Some(text) = &assistant_text {
+                emitter.emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
+                last_text = Some(text.clone());
+            }
 
             // Log this turn's exact request and response to the message log — the
             // de-duplicated ContextMessage/Prompt stream the console renders as the
@@ -9539,10 +9536,6 @@ struct CodeSetup {
     /// The [healing] strategies armed for this run — the lever that decides which
     /// malformations of a reply gg repairs before compiling it, and which it lets fail.
     healing: HealingConfig,
-    /// How the assistant message this run *records* is derived from the model's reply — the reply
-    /// as sent, or the healed program that ran. Governs only what the next turn re-reads, never
-    /// whether a reply is healed before it runs. See [`AssistantMessageMode`].
-    assistant_messages: AssistantMessageMode,
     /// Which SDK types an [`openDocsView`](crate::docs::DocsRuntime) of a function opens beside it —
     /// its return position, that plus its arguments, or none at all.
     ///

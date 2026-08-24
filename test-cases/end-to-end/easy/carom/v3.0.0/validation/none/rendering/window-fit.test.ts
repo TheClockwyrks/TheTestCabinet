@@ -25,8 +25,15 @@
 // build meets each as a fresh page — which is also the state the requirement is
 // about: the fit is right on load, before any input.
 
-import { afterEach, expect, it } from "vitest";
+import { afterEach, it } from "vitest";
 import { FIELD_H, FIELD_W } from "../constants";
+import {
+  assertCloseTo,
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   COLOR_POINTS,
   DISTINCT_MIN,
@@ -75,16 +82,23 @@ const SURFACES = [
 ];
 
 /**
- * How far a letterbox bar's color may sit from the sampled field background.
+ * How far a letterbox bar's color may sit from the nearest sampled empty-field
+ * patch, in RGB distance: the review item's 25/441.
  *
- * The specification makes the two the same color, so this is rounding room
- * rather than slack: a few levels in one channel, against a difference of at
- * least DISTINCT_MIN between any body and the field. The bar is held against
- * the nearest of the FIELD_POINTS patches rather than the darkest, because a
- * build that shades its field toward the edges has no single field color, and
- * the nearest empty patch reads the cleared color through that shading.
+ * The specification makes the bars the field's background color, but the bar
+ * holds the raw cleared ground while an empty patch of field shows that ground
+ * through whatever the build legitimately lays over its field — a vignette, a
+ * gradient, a faint texture — because the look is the build's. Builds inspected
+ * and judged correct have measured up to about 9 here, so a rounding-only bound
+ * of 8 failed fine builds; 25 gives that drift close to a three-fold margin
+ * while staying at half of DISTINCT_MIN, the scale's own line for a body
+ * clearly apart from the field, so a bar carrying anything the game visibly
+ * drew still fails. The bar is held against the nearest of the FIELD_POINTS
+ * patches rather than the darkest, because a build that shades its field toward
+ * the edges has no single field color, and the nearest empty patch reads the
+ * cleared color through that shading.
  */
-const BAR_MATCH_MAX = 8;
+const BAR_MATCH_MAX = 25;
 
 let harnesses: Harness[] = [];
 
@@ -112,27 +126,24 @@ it.each(SURFACES)(
     // before anything is driven: it is the state the build reaches on load, and
     // it is what every coordinate below is expressed in.
     const store = await h.surface();
-    expect(store.dpr).toBeCloseTo(dpr, 6);
-    expect(store.width).toBe(Math.round(cssWidth * dpr));
-    expect(store.height).toBe(Math.round(cssHeight * dpr));
+    assertCloseTo(store.dpr, dpr, 6);
+    assertEqual(store.width, Math.round(cssWidth * dpr));
+    assertEqual(store.height, Math.round(cssHeight * dpr));
 
     // The fit the specification requires, over a surface of exactly that size.
     const view = h.viewport();
     const uniform = Math.min(cssWidth / FIELD_W, cssHeight / FIELD_H) * dpr;
-    expect(view.width).toBe(FIELD_W);
-    expect(view.height).toBe(FIELD_H);
-    expect(view.scale).toBeCloseTo(uniform, 9);
+    assertEqual(view.width, FIELD_W);
+    assertEqual(view.height, FIELD_H);
+    assertCloseTo(view.scale, uniform, 9);
     // The whole field is inside the surface, on both axes, and it is centered:
     // the leftover on each axis is split evenly into two bars, and one axis is
     // filled exactly, so the letterboxing is on the other alone.
-    expect(FIELD_W * view.scale).toBeLessThanOrEqual(store.width + 1e-6);
-    expect(FIELD_H * view.scale).toBeLessThanOrEqual(store.height + 1e-6);
-    expect(view.offsetX * 2 + FIELD_W * view.scale).toBeCloseTo(store.width, 6);
-    expect(view.offsetY * 2 + FIELD_H * view.scale).toBeCloseTo(
-      store.height,
-      6,
-    );
-    expect(Math.min(view.offsetX, view.offsetY)).toBeCloseTo(0, 6);
+    assertLessThanOrEqual(FIELD_W * view.scale, store.width + 1e-6);
+    assertLessThanOrEqual(FIELD_H * view.scale, store.height + 1e-6);
+    assertCloseTo(view.offsetX * 2 + FIELD_W * view.scale, store.width, 6);
+    assertCloseTo(view.offsetY * 2 + FIELD_H * view.scale, store.height, 6);
+    assertCloseTo(Math.min(view.offsetX, view.offsetY), 0, 6);
 
     // And the build really drew into that map: a posed scene puts each element
     // under its own logical coordinate, mapped through the specified fit.
@@ -148,8 +159,8 @@ it.each(SURFACES)(
       COLOR_POINTS.rightPaddle.x,
       COLOR_POINTS.rightPaddle.y,
     );
-    expect(colorDistance(left, field)).toBeGreaterThan(DISTINCT_MIN);
-    expect(colorDistance(right, field)).toBeGreaterThan(DISTINCT_MIN);
+    assertGreaterThan(colorDistance(left, field), DISTINCT_MIN);
+    assertGreaterThan(colorDistance(right, field), DISTINCT_MIN);
   },
 );
 
@@ -162,8 +173,8 @@ it("draws the field inside the fit, with the bars the field's background", async
   // visible on a surface the size of the field.
   await captureStill(h, "fit");
 
-  expect(h.device(0, 0)).toEqual({ x: 160, y: 0 });
-  expect(h.device(FIELD_W, FIELD_H)).toEqual({ x: 1440, y: 720 });
+  assertDeepEqual(h.device(0, 0), { x: 160, y: 0 });
+  assertDeepEqual(h.device(FIELD_W, FIELD_H), { x: 1440, y: 720 });
 
   const field = await sampleField(h);
   const paddle = await sampleColor(
@@ -173,7 +184,7 @@ it("draws the field inside the fit, with the bars the field's background", async
   );
 
   // The paddle is under its own logical coordinate, mapped through the fit.
-  expect(colorDistance(paddle, field)).toBeGreaterThan(DISTINCT_MIN);
+  assertGreaterThan(colorDistance(paddle, field), DISTINCT_MIN);
 
   // The bars either side are the field's background color (specs/overview.md).
   // They are outside the logical space, so they are sampled in device pixels
@@ -191,6 +202,6 @@ it("draws the field inside the fit, with the bars the field's background", async
     const nearest = Math.min(
       ...patches.map((patch) => colorDistance(barColor, patch)),
     );
-    expect(nearest).toBeLessThanOrEqual(BAR_MATCH_MAX);
+    assertLessThanOrEqual(nearest, BAR_MATCH_MAX);
   }
 });

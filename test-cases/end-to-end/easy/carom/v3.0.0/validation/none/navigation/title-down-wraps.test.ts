@@ -7,7 +7,8 @@
 // not report `menuIndex`, so the selection is read by confirming: from the
 // wrapped index 0 the entry taken is `SOLO`.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 let h: Harness;
@@ -29,6 +30,6 @@ it("wraps the selection from HOW TO PLAY to SOLO on a down press", async () => {
   await h.tap("Enter");
 
   const opened = await h.snapshot();
-  expect(opened.screen).toBe("countdown");
-  expect(opened.mode).toBe("solo");
+  assertEqual(opened.screen, "countdown");
+  assertEqual(opened.mode, "solo");
 });

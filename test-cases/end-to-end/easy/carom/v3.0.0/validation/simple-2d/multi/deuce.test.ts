@@ -9,8 +9,9 @@
 // waiting behind a countdown, so the second point is set up by cutting that hold
 // short and re-aiming the ball once it is in flight again.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { assertEqual, assertNull } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
@@ -47,11 +48,11 @@ it("plays on at a one-point lead and ends at two", async () => {
     poll: 1,
   });
 
-  expect(oneClear.hit).toBe(true);
-  expect(oneClear.snapshot.screen).toBe("playing");
-  expect(oneClear.snapshot.winner).toBeNull();
-  expect(oneClear.snapshot.score.p1).toBe(TIED_AT + 1);
-  expect(oneClear.snapshot.score.p2).toBe(TIED_AT);
+  assertEqual(oneClear.hit, true);
+  assertEqual(oneClear.snapshot.screen, "playing");
+  assertNull(oneClear.snapshot.winner);
+  assertEqual(oneClear.snapshot.score.p1, TIED_AT + 1);
+  assertEqual(oneClear.snapshot.score.p2, TIED_AT);
 
   // Second real point: 12-10, now the required lead, so the match ends. `serve`
   // ends the scored ball's hold; the launch is the build's own, so the scenario
@@ -61,7 +62,7 @@ it("plays on at a one-point lead and ends at two", async () => {
     maxFrames: 60,
     poll: 1,
   });
-  expect(live.hit).toBe(true);
+  assertEqual(live.hit, true);
 
   arrangeGoal(h, "right");
   // The deciding point, and only it: the one before it is the arrangement that
@@ -75,8 +76,8 @@ it("plays on at a one-point lead and ends at two", async () => {
     return resolved;
   });
 
-  expect(twoClear.hit).toBe(true);
-  expect(twoClear.snapshot.winner).toBe("left");
-  expect(twoClear.snapshot.score.p1).toBe(TIED_AT + WIN_LEAD);
-  expect(twoClear.snapshot.score.p2).toBe(TIED_AT);
+  assertEqual(twoClear.hit, true);
+  assertEqual(twoClear.snapshot.winner, "left");
+  assertEqual(twoClear.snapshot.score.p1, TIED_AT + WIN_LEAD);
+  assertEqual(twoClear.snapshot.score.p2, TIED_AT);
 });

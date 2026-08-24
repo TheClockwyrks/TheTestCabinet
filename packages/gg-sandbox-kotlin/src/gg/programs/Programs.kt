@@ -6,7 +6,7 @@
  * what ran, patch it with ordinary string work, hand it back.
  *
  * ```
- * gg.programs.rerun(gg.programs.get().replace("gg.files.readfile", "gg.files.readFile"))
+ * gg.programs.rerun(gg.programs.get().replace("gg.views.opentext", "gg.views.openText"))
  * ```
  *
  * @ggmodule programs

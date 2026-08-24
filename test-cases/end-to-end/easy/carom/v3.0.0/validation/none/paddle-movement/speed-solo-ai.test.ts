@@ -12,7 +12,8 @@
 // The window: from `cy = 120` toward a target of 650 the paddle is over 500
 // units short, and covers 56 in the 12 frames measured.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { AI_SPEED } from "../constants";
 import {
   arrangeAiChase,
@@ -46,6 +47,6 @@ it("chases the ball at AI_SPEED", async () => {
     return measured;
   });
 
-  expect(chase.delta).toBeGreaterThan(0); // toward the ball, down the field
-  expect(Math.abs(chase.speed - AI_SPEED)).toBeLessThanOrEqual(SPEED_TOLERANCE);
+  assertGreaterThan(chase.delta, 0); // toward the ball, down the field
+  assertLessThanOrEqual(Math.abs(chase.speed - AI_SPEED), SPEED_TOLERANCE);
 });

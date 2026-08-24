@@ -12,8 +12,9 @@
 // The clip then runs on until the respawned ball leaves again; how long that
 // hold lasts is `multi/hold-length`'s point, not this one's.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BALL_HOMES } from "../../src/constants";
+import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
@@ -73,23 +74,23 @@ it("returns the scored ball to its own home while the other two play on", async 
     return { scored, atPoint };
   });
 
-  expect(point.scored.hit).toBe(true);
-  expect(point.scored.snapshot.score).toEqual({ p1: 1, p2: 0 });
+  assertEqual(point.scored.hit, true);
+  assertDeepEqual(point.scored.snapshot.score, { p1: 1, p2: 0 });
   // The field is not frozen: there is no post-point countdown to return to.
-  expect(point.scored.snapshot.screen).toBe("playing");
+  assertEqual(point.scored.snapshot.screen, "playing");
 
   // The ball that crossed, and only it: back on its OWN home point, holding.
   const [scoredBall, ...others] = point.atPoint;
-  expect(scoredBall.held).toBe(true);
-  expect(scoredBall.x).toBeCloseTo(BALL_HOMES[0].x, 0);
-  expect(scoredBall.y).toBeCloseTo(BALL_HOMES[0].y, 0);
+  assertEqual(scoredBall.held, true);
+  assertCloseTo(scoredBall.x, BALL_HOMES[0].x, 0);
+  assertCloseTo(scoredBall.y, BALL_HOMES[0].y, 0);
 
   // The other two carried straight on: still in flight, and, having reached no
   // wall in the time the point took, on exactly the velocities they were posed.
   for (const [index, ball] of others.entries()) {
-    expect(ball.held).toBe(false);
+    assertEqual(ball.held, false);
     // Unchanged to a float margin: each keeps flying its lane under zero spin.
-    expect(ball.vx).toBeCloseTo(0, 6);
-    expect(ball.vy).toBeCloseTo(LANES[index].vy, 6);
+    assertCloseTo(ball.vx, 0, 6);
+    assertCloseTo(ball.vy, LANES[index].vy, 6);
   }
 });

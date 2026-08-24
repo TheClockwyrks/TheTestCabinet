@@ -7,8 +7,9 @@
 // at the speed it was posed at. The flight is short and far from every body, so
 // nothing but the spin acts on the velocity.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SPIN_HALFLIFE } from "../../src/constants";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   angleDeg,
   arrangeLiveBall,
@@ -63,10 +64,11 @@ it("turns a level rightward flight clockwise under positive spin", async () => {
     return read;
   });
 
-  expect(ball.vx).toBeGreaterThan(0);
-  expect(ball.vy).toBeGreaterThan(0);
-  expect(Math.abs(ball.speed - SPEED)).toBeLessThanOrEqual(SPEED_TOLERANCE);
-  expect(Math.abs(angleDeg(ball) - EXPECTED_TURN_DEG)).toBeLessThanOrEqual(
+  assertGreaterThan(ball.vx, 0);
+  assertGreaterThan(ball.vy, 0);
+  assertLessThanOrEqual(Math.abs(ball.speed - SPEED), SPEED_TOLERANCE);
+  assertLessThanOrEqual(
+    Math.abs(angleDeg(ball) - EXPECTED_TURN_DEG),
     ANGLE_TOLERANCE_DEG,
   );
 });

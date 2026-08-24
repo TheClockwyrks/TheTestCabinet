@@ -1,18 +1,18 @@
-/// Read, write, edit and list the files of the workspace.
+/// Read, write, edit, list and search the files of the workspace.
 ///
 /// Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
 /// that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
 /// large files in a single turn will exhaust its fuel budget.
 ///
-/// Nothing here places anything in the agent's context window. `views.openFile` is the call that
-/// does.
+/// Nothing here places anything in the agent's context window: showing something is what the
+/// `gg.views` module is for.
 ///
 /// - ggmodule: files
 public enum files {
     /// The gg tools this module dispatches, which is its share of what the artifact answers
     /// `bound-operations` with. Declared beside the functions that call them, so a tool added here
     /// is a tool the artifact reports.
-    static let ggOperations = ["read_file", "write_file", "edit_file", "list_dir"]
+    static let ggOperations = ["read_file", "write_file", "edit_file", "list_dir", "search"]
 
     /// Read a file, as either a `FileRead.text` or a `FileRead.image`.
     ///
@@ -166,6 +166,54 @@ public enum files {
         }
     }
 
+    /// Search the workspace's files for a regular expression, and hand back every line that matches.
+    ///
+    /// `query` is a regular expression in Rust's syntax — `foo|bar`, `fn [a-z_]+`, `(?i)todo` for
+    /// a case-insensitive match — matched against each line on its own, and every line it matches
+    /// comes back as a `SearchMatch` carrying the file's path, the 1-based line number and the line
+    /// itself, in path order and then line order. It is this sandbox's grep, and it honours ignore
+    /// files: whatever `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file
+    /// exclude — nested files and negations included — is never scanned and never returned, `.git`
+    /// itself is skipped, dotfiles are searched, and none of it needs a repository to be there. A
+    /// file that is not text (one carrying a NUL byte) is skipped too.
+    ///
+    /// A matching line longer than 200 characters is cut there and annotated in place as
+    /// `foo (123 more chars...)`. The result is a value for the program and places nothing in the
+    /// context window. An array exactly `limit` long may have been cut — there is no offset to page
+    /// with, so narrowing the query or the path is what shows the rest: a search says where to
+    /// point a read, and is not a way of reading a file.
+    ///
+    /// - Parameters:
+    ///   - query: The regular expression to match each line against, in Rust's syntax; `(?i)`
+    ///     makes it case-insensitive.
+    ///   - path: The directory or file to search, relative to the workspace or absolute. Left out,
+    ///     the whole workspace is searched; a file searches that one file.
+    ///   - limit: How many matches to return at most. Left out, it takes gg's default of 50; the
+    ///     ceiling is 200, and a larger limit is clamped to it rather than refused.
+    /// - Returns: every matching line up to the limit, in path order and then line order; nothing
+    ///   matching is an empty array, not a failure.
+    /// - Throws: `core.ApiError` with `.invalidArgument` for a blank query, one that is not a valid
+    ///   pattern, or a limit of `0`, and `.notFound` for a path that is not there.
+    /// - ggop: files.search
+    public static func search(
+        _ query: String, path: String? = nil, limit: Int? = nil
+    ) throws -> [SearchMatch] {
+        try withScratch { scratch in
+            var query = scratch.string(query)
+            var ret = test_cabinet_gg_files_list_search_match_t()
+            var err = test_cabinet_gg_types_api_error_t()
+            let ok = withOptional(path.map { scratch.string($0) }) { path in
+                withOptional(limit.map { UInt32(truncatingIfNeeded: $0) }) { limit in
+                    test_cabinet_gg_files_search(&query, path, limit, &ret, &err)
+                }
+            }
+            guard ok else { throw lift(failure: &err) }
+            let matches = lift(ret.ptr, ret.len) { SearchMatch(wire: $0) }
+            test_cabinet_gg_files_list_search_match_free(&ret)
+            return matches
+        }
+    }
+
     /// What a read returned: a text file's window, or a picture's description.
     ///
     /// A picture is a different kind of thing from text, so it is a different case rather than a
@@ -243,6 +291,27 @@ public enum files {
         init(wire: test_cabinet_gg_files_dir_entry_t) {
             name = lift(wire.name)
             kind = EntryKind(wire: wire.kind)
+        }
+    }
+
+    /// One line `files.search` matched.
+    public struct SearchMatch: Sendable {
+        /// The file's path, relative to the workspace root, with `/` separators.
+        ///
+        /// Absolute for a search rooted outside the workspace.
+        public let path: String
+        /// The 1-based line number of the match within that file.
+        public let line: Int
+        /// The matching line, without its line ending.
+        ///
+        /// Longer than 200 characters, it is cut there and annotated in place as
+        /// `foo (123 more chars...)`.
+        public let text: String
+
+        init(wire: test_cabinet_gg_files_search_match_t) {
+            path = lift(wire.path)
+            line = Int(wire.line)
+            text = lift(wire.text)
         }
     }
 

@@ -6,7 +6,7 @@
 ///
 /// ```swift
 /// let source = try programs.get()
-/// try programs.rerun(source.replacing("files.readFil(", with: "files.readFile("))
+/// try programs.rerun(source.replacing("views.openTex(", with: "views.openText("))
 /// ```
 ///
 /// - ggmodule: programs

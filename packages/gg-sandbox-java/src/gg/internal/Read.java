@@ -93,6 +93,17 @@ public final class Read {
         return List.copyOf(out);
     }
 
+    /** Every line a search matched. */
+    public static List<Files.SearchMatch> searchMatches(Value value) {
+        List<Files.SearchMatch> out = new ArrayList<>(value.size());
+        for (int index = 0; index < value.size(); index++) {
+            Value match = value.at(index);
+            out.add(new Files.SearchMatch(match.get("path").text(), match.get("line").integer(),
+                    match.get("text").text()));
+        }
+        return List.copyOf(out);
+    }
+
     /** The memory budget. */
     public static Memories.MemoryUsage memoryUsage(Value value) {
         return new Memories.MemoryUsage(value.get("count").integer(),

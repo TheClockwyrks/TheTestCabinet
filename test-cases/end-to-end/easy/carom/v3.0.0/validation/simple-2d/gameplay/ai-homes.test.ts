@@ -7,13 +7,18 @@
 // center is within AI_HOME_DEADZONE of it. Long enough is allowed for that trip
 // and more, and the paddle is then read where it settled.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   AI_HOME_DEADZONE,
   AI_HOME_Y,
   AI_SPEED,
   PADDLE_MAX_CY,
 } from "../../src/constants";
+import {
+  assertCloseTo,
+  assertLessThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   arrangeAiHome,
   captureReplay,
@@ -40,7 +45,7 @@ afterEach(() => {
 
 it("returns toward AI_HOME_Y and stops within AI_HOME_DEADZONE of it", async () => {
   await arrangeAiHome(harness, { paddleCy: START_CY });
-  expect(harness.snapshot().paddles.right.cy).toBeCloseTo(START_CY, 6);
+  assertCloseTo(harness.snapshot().paddles.right.cy, START_CY, 6);
 
   const settled = await captureReplay(harness, "home", async () => {
     // Every frame's reading, so the approach is seen to be toward home and
@@ -56,14 +61,15 @@ it("returns toward AI_HOME_Y and stops within AI_HOME_DEADZONE of it", async () 
   // Toward home on every frame: never away from it.
   let previous = START_CY;
   for (const cy of settled.heights) {
-    expect(cy).toBeLessThanOrEqual(previous + 1e-6);
+    assertLessThanOrEqual(cy, previous + 1e-6);
     previous = cy;
   }
   // Settled within the home deadzone, stopped.
-  expect(Math.abs(settled.paddle.cy - AI_HOME_Y)).toBeLessThanOrEqual(
+  assertLessThanOrEqual(
+    Math.abs(settled.paddle.cy - AI_HOME_Y),
     AI_HOME_DEADZONE,
   );
-  expect(settled.paddle.vy).toBeCloseTo(0, 6);
+  assertCloseTo(settled.paddle.vy, 0, 6);
   // And it really travelled: it is no longer where it was posed.
-  expect(settled.paddle.cy).toBeLessThan(START_CY - AI_HOME_DEADZONE);
+  assertLessThan(settled.paddle.cy, START_CY - AI_HOME_DEADZONE);
 });

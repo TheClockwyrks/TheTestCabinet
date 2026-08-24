@@ -1233,10 +1233,12 @@ title = "UI"
 [[review.categories.items]]
 id = "window-fit"
 title = "Window fit"
-description = "Over surfaces wider than the field, taller than it, and at a raised device pixel ratio, the whole 1280x720 field is inside the surface, its aspect ratio is preserved, the letterboxing is even, and the bars are the sampled empty-field color within an RGB distance of 8/441, on the first frame before any input."
+description = "Over surfaces wider than the field, taller than it, and at a raised device pixel ratio, the whole 1280x720 field is inside the surface, its aspect ratio is preserved, the letterboxing is even, and the bars show the field's background clear color: within an RGB distance of 25/441 of the nearest sampled empty-field patch, and under an engine within rounding of the exported BACKGROUND. The fit is read on the first frame before any input."
 # Automated validation: build the game over several differently-shaped surfaces and
 # read the viewport the engine derived back, then sample the bar pixels against the
-# empty-field color. See validation/<engine>/rendering/window-fit.test.ts.
+# clear color and the empty-field patches. The 25 is bar-versus-field shading room:
+# the bar holds the raw clear while an empty patch shows it through the build's own
+# field styling. See validation/<engine>/rendering/window-fit.test.ts.
 validation = { script = "rendering/window-fit.test.ts", outputs = [
   { id = "fit", name = "The field fitted and centered in an off-aspect window", kind = "image" },
 ] }

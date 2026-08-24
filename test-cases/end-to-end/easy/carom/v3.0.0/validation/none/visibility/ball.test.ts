@@ -12,7 +12,8 @@
 // small cluster inside the disc, because its edge is anti-aliased toward whatever
 // is behind it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
 import {
   arrangeColorScene,
   captureStill,
@@ -38,7 +39,5 @@ it("draws the ball apart from the field", async () => {
   await captureStill(h, "scene");
   const scene = await sampleScene(h);
 
-  expect(colorDistance(scene.ball, scene.background)).toBeGreaterThan(
-    DISTINCT_MIN,
-  );
+  assertGreaterThan(colorDistance(scene.ball, scene.background), DISTINCT_MIN);
 });

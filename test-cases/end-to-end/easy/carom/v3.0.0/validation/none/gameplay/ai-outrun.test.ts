@@ -7,7 +7,8 @@
 // the rule the shot gets past and player one scores. An AI that moves faster
 // than the rule allows blocks it and fails here.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { PADDLE_MAX_CY, SPEED_CAP } from "../constants";
 import {
   arrangeAiScenario,
@@ -53,5 +54,5 @@ it("lets a fast shot placed out of reach get past it", async () => {
     return outcome;
   });
 
-  expect(result).toBe("scored");
+  assertEqual(result, "scored");
 });

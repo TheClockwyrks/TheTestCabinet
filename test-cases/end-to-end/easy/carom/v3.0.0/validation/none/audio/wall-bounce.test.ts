@@ -17,7 +17,8 @@
 // crosses an empty column, so anything that sounds before the reflection is a
 // build sounding when nothing happened.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import { FIELD_CX } from "../constants";
 import {
   arrangeLiveBall,
@@ -77,9 +78,10 @@ it("sounds a cue on the frame of the reflection, and not before it", async () =>
     return measured;
   });
 
-  expect(bounce.bounced.hit).toBe(true);
-  expect(bounce.cues.length).toBeGreaterThan(0);
-  expect(bounce.cues.map((cue) => cue.frame)).toEqual(
+  assertEqual(bounce.bounced.hit, true);
+  assertGreaterThan(bounce.cues.length, 0);
+  assertDeepEqual(
+    bounce.cues.map((cue) => cue.frame),
     bounce.cues.map(() => bounce.frame),
   );
 });

@@ -1,7 +1,8 @@
 //! The **synthesized opening turn** a [code-mode](crate::context::ContextModel::code_mode) agent's
 //! session starts with: one program, written by gg in the agent's own language and actually run,
 //! that lists every module the agent was granted and opens the documentation of the calls discovery
-//! itself is made of — plus the views those calls placed.
+//! itself is made of and of every call that puts something in the agent's own window — plus the
+//! views those calls placed.
 //!
 //! # Why anything is seeded at all
 //!
@@ -27,11 +28,12 @@
 //! follow, and both are the point: the first program in the window provably compiles and runs in
 //! that arm's language, and gg cannot tell a model it opened something it did not.
 //!
-//! # What it carries: the two modules a build starts in, and the two calls discovery is made of
+//! # What it carries: the two modules a build starts in, and the calls discovery and showing are made of
 //!
 //! One whole-module listing covering the [opening modules](BOOTSTRAP_MODULES) this agent was
 //! granted — searched together, by the paths [`module_paths`](crate::agent::module_paths) publishes
-//! into the prompt — and a documentation view of each [bootstrap call](BOOTSTRAP_CALLS).
+//! into the prompt — and a documentation view of each [bootstrap call](BOOTSTRAP_CALLS) the agent
+//! holds: the documentation search, every view-opening function, and the workspace search.
 //!
 //! The window opens on what an agent that builds anything reaches for first, and on the means to
 //! find the rest. The prompt names every module the agent holds, one line each, and a module path is
@@ -59,7 +61,7 @@
 //!    there is a no-op — so running the bootstrap first means the restored set folds into it rather
 //!    than duplicating it.
 //!
-//! **The two documentation views** survive the two boundaries the way every documentation view
+//! **The documentation views** survive the two boundaries the way every documentation view
 //! does, and for the same reason: a docview's body is a pure function of its key, so a
 //! [compaction](crate::compaction) re-derives it ([`restore_docviews`](crate::compaction::restore_docviews))
 //! and [persistence](crate::persistence) records the key alone.
@@ -67,13 +69,13 @@
 //! **The module listings do not, and neither does the program.** Both are ordinary
 //! [ephemeral](crate::context::Retention::Ephemeral) history — a listing is a
 //! [search view](crate::context::ContextModel::open_search_view), and nothing re-derives the search
-//! band across a compaction — so a compacted window keeps the two docviews and loses the surface
-//! they were opened beside. That is deliberate on both counts, and it is the same argument twice.
-//! This turn's job is to get an agent from a prompt that names no function to a model that can find
-//! one, and it has done that job by the time a window is full: the model has written a hundred
-//! better programs than gg's, and has opened documentation views of the calls it actually uses. The
-//! two that survive are the two it needs to find any of the rest again — which is what makes losing
-//! the listings a cost rather than a trap.
+//! band across a compaction — so a compacted window keeps the docviews and loses the surface they
+//! were opened beside. That is deliberate on both counts, and it is the same argument twice. This
+//! turn's job is to get an agent from a prompt that names no function to a model that can find one,
+//! and it has done that job by the time a window is full: the model has written a hundred better
+//! programs than gg's, and has opened documentation views of the calls it actually uses. The ones
+//! that survive are the ones it needs to find any of the rest again, and to show itself what it
+//! finds — which is what makes losing the listings a cost rather than a trap.
 //!
 //! A **carried** window — an `exec` successor or a `fork` that kept its history — is not re-seeded,
 //! on the same terms as every other opening step: it already holds these views, and pushing a second
@@ -118,28 +120,44 @@ use crate::docs::{DocQuery, DocViewTypes, DocsRuntime};
 use crate::ending::EndingRole;
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramRefusal, ProgramSummary};
+use crate::sandbox::signatures::CatalogueFunction;
 use crate::sandbox::{
-    ApiIdentity, DOCS_SEARCH, DocSearchQuery, DocSearchResult, OperationApi, OperationId,
-    PreparedProgram, ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome,
-    SandboxViewOpened, VIEWS_OPEN_DOCS_VIEW, ViewOpenOutcome, ViewRefusal, catalogue_functions,
-    catalogue_modules, operation_of,
+    ApiIdentity, Binding, DOCS_SEARCH, DocSearchQuery, DocSearchResult, FILES_SEARCH, OperationApi,
+    OperationId, PreparedProgram, ProgramLanguage, ProgramScope, RunEnding, SandboxLimits,
+    SandboxOutcome, SandboxViewOpened, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+    ViewOpenOutcome, ViewRefusal, catalogue_functions, catalogue_modules, operation, operation_of,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{ToolFailure, ToolOutcome};
 
-/// **The calls the bootstrap opens the documentation of** — the ones discovery is made of, and
-/// nothing else.
+/// **The calls the bootstrap opens the documentation of** — the ones discovery and showing are made
+/// of, and nothing else.
 ///
-/// Both halves of the loop the [prompt](crate::prompts) describes, in the order it describes them:
-/// a model searches for what it needs and then opens a documentation view of what it found. Seeding
-/// them in that order means the transcript's first turn reads as the loop rather than as two
-/// unrelated calls, and the model's own example of a well-formed turn is the one it will spend the
-/// session repeating.
+/// First, both halves of the loop the [prompt](crate::prompts) describes, in the order it describes
+/// them: a model searches for what it needs and then opens a documentation view of what it found.
+/// Seeding them in that order means the transcript's first turn reads as the loop rather than as
+/// two unrelated calls, and the model's own example of a well-formed turn is the one it will spend
+/// the session repeating. Then every other function that puts something in the agent's own window —
+/// the text view every run has, and the file view an agent holding `read-file` has — because a
+/// program that cannot show its result to the model that wrote it has done nothing the model can
+/// read. And where the agent holds it, the workspace search, so the call that greps a workspace is
+/// read before it is written.
+///
+/// A call bound to every program ([`Binding::Always`]) is **required**: an arm that does not
+/// catalogue one leaves a model with no way to reach its own surface, and [`seed_bootstrap`] refuses
+/// the run. A call bought by a capability is opened where the agent holds it and left out where it
+/// does not — the opening turn documents this agent's surface, not some other agent's.
 ///
 /// The **search** the bootstrap program makes is not on this list and does not need to be: it is
 /// resolved from [`BOOTSTRAP_MODULES`] rather than from an operation table. This is only what the
 /// program opens a *documentation view* of.
-pub(crate) const BOOTSTRAP_CALLS: &[OperationId] = &[DOCS_SEARCH, VIEWS_OPEN_DOCS_VIEW];
+pub(crate) const BOOTSTRAP_CALLS: &[OperationId] = &[
+    DOCS_SEARCH,
+    VIEWS_OPEN_DOCS_VIEW,
+    VIEWS_OPEN_TEXT,
+    VIEWS_OPEN_FILE,
+    FILES_SEARCH,
+];
 
 /// **The modules the opening program lists**, by gg's cross-arm id for them.
 ///
@@ -227,15 +245,7 @@ pub(crate) async fn seed_bootstrap(
     .into_iter()
     .filter(|path| opening.contains(&path.as_str()))
     .collect();
-    let keys = bootstrap_keys(docs);
-    if keys.len() != BOOTSTRAP_CALLS.len() {
-        return Err(format!(
-            "gg could not name the documentation calls the {} bootstrap program has to open (it \
-             catalogues {:?})",
-            language.display_name(),
-            keys
-        ));
-    }
+    let keys = bootstrap_keys(docs)?;
     let source = language.bootstrap_program(
         &modules.iter().map(String::as_str).collect::<Vec<_>>(),
         &keys.iter().map(String::as_str).collect::<Vec<_>>(),
@@ -350,31 +360,58 @@ fn placed_views(
     Ok(outcome.views_opened.len())
 }
 
-/// This arm's model-facing keys for the [bootstrap calls](BOOTSTRAP_CALLS), in that order.
+/// This arm's model-facing keys for the [bootstrap calls](BOOTSTRAP_CALLS) **this agent holds**, in
+/// that order.
 ///
 /// The **fully-qualified name**, which is the key the catalogue advertises, the key search files a
 /// hit under, and the only spelling that two modules each offering a `close` could not both claim.
 ///
 /// Resolved by the **operation** each entry names rather than by the spelling an arm files it
 /// under, because the [operation id](OperationId) is gg's own identity for a call and a spelling is
-/// one of eleven. A call this arm does not catalogue yields nothing — and, since the program gg
-/// writes has to name one key per bootstrap call, a short list is a defect
-/// [`seed_bootstrap`] refuses the run over rather than a program with a call quietly dropped from it.
-fn bootstrap_keys(docs: &DocsRuntime) -> Vec<String> {
+/// one of eleven. A call the agent does not hold — one bought by a capability it was not granted, or
+/// left out of its allowlist — is left out, on the terms [`BOOTSTRAP_CALLS`] states. A call bound to
+/// **every** program that this arm does not catalogue, or that the runtime would not bind, is the
+/// defect [`seed_bootstrap`] refuses the run over rather than a program with a call quietly dropped
+/// from it.
+fn bootstrap_keys(docs: &DocsRuntime) -> Result<Vec<String>, String> {
     let functions = catalogue_functions(docs.language());
-    BOOTSTRAP_CALLS
-        .iter()
-        .filter_map(|call| {
-            functions
-                .iter()
-                .find(|function| {
-                    function.alias_of.is_none()
-                        && docs.bound(function)
-                        && operation_of(function).is_some_and(|operation| operation.id == *call)
-                })
-                .map(|function| function.fqn.to_string())
-        })
-        .collect()
+    let mut keys = Vec::new();
+    for call in BOOTSTRAP_CALLS {
+        let bound = bootstrap_function(&functions, *call, |function| docs.bound(function));
+        match (bound, bootstrap_required(*call)) {
+            (Some(function), _) => keys.push(function.fqn.to_string()),
+            (None, false) => {}
+            (None, true) => {
+                return Err(format!(
+                    "gg could not name `{call}`, which the {} bootstrap program has to open for \
+                     every agent (it catalogues {keys:?} so far)",
+                    docs.language().display_name()
+                ));
+            }
+        }
+    }
+    Ok(keys)
+}
+
+/// Whether a [bootstrap call](BOOTSTRAP_CALLS) is one every agent's opening turn must open: the
+/// ones bound to every program whatever a run enables. The rest are opened where held.
+pub(crate) fn bootstrap_required(call: OperationId) -> bool {
+    operation(call).is_some_and(|operation| operation.binding == Binding::Always)
+}
+
+/// The catalogue entry an arm binds `call` under — its canonical spelling, never an alias — where
+/// `held` says the agent may call it, or `None` where the arm does not catalogue it or the agent
+/// does not hold it.
+pub(crate) fn bootstrap_function(
+    functions: &[CatalogueFunction],
+    call: OperationId,
+    held: impl Fn(&CatalogueFunction) -> bool,
+) -> Option<&CatalogueFunction> {
+    functions.iter().find(|function| {
+        function.alias_of.is_none()
+            && operation_of(function).is_some_and(|operation| operation.id == call)
+            && held(function)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -678,6 +715,7 @@ impl OperationApi for BootstrapApi {
         write_file(path: String, contents: String) -> ToolOutcome;
         edit_file(path: String, old_string: String, new_string: String) -> ToolOutcome;
         list_dir(path: Option<String>) -> ToolOutcome;
+        search(query: String, path: Option<String>, limit: Option<u32>) -> ToolOutcome;
         read_skill(name: String) -> ToolOutcome;
         write_memory(
             name: String,
@@ -761,6 +799,7 @@ impl OperationApi for BootstrapApi {
             path: String,
             offset: Option<usize>,
             limit: Option<usize>,
+            max_line_chars: Option<usize>,
         ) -> ViewOpenOutcome;
         open_text_view(label: String, body: String) -> Result<SandboxViewOpened, ViewRefusal>;
         close_view(selector: String) -> Result<u32, ViewRefusal>;

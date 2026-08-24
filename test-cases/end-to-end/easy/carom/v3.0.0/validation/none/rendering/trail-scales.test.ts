@@ -12,7 +12,8 @@
 // build's styling (a glow that lights a little of the lane at either speed) out
 // of the comparison.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { readTrail } from "./trail";
 
@@ -36,6 +37,6 @@ it("paints a longer streak behind a faster ball", async () => {
   const fast = await readTrail(h, FAST);
   await captureStill(h, "fast");
 
-  expect(slow.paintedReach).toBeGreaterThan(0);
-  expect(fast.paintedReach).toBeGreaterThan(slow.paintedReach);
+  assertGreaterThan(slow.paintedReach, 0);
+  assertGreaterThan(fast.paintedReach, slow.paintedReach);
 });

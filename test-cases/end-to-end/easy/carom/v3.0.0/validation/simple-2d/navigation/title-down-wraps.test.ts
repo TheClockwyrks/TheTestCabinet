@@ -6,8 +6,9 @@
 // is raised by the binding the case declares, and the result is read back off
 // the game's own state. The still is the frame the press left.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -29,11 +30,11 @@ it("wraps the title selection from the last item to the first", async () => {
   h.debug.reset();
   // Down to the last item first, one press per step.
   for (let i = 1; i < TITLE_ITEMS.length; i += 1) await h.tap("ArrowDown");
-  expect(menuIndex0(h)).toBe(TITLE_ITEMS.length - 1);
+  assertEqual(menuIndex0(h), TITLE_ITEMS.length - 1);
 
   await h.tap("ArrowDown");
   captureStill(h, "menu");
 
-  expect(h.snapshot().screen).toBe("title");
-  expect(menuIndex0(h)).toBe(0);
+  assertEqual(h.snapshot().screen, "title");
+  assertEqual(menuIndex0(h), 0);
 });

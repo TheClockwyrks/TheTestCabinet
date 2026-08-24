@@ -11,7 +11,12 @@
 // while staying each ball's own. The hold a RESPAWNED ball takes on its own is
 // `multi/independent-respawn`.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import {
   HOLD_TICKS,
@@ -48,15 +53,16 @@ it("holds all three balls for the hold, then launches them together", async () =
     return { first, balls, screen };
   });
 
-  expect(launch.first.hit).toBe(true);
-  expect(Math.abs(launch.first.frames - HOLD_TICKS)).toBeLessThanOrEqual(
+  assertEqual(launch.first.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(launch.first.frames - HOLD_TICKS),
     HOLD_TOLERANCE_TICKS,
   );
   // All three, on that one frame: the holds started together, so they end
   // together and the field goes live as a whole.
   for (const ball of launch.balls) {
-    expect(ball.held).toBe(false);
-    expect(ball.speed).toBeGreaterThan(1);
+    assertEqual(ball.held, false);
+    assertGreaterThan(ball.speed, 1);
   }
-  expect(launch.screen).toBe("playing");
+  assertEqual(launch.screen, "playing");
 });

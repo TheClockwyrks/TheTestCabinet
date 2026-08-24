@@ -49,7 +49,7 @@ by `gg.views.close`.
 
 | Function | What it does |
 | --- | --- |
-| `gg.views.openFile(path, options?)` | Reads the file and opens a view of it, returning exactly what `gg.files.readFile` returns for that window. |
+| `gg.views.openFile(path, options?)` | Reads the file and opens a view of it, returning exactly what `gg.files.readFile` returns for that window. `options` adds `maxLineChars` to the read's own; see [caps](#caps). |
 | `gg.views.openText(label, body)` | Opens the text view keyed by `label`. |
 | `gg.views.openDocsView(target)` | Opens the documentation view for one bound function or type. |
 | `gg.views.close(selector)` | Closes every file, text and search view carrying that selector, and returns how many it closed. |
@@ -131,7 +131,7 @@ closing is what takes back a page the agent still holds.
 
 | Cap | Value | Bounds |
 | --- | --- | --- |
-| `MAX_TEXT_VIEW_BYTES` | 65,536 | one `openText` body |
+| `MAX_TEXT_VIEW_BYTES` | 65,536 | one `openText` body; one file view's text body |
 | `MAX_VIEW_LABEL_BYTES` | 200 | one `openText` label |
 | `MAX_COMPOSED_VIEW_BYTES_PER_TURN` | 8 MiB | every `openText` body across one turn's programs |
 | `IMAGE_ATTACH_CAP` | 8 MiB | one attached picture |
@@ -139,8 +139,23 @@ closing is what takes back a page the agent still holds.
 Breaching one of the three text-view caps is a catchable `ApiError` with code
 `limit-exceeded` stating the offending size and the bound (and, for the turn
 budget, what remains of it), thrown at the call site, and never a truncation.
-The program can split the body, trim it, or write it to a file and open a file
-view of that, in the same turn, before it has finished running.
+The program can split the body, trim it, or write it to a file and open a
+windowed file view of that, in the same turn, before it has finished running.
+
+A file view's text body is held to `MAX_TEXT_VIEW_BYTES` on the same terms: an
+`openFile` whose window would carry more than the cap is refused with the size
+and the bound, and the program narrows the window with `offset` and `limit`, or
+cuts the file's long lines with `maxLineChars`, in the same turn. `openFile`
+takes `maxLineChars` beside the read's own options. When it is set, each line of
+the view longer than that count is cut at it and annotated in place with how
+many characters were cut, as `foo (123 more chars...)`; left out, lines arrive
+whole, and a value of zero or one over `MAX_TEXT_VIEW_BYTES` is
+`invalid-argument`. The truncation is the view's alone, so what `gg.files.readFile`
+returns — and what `openFile` itself returns — and the file itself are untouched,
+and the byte cap is measured against the body after it, which is what lets a
+window over a log of enormous lines fit. A picture's view is not a text body and
+is bounded by `IMAGE_ATTACH_CAP` alone.
+
 `IMAGE_ATTACH_CAP` is not enforced that way: an `openFile` of a picture over it
 is a successful read whose result describes the file and says it is too large to
 display, and no picture is attached.
@@ -319,9 +334,9 @@ operation is reachable through more than one declaration on some arms.
 The [ending calls](/gg/ending-a-session/) are the one exemption. The system prompt
 spells them at the model in the arm's own words, so calling one follows an
 instruction gg gave. Every other call is measured, `gg.docs.search` and
-`gg.views.openDocsView` included: [the opening turn](#the-opening-turn) opens a
-documentation view of both before the model's first turn, so they are documented
-from turn one.
+the view-opening functions included: [the opening turn](#the-opening-turn) opens
+their documentation before the model's first turn, so they are documented from
+turn one.
 
 gg's own programs contribute nothing. The opening turn's program and the on-use
 script of a skill or memory are written by gg rather than by a model, so their
@@ -363,10 +378,15 @@ its own import line and its own entry point, on the terms in
 
 The program makes two kinds of call. It runs one search naming the agent's
 filesystem and shell modules together, which leaves a single view listing every
-function those two modules offer with its one-line brief. It also opens the
-documentation of `gg.docs.search` and `gg.views.openDocsView`, the two calls
-discovery itself is made of. Between them the agent opens holding what it
-reaches for first and the means to find everything else.
+function those two modules offer with its one-line brief. It also opens
+documentation views of the calls discovery and showing are made of:
+`gg.docs.search`, and every view-opening function this agent is offered, which
+is `gg.views.openText` and `gg.views.openDocsView` on every run and
+`gg.views.openFile` where the agent holds it. Where the agent holds
+[`gg.files.search`](/gg/filesystem/#searching), its documentation is opened
+too, so the call that greps a workspace is read before it is written. Between
+them the agent opens holding what it reaches for first, the calls that put
+anything in its own window, and the means to find everything else.
 
 The window opens on those two modules alone. The system prompt names every
 module the agent holds, one line each, and a module path is an exact lookup, so

@@ -7,7 +7,8 @@
 // of the rebound with no stray flight in between — which is why the margin is a
 // float margin rather than a tolerance.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import {
   arrangeObstacleBounce,
@@ -66,8 +67,9 @@ it("leaves the ball's speed unchanged through an obstacle bounce", async () => {
     return rebound;
   });
 
-  expect(bank.hit).toBe(true);
-  expect(Math.abs(ball0(bank.snapshot).speed - before)).toBeLessThanOrEqual(
+  assertEqual(bank.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(ball0(bank.snapshot).speed - before),
     SPEED_TOLERANCE,
   );
 });

@@ -2,9 +2,9 @@
 title: "Filesystem tools"
 ---
 
-The four editor primitives a coding agent works through. Each is its own
-capability, so a study can withhold or reconfigure one without disturbing the
-others.
+The four editor primitives a coding agent works through, and the search that
+finds where to point them. Each is its own capability, so a study can withhold
+or reconfigure one without disturbing the others.
 
 | Capability | Tool | What it does |
 | --- | --- | --- |
@@ -12,8 +12,9 @@ others.
 | `write-file` | `write_file` | Create or overwrite a whole file (parents created). |
 | `edit-file` | `edit_file` | Replace one exact, unique occurrence of a string. |
 | `list-dir` | `list_dir` | List a directory's entries (directories suffixed `/`). |
+| `search` | `search` | Content search over the workspace, under the ignore rule in [searching](#searching) below. |
 
-All four are enabled in a fresh configuration, and they appear as their own
+All five are enabled in a fresh configuration, and they appear as their own
 Filesystem group in the [configuration](/gg/configurations/) editor.
 
 `edit_file` replaces exactly one occurrence. Text that is absent and text that
@@ -39,6 +40,43 @@ The container is the boundary, so these tools reach anything in it. gg's own
 shell [offloads](/gg/shell/#output-offloading) command output to `/tmp/gg-shell`
 and tells the agent to read it there, which a workspace-confined `read_file`
 could not honor.
+
+## Searching
+
+The `search` capability's one tool scans the workspace's files for a query and
+returns the matching lines, each with its path and 1-based line number. Under
+[responses as code](/gg/responses-as-code/overview/) the same operation is
+`gg.files.search`, and an agent that holds it has its documentation opened by
+[the opening turn](/gg/responses-as-code/views/#the-opening-turn), before the
+model's first turn.
+
+The query is a **regular expression** (Rust syntax — `foo|bar`, `fn\s+update`,
+`(?i)todo` for a case-insensitive match), tried against each line on its own;
+a blank query and an invalid pattern are both argument errors. `path` roots the
+search at one directory or one file — absent, the workspace root — and a path
+that does not exist is `not-found`. Matches arrive in path order and then line
+order, each as the path, the 1-based line number and the line without its
+ending.
+
+The result is bounded so one search cannot flood a turn. `limit` says how many
+matches come back — 50 when it is left out, and never more than 200, so a larger
+request is answered with the first 200 — and a list exactly `limit` long may have
+been cut; there is no offset, because a search is a question about where to
+point the other tools rather than a way of reading a file, so the answer to a
+cut list is a narrower query or path. A matching line longer than 200 characters
+is cut there and annotated in place as `foo (123 more chars...)`, and a file that
+is not text (one carrying a NUL byte) is skipped rather than matched byte by
+byte.
+
+The search honors ignore files: what `.gitignore`, `.ignore` and their kin
+exclude — nested files, negations and `.git/info/exclude` included, and `.git`
+itself — is never scanned and never returned, in a workspace that is a
+repository and in one that is not yet. Dotfiles are otherwise searched like any
+other file. A match list therefore holds the agent's sources rather than
+`node_modules`, build output and the run's own bookkeeping, and a file under an
+ignored path is still reachable by path through every other tool on this page.
+Ignoring is the search's own rule, because a search is a question about the
+project rather than about the disk.
 
 ## Read modes
 
@@ -188,7 +226,9 @@ the window nothing: `gg.files.readFile` hands the bytes to the program and stops
 there. What puts a file in the window is `gg.views.openFile(path)`. It performs
 the identical read, under the same line cap, the same magic-number detection and
 the same 8 MiB ceiling, and it also opens a file view of the result, keyed by the
-path and closable by it. `gg.files.readFile` gets bytes for your program;
+path and closable by it. What one view may carry is bounded by the
+[view caps](/gg/responses-as-code/views/#caps), which refuse an over-cap window
+rather than truncating it. `gg.files.readFile` gets bytes for your program;
 `gg.views.openFile` shows a file to you.
 
 A picture obeys that split. Under the code arm `gg.files.readFile` of a mockup

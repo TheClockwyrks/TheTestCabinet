@@ -5,7 +5,8 @@
 // selection is moved to `VERSUS` with one real down press and confirmed with a
 // real Enter.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertNull } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 let h: Harness;
@@ -25,8 +26,8 @@ it("starts a Versus match on its countdown", async () => {
   await captureStill(h, "countdown");
 
   const opened = await h.snapshot();
-  expect(opened.screen).toBe("countdown");
-  expect(opened.mode).toBe("versus");
-  expect(opened.score).toEqual({ p1: 0, p2: 0 });
-  expect(opened.winner).toBeNull();
+  assertEqual(opened.screen, "countdown");
+  assertEqual(opened.mode, "versus");
+  assertDeepEqual(opened.score, { p1: 0, p2: 0 });
+  assertNull(opened.winner);
 });

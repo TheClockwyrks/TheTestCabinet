@@ -4,7 +4,8 @@
 // The selection is moved to the third entry with two real down presses and
 // confirmed with a real Enter.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { reachHowto } from "./screens";
 
@@ -22,5 +23,5 @@ it("opens the how-to screen from the title", async () => {
   await reachHowto(h);
   await captureStill(h, "howto");
 
-  expect((await h.snapshot()).screen).toBe("howto");
+  assertEqual((await h.snapshot()).screen, "howto");
 });

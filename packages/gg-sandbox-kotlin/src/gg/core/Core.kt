@@ -17,11 +17,12 @@ package gg.core
  * than free text, so the branch is checked by the compiler:
  *
  * ```
+ * val name = "gg.docs.search"
  * try {
- *     gg.views.openText("notes", gg.files.readTextFile("notes.md"))
+ *     gg.views.openDocsView(name)
  * } catch (failure: gg.core.ApiError) {
- *     if (failure.code == gg.core.ApiErrorCode.NOT_FOUND) gg.files.writeFile("notes.md", "")
- *     else throw failure
+ *     if (failure.code != gg.core.ApiErrorCode.NOT_FOUND) throw failure
+ *     gg.views.openText("docs", "nothing on this surface is called $name")
  * }
  * ```
  *
@@ -36,8 +37,8 @@ package gg.core
  * failure has no second channel to carry the call's name and its class on, and every arm of a study
  * reports one in that same shape. [detail] is the sentence without them.
  *
- * @property operation The gg call that failed, under gg's own name for it (`read_file`,
- *   `spawn_subagent`).
+ * @property operation The gg call that failed, under gg's own name for it (`open_text`,
+ *   `open_docs_view`).
  * @property code The failure class, so a catch site branches on a value rather than on prose.
  * @property detail What went wrong, in gg's own words alone.
  *
@@ -131,15 +132,15 @@ public enum class ApiErrorCode(public val wireName: String) {
 /**
  * One field of a revision that can be cleared as well as replaced.
  *
- * Most of what `gg.tasks.updateTask` and `gg.board.updateIssue` take is two-way: naming a field
- * replaces it and leaving it out keeps it. A description, and an issue's epic, are three-way — kept,
- * replaced, or emptied — and `null` is already spoken for by the second of those, since leaving an
- * argument out is passing `null` in this language. So the third state is a value rather than a
- * sentinel, which is what a sealed type is for:
+ * Most of what a revision takes — of a task, of a board issue — is two-way: naming a field replaces
+ * it and leaving it out keeps it. A description, and an issue's epic, are three-way — kept, replaced,
+ * or emptied — and `null` is already spoken for by the second of those, since leaving an argument out
+ * is passing `null` in this language. So the third state is a value rather than a sentinel, which is
+ * what a sealed type is for:
  *
  * ```
- * gg.tasks.updateTask("parse", description = gg.core.Patch.Replace("read the manifest first"))
- * gg.board.updateIssue("AUTH-1", epicId = gg.core.Patch.Clear)
+ * val rewritten = gg.core.Patch.Replace("read the manifest first")
+ * val emptied = gg.core.Patch.Clear
  * ```
  */
 public sealed interface Patch<out T> {

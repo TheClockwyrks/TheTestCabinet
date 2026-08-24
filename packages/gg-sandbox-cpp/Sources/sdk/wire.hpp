@@ -105,30 +105,36 @@ std::vector<std::string> lift(const sandbox_list_string_t& texts);
 // value with no `else`.
 [[noreturn]] void fail(test_cabinet_gg_types_api_error_t& failure);
 
-// The two nullable scalars a read's window and a search's page are, as the ABI spells an optional
-// `u32` argument: a pointer that is null for the absent case.
+// The nullable scalars a read's window, a search's page and a file view's cut are, as the ABI
+// spells an optional `u32` argument: a pointer that is null for the absent case.
 //
-// One type for both because the two are the same pair — an offset and a count, either of which may
-// be left out — and the ABI shape is what this class exists to produce. The reads name it in their
-// own terms with `files::read_window`; a page arrives as the two optionals it already is.
+// One type for all of them because they are the same shape — an offset, a count and a cut, any of
+// which may be left out — and the ABI shape is what this class exists to produce. The reads name it
+// in their own terms with `files::read_window`, a file view with `views::view_options`; a page
+// arrives as the two optionals it already is.
 struct window {
   explicit window(const files::read_window& from);
+  explicit window(const views::view_options& from);
   window(std::optional<std::uint32_t> offset, std::optional<std::uint32_t> limit);
 
   std::uint32_t* offset();
   std::uint32_t* limit();
+  std::uint32_t* max_line_chars();
 
  private:
   std::optional<std::uint32_t> offset_;
   std::optional<std::uint32_t> limit_;
+  std::optional<std::uint32_t> max_line_chars_;
   std::uint32_t offset_value_{};
   std::uint32_t limit_value_{};
+  std::uint32_t max_line_chars_value_{};
 };
 
 // The lifts for the records this SDK hands back, one per wire type.
 shell::shell_output lift_shell_output(test_cabinet_gg_shell_shell_output_t& wire);
 files::file_read lift_file_read(test_cabinet_gg_files_file_read_t& wire);
 files::dir_entry lift_dir_entry(const test_cabinet_gg_files_dir_entry_t& wire);
+files::search_match lift_search_match(const test_cabinet_gg_files_search_match_t& wire);
 memories::memory_usage lift_memory_usage(const test_cabinet_gg_memories_memory_usage_t& wire);
 memories::memory_hit lift_memory_hit(const test_cabinet_gg_memories_memory_hit_t& wire);
 tasks::task_usage lift_task_usage(const test_cabinet_gg_tasks_task_usage_t& wire);

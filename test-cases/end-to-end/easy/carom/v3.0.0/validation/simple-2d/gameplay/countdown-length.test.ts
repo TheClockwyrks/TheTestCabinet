@@ -12,8 +12,13 @@
 // also the first countdown frame, and the serve lands on the frame on which
 // `holdTimer - dt <= 0` first holds: HOLD_TIME of frames counting that one.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { HOLD_TIME } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   ball0,
   captureReplay,
@@ -54,8 +59,8 @@ it("holds the ball for the pre-serve countdown, then serves", async () => {
   await startWithKeys(harness, "versus");
 
   const start = harness.snapshot();
-  expect(start.screen).toBe("countdown");
-  expect(ball0(start).held).toBe(true);
+  assertEqual(start.screen, "countdown");
+  assertEqual(ball0(start).held, true);
 
   // The hold itself, from the frame after the menu confirm to the launch: the
   // countdown running out is the whole of what this point is about.
@@ -68,9 +73,7 @@ it("holds the ball for the pre-serve countdown, then serves", async () => {
     return launched;
   });
 
-  expect(served.hit).toBe(true);
-  expect(Math.abs(served.frames - HOLD_TICKS)).toBeLessThanOrEqual(
-    TOLERANCE_TICKS,
-  );
-  expect(ball0(served.snapshot).speed).toBeGreaterThan(1);
+  assertEqual(served.hit, true);
+  assertLessThanOrEqual(Math.abs(served.frames - HOLD_TICKS), TOLERANCE_TICKS);
+  assertGreaterThan(ball0(served.snapshot).speed, 1);
 });

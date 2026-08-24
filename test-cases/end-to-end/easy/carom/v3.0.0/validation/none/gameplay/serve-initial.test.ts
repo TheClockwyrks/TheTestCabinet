@@ -15,7 +15,8 @@
 // opponent, so a build that gets it right only in Versus fails here rather than
 // passing on the mode that happened to be tested.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
 import {
   ball0,
   captureReplay,
@@ -64,8 +65,8 @@ it("serves toward player one to open a match", async () => {
       // The menu keys really did open a match, so the launch below belongs to a
       // match this check started rather than to a title screen that never left.
       const opened = await harness.debug.snapshot();
-      expect(opened.screen).toBe("countdown");
-      expect(opened.mode).toBe(mode);
+      assertEqual(opened.screen, "countdown");
+      assertEqual(opened.mode, mode);
 
       await harness.advance(HELD_TICKS);
       await harness.debug.serve();
@@ -77,15 +78,15 @@ it("serves toward player one to open a match", async () => {
       // no assertion; the next mode opens with `debug.reset()` either way.
       await harness.advance(FLIGHT_TICKS);
 
-      expect(launched.hit).toBe(true);
+      assertEqual(launched.hit, true);
       // Player one defends the LEFT edge, so a serve toward player one travels
       // left: a strictly negative horizontal velocity.
-      expect(ball0(launched.snapshot).vx).toBeLessThan(0);
+      assertLessThan(ball0(launched.snapshot).vx, 0);
     }
   });
   // And the page stayed quiet throughout: nothing the build threw, and nothing
   // it logged as an error, while this harness was driving it. An engineless
   // build loads no assets through a runtime, so there is no asset log to read —
   // the browser's own is the wider reading, and it covers the whole drive.
-  expect(harness.pageErrors).toEqual([]);
+  assertDeepEqual(harness.pageErrors, []);
 });

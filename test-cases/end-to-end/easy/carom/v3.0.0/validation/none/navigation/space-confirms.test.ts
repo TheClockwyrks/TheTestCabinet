@@ -4,7 +4,8 @@
 // moved to `HOW TO PLAY` with two real down presses and confirmed with a real
 // Space: the screen opened is `howto`.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 let h: Harness;
@@ -24,5 +25,5 @@ it("opens the selected entry on Space", async () => {
   await h.tap("Space");
   await captureStill(h, "howto");
 
-  expect((await h.snapshot()).screen).toBe("howto");
+  assertEqual((await h.snapshot()).screen, "howto");
 });

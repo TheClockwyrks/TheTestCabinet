@@ -2,7 +2,7 @@
 //!
 //! An issue is heavyweight and self-contained: its scope, non-scope and completion criteria are
 //! exactly what a delegated child agent is briefed from, which is why [`create_issue`] asks for more
-//! than [`tasks::add_task`](crate::tasks::add_task) does.
+//! than adding a task does.
 //!
 //! Two of [`IssuePatch`]'s fields are three-way, and Rust has an `enum` for exactly that:
 //! [`TextEdit`] leaves, empties or replaces a description, and
@@ -23,7 +23,6 @@ pub(crate) const OPERATIONS: &[&str] = &[
     "remove_issue",
     "wait_for_issue",
 ];
-
 
 /// Create an epic to group related issues, and hand back the id its prefix resolved to.
 ///

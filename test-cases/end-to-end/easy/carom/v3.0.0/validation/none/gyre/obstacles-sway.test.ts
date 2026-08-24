@@ -10,7 +10,12 @@
 // formula, within a unit. Nothing here computes the pose: it poses the CLOCK
 // and reads what the build's own update made of it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertDeepEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   OBSTACLE_CENTERS,
   OBSTACLE_SWAY_AMP,
@@ -60,14 +65,15 @@ it("sways both obstacles vertically by the formula, in anti-phase", async () => 
   for (const [k, t] of TIMES.entries()) {
     for (const [i, base] of OBSTACLE_CENTERS.entries()) {
       const pose = samples[k]![i]!;
-      expect(
+      assertLessThanOrEqual(
         Math.abs(pose.cy - (base.y + swayAt(i, t))),
+        SWAY_TOLERANCE,
         `obstacle ${i} at t = ${t}: cy`,
-      ).toBeLessThanOrEqual(SWAY_TOLERANCE);
-      expect(pose.cx, `obstacle ${i} at t = ${t}: cx`).toBeCloseTo(base.x, 6);
+      );
+      assertCloseTo(pose.cx, base.x, 6, `obstacle ${i} at t = ${t}: cx`);
     }
   }
 
   // Nothing the page threw or logged as an error while this harness drove it.
-  expect(harness.pageErrors).toEqual([]);
+  assertDeepEqual(harness.pageErrors, []);
 });

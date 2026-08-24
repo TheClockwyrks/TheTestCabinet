@@ -39,7 +39,8 @@ use crate::tasks::TaskStatus;
 use crate::tools::{
     ApiData, ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData, DirEntryData,
     DirEntryKind, FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData,
-    ShellData, SubagentHandleData, SubagentResultData, ToolFailure, ToolOutcome, UsagePair,
+    SearchMatchData, ShellData, SubagentHandleData, SubagentResultData, ToolFailure, ToolOutcome,
+    UsagePair,
 };
 
 /// The [program language](ProgramLanguage) the sandbox's own tests drive: **TypeScript**.
@@ -380,6 +381,12 @@ impl OperationApi for FakeOperationApi {
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome {
         self.call("list_dir", json!({ "path": path }))
     }
+    fn search(&mut self, query: String, path: Option<String>, limit: Option<u32>) -> ToolOutcome {
+        self.call(
+            "search",
+            json!({ "query": query, "path": path, "limit": limit }),
+        )
+    }
     fn read_skill(&mut self, name: String) -> ToolOutcome {
         self.call("read_skill", json!({ "name": name }))
     }
@@ -663,11 +670,13 @@ impl OperationApi for FakeOperationApi {
         path: String,
         offset: Option<usize>,
         limit: Option<usize>,
+        max_line_chars: Option<usize>,
     ) -> ViewOpenOutcome {
-        let mut outcome = self.call(
-            "read_file",
-            json!({ "path": path, "offset": offset, "limit": limit }),
-        );
+        let mut args = json!({ "path": path, "offset": offset, "limit": limit });
+        if let Some(chars) = max_line_chars {
+            args["maxLineChars"] = json!(chars);
+        }
+        let mut outcome = self.call("read_file", args);
         if !outcome.ok {
             return ViewOpenOutcome {
                 outcome,
@@ -792,6 +801,13 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
                     kind: DirEntryKind::Directory,
                 },
             ]),
+        ),
+        "search" => ToolOutcome::ok("src/a.ts:3: const answer = 42;", "1 matches").with_data(
+            ApiData::SearchMatches(vec![SearchMatchData {
+                path: "src/a.ts".to_string(),
+                line: 3,
+                text: "const answer = 42;".to_string(),
+            }]),
         ),
         "read_skill" => ToolOutcome::ok("the skill body", "read a skill"),
         "write_memory" | "update_memory" | "create_memory" | "edit_memory" | "delete_memory" => {

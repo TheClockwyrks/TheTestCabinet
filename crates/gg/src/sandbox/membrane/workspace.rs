@@ -1,7 +1,7 @@
-//! The workspace half of the membrane: `shell`, the four file operations, and the one helper built on
-//! them.
+//! The workspace half of the membrane: `shell`, the five file operations, and the one helper built
+//! on them.
 //!
-//! These six are what almost every program touches, and two of them carry rules worth stating
+//! These seven are what almost every program touches, and two of them carry rules worth stating
 //! where they are implemented. `shell` reports a non-zero exit as a **value**, because branching on
 //! `result.exitCode` is the single most common thing a program does — and, for the same reason, a
 //! process that ran is recorded as a completed call however it exited.
@@ -15,7 +15,7 @@
 use std::time::Duration;
 
 use super::test_cabinet::gg::files::{
-    DirEntry, EntryKind, FileRead, Host as FilesHost, ImageRead, TextRead,
+    DirEntry, EntryKind, FileRead, Host as FilesHost, ImageRead, SearchMatch, TextRead,
 };
 use super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::test_cabinet::gg::shell::{Host as ShellHost, ShellOutput};
@@ -23,10 +23,10 @@ use super::test_cabinet::gg::types::{ApiError, ErrorCode};
 use super::{MembraneState, OperationApi};
 use crate::sandbox::operations::OperationId;
 use crate::sandbox::operations::{
-    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_READ_TEXT_FILE, FILES_WRITE_FILE,
-    SHELL_SHELL,
+    FILES_EDIT_FILE, FILES_LIST_DIR, FILES_READ_FILE, FILES_READ_TEXT_FILE, FILES_SEARCH,
+    FILES_WRITE_FILE, SHELL_SHELL,
 };
-use crate::tools::{ApiData, DirEntryData, DirEntryKind};
+use crate::tools::{ApiData, DirEntryData, DirEntryKind, SearchMatchData};
 
 /// gg's own default `shell` timeout, restated here because the membrane must clamp a value *before*
 /// the tool sees it — and a call that arrived at the tool with no timeout at all would be clamped
@@ -138,6 +138,25 @@ impl<A: OperationApi> FilesHost for MembraneState<A> {
             }
         })
     }
+
+    /// Search the workspace under the ignore files — `files.search`. The tool decides everything
+    /// about the query, the root and the bounds; this lowers the matches it found.
+    fn search(
+        &mut self,
+        query: String,
+        path: Option<String>,
+        limit: Option<u32>,
+    ) -> Result<Vec<SearchMatch>, ApiError> {
+        self.recorded(FILES_SEARCH, |state, rec| {
+            let outcome = state.call(rec, FILES_SEARCH, |api| api.search(query, path, limit))?;
+            match outcome.data {
+                Some(ApiData::SearchMatches(matches)) => {
+                    Ok(matches.into_iter().map(search_match).collect())
+                }
+                other => Err(state.missing_data(FILES_SEARCH, other.as_ref())),
+            }
+        })
+    }
 }
 
 impl<A: OperationApi> HelpersHost for MembraneState<A> {
@@ -242,6 +261,12 @@ fn entry(entry: DirEntryData) -> DirEntry {
             DirEntryKind::Other => EntryKind::Other,
         },
     }
+}
+
+/// One search match, as the membrane declares it.
+fn search_match(found: SearchMatchData) -> SearchMatch {
+    let SearchMatchData { path, line, text } = found;
+    SearchMatch { path, line, text }
 }
 
 /// The `timeout_secs` a `shell` call is actually made with: what the program asked for (or gg's

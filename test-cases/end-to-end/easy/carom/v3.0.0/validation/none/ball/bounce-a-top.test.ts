@@ -14,7 +14,13 @@
 // placed it, as the review item states, however the build divided the frame. Under gyre the obstacles are held upright at clock 0, where the
 // oriented rule reduces to this one. The other faces are the sibling checks.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { OBSTACLES } from "../constants";
 import {
   arrangeFaceShot,
@@ -58,11 +64,11 @@ it("banks the ball off obstacle A's top face", async () => {
     return rebound;
   });
 
-  expect(bank.hit).toBe(true);
+  assertEqual(bank.hit, true);
   const after = ball0(bank.snapshot);
-  expect(after.vy).toBeCloseTo(-before.vy, 6);
-  expect(after.vx).toBeCloseTo(before.vx, 6);
+  assertCloseTo(after.vy, -before.vy, 6);
+  assertCloseTo(after.vx, before.vx, 6);
   const placed = restingOff(RECT, FACE);
-  expect(after.y).toBeLessThanOrEqual(placed + 1e-6);
-  expect(after.y).toBeGreaterThanOrEqual(placed - FRAME_TRAVEL);
+  assertLessThanOrEqual(after.y, placed + 1e-6);
+  assertGreaterThanOrEqual(after.y, placed - FRAME_TRAVEL);
 });

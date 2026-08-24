@@ -17,6 +17,7 @@ import gg.files.DirEntry
 import gg.files.EntryKind
 import gg.files.FileRead
 import gg.files.ImageFile
+import gg.files.SearchMatch
 import gg.files.TextFile
 import gg.memories.MemoryHit
 import gg.memories.MemoryUsage
@@ -81,6 +82,16 @@ internal object Read {
     fun dirEntries(value: Value): List<DirEntry> =
         ggEach(value) {
             DirEntry(name = it.get("name").text(), kind = entryKind(it.get("kind").text()))
+        }
+
+    /** Every line a search matched. */
+    fun searchMatches(value: Value): List<SearchMatch> =
+        ggEach(value) {
+            SearchMatch(
+                path = it.get("path").text(),
+                line = it.get("line").integer(),
+                text = it.get("text").text(),
+            )
         }
 
     /** The memory budget. */

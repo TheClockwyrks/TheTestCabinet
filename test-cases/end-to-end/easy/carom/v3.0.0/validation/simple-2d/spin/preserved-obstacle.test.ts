@@ -6,8 +6,9 @@
 // snapshot's own `simTime` gives. A spinning ball is posed level with obstacle A's left face, travelling at it, and the spin
 // is read on the frame the normal component reverses.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLES, SPIN_HALFLIFE } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeLiveBall,
   ball0,
@@ -51,10 +52,11 @@ it("keeps the spin through an obstacle bounce, less the decay", async () => {
     return reflected;
   });
 
-  expect(bounce.hit).toBe(true);
+  assertEqual(bounce.hit, true);
   const elapsed = bounce.snapshot.simTime - before.simTime;
   const expected = ball0(before).spin * Math.pow(0.5, elapsed / SPIN_HALFLIFE);
-  expect(Math.abs(ball0(bounce.snapshot).spin - expected)).toBeLessThanOrEqual(
+  assertLessThanOrEqual(
+    Math.abs(ball0(bounce.snapshot).spin - expected),
     Math.abs(expected) * RELATIVE_TOLERANCE,
   );
 });

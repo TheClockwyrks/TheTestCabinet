@@ -29,42 +29,86 @@ public final class Views {
     /**
      * Read a file and show it in the context window, keyed by its path.
      *
-     * <p>The split from {@code Files.readFile} is the point: that call gets bytes for the program
-     * and this one puts the file in front of the model, so a program that reads forty files to grep
-     * them costs nothing. An image file is shown as a picture, and this is the only way to look at
+     * <p>Unlike {@code Files.readFile}, which gets bytes for the program, this puts the file in
+     * front of the model. An image file is shown as a picture, and this is the only way to look at
      * one.
      *
-     * <p>Re-opening a file already open replaces what it showed rather than piling up a duplicate,
-     * so a program may open the same file every turn without the window growing.
+     * <p>Re-opening a file already open replaces what it showed, so a program may open the same
+     * file every turn without the window growing.
+     *
+     * <p>A text view is capped at 65,536 bytes; a file over it is refused rather than cut, and the
+     * way in is a page of it or cut lines. A picture is not subject to the cap.
      *
      * @param path The file to open, relative to the workspace or absolute.
      * @return the file's text, or the picture's description
-     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path. The read is what fails,
-     *     and nothing is opened when it does.
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path, and
+     *     {@link ApiErrorCode#LIMIT_EXCEEDED}, naming the size, for a view over the cap. The read
+     *     is what fails, and nothing is opened when it does.
      * @ggop views.open_file
      */
     public static Files.FileRead openFile(String path) {
         return Read.fileRead(Coding.call("views.open_file", Value.of(path), Value.none(),
-                Value.none()));
+                Value.none(), Value.none()));
+    }
+
+    /**
+     * Show a whole file with its long lines cut.
+     *
+     * <p>Each line over {@code maxLineChars} characters is cut in the view and annotated as
+     * {@code foo (123 more chars...)}; the cap is measured after the cut, and neither the return
+     * value nor the file is cut.
+     *
+     * @param path The file to open, relative to the workspace or absolute.
+     * @param maxLineChars The width, in characters, past which each line of the view is cut. From 1
+     *     to 65,536.
+     * @return the file's text, or the picture's description
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for a width outside 1 to 65,536, and
+     *     what the one-argument overload throws.
+     * @ggop views.open_file
+     */
+    public static Files.FileRead openFile(String path, int maxLineChars) {
+        return Read.fileRead(Coding.call("views.open_file", Value.of(path), Value.none(),
+                Value.none(), Value.of(maxLineChars)));
     }
 
     /**
      * Show one page of a file rather than the whole of it.
      *
      * <p>Two pages of one file are two views that coexist; re-opening the same page replaces what it
-     * showed rather than piling up a duplicate.
+     * showed.
      *
      * @param path The file to open, relative to the workspace or absolute.
      * @param offset The 1-based first line to show.
      * @param limit How many lines to show from {@code offset}.
      * @return the window of the file's text, or the picture's description
-     * @throws ApiError {@link ApiErrorCode#NOT_FOUND} for a missing path, and
-     *     {@link ApiErrorCode#INVALID_ARGUMENT} for an offset past the end of the file.
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an offset past the end of the
+     *     file, and what the one-argument overload throws.
      * @ggop views.open_file
      */
     public static Files.FileRead openFile(String path, int offset, int limit) {
         return Read.fileRead(Coding.call("views.open_file", Value.of(path), Value.of(offset),
-                Value.of(limit)));
+                Value.of(limit), Value.none()));
+    }
+
+    /**
+     * Show one page of a file with its long lines cut.
+     *
+     * <p>The page {@code offset} and {@code limit} name, with each line over {@code maxLineChars}
+     * cut as the two-argument overload cuts it.
+     *
+     * @param path The file to open, relative to the workspace or absolute.
+     * @param offset The 1-based first line to show.
+     * @param limit How many lines to show from {@code offset}.
+     * @param maxLineChars The width, in characters, past which each line of the view is cut. From 1
+     *     to 65,536.
+     * @return the window of the file's text, or the picture's description
+     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an offset past the end of the
+     *     file or a width outside 1 to 65,536, and what the one-argument overload throws.
+     * @ggop views.open_file
+     */
+    public static Files.FileRead openFile(String path, int offset, int limit, int maxLineChars) {
+        return Read.fileRead(Coding.call("views.open_file", Value.of(path), Value.of(offset),
+                Value.of(limit), Value.of(maxLineChars)));
     }
 
     /**
@@ -74,8 +118,8 @@ public final class Views {
      * assembled. Opening the same label again replaces what it showed, so a program may refine one
      * view in a loop without piling up a copy per iteration.
      *
-     * @param label What to file the view under. It is what {@link #close} takes, and opening the
-     *     same label again replaces what it showed. It may not be empty.
+     * @param label What to file the view under: the view's selector, so opening the same label
+     *     again replaces what it showed. It may not be empty.
      * @param body What to show. An empty body is allowed: it is how a program says that something it
      *     was showing is now empty.
      * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an empty label — a view with no
@@ -94,12 +138,11 @@ public final class Views {
      * value — the documentation arrives in the next prompt under a {@code Documentation} heading
      * keyed by the name, exactly as a file or a computed value arrives — so it is not available in
      * the turn that asks for it. Ask in one turn, use it in the next. Opening an entry already open
-     * does nothing at all, neither moving it nor sending it again, and {@code gg.docs.Docs.close}
-     * closes it — not {@link #close}, which does not reach documentation.
+     * does nothing at all, neither moving it nor sending it again.
      *
      * @param name The entry to document, by the fully-qualified name its documentation is keyed
-     *     by — {@code "gg.files.Files.readFile"}, and a module by its own path
-     *     ({@code "gg.files.Files"}). The bare name it is called by ({@code "readFile"}) also
+     *     by — {@code "gg.views.Views.openText"}, and a module by its own path
+     *     ({@code "gg.views.Views"}). The bare name it is called by ({@code "openText"}) also
      *     resolves and is a fallback rather than the form to reach for: two modules are free to
      *     declare a {@code close}, and only the qualified name says which one is meant. Searching
      *     the documentation is what says which names exist.
@@ -119,10 +162,9 @@ public final class Views {
      * no guard. Closing a file view forgets what was read rather than what exists; closing a text
      * view discards the only copy of what it held.
      *
-     * <p>Documentation views are not reached from here: {@code gg.docs.Docs.close} is what takes
-     * one away, and it is bought by a capability of its own, `docview-close`. A sweep that included them would
-     * hand back {@code 0} for an agent that may not close one, which reads as a selector that named
-     * nothing.
+     * <p>Documentation views are not reached from here: taking one away is bought by a capability
+     * of its own, and a sweep that included them would hand back {@code 0} for an agent that may
+     * not close one, which reads as a selector that named nothing.
      *
      * <p>Closing a view is context management, bought — with {@link #current()} — by the
      * {@code agent-managed-context} capability: an agent whose run did not enable it is refused.
@@ -167,8 +209,8 @@ public final class Views {
      * One view open in the context window, as the current set reports it.
      *
      * @param kind Whether it is a file, a text or a documentation view.
-     * @param selector What closes it: a path, a label or {@code search results} for
-     *     {@link Views#close}; a docs view's key goes to {@code Docs.close}.
+     * @param selector What {@link Views#close} takes: a path, a label or {@code search results}; a
+     *     documentation view's is its entry's key.
      * @param tokens Roughly what holding it costs, in tokens.
      * @param region The line window a paged file view covers; empty for a whole-file view and for
      *     every text view.
@@ -180,7 +222,7 @@ public final class Views {
          * Close this view, which is {@link Views#close} on its own selector.
          *
          * <p>A documentation view is the one this does not take away, because {@link Views#close}
-         * does not reach that band: {@code gg.docs.Docs.close} is the call for one of those.
+         * does not reach that band.
          *
          * @return how many views were closed, which is one unless it had already gone
          * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} for an agent whose run did not buy

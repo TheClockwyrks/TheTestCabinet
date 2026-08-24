@@ -9,7 +9,8 @@
 // unchanged. The margin is a float rounding: a single leaked frame turns an
 // obstacle by over 0.008 radians.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -40,22 +41,23 @@ it("holds the obstacles still while paused", async () => {
   await startWithKeys(harness, "versus");
   await harness.advance(RUN_TICKS);
   await harness.tap("Escape");
-  expect((await harness.snapshot()).screen).toBe("paused");
+  assertEqual((await harness.snapshot()).screen, "paused");
   const paused = await readObstacles(harness);
 
   await captureReplay(harness, "paused", async () => {
     await harness.advance(PAUSED_TICKS);
   });
 
-  expect((await harness.snapshot()).screen).toBe("paused");
+  assertEqual((await harness.snapshot()).screen, "paused");
   const later = await readObstacles(harness);
   for (const [i, before] of paused.entries()) {
     const after = later[i]!;
     for (const field of ["cx", "cy", "theta"] as const) {
-      expect(
+      assertLessThanOrEqual(
         Math.abs(after[field] - before[field]),
+        POSE_TOLERANCE,
         `obstacle ${i} ${field} held while paused`,
-      ).toBeLessThanOrEqual(POSE_TOLERANCE);
+      );
     }
   }
 });

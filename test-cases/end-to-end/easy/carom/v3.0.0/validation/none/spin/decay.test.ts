@@ -13,7 +13,13 @@
 // while its velocity and spin carry through untouched: only elapsed time acts
 // on the spin.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertEqual,
+  assertLessThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { FIELD_CX, FIELD_CY, SPIN_HALFLIFE } from "../constants";
 import {
   arrangeLiveBall,
@@ -63,21 +69,22 @@ it("halves the spin every half-life without changing its sign", async () => {
   await arrangeLiveBall(harness, BALL);
   await harness.debug.setBall(0, { spin: SPIN });
   const posed = ball0(await harness.snapshot()).spin;
-  expect(posed).toBeCloseTo(SPIN, 6);
+  assertCloseTo(posed, SPIN, 6);
 
   await captureReplay(harness, "decay", async () => {
     await flyFor(harness, HALF_LIFE_TICKS);
     const afterOne = ball0(await harness.snapshot()).spin;
 
-    expect(Math.sign(afterOne)).toBe(Math.sign(posed));
-    expect(Math.abs(Math.abs(afterOne) - 0.5 * SPIN)).toBeLessThanOrEqual(
+    assertEqual(Math.sign(afterOne), Math.sign(posed));
+    assertLessThanOrEqual(
+      Math.abs(Math.abs(afterOne) - 0.5 * SPIN),
       HALF_TOLERANCE * 0.5 * SPIN,
     );
 
     await flyFor(harness, TOTAL_TICKS - HALF_LIFE_TICKS);
     const settled = ball0(await harness.snapshot()).spin;
 
-    expect(Math.sign(settled)).toBe(Math.sign(posed));
-    expect(Math.abs(settled)).toBeLessThan(SETTLED_MAX * SPIN);
+    assertEqual(Math.sign(settled), Math.sign(posed));
+    assertLessThan(Math.abs(settled), SETTLED_MAX * SPIN);
   });
 });

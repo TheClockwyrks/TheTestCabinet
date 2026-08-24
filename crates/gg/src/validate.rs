@@ -110,11 +110,11 @@ use test_cabinet_core::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_DOCVIEW_CLOSE,
     CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR,
     CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, COMPACTION_PARAM_MODEL,
-    COMPACTION_PARAM_MODEL_SLOT, COMPACTION_STRATEGY_MEMORY, FSM_PARAM_STATES,
-    GG_CAPABILITY_CATALOG, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgSubagentScope,
-    MEMORY_PARAM_SCOPE, MODULE_PARAM_OWNERSHIP, PARAM_ASSISTANT_MESSAGES, PARAM_BUILT_INS,
+    CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SEARCH, CAPABILITY_SHELL,
+    CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE,
+    COMPACTION_PARAM_MODEL, COMPACTION_PARAM_MODEL_SLOT, COMPACTION_STRATEGY_MEMORY,
+    FSM_PARAM_STATES, GG_CAPABILITY_CATALOG, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
+    GgSubagentScope, MEMORY_PARAM_SCOPE, MODULE_PARAM_OWNERSHIP, PARAM_BUILT_INS,
     PARAM_DOC_VIEW_TYPES, PARAM_HEALING, PARAM_KEEP, PARAM_LANGUAGE, PARAM_LINE_CAP,
     PARAM_MAX_CHARS, PARAM_MAX_COUNT, PARAM_MAX_DEPTH, PARAM_MAX_EPICS, PARAM_MAX_ISSUES,
     PARAM_MAX_LEN_DESCRIPTION, PARAM_MAX_LEN_INDEX, PARAM_MAX_LEN_PER_MEMORY, PARAM_MAX_LINES,
@@ -721,6 +721,7 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
     (CAPABILITY_WRITE_FILE, &[]),
     (CAPABILITY_EDIT_FILE, &[]),
     (CAPABILITY_LIST_DIR, &[]),
+    (CAPABILITY_SEARCH, &[]),
     (
         CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
         &[(
@@ -895,12 +896,6 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
                 PARAM_HEALING,
                 Requirement::Required("which response-healing repairs are armed"),
             ),
-            (
-                PARAM_ASSISTANT_MESSAGES,
-                Requirement::Required(
-                    "which form of a reply is recorded as the assistant's message",
-                ),
-            ),
         ],
     ),
     (
@@ -942,7 +937,7 @@ fn requirement(capability: &str, key: &str) -> Option<Requirement> {
 /// field:
 ///
 /// - **A capability that offers no arms must not name one.** An `implementation` written on one of
-///   the other sixteen configures nothing, is recorded in the run's own capability set as though it
+///   the other seventeen configures nothing, is recorded in the run's own capability set as though it
 ///   had, and no code anywhere ever looks at it.
 /// - **A capability that offers arms and is switched on must name one**, because the arm is the
 ///   capability's own experimental variable and gg selects none on an operator's behalf.
@@ -989,7 +984,7 @@ fn arm_rule(id: &str) -> Option<ArmRule> {
 }
 
 /// The arms `id` offers, **read from the code that selects on them** rather than restated here, so
-/// a refusal offers exactly the names the resolver would accept. Empty for the sixteen capabilities
+/// a refusal offers exactly the names the resolver would accept. Empty for the seventeen capabilities
 /// that offer none.
 fn arms_of(id: &str) -> Vec<&'static str> {
     match id {

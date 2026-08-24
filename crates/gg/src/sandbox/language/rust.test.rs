@@ -151,8 +151,8 @@ fn the_binding_name_is_a_snake_case_rust_identifier() {
 /// load-bearing rather than decoration — the `fn main` it lives in returns a `Result`, and a call
 /// whose `Result` went unused would be the model's first example of ignoring a failure.
 ///
-/// The window is written out in full rather than with a `..Default::default()` tail, because
-/// `gg::files::ReadOptions` has exactly two fields and this statement sets both — which is exactly
+/// The window is the two fields the statement sets, and the third field of `gg::views::ViewOptions`
+/// — the cut a view's long lines get — is left to a `..Default::default()` tail, which is exactly
 /// where this arm is meant to look different from [Kotlin's](super::super::kotlin) named arguments
 /// and [Java's](super::super::java) second overload. Every name is written in full, because gg
 /// writes no `use` line above it.
@@ -161,7 +161,7 @@ fn the_synthesized_file_view_is_rust() {
     let whole = rust().open_file_statement("src/main.rs", None);
     assert_eq!(
         whole,
-        "gg::views::open_file(\"src/main.rs\", gg::files::ReadOptions::default())?;"
+        "gg::views::open_file(\"src/main.rs\", gg::views::ViewOptions::default())?;"
     );
 
     let windowed = rust().open_file_statement(
@@ -173,8 +173,8 @@ fn the_synthesized_file_view_is_rust() {
     );
     assert_eq!(
         windowed,
-        "gg::views::open_file(\"src/main.rs\", gg::files::ReadOptions { offset: Some(400), \
-         limit: Some(200) })?;"
+        "gg::views::open_file(\"src/main.rs\", gg::views::ViewOptions { offset: Some(400), \
+         limit: Some(200), ..Default::default() })?;"
     );
 
     // A path a model could not have written safely is still one statement.
@@ -193,8 +193,8 @@ fn the_synthesized_file_view_program_declares_its_own_main() {
     assert_eq!(
         program,
         "fn main() -> Result<(), gg::Failure> {\n    \
-             gg::views::open_file(\"src/main.rs\", gg::files::ReadOptions::default())?;\n    \
-             gg::views::open_file(\"README.md\", gg::files::ReadOptions::default())?;\n    \
+             gg::views::open_file(\"src/main.rs\", gg::views::ViewOptions::default())?;\n    \
+             gg::views::open_file(\"README.md\", gg::views::ViewOptions::default())?;\n    \
              Ok(())\n}\n"
     );
 }

@@ -13,7 +13,8 @@
 //
 // The contact sits above mid-field so the swing has room: over the run-up a
 // full-speed paddle covers 360 units, and it starts that far downstream.
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import {
   FACE_SHOT_SPEED,
@@ -62,9 +63,10 @@ it("imparts -PADDLE_SPEED * SPIN_FROM_PADDLE off an upward swing of player one's
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(contact.paddle.vy).toBeCloseTo(-PADDLE_SPEED, 6);
-  expect(Math.abs(contact.ball.spin - EXPECTED_SPIN)).toBeLessThanOrEqual(
+  assertEqual(contact.hit, true);
+  assertCloseTo(contact.paddle.vy, -PADDLE_SPEED, 6);
+  assertLessThanOrEqual(
+    Math.abs(contact.ball.spin - EXPECTED_SPIN),
     SPIN_TOLERANCE,
   );
 });

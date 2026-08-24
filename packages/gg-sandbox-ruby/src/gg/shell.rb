@@ -19,8 +19,7 @@ module GG
     # This run may **offload** shell output — the `shell` tool's own description says which mode is
     # in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming
     # the two files the command's full stdout and stderr were written to. Those files are readable
-    # by absolute path, so a `GG::Files.read_text_file` of one, or a grep, is cheaper than
-    # re-running the command.
+    # by absolute path, so reading one, or grepping it, is cheaper than re-running the command.
     #
     # @param command [String] The command line, run by `sh -c` with the workspace as its working
     #   directory.

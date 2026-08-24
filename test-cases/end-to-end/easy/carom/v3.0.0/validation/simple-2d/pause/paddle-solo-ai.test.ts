@@ -11,7 +11,8 @@
 // The chase is watched running first. Without that, a build whose AI never moved
 // at all would pass the freeze for the wrong reason.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeAiChase,
   captureReplay,
@@ -65,11 +66,11 @@ it("holds the AI paddle still while paused", async () => {
     return { chasing, screen, paused };
   });
 
-  expect(Math.abs(held.chasing - start)).toBeGreaterThan(0);
-  expect(held.screen).toBe("paused");
+  assertGreaterThan(Math.abs(held.chasing - start), 0);
+  assertEqual(held.screen, "paused");
 
-  expect(h.snapshot().screen).toBe("paused");
+  assertEqual(h.snapshot().screen, "paused");
   // "Nothing advances" while paused (specs/ui.md): the center is exactly where
   // the pause left it.
-  expect(h.snapshot().paddles.right.cy).toBe(held.paused);
+  assertEqual(h.snapshot().paddles.right.cy, held.paused);
 });

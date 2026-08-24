@@ -9,7 +9,8 @@
 // on the title: index 0 is `SOLO`, so the match that opens is Solo, not the
 // Versus match that was quit.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { reachPlaying } from "./screens";
 
@@ -28,18 +29,18 @@ it("returns to the title on QUIT TO MENU", async () => {
   await h.debug.setScore(3, 4);
 
   await h.tap("Escape");
-  expect((await h.snapshot()).screen).toBe("paused");
+  assertEqual((await h.snapshot()).screen, "paused");
   await h.tap("ArrowDown"); // RESUME -> RESTART
   await h.tap("ArrowDown"); // RESTART -> QUIT TO MENU
   await h.tap("Enter");
   await captureStill(h, "title");
 
   const title = await h.snapshot();
-  expect(title.screen).toBe("title");
-  expect(title.score).toEqual({ p1: 0, p2: 0 });
+  assertEqual(title.screen, "title");
+  assertDeepEqual(title.score, { p1: 0, p2: 0 });
 
   await h.tap("Enter");
   const opened = await h.snapshot();
-  expect(opened.screen).toBe("countdown");
-  expect(opened.mode).toBe("solo");
+  assertEqual(opened.screen, "countdown");
+  assertEqual(opened.mode, "solo");
 });

@@ -10,8 +10,9 @@
 // is far past AI_SPEED, so `vy = sign(diff) * AI_SPEED` on every frame of the
 // window and the paddle covers exactly AI_SPEED units per second.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { AI_SPEED } from "../../src/constants";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   arrangeAiChase,
   captureReplay,
@@ -55,6 +56,6 @@ it("chases the ball at AI_SPEED", async () => {
     return measured;
   });
 
-  expect(chase.delta).toBeGreaterThan(0); // toward the ball, down the field
-  expect(Math.abs(chase.speed - AI_SPEED)).toBeLessThanOrEqual(SPEED_TOLERANCE);
+  assertGreaterThan(chase.delta, 0); // toward the ball, down the field
+  assertLessThanOrEqual(Math.abs(chase.speed - AI_SPEED), SPEED_TOLERANCE);
 });

@@ -12,8 +12,9 @@
 // Matching is by substring, because a selected entry is commonly drawn with a
 // marker beside it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertMatches } from "../assert";
 import {
   arrangeGoal,
   captureStill,
@@ -41,20 +42,20 @@ it("ends the match on the winning point and draws the match-over menu and score"
   arrangeGoal(h, "right");
 
   const ended = await driveGoal(h);
-  expect(ended.hit).toBe(true);
+  assertEqual(ended.hit, true);
 
   const over = h.snapshot();
-  expect(over.screen).toBe("matchover");
-  expect(over.score).toEqual({ p1: WIN_SCORE, p2: 0 });
-  expect(over.winner).toBe("left");
+  assertEqual(over.screen, "matchover");
+  assertDeepEqual(over.score, { p1: WIN_SCORE, p2: 0 });
+  assertEqual(over.winner, "left");
 
   h.calls.length = 0;
   await h.advance(1);
   captureStill(h, "matchover");
   for (const item of MATCHOVER_ITEMS) {
-    expect(drewText(h.calls, item)).toBe(true);
+    assertEqual(drewText(h.calls, item), true);
   }
   const copy = drawnText(h.calls).join(" ");
-  expect(copy).toMatch(new RegExp(`\\b${WIN_SCORE}\\b`));
-  expect(copy).toMatch(/\b0\b/);
+  assertMatches(copy, new RegExp(`\\b${WIN_SCORE}\\b`));
+  assertMatches(copy, /\b0\b/);
 });

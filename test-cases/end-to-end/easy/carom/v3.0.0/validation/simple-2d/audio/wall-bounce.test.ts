@@ -11,8 +11,9 @@
 // four events are told apart by ear (specs/ui.md), and a build that plays the
 // wrong one on a wall bounce has broken exactly that.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { CUES, FIELD_CX } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeLiveBall,
   ball0,
@@ -72,8 +73,11 @@ it("plays the wall-bounce cue on the frame of the reflection", async () => {
     return measured;
   });
 
-  expect(bounce.bounced.hit).toBe(true);
-  expect(bounce.cues.map((cue) => cue.cue)).toEqual([CUES.wallBounce]);
-  expect(bounce.cues[0].frame).toBe(bounce.frame);
-  expect(bounce.cues[0].gain).toBeGreaterThan(0);
+  assertEqual(bounce.bounced.hit, true);
+  assertDeepEqual(
+    bounce.cues.map((cue) => cue.cue),
+    [CUES.wallBounce],
+  );
+  assertEqual(bounce.cues[0].frame, bounce.frame);
+  assertGreaterThan(bounce.cues[0].gain, 0);
 });

@@ -9,8 +9,9 @@
 // passes, far more than the 66 a contact needs. An AI that predicts the
 // reflected destination, or that moves faster than it should, blocks it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CX, FIELD_CY } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   arrangeAiScenario,
   captureReplay,
@@ -55,5 +56,5 @@ it("is beaten by a shot that banks off a wall on its way in", async () => {
     return outcome;
   });
 
-  expect(result).toBe("scored");
+  assertEqual(result, "scored");
 });

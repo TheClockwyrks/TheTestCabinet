@@ -83,6 +83,13 @@ window::window(const files::read_window& from) : offset_(from.offset), limit_(fr
   if (limit_.has_value()) limit_value_ = *limit_;
 }
 
+window::window(const views::view_options& from)
+    : offset_(from.offset), limit_(from.limit), max_line_chars_(from.max_line_chars) {
+  if (offset_.has_value()) offset_value_ = *offset_;
+  if (limit_.has_value()) limit_value_ = *limit_;
+  if (max_line_chars_.has_value()) max_line_chars_value_ = *max_line_chars_;
+}
+
 window::window(std::optional<std::uint32_t> offset, std::optional<std::uint32_t> limit)
     : offset_(offset), limit_(limit) {
   if (offset_.has_value()) offset_value_ = *offset_;
@@ -92,6 +99,10 @@ window::window(std::optional<std::uint32_t> offset, std::optional<std::uint32_t>
 std::uint32_t* window::offset() { return offset_.has_value() ? &offset_value_ : nullptr; }
 
 std::uint32_t* window::limit() { return limit_.has_value() ? &limit_value_ : nullptr; }
+
+std::uint32_t* window::max_line_chars() {
+  return max_line_chars_.has_value() ? &max_line_chars_value_ : nullptr;
+}
 
 test_cabinet_gg_tasks_task_status_t lower(tasks::task_status status) {
   switch (status) {
@@ -238,6 +249,10 @@ files::file_read lift_file_read(test_cabinet_gg_files_file_read_t& wire) {
 
 files::dir_entry lift_dir_entry(const test_cabinet_gg_files_dir_entry_t& wire) {
   return files::dir_entry{lift(wire.name), lift_entry_kind(wire.kind)};
+}
+
+files::search_match lift_search_match(const test_cabinet_gg_files_search_match_t& wire) {
+  return files::search_match{lift(wire.path), wire.line, lift(wire.text)};
 }
 
 memories::memory_usage lift_memory_usage(const test_cabinet_gg_memories_memory_usage_t& wire) {

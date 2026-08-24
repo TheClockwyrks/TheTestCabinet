@@ -9,8 +9,9 @@
 // title with menu keys and a real movement key is held, so it is the build's
 // own input path that drives the paddle into the bound.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY, PADDLE_SPEED, PADDLE_MIN_CY } from "../../src/constants";
+import { assertCloseTo } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -35,7 +36,7 @@ afterEach(() => {
 
 it("stops at the top bound with vy 0 while the key is still held", async () => {
   await startWithKeys(h, "versus");
-  expect(h.snapshot().paddles.left.cy).toBeCloseTo(FIELD_CY, 6);
+  assertCloseTo(h.snapshot().paddles.left.cy, FIELD_CY, 6);
 
   const pinned = await captureReplay(h, "bound", async () => {
     h.hold("KeyW");
@@ -49,8 +50,8 @@ it("stops at the top bound with vy 0 while the key is still held", async () => {
     return { paddle, again };
   });
 
-  expect(pinned.paddle.cy).toBeCloseTo(PADDLE_MIN_CY, 6);
-  expect(pinned.paddle.vy).toBeCloseTo(0, 6);
-  expect(pinned.again.cy).toBeCloseTo(PADDLE_MIN_CY, 6);
-  expect(pinned.again.vy).toBeCloseTo(0, 6);
+  assertCloseTo(pinned.paddle.cy, PADDLE_MIN_CY, 6);
+  assertCloseTo(pinned.paddle.vy, 0, 6);
+  assertCloseTo(pinned.again.cy, PADDLE_MIN_CY, 6);
+  assertCloseTo(pinned.again.vy, 0, 6);
 });

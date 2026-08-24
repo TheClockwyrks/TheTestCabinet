@@ -12,7 +12,8 @@
 // at the posed speed one frame of leaked simulation is already more than three
 // units.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeLiveBall,
   ball0,
@@ -56,15 +57,16 @@ it("suspends a ball in flight for as long as the game is paused", async () => {
     return at;
   });
 
-  expect(paused.screen).toBe("paused");
-  expect(
+  assertEqual(paused.screen, "paused");
+  assertGreaterThan(
     Math.hypot(ball0(paused).x - launched.x, ball0(paused).y - launched.y),
-  ).toBeGreaterThan(10);
+    10,
+  );
 
   const later = await h.snapshot();
 
-  expect(later.screen).toBe("paused");
+  assertEqual(later.screen, "paused");
   for (const field of ["x", "y", "vx", "vy", "spin"] as const) {
-    expect(ball0(later)[field], field).toBeCloseTo(ball0(paused)[field], 6);
+    assertCloseTo(ball0(later)[field], ball0(paused)[field], 6, field);
   }
 });

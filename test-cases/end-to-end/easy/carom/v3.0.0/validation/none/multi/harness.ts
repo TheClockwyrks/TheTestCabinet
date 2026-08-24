@@ -15,7 +15,7 @@
 // The narrowing is safe by construction: these checks only ever run against a
 // multi build, whose specification requires exactly what is read here.
 
-import { expect } from "vitest";
+import { assertEqual, assertLength } from "../assert";
 import {
   BALL_COUNT,
   BALL_HOMES,
@@ -60,12 +60,13 @@ export const RIGHT_PARKS: readonly { x: number; y: number }[] = [
 /** Every ball a snapshot reports, checked for count before a check reads them. */
 export function readBalls(snapshot: CaromSnapshot): BallView[] {
   const balls = allBalls(snapshot);
-  expect(
+  assertEqual(
     Array.isArray(snapshot.balls),
+    true,
     "multi requires snapshot().balls, the three balls in play order " +
       "(specs/instrumentation.md)",
-  ).toBe(true);
-  expect(balls).toHaveLength(BALL_COUNT);
+  );
+  assertLength(balls, BALL_COUNT);
   return balls;
 }
 

@@ -5,8 +5,9 @@
 // held input exactly as they do for a player. A movement key is then held for a
 // known span and the displacement is measured back into a speed.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED } from "../../src/constants";
+import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -61,8 +62,9 @@ it("moves the human paddle at the paddle speed while a key is held", async () =>
     return held;
   });
 
-  expect(moved.delta).toBeGreaterThan(0); // KeyS drives it down the field
-  expect(
+  assertGreaterThan(moved.delta, 0); // KeyS drives it down the field
+  assertLessThanOrEqual(
     Math.abs(speedOverTicks(moved.delta, TICKS) - PADDLE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
+    SPEED_TOLERANCE,
+  );
 });

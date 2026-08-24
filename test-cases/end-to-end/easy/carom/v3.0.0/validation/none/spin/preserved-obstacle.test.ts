@@ -9,7 +9,13 @@
 // per-step factors is the same number. Under gyre the obstacles are held
 // upright at clock 0.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { OBSTACLES, OBSTACLE_CENTERS, SPIN_HALFLIFE } from "../constants";
 import {
   arrangeFaceShot,
@@ -51,15 +57,16 @@ it("keeps the spin, less the decay, through an obstacle bounce", async () => {
     return rebound;
   });
 
-  expect(bounce.hit).toBe(true);
+  assertEqual(bounce.hit, true);
   const struck = ball0(bounce.snapshot);
   // It met the face it was aimed at, rather than an end of the obstacle.
-  expect(struck.y).toBeGreaterThan(OBSTACLES[0].y0);
-  expect(struck.y).toBeLessThan(OBSTACLES[0].y1);
-  expect(struck.x).toBeLessThan(OBSTACLE_CENTERS[0].x);
+  assertGreaterThan(struck.y, OBSTACLES[0].y0);
+  assertLessThan(struck.y, OBSTACLES[0].y1);
+  assertLessThan(struck.x, OBSTACLE_CENTERS[0].x);
   const decayed =
     posed * Math.pow(0.5, bounce.frames / TICK_HZ / SPIN_HALFLIFE);
-  expect(Math.abs(struck.spin - decayed)).toBeLessThanOrEqual(
+  assertLessThanOrEqual(
+    Math.abs(struck.spin - decayed),
     SPIN_TOLERANCE * Math.abs(decayed),
   );
 });

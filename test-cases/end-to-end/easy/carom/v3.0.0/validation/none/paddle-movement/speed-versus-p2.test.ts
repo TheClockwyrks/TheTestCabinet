@@ -12,7 +12,12 @@
 //
 // Player two's key moves player two's paddle alone (specs/modes/versus.md), so
 // the left paddle's drift over the same window is read too.
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertGreaterThan,
+  assertLessThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { PADDLE_SPEED } from "../constants";
 import {
   captureReplay,
@@ -55,9 +60,10 @@ it("moves the right paddle at the paddle speed while ArrowDown is held", async (
     return held;
   });
 
-  expect(moved.delta).toBeGreaterThan(0);
-  expect(
+  assertGreaterThan(moved.delta, 0);
+  assertLessThanOrEqual(
     Math.abs(speedOverTicks(moved.delta, TICKS) - PADDLE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
-  expect(Math.abs(moved.otherDelta.left)).toBeLessThan(STILL_MAX);
+    SPEED_TOLERANCE,
+  );
+  assertLessThan(Math.abs(moved.otherDelta.left), STILL_MAX);
 });

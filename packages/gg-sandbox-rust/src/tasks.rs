@@ -20,7 +20,6 @@ pub(crate) const OPERATIONS: &[&str] = &[
     "remove_task",
 ];
 
-
 /// Add a task to the task graph and hand back the task budget.
 ///
 /// `options.blocked_by` names the tasks that must finish before this one, and defaults to none.
@@ -172,8 +171,7 @@ pub struct TaskPatch<'a> {
 /// and would make "clear it" and "set it to the empty string" one request.
 ///
 /// [`Keep`](Self::Keep) is the [`Default`], so a patch built with `..Default::default()` leaves the
-/// field alone — which is what leaving a field out of a patch has to mean. The board's
-/// [`IssuePatch`](crate::board::IssuePatch) takes the same type.
+/// field alone — which is what leaving a field out of a patch has to mean.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TextEdit<'a> {
     /// Leave the field as it is.

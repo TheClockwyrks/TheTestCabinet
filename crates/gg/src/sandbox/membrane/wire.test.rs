@@ -228,3 +228,71 @@ fn every_error_code_has_the_wits_own_spelling() {
         assert_eq!(code_name(code), name);
     }
 }
+
+/// `files.search` crosses the wire as three positional arguments and answers with a list of
+/// `search-match` records keyed by the WIT field names.
+#[test]
+fn a_search_crosses_the_wire_and_answers_with_match_records() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+    let response = crossing(
+        &mut state,
+        "files.search",
+        request(vec![
+            Value::Text("answer".to_string()),
+            Value::None,
+            Value::Int(3),
+        ]),
+    );
+    let matches = answer(&response);
+    let items = matches.list("the matches").expect("a list of matches");
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].field("a match", "path").expect("the path"),
+        &Value::Text("src/a.ts".to_string())
+    );
+    assert_eq!(
+        items[0].field("a match", "line").expect("the line"),
+        &Value::Int(3)
+    );
+    assert_eq!(
+        items[0].field("a match", "text").expect("the text"),
+        &Value::Text("const answer = 42;".to_string())
+    );
+    let calls = log.calls();
+    assert_eq!(calls[0].name, "search");
+    assert_eq!(calls[0].args["limit"], serde_json::json!(3));
+}
+
+/// `views.open_file` reads its fourth argument when it is there and reads a three-argument request
+/// as a view with its lines whole — the one trailing option this wire tolerates leaving out.
+#[test]
+fn an_open_file_view_reads_a_trailing_line_cut_or_none() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+    let three = crossing(
+        &mut state,
+        "views.open_file",
+        request(vec![
+            Value::Text("src/a.ts".to_string()),
+            Value::None,
+            Value::None,
+        ]),
+    );
+    answer(&three);
+    let four = crossing(
+        &mut state,
+        "views.open_file",
+        request(vec![
+            Value::Text("src/a.ts".to_string()),
+            Value::None,
+            Value::None,
+            Value::Int(80),
+        ]),
+    );
+    answer(&four);
+    let calls = log.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].args["maxLineChars"], serde_json::Value::Null);
+    assert_eq!(calls[1].args["maxLineChars"], serde_json::json!(80));
+}

@@ -10,7 +10,8 @@
 // Nothing about the serve is posed: `startMatch` opens the countdown and
 // `serve` ends it, and what leaves is whatever the build's own serve produced.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { SERVE_ANGLE } from "../constants";
 import {
   angleDeg,
@@ -55,8 +56,9 @@ it("serves the ball at SERVE_ANGLE from horizontal", async () => {
     return swept;
   });
 
-  expect(launched.hit).toBe(true);
-  expect(
+  assertEqual(launched.hit, true);
+  assertLessThanOrEqual(
     Math.abs(angleDeg(ball0(launched.snapshot)) - SERVE_ANGLE_DEG),
-  ).toBeLessThanOrEqual(ANGLE_TOLERANCE_DEG);
+    ANGLE_TOLERANCE_DEG,
+  );
 });

@@ -12,7 +12,8 @@
 // ball comes back off the target at the speed it arrived with, and the target has
 // not moved and is still holding.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { BALL_HOMES } from "../constants";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { readBalls } from "./harness";
@@ -66,21 +67,19 @@ it("bounces a moving ball off a waiting one without moving it", async () => {
     return { met, balls };
   });
 
-  expect(bounce.met.hit).toBe(true);
+  assertEqual(bounce.met.hit, true);
   const [moving, waiting] = bounce.balls;
 
   // The waiting ball is where it was, motionless, and still counting its own
   // hold down rather than having been knocked into play.
-  expect(waiting.held).toBe(true);
-  expect(Math.abs(waiting.x - BALL_HOMES[1].x)).toBeLessThanOrEqual(STILL_MAX);
-  expect(Math.abs(waiting.y - BALL_HOMES[1].y)).toBeLessThanOrEqual(STILL_MAX);
-  expect(Math.hypot(waiting.vx, waiting.vy)).toBeLessThanOrEqual(STILL_MAX);
+  assertEqual(waiting.held, true);
+  assertLessThanOrEqual(Math.abs(waiting.x - BALL_HOMES[1].x), STILL_MAX);
+  assertLessThanOrEqual(Math.abs(waiting.y - BALL_HOMES[1].y), STILL_MAX);
+  assertLessThanOrEqual(Math.hypot(waiting.vx, waiting.vy), STILL_MAX);
 
   // The moving ball reflected off it, head on so `vx` simply reversed, and kept
   // the speed it arrived with: a ball bouncing off a waiting one is not a
   // paddle hit.
-  expect(Math.abs(moving.vx + APPROACH)).toBeLessThanOrEqual(SPEED_TOLERANCE);
-  expect(Math.abs(moving.speed - APPROACH)).toBeLessThanOrEqual(
-    SPEED_TOLERANCE,
-  );
+  assertLessThanOrEqual(Math.abs(moving.vx + APPROACH), SPEED_TOLERANCE);
+  assertLessThanOrEqual(Math.abs(moving.speed - APPROACH), SPEED_TOLERANCE);
 });

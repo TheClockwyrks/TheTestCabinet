@@ -11,7 +11,8 @@
 // other balls are still in play and there is no post-point countdown to return
 // to.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
@@ -50,11 +51,11 @@ it("gives player two the point when a ball leaves the left goal", async () => {
     return resolved;
   });
 
-  expect(point.hit).toBe(true);
-  expect(point.snapshot.score.p2).toBe(1);
-  expect(point.snapshot.score.p1).toBe(0);
+  assertEqual(point.hit, true);
+  assertEqual(point.snapshot.score.p2, 1);
+  assertEqual(point.snapshot.score.p1, 0);
   // The field carries on: the ball that crossed is the only thing the point
   // changed.
-  expect(point.snapshot.screen).toBe("playing");
-  expect(readBalls(point.snapshot)[0].held).toBe(true);
+  assertEqual(point.snapshot.screen, "playing");
+  assertEqual(readBalls(point.snapshot)[0].held, true);
 });

@@ -5,7 +5,8 @@
 // `vy` is 0 leaves with spin exactly 0; the margin is rounding room. The
 // paddle pose is the precondition; the bounce is the build's own.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual } from "../assert";
 import { FIELD_CY } from "../constants";
 import {
   FACE_SHOT_SPEED,
@@ -49,7 +50,7 @@ it("imparts no spin from a still paddle", async () => {
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(contact.paddle.vy).toBeCloseTo(0, 6);
-  expect(contact.ball.spin).toBeCloseTo(0, 6);
+  assertEqual(contact.hit, true);
+  assertCloseTo(contact.paddle.vy, 0, 6);
+  assertCloseTo(contact.ball.spin, 0, 6);
 });

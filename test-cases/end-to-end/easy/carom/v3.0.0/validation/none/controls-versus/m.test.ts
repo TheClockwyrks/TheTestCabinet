@@ -28,7 +28,8 @@
 // keep starting them at a gain of zero. Requiring either would fail a build for
 // choosing the other, so whether mute is really silent is the reviewer's, by ear.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { FIELD_CX } from "../constants";
 import {
   arrangeLiveBall,
@@ -51,21 +52,21 @@ afterEach(async () => {
 it("flips the reported mute bit on, and off again", async () => {
   await h.advance(1); // paint the title, so the mirrored bit is a fresh read
   const opened = await h.snapshot();
-  expect(opened.screen).toBe("title");
-  expect(opened.muted).toBe(false);
+  assertEqual(opened.screen, "title");
+  assertEqual(opened.muted, false);
 
   await h.tap("KeyM");
   await captureStill(h, "mute");
-  expect((await h.snapshot()).muted).toBe(true);
+  assertEqual((await h.snapshot()).muted, true);
 
   await h.tap("KeyM");
-  expect((await h.snapshot()).muted).toBe(false);
+  assertEqual((await h.snapshot()).muted, false);
 });
 
 it("keeps the game playable, and the preference, while it is on", async () => {
   await h.advance(1);
   await h.tap("KeyM");
-  expect((await h.snapshot()).muted).toBe(true);
+  assertEqual((await h.snapshot()).muted, true);
 
   // Straight up into the top wall, which is the shortest real event that plays a
   // cue. `arrangeLiveBall` resets and restarts the game on its way, which is
@@ -73,9 +74,9 @@ it("keeps the game playable, and the preference, while it is on", async () => {
   // (specs/instrumentation.md), so a build that cleared it here would be
   // discarding a player preference the specification says it must keep.
   await arrangeLiveBall(h, { x: FIELD_CX, y: 80, vx: 0, vy: -500 });
-  expect((await h.snapshot()).muted).toBe(true);
+  assertEqual((await h.snapshot()).muted, true);
 
   const bounced = await h.until((s) => ball0(s).vy > 0, { maxFrames: 120 });
-  expect(bounced.hit).toBe(true);
-  expect((await h.snapshot()).muted).toBe(true);
+  assertEqual(bounced.hit, true);
+  assertEqual((await h.snapshot()).muted, true);
 });

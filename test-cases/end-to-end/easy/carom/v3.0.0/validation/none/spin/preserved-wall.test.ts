@@ -7,7 +7,8 @@
 // against its posed spin decayed over exactly the frames flown. Two percent is
 // rounding room: the product of the per-step factors is the same number.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { FIELD_CX, SPIN_HALFLIFE } from "../constants";
 import {
   arrangeLiveBall,
@@ -51,10 +52,11 @@ it("keeps the spin, less the decay, through a wall bounce", async () => {
     return rebound;
   });
 
-  expect(bounce.hit).toBe(true);
+  assertEqual(bounce.hit, true);
   const decayed =
     posed * Math.pow(0.5, bounce.frames / TICK_HZ / SPIN_HALFLIFE);
-  expect(Math.abs(ball0(bounce.snapshot).spin - decayed)).toBeLessThanOrEqual(
+  assertLessThanOrEqual(
+    Math.abs(ball0(bounce.snapshot).spin - decayed),
     SPIN_TOLERANCE * Math.abs(decayed),
   );
 });

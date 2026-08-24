@@ -28,8 +28,21 @@
 // missing surface or a state the build reshaped also shows up as those items
 // failing to run. This one names the fault plainly.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY, HOLD_TIME } from "../../src/constants";
+import {
+  assertCloseTo,
+  assertContains,
+  assertDeepEqual,
+  assertDoesNotThrow,
+  assertEqual,
+  assertGreaterThan,
+  assertHasProperty,
+  assertLessThanOrEqual,
+  assertNotEqual,
+  assertNotNull,
+  assertNull,
+} from "../assert";
 import {
   ball0,
   captureStill,
@@ -55,25 +68,25 @@ it("returns its debug surface beside its state from initialize", () => {
   // element of `[state, debug]`, so reading it is the check: there is no page
   // property to look for and nothing the harness could have supplied in the
   // build's place. A build that returned `null` there has no surface.
-  expect(() => h.engine.debug).not.toThrow();
-  expect(h.engine.debug).not.toBeNull();
+  assertDoesNotThrow(() => h.engine.debug);
+  assertNotNull(h.engine.debug);
 
   // The runtime returns the value the game handed over, unchanged and unwrapped,
   // so every read is the same object. It is the one the rest of this suite —
   // and every other check in this directory — poses the game through: `h.debug`
   // drives this object over the runtime, running each pose through
   // `engine.apply` and handing `engine.state` to each reading.
-  expect(h.engine.debug).toBe(h.engine.debug);
-  expect(typeof h.engine.debug).toBe("object");
+  assertEqual(h.engine.debug, h.engine.debug);
+  assertEqual(typeof h.engine.debug, "object");
 });
 
 it("carries a version and every required operation, as functions", () => {
   const api = h.engine.debug as unknown as Record<string, unknown>;
 
-  expect(typeof api.version).toBe("number");
-  expect(api.version).toBe(CAROM_DEBUG_VERSION);
+  assertEqual(typeof api.version, "number");
+  assertEqual(api.version, CAROM_DEBUG_VERSION);
   for (const op of REQUIRED_OPS) {
-    expect(typeof api[op]).toBe("function");
+    assertEqual(typeof api[op], "function");
   }
 });
 
@@ -87,17 +100,17 @@ it("writes its operations in the shape of update: state in, state out", () => {
   const before = h.engine.state;
 
   const snapshot = api.snapshot(before);
-  expect(typeof snapshot).toBe("object");
-  expect(snapshot.screen).toBe("title");
+  assertEqual(typeof snapshot, "object");
+  assertEqual(snapshot.screen, "title");
 
   const posed = api.startMatch(before, "versus");
-  expect(posed, "startMatch must return the next state").toBeDefined();
-  expect(posed).not.toBe(before);
+  assertNotEqual(posed, undefined, "startMatch must return the next state");
+  assertNotEqual(posed, before);
   // The runtime's state is untouched until a transition is applied…
-  expect(api.snapshot(h.engine.state).screen).toBe("title");
+  assertEqual(api.snapshot(h.engine.state).screen, "title");
   // …and the posed value is what it holds once one is.
   h.engine.apply(() => posed);
-  expect(h.snapshot().screen).toBe("countdown");
+  assertEqual(h.snapshot().screen, "countdown");
 });
 
 it("reports the whole documented snapshot shape, from a live match", async () => {
@@ -109,42 +122,39 @@ it("reports the whole documented snapshot shape, from a live match", async () =>
 
   const snapshot = h.snapshot();
 
-  expect(typeof snapshot.version).toBe("number");
-  expect([
-    "title",
-    "howto",
-    "countdown",
-    "playing",
-    "paused",
-    "matchover",
-  ]).toContain(snapshot.screen);
-  expect(["solo", "versus"]).toContain(snapshot.mode);
-  expect(typeof snapshot.score.p1).toBe("number");
-  expect(typeof snapshot.score.p2).toBe("number");
-  expect(snapshot).toHaveProperty("winner");
-  expect(typeof snapshot.muted).toBe("boolean");
+  assertEqual(typeof snapshot.version, "number");
+  assertContains(
+    ["title", "howto", "countdown", "playing", "paused", "matchover"],
+    snapshot.screen,
+  );
+  assertContains(["solo", "versus"], snapshot.mode);
+  assertEqual(typeof snapshot.score.p1, "number");
+  assertEqual(typeof snapshot.score.p2, "number");
+  assertHasProperty(snapshot, "winner");
+  assertEqual(typeof snapshot.muted, "boolean");
 
   for (const side of ["left", "right"] as const) {
-    expect(typeof snapshot.paddles[side].cy).toBe("number");
-    expect(typeof snapshot.paddles[side].vy).toBe("number");
+    assertEqual(typeof snapshot.paddles[side].cy, "number");
+    assertEqual(typeof snapshot.paddles[side].vy, "number");
   }
 
   for (const field of ["x", "y", "vx", "vy", "speed", "spin"] as const) {
-    expect(typeof ball0(snapshot)[field]).toBe("number");
+    assertEqual(typeof ball0(snapshot)[field], "number");
   }
-  expect(typeof ball0(snapshot).held).toBe("boolean");
-  expect(typeof snapshot.simTime).toBe("number");
+  assertEqual(typeof ball0(snapshot).held, "boolean");
+  assertEqual(typeof snapshot.simTime, "number");
 
   // Live values, not a shape filled with zeroes: the ball is in flight, so it is
   // no longer held and it is moving at the speed its serve gave it.
-  expect(snapshot.screen).toBe("playing");
-  expect(ball0(snapshot).held).toBe(false);
-  expect(ball0(snapshot).speed).toBeGreaterThan(0);
-  expect(ball0(snapshot).speed).toBeCloseTo(
+  assertEqual(snapshot.screen, "playing");
+  assertEqual(ball0(snapshot).held, false);
+  assertGreaterThan(ball0(snapshot).speed, 0);
+  assertCloseTo(
+    ball0(snapshot).speed,
     Math.hypot(ball0(snapshot).vx, ball0(snapshot).vy),
     6,
   );
-  expect(snapshot.simTime).toBeGreaterThan(0);
+  assertGreaterThan(snapshot.simTime, 0);
 });
 
 it("poses the game through the state the build declared", async () => {
@@ -152,31 +162,31 @@ it("poses the game through the state the build declared", async () => {
   h.debug.startMatch("versus");
   await h.advance(1);
   const opened = h.snapshot();
-  expect(opened.screen).toBe("countdown");
-  expect(ball0(opened).held).toBe(true);
-  expect(holdTimer0(h)).toBeGreaterThan(0);
-  expect(holdTimer0(h)).toBeLessThanOrEqual(HOLD_TIME);
+  assertEqual(opened.screen, "countdown");
+  assertEqual(ball0(opened).held, true);
+  assertGreaterThan(holdTimer0(h), 0);
+  assertLessThanOrEqual(holdTimer0(h), HOLD_TIME);
 
   // A posed paddle stays where it was put, and a posed velocity persists across
   // frames rather than being a one-frame nudge.
   h.debug.setPaddle("left", { cy: 200, vy: 0 });
   h.debug.setPaddle("right", { cy: 500, vy: 0 });
   await h.advance(24);
-  expect(h.snapshot().paddles.left.cy).toBeCloseTo(200, 3);
-  expect(h.snapshot().paddles.right.cy).toBeCloseTo(500, 3);
+  assertCloseTo(h.snapshot().paddles.left.cy, 200, 3);
+  assertCloseTo(h.snapshot().paddles.right.cy, 500, 3);
 
   // A posed score is the score.
   h.debug.setScore(3, 4);
   await h.advance(1);
-  expect(h.snapshot().score).toEqual({ p1: 3, p2: 4 });
+  assertDeepEqual(h.snapshot().score, { p1: 3, p2: 4 });
 
   // And a reset returns the whole of it to the title.
   h.debug.reset();
   await h.advance(1);
   const title = h.snapshot();
-  expect(title.screen).toBe("title");
-  expect(title.score).toEqual({ p1: 0, p2: 0 });
-  expect(title.winner).toBeNull();
-  expect(title.paddles.left.cy).toBeCloseTo(FIELD_CY, 3);
-  expect(title.paddles.right.cy).toBeCloseTo(FIELD_CY, 3);
+  assertEqual(title.screen, "title");
+  assertDeepEqual(title.score, { p1: 0, p2: 0 });
+  assertNull(title.winner);
+  assertCloseTo(title.paddles.left.cy, FIELD_CY, 3);
+  assertCloseTo(title.paddles.right.cy, FIELD_CY, 3);
 });

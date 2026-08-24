@@ -11,7 +11,8 @@
 // their own, and the arrow keys by name or glyph. How the screen reads is the
 // reviewer's, from the capture.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertMatches } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -39,10 +40,10 @@ it("opens the how-to-play screen from the menu and names the movement keys", asy
   await h.advance(1);
   captureStill(h, "howto");
 
-  expect(h.snapshot().screen).toBe("howto");
+  assertEqual(h.snapshot().screen, "howto");
 
   const copy = drawnText(h.calls).join(" ");
-  expect(copy).toMatch(/\bW\b/i);
-  expect(copy).toMatch(/\bS\b/i);
-  expect(copy).toMatch(/arrow|\bup\b|\bdown\b|\u2191|\u2193/i);
+  assertMatches(copy, /\bW\b/i);
+  assertMatches(copy, /\bS\b/i);
+  assertMatches(copy, /arrow|\bup\b|\bdown\b|\u2191|\u2193/i);
 });

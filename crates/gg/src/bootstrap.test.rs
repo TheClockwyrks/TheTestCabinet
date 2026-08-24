@@ -33,7 +33,7 @@ use crate::docs::{DocViewTypes, DocsRuntime};
 use crate::ending::EndingRole;
 use crate::sandbox::{
     OperationId, SandboxError, SandboxLimits, all_languages, capability_operations,
-    gating_capabilities, operation,
+    catalogue_functions, gating_capabilities, operation,
 };
 use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, GgContextSource, GgProgramLanguage,
@@ -70,6 +70,29 @@ fn agent<'a>(capabilities: &'a [String], operations: &'a [OperationId]) -> Boots
         limits: SandboxLimits::AMPLE,
         doc_view_types: DocViewTypes::RETURN_AND_ERRORS,
     }
+}
+
+/// How many [bootstrap calls](BOOTSTRAP_CALLS) `language`'s catalogue carries at all — what a
+/// fully-granted agent on that arm opens, and the most any agent on it can.
+///
+/// Every call bound to every program is required to be among them, which [`bootstrap_keys`]
+/// enforces by refusing; a capability-bought call an arm has not yet spelled is simply not opened,
+/// and the capability gate is what names that arm.
+fn catalogued_calls(language: &'static dyn crate::sandbox::ProgramLanguage) -> usize {
+    let functions = catalogue_functions(language);
+    BOOTSTRAP_CALLS
+        .iter()
+        .filter(|call| bootstrap_function(&functions, **call, |_| true).is_some())
+        .count()
+}
+
+/// This arm's key for one bootstrap call, whatever the agent holds.
+fn key_of(id: GgProgramLanguage, call: OperationId) -> String {
+    let language = crate::sandbox::language(id);
+    bootstrap_function(&catalogue_functions(language), call, |_| true)
+        .unwrap_or_else(|| panic!("{} catalogues `{call}`", language.display_name()))
+        .fqn
+        .to_string()
 }
 
 /// The selectors of the search band, in window order.
@@ -196,9 +219,15 @@ macro_rules! bootstrap_runs {
                     &operations,
                     $id,
                 );
-                for key in bootstrap_keys(&docs) {
+                let keys = bootstrap_keys(&docs).unwrap_or_else(|detail| panic!("{arm}: {detail}"));
+                assert_eq!(
+                    keys.len(),
+                    catalogued_calls(language),
+                    "{arm}: a fully-granted agent opens every bootstrap call its arm catalogues"
+                );
+                for key in &keys {
                     assert!(
-                        docviews.contains(&key),
+                        docviews.contains(key),
                         "{arm}: the program did not open `{key}`, so the model was handed no way \
                          to read a brief in full: {docviews:?}"
                     );
@@ -215,12 +244,11 @@ macro_rules! bootstrap_runs {
                     1,
                     "{arm}: the bootstrap is one turn, not one per call"
                 );
-                let bootstrap = bootstrap_keys(&docs);
                 assert_eq!(
                     programs[0],
                     language.bootstrap_program(
                         &modules.iter().map(String::as_str).collect::<Vec<_>>(),
-                        &bootstrap.iter().map(String::as_str).collect::<Vec<_>>(),
+                        &keys.iter().map(String::as_str).collect::<Vec<_>>(),
                     ),
                     "{arm}: the window holds the source that ran, which is what a model copies"
                 );
@@ -264,10 +292,10 @@ fn every_language_writes_a_program_naming_every_module_and_key() {
              {modules:?}, so the sweep below would check nothing about the missing one",
             BOOTSTRAP_MODULES
         );
-        let keys = bootstrap_keys(&docs);
+        let keys = bootstrap_keys(&docs).unwrap_or_else(|detail| panic!("{arm}: {detail}"));
         assert_eq!(
             keys.len(),
-            BOOTSTRAP_CALLS.len(),
+            catalogued_calls(language),
             "{arm}: an arm that does not catalogue a bootstrap call leaves a model with no way to \
              reach its own surface. What it does catalogue: {keys:?}"
         );
@@ -560,6 +588,60 @@ async fn an_agent_holding_no_opening_module_places_no_listing() {
         docviews.len(),
         "what was reported placed is what is in the window"
     );
+}
+
+/// **A view-opening call bought by a capability is opened where the agent holds it and left out
+/// where it does not** — while the calls bound to every program are opened for both.
+///
+/// The opening turn documents *this* agent's surface: an agent without `read-file` has no
+/// `views.openFile` to read about, and a documentation view of a call the agent cannot make would
+/// teach it a call gg then refuses.
+#[tokio::test]
+async fn a_capability_bought_view_call_is_seeded_only_where_held() {
+    let id = GgProgramLanguage::TypeScript;
+    let open_file = key_of(id, crate::sandbox::VIEWS_OPEN_FILE);
+    let open_text = key_of(id, crate::sandbox::VIEWS_OPEN_TEXT);
+    let open_docs = key_of(id, crate::sandbox::VIEWS_OPEN_DOCS_VIEW);
+
+    let reading = vec![CAPABILITY_READ_FILE.to_string()];
+    let reading_ops = capability_operations(reading.iter().map(String::as_str));
+    let (with, placed) = seed_granted(id, &reading, &reading_ops).await;
+    placed.expect("an agent holding read-file boots");
+    let with = docview_keys(&with);
+    for key in [&open_file, &open_text, &open_docs] {
+        assert!(
+            with.contains(key),
+            "read-file agent did not open `{key}`: {with:?}"
+        );
+    }
+
+    let board = vec![CAPABILITY_PROJECT_MANAGEMENT.to_string()];
+    let board_ops = capability_operations(board.iter().map(String::as_str));
+    let (without, placed) = seed_granted(id, &board, &board_ops).await;
+    placed.expect("an agent without read-file boots");
+    let without = docview_keys(&without);
+    assert!(
+        !without.contains(&open_file),
+        "an agent without read-file was handed the documentation of a call it cannot make: \
+         {without:?}"
+    );
+    for key in [&open_text, &open_docs] {
+        assert!(
+            without.contains(key),
+            "the view calls bound to every program are opened regardless: {without:?}"
+        );
+    }
+}
+
+/// **Every call bound to every program is required, and every other is optional** — the rule
+/// [`bootstrap_keys`] applies, read off the operations table rather than a second list.
+#[test]
+fn the_always_bound_calls_are_required_and_the_bought_ones_are_not() {
+    assert!(bootstrap_required(DOCS_SEARCH));
+    assert!(bootstrap_required(VIEWS_OPEN_DOCS_VIEW));
+    assert!(bootstrap_required(VIEWS_OPEN_TEXT));
+    assert!(!bootstrap_required(VIEWS_OPEN_FILE));
+    assert!(!bootstrap_required(FILES_SEARCH));
 }
 
 /// **Every bootstrap call is one gg has an operation for.**

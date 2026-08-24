@@ -153,6 +153,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            statement: r#"files::search("answer", files::SearchOptions { path: Some("src"), limit: Some(10) });"#,
+            expected: || json!({ "query": "answer", "path": "src", "limit": 10 }),
+        },
+        Crossing {
             tool: "read_skill",
             statement: r#"skills::read_skill("testing");"#,
             expected: || json!({ "name": "testing" }),
@@ -430,7 +435,8 @@ fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too()
             &["docs", "files", "session", "views"],
             r####"    let window = files::ReadOptions { offset: Some(1), limit: Some(2) };
     let text = files::read_text_file("notes.md", window)?;
-    let read = views::open_file("notes.md", window)?;
+    let shown = views::ViewOptions { offset: Some(1), limit: Some(2), ..Default::default() };
+    let read = views::open_file("notes.md", shown)?;
     views::open_text("summary", &text)?;
     views::open_docs_view("read_file")?;
     let closed = views::close("summary")?;
@@ -1053,13 +1059,27 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     // worth stating rather than relying on: the operation is the identity and the name is the
     // spelling, and `shell.shell` is the one row where the two differ, since Rust does not stutter a
     // module's name into the function it holds.
+    //
+    // An operation counts as a tool's when its key is a tool's name AND gg binds it the way it binds
+    // that tool — bought by the tool's capability, or held by position for the one machine row —
+    // the second half because a key alone is ambiguous now that `files.search` and `docs.search`
+    // share one: the first is the `search` tool, the second is the always-bound docs carve-out, and
+    // a count that went by the key would report the tool bound twice.
     let functions = section(&catalogue, "functions");
     let mut bound: Vec<&str> = functions
         .iter()
         .filter(|entry| entry["aliasOf"].is_null())
         .map(|entry| text(entry, "operation"))
-        .filter_map(|operation| operation.split_once('.').map(|(_, key)| key))
-        .filter(|key| crate::sandbox::signatures::sandbox_operation_names().contains(key))
+        .filter_map(|operation| {
+            let (_, key) = operation.split_once('.')?;
+            let bought_by = crate::tools::tool_capability(key)?;
+            let as_tool = match crate::sandbox::operation_by_id(operation)?.binding {
+                crate::sandbox::Binding::Capability(capability) => capability == bought_by,
+                crate::sandbox::Binding::Machine => true,
+                crate::sandbox::Binding::Always | crate::sandbox::Binding::Ending(_) => false,
+            };
+            as_tool.then_some(key)
+        })
         .collect();
     bound.sort_unstable();
     let mut vocabulary = crate::sandbox::signatures::sandbox_operation_names();

@@ -9,8 +9,9 @@
 // second digit in the same run is not — with the run's midpoint on its side of
 // the field's center.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CX } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -39,12 +40,13 @@ it("draws player two's score right of the field's center", async () => {
   await h.advance(1);
   captureStill(h, "hud");
 
-  expect(h.snapshot().score).toEqual({ p1: P1_SCORE, p2: P2_SCORE });
+  assertDeepEqual(h.snapshot().score, { p1: P1_SCORE, p2: P2_SCORE });
   const runs = drawnTextSpans(h).filter(
     (span) => span.text.replace(/\D/g, "") === String(P2_SCORE),
   );
-  expect(runs.length).toBeGreaterThan(0);
-  expect(runs.some((span) => (span.left + span.right) / 2 > FIELD_CX)).toBe(
+  assertGreaterThan(runs.length, 0);
+  assertEqual(
+    runs.some((span) => (span.left + span.right) / 2 > FIELD_CX),
     true,
   );
 });

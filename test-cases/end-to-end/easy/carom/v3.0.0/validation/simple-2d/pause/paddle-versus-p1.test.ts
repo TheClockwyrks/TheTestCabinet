@@ -13,7 +13,8 @@
 // with real key events, paused with one, and driven with one. No control
 // operation is involved, so the paddle is under normal player control throughout.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   MOVE_MIN,
   captureReplay,
@@ -55,7 +56,7 @@ afterEach(() => {
 it("holds player one's paddle still while paused", async () => {
   await startWithKeys(h, "versus");
   await h.advance(RALLY_TICKS);
-  expect(h.snapshot().screen).toBe("playing");
+  assertEqual(h.snapshot().screen, "playing");
 
   // The precondition: this key really does move this paddle in live play, so the
   // freeze below is the pause's doing rather than a key that never worked.
@@ -77,11 +78,11 @@ it("holds player one's paddle still while paused", async () => {
     return { moving, screen, paused };
   });
 
-  expect(Math.abs(held.moving - start)).toBeGreaterThan(MOVE_MIN);
-  expect(held.screen).toBe("paused");
+  assertGreaterThan(Math.abs(held.moving - start), MOVE_MIN);
+  assertEqual(held.screen, "paused");
 
-  expect(h.snapshot().screen).toBe("paused");
+  assertEqual(h.snapshot().screen, "paused");
   // "Nothing advances" while paused (specs/ui.md): the center is exactly where
   // the pause left it.
-  expect(h.snapshot().paddles.left.cy).toBe(held.paused);
+  assertEqual(h.snapshot().paddles.left.cy, held.paused);
 });

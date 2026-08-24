@@ -693,11 +693,6 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
   },
 ];
 
-// How the assistant message a code turn records is derived from the model's reply
-// (`crates/gg/src/healing.rs`). Under responses-as-code the reply is a program healing
-// rewrites before running, so the transcript can store either what the model *sent* or
-// what gg actually *ran* — a lever a study slices on, and so a mode the configuration
-// names rather than one gg reads out of an empty field.
 // --- Program language ---------------------------------------------------------------
 //
 // Which language an agent writes its programs in. Every language offers the *same*
@@ -750,16 +745,6 @@ export const PROGRAM_LANGUAGE_OPTIONS: ReadonlyArray<{
 
 export const PROGRAM_LANGUAGE_HINT =
   "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed — the same signatures, annotations included — so an A/B across the two measures what checking a program before it runs is worth. Python is its own guest, a committed CPython, and its programs are checked by nothing before they run. Ruby is compiled to JavaScript by a committed Opal before it crosses, so its programs are read and refused before they run without their types ever being checked — the one arm that separates compiling a program from typing it. PureScript is compiled and fully type-checked by a real `purs` in the run image, against a library set gg carries, so it is the other end of that axis: a wrong argument shape, a missing case or a missing instance costs a diagnostic rather than a turn. Java is the only arm whose program passes through two compilers — `javac` and then TeaVM — inside a JVM gg keeps warm between programs, so it is both type-checked and the most expensive arm to compile, and a class outside TeaVM's classlib is a located compile error rather than a run-time surprise. Kotlin rides that same road from bytecode onwards and is the A/B against it: the same two compilers, the same guest and the same classlib, so what differs between the pair is the language and its SDK rather than the toolchain — a program here is a Kotlin script, and its surface expresses every optional argument as a default passed by name where Java's needs an overload. Rust and Swift are a different shape rather than a different language: neither ships a guest at all, because their compilers produce the program rather than something that later reads one, so each turn compiles the component it is then evaluated by. Rust's is the cheapest compile of any checked arm and its programs are ~25 KB; Swift's reply is compiled byte for byte, with no wrapper and no line offset, and is the one arm that pays more to instantiate a program than to compile it. C++ is the third of that shape and the cheapest of the three per turn, because the prelude its programs are compiled against is precompiled once per machine — its reply is compiled byte for byte too, it is the only arm whose guest has working exceptions, and it is the only one where undefined behavior can end a program with nothing to say about why. C# is neither shape: Roslyn compiles the reply to an IL assembly on the host in about a third of a second, the bytes cross as base64, and a committed guest holding a Mono IL interpreter and the whole .NET class library loads them — so it is type-checked like a compiled arm, costs one compiler and no engine work per turn like an interpreted one, and has the best error surface of any of them, because an unhandled exception arrives with its type, its message and its managed stack. There is no default: gg drives no run in a language nobody chose, so a code agent has to name one and a launch that omits it is refused.";
-
-export const ASSISTANT_MESSAGE_OPTIONS = [
-  { value: "response-healing", label: "Post-response healing" },
-  { value: "none", label: "No post-processing" },
-] as const;
-
-// What each assistant-message mode does — the detail lifted off the picker's option
-// labels into the field's help tooltip.
-export const ASSISTANT_MESSAGE_HINT =
-  "Post-response healing records the healed program gg actually ran whenever healing changed the reply, and the reply verbatim when it did not — so the model re-reads a program that compiled, and every line number it is given counts lines of a text it has seen. No post-processing records the reply exactly as the model sent it, which is what a study of a model's code-only compliance reads; it is knowingly inconsistent, because the locations gg reports still count lines of the healed text. Either way the reply as sent is kept on the turn's healing record for the run's operator.";
 
 // Which SDK types a documentation lookup opens beside the function it was asked for —
 // three INDEPENDENT toggles rather than one three-way arm, because what a return type
@@ -1437,6 +1422,16 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     operations: ["files.list_dir"],
   },
   {
+    id: "search",
+    name: "Search",
+    group: "Filesystem",
+    purpose:
+      "Search the workspace's files for a pattern and get back the matching lines with their path and line number. Honors ignore files: what `.gitignore` and its kin exclude is never scanned.",
+    defaultOn: true,
+    tools: ["search"],
+    operations: ["files.search"],
+  },
+  {
     id: RESPONSES_AS_CODE_CAP_ID,
     name: "Responses as code",
     // No group: this entry is the RaC [agent type](GgAgentMode)'s settings panel, and
@@ -1493,15 +1488,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         required: true,
         options: HEALING_STRATEGY_OPTIONS,
         hint: `Repairs gg makes to a reply before running it — deletion only, so a healed program is always a subsequence of what the model sent. The model is told nothing about a repair; every one of them is reported to the run's operator and counted on the run. ${EXHAUSTIVE_TOGGLES_HINT}`,
-      },
-      {
-        key: "assistantMessages",
-        label: "Assistant messages",
-        kind: "select",
-        required: true,
-        defaultValue: ASSISTANT_MESSAGE_OPTIONS[0].value,
-        options: ASSISTANT_MESSAGE_OPTIONS,
-        hint: ASSISTANT_MESSAGE_HINT,
       },
     ],
   },

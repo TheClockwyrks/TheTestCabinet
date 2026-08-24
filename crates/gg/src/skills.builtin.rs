@@ -93,7 +93,7 @@ pub(crate) const FAMILIES: &[Family] = &[
         id: "gg-filesystem",
         title: "Filesystem",
         description: "Reading, writing and editing files in the workspace.",
-        tools: &["read_file", "write_file", "edit_file", "list_dir"],
+        tools: &["read_file", "write_file", "edit_file", "list_dir", "search"],
     },
     Family {
         id: "gg-shell",

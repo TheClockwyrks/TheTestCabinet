@@ -10,7 +10,8 @@
 // The three entries are the case's copy, from the specification. Matching is by
 // substring, because a selected entry is commonly drawn with a marker beside it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { PAUSE_ITEMS } from "../constants";
 import {
   captureStill,
@@ -36,14 +37,14 @@ afterEach(async () => {
 it("opens a pause menu offering resume, restart, and quit", async () => {
   await startWithKeys(h, "versus");
   await h.advance(RALLY_TICKS);
-  expect((await h.snapshot()).screen).toBe("playing");
+  assertEqual((await h.snapshot()).screen, "playing");
 
   await h.tap("Escape");
   const calls = await h.frameCalls();
   await captureStill(h, "pause");
 
-  expect((await h.snapshot()).screen).toBe("paused");
+  assertEqual((await h.snapshot()).screen, "paused");
   for (const item of PAUSE_ITEMS) {
-    expect(drewText(calls, item)).toBe(true);
+    assertEqual(drewText(calls, item), true);
   }
 });

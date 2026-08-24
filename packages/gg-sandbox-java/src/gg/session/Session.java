@@ -11,9 +11,9 @@ import gg.internal.Value;
  * <p>Under responses as code every reply is a program, so there is no prose turn that could mean
  * "the work is done" — a model that answers "task complete" has written a reply that failed to be a
  * program rather than an ending. These are the calls that mean it, and which of them a program has
- * is decided by the role the agent was dispatched in: an agent doing work ends with
- * {@code Session.finish}, and a reviewer with {@code Session.approve} or
- * {@code Session.requestChanges}.
+ * is decided by the role the agent was dispatched in: an agent doing work is given the plain
+ * ending, and a reviewer the verdict pair instead. No agent holds both, because an ending is a
+ * result and the two roles produce different results.
  *
  * <p>None of them stops the program. Whatever follows still runs, which is why they belong last, and
  * a program that then fails cancels its own ending and gets another turn.

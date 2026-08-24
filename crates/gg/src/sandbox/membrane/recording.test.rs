@@ -56,6 +56,7 @@ fn call_everything(state: &mut MembraneState<FakeOperationApi>) {
     let _ = state.write_file("out.txt".to_string(), "body".to_string());
     let _ = state.edit_file("out.txt".to_string(), "a".to_string(), "b".to_string());
     let _ = state.list_dir(None);
+    let _ = FilesHost::search(state, "needle".to_string(), None, None);
     let _ = state.read_skill("testing".to_string());
 
     let memory = MemoryInput {
@@ -143,11 +144,19 @@ fn call_everything(state: &mut MembraneState<FakeOperationApi>) {
     let _ = state.exec("critic".to_string(), None);
     let _ = state.fork("try the other branch".to_string());
 
-    let _ = state.search(Some("read".to_string()), Vec::new(), None, None, None, None);
+    let _ = DocsHost::search(
+        state,
+        Some("read".to_string()),
+        Vec::new(),
+        None,
+        None,
+        None,
+        None,
+    );
     let _ = state.close_doc_view("readFile".to_string());
     let _ = state.close_doc_views();
 
-    let _ = state.open_file_view("src/main.rs".to_string(), None, None);
+    let _ = state.open_file_view("src/main.rs".to_string(), None, None, None);
     let _ = state.open_text_view("findings".to_string(), "all green".to_string());
     let _ = state.open_docs_view("readFile".to_string());
     let _ = state.close_view("findings".to_string());
@@ -228,7 +237,15 @@ fn a_documentation_call_records_the_operation_gg_files_it_under() {
     let log = CallLog::default();
     let (mut state, recorded) = recording_membrane(&log);
 
-    let _ = state.search(Some("read".to_string()), Vec::new(), None, None, None, None);
+    let _ = DocsHost::search(
+        &mut state,
+        Some("read".to_string()),
+        Vec::new(),
+        None,
+        None,
+        None,
+        None,
+    );
 
     assert_eq!(recorded.operations(), vec!["docs.search"]);
     assert_eq!(
@@ -282,7 +299,7 @@ fn opening_a_file_view_is_recorded_as_the_view_call_and_not_as_a_read() {
     let (mut state, recorded) = recording_membrane(&log);
 
     state
-        .open_file_view("src/main.rs".to_string(), None, None)
+        .open_file_view("src/main.rs".to_string(), None, None, None)
         .expect("the view opens");
 
     assert_eq!(recorded.operations(), vec!["views.open_file"]);

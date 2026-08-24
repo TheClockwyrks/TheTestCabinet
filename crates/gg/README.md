@@ -65,7 +65,8 @@ gg --config <PATH>
       { "id": "read-file", "enabled": true },
       { "id": "write-file", "enabled": true },
       { "id": "edit-file", "enabled": true },
-      { "id": "list-dir", "enabled": true }
+      { "id": "list-dir", "enabled": true },
+      { "id": "search", "enabled": true }
     ],
     "slots": [
       { "slot": "primary", "modelId": "anthropic/claude-opus-4-8" }

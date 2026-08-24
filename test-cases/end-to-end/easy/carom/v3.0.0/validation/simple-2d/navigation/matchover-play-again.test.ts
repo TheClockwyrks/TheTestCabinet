@@ -7,8 +7,9 @@
 // action is raised by the binding the case declares, and the result is read
 // back off the game's own state. The still is the frame the press left.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertNull } from "../assert";
 import {
   arrangeGoal,
   captureStill,
@@ -34,18 +35,18 @@ it("starts a new match from the first match-over item", async () => {
   h.debug.setScore(WIN_SCORE - 1, 0);
   arrangeGoal(h, "right");
   const ended = await driveGoal(h);
-  expect(ended.hit).toBe(true);
-  expect(h.snapshot().screen).toBe("matchover");
-  expect(h.snapshot().winner).toBe("left");
-  expect(menuIndex0(h)).toBe(0);
-  expect(MATCHOVER_ITEMS[0]).toBe("PLAY AGAIN");
+  assertEqual(ended.hit, true);
+  assertEqual(h.snapshot().screen, "matchover");
+  assertEqual(h.snapshot().winner, "left");
+  assertEqual(menuIndex0(h), 0);
+  assertEqual(MATCHOVER_ITEMS[0], "PLAY AGAIN");
 
   await h.tap("Enter");
   captureStill(h, "restarted");
 
   const again = h.snapshot();
-  expect(again.screen).toBe("countdown");
-  expect(again.mode).toBe("versus");
-  expect(again.score).toEqual({ p1: 0, p2: 0 });
-  expect(again.winner).toBeNull();
+  assertEqual(again.screen, "countdown");
+  assertEqual(again.mode, "versus");
+  assertDeepEqual(again.score, { p1: 0, p2: 0 });
+  assertNull(again.winner);
 });

@@ -12,8 +12,9 @@
 // screen it left (specs/ui.md), so the frame that consumed the resume is a
 // frame of flight. The margin is one sub-step of travel, MAX_SUBSTEP units.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { MAX_SUBSTEP } from "../../src/constants";
+import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeLiveBall,
   ball0,
@@ -51,7 +52,7 @@ it("resumes the ball from its paused position at its preserved velocity", async 
   await h.advance(30); // 0.25 s of visible flight
   await h.tap("Escape");
   const paused = h.snapshot();
-  expect(paused.screen).toBe("paused");
+  assertEqual(paused.screen, "paused");
 
   await h.advance(FROZEN_TICKS - HANGING_TICKS);
 
@@ -64,23 +65,19 @@ it("resumes the ball from its paused position at its preserved velocity", async 
     await h.advance(RESUMED_TICKS - 1);
     return still;
   });
-  expect(ball0(held).x).toBe(ball0(paused).x);
-  expect(ball0(held).y).toBe(ball0(paused).y);
+  assertEqual(ball0(held).x, ball0(paused).x);
+  assertEqual(ball0(held).y, ball0(paused).y);
 
   const resumed = h.snapshot();
-  expect(resumed.screen).toBe("playing");
+  assertEqual(resumed.screen, "playing");
 
   const elapsed = RESUMED_TICKS / TICK_HZ;
   const expectedX = ball0(paused).x + ball0(paused).vx * elapsed;
   const expectedY = ball0(paused).y + ball0(paused).vy * elapsed;
-  expect(Math.abs(ball0(resumed).x - expectedX)).toBeLessThanOrEqual(
-    MAX_SUBSTEP,
-  );
-  expect(Math.abs(ball0(resumed).y - expectedY)).toBeLessThanOrEqual(
-    MAX_SUBSTEP,
-  );
+  assertLessThanOrEqual(Math.abs(ball0(resumed).x - expectedX), MAX_SUBSTEP);
+  assertLessThanOrEqual(Math.abs(ball0(resumed).y - expectedY), MAX_SUBSTEP);
   // Unchanged to a float margin: the flight integrates a spin of zero, and how
   // a build rotates a velocity by zero radians is its own.
-  expect(ball0(resumed).vx).toBeCloseTo(ball0(paused).vx, 6);
-  expect(ball0(resumed).vy).toBeCloseTo(ball0(paused).vy, 6);
+  assertCloseTo(ball0(resumed).vx, ball0(paused).vx, 6);
+  assertCloseTo(ball0(resumed).vy, ball0(paused).vy, 6);
 });

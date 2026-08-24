@@ -357,6 +357,35 @@ static MonoBoolean gg_list_dir(MonoString *path, MonoArray **names, MonoArray **
   return 1;
 }
 
+static MonoBoolean gg_search(MonoString *query, MonoString *path, int32_t limit, MonoArray **paths,
+                             MonoArray **lines, MonoArray **texts) {
+  char *query_utf8 = lift(query);
+  char *path_utf8 = lift(path);
+  sandbox_string_t owned_query = borrow(query_utf8);
+  sandbox_string_t owned_path = borrow(path_utf8);
+  uint32_t limit_storage = 0;
+  test_cabinet_gg_files_list_search_match_t result;
+  test_cabinet_gg_files_api_error_t failure;
+  const bool ok = test_cabinet_gg_files_search(&owned_query, path_utf8 == NULL ? NULL : &owned_path,
+                                               maybe_u32(limit, &limit_storage), &result, &failure);
+  if (query_utf8 != NULL) mono_free(query_utf8);
+  if (path_utf8 != NULL) mono_free(path_utf8);
+  if (!ok) {
+    park(&failure);
+    return 0;
+  }
+  *paths = string_array(result.len);
+  *lines = uint_array(result.len);
+  *texts = string_array(result.len);
+  for (size_t index = 0; index < result.len; index++) {
+    mono_array_setref(*paths, index, lower(&result.ptr[index].path));
+    uint_array_set(*lines, index, result.ptr[index].line);
+    mono_array_setref(*texts, index, lower(&result.ptr[index].text));
+  }
+  test_cabinet_gg_files_list_search_match_free(&result);
+  return 1;
+}
+
 // ---------------------------------------------------------------------------------------------
 // skills
 // ---------------------------------------------------------------------------------------------
@@ -1144,19 +1173,20 @@ static MonoBoolean gg_close_doc_views(uint32_t *closed) {
 // views
 // ---------------------------------------------------------------------------------------------
 
-static MonoBoolean gg_open_file_view(MonoString *path, int32_t offset, int32_t limit, int32_t *kind,
-                                     MonoString **contents, MonoString **media_type,
-                                     MonoString **label, MonoString **not_shown_reason,
-                                     MonoArray **numbers) {
+static MonoBoolean gg_open_file_view(MonoString *path, int32_t offset, int32_t limit,
+                                     int32_t max_line_chars, int32_t *kind, MonoString **contents,
+                                     MonoString **media_type, MonoString **label,
+                                     MonoString **not_shown_reason, MonoArray **numbers) {
   char *utf8 = lift(path);
   sandbox_string_t owned = borrow(utf8);
   uint32_t offset_storage = 0;
   uint32_t limit_storage = 0;
+  uint32_t max_line_chars_storage = 0;
   test_cabinet_gg_views_file_read_t read;
   test_cabinet_gg_views_api_error_t failure;
-  const bool ok =
-      test_cabinet_gg_views_open_file_view(&owned, maybe_u32(offset, &offset_storage),
-                                           maybe_u32(limit, &limit_storage), &read, &failure);
+  const bool ok = test_cabinet_gg_views_open_file_view(
+      &owned, maybe_u32(offset, &offset_storage), maybe_u32(limit, &limit_storage),
+      maybe_u32(max_line_chars, &max_line_chars_storage), &read, &failure);
   if (utf8 != NULL) mono_free(utf8);
   if (!ok) {
     park(&failure);
@@ -1284,7 +1314,7 @@ static MonoBoolean gg_rerun(MonoString *source) {
 // ---------------------------------------------------------------------------------------------
 
 /// One row of the registration table: the `Namespace.Class::Method` Mono resolves by, the C function
-/// that answers it, and — for the thirty-five that dispatch a gg tool — that tool's name.
+/// that answers it, and — for the thirty-six that dispatch a gg tool — that tool's name.
 ///
 /// The tool name lives here rather than in a second list so that `bound-operations` and the
 /// bindings are one statement. A row with no tool name is one of the model-facing carve-outs that
@@ -1304,6 +1334,7 @@ static const binding_t bindings[] = {
     {"Gg.Internal.Native::WriteFile", (const void *)gg_write_file, "write_file"},
     {"Gg.Internal.Native::EditFile", (const void *)gg_edit_file, "edit_file"},
     {"Gg.Internal.Native::ListDir", (const void *)gg_list_dir, "list_dir"},
+    {"Gg.Internal.Native::Search", (const void *)gg_search, "search"},
     {"Gg.Internal.Native::ReadTextFile", (const void *)gg_read_text_file, NULL},
     {"Gg.Internal.Native::ReadSkill", (const void *)gg_read_skill, "read_skill"},
     {"Gg.Internal.Native::ReadMemory", (const void *)gg_read_memory, "read_memory"},

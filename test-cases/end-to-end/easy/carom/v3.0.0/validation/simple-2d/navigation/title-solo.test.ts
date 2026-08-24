@@ -6,8 +6,9 @@
 // is raised by the binding the case declares, and the result is read back off
 // the game's own state. The still is the frame the press left.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS } from "../../src/constants";
+import { assertDeepEqual, assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 let h: Harness;
@@ -22,12 +23,12 @@ afterEach(() => {
 
 it("starts a Solo match from the first title item", async () => {
   h.debug.reset();
-  expect(TITLE_ITEMS[0]).toBe("SOLO");
+  assertEqual(TITLE_ITEMS[0], "SOLO");
   await h.tap("Enter");
   captureStill(h, "countdown");
 
   const opened = h.snapshot();
-  expect(opened.mode).toBe("solo");
-  expect(opened.screen).toBe("countdown");
-  expect(opened.score).toEqual({ p1: 0, p2: 0 });
+  assertEqual(opened.mode, "solo");
+  assertEqual(opened.screen, "countdown");
+  assertDeepEqual(opened.score, { p1: 0, p2: 0 });
 });

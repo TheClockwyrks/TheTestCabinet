@@ -9,8 +9,14 @@
 // ball back off the wall, so the center is read within one frame of travel of
 // `FIELD_H - BALL_R`, on the field side of it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BALL_R, FIELD_CX, FIELD_H } from "../../src/constants";
+import {
+  assertCloseTo,
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   arrangeLiveBall,
   ball0,
@@ -54,11 +60,11 @@ it("reflects the ball off the bottom wall", async () => {
     return reflected;
   });
 
-  expect(bounce.hit).toBe(true);
+  assertEqual(bounce.hit, true);
   const ball = ball0(bounce.snapshot);
-  expect(ball.vy).toBeCloseTo(-before.vy, 6);
-  expect(ball.vx).toBeCloseTo(before.vx, 6);
-  expect(ball.speed).toBeCloseTo(before.speed, 6);
-  expect(ball.y).toBeLessThanOrEqual(PLACED + 1e-6);
-  expect(ball.y).toBeGreaterThanOrEqual(PLACED - FRAME_TRAVEL);
+  assertCloseTo(ball.vy, -before.vy, 6);
+  assertCloseTo(ball.vx, before.vx, 6);
+  assertCloseTo(ball.speed, before.speed, 6);
+  assertLessThanOrEqual(ball.y, PLACED + 1e-6);
+  assertGreaterThanOrEqual(ball.y, PLACED - FRAME_TRAVEL);
 });

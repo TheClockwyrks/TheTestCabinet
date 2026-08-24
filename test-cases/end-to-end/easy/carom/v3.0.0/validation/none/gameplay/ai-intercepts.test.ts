@@ -8,7 +8,8 @@
 // comes back off the paddle and player one does not score. Nothing poses the
 // AI's motion; its own tracking decides the outcome.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   arrangeAiScenario,
   captureReplay,
@@ -51,5 +52,5 @@ it("tracks down a reachable shot and blocks it", async () => {
     return outcome;
   });
 
-  expect(result).toBe("blocked");
+  assertEqual(result, "blocked");
 });

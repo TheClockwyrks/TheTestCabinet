@@ -9,8 +9,13 @@
 // ball arrives level at the face: its penetration through the front face is at
 // most one sub-step, far less than the `BALL_R` it sits short of the cap.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY, MAX_BOUNCE_ANGLE, PADDLE_HALF } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   LEAD_TICKS,
   angleDeg,
@@ -62,10 +67,11 @@ it("deflects the ball downward off the bottom edge of a still paddle", async () 
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(contact.ball.vx).toBeGreaterThan(0);
-  expect(contact.ball.vy).toBeGreaterThan(0);
-  expect(Math.abs(angleDeg(contact.ball) - EDGE_ANGLE_DEG)).toBeLessThanOrEqual(
+  assertEqual(contact.hit, true);
+  assertGreaterThan(contact.ball.vx, 0);
+  assertGreaterThan(contact.ball.vy, 0);
+  assertLessThanOrEqual(
+    Math.abs(angleDeg(contact.ball) - EDGE_ANGLE_DEG),
     ANGLE_TOLERANCE_DEG,
   );
 });

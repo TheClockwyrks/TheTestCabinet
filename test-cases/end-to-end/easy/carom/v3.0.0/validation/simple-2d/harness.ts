@@ -80,6 +80,7 @@ import {
   P2_X0,
 } from "../src/constants";
 import { BACKGROUND, game as build, type CaromState } from "../src/game";
+import { assertEqual, assertNotEqual, assertTruthy, fail } from "./assert";
 import {
   READINGS,
   type BallSnapshot,
@@ -183,11 +184,11 @@ export type BallView = BallSnapshot;
  */
 export function ball0(snapshot: CaromSnapshot): BallView {
   const one = snapshot.ball ?? snapshot.balls?.[0];
-  expect(
+  assertTruthy(
     one,
     "snapshot() must report the ball as `ball` (base, gyre) or the balls as " +
       "`balls` (multi); see specs/instrumentation.md",
-  ).toBeTruthy();
+  );
   return one as BallView;
 }
 
@@ -228,10 +229,11 @@ export function resumeScreen0(h: Harness): string {
  */
 export function receiver0(h: Harness): Side {
   const value = (h.state as unknown as StateShapes).receiver;
-  expect(
+  assertNotEqual(
     value,
+    undefined,
     "the state must hold the next serve's side as `receiver`; see specs/state.md",
-  ).toBeDefined();
+  );
   return value as Side;
 }
 
@@ -246,11 +248,12 @@ export function receiver0(h: Harness): Side {
 export function holdTimer0(h: Harness): number {
   const shapes = h.state as unknown as StateShapes;
   const value = shapes.holdTimer ?? shapes.balls?.[0]?.holdTimer;
-  expect(
+  assertEqual(
     typeof value,
+    "number",
     "the state must hold the pre-serve hold as `holdTimer` (base, gyre) or on " +
       "each ball (multi); see specs/state.md",
-  ).toBe("number");
+  );
   return value as number;
 }
 
@@ -258,11 +261,12 @@ export function holdTimer0(h: Harness): number {
 export function trail0(h: Harness): TrailPoint[] {
   const shapes = h.state as unknown as StateShapes;
   const value = shapes.trail ?? shapes.balls?.[0]?.trail;
-  expect(
+  assertEqual(
     Array.isArray(value),
+    true,
     "the state must hold the motion trail as `trail` (base, gyre) or on each " +
       "ball (multi); see specs/state.md",
-  ).toBe(true);
+  );
   return value as TrailPoint[];
 }
 
@@ -540,19 +544,24 @@ function readDebugSurface(
  * verdict below with noise from the machinery that was trying to report it.
  */
 function missingSurface(reason: string): CaromSurface {
-  const message =
-    `this build's debug surface is missing, so nothing can reach the game: ` +
-    `src/game.ts's initialize must return [state, debug], its state beside the ` +
-    `surface specs/instrumentation.md specifies, and the engine returns that ` +
-    `surface from engine.debug. ${reason}`;
   return new Proxy({} as CaromSurface, {
     get: (_target, property): unknown => {
       if (typeof property === "symbol") return undefined;
       if (property === "then" || property === "constructor") return undefined;
-      return expect.fail(message);
+      return fail(SURFACE_REQUIREMENT, reason);
     },
   });
 }
+
+/**
+ * What the build owes when its surface is missing: the `Expected:` line of the
+ * failure every check that reaches for the surface lands on, beside what
+ * `engine.debug` was found holding instead.
+ */
+const SURFACE_REQUIREMENT =
+  "the debug surface src/game.ts's initialize returns beside its state, as " +
+  "[state, debug], which the engine hands back from engine.debug " +
+  "(specs/instrumentation.md)";
 
 /**
  * The imperative reading of the raw surface, over the runtime that holds the
@@ -1105,7 +1114,7 @@ function writeReplay(destination: string, recording: Recording): void {
  *
  * ```ts
  * const point = await captureReplay(harness, "goal", () => driveGoal(harness));
- * expect(point.hit).toBe(true);
+ * assertEqual(point.hit, true);
  * ```
  *
  * The assertions stay exactly where they were and read exactly what they did.
@@ -1810,6 +1819,26 @@ export function sampleField(h: Harness): Rgb {
   return samples.reduce((darkest, sample) =>
     luminance(sample) < luminance(darkest) ? sample : darkest,
   );
+}
+
+/**
+ * The build's exported `BACKGROUND`, rasterized: the color the engine clears
+ * the whole canvas to each frame (specs/overview.md), read back through the
+ * same canvas implementation the harness samples with, so a pixel the game
+ * never drew over compares against it exactly.
+ *
+ * The fill is repeated rather than applied once so a translucent color reads
+ * as the engine leaves it: the engine composites its clear over the previous
+ * frame every frame, which converges on the color's own channels, and a single
+ * fill over a transparent canvas would not.
+ */
+export function clearColor(): Rgb {
+  const probe = createCanvas(1, 1);
+  const ctx = probe.getContext("2d");
+  ctx.fillStyle = BACKGROUND;
+  for (let i = 0; i < 255; i += 1) ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return { r, g, b };
 }
 
 /** Every point in `COLOR_POINTS` and the bare field, sampled as they stand. */

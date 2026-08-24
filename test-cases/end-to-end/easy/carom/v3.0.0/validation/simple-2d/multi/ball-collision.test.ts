@@ -12,8 +12,13 @@
 // velocity, and the two balls are posed far enough apart that the approach is a
 // real approach across an empty lane.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BALL_COLLIDE_DIST, FIELD_CY } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   captureReplay,
   clearPaddles,
@@ -76,27 +81,26 @@ it("exchanges the two velocities head-on and separates the pair", async () => {
     return { met, balls };
   });
 
-  expect(meeting.met.hit).toBe(true);
+  assertEqual(meeting.met.hit, true);
   const [first, second] = meeting.balls;
 
   // Each leaves the way the other arrived.
-  expect(Math.abs(first.vx + APPROACH)).toBeLessThanOrEqual(VELOCITY_TOLERANCE);
-  expect(Math.abs(second.vx - APPROACH)).toBeLessThanOrEqual(
-    VELOCITY_TOLERANCE,
-  );
+  assertLessThanOrEqual(Math.abs(first.vx + APPROACH), VELOCITY_TOLERANCE);
+  assertLessThanOrEqual(Math.abs(second.vx - APPROACH), VELOCITY_TOLERANCE);
   // The line of centers is horizontal, so the across-the-line components — both
   // zero here — are left as they are.
-  expect(Math.abs(first.vy)).toBeLessThanOrEqual(VELOCITY_TOLERANCE);
-  expect(Math.abs(second.vy)).toBeLessThanOrEqual(VELOCITY_TOLERANCE);
+  assertLessThanOrEqual(Math.abs(first.vy), VELOCITY_TOLERANCE);
+  assertLessThanOrEqual(Math.abs(second.vy), VELOCITY_TOLERANCE);
   // The velocities were redistributed, not added to: a paddle hit is the only
   // collision in this game that changes a ball's speed.
-  expect(first.speed).toBeLessThanOrEqual(APPROACH + VELOCITY_TOLERANCE);
-  expect(second.speed).toBeLessThanOrEqual(APPROACH + VELOCITY_TOLERANCE);
+  assertLessThanOrEqual(first.speed, APPROACH + VELOCITY_TOLERANCE);
+  assertLessThanOrEqual(second.speed, APPROACH + VELOCITY_TOLERANCE);
 
   // And they are apart rather than overlapping: the pair is pushed clear along
   // the line joining them "until they no longer overlap" (specs/balls.md), so
   // the centers are at least BALL_COLLIDE_DIST apart to a float margin.
-  expect(
+  assertGreaterThanOrEqual(
     Math.hypot(first.x - second.x, first.y - second.y),
-  ).toBeGreaterThanOrEqual(BALL_COLLIDE_DIST - 1e-6);
+    BALL_COLLIDE_DIST - 1e-6,
+  );
 });

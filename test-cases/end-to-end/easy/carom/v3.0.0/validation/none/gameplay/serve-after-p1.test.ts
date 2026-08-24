@@ -8,7 +8,8 @@
 // alongside the direction so a build that never scored the point cannot pass by
 // serving left out of a countdown it never left.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLessThan } from "../assert";
 import {
   arrangeGoal,
   ball0,
@@ -49,9 +50,9 @@ it("serves toward player one after player two scores", async () => {
   // direction only means anything beside the point that decided it.
   await captureReplay(harness, "serve", async () => {
     const point = await driveGoal(harness);
-    expect(point.hit).toBe(true);
-    expect(point.snapshot.score.p2).toBe(1);
-    expect(point.snapshot.screen).toBe("countdown");
+    assertEqual(point.hit, true);
+    assertEqual(point.snapshot.score.p2, 1);
+    assertEqual(point.snapshot.screen, "countdown");
 
     await harness.debug.serve();
     const launched = await harness.until((s) => s.screen === "playing", {
@@ -60,14 +61,14 @@ it("serves toward player one after player two scores", async () => {
     });
     await harness.advance(FLIGHT_TICKS);
 
-    expect(launched.hit).toBe(true);
+    assertEqual(launched.hit, true);
     // Player one defends the LEFT edge: the receiver is the player just scored
     // on.
-    expect(ball0(launched.snapshot).vx).toBeLessThan(0);
+    assertLessThan(ball0(launched.snapshot).vx, 0);
   });
   // And the page stayed quiet throughout: nothing the build threw, and nothing
   // it logged as an error, while this harness was driving it. An engineless
   // build loads no assets through a runtime, so there is no asset log to read —
   // the browser's own is the wider reading, and it covers the whole drive.
-  expect(harness.pageErrors).toEqual([]);
+  assertDeepEqual(harness.pageErrors, []);
 });

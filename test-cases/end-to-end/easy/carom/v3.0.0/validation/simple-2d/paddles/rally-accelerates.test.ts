@@ -7,8 +7,9 @@
 // ceiling, and the sequence must never decrease. The plateau AT the ceiling is
 // the sibling `rally-caps` check.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SPEED_CAP, SPEED_MULT } from "../../src/constants";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeRally,
   captureReplay,
@@ -41,18 +42,17 @@ it("multiplies the ball's speed on every hit below the ceiling", async () => {
     driveRallySpeeds(harness),
   );
 
-  expect(speeds.length).toBeGreaterThanOrEqual(MIN_HITS);
+  assertGreaterThanOrEqual(speeds.length, MIN_HITS);
 
   for (let i = 1; i < speeds.length; i += 1) {
-    expect(speeds[i]).toBeGreaterThanOrEqual(
-      speeds[i - 1] - DECREASE_TOLERANCE,
-    );
+    assertGreaterThanOrEqual(speeds[i], speeds[i - 1] - DECREASE_TOLERANCE);
     // Only the hits that had room to accelerate: at the ceiling the multiply is
     // clamped, which is the sibling check's subject rather than this one's.
     if (speeds[i - 1] < SPEED_CAP / SPEED_MULT - 1) {
-      expect(
+      assertLessThanOrEqual(
         Math.abs(speeds[i] / speeds[i - 1] - SPEED_MULT),
-      ).toBeLessThanOrEqual(RATIO_TOLERANCE);
+        RATIO_TOLERANCE,
+      );
     }
   }
 });

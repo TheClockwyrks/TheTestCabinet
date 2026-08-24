@@ -15,7 +15,6 @@
 // The narrowing is safe by construction: these checks only ever run against a
 // multi build, whose specification requires exactly what is read here.
 
-import { expect } from "vitest";
 import {
   BALL_COUNT,
   BALL_HOMES,
@@ -24,6 +23,7 @@ import {
   FIELD_W,
   HOLD_TIME,
 } from "../../src/constants";
+import { assertEqual } from "../assert";
 import { TICK_HZ, allBalls, type BallView, type Harness } from "../harness";
 import type { CaromSnapshot } from "../surface";
 
@@ -55,21 +55,23 @@ export const RIGHT_PARKS: readonly { x: number; y: number }[] = [
 export function holdTimerOf(h: Harness, index: number): number {
   const balls = (h.state as unknown as { balls?: { holdTimer: number }[] })
     .balls;
-  expect(
+  assertEqual(
     typeof balls?.[index]?.holdTimer,
+    "number",
     "multi requires each ball's `holdTimer` on the state (specs/state.md)",
-  ).toBe("number");
+  );
   return (balls as { holdTimer: number }[])[index].holdTimer;
 }
 
 /** Every ball a snapshot reports, checked for count before a check reads them. */
 export function readBalls(snapshot: CaromSnapshot): BallView[] {
   const balls = allBalls(snapshot);
-  expect(
+  assertEqual(
     balls.length,
+    BALL_COUNT,
     "multi requires snapshot().balls, the three balls in play order " +
       "(specs/instrumentation.md)",
-  ).toBe(BALL_COUNT);
+  );
   return balls;
 }
 

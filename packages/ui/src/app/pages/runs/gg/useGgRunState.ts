@@ -1977,6 +1977,13 @@ export function reduceGgEvents(
   // carries rather than under a guess at the arm's spelling.
   const apiCallName = (agentId: string, operation: string): string =>
     feedSpellings.get(agentId)?.get(operation) ?? operation;
+  // The feed index of each agent's most recent assistant-message row. A turn's
+  // `assistant_message` arrives before its `code_execution`, and only the latter knows
+  // whether healing rewrote the reply — so when it says so, the row already showing the
+  // program that ran is marked as healed in place, and the reply as sent lands beneath it.
+  // Keyed by the emitting agent: a subagent's turn interleaved with its parent's must not
+  // mark the parent's message.
+  const lastAgentRow = new Map<string, number>();
   const foldFeedRows = (
     event: HarnessEvent,
     index: number,
@@ -2024,13 +2031,25 @@ export function reduceGgEvents(
         // below is that turn's other half.
         case "code_execution":
           if (gg.healing?.original !== undefined) {
+            const strategies = gg.healing.strategies?.join(", ") ?? "healing";
+            // The assistant message above is the program that ran, not what the model
+            // sent: say so on the row itself, so a reader scanning the feed knows the
+            // text was rewritten before reaching the row that carries the original.
+            const agentRow = lastAgentRow.get(emitter);
+            if (agentRow !== undefined) {
+              const row = feed[agentRow]!;
+              feed[agentRow] = {
+                ...row,
+                args: `healed by ${strategies} — this is the program that ran; the reply as sent is below`,
+              };
+            }
             feed.push({
               ...base,
               label: "healed",
               detail: gg.healing.original,
               args: `sent as ${gg.healing.original.split("\n").length} line${
                 gg.healing.original.split("\n").length === 1 ? "" : "s"
-              }; ran after ${gg.healing.strategies?.join(", ") ?? "healing"}`,
+              }; ran after ${strategies}`,
               tone: "system",
               collapsible: true,
             });
@@ -2040,7 +2059,12 @@ export function reduceGgEvents(
     }
     // Everything else is a row of its own — or none — decided by the event alone.
     const row = toFeedRow(event, index, profileName);
-    if (row) feed.push(row);
+    if (row) {
+      feed.push(row);
+      if (event.type === "gg" && event.event.type === "assistant_message") {
+        lastAgentRow.set(emitter, feed.length - 1);
+      }
+    }
   };
 
   events.forEach((event, index) => {

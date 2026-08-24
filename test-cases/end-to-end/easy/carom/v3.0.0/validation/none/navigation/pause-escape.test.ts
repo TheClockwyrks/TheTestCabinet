@@ -5,7 +5,8 @@
 // build must read it as `back`. The match is paused from live play, so the
 // screen resumed to is `playing`, and it keeps running after: the ball moves on.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { ball0, captureStill, createHarness, type Harness } from "../harness";
 import { reachPaused } from "./screens";
 
@@ -28,11 +29,12 @@ it("resumes the paused match on Escape", async () => {
   await h.tap("Escape");
   await captureStill(h, "resumed");
   const resumed = await h.snapshot();
-  expect(resumed.screen).toBe("playing");
+  assertEqual(resumed.screen, "playing");
 
   await h.advance(AFTER_TICKS);
   const later = ball0(await h.snapshot());
-  expect(
+  assertGreaterThan(
     Math.hypot(later.x - ball0(paused).x, later.y - ball0(paused).y),
-  ).toBeGreaterThan(0);
+    0,
+  );
 });

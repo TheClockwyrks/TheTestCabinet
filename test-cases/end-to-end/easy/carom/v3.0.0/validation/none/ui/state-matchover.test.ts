@@ -12,7 +12,8 @@
 // frame's text, and `0` as a number of its own. How the screen presents them is
 // the build's.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertMatches } from "../assert";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../constants";
 import {
   arrangeGoal,
@@ -41,19 +42,19 @@ it("ends the match on the winning point and draws the match-over screen", async 
   await arrangeGoal(h, "right");
 
   const ended = await driveGoal(h);
-  expect(ended.hit).toBe(true);
+  assertEqual(ended.hit, true);
 
   const over = await h.snapshot();
-  expect(over.screen).toBe("matchover");
-  expect(over.score).toEqual({ p1: WIN_SCORE, p2: 0 });
-  expect(over.winner).toBe("left");
+  assertEqual(over.screen, "matchover");
+  assertDeepEqual(over.score, { p1: WIN_SCORE, p2: 0 });
+  assertEqual(over.winner, "left");
 
   const calls = await h.frameCalls();
   await captureStill(h, "matchover");
   for (const item of MATCHOVER_ITEMS) {
-    expect(drewText(calls, item)).toBe(true);
+    assertEqual(drewText(calls, item), true);
   }
   const text = drawnText(calls).join(" ");
-  expect(text).toMatch(new RegExp(`\\b${WIN_SCORE}\\b`));
-  expect(text).toMatch(/\b0\b/);
+  assertMatches(text, new RegExp(`\\b${WIN_SCORE}\\b`));
+  assertMatches(text, /\b0\b/);
 });

@@ -9,7 +9,8 @@
 // frame at once puts it there, or out of the goal. Every frame is sampled, so
 // the earliest frame the ball was travelling back is the one read.
 
-import { afterEach, expect, it } from "vitest";
+import { afterEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { FIELD_CY, P1_X1, SPEED_CAP } from "../constants";
 import { ball0, captureReplay, PARKED_CY, type Harness } from "../harness";
 import { DEPARTURE_MS, framesFor, harnessAt, STEPS_MS } from "./no-tunnel";
@@ -45,13 +46,16 @@ it("rebounds off a paddle at the ceiling speed rather than scoring through it", 
       return swept;
     });
 
-    expect(rebound.hit, `${stepMs} ms frames: rebounds`).toBe(true);
-    expect(rebound.snapshot.screen, `${stepMs} ms frames: no point`).toBe(
+    assertEqual(rebound.hit, true, `${stepMs} ms frames: rebounds`);
+    assertEqual(
+      rebound.snapshot.screen,
       "playing",
+      `${stepMs} ms frames: no point`,
     );
-    expect(
+    assertGreaterThan(
       ball0(rebound.snapshot).x,
+      P1_X1,
       `${stepMs} ms frames: stays on the field side of the paddle`,
-    ).toBeGreaterThan(P1_X1);
+    );
   }
 });

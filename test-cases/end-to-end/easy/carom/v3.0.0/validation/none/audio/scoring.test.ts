@@ -13,7 +13,8 @@
 // build that blips as the ball leaves the field is caught even though the cue's
 // NAME is not observable from outside an engineless build.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
@@ -60,10 +61,11 @@ it("sounds a cue on the frame the point lands, and not before it", async () => {
     return measured;
   });
 
-  expect(point.scored.hit).toBe(true);
-  expect(point.scored.snapshot.score).toEqual({ p1: 1, p2: 0 });
-  expect(point.cues.length).toBeGreaterThan(0);
-  expect(point.cues.map((cue) => cue.frame)).toEqual(
+  assertEqual(point.scored.hit, true);
+  assertDeepEqual(point.scored.snapshot.score, { p1: 1, p2: 0 });
+  assertGreaterThan(point.cues.length, 0);
+  assertDeepEqual(
+    point.cues.map((cue) => cue.frame),
     point.cues.map(() => point.frame),
   );
 });

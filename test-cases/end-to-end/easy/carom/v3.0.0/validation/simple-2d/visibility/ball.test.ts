@@ -12,7 +12,8 @@
 // named alongside it, and the review item states that as an RGB distance of
 // more than 50 on the 0–441 scale. That figure is the only threshold here.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
 import {
   arrangeColorScene,
   captureStill,
@@ -40,7 +41,5 @@ it("draws the ball apart from the field", async () => {
   captureStill(h, "scene");
   const scene = sampleScene(h);
 
-  expect(colorDistance(scene.ball, scene.background)).toBeGreaterThan(
-    APART_MIN,
-  );
+  assertGreaterThan(colorDistance(scene.ball, scene.background), APART_MIN);
 });

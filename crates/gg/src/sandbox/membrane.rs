@@ -1406,6 +1406,7 @@ fn data_kind(data: &ApiData) -> &'static str {
         ApiData::FileImage(_) => "fileImage",
         ApiData::BytesWritten(_) => "bytesWritten",
         ApiData::DirEntries(_) => "dirEntries",
+        ApiData::SearchMatches(_) => "searchMatches",
         ApiData::MemoryUsage(_) => "memoryUsage",
         ApiData::MemoryHits(_) => "memoryHits",
         ApiData::TaskUsage(_) => "taskUsage",

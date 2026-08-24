@@ -14,7 +14,8 @@
 // degrees is the room allowed. One percent on the speed is rounding room, since
 // the rotation preserves it exactly.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertLessThan, assertLessThanOrEqual } from "../assert";
 import { FIELD_CY, SPIN_HALFLIFE } from "../constants";
 import {
   arrangeLiveBall,
@@ -66,11 +67,12 @@ it("turns a level flight counterclockwise on screen under negative spin, keeping
     return read;
   });
 
-  expect(flown.vy).toBeLessThan(0);
-  expect(Math.abs(flown.speed - posed.speed)).toBeLessThanOrEqual(
+  assertLessThan(flown.vy, 0);
+  assertLessThanOrEqual(
+    Math.abs(flown.speed - posed.speed),
     SPEED_TOLERANCE * posed.speed,
   );
   const turned =
     Math.atan2(flown.vy, flown.vx) - Math.atan2(posed.vy, posed.vx);
-  expect(Math.abs(turned - EXPECTED_TURN)).toBeLessThanOrEqual(TURN_TOLERANCE);
+  assertLessThanOrEqual(Math.abs(turned - EXPECTED_TURN), TURN_TOLERANCE);
 });

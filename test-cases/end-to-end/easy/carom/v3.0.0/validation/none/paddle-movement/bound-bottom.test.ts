@@ -10,7 +10,8 @@
 // bound from center (305 units at 720 per second is 0.42 s), and both are read
 // with the key still down.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo } from "../assert";
 import { PADDLE_MAX_CY } from "../constants";
 import {
   captureReplay,
@@ -43,6 +44,6 @@ it("stops at PADDLE_MAX_CY with vy 0 while the key is held into the bound", asyn
     return read;
   });
 
-  expect(pinned.cy).toBeCloseTo(PADDLE_MAX_CY, 6);
-  expect(pinned.vy).toBeCloseTo(0, 6);
+  assertCloseTo(pinned.cy, PADDLE_MAX_CY, 6);
+  assertCloseTo(pinned.vy, 0, 6);
 });

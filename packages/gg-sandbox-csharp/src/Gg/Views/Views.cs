@@ -30,22 +30,43 @@ public static partial class Views
     /// The key is the path and the region together, so two pages of one file are two views and
     /// coexist. Opening the same page again replaces it rather than piling up a duplicate.
     /// </para>
+    /// <para>
+    /// A text view is capped at 65,536 bytes, and a file over it is refused rather than cut: the
+    /// refusal names the size, and the way in is a smaller window through
+    /// <paramref name="offset"/> and <paramref name="limit"/>, or <paramref name="maxLineChars"/>
+    /// for a file whose lines are wider than they are useful — a minified bundle, a log. Each line
+    /// of the view longer than that many characters is cut there and annotated in place as
+    /// <c>foo (123 more chars...)</c>, and the cap is measured after the cut. Only the view is cut:
+    /// what this call returns, and the file itself, are untouched. A picture is not subject to the
+    /// cap.
+    /// </para>
     /// </remarks>
     /// <param name="path">The file to read and show, relative to the workspace or absolute.</param>
     /// <param name="offset">The 1-based first line. Left out, the whole file is shown.</param>
     /// <param name="limit">How many lines. Left out, the view runs to the end.</param>
+    /// <param name="maxLineChars">
+    /// The width, in characters, past which each line of the view is cut, from 1 to 65,536. Left
+    /// out, lines arrive whole.
+    /// </param>
     /// <returns>the read itself, so the program can work with what the model is now being shown.</returns>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.NotFound"/> for a missing path, and
-    /// <see cref="ApiErrorCode.InvalidArgument"/> for an offset past the end of the file.
+    /// <see cref="ApiErrorCode.NotFound"/> for a missing path,
+    /// <see cref="ApiErrorCode.InvalidArgument"/> for an offset past the end of the file or a
+    /// width outside 1 to 65,536, and <see cref="ApiErrorCode.LimitExceeded"/>, naming the size,
+    /// for a text view over 65,536 bytes. The read is what fails, and nothing is opened when it does.
     /// </exception>
     /// <ggop>views.open_file</ggop>
-    public static Files.FileRead OpenFile(string path, uint? offset = null, uint? limit = null)
+    public static Files.FileRead OpenFile(
+        string path,
+        uint? offset = null,
+        uint? limit = null,
+        uint? maxLineChars = null)
     {
         Internal.Wire.Check(Internal.Native.OpenFileView(
             path,
             Internal.Wire.Slot(offset),
             Internal.Wire.Slot(limit),
+            Internal.Wire.Slot(maxLineChars),
             out var kind,
             out var contents,
             out var mediaType,
@@ -74,8 +95,8 @@ public static partial class Views
     /// </code>
     /// </remarks>
     /// <param name="label">
-    /// What to file it under. It is also what <see cref="Close"/> takes, so an empty label is
-    /// refused: a view with no selector could never be closed or replaced.
+    /// What to file it under: the view's selector, so an empty label is refused — a view with no
+    /// selector could never be replaced or attributed.
     /// </param>
     /// <param name="body">
     /// The text to show. Empty is allowed, and is how a program says that something it was showing
@@ -94,12 +115,12 @@ public static partial class Views
     /// Its declaration, its description, a line per argument where it takes any, and the
     /// declarations of any types it refers to that the session has not already been shown. It is a
     /// view rather than a return value: the documentation arrives in the next prompt, under a
-    /// <c>Documentation</c> heading, and <see cref="Docs.Close"/> is what takes it away again — not
-    /// <see cref="Close"/>, which does not reach documentation.
+    /// <c>Documentation</c> heading, and is not available in the turn that asks for it. Opening an
+    /// entry already open does nothing at all, neither moving it nor sending it again.
     /// </remarks>
     /// <param name="name">
-    /// The fully-qualified name the documentation is keyed by — <c>"Gg.Files.ReadFile"</c>, or a
-    /// module's own path, <c>"Gg.Files"</c>. The name a program calls it by (<c>"ReadFile"</c>) also
+    /// The fully-qualified name the documentation is keyed by — <c>"Gg.Views.OpenText"</c>, or a
+    /// module's own path, <c>"Gg.Views"</c>. The name a program calls it by (<c>"OpenText"</c>) also
     /// resolves and is a fallback rather than the form to reach for: two modules are free to declare
     /// a <c>Close</c>, and only the qualified name says which one is meant. Searching the
     /// documentation is what says which names exist.

@@ -17,8 +17,9 @@
 // walks the balls and sounds on each side of the contact double-fires, and the
 // single-element list below is what catches it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { CUES, FIELD_CY } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   clearPaddles,
@@ -85,8 +86,11 @@ it("plays the ball-bounce cue once on the frame the pair meets", async () => {
     return measured;
   });
 
-  expect(meeting.met.hit).toBe(true);
-  expect(meeting.cues.map((cue) => cue.cue)).toEqual([CUES.ballBounce]);
-  expect(meeting.cues[0].frame).toBe(meeting.frame);
-  expect(meeting.cues[0].gain).toBeGreaterThan(0);
+  assertEqual(meeting.met.hit, true);
+  assertDeepEqual(
+    meeting.cues.map((cue) => cue.cue),
+    [CUES.ballBounce],
+  );
+  assertEqual(meeting.cues[0].frame, meeting.frame);
+  assertGreaterThan(meeting.cues[0].gain, 0);
 });

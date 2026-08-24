@@ -7,9 +7,9 @@
 //! call is found and a documentation view is how it is understood.
 //!
 //! [`search`] is bound to every program whatever a run enables, because an agent that cannot find
-//! its own surface does not have one. [`close`] and [`close_all`] are the exception and are bought
-//! by a capability: opening documentation only ever adds to the end of the prompt, while closing it
-//! rewrites the middle.
+//! its own surface does not have one. Closing is the exception and is bought by a capability:
+//! opening documentation only ever adds to the end of the prompt, while closing it rewrites the
+//! middle.
 
 use crate::bindings::test_cabinet::gg::docs;
 use crate::core::ApiError;
@@ -32,8 +32,7 @@ use crate::wire;
 ///
 /// The result is a value **and** a view. The value is readable in the turn that asked for it; the
 /// view puts the same page in the next prompt under the selector `search results`, replaced by the
-/// next search rather than accumulating, and closed by [`views::close`](crate::views::close). A hit
-/// carries a brief and no more — reading one in full is
+/// next search rather than accumulating. A hit carries a brief and no more — reading one in full is
 /// [`views::open_docs_view`](crate::views::open_docs_view) on its [`key`](DocHit::key).
 ///
 /// Paging is [`offset`](SearchOptions::offset) and [`limit`](SearchOptions::limit), and
@@ -187,8 +186,7 @@ pub struct DocHit {
     /// The fully-qualified name this entry is keyed by, and the handle a view is opened and closed
     /// under.
     ///
-    /// [`views::open_docs_view`](crate::views::open_docs_view) takes it to read the entry in full,
-    /// and [`close`] takes it to put that view away again.
+    /// [`views::open_docs_view`](crate::views::open_docs_view) takes it to read the entry in full.
     pub key: String,
     /// Whether this is a module, a function or a type.
     pub kind: DocKind,

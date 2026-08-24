@@ -113,8 +113,8 @@ struct doc_search {
 ///
 /// The result is a value and a view. The value is readable in the turn that asked for it; the view
 /// puts the same page in the next prompt under the selector `search results`, replaced by the next
-/// search rather than accumulating, and closed by `gg::views::close`. A hit carries a brief and no more
-/// — reading one in full is `gg::views::open_docs_view` on its `key`.
+/// search rather than accumulating. A hit carries a brief and no more — reading one in full is
+/// `gg::views::open_docs_view` on its `key`.
 ///
 /// <ggop>docs.search</ggop>
 ///

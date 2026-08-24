@@ -8,8 +8,9 @@
 // result is read back off the game's own state. The still is the frame the
 // press left.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY, PAUSE_ITEMS } from "../../src/constants";
+import { assertCloseTo, assertDeepEqual, assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -34,25 +35,25 @@ afterEach(() => {
 it("restarts the match from the second pause item", async () => {
   await startWithKeys(h, "versus");
   await h.advance(RALLY_TICKS);
-  expect(h.snapshot().screen).toBe("playing");
+  assertEqual(h.snapshot().screen, "playing");
   // A score and a paddle off center, so the restart has something to clear.
   h.debug.setScore(3, 4);
   h.debug.setPaddle("left", { cy: 200, vy: 0 });
   h.debug.setPaddle("right", { cy: 500, vy: 0 });
   await h.advance(1);
   await h.tap("Escape");
-  expect(h.snapshot().screen).toBe("paused");
-  expect(PAUSE_ITEMS[1]).toBe("RESTART");
+  assertEqual(h.snapshot().screen, "paused");
+  assertEqual(PAUSE_ITEMS[1], "RESTART");
 
   await h.tap("ArrowDown");
-  expect(menuIndex0(h)).toBe(1);
+  assertEqual(menuIndex0(h), 1);
   await h.tap("Enter");
   captureStill(h, "restarted");
 
   const restarted = h.snapshot();
-  expect(restarted.screen).toBe("countdown");
-  expect(restarted.mode).toBe("versus");
-  expect(restarted.score).toEqual({ p1: 0, p2: 0 });
-  expect(restarted.paddles.left.cy).toBeCloseTo(FIELD_CY, 6);
-  expect(restarted.paddles.right.cy).toBeCloseTo(FIELD_CY, 6);
+  assertEqual(restarted.screen, "countdown");
+  assertEqual(restarted.mode, "versus");
+  assertDeepEqual(restarted.score, { p1: 0, p2: 0 });
+  assertCloseTo(restarted.paddles.left.cy, FIELD_CY, 6);
+  assertCloseTo(restarted.paddles.right.cy, FIELD_CY, 6);
 });

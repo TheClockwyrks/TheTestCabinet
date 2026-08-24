@@ -4,7 +4,7 @@
  * A view is the only channel into the agent's own context window. Under responses-as-code a whole
  * program's output would otherwise collapse into one anonymous blob, charged to one band, attributed
  * to nothing and evictable by nothing; a view restores what tool calling gave for free — one message
- * apiece, carrying the band it is charged to and the selector it can be closed by.
+ * apiece, carrying the band it is charged to and the selector it is keyed by.
  *
  * Everything opened here arrives on the **next** turn, never the one that opened it.
  */
@@ -46,10 +46,10 @@ export interface OpenView {
   kind: ViewKind;
 
   /**
-   * What closes it.
+   * What it is keyed by, and what closes it.
    *
    * A file's path, a text view's label or `search results` for `close`, and for a documentation
-   * view the key `gg.docs.close` takes.
+   * view the fully-qualified name of the entry it documents.
    */
   selector: string;
 
@@ -63,8 +63,7 @@ export interface OpenView {
    * Close this view, with its selector already supplied.
    *
    * `gg.views.close` for the common case where the listed view is in hand. A documentation view is
-   * the one it does not take away, exactly as that call does not: `gg.docs.close` is what puts one
-   * of those away.
+   * the one it does not take away, exactly as that call does not.
    *
    * @ggop views.close
    * @returns how many views were closed, which is zero when this one has already gone.
@@ -85,23 +84,40 @@ export interface OpenView {
  * An image file is shown as a picture, and this is the only way to look at one:
  * `gg.files.readFile` of an image describes it without showing it.
  *
+ * The view's text is held to the same 65,536-byte cap a text view's body is: a window that would
+ * carry more is refused, naming the size and the bound, and nothing is opened. Nothing is ever
+ * silently truncated, so the way through is to narrow the window with `offset` and `limit`, or to
+ * cut its long lines with `maxLineChars`, in the same turn. A picture is not a text body and is
+ * bounded by gg's image cap alone.
+ *
  * @ggop views.open_file
  * @param path The file to open, relative to the workspace or absolute.
- * @param options The window of lines to show; omit it to show the whole file.
+ * @param options The window of lines to show, and how long a shown line may be; omit it to show the
+ * whole file with its lines whole.
  * @param options.offset The 1-based line to start at. Omitted, the view starts at the first line.
  * @param options.limit How many lines to show from `offset`. Omitted, a capped read policy's
  * default applies, or the view runs to the end of the file. Both are honoured under every read
  * policy.
+ * @param options.maxLineChars The longest a line of the view may be, in characters. Set, each line
+ * longer than it is cut there and annotated in place as `foo (123 more chars...)`; omitted, lines
+ * arrive whole. It cuts the view alone — the value this call returns and the file itself are
+ * untouched — and the byte cap is measured after the cut, which is what lets a window over a log
+ * of enormous lines fit. It must be between 1 and 65,536.
  * @returns the same value `gg.files.readFile` hands back for that window, so a program can use what
  * it just put in front of the agent.
- * @throws `ApiError` with `not-found` for a path that is not there. The read is what fails, so
- * nothing is opened when it does.
+ * @throws `ApiError` with `not-found` for a path that is not there, `limit-exceeded`, naming the
+ * size and the bound, for a window whose text would be over the cap, and `invalid-argument` for a
+ * `maxLineChars` of zero or over 65,536. The read is what fails, so nothing is opened when it does.
  */
-export function openFile(path: string, options?: { offset?: number; limit?: number }): FileRead {
-  const o = opts<{ offset?: number; limit?: number }>("openFile", options);
+export function openFile(
+  path: string,
+  options?: { offset?: number; limit?: number; maxLineChars?: number },
+): FileRead {
+  const o = opts<{ offset?: number; limit?: number; maxLineChars?: number }>("openFile", options);
   const offset = uint("openFile", "offset", o?.offset, U32_MAX);
   const limit = uint("openFile", "limit", o?.limit, U32_MAX);
-  return asFileRead(call(() => raw.openFileView(path, offset, limit)));
+  const maxLineChars = uint("openFile", "maxLineChars", o?.maxLineChars, U32_MAX);
+  return asFileRead(call(() => raw.openFileView(path, offset, limit, maxLineChars)));
 }
 
 /**
@@ -115,8 +131,8 @@ export function openFile(path: string, options?: { offset?: number; limit?: numb
  * now empty. An empty label is not: a view with no selector could never be closed or attributed.
  *
  * @ggop views.open_text
- * @param label What to file the view under. It is what `close` takes, and opening the same label
- * again replaces what it showed. It may not be empty.
+ * @param label What to file the view under: its selector, and what opening the same label again
+ * replaces. It may not be empty.
  * @param body What to show. An empty body is allowed: it says that something previously shown is now
  * empty.
  * @throws `ApiError` with `invalid-argument` for an empty label, and `limit-exceeded`, naming the
@@ -131,17 +147,17 @@ export function openText(label: string, body: string): void {
  *
  * Only the types it names that have not already been shown this session are appended, so re-reading
  * costs nothing twice. The argument is a bound function itself, as in
- * `gg.views.openDocsView(gg.files.readFile)`, or the entry's name as a string.
+ * `gg.views.openDocsView(gg.docs.search)`, or the entry's name as a string.
  *
  * It is a **view** rather than a return value, so the documentation arrives in the next prompt under
  * a `Documentation` heading and is not available in the turn that asked for it. Asking in one turn
  * and using it in the next is the shape that works. Opening an entry that is already open does
- * nothing at all — the band only grows — and `gg.docs.close` takes the same name to put a view
- * away, not the `close` in this module, which does not reach documentation.
+ * nothing at all: the band only grows, and taking a documentation view away is bought by a
+ * capability of its own.
  *
  * @ggop views.open_docs_view
  * @param target What to document: a bound function itself, or the entry's name as a string — a
- * module's name is its own path, as in `gg.files`.
+ * module's name is its own path, as in `gg.views`.
  * @throws `ApiError` with `not-found` for an unknown or unbound name — searching the documentation
  * is what says which names exist — and `invalid-argument` for an argument that is neither a
  * function nor a string.
@@ -191,9 +207,9 @@ function docsName(target: Function | string): string {
  * results of a search the label `search results`. Closing a selector that is not open is not a
  * failure, so a program that tidies up unconditionally needs no guard on every call.
  *
- * Documentation views are not among them: `gg.docs.close` is what takes one of those away, and it is
- * bought by a capability of its own, `docview-close`. A sweep that quietly reached them would answer zero for an
- * agent that may not close one, which reads exactly like a selector that named nothing.
+ * Documentation views are not among them: taking one of those away is bought by a capability of its
+ * own, `docview-close`. A sweep that quietly reached them would answer zero for an agent that may not
+ * close one, which reads exactly like a selector that named nothing.
  *
  * Closing a file view forgets what was read, not what exists. Closing a text view discards the only
  * copy of what it held, so anything needed later belongs in a file or a memory first.

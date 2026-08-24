@@ -7,7 +7,8 @@
 // read by confirming once on the title: index 0 is `SOLO`, so the match that
 // opens is Solo, not the Versus match that ended.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertNull } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { reachMatchover } from "./screens";
 
@@ -28,12 +29,12 @@ it("returns to the title on Escape", async () => {
   await captureStill(h, "title");
 
   const title = await h.snapshot();
-  expect(title.screen).toBe("title");
-  expect(title.score).toEqual({ p1: 0, p2: 0 });
-  expect(title.winner).toBeNull();
+  assertEqual(title.screen, "title");
+  assertDeepEqual(title.score, { p1: 0, p2: 0 });
+  assertNull(title.winner);
 
   await h.tap("Enter");
   const opened = await h.snapshot();
-  expect(opened.screen).toBe("countdown");
-  expect(opened.mode).toBe("solo");
+  assertEqual(opened.screen, "countdown");
+  assertEqual(opened.mode, "solo");
 });

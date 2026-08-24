@@ -6,7 +6,8 @@
 // match sets `menuIndex = 0`, so the first entry is the one a fresh match-over
 // screen confirms. The match is ended through the build's own win rule.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertNull } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { reachMatchover } from "./screens";
 
@@ -27,8 +28,8 @@ it("starts a new match in the same mode on PLAY AGAIN", async () => {
   await captureStill(h, "restarted");
 
   const restarted = await h.snapshot();
-  expect(restarted.screen).toBe("countdown");
-  expect(restarted.mode).toBe("versus");
-  expect(restarted.score).toEqual({ p1: 0, p2: 0 });
-  expect(restarted.winner).toBeNull();
+  assertEqual(restarted.screen, "countdown");
+  assertEqual(restarted.mode, "versus");
+  assertDeepEqual(restarted.score, { p1: 0, p2: 0 });
+  assertNull(restarted.winner);
 });

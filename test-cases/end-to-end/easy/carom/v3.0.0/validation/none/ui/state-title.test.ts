@@ -11,7 +11,8 @@
 // drawn with a selection marker beside it, and that is the build's own
 // presentation. Everything else about the screen is the build's.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { TITLE_ITEMS, TITLE_TEXT } from "../constants";
 import {
   captureStill,
@@ -35,9 +36,9 @@ it("opens on the title and draws its name and menu", async () => {
   const calls = await h.frameCalls();
   await captureStill(h, "title");
 
-  expect((await h.snapshot()).screen).toBe("title");
-  expect(drewText(calls, TITLE_TEXT)).toBe(true);
+  assertEqual((await h.snapshot()).screen, "title");
+  assertEqual(drewText(calls, TITLE_TEXT), true);
   for (const item of TITLE_ITEMS) {
-    expect(drewText(calls, item)).toBe(true);
+    assertEqual(drewText(calls, item), true);
   }
 });

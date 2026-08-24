@@ -14,7 +14,12 @@
 // the first sub-step and the second decays the spin a fraction of a percent;
 // and the AI's own per-frame integration decides where in the frame it stands.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { AI_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import {
   arrangeAiMovingHit,
@@ -49,11 +54,12 @@ it("imparts AI_SPEED * SPIN_FROM_PADDLE, signed by the AI paddle's direction", a
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
+  assertEqual(contact.hit, true);
   // The AI starts above the lane and sweeps down, so it strikes moving down.
-  expect(contact.paddle.vy).toBeGreaterThan(0);
-  expect(Math.sign(contact.ball.spin)).toBe(Math.sign(contact.paddle.vy));
-  expect(
+  assertGreaterThan(contact.paddle.vy, 0);
+  assertEqual(Math.sign(contact.ball.spin), Math.sign(contact.paddle.vy));
+  assertLessThanOrEqual(
     Math.abs(Math.abs(contact.ball.spin) - EXPECTED_SPIN),
-  ).toBeLessThanOrEqual(SPIN_TOLERANCE);
+    SPIN_TOLERANCE,
+  );
 });

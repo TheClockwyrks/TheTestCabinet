@@ -12,7 +12,14 @@
 // Then the sweep runs on until the respawned ball leaves again, which is the hold
 // it took for itself while the other two carried on.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { BALL_HOMES } from "../constants";
 import {
   arrangeGoal,
@@ -79,27 +86,28 @@ it("returns the scored ball to its own home while the other two play on", async 
     return { scored, atPoint, relaunch };
   });
 
-  expect(point.scored.hit).toBe(true);
-  expect(point.scored.snapshot.score).toEqual({ p1: 1, p2: 0 });
+  assertEqual(point.scored.hit, true);
+  assertDeepEqual(point.scored.snapshot.score, { p1: 1, p2: 0 });
   // The field is not frozen: there is no post-point countdown to return to.
-  expect(point.scored.snapshot.screen).toBe("playing");
+  assertEqual(point.scored.snapshot.screen, "playing");
 
   // The ball that crossed, and only it: back on its OWN home point, holding.
   const [scoredBall, ...others] = point.atPoint;
-  expect(scoredBall.held).toBe(true);
-  expect(scoredBall.x).toBeCloseTo(BALL_HOMES[0].x, 0);
-  expect(scoredBall.y).toBeCloseTo(BALL_HOMES[0].y, 0);
+  assertEqual(scoredBall.held, true);
+  assertCloseTo(scoredBall.x, BALL_HOMES[0].x, 0);
+  assertCloseTo(scoredBall.y, BALL_HOMES[0].y, 0);
 
   // The other two carried straight on, still in flight and still moving.
   for (const ball of others) {
-    expect(ball.held).toBe(false);
-    expect(ball.speed).toBeGreaterThan(1);
+    assertEqual(ball.held, false);
+    assertGreaterThan(ball.speed, 1);
   }
 
   // And the respawn took a hold of its own before it launched again.
-  expect(point.relaunch.hit).toBe(true);
-  expect(Math.abs(point.relaunch.frames - HOLD_TICKS)).toBeLessThanOrEqual(
+  assertEqual(point.relaunch.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(point.relaunch.frames - HOLD_TICKS),
     HOLD_TOLERANCE_TICKS,
   );
-  expect(ball0(point.relaunch.snapshot).speed).toBeGreaterThan(1);
+  assertGreaterThan(ball0(point.relaunch.snapshot).speed, 1);
 });

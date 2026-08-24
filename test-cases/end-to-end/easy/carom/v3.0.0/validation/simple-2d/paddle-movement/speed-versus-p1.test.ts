@@ -6,8 +6,13 @@
 // Versus has no AI, this also confirms the key leaves player two's paddle alone —
 // the common bug where one player's key drives both.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED } from "../../src/constants";
+import {
+  assertGreaterThan,
+  assertLessThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -63,9 +68,10 @@ it("moves player one's paddle at the paddle speed, and only that paddle", async 
     return held;
   });
 
-  expect(moved.delta).toBeGreaterThan(0);
-  expect(
+  assertGreaterThan(moved.delta, 0);
+  assertLessThanOrEqual(
     Math.abs(speedOverTicks(moved.delta, TICKS) - PADDLE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
-  expect(Math.abs(moved.otherDelta.right)).toBeLessThan(STILL_MAX);
+    SPEED_TOLERANCE,
+  );
+  assertLessThan(Math.abs(moved.otherDelta.right), STILL_MAX);
 });

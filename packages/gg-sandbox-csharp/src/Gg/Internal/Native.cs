@@ -88,6 +88,16 @@ internal static class Native
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool ListDir(string? path, out string[] names, out int[] kinds);
 
+    // A `list<search-match>` as one array per field, of equal length.
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern bool Search(
+        string query,
+        string? path,
+        int limit,
+        out string[] paths,
+        out uint[] lines,
+        out string[] texts);
+
     // --- skills -------------------------------------------------------------------------------
 
     [MethodImpl(MethodImplOptions.InternalCall)]
@@ -309,12 +319,13 @@ internal static class Native
     // --- view ---------------------------------------------------------------------------------
 
     // `numbers` is what `ReadFile`'s is: this call performs the same read and hands back the same
-    // record.
+    // record. `maxLineChars` is the view's own `option<u32>`, absent as `-1` like the window's two.
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool OpenFileView(
         string path,
         int offset,
         int limit,
+        int maxLineChars,
         out int kind,
         out string contents,
         out string mediaType,

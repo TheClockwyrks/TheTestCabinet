@@ -7,8 +7,9 @@
 // the formula within the review item's 0.01 radians, modulo a full turn. The
 // center stays where it is: a rotation walks nothing across the field.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { OBSTACLE_CENTERS, OBSTACLE_SPIN_RATE } from "../../src/constants";
+import { assertDeepEqual, assertLessThanOrEqual } from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { angleDelta, poseObstacles, type ObstaclePose } from "./harness";
 
@@ -55,14 +56,15 @@ it("rotates both obstacles about their own centers at OBSTACLE_SPIN_RATE", async
   for (const [k, t] of TIMES.entries()) {
     for (const [i, base] of OBSTACLE_CENTERS.entries()) {
       const pose = samples[k]![i]!;
-      expect(
+      assertLessThanOrEqual(
         Math.abs(angleDelta(pose.theta, OBSTACLE_SPIN_RATE * t)),
+        ANGLE_TOLERANCE,
         `obstacle ${i} at t=${t}: theta is OBSTACLE_SPIN_RATE * t`,
-      ).toBeLessThanOrEqual(ANGLE_TOLERANCE);
+      );
       // The sway moves y, so only x is held here; y is `obstacles-sway`'s.
-      expect(Math.abs(pose.cx - base.x)).toBeLessThanOrEqual(CENTER_TOLERANCE);
+      assertLessThanOrEqual(Math.abs(pose.cx - base.x), CENTER_TOLERANCE);
     }
   }
 
-  expect(harness.assetFailures).toEqual([]);
+  assertDeepEqual(harness.assetFailures, []);
 });

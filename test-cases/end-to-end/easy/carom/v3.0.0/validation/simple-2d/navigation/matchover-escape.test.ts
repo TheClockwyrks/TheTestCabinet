@@ -7,8 +7,9 @@
 // action is raised by the binding the case declares, and the result is read
 // back off the game's own state. The still is the frame the press left.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { WIN_SCORE } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureStill,
@@ -34,14 +35,14 @@ it("returns to the title from the match-over screen on Escape", async () => {
   h.debug.setScore(WIN_SCORE - 1, 0);
   arrangeGoal(h, "right");
   const ended = await driveGoal(h);
-  expect(ended.hit).toBe(true);
-  expect(h.snapshot().screen).toBe("matchover");
-  expect(h.snapshot().winner).toBe("left");
-  expect(menuIndex0(h)).toBe(0);
+  assertEqual(ended.hit, true);
+  assertEqual(h.snapshot().screen, "matchover");
+  assertEqual(h.snapshot().winner, "left");
+  assertEqual(menuIndex0(h), 0);
 
   await h.tap("Escape");
   captureStill(h, "title");
 
-  expect(h.snapshot().screen).toBe("title");
-  expect(menuIndex0(h)).toBe(0);
+  assertEqual(h.snapshot().screen, "title");
+  assertEqual(menuIndex0(h), 0);
 });

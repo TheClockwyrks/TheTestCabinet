@@ -583,7 +583,10 @@ fn every_arm_opens_only_types_its_own_signature_names() {
                     )
                 })
                 .collect();
-            for referenced in docs.types_to_open(function.name, signature_flags) {
+            // Looked up by its key, never its bare name: two modules may each publish a `search`
+            // or a `close`, and the bare-name fallback would answer with whichever is bound first,
+            // checking one function's placements against the other's signature.
+            for referenced in docs.types_to_open(function.fqn, signature_flags) {
                 // The key a documentation view is opened by is module-qualified; a signature
                 // writes the type under whatever qualification the program's own scope needs,
                 // which is usually shorter. The last segment is the one thing both spellings

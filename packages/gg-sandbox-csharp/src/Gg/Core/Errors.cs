@@ -61,13 +61,14 @@ public enum ApiErrorCode
 /// reads as a straight line, and only the calls expected to fail are wrapped.
 /// </para>
 /// <code>
+/// var name = "Gg.Docs.Search";
 /// try
 /// {
-///     Views.OpenText("notes", Files.ReadTextFile("NOTES.md"));
+///     Views.OpenDocsView(name);
 /// }
 /// catch (ApiException failure) when (failure.Code == ApiErrorCode.NotFound)
 /// {
-///     Views.OpenText("notes", "there are no notes yet");
+///     Views.OpenText("docs", $"nothing on this surface is called {name}");
 /// }
 /// </code>
 /// <para>
@@ -94,8 +95,8 @@ public sealed class ApiException : Exception
 
     /// <summary>The call that failed, by the key of the operation this program reached for.</summary>
     /// <remarks>
-    /// <c>read_file</c> for <c>Files.ReadFile</c>, <c>read_text_file</c> for
-    /// <c>Files.ReadTextFile</c>.
+    /// <c>open_text</c> for <c>Views.OpenText</c>, <c>open_docs_view</c> for
+    /// <c>Views.OpenDocsView</c>.
     /// </remarks>
     public string Operation { get; }
 }

@@ -66,7 +66,7 @@ class AgentEnding(Enum):
     """How a child agent's loop ended — gg's own six words, as the tool-calling path reports them."""
 
     COMPLETED = "completed"
-    """It finished normally, calling `session.finish`, and its summary is what it returned."""
+    """It finished normally, ending its own session, and its summary is what it returned."""
 
     EXHAUSTED = "exhausted"
     """It reached the per-run turn ceiling."""
@@ -206,10 +206,10 @@ def transition_state(state: str, note: str | None = None) -> None:
     """Move the process this session is running inside on to another of its states.
 
     The state is named the way an agent to spawn is named. It is bound only when a state machine is
-    driving the session and the current state has somewhere to go. Like `context.compact` it is
-    registered rather than performed: the call validates the target, returns, and the program runs on
-    to its end, because replacing the agent — and its window — mid-program would pull every remaining
-    call out from under it. The first declaration in a turn is the one that stands.
+    driving the session and the current state has somewhere to go. It is registered rather than
+    performed: the call validates the target, returns, and the program runs on to its end, because
+    replacing the agent — and its window — mid-program would pull every remaining call out from under
+    it. The first declaration in a turn is the one that stands.
 
     Args:
         state: The state to move on to, named the way an agent to spawn is named.
@@ -229,9 +229,9 @@ def exec(agent: str, prompt: str | None = None) -> None:
 
     The named agent takes over with its own model, tools and instructions, keeping every capability
     the two of them share — the whole conversation above all, so it needs no catching up. Registered
-    rather than performed, exactly as `transition_state` is and for the same reason: the window would
-    otherwise be pulled out from under the program still composing into it. A session makes one
-    succession per turn. It is bound only when this agent may make agent transitions and has agents
+    rather than performed: the call validates the target, returns, and the program runs on to its
+    end, because the window would otherwise be pulled out from under the program still composing into
+    it. A session makes one succession per turn. It is bound only when this agent may make agent transitions and has agents
     it may become, and never while a state machine is driving the session.
 
     Args:
@@ -242,7 +242,7 @@ def exec(agent: str, prompt: str | None = None) -> None:
     Raises:
         ApiError: `invalid-argument` for an agent this session may not become, `refused` for a
             second succession in one turn, and `unavailable` when this agent is running inside a
-            machine, which is left by `transition_state` instead.
+            machine, which is left by moving it on to another of its states instead.
     """
     _call(wire.exec, agent, prompt)
 
@@ -256,8 +256,8 @@ def fork(prompt: str) -> SubagentHandle:
     there.
 
     The copy itself starts once this turn's results are recorded, because the conversation it
-    inherits has to be a complete one. So `wait_for_subagents` can only collect it on a later turn,
-    and waiting on it in the program that made it never returns it.
+    inherits has to be a complete one. So a later turn is the earliest a wait can collect it, and
+    waiting on it in the program that made it never returns it.
 
     Args:
         prompt: What the copy is to do instead. It has the whole conversation already, so this is the

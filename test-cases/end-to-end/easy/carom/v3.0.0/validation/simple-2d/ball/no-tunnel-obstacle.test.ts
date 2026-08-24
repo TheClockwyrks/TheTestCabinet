@@ -17,7 +17,7 @@
 // on a real machine (twenty frames a second), where one frame at the ceiling
 // is forty-nine units, more than twice the width of what it strikes.
 
-import { afterEach, expect, it } from "vitest";
+import { afterEach, it } from "vitest";
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import {
   BALL_R,
@@ -26,6 +26,11 @@ import {
   OBSTACLE_CENTERS,
   SPEED_CAP,
 } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   ball0,
   captureReplay,
@@ -75,7 +80,7 @@ async function harnessAt(stepMs: number): Promise<Harness> {
 
 it("rebounds off an obstacle at the ceiling speed", async () => {
   // The coarse frame really is the case the sub-step rule exists for.
-  expect((SPEED_CAP * STEPS_MS[1]) / 1000).toBeGreaterThan(MAX_SUBSTEP);
+  assertGreaterThan((SPEED_CAP * STEPS_MS[1]) / 1000, MAX_SUBSTEP);
 
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
@@ -100,12 +105,13 @@ it("rebounds off an obstacle at the ceiling speed", async () => {
       return rebound;
     });
 
-    expect(bank.hit, `${stepMs} ms frames: rebounds`).toBe(true);
+    assertEqual(bank.hit, true, `${stepMs} ms frames: rebounds`);
     // Never on the far side: read on the earliest frame the ball was travelling
     // back, where "stays clear of the face" has to be read.
-    expect(
+    assertLessThanOrEqual(
       ball0(bank.snapshot).x,
+      FACE_X - BALL_R + 1e-6,
       `${stepMs} ms frames: stays clear`,
-    ).toBeLessThanOrEqual(FACE_X - BALL_R + 1e-6);
+    );
   }
 });

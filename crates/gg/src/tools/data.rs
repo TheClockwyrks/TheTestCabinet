@@ -120,6 +120,8 @@ pub enum ApiData {
     BytesWritten(u64),
     /// What a `list_dir` found, in the order it reported them.
     DirEntries(Vec<DirEntryData>),
+    /// What a `search` matched, in path order and then line order — empty when nothing did.
+    SearchMatches(Vec<SearchMatchData>),
     /// How full the memory store is after any memory mutation.
     MemoryUsage(MemoryUsageData),
     /// What a `search_memories` matched, best first — empty when nothing did.
@@ -235,6 +237,23 @@ pub struct DirEntryData {
     pub name: String,
     /// Whether it is a file, a directory, or something else.
     pub kind: DirEntryKind,
+}
+
+/// One line a `search` matched: where it is, and what it says.
+///
+/// The three facts the prose renders as `path:line: text`, kept apart so a caller can open a file
+/// view of the line's neighbourhood without re-parsing a sentence to find the number.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchMatchData {
+    /// The file's path, workspace-relative with `/` separators — or absolute, for a search rooted
+    /// outside the workspace.
+    pub path: String,
+    /// The 1-based line number of the match within that file.
+    pub line: u32,
+    /// The matching line without its line ending, clipped at the search's 200-character line clip
+    /// and annotated in place — `foo (123 more chars...)` — when it was.
+    pub text: String,
 }
 
 /// How full a single-axis, capped store is after a mutation — today the task list.

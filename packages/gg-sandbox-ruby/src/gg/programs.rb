@@ -9,7 +9,7 @@ module GG
   #
   # ```ruby
   # source = GG::Programs.get
-  # GG::Programs.rerun(source.sub("read_fil(", "read_file("))
+  # GG::Programs.rerun(source.sub("open_tex(", "open_text("))
   # ```
   module Programs
     extend Surface::Operations

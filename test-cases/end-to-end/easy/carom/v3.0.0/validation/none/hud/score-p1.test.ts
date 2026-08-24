@@ -8,7 +8,8 @@
 // whatever transform the build drew under (`textDraws`), so a HUD drawn at a
 // translated origin reads the same as one drawn in field coordinates.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { FIELD_CX } from "../constants";
 import {
   captureStill,
@@ -40,6 +41,9 @@ it("draws player one's score left of center", async () => {
   const runs = textDraws(calls).filter(
     (run) => run.text.replace(/\D/g, "") === String(SCORE.p1),
   );
-  expect(runs.length).toBeGreaterThan(0);
-  expect(runs.some((run) => run.x < FIELD_CX)).toBe(true);
+  assertGreaterThan(runs.length, 0);
+  assertEqual(
+    runs.some((run) => run.x < FIELD_CX),
+    true,
+  );
 });

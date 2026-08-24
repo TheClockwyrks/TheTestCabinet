@@ -7,8 +7,9 @@
 // `vy = s * SERVE_SPEED * sin(SERVE_ANGLE)` with `s` either sign, so the angle
 // from horizontal has magnitude SERVE_ANGLE exactly; the sign is the build's.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SERVE_ANGLE } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import {
   angleDeg,
   ball0,
@@ -53,10 +54,11 @@ it("serves the ball at SERVE_ANGLE from horizontal", async () => {
     return swept;
   });
 
-  expect(launched.hit).toBe(true);
+  assertEqual(launched.hit, true);
   const ball = ball0(launched.snapshot);
-  expect(ball.vx).not.toBe(0);
-  expect(Math.abs(angleDeg(ball) - SERVE_ANGLE_DEG)).toBeLessThanOrEqual(
+  assertNotEqual(ball.vx, 0);
+  assertLessThanOrEqual(
+    Math.abs(angleDeg(ball) - SERVE_ANGLE_DEG),
     ANGLE_TOLERANCE_DEG,
   );
 });

@@ -24,7 +24,7 @@
 // time of each drive is read from the runtime's own frame clock — runtime code no
 // build can misreport — and compared across the three schedules.
 
-import { afterEach, expect, it } from "vitest";
+import { afterEach, it } from "vitest";
 import {
   ConstantClock,
   JitterClock,
@@ -32,6 +32,7 @@ import {
   type Clock,
 } from "@test-cabinet/simple-2d";
 import { FIELD_CY, FIELD_H } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual, assertNotNull } from "../assert";
 import {
   ball0,
   captureReplay,
@@ -233,29 +234,35 @@ it("reaches the same outcome however the elapsed time is divided into frames", a
 
   // The comparison is only worth making if the reference drive did what the
   // scenario intends, so those two facts are asserted before anything is compared.
-  expect(reference.resolved).toBe(true);
-  expect(reference.scorer).not.toBeNull();
-  expect(reference.contacted).toBe(true);
+  assertEqual(reference.resolved, true);
+  assertNotNull(reference.scorer);
+  assertEqual(reference.contacted, true);
 
   for (const [index, run] of compared.entries()) {
     const { name } = SCHEDULES[index + 1];
 
-    expect(run.contacted, `${name}: comes off the paddle`).toBe(
+    assertEqual(
+      run.contacted,
       reference.contacted,
+      `${name}: comes off the paddle`,
     );
-    expect(run.banked, `${name}: banks off a wall`).toBe(reference.banked);
-    expect(run.scorer, `${name}: the same side scores`).toBe(reference.scorer);
-    expect(run.heading, `${name}: ends travelling the same way`).toBe(
+    assertEqual(run.banked, reference.banked, `${name}: banks off a wall`);
+    assertEqual(run.scorer, reference.scorer, `${name}: the same side scores`);
+    assertEqual(
+      run.heading,
       reference.heading,
+      `${name}: ends travelling the same way`,
     );
-    expect(
+    assertLessThanOrEqual(
       Math.abs(run.speed - reference.speed),
+      SPEED_TOLERANCE,
       `${name}: ends at the same speed`,
-    ).toBeLessThanOrEqual(SPEED_TOLERANCE);
+    );
     // The one fact a build that ignores the delta time it is given cannot fake.
-    expect(
+    assertLessThanOrEqual(
       Math.abs(run.elapsedMs - reference.elapsedMs),
+      reference.elapsedMs * ELAPSED_TOLERANCE,
       `${name}: takes the same game time`,
-    ).toBeLessThanOrEqual(reference.elapsedMs * ELAPSED_TOLERANCE);
+    );
   }
 });

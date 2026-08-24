@@ -12,13 +12,14 @@ namespace gg {
 
 namespace views {
 
-files::file_read open_file(std::string_view path, files::read_window window) {
+files::file_read open_file(std::string_view path, views::view_options options) {
   detail::scratch scratch;
-  detail::window lines(window);
+  detail::window lines(options);
   sandbox_string_t lowered = scratch.str(path);
   test_cabinet_gg_views_file_read_t ret{};
   test_cabinet_gg_types_api_error_t err{};
-  if (!test_cabinet_gg_views_open_file_view(&lowered, lines.offset(), lines.limit(), &ret, &err)) {
+  if (!test_cabinet_gg_views_open_file_view(&lowered, lines.offset(), lines.limit(),
+                                            lines.max_line_chars(), &ret, &err)) {
     detail::fail(err);
   }
   return detail::lift_file_read(ret);

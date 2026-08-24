@@ -9,7 +9,12 @@
 // with exactly the velocity the bounce formula produced; the margin of a degree
 // is rounding room, since `sin(0)` is exact.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { FIELD_CY } from "../constants";
 import {
   FACE_SHOT_SPEED,
@@ -56,7 +61,7 @@ it("returns the ball level from the center of a still paddle", async () => {
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(contact.ball.vx).toBeGreaterThan(0);
-  expect(angleDeg(contact.ball)).toBeLessThanOrEqual(STRAIGHT_MAX_DEG);
+  assertEqual(contact.hit, true);
+  assertGreaterThan(contact.ball.vx, 0);
+  assertLessThanOrEqual(angleDeg(contact.ball), STRAIGHT_MAX_DEG);
 });

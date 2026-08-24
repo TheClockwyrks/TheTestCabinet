@@ -3,8 +3,8 @@
 //! Under responses as code every reply is a program, so there is no prose turn that could mean "the
 //! work is done" — a model that answers "task complete" has written a reply that failed to be a
 //! program, not an ending. These are the calls that mean it, and a run binds only the group its
-//! agent's role has: an agent doing work gets [`finish`], and a reviewer gets [`approve`] and
-//! [`request_changes`] instead.
+//! agent's role has: an agent doing work ends by reporting what it did, and a reviewer ends with a
+//! verdict.
 //!
 //! None of them stops the program. Whatever follows an ending still runs, so an ending belongs last —
 //! and a program that then fails has its ending revoked along with everything else it decided.
@@ -12,7 +12,6 @@
 use crate::bindings::test_cabinet::gg::session;
 use crate::core::ApiError;
 use crate::wire;
-
 
 /// End the session, reporting what was done in a sentence or two.
 ///

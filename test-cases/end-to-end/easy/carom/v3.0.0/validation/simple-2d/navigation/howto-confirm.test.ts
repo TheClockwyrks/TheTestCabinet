@@ -6,8 +6,9 @@
 // the binding the case declares, and the result is read back off the game's own
 // state. The still is the frame the press left.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -26,16 +27,16 @@ afterEach(() => {
 });
 
 it("returns from the how-to screen to the title on Enter", async () => {
-  expect(TITLE_ITEMS[2]).toBe("HOW TO PLAY");
+  assertEqual(TITLE_ITEMS[2], "HOW TO PLAY");
   h.debug.reset();
   await h.tap("ArrowDown"); // SOLO -> VERSUS
   await h.tap("ArrowDown"); // VERSUS -> HOW TO PLAY
   await h.tap("Enter");
-  expect(h.snapshot().screen).toBe("howto");
+  assertEqual(h.snapshot().screen, "howto");
 
   await h.tap("Enter");
   captureStill(h, "title");
 
-  expect(h.snapshot().screen).toBe("title");
-  expect(menuIndex0(h)).toBe(0);
+  assertEqual(h.snapshot().screen, "title");
+  assertEqual(menuIndex0(h), 0);
 });

@@ -11,8 +11,9 @@
 // entry is commonly drawn with a selection marker beside it. Everything else
 // about the screen is the build's, rated through the domains.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { TITLE_ITEMS, TITLE_TEXT } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -36,9 +37,9 @@ it("opens on the title and draws its name and menu", async () => {
   await h.advance(1);
   captureStill(h, "title");
 
-  expect(h.snapshot().screen).toBe("title");
-  expect(drewText(h.calls, TITLE_TEXT)).toBe(true);
+  assertEqual(h.snapshot().screen, "title");
+  assertEqual(drewText(h.calls, TITLE_TEXT), true);
   for (const item of TITLE_ITEMS) {
-    expect(drewText(h.calls, item)).toBe(true);
+    assertEqual(drewText(h.calls, item), true);
   }
 });

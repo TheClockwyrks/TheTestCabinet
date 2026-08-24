@@ -4,9 +4,9 @@ use super::*;
 use serde_json::json;
 use tempfile::TempDir;
 use test_cabinet_core::gg::{
-    CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE, CAPABILITY_SHELL,
-    CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, GgAgentConfig, GgCapabilityConfig, GgRosterEntry,
-    ROOT_PROFILE_ID, SHELL_OUTPUT_OFFLOAD,
+    CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE, CAPABILITY_SEARCH,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, GgAgentConfig, GgCapabilityConfig,
+    GgRosterEntry, ROOT_PROFILE_ID, SHELL_OUTPUT_OFFLOAD,
 };
 
 use crate::archive::ArchiveRuntime;
@@ -18,11 +18,12 @@ use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::TasksRuntime;
 
 /// The four per-tool filesystem capabilities — one per filesystem primitive.
-const FILESYSTEM_CAPABILITIES: [&str; 4] = [
+const FILESYSTEM_CAPABILITIES: [&str; 5] = [
     CAPABILITY_READ_FILE,
     CAPABILITY_WRITE_FILE,
     CAPABILITY_EDIT_FILE,
     CAPABILITY_LIST_DIR,
+    CAPABILITY_SEARCH,
 ];
 
 /// The [capability modules](CapabilityModules) a registry is assembled against when only the skill
@@ -104,9 +105,16 @@ fn offers(registry: &ToolRegistry, name: &str) -> bool {
 fn registry_offers_all_phase0_tools_when_both_capabilities_enabled() {
     let registry = ToolRegistry::from_capabilities(&root());
 
-    // shell + read_file + write_file + edit_file + list_dir
-    assert_eq!(registry.len(), 5);
-    for name in ["shell", "read_file", "write_file", "edit_file", "list_dir"] {
+    // shell + read_file + write_file + edit_file + list_dir + search
+    assert_eq!(registry.len(), 6);
+    for name in [
+        "shell",
+        "read_file",
+        "write_file",
+        "edit_file",
+        "list_dir",
+        "search",
+    ] {
         assert!(offers(&registry, name), "expected `{name}` to be offered");
     }
 
@@ -115,7 +123,7 @@ fn registry_offers_all_phase0_tools_when_both_capabilities_enabled() {
         .into_iter()
         .map(|def| def.name)
         .collect();
-    assert_eq!(names.len(), 5);
+    assert_eq!(names.len(), 6);
 }
 
 /// Disabling the shell capability withholds *only* the shell tool — the filesystem tools remain.
@@ -129,10 +137,10 @@ fn registry_excludes_shell_tool_when_shell_capability_disabled() {
     assert!(!offers(&registry, "shell"));
     assert!(offers(&registry, "read_file"));
     assert!(offers(&registry, "write_file"));
-    assert_eq!(registry.len(), 4);
+    assert_eq!(registry.len(), 5);
 }
 
-/// Disabling every filesystem capability withholds all four filesystem tools while the
+/// Disabling every filesystem capability withholds all five filesystem tools while the
 /// shell tool remains.
 #[test]
 fn registry_excludes_filesystem_tools_when_their_capabilities_are_disabled() {
@@ -160,6 +168,7 @@ fn registry_gates_each_filesystem_tool_on_its_own_capability() {
         (CAPABILITY_WRITE_FILE, "write_file"),
         (CAPABILITY_EDIT_FILE, "edit_file"),
         (CAPABILITY_LIST_DIR, "list_dir"),
+        (CAPABILITY_SEARCH, "search"),
     ] {
         let capabilities = FILESYSTEM_CAPABILITIES
             .iter()
@@ -179,8 +188,8 @@ fn registry_gates_each_filesystem_tool_on_its_own_capability() {
         );
         assert_eq!(
             registry.len(),
-            3,
-            "`{capability}` off should leave the other three filesystem tools"
+            4,
+            "`{capability}` off should leave the other four filesystem tools"
         );
     }
 }
@@ -655,7 +664,7 @@ fn an_allowlist_that_omits_one_tool_offers_the_rest() {
         "the tool the allowlist does not name is withheld"
     );
     // Its capability stays on, so the rest of the filesystem tools (and shell) remain.
-    for name in ["shell", "read_file", "write_file", "list_dir"] {
+    for name in ["shell", "read_file", "write_file", "list_dir", "search"] {
         assert!(
             offers(&registry, name),
             "expected `{name}` to remain offered"
@@ -663,7 +672,7 @@ fn an_allowlist_that_omits_one_tool_offers_the_rest() {
     }
     // It is absent from the recorded effective toolset too.
     assert!(!registry.tool_names().contains(&"edit_file".to_string()));
-    assert_eq!(registry.len(), 4);
+    assert_eq!(registry.len(), 5);
 }
 
 /// A tool the allowlist does not name is genuinely undispatchable — a model that calls it anyway
@@ -756,6 +765,7 @@ fn tool_names_reports_the_effective_toolset() {
             "read_file".to_string(),
             "edit_file".to_string(),
             "list_dir".to_string(),
+            "search".to_string(),
         ]
     );
 }

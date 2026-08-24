@@ -13,7 +13,8 @@
 // is a small cluster well inside the shape, because a rounded edge is
 // anti-aliased toward whatever is behind it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
 import {
   arrangeColorScene,
   captureStill,
@@ -39,10 +40,12 @@ it("draws the left paddle apart from the field and from the right paddle", async
   await captureStill(h, "scene");
   const scene = await sampleScene(h);
 
-  expect(colorDistance(scene.leftPaddle, scene.background)).toBeGreaterThan(
+  assertGreaterThan(
+    colorDistance(scene.leftPaddle, scene.background),
     DISTINCT_MIN,
   );
-  expect(colorDistance(scene.leftPaddle, scene.rightPaddle)).toBeGreaterThan(
+  assertGreaterThan(
+    colorDistance(scene.leftPaddle, scene.rightPaddle),
     DISTINCT_MIN,
   );
 });

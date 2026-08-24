@@ -125,6 +125,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            statement: r#"_ = try files.search("answer", path: "src", limit: 10)"#,
+            expected: || json!({ "query": "answer", "path": "src", "limit": 10 }),
+        },
+        Crossing {
             tool: "read_skill",
             statement: r#"_ = try skills.readSkill("testing")"#,
             expected: || json!({ "name": "testing" }),

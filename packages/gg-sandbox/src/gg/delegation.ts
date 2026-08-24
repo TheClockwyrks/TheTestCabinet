@@ -67,7 +67,7 @@ function handle(spawned: raw.SubagentHandle): SubagentHandle {
  * program.
  */
 export type AgentEnding =
-  /** It finished normally: it called `finish`, and its summary is what it returned. */
+  /** It finished normally, and its summary is what it returned. */
   | "completed"
   /** It reached the per-run turn ceiling. */
   | "exhausted"

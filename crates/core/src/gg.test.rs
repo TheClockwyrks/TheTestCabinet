@@ -77,6 +77,7 @@ fn minimal_capability_set_binds_the_root_model_and_phase0_capabilities() {
         CAPABILITY_WRITE_FILE,
         CAPABILITY_EDIT_FILE,
         CAPABILITY_LIST_DIR,
+        CAPABILITY_SEARCH,
     ] {
         assert!(set.is_enabled(capability), "expected `{capability}` on");
     }
@@ -2864,7 +2865,6 @@ fn the_authoring_catalog_never_names_a_program_language() {
             PARAM_MAX_MEMORY_BYTES,
             PARAM_DOC_VIEW_TYPES,
             PARAM_HEALING,
-            PARAM_ASSISTANT_MESSAGES,
         ])
     );
 }

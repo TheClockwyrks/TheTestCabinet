@@ -78,16 +78,20 @@ impl<A: OperationApi> ViewsHost for MembraneState<A> {
         path: String,
         offset: Option<u32>,
         limit: Option<u32>,
+        max_line_chars: Option<u32>,
     ) -> Result<FileRead, ApiError> {
         self.recorded(VIEWS_OPEN_FILE, |state, rec| {
             let (offset, limit) = read_window(offset, limit);
+            // Not normalised here: unlike a zero `offset`, which plainly means the first line, a
+            // zero line cut names nothing, and the api refuses it by name.
+            let max_line_chars = max_line_chars.map(|chars| chars as usize);
             let mut opened = None;
             let outcome = state
                 .call(rec, VIEWS_OPEN_FILE, |api| {
                     let ViewOpenOutcome {
                         outcome,
                         opened: view,
-                    } = api.open_file_view(path, offset, limit);
+                    } = api.open_file_view(path, offset, limit, max_line_chars);
                     opened = view;
                     outcome
                 })

@@ -222,6 +222,7 @@ fn dispatch<A: OperationApi>(
         "files.write_file" => workspace::write_file(state, op, arguments),
         "files.edit_file" => workspace::edit_file(state, op, arguments),
         "files.list_dir" => workspace::list_dir(state, op, arguments),
+        "files.search" => workspace::search(state, op, arguments),
         // skills
         "skills.read_skill" => workspace::read_skill(state, op, arguments),
         // memories

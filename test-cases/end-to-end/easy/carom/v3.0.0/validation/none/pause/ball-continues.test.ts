@@ -14,7 +14,8 @@
 // plus `v * dt`, within `MAX_SUBSTEP`, the most a sub-step moves the ball. A
 // teleport is a hundred units out and misses that by any measure.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import { MAX_SUBSTEP } from "../constants";
 import {
   arrangeLiveBall,
@@ -49,7 +50,7 @@ it("resumes the ball from its paused position at its preserved velocity", async 
   await h.advance(FLIGHT_TICKS);
   await h.tap("Escape");
   const paused = await h.snapshot();
-  expect(paused.screen).toBe("paused");
+  assertEqual(paused.screen, "paused");
 
   await h.advance(FROZEN_TICKS - HANGING_TICKS);
 
@@ -63,18 +64,20 @@ it("resumes the ball from its paused position at its preserved velocity", async 
     await h.advance(RESUMED_TICKS);
     return { still, resumed };
   });
-  expect(ball0(read.still).x).toBeCloseTo(ball0(paused).x, 6);
-  expect(ball0(read.still).y).toBeCloseTo(ball0(paused).y, 6);
+  assertCloseTo(ball0(read.still).x, ball0(paused).x, 6);
+  assertCloseTo(ball0(read.still).y, ball0(paused).y, 6);
 
-  expect(read.resumed.screen).toBe("playing");
+  assertEqual(read.resumed.screen, "playing");
   const dt = 1 / TICK_HZ;
   const expectedX = ball0(paused).x + ball0(paused).vx * dt;
   const expectedY = ball0(paused).y + ball0(paused).vy * dt;
-  expect(Math.abs(ball0(read.resumed).x - expectedX)).toBeLessThanOrEqual(
+  assertLessThanOrEqual(
+    Math.abs(ball0(read.resumed).x - expectedX),
     MAX_SUBSTEP,
   );
-  expect(Math.abs(ball0(read.resumed).y - expectedY)).toBeLessThanOrEqual(
+  assertLessThanOrEqual(
+    Math.abs(ball0(read.resumed).y - expectedY),
     MAX_SUBSTEP,
   );
-  expect(ball0(read.resumed).speed).toBeCloseTo(ball0(paused).speed, 6);
+  assertCloseTo(ball0(read.resumed).speed, ball0(paused).speed, 6);
 });

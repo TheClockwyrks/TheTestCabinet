@@ -169,6 +169,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            statement: r#"gg::files::search("answer", {.path = "src", .limit = 10});"#,
+            expected: || json!({ "query": "answer", "path": "src", "limit": 10 }),
+        },
+        Crossing {
             tool: "read_skill",
             statement: r#"gg::skills::read_skill("testing");"#,
             expected: || json!({ "name": "testing" }),

@@ -121,20 +121,20 @@ fn subject(language: &'static dyn ProgramLanguage) -> (Vec<String>, Vec<String>)
     let mut modules: Vec<String> = Vec::new();
     let mut docs: Vec<String> = Vec::new();
     for call in crate::bootstrap::BOOTSTRAP_CALLS {
-        let function = functions
-            .iter()
-            .find(|function| {
-                function.alias_of.is_none()
-                    && crate::sandbox::operation_of(function)
-                        .is_some_and(|operation| operation.id == *call)
-            })
-            .unwrap_or_else(|| {
-                panic!(
-                    "{}'s catalogue carries no call for `{call:?}`, so gg could not generate its \
-                     opening program either",
-                    language.display_name()
-                )
-            });
+        // A fully-granted agent holds every call, so the one reason an entry is missing is that
+        // this arm's catalogue does not carry it. That is a defect for a call every agent opens;
+        // for one bought by a capability it is the arm not yet spelling the call, which the
+        // capability gate names by itself and this gate has no program to write for.
+        let Some(function) = crate::bootstrap::bootstrap_function(&functions, *call, |_| true)
+        else {
+            assert!(
+                !crate::bootstrap::bootstrap_required(*call),
+                "{}'s catalogue carries no call for `{call:?}`, so gg could not generate its \
+                 opening program either",
+                language.display_name()
+            );
+            continue;
+        };
         if !modules.iter().any(|module| module == function.object) {
             modules.push(function.object.to_string());
         }
@@ -311,6 +311,21 @@ const UNCONVERTED: &[Unconverted] = &[
         adds: "Module.new do ",
         instead: "opens the module inside a block that makes its body a namespace, on the author's \
                   own first line so that no diagnostic moves",
+    },
+    // The program half is `Rewritten` rather than `Mapped` on one count: the map Opal appends
+    // resolves a frame to the model's own line, which is the invariant's demand, but the compile
+    // driver drops `sourcesContent` from it by design (`packages/gg-sandbox-ruby/tools/compiler.mjs`
+    // — the guest never needs the Ruby back, and the source is the largest thing in the map), so
+    // the map does not *name* the handed bytes and `maps_back` cannot hold it to them. The verdict
+    // is measured only since the opening program grew long enough for the lowering to carry half of
+    // its distinctive lines as string literals; a shorter program read as no version of itself.
+    Unconverted {
+        arm: GgProgramLanguage::Ruby,
+        half: Half::Program,
+        did: Did::Rewritten,
+        adds: "Opal.queue(function(Opal)",
+        instead: "lowers the program to JavaScript with Opal and appends a source map that locates \
+                  a frame on the author's own line, without carrying the source in it",
     },
     // ---- purescript -----------------------------------------------------------------------------
     Unconverted {

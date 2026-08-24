@@ -13,7 +13,13 @@
 // `BALL_R`. Placement is read at the end of the contact frame, within one frame
 // of travel of `cy + PADDLE_HALF + BALL_R`, on the field side of it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { BALL_R, FIELD_CY, P1_X0, P1_X1, PADDLE_HALF } from "../constants";
 import {
   ball0,
@@ -70,12 +76,12 @@ it("reflects a ball climbing into the paddle's bottom cap", async () => {
     return reflected;
   });
 
-  expect(bounce.hit).toBe(true);
+  assertEqual(bounce.hit, true);
   const ball = ball0(bounce.snapshot);
-  expect(ball.vy).toBeCloseTo(-before.vy, 6);
-  expect(ball.vx).toBeCloseTo(before.vx, 6);
-  expect(ball.speed).toBeCloseTo(before.speed, 6);
-  expect(ball.spin).toBeCloseTo(0, 6);
-  expect(ball.y).toBeGreaterThanOrEqual(PLACED - 1e-6);
-  expect(ball.y).toBeLessThanOrEqual(PLACED + FRAME_TRAVEL);
+  assertCloseTo(ball.vy, -before.vy, 6);
+  assertCloseTo(ball.vx, before.vx, 6);
+  assertCloseTo(ball.speed, before.speed, 6);
+  assertCloseTo(ball.spin, 0, 6);
+  assertGreaterThanOrEqual(ball.y, PLACED - 1e-6);
+  assertLessThanOrEqual(ball.y, PLACED + FRAME_TRAVEL);
 });

@@ -862,6 +862,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            program: "GG::Files.search(\"fn\\\\s+update\", path: \"src\", limit: 20)",
+            expected: || json!({ "query": "fn\\s+update", "path": "src", "limit": 20 }),
+        },
+        Crossing {
             tool: "read_skill",
             program: "GG::Skills.read_skill(\"testing\")",
             expected: || json!({ "name": "testing" }),
@@ -2266,5 +2271,60 @@ GG::Views.open_text("notes", JSON.parse(%({"label": "notes"}))["label"] + " #{re
             .any(|view| view.selector.contains("notes")),
         "the view the program opened on the answer is in the turn's outcome: {:?}",
         outcome.views_opened
+    );
+}
+
+/// The workspace search lowers each match to the model-facing class, a `limit` of zero and a
+/// Regexp `query` are refused on this side of the membrane, and `open_file`'s line cut crosses
+/// under the docs' name for it — added to the dispatch arguments only when the program wrote it.
+#[test]
+fn the_workspace_search_and_the_line_cut_cross_from_ruby() {
+    let (outcome, log) = run_with(
+        r##"
+require "gg"
+hits = GG::Files.search("answer", path: "src")
+puts "#{hits.size} #{hits.first.class} #{hits.first.path} #{hits.first.line} #{hits.first.text}"
+begin
+  GG::Files.search("answer", limit: 0)
+rescue GG::Core::ApiError => failure
+  puts "#{failure.operation} #{failure.code == GG::Core::ApiErrorCode::INVALID_ARGUMENT}"
+end
+begin
+  GG::Files.search(/answer/)
+rescue GG::Core::ApiError => failure
+  puts "#{failure.operation} #{failure.code == GG::Core::ApiErrorCode::INVALID_ARGUMENT}"
+end
+GG::Views.open_file("notes.md", max_line_chars: 40)
+GG::Views.open_file("notes.md", offset: 2, limit: 1)
+"##,
+        &all_operations(),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "1 GG::Files::SearchMatch src/a.ts 3 const answer = 42;",
+            "search true",
+            "search true",
+        ]
+    );
+    assert_eq!(log.names(), ["search", "read_file", "read_file"]);
+    assert_eq!(
+        log.args("search"),
+        Some(json!({ "query": "answer", "path": "src", "limit": null }))
+    );
+    let reads: Vec<Value> = log
+        .calls()
+        .into_iter()
+        .filter(|call| call.name == "read_file")
+        .map(|call| call.args)
+        .collect();
+    assert_eq!(
+        reads,
+        [
+            json!({ "path": "notes.md", "offset": null, "limit": null, "maxLineChars": 40 }),
+            json!({ "path": "notes.md", "offset": 2, "limit": 1 }),
+        ]
     );
 }

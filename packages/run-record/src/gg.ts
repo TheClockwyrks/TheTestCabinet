@@ -529,7 +529,7 @@ export type GgCapabilityConfig = {
    * ordinary file views, which is a reading of absence rather than a substitution for it.
    *
    * A name the capability does not offer refuses the launch, and so does any name at all on one
-   * of the sixteen capabilities that offer none. `Option` on the wire so a configuration already
+   * of the seventeen capabilities that offer none. `Option` on the wire so a configuration already
    * stored in the database still deserializes and still opens in the editor: what a missing
    * required arm costs is the *launch*, not the parse. The
    * [authoring catalog](gg_authoring_catalog) is what writes one into a new document.

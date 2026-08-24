@@ -9,7 +9,12 @@
 // `FACE_SHOT_SPEED`, one sub-step per frame, so the frame of the rebound ends
 // with exactly the velocity the formula produced; two degrees is rounding room.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import { FIELD_CY, MAX_BOUNCE_ANGLE, PADDLE_HALF } from "../constants";
 import {
   FACE_SHOT_SPEED,
@@ -57,10 +62,11 @@ it("deflects the ball downward at the full bounce angle off the bottom edge", as
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(contact.ball.vx).toBeGreaterThan(0);
-  expect(contact.ball.vy).toBeGreaterThan(0);
-  expect(Math.abs(angleDeg(contact.ball) - EDGE_ANGLE_DEG)).toBeLessThanOrEqual(
+  assertEqual(contact.hit, true);
+  assertGreaterThan(contact.ball.vx, 0);
+  assertGreaterThan(contact.ball.vy, 0);
+  assertLessThanOrEqual(
+    Math.abs(angleDeg(contact.ball) - EDGE_ANGLE_DEG),
     ANGLE_TOLERANCE_DEG,
   );
 });

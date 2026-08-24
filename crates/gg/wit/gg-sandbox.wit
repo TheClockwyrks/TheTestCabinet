@@ -195,7 +195,7 @@ interface files {
     ///
     /// An occurrence that is missing is `not-found`; one that appears more than once is a
     /// `conflict` whose message carries the count. The count stays in the message rather than
-    /// becoming a field: `api-error` is shared by all 32 functions and a per-operation payload on it
+    /// becoming a field: `api-error` is shared by all 33 functions and a per-operation payload on it
     /// would be a wart on every other call — a program that needs to disambiguate should add
     /// surrounding context, not count.
     edit-file: func(path: string, old-string: string, new-string: string) -> result<_, api-error>;
@@ -214,6 +214,36 @@ interface files {
     /// List a directory, sorted by name. `none` lists the workspace root. An empty
     /// directory is an empty list, not an error.
     list-dir: func(path: option<string>) -> result<list<dir-entry>, api-error>;
+
+    /// One line a `search` matched.
+    record search-match {
+        /// The file's path, relative to the workspace root (or absolute, for a search rooted
+        /// outside it), with `/` separators.
+        path: string,
+        /// The 1-based line number of the match within that file.
+        line: u32,
+        /// The matching line, without its line ending. A line longer than gg's 200-character clip
+        /// is cut there and annotated in place as `foo (123 more chars...)`.
+        text: string,
+    }
+
+    /// Search the workspace's files for `query` and return every line that matches it, each with
+    /// its path and 1-based line number, in path order and then line order.
+    ///
+    /// `query` is a **regular expression** (Rust syntax: `foo|bar`, `fn\s+update`, `(?i)todo` for a
+    /// case-insensitive match), matched against each line on its own; a blank query, or one that is
+    /// not a valid pattern, is `invalid-argument`. `path` narrows the search to one directory or one
+    /// file — `none` is the workspace root — and a `path` that does not exist is `not-found`.
+    ///
+    /// The search honours ignore files: what `.gitignore`, `.ignore` and their kin exclude is never
+    /// scanned and never returned, `.git` itself included, and a file that is not text (one carrying
+    /// a NUL byte) is skipped. `limit` bounds how many matches come back — gg's default is 50 and
+    /// its ceiling 200, so a larger request is answered with the first 200 — and a `limit` of zero
+    /// is `invalid-argument`. A list exactly `limit` long may have been cut: narrow the query or the
+    /// path, or page nothing, because there is no offset — a search is a question about where to
+    /// point the other tools, not a way of reading a file.
+    search: func(query: string, path: option<string>, limit: option<u32>)
+        -> result<list<search-match>, api-error>;
 }
 
 /// The convenience wrappers bound alongside the tools — the sixth interface standing outside the
@@ -841,8 +871,18 @@ interface views {
     /// The key is `(path, region)`, so two pages of one file are two views and coexist. Re-opening
     /// the SAME page replaces it rather than piling up a duplicate — this call names an intent
     /// ("this file should be visible"), and re-stating an intent replaces it.
-    open-file-view: func(path: string, offset: option<u32>, limit: option<u32>)
-        -> result<file-read, api-error>;
+    ///
+    /// The view's text body is held to the same 65,536-byte cap a text view's body is: a window
+    /// that would carry more is `limit-exceeded`, naming the size and the bound, and nothing is
+    /// opened — never a truncation. The program narrows the window with `offset`/`limit`, or cuts
+    /// the file's long lines with `max-line-chars`: when it is set, each line of the VIEW longer
+    /// than that many characters is cut there and annotated in place as `foo (123 more chars...)`,
+    /// with the count of characters dropped. The cut is the view's alone — the `file-read` this
+    /// returns and the file itself are untouched — and the byte cap is measured against the body
+    /// after it. Absent, lines arrive whole; a value of zero, or one over 65,536, is
+    /// `invalid-argument`.
+    open-file-view: func(path: string, offset: option<u32>, limit: option<u32>,
+        max-line-chars: option<u32>) -> result<file-read, api-error>;
 
     /// Show yourself a value you computed, under `label`. Opening the same label again replaces what
     /// it showed.

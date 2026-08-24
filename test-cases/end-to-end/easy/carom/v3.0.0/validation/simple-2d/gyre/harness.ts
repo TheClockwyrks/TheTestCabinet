@@ -11,8 +11,8 @@
 // fail with the member named when a build left it out, rather than throwing a
 // `TypeError` several frames later.
 
-import { expect } from "vitest";
 import { OBSTACLE_CENTERS, OBSTACLE_SWAY_PERIOD } from "../../src/constants";
+import { assertEqual, assertLength } from "../assert";
 import type { Harness } from "../harness";
 import type { ObstacleSnapshot } from "../surface";
 
@@ -53,23 +53,26 @@ export function gyreOps(h: Harness): GyreDebugOps {
   const ops = h.debug;
   // A named, actionable failure beats `ops.setObstacleClock is not a function`
   // three frames later: this variant's specification requires the operation.
-  expect(
+  assertEqual(
     typeof ops.setObstacleClock,
+    "function",
     "gyre requires setObstacleClock on the debug surface the build returns " +
       "beside its state (specs/instrumentation.md)",
-  ).toBe("function");
+  );
   return ops as GyreDebugOps;
 }
 
 /** Both obstacles' live poses, checked for shape before a check reads them. */
 export function readObstacles(h: Harness): ObstaclePose[] {
   const obstacles = h.snapshot().obstacles;
-  expect(
+  assertEqual(
     Array.isArray(obstacles),
+    true,
     "gyre requires snapshot().obstacles (specs/instrumentation.md)",
-  ).toBe(true);
-  expect(obstacles).toHaveLength(OBSTACLE_CENTERS.length);
-  return obstacles as ObstaclePose[];
+  );
+  const poses = obstacles as ObstaclePose[];
+  assertLength(poses, OBSTACLE_CENTERS.length);
+  return poses;
 }
 
 /** The smallest signed difference between two angles, in radians. */

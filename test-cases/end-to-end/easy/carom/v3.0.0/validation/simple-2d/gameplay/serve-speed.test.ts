@@ -6,8 +6,9 @@
 // is posed: `startMatch` opens the countdown and `serve` ends it, and what leaves
 // is whatever the build's own serve produced.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SERVE_SPEED } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import { ball0, captureReplay, createHarness, type Harness } from "../harness";
 
 /**
@@ -66,9 +67,10 @@ it("serves the ball at the base serve speed", async () => {
     return swept;
   });
 
-  expect(launched.hit).toBe(true);
-  expect(
+  assertEqual(launched.hit, true);
+  assertLessThanOrEqual(
     Math.abs(ball0(launched.snapshot).speed - SERVE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
-  expect(harness.assetFailures).toEqual([]);
+    SPEED_TOLERANCE,
+  );
+  assertDeepEqual(harness.assetFailures, []);
 });

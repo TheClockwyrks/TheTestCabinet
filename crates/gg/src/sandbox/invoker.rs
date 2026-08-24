@@ -286,6 +286,10 @@ pub trait OperationApi: Send + 'static {
     fn write_file(&mut self, path: String, contents: String) -> ToolOutcome;
     fn edit_file(&mut self, path: String, old_string: String, new_string: String) -> ToolOutcome;
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome;
+    /// Search the workspace's files for `query` under the ignore files — the `search` tool, with the
+    /// matches on its [`SearchMatches`](crate::tools::ApiData::SearchMatches) sidecar. `path` roots
+    /// the search (`None` is the workspace) and `limit` bounds the list, both on the tool's terms.
+    fn search(&mut self, query: String, path: Option<String>, limit: Option<u32>) -> ToolOutcome;
     fn read_skill(&mut self, name: String) -> ToolOutcome;
     fn write_memory(
         &mut self,
@@ -447,11 +451,19 @@ pub trait OperationApi: Send + 'static {
     /// session-record entry, the same roster line. What differs is what happens to the result — it also
     /// becomes a context item keyed by `(path, region)`, and the picture a mockup returned rides in
     /// that item rather than out on the turn's feedback.
+    ///
+    /// `max_line_chars` is the view's own option and touches nothing the program is handed back:
+    /// when it is set, each line of the **view body** longer than that many characters is cut there
+    /// and annotated in place with how many were dropped. The view's text body is then held to the
+    /// same byte cap a text view's is, measured after the cut, and a window over the cap is a
+    /// [`limit-exceeded`](ToolFailure::LimitExceeded) failure of the read — nothing is opened and
+    /// nothing is truncated behind the model's back.
     fn open_file_view(
         &mut self,
         path: String,
         offset: Option<usize>,
         limit: Option<usize>,
+        max_line_chars: Option<usize>,
     ) -> ViewOpenOutcome;
     /// Open (or replace) the text view keyed by `label`: material the program computed, pushed into
     /// the window as its own attributable item.

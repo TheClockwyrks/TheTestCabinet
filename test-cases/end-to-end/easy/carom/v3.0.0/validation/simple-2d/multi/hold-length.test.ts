@@ -10,7 +10,8 @@
 // the specification says the scored ball takes a full hold. Both are stepped ONE
 // FRAME AT A TIME, so at the harness's 120 Hz clock the count is the duration.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   arrangeGoal,
   captureReplay,
@@ -43,8 +44,8 @@ it("holds the balls for the specified hold at match start", async () => {
   await startWithKeys(h, "versus");
 
   const start = h.snapshot();
-  expect(start.screen).toBe("countdown");
-  for (const ball of readBalls(start)) expect(ball.held).toBe(true);
+  assertEqual(start.screen, "countdown");
+  for (const ball of readBalls(start)) assertEqual(ball.held, true);
 
   const launched = await captureReplay(h, "hold", async () => {
     const swept = await h.until((s) => s.screen === "playing", {
@@ -55,8 +56,9 @@ it("holds the balls for the specified hold at match start", async () => {
     return swept;
   });
 
-  expect(launched.hit).toBe(true);
-  expect(Math.abs(launched.frames - HOLD_TICKS)).toBeLessThanOrEqual(
+  assertEqual(launched.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(launched.frames - HOLD_TICKS),
     HOLD_TOLERANCE_TICKS,
   );
 });
@@ -70,12 +72,13 @@ it("gives a scored ball a hold of its own before it launches again", async () =>
     maxFrames: 360,
     poll: 1,
   });
-  expect(scored.hit).toBe(true);
-  expect(readBalls(scored.snapshot)[0].held).toBe(true);
+  assertEqual(scored.hit, true);
+  assertEqual(readBalls(scored.snapshot)[0].held, true);
 
   const relaunch = await driveLaunch(h, 0);
-  expect(relaunch.hit).toBe(true);
-  expect(Math.abs(relaunch.frames - HOLD_TICKS)).toBeLessThanOrEqual(
+  assertEqual(relaunch.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(relaunch.frames - HOLD_TICKS),
     HOLD_TOLERANCE_TICKS,
   );
 });

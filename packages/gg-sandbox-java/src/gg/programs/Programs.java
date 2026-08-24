@@ -16,7 +16,7 @@ import java.util.Optional;
  * what ran, patch it with ordinary string work, hand it back.
  *
  * <pre>{@code
- * Programs.rerun(Programs.get().replace("Files.readfile", "Files.readFile"));
+ * Programs.rerun(Programs.get().replace("Views.opentext", "Views.openText"));
  * }</pre>
  *
  * @ggmodule programs

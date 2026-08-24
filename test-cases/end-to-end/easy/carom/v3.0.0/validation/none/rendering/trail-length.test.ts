@@ -15,8 +15,9 @@
 // decorative tail of a dozen units fails the lower bound at the speed driven
 // here; a streak that stretches across the field fails the upper.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BALL_R, TRAIL_TIME } from "../constants";
+import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { readTrail } from "./trail";
 
@@ -42,6 +43,6 @@ it("paints a streak behind the ball about speed times TRAIL_TIME long", async ()
   await captureStill(h, "trail");
 
   // And what landed on the canvas reaches back the trail's length.
-  expect(trail.paintedReach).toBeGreaterThanOrEqual(REACH_MIN);
-  expect(trail.paintedReach).toBeLessThanOrEqual(REACH_MAX);
+  assertGreaterThanOrEqual(trail.paintedReach, REACH_MIN);
+  assertLessThanOrEqual(trail.paintedReach, REACH_MAX);
 });

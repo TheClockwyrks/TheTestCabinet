@@ -137,7 +137,12 @@ having run.
 Each test file maps back to the review point whose `validation` path declared it,
 by the path the file was staged to. A file whose checks all passed earns its point
 a passing verdict; a file with any failing check fails its point, and the verdict
-carries a bounded excerpt naming which checks failed and what they said.
+records each failed check for the reviewer. A failure that states a comparison,
+either a validator assertion helper's `Expected:`/`Actual:` lines or a chai
+matcher's message, is stored as its real pair: the bound the check set as the
+expected, the value the build produced as the actual. Any other failure is stored
+as a bounded excerpt of its message. Stack frames are stripped before storage, so
+file paths and line numbers never reach what a reviewer reads.
 
 The whole suite run is capped at wall-clock minutes and the output retained per
 suite at kilobytes, so a validator that never terminates costs the run the cap and

@@ -32,13 +32,23 @@
 // would fail a perfectly conformant build. The control checks press real keys
 // instead.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertCloseTo,
+  assertContains,
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  assertHasProperty,
+  assertNull,
+} from "../assert";
 import { FIELD_CY, HOLD_TIME } from "../constants";
 import {
   ball0,
   captureStill,
   CAROM_DEBUG_VERSION,
   createHarness,
+  failSurface,
   HANDLE,
   REQUIRED_OPS,
   startPlaying,
@@ -51,16 +61,15 @@ const FROZEN_MS = 750;
 let h: Harness;
 
 /**
- * Fail with the harness's own account of what is missing, rather than with a
- * matcher's rendering of it.
+ * Fail with the harness's own account of what is missing, paired with what the
+ * build owes, rather than with a comparison's rendering of it.
  *
- * `expect(h.surfaceFault).toBeNull()` reads as "expected '<the first forty
- * characters of the reason>…' to be null", which throws away the half of the
- * message that says what the build owes. This is the point whose whole job is to
- * name that plainly.
+ * `assertNull(h.surfaceFault)` would read as "Expected: null" over the reason,
+ * which throws away the half of the pair that says what the build owes. This is
+ * the point whose whole job is to name that plainly.
  */
 function requireSurface(): void {
-  if (h.surfaceFault !== null) expect.fail(h.surfaceFault);
+  if (h.surfaceFault !== null) failSurface(h.surfaceFault);
 }
 
 beforeEach(async () => {
@@ -79,16 +88,16 @@ it(`installs its surface on window.${HANDLE}`, async () => {
   requireSurface();
 
   const { version } = await h.probe([]);
-  expect(typeof version).toBe("number");
+  assertEqual(typeof version, "number");
 });
 
 it("carries a version and every required operation, as functions", async () => {
   requireSurface();
   const probed = await h.probe(REQUIRED_OPS);
 
-  expect(probed.version).toBe(CAROM_DEBUG_VERSION);
+  assertEqual(probed.version, CAROM_DEBUG_VERSION);
   for (const op of REQUIRED_OPS) {
-    expect(probed.ops[op], `window.${HANDLE}.${op}`).toBe("function");
+    assertEqual(probed.ops[op], "function", `window.${HANDLE}.${op}`);
   }
 });
 
@@ -102,22 +111,23 @@ it("takes the game off the wall clock, and runs whole frames on demand", async (
   await new Promise((resolve) => setTimeout(resolve, FROZEN_MS));
   const still = await h.snapshot();
 
-  expect(still.simTime).toBe(frozen.simTime);
-  expect(ball0(still).x).toBe(ball0(frozen).x);
-  expect(ball0(still).y).toBe(ball0(frozen).y);
+  assertEqual(still.simTime, frozen.simTime);
+  assertEqual(ball0(still).x, ball0(frozen).x);
+  assertEqual(ball0(still).y, ball0(frozen).y);
 
   // And an advance runs real frames: the game's own clock moves by exactly the
   // time asked for, and the simulation moves with it.
   await h.advance(120); // one second at the suite's 120 Hz
   const driven = await h.snapshot();
 
-  expect(driven.simTime - frozen.simTime).toBeCloseTo(1, 6);
-  expect(
+  assertCloseTo(driven.simTime - frozen.simTime, 1, 6);
+  assertGreaterThan(
     Math.hypot(
       ball0(driven).x - ball0(frozen).x,
       ball0(driven).y - ball0(frozen).y,
     ),
-  ).toBeGreaterThan(1);
+    1,
+  );
 });
 
 it("reports the whole documented snapshot shape, from a live match", async () => {
@@ -129,42 +139,39 @@ it("reports the whole documented snapshot shape, from a live match", async () =>
 
   const snapshot = await h.snapshot();
 
-  expect(typeof snapshot.version).toBe("number");
-  expect([
-    "title",
-    "howto",
-    "countdown",
-    "playing",
-    "paused",
-    "matchover",
-  ]).toContain(snapshot.screen);
-  expect(["solo", "versus"]).toContain(snapshot.mode);
-  expect(typeof snapshot.score.p1).toBe("number");
-  expect(typeof snapshot.score.p2).toBe("number");
-  expect(snapshot).toHaveProperty("winner");
-  expect(typeof snapshot.muted).toBe("boolean");
+  assertEqual(typeof snapshot.version, "number");
+  assertContains(
+    ["title", "howto", "countdown", "playing", "paused", "matchover"],
+    snapshot.screen,
+  );
+  assertContains(["solo", "versus"], snapshot.mode);
+  assertEqual(typeof snapshot.score.p1, "number");
+  assertEqual(typeof snapshot.score.p2, "number");
+  assertHasProperty(snapshot, "winner");
+  assertEqual(typeof snapshot.muted, "boolean");
 
   for (const side of ["left", "right"] as const) {
-    expect(typeof snapshot.paddles[side].cy).toBe("number");
-    expect(typeof snapshot.paddles[side].vy).toBe("number");
+    assertEqual(typeof snapshot.paddles[side].cy, "number");
+    assertEqual(typeof snapshot.paddles[side].vy, "number");
   }
 
   for (const field of ["x", "y", "vx", "vy", "speed", "spin"] as const) {
-    expect(typeof ball0(snapshot)[field]).toBe("number");
+    assertEqual(typeof ball0(snapshot)[field], "number");
   }
-  expect(typeof ball0(snapshot).held).toBe("boolean");
-  expect(typeof snapshot.simTime).toBe("number");
+  assertEqual(typeof ball0(snapshot).held, "boolean");
+  assertEqual(typeof snapshot.simTime, "number");
 
   // Live values, not a shape filled with zeroes: the ball is in flight, so it is
   // no longer held and it is moving at the speed its serve gave it.
-  expect(snapshot.screen).toBe("playing");
-  expect(ball0(snapshot).held).toBe(false);
-  expect(ball0(snapshot).speed).toBeGreaterThan(0);
-  expect(ball0(snapshot).speed).toBeCloseTo(
+  assertEqual(snapshot.screen, "playing");
+  assertEqual(ball0(snapshot).held, false);
+  assertGreaterThan(ball0(snapshot).speed, 0);
+  assertCloseTo(
+    ball0(snapshot).speed,
     Math.hypot(ball0(snapshot).vx, ball0(snapshot).vy),
     6,
   );
-  expect(snapshot.simTime).toBeGreaterThan(0);
+  assertGreaterThan(snapshot.simTime, 0);
 });
 
 it("poses the game through the state the build declared", async () => {
@@ -176,8 +183,8 @@ it("poses the game through the state the build declared", async () => {
   await h.debug.startMatch("versus");
   await h.advance(1);
   const opened = await h.snapshot();
-  expect(opened.screen).toBe("countdown");
-  expect(ball0(opened).held).toBe(true);
+  assertEqual(opened.screen, "countdown");
+  assertEqual(ball0(opened).held, true);
 
   // And the hold really is a countdown rather than a latch: it runs out within
   // the specified time, and the game serves itself out of it.
@@ -185,8 +192,8 @@ it("poses the game through the state the build declared", async () => {
     maxFrames: Math.ceil(HOLD_TIME * 120) + 12,
     poll: 1,
   });
-  expect(served.hit).toBe(true);
-  expect(ball0(served.snapshot).held).toBe(false);
+  assertEqual(served.hit, true);
+  assertEqual(ball0(served.snapshot).held, false);
 
   // A posed paddle stays where it was put, and a posed velocity persists across
   // frames rather than being a one-frame nudge.
@@ -194,21 +201,21 @@ it("poses the game through the state the build declared", async () => {
   await h.debug.setPaddle("right", { cy: 500, vy: 0 });
   await h.advance(24);
   const posed = await h.snapshot();
-  expect(posed.paddles.left.cy).toBeCloseTo(200, 3);
-  expect(posed.paddles.right.cy).toBeCloseTo(500, 3);
+  assertCloseTo(posed.paddles.left.cy, 200, 3);
+  assertCloseTo(posed.paddles.right.cy, 500, 3);
 
   // A posed score is the score.
   await h.debug.setScore(3, 4);
   await h.advance(1);
-  expect((await h.snapshot()).score).toEqual({ p1: 3, p2: 4 });
+  assertDeepEqual((await h.snapshot()).score, { p1: 3, p2: 4 });
 
   // And a reset returns the whole of it to the title.
   await h.debug.reset();
   await h.advance(1);
   const title = await h.snapshot();
-  expect(title.screen).toBe("title");
-  expect(title.score).toEqual({ p1: 0, p2: 0 });
-  expect(title.winner).toBeNull();
-  expect(title.paddles.left.cy).toBeCloseTo(FIELD_CY, 3);
-  expect(title.paddles.right.cy).toBeCloseTo(FIELD_CY, 3);
+  assertEqual(title.screen, "title");
+  assertDeepEqual(title.score, { p1: 0, p2: 0 });
+  assertNull(title.winner);
+  assertCloseTo(title.paddles.left.cy, FIELD_CY, 3);
+  assertCloseTo(title.paddles.right.cy, FIELD_CY, 3);
 });

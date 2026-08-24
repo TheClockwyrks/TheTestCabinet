@@ -1285,7 +1285,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                         .with_param(PARAM_TIMEOUT_SECS, 0)
                         .with_param(PARAM_MAX_MEMORY_BYTES, "lots")
                         .with_param(PARAM_DOC_VIEW_TYPES, json!({ "returns": true }))
-                        .with_param(PARAM_ASSISTANT_MESSAGES, "healed")
+                        .with_param("assistantMessages", "response-healing")
                         .with_param(PARAM_HEALING, json!({ "stripFences": false })),
                     GgCapabilityConfig {
                         implementation: Some("default_cap".to_string()),
@@ -1327,7 +1327,6 @@ fn every_class_of_defect_appears_in_one_refusal() {
                         .with_param(PARAM_TIMEOUT_SECS, 0.5)
                         .with_param(PARAM_MAX_MEMORY_BYTES, 5e8)
                         .with_param(PARAM_DOC_VIEW_TYPES, json!({ "parameters": true }))
-                        .with_param(PARAM_ASSISTANT_MESSAGES, "response-healing")
                         .with_param(PARAM_HEALING, json!({ "strip-fences": false })),
                     GgCapabilityConfig {
                         implementation: Some(READ_MODE_DEFAULT_CAP.to_string()),
@@ -1504,8 +1503,8 @@ fn every_class_of_defect_appears_in_one_refusal() {
         PARAM_MAX_MEMORY_BYTES,
         // a documentation-view type key gg does not have
         "returns",
-        // an assistant-message mode gg does not have
-        "healed",
+        // the removed assistant-message lever, whose key is no longer one gg reads
+        "assistantMessages",
         // a healing key that arms nothing
         "stripFences",
         // a read mode that would have granted uncapped reads

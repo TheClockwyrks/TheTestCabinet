@@ -2,9 +2,9 @@ namespace Gg;
 
 /// <summary>Reclaim room in the agent's own context window.</summary>
 /// <remarks>
-/// Four calls, in the order a full window wants them: drop file views that are done with, move whole
-/// turns into the archive, search the archive for what was moved, and — when none of that is enough
-/// — compact.
+/// In the order a full window wants them: drop file views that are done with, move whole turns into
+/// the archive and search it for what was moved, and — when none of that is enough — restart the
+/// window from a summary.
 /// </remarks>
 /// <ggmodule>context</ggmodule>
 public static partial class Context

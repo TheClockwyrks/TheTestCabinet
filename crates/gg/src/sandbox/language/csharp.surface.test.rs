@@ -135,6 +135,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            statement: r#"Files.Search("answer", path: "src", limit: 5);"#,
+            expected: || json!({ "query": "answer", "path": "src", "limit": 5 }),
+        },
+        Crossing {
             tool: "read_skill",
             statement: r#"Skills.ReadSkill("testing");"#,
             expected: || json!({ "name": "testing" }),
@@ -398,6 +403,7 @@ var text = Files.ReadTextFile("notes.md", offset: 1, limit: 2);
 var read = Views.OpenFile("notes.md", offset: 1, limit: 2);
 Views.OpenText("summary", text);
 Views.OpenDocsView("ReadFile");
+Views.OpenFile("wide.md", offset: 1, limit: 2, maxLineChars: 80);
 var closed = Views.Close("summary");
 var missing = Views.Close("never opened");
 var open = Views.Current();
@@ -428,7 +434,7 @@ Session.Finish("read the file and showed myself the result");
             .iter()
             .map(|view| view.selector.as_str())
             .collect::<Vec<_>>(),
-        ["notes.md", "summary", "ReadFile"]
+        ["notes.md", "summary", "ReadFile", "wide.md"]
     );
     assert!(
         matches!(
@@ -439,13 +445,24 @@ Session.Finish("read the file and showed myself the result");
         outcome.completion
     );
 
-    // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `Views.OpenFile` performs. Neither has a tool name of its own, which is exactly the point — a
-    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
-    assert_eq!(log.names(), ["read_file", "read_file"]);
+    // Three reads reached gg's dispatch and all arrived as `read_file`: the helper's, and the two
+    // `Views.OpenFile` performs. None has a tool name of its own, which is exactly the point — a
+    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you. The
+    // third carries the view's own line cut, which crosses only when the program wrote one.
+    assert_eq!(log.names(), ["read_file", "read_file", "read_file"]);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
+    );
+    let reads: Vec<Value> = log
+        .calls()
+        .into_iter()
+        .filter(|call| call.name == "read_file")
+        .map(|call| call.args)
+        .collect();
+    assert_eq!(
+        reads[2],
+        json!({ "path": "wide.md", "offset": 1, "limit": 2, "maxLineChars": 80 })
     );
 
     // THE DOCUMENTATION MODULE, which is the family a session begins in: the prompt names no

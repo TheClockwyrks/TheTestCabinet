@@ -12,8 +12,9 @@
 // `AI_SPEED * SPIN_FROM_PADDLE` (specs/balls.md), signed by the direction the
 // paddle is sweeping, which the paddle's own reported `vy` gives.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { AI_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
 import {
   arrangeAiMovingHit,
   captureReplay,
@@ -61,11 +62,12 @@ it("imparts AI_SPEED * SPIN_FROM_PADDLE of spin, signed by its sweep", async () 
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
+  assertEqual(contact.hit, true);
   // The AI was sweeping as it struck, and the spin carries its direction.
-  expect(contact.paddle.vy).not.toBe(0);
-  expect(Math.sign(contact.ball.spin)).toBe(Math.sign(contact.paddle.vy));
-  expect(
+  assertNotEqual(contact.paddle.vy, 0);
+  assertEqual(Math.sign(contact.ball.spin), Math.sign(contact.paddle.vy));
+  assertLessThanOrEqual(
     Math.abs(Math.abs(contact.ball.spin) - EXPECTED_SPIN),
-  ).toBeLessThanOrEqual(SPIN_TOLERANCE);
+    SPIN_TOLERANCE,
+  );
 });

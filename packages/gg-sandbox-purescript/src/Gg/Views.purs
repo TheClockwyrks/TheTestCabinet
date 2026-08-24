@@ -1,9 +1,9 @@
 -- | The only way material enters the agent's own context window.
 -- |
 -- | Under responses as code a whole program's output would otherwise collapse into one anonymous blob
--- | of logs, charged to one band, attributable to nothing and closable by nothing. A view restores
--- | what tool calling gave for free: one message per view, carrying the band it is charged to and the
--- | selector it can be closed by.
+-- | of logs, charged to one band and attributable to nothing. A view restores what tool calling gave
+-- | for free: one message per view, carrying the band it is charged to and the selector it is filed
+-- | under.
 module Gg.Views
   ( openFile
   , openText
@@ -28,8 +28,9 @@ import Gg.Internal.Read (fileRead)
 import Gg.Internal.Wire as Wire
 import Prim.Row (class Union)
 
--- | The window of lines a file view shows. Every field is optional; `{}` shows the whole file.
-type OpenFileOptions = (offset :: Int, limit :: Int)
+-- | The window of lines a file view shows, and how long a line of it may run. Every field is
+-- | optional; `{}` shows the whole file with its lines whole.
+type OpenFileOptions = (offset :: Int, limit :: Int, maxLineChars :: Int)
 
 -- | Which of the three kinds a view is.
 -- |
@@ -81,7 +82,7 @@ type OpenView =
 
 -- | Read a file and place it in the context window, keyed by its path.
 -- |
--- | The file becomes its own context item, attributed to its path and closable by it. The split from
+-- | The file becomes its own context item, attributed to its path and filed under it. The split from
 -- | `Gg.Files.readFile` is the point: that call gets bytes for the program, this one puts a file in
 -- | front of the model, so a program that reads forty files to grep them still costs no window.
 -- |
@@ -90,6 +91,15 @@ type OpenView =
 -- | image file is displayed as a picture, and this is the only call that displays one — reading an
 -- | image describes it without showing it.
 -- |
+-- | A text view is held to the same 65,536-byte cap a `Gg.Views.openText` body is: a window that
+-- | would carry more is refused with its size and the bound, and nothing is opened and nothing is
+-- | silently truncated. `maxLineChars` is for the file whose lines are the problem rather than its
+-- | length — a minified bundle, a log of enormous lines. Set, it cuts each line of the **view**
+-- | longer than that many characters at that point and annotates it in place as
+-- | `foo (123 more chars...)`; left out, lines arrive whole. The cut is the view's alone — the value
+-- | this call hands back and the file itself are untouched — and the cap is measured against the
+-- | body after it, which is what lets a window over such a file fit.
+-- |
 -- | # Operation
 -- |
 -- | views.open_file
@@ -97,14 +107,25 @@ type OpenView =
 -- | # Arguments
 -- |
 -- | - `path` — The file to open, relative to the workspace or absolute.
--- | - `options` — The window of lines to show; `{}` shows the whole file.
+-- | - `options` — The window of lines to show, and how long a line of it may run; `{}` shows the
+-- |   whole file with its lines whole.
 -- | - `options.offset` — The 1-based line to start at.
 -- | - `options.limit` — How many lines to show from `offset`.
+-- | - `options.maxLineChars` — The most characters a line of the view may run to, from 1 to 65536;
+-- |   a longer line is cut there and annotated in place as `(N more chars...)`. Left out, lines
+-- |   arrive whole, and neither the returned contents nor the file is ever cut.
 -- |
 -- | # Returns
 -- |
 -- | Exactly what `Gg.Files.readFile` hands back for the same file, so the program holds the
 -- | contents as well as the model holding the view.
+-- |
+-- | # Throws
+-- |
+-- | `LimitExceeded`, naming the size and the bound, for a text view whose body — after any cut —
+-- | would exceed 65,536 bytes; nothing is opened, and the way out is a narrower window through
+-- | `offset` and `limit`, or shorter lines through `maxLineChars`. `InvalidArgument` for a
+-- | `maxLineChars` of zero or above 65,536, and `NotFound` for a missing path.
 openFile
   :: forall given rest
    . Union given rest OpenFileOptions
@@ -131,16 +152,16 @@ openFile path options =
 -- |
 -- | # Arguments
 -- |
--- | - `label` — What to file the view under. It is what closes the view, and opening the same label
+-- | - `label` — What to file the view under. It is the view's selector, and opening the same label
 -- |   again replaces what it showed. It may not be empty.
 -- | - `body` — What to show. An empty body is allowed: it is how a program says that something it was
 -- |   showing is now empty.
 -- |
 -- | # Throws
 -- |
--- | `InvalidArgument` for an empty label — a view with no selector could never be closed or attributed
--- | — and `LimitExceeded`, naming the cap, for a body or label over gg's caps; nothing is ever
--- | silently truncated.
+-- | `InvalidArgument` for an empty label — a view with no selector could never be attributed or
+-- | replaced — and `LimitExceeded`, naming the cap, for a body over 65,536 bytes or a label over
+-- | gg's cap; nothing is ever silently truncated.
 openText :: String -> String -> Effect Unit
 openText label body =
   Wire.call_ "open_text" "views" "Gg.Views.openText" [ Wire.wire label, Wire.wire body ]
@@ -153,7 +174,7 @@ openText label body =
 -- | entry's name, exactly as a file or a computed value arrives, so it is not available in the turn
 -- | that asks for it. Asking in one turn and using it in the next is the shape that works. Opening an
 -- | entry that is already open does nothing at all — not a move, not a second copy — since the
--- | documentation band only grows, and `Gg.Docs.close` is the one call that takes a page out of it.
+-- | documentation band only grows.
 -- |
 -- | # Operation
 -- |
@@ -161,8 +182,8 @@ openText label body =
 -- |
 -- | # Arguments
 -- |
--- | - `name` — The entry to document, by its fully-qualified name — `"Gg.Files.readFile"` — or, for a
--- |   module, that module's own path — `"Gg.Files"`. Searching the documentation is what names the
+-- | - `name` — The entry to document, by its fully-qualified name — `"Gg.Views.openText"` — or, for
+-- |   a module, that module's own path — `"Gg.Views"`. Searching the documentation is what names the
 -- |   entries that exist, and anything a search returns can be opened.
 -- |
 -- | # Throws
@@ -176,9 +197,9 @@ openDocsView name = Wire.call_ "open_docs_view" "views" "Gg.Views.openDocsView" 
 -- | Closing a file view forgets what was read rather than what exists; closing a text view discards
 -- | the only copy of what it held, so anything needed later belongs in a file or a memory first.
 -- |
--- | Documentation views are not reached from here. `Gg.Docs.close` is what takes one away, and it is
--- | bought by a capability of its own, `docview-close` — so a sweep that included them would hand back `0` for
--- | an agent that may not close one, which reads as a selector that named nothing.
+-- | Documentation views are not reached from here: taking one away is bought by a capability of its
+-- | own, `docview-close`, so a sweep that included them would hand back `0` for an agent that may
+-- | not close one, which reads as a selector that named nothing.
 -- |
 -- | # Operation
 -- |
@@ -210,8 +231,7 @@ close selector = Wire.call "close" "views" "Gg.Views.close" [ Wire.wire selector
 -- | tidied by folding over what is in it rather than by writing out a selector per view.
 -- |
 -- | A documentation view is the one this does not take away, for the reason `Gg.Views.close` does
--- | not: `Gg.Docs.close` is the call for one of those, and it is bought by a capability of its own,
--- | `docview-close`.
+-- | not: taking one of those away is bought by a capability of its own, `docview-close`.
 -- |
 -- | # Alias
 -- |

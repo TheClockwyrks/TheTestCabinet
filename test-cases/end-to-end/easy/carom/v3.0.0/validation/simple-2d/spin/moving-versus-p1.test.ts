@@ -10,8 +10,9 @@
 // the ball does. Aimed at mid-field that start would fall below the field edge,
 // where the clamp would pin it still.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED, SPIN_FROM_PADDLE } from "../../src/constants";
+import { assertEqual, assertLessThanOrEqual } from "../assert";
 import {
   LEAD_TICKS,
   arrangePaddleHit,
@@ -76,8 +77,9 @@ it("curves the ball the other way off an upward swing", async () => {
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(Math.abs(contact.ball.spin - EXPECTED_SPIN)).toBeLessThanOrEqual(
+  assertEqual(contact.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(contact.ball.spin - EXPECTED_SPIN),
     SPIN_TOLERANCE,
   );
 });

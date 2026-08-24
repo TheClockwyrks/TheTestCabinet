@@ -12,9 +12,10 @@
 // build integrated the elapsed seconds it was handed, and the distance the ball
 // covered, which says the SIMULATION ran rather than a counter ticking up.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { WallClock } from "@test-cabinet/simple-2d";
 import { SERVE_SPEED } from "../../src/constants";
+import { assertGreaterThan } from "../assert";
 import { ball0, captureStill, createHarness, type Harness } from "../harness";
 
 /** The real-time window the loop is left to run for. */
@@ -54,7 +55,7 @@ it("advances on the runtime's frame loop with nothing stepping it", async () => 
 
   const before = harness.snapshot();
   captureStill(harness, "before");
-  expect(ball0(before).speed).toBeGreaterThan(1);
+  assertGreaterThan(ball0(before).speed, 1);
 
   await harness.runFor(RUN_MS);
 
@@ -69,6 +70,6 @@ it("advances on the runtime's frame loop with nothing stepping it", async () => 
     ball0(after).y - ball0(before).y,
   );
 
-  expect(advanced).toBeGreaterThan(MIN_ADVANCE);
-  expect(travelled).toBeGreaterThan(MIN_TRAVEL);
+  assertGreaterThan(advanced, MIN_ADVANCE);
+  assertGreaterThan(travelled, MIN_TRAVEL);
 });

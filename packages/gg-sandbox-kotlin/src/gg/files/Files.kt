@@ -5,8 +5,8 @@
  * reads a dozen files to decide what to change is well shaped, while one that rewrites forty large
  * files in a single turn will exhaust its fuel budget.
  *
- * Nothing here places anything in the agent's context window. `gg.views.openFile` is the call that
- * does.
+ * Nothing here places anything in the agent's context window: a read hands bytes to the program, and
+ * a view — the `gg.views` module — is what puts something in front of the model.
  *
  * @ggmodule files
  */
@@ -123,6 +123,47 @@ public fun listDir(path: String? = null): List<DirEntry> =
     Read.dirEntries(ggCall("files.list_dir", ggText(path)))
 
 /**
+ * Search the workspace's files for a pattern, and hand back every line that matched it.
+ *
+ * The query is a regular expression in Rust syntax — `"foo|bar"`, `"fn\\s+update"`, `"(?i)todo"` for
+ * a case-insensitive match — matched against each line on its own. Each [SearchMatch] carries the
+ * file's path, the 1-based line number and the line itself, in path order and then line order, so a
+ * program can point a read or a view at exactly the right window.
+ *
+ * The search honours ignore files: what `.gitignore`, `.ignore`, `.git/info/exclude` and the global
+ * ignore file exclude is never scanned and never returned, nested ignore files and negations
+ * included, and `.git` itself is skipped. No repository is needed for that to hold, and dotfiles are
+ * searched like any other. A file that is not text — one carrying a NUL byte — is skipped, and a
+ * matching line longer than 200 characters is cut there and annotated in place as
+ * `foo (123 more chars...)`.
+ *
+ * A search is this surface's grep: it says where to look rather than reading a file. A list exactly
+ * `limit` long may have been cut, and there is no offset to page with — the answer to a full page is
+ * a narrower query or a narrower path.
+ *
+ * @ggop files.search
+ * @param query The regular expression to look for, in Rust syntax, matched line by line.
+ * @param path The directory or file to search, relative to the workspace or absolute. A file
+ *   searches that file alone. Left out, the workspace root is searched, and ignore files are
+ *   honoured from the root down wherever the search is rooted.
+ * @param limit How many matches to hand back at most: 50 when left out, 200 at most — a larger
+ *   request is answered with the first 200 — and zero is refused.
+ * @return every matching line, each with its path and 1-based line number
+ * @throws ApiError `INVALID_ARGUMENT` for a query that is blank or not a valid pattern, or for a
+ *   `limit` of zero, and `NOT_FOUND` for a `path` that is not there.
+ */
+public fun search(query: String, path: String? = null, limit: Int? = null): List<SearchMatch> {
+    if (limit != null && limit < 1) {
+        throw ApiError(
+            "search",
+            gg.core.ApiErrorCode.INVALID_ARGUMENT,
+            "limit must be at least 1 ($limit given); leave it out for gg's default",
+        )
+    }
+    return Read.searchMatches(ggCall("files.search", ggText(query), ggText(path), ggNumber(limit)))
+}
+
+/**
  * What a file read handed back: a text file's window, or a picture's description.
  *
  * A picture is a different kind of thing from text, so it is a different arm rather than a string
@@ -188,4 +229,15 @@ public enum class EntryKind {
     /** Everything that is neither, a symbolic link among them. */
     OTHER,
 }
+
+/**
+ * One line a search matched.
+ *
+ * @property path The file's path with `/` separators, relative to the workspace root or absolute for
+ *   a search rooted outside it.
+ * @property line The 1-based line number of the match within that file.
+ * @property text The matching line without its line ending, cut at 200 characters and annotated
+ *   `(N more chars...)` where longer.
+ */
+public data class SearchMatch(val path: String, val line: Int, val text: String)
 

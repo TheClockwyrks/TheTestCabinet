@@ -17,7 +17,7 @@
 // on a real machine (twenty frames a second), where one frame at the ceiling
 // is forty-nine units, more than twice the width of what it strikes.
 
-import { afterEach, expect, it } from "vitest";
+import { afterEach, it } from "vitest";
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import {
   BALL_R,
@@ -26,6 +26,12 @@ import {
   MAX_SUBSTEP,
   SPEED_CAP,
 } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   ball0,
   captureReplay,
@@ -64,7 +70,7 @@ async function harnessAt(stepMs: number): Promise<Harness> {
 }
 
 it("rebounds off a wall at the ceiling speed and stays on the field", async () => {
-  expect((SPEED_CAP * STEPS_MS[1]) / 1000).toBeGreaterThan(MAX_SUBSTEP);
+  assertGreaterThan((SPEED_CAP * STEPS_MS[1]) / 1000, MAX_SUBSTEP);
 
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
@@ -86,15 +92,17 @@ it("rebounds off a wall at the ceiling speed and stays on the field", async () =
       return swept;
     });
 
-    expect(rebound.hit, `${stepMs} ms frames: rebounds`).toBe(true);
+    assertEqual(rebound.hit, true, `${stepMs} ms frames: rebounds`);
     // Never outside the field: the center stays a radius inside both walls.
-    expect(
+    assertGreaterThanOrEqual(
       ball0(rebound.snapshot).y,
+      BALL_R - 1e-6,
       `${stepMs} ms frames: inside the top wall`,
-    ).toBeGreaterThanOrEqual(BALL_R - 1e-6);
-    expect(
+    );
+    assertLessThanOrEqual(
       ball0(rebound.snapshot).y,
+      FIELD_H - BALL_R + 1e-6,
       `${stepMs} ms frames: inside the bottom wall`,
-    ).toBeLessThanOrEqual(FIELD_H - BALL_R + 1e-6);
+    );
   }
 });

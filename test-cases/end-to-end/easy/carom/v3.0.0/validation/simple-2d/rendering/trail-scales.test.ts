@@ -7,7 +7,8 @@
 // longer. This is the reading a single drive cannot give: a build drawing a
 // fixed-length tail passes every absolute bound and fails here.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -38,6 +39,6 @@ it("draws a longer trail behind the faster ball", async () => {
   captureStill(h, "fast");
   const fast = trailReach(h, fastBall);
 
-  expect(slow).toBeGreaterThan(0);
-  expect(fast).toBeGreaterThan(slow);
+  assertGreaterThan(slow, 0);
+  assertGreaterThan(fast, slow);
 });

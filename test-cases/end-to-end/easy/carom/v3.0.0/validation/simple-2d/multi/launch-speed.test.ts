@@ -11,8 +11,9 @@
 // got right. The ANGLE is not read here: it is drawn over the full circle, which
 // is `multi/launch-angle`'s point.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SERVE_SPEED } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { readBalls } from "./harness";
 
@@ -54,12 +55,10 @@ it("launches every ball at the base launch speed", async () => {
     return { swept, balls };
   });
 
-  expect(launched.swept.hit).toBe(true);
+  assertEqual(launched.swept.hit, true);
   for (const ball of launched.balls) {
-    expect(ball.held).toBe(false);
-    expect(Math.abs(ball.speed - SERVE_SPEED)).toBeLessThanOrEqual(
-      SPEED_TOLERANCE,
-    );
+    assertEqual(ball.held, false);
+    assertLessThanOrEqual(Math.abs(ball.speed - SERVE_SPEED), SPEED_TOLERANCE);
   }
-  expect(h.assetFailures).toEqual([]);
+  assertDeepEqual(h.assetFailures, []);
 });

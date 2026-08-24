@@ -3,8 +3,13 @@
 // The mirror of `speed-versus-p1`: player two's movement key drives the right
 // paddle at the paddle speed, and leaves player one's alone.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED } from "../../src/constants";
+import {
+  assertGreaterThan,
+  assertLessThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -61,9 +66,10 @@ it("moves player two's paddle at the paddle speed, and only that paddle", async 
     return held;
   });
 
-  expect(moved.delta).toBeGreaterThan(0);
-  expect(
+  assertGreaterThan(moved.delta, 0);
+  assertLessThanOrEqual(
     Math.abs(speedOverTicks(moved.delta, TICKS) - PADDLE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
-  expect(Math.abs(moved.otherDelta.left)).toBeLessThan(STILL_MAX);
+    SPEED_TOLERANCE,
+  );
+  assertLessThan(Math.abs(moved.otherDelta.left), STILL_MAX);
 });

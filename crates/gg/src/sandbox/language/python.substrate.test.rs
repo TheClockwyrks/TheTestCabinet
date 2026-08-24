@@ -1171,6 +1171,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            program: "import gg\ngg.files.search(\"fn\\\\s+update\", path=\"src\", limit=20)",
+            expected: || json!({ "query": "fn\\s+update", "path": "src", "limit": 20 }),
+        },
+        Crossing {
             tool: "read_skill",
             program: "import gg\ngg.skills.read_skill(\"testing\")",
             expected: || json!({ "name": "testing" }),
@@ -2354,5 +2359,52 @@ os._exit(
                 recorded: Some(TurnErrorType::SandboxTrap),
             },
         ],
+    );
+}
+
+/// The workspace search lowers each match to the model-facing dataclass, a `limit` of zero is
+/// refused on this side of the membrane, and `open_file`'s line cut crosses under the docs' name
+/// for it — added to the dispatch arguments only when the program wrote it.
+#[test]
+fn the_workspace_search_and_the_line_cut_cross_from_python() {
+    let (outcome, log) = run_with(
+        r#"
+import gg
+
+hits = gg.files.search("answer", path="src")
+print(len(hits), type(hits[0]).__name__, hits[0].path, hits[0].line, hits[0].text)
+try:
+    gg.files.search("answer", limit=0)
+except gg.core.ApiError as failure:
+    print(failure.operation, failure.code is gg.core.ApiErrorCode.INVALID_ARGUMENT)
+gg.views.open_file("notes.md", max_line_chars=40)
+gg.views.open_file("notes.md", offset=2, limit=1)
+"#,
+        &all_operations(),
+        &[],
+        SandboxLimits::AMPLE,
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["1 SearchMatch src/a.ts 3 const answer = 42;", "search True"]
+    );
+    assert_eq!(log.names(), ["search", "read_file", "read_file"]);
+    assert_eq!(
+        log.args("search"),
+        Some(json!({ "query": "answer", "path": "src", "limit": null }))
+    );
+    let reads: Vec<Value> = log
+        .calls()
+        .into_iter()
+        .filter(|call| call.name == "read_file")
+        .map(|call| call.args)
+        .collect();
+    assert_eq!(
+        reads,
+        [
+            json!({ "path": "notes.md", "offset": null, "limit": null, "maxLineChars": 40 }),
+            json!({ "path": "notes.md", "offset": 2, "limit": 1 }),
+        ]
     );
 }

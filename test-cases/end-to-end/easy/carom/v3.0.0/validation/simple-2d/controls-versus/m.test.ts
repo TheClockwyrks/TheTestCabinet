@@ -15,7 +15,8 @@
 // of zero, so a build that flipped a boolean of its own and left the bus running
 // is told apart from one that muted the runtime.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import {
   arrangeLiveBall,
   ball0,
@@ -38,21 +39,21 @@ afterEach(() => {
 
 it("flips the reported mute bit on, and off again", async () => {
   await h.advance(1); // paint the title, so the mirrored bit is a fresh read
-  expect(h.snapshot().screen).toBe("title");
-  expect(h.snapshot().muted).toBe(false);
+  assertEqual(h.snapshot().screen, "title");
+  assertEqual(h.snapshot().muted, false);
 
   await h.tap("KeyM");
   captureStill(h, "mute");
-  expect(h.snapshot().muted).toBe(true);
+  assertEqual(h.snapshot().muted, true);
 
   await h.tap("KeyM");
-  expect(h.snapshot().muted).toBe(false);
+  assertEqual(h.snapshot().muted, false);
 });
 
 it("silences the runtime's cue bus while it is on", async () => {
   await h.advance(1);
   await h.tap("KeyM");
-  expect(h.snapshot().muted).toBe(true);
+  assertEqual(h.snapshot().muted, true);
 
   // Straight up into the top wall, which is the shortest real event that plays a
   // cue. Muting survives a `reset`, so the drive below is still muted.
@@ -60,7 +61,7 @@ it("silences the runtime's cue bus while it is on", async () => {
   await arrangeLiveBall(h, { x: FIELD_CX, y: 80, vx: 0, vy: -500 });
   const bounced = await h.until((s) => ball0(s).vy > 0, { maxFrames: 120 });
 
-  expect(bounced.hit).toBe(true);
-  expect(h.snapshot().muted).toBe(true);
-  for (const cue of played) expect(cue.gain).toBe(0);
+  assertEqual(bounced.hit, true);
+  assertEqual(h.snapshot().muted, true);
+  for (const cue of played) assertEqual(cue.gain, 0);
 });

@@ -6,7 +6,8 @@
 // so the selection is read by confirming: from the wrapped index 2 the entry
 // taken is `HOW TO PLAY`.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 let h: Harness;
@@ -25,5 +26,5 @@ it("wraps the selection from SOLO to HOW TO PLAY on an up press", async () => {
   await captureStill(h, "menu");
   await h.tap("Enter");
 
-  expect((await h.snapshot()).screen).toBe("howto");
+  assertEqual((await h.snapshot()).screen, "howto");
 });

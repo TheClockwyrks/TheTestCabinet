@@ -22,8 +22,8 @@ public enum docs {
     ///
     /// The result is a value and a view. The value is readable in the turn that asked for it; the
     /// view puts the same page in the next prompt under the selector `search results`, replaced by
-    /// the next search rather than accumulating, and closed by `views.close`. A hit carries a brief
-    /// and no more — reading one in full is `views.openDocsView` on its `key`.
+    /// the next search rather than accumulating. A hit carries a brief and no more — reading one in
+    /// full is `views.openDocsView` on its `key`.
     ///
     /// Every argument has a default, so a call may be words alone, filters alone, or both. The one
     /// shape it refuses is the empty one: no query and no filter is a call that asked for nothing,

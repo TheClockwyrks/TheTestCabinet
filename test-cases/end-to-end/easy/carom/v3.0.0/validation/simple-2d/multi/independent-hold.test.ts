@@ -8,7 +8,8 @@
 // which no ball is held). How long the hold lasts is `multi/hold-length`'s
 // point; the respawn a scored ball takes alone is `multi/independent-respawn`.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { captureReplay, createHarness, type Harness } from "../harness";
 import { readBalls } from "./harness";
 
@@ -43,12 +44,12 @@ it("holds all three balls for the hold, then launches them together", async () =
     return { first, balls, screen };
   });
 
-  expect(launch.first.hit).toBe(true);
+  assertEqual(launch.first.hit, true);
   // All three, on that one frame: the holds started together, so they end
   // together and the field goes live as a whole.
   for (const ball of launch.balls) {
-    expect(ball.held).toBe(false);
-    expect(ball.speed).toBeGreaterThan(1);
+    assertEqual(ball.held, false);
+    assertGreaterThan(ball.speed, 1);
   }
-  expect(launch.screen).toBe("playing");
+  assertEqual(launch.screen, "playing");
 });

@@ -8,8 +8,13 @@
 // is what the real bounce produced. The steep cases are the siblings
 // `hit-top-edge` and `hit-bottom-edge`.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   LEAD_TICKS,
   angleDeg,
@@ -71,7 +76,7 @@ it("returns the ball level from the centre of a still paddle", async () => {
     return rebound;
   });
 
-  expect(contact.hit).toBe(true);
-  expect(contact.ball.vx).toBeGreaterThan(0);
-  expect(angleDeg(contact.ball)).toBeLessThanOrEqual(STRAIGHT_MAX_DEG);
+  assertEqual(contact.hit, true);
+  assertGreaterThan(contact.ball.vx, 0);
+  assertLessThanOrEqual(angleDeg(contact.ball), STRAIGHT_MAX_DEG);
 });

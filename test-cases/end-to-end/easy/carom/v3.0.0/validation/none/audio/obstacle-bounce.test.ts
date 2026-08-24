@@ -19,7 +19,8 @@
 // establishes is that the obstacle collision sounds at all and sounds when it
 // happens; whether the four cues are told apart by ear is the reviewer's.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import { OBSTACLES, OBSTACLE_CENTERS } from "../constants";
 import {
   arrangeObstacleBounce,
@@ -75,11 +76,12 @@ it("sounds a cue on the frame of the bounce, and not before it", async () => {
     return measured;
   });
 
-  expect(bounce.bounced.hit).toBe(true);
-  expect(bounce.cues.length).toBeGreaterThan(0);
+  assertEqual(bounce.bounced.hit, true);
+  assertGreaterThan(bounce.cues.length, 0);
   // The 180 px approach crosses an empty lane, so every sound emitted belongs to
   // the collision itself.
-  expect(bounce.cues.map((cue) => cue.frame)).toEqual(
+  assertDeepEqual(
+    bounce.cues.map((cue) => cue.frame),
     bounce.cues.map(() => bounce.frame),
   );
 });

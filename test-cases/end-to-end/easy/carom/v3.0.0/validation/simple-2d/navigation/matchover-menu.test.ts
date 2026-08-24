@@ -7,8 +7,9 @@
 // action is raised by the binding the case declares, and the result is read
 // back off the game's own state. The still is the frame the press left.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { MATCHOVER_ITEMS, WIN_SCORE } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertNull } from "../assert";
 import {
   arrangeGoal,
   captureStill,
@@ -34,20 +35,20 @@ it("returns to the title from the second match-over item", async () => {
   h.debug.setScore(WIN_SCORE - 1, 0);
   arrangeGoal(h, "right");
   const ended = await driveGoal(h);
-  expect(ended.hit).toBe(true);
-  expect(h.snapshot().screen).toBe("matchover");
-  expect(h.snapshot().winner).toBe("left");
-  expect(menuIndex0(h)).toBe(0);
-  expect(MATCHOVER_ITEMS[1]).toBe("MENU");
+  assertEqual(ended.hit, true);
+  assertEqual(h.snapshot().screen, "matchover");
+  assertEqual(h.snapshot().winner, "left");
+  assertEqual(menuIndex0(h), 0);
+  assertEqual(MATCHOVER_ITEMS[1], "MENU");
 
   await h.tap("ArrowDown");
-  expect(menuIndex0(h)).toBe(1);
+  assertEqual(menuIndex0(h), 1);
   await h.tap("Enter");
   captureStill(h, "title");
 
   const title = h.snapshot();
-  expect(title.screen).toBe("title");
-  expect(menuIndex0(h)).toBe(0);
-  expect(title.score).toEqual({ p1: 0, p2: 0 });
-  expect(title.winner).toBeNull();
+  assertEqual(title.screen, "title");
+  assertEqual(menuIndex0(h), 0);
+  assertDeepEqual(title.score, { p1: 0, p2: 0 });
+  assertNull(title.winner);
 });

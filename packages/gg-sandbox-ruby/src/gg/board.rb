@@ -5,9 +5,8 @@ module GG
   #
   # An issue is heavyweight and self-contained: its scope, non-scope and completion criteria are
   # exactly what a delegated child agent is briefed from, which is why `create_issue` asks for more
-  # than `GG::Tasks.add_task` does. Its five required arguments are positional and the four that
-  # shape it are keywords, which is what a call with this many strings in it should look like in
-  # Ruby.
+  # than a task does. Its five required arguments are positional and the four that shape it are
+  # keywords, which is what a call with this many strings in it should look like in Ruby.
   #
   # Three lowerings live here, all of one kind: a program writes `GG::Core::UNCHANGED`, `nil` or a
   # value and the wrapper turns that into the membrane's tagged variant. A description is a

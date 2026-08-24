@@ -19,7 +19,8 @@
 // engine the bus announces the name and the count, and that is where they are
 // read.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import { FIELD_CY } from "../constants";
 import {
   captureReplay,
@@ -84,11 +85,12 @@ it("sounds a cue on the frame the pair meets, and not before it", async () => {
     return measured;
   });
 
-  expect(meeting.met.hit).toBe(true);
-  expect(meeting.cues.length).toBeGreaterThan(0);
+  assertEqual(meeting.met.hit, true);
+  assertGreaterThan(meeting.cues.length, 0);
   // The approach crosses an empty lane, so every sound emitted belongs to the
   // collision itself.
-  expect(meeting.cues.map((cue) => cue.frame)).toEqual(
+  assertDeepEqual(
+    meeting.cues.map((cue) => cue.frame),
     meeting.cues.map(() => meeting.frame),
   );
 });

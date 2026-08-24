@@ -191,7 +191,6 @@ fn no_code() -> CodeSetup {
         language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::AMPLE,
         healing: HealingConfig::SAFE_REPAIRS,
-        assistant_messages: AssistantMessageMode::None,
         doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }

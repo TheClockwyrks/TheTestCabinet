@@ -132,6 +132,11 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "path": "src" }),
         },
         Crossing {
+            tool: "search",
+            statement: "gg.files.search(\"answer\", path = \"src\", limit = 5)",
+            expected: || json!({ "query": "answer", "path": "src", "limit": 5 }),
+        },
+        Crossing {
             tool: "read_skill",
             statement: "gg.skills.readSkill(\"testing\")",
             expected: || json!({ "name": "testing" }),
@@ -396,6 +401,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          val read = gg.views.openFile(\"notes.md\", offset = 1, limit = 2)\n\
          gg.views.openText(\"summary\", text)\n\
          gg.views.openDocsView(\"readFile\")\n\
+         gg.views.openFile(\"wide.md\", offset = 1, limit = 2, maxLineChars = 80)\n\
          val closed = gg.views.close(\"summary\")\n\
          val missing = gg.views.close(\"never opened\")\n\
          val open = gg.views.current()\n\
@@ -427,7 +433,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
             .iter()
             .map(|view| view.selector.as_str())
             .collect::<Vec<_>>(),
-        ["notes.md", "summary", "readFile"]
+        ["notes.md", "summary", "readFile", "wide.md"]
     );
     assert!(
         matches!(
@@ -438,13 +444,24 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         outcome.completion
     );
 
-    // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `gg.views.openFile` performs. Neither has a tool name of its own, which is exactly the point — a
-    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
-    assert_eq!(log.names(), ["read_file", "read_file"]);
+    // Three reads reached gg's dispatch and all arrived as `read_file`: the helper's, and the two
+    // `gg.views.openFile` performs. None has a tool name of its own, which is exactly the point — a
+    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you. The
+    // third carries the view's own line cut, which crosses only when the program wrote one.
+    assert_eq!(log.names(), ["read_file", "read_file", "read_file"]);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
+    );
+    let reads: Vec<Value> = log
+        .calls()
+        .into_iter()
+        .filter(|call| call.name == "read_file")
+        .map(|call| call.args)
+        .collect();
+    assert_eq!(
+        reads[2],
+        json!({ "path": "wide.md", "offset": 1, "limit": 2, "maxLineChars": 80 })
     );
 
     // The program library is bound from the capability rather than from a tool name, and a reviewer

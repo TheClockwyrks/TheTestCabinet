@@ -8,8 +8,9 @@
 // result is read back off the game's own state. The still is the frame the
 // press left.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { PAUSE_ITEMS } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -34,14 +35,14 @@ afterEach(() => {
 it("resumes the paused match from the first pause item", async () => {
   await startWithKeys(h, "versus");
   await h.advance(RALLY_TICKS);
-  expect(h.snapshot().screen).toBe("playing");
+  assertEqual(h.snapshot().screen, "playing");
   await h.tap("Escape");
-  expect(h.snapshot().screen).toBe("paused");
-  expect(menuIndex0(h)).toBe(0);
-  expect(PAUSE_ITEMS[0]).toBe("RESUME");
+  assertEqual(h.snapshot().screen, "paused");
+  assertEqual(menuIndex0(h), 0);
+  assertEqual(PAUSE_ITEMS[0], "RESUME");
 
   await h.tap("Enter");
   captureStill(h, "resumed");
 
-  expect(h.snapshot().screen).toBe("playing");
+  assertEqual(h.snapshot().screen, "playing");
 });

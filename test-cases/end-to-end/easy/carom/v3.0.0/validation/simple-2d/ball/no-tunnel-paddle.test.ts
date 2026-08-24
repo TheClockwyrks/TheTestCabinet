@@ -17,7 +17,7 @@
 // on a real machine (twenty frames a second), where one frame at the ceiling
 // is forty-nine units, more than twice the width of what it strikes.
 
-import { afterEach, expect, it } from "vitest";
+import { afterEach, it } from "vitest";
 import { ConstantClock } from "@test-cabinet/simple-2d";
 import {
   BALL_R,
@@ -26,6 +26,11 @@ import {
   P1_X1,
   SPEED_CAP,
 } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+} from "../assert";
 import {
   ball0,
   captureReplay,
@@ -64,7 +69,7 @@ async function harnessAt(stepMs: number): Promise<Harness> {
 }
 
 it("rebounds off a paddle at the ceiling speed rather than scoring through it", async () => {
-  expect((SPEED_CAP * STEPS_MS[1]) / 1000).toBeGreaterThan(MAX_SUBSTEP);
+  assertGreaterThan((SPEED_CAP * STEPS_MS[1]) / 1000, MAX_SUBSTEP);
 
   for (const stepMs of STEPS_MS) {
     const harness = await harnessAt(stepMs);
@@ -88,14 +93,17 @@ it("rebounds off a paddle at the ceiling speed rather than scoring through it", 
       return swept;
     });
 
-    expect(rebound.hit, `${stepMs} ms frames: rebounds`).toBe(true);
-    expect(rebound.snapshot.screen, `${stepMs} ms frames: no point`).toBe(
+    assertEqual(rebound.hit, true, `${stepMs} ms frames: rebounds`);
+    assertEqual(
+      rebound.snapshot.screen,
       "playing",
+      `${stepMs} ms frames: no point`,
     );
     // Never behind the paddle: off its front face, on the field side.
-    expect(
+    assertGreaterThanOrEqual(
       ball0(rebound.snapshot).x,
+      P1_X1 + BALL_R - 1e-6,
       `${stepMs} ms frames: stays in front of the paddle`,
-    ).toBeGreaterThanOrEqual(P1_X1 + BALL_R - 1e-6);
+    );
   }
 });

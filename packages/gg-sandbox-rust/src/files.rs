@@ -1,11 +1,11 @@
-//! Read, write, edit and list the files of the workspace.
+//! Read, write, edit, list and search the files of the workspace.
 //!
 //! Reading is the cheap direction of this sandbox and writing is the expensive one, so a program that
 //! reads a dozen files to decide what to change is well shaped, while one that rewrites forty large
 //! files in a single turn will exhaust its fuel budget.
 //!
-//! Nothing here places anything in the agent's context window.
-//! [`views::open_file`](crate::views::open_file) is the call that does.
+//! Nothing here places anything in the agent's context window: showing something is what the
+//! `gg::views` module is for.
 
 use crate::bindings::test_cabinet::gg::{files, helpers};
 use crate::core::ApiError;
@@ -14,8 +14,8 @@ use crate::wire;
 /// The gg tools this module dispatches, which is part of what the component answers
 /// `bound-operations` with. Declared beside the functions that call them, so a tool added here is a
 /// tool the artifact reports.
-pub(crate) const OPERATIONS: &[&str] = &["read_file", "write_file", "edit_file", "list_dir"];
-
+pub(crate) const OPERATIONS: &[&str] =
+    &["read_file", "write_file", "edit_file", "list_dir", "search"];
 
 /// Read a file, as either a [`FileRead::Text`] or a [`FileRead::Image`].
 ///
@@ -146,6 +146,45 @@ pub fn list_dir(path: Option<&str>) -> Result<Vec<DirEntry>, ApiError> {
         .map(|entries| entries.into_iter().map(wire::dir_entry).collect())
 }
 
+/// Search the workspace's files for a regular expression, and hand back every line that matches.
+///
+/// `query` is a regular expression in Rust's syntax — `foo|bar`, `fn [a-z_]+`, `(?i)todo` for a
+/// case-insensitive match — matched against each line on its own, and every line it matches comes
+/// back as a [`SearchMatch`] carrying the file's path, the 1-based line number and the line itself,
+/// in path order and then line order. It is this sandbox's grep, and it honours ignore files:
+/// whatever `.gitignore`, `.ignore`, `.git/info/exclude` and the global ignore file exclude — nested
+/// files and negations included — is never scanned and never returned, `.git` itself is skipped,
+/// dotfiles are searched, and none of it needs a repository to be there. A file that is not text
+/// (one carrying a NUL byte) is skipped too.
+///
+/// A matching line longer than 200 characters is cut there and annotated in place as
+/// `foo (123 more chars...)`. The result is a value for the program and places nothing in the
+/// context window. A `Vec` exactly [`limit`](SearchOptions::limit) long may have been cut — there is
+/// no offset to page with, so narrowing the query or the [`path`](SearchOptions::path) is what shows
+/// the rest: a search says where to point a read, and is not a way of reading a file.
+///
+/// # Arguments
+///
+/// * `query` — The regular expression to match each line against, in Rust's syntax; `(?i)` makes it
+///   case-insensitive.
+/// * `options` — Where to search and how many matches to return;
+///   `files::SearchOptions::default()` searches the whole workspace for the first 50.
+///
+/// # Returns
+///
+/// Every matching line up to the limit, in path order and then line order. Nothing matching is an
+/// empty `Vec`, not a failure.
+///
+/// # Errors
+///
+/// `InvalidArgument` for a blank query, one that is not a valid pattern, or a limit of `Some(0)`, and
+/// `NotFound` for a path that is not there.
+#[doc(alias = "ggop:files.search")]
+pub fn search(query: &str, options: SearchOptions<'_>) -> Result<Vec<SearchMatch>, ApiError> {
+    wire::lift(files::search(query, options.path, options.limit))
+        .map(|matches| matches.into_iter().map(wire::search_match).collect())
+}
+
 /// What a read returned: a text file's window, or a picture's description.
 ///
 /// A picture is a different kind of thing from text, so it is a different variant rather than a
@@ -208,6 +247,39 @@ pub enum EntryKind {
     Directory,
     /// Everything that is neither, a symlink among them.
     Other,
+}
+
+/// One line a [`search`] matched.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchMatch {
+    /// The file's path, relative to the workspace root, with `/` separators.
+    ///
+    /// Absolute for a search rooted outside the workspace.
+    pub path: String,
+    /// The 1-based line number of the match within that file.
+    pub line: u32,
+    /// The matching line, without its line ending.
+    ///
+    /// Longer than 200 characters, it is cut there and annotated in place as
+    /// `foo (123 more chars...)`.
+    pub text: String,
+}
+
+/// Where a [`search`] looks and how many matches it returns; [`Default`] is the whole workspace, 50 matches.
+///
+/// Rust has no default arguments, and the idiom it reaches for instead is a struct with a [`Default`]
+/// filled in by functional-update syntax:
+/// `files::SearchOptions { path: Some("src"), ..Default::default() }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SearchOptions<'a> {
+    /// The directory or file to search, relative to the workspace or absolute.
+    ///
+    /// `None` searches the whole workspace, and a file searches that one file.
+    pub path: Option<&'a str>,
+    /// How many matches to return at most; `None` takes gg's default of 50.
+    ///
+    /// The ceiling is 200, and a larger limit is clamped to it rather than refused.
+    pub limit: Option<u32>,
 }
 
 /// The window of lines a read covers. [`Default`] reads the whole file.

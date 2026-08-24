@@ -5,8 +5,9 @@
 // own scoring code rather than a fabricated end state, taking the match to the
 // narrowest score that satisfies it.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { WIN_LEAD, WIN_SCORE } from "../../src/constants";
+import { assertEqual } from "../assert";
 import {
   arrangeGoal,
   captureStill,
@@ -42,9 +43,9 @@ it("ends the match on the winning point and names the winner", async () => {
   await harness.advance(1);
   captureStill(harness, "game-over");
 
-  expect(end.hit).toBe(true);
-  expect(end.snapshot.screen).toBe("matchover");
-  expect(end.snapshot.winner).toBe("left");
-  expect(end.snapshot.score.p1).toBe(WIN_SCORE);
-  expect(end.snapshot.score.p2).toBe(P2_BEFORE);
+  assertEqual(end.hit, true);
+  assertEqual(end.snapshot.screen, "matchover");
+  assertEqual(end.snapshot.winner, "left");
+  assertEqual(end.snapshot.score.p1, WIN_SCORE);
+  assertEqual(end.snapshot.score.p2, P2_BEFORE);
 });

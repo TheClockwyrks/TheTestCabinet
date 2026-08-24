@@ -10,7 +10,8 @@
 // as words of their own, and the arrow keys by name or by glyph. How the screen
 // says the rest is the build's.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertMatches } from "../assert";
 import {
   captureStill,
   createHarness,
@@ -42,10 +43,10 @@ it("opens the how-to screen from the menu, naming the movement keys", async () =
   const calls = await h.frameCalls();
   await captureStill(h, "howto");
 
-  expect((await h.snapshot()).screen).toBe("howto");
+  assertEqual((await h.snapshot()).screen, "howto");
 
   const text = drawnText(calls).join(" ").toUpperCase();
-  expect(text).toMatch(NAMES_W);
-  expect(text).toMatch(NAMES_S);
-  expect(text).toMatch(NAMES_ARROWS);
+  assertMatches(text, NAMES_W);
+  assertMatches(text, NAMES_S);
+  assertMatches(text, NAMES_ARROWS);
 });

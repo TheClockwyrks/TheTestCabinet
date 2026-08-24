@@ -6,7 +6,8 @@
 // menu confirms. The match is paused from live play, so the screen resumed to
 // is `playing`.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 import { reachPaused } from "./screens";
 
@@ -26,5 +27,5 @@ it("resumes the paused match on RESUME", async () => {
   await h.tap("Enter");
   await captureStill(h, "resumed");
 
-  expect((await h.snapshot()).screen).toBe("playing");
+  assertEqual((await h.snapshot()).screen, "playing");
 });

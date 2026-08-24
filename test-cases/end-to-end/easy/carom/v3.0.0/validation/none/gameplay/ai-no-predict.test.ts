@@ -11,7 +11,8 @@
 // the reflected destination, or that moves faster than the rule allows, blocks
 // it and fails here.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { FIELD_CX, FIELD_CY } from "../constants";
 import {
   arrangeAiScenario,
@@ -57,5 +58,5 @@ it("is beaten by a shot that banks off a wall on its way in", async () => {
     return outcome;
   });
 
-  expect(result).toBe("scored");
+  assertEqual(result, "scored");
 });

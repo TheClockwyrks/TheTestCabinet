@@ -11,7 +11,8 @@
 // percent, so passing proves the build reads real motion rather than never
 // adding spin at all.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertCloseTo, assertEqual, assertLessThanOrEqual } from "../assert";
 import { PADDLE_MAX_CY, PADDLE_SPEED, SPIN_FROM_PADDLE } from "../constants";
 import {
   FACE_SHOT_SPEED,
@@ -76,10 +77,10 @@ it("imparts no spin from a bound-pinned paddle, but does from a free one", async
     return rebound;
   });
 
-  expect(bound.hit).toBe(true);
-  expect(bound.paddle.cy).toBeCloseTo(PADDLE_MAX_CY, 6);
-  expect(bound.paddle.vy).toBeCloseTo(0, 6);
-  expect(bound.ball.spin).toBeCloseTo(0, 6);
+  assertEqual(bound.hit, true);
+  assertCloseTo(bound.paddle.cy, PADDLE_MAX_CY, 6);
+  assertCloseTo(bound.paddle.vy, 0, 6);
+  assertCloseTo(bound.ball.spin, 0, 6);
 
   // The control: the same held velocity, clear of the bound. The contact sits
   // below mid-field so the run-up starts inside the top clamp.
@@ -94,8 +95,9 @@ it("imparts no spin from a bound-pinned paddle, but does from a free one", async
 
   const free = await drivePaddleHit(harness, "left", { leadTicks: LEAD_TICKS });
 
-  expect(free.hit).toBe(true);
-  expect(Math.abs(free.ball.spin - EXPECTED_SPIN)).toBeLessThanOrEqual(
+  assertEqual(free.hit, true);
+  assertLessThanOrEqual(
+    Math.abs(free.ball.spin - EXPECTED_SPIN),
     SPIN_TOLERANCE,
   );
 });

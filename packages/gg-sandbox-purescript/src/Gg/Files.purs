@@ -1,24 +1,27 @@
--- | Read, write, edit and list the files of the workspace.
+-- | Read, write, edit, search and list the files of the workspace.
 -- |
 -- | Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
 -- | that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
 -- | large files in a single turn will exhaust its fuel budget.
 -- |
--- | Nothing here places anything in the agent's context window. `Gg.Views.openFile` is the call that
--- | does.
+-- | Nothing here places anything in the agent's context window: a value a program gets back from
+-- | this module is the program's alone until a view shows it.
 module Gg.Files
   ( readFile
   , readTextFile
   , writeFile
   , editFile
   , listDir
+  , search
   , FileRead(..)
   , TextFile
   , ImageFile
   , DirEntry
   , EntryKind(..)
+  , SearchMatch
   , ReadOptions
   , ListDirOptions
+  , SearchOptions
   ) where
 
 import Prelude
@@ -36,6 +39,10 @@ type ReadOptions = (offset :: Int, limit :: Int)
 
 -- | Which directory to list. Optional; `{}` lists the workspace root.
 type ListDirOptions = (path :: String)
+
+-- | Where a search looks and how many matches it takes. Every field is optional; `{}` searches the
+-- | whole workspace for the first 50.
+type SearchOptions = (path :: String, limit :: Int)
 
 -- | The result of a read: a text file's window, or a picture's description.
 -- |
@@ -109,6 +116,25 @@ derive instance Eq EntryKind
 derive instance Generic EntryKind _
 instance Show EntryKind where
   show = genericShow
+
+-- | One line a search matched: where it is, and the line itself.
+-- |
+-- | # Fields
+-- |
+-- | - `path` — The file the line is in, relative to the workspace.
+-- |
+-- |   It is a path every other call accepts as it stands, so a match is already an argument for a
+-- |   windowed read of the lines around it.
+-- | - `line` — The 1-based number of the line within that file.
+-- | - `text` — The line, without its ending.
+-- |
+-- |   One longer than 200 characters is cut there and annotated in place as `foo (123 more
+-- |   chars...)`, so a minified bundle cannot put a page into one match.
+type SearchMatch =
+  { path :: String
+  , line :: Int
+  , text :: String
+  }
 
 derive instance Eq FileRead
 derive instance Generic FileRead _
@@ -275,6 +301,60 @@ listDir
   -> Effect (Array DirEntry)
 listDir options =
   map dirEntry <$> Wire.call "list_dir" "files" "Gg.Files.listDir" [ Wire.pick "path" options ]
+
+-- | Search the workspace's files for a regular expression, honouring the ignore files.
+-- |
+-- | A search answers *where* rather than *what*: each match is a path, a 1-based line number and
+-- | the line, which is what points a windowed read or a view at the right lines of the right file.
+-- | The query is the pattern a `grep` would take — a regular expression in Rust syntax: `foo|bar`,
+-- | `fn\s+update`, `(?i)todo` for a case-insensitive match — tried against each line on its own.
+-- |
+-- | Ignoring is the search's own rule rather than an option. What `.gitignore`, `.ignore` and
+-- | `.git/info/exclude` exclude — nested files and negations included, and `.git` itself — is never
+-- | scanned and never returned, in a workspace that is a repository and in one that is not yet.
+-- | Dotfiles are otherwise searched like any other file, and a file that is not text (one carrying
+-- | a NUL byte) is skipped rather than matched byte by byte. A match list therefore holds the
+-- | project's sources rather than `node_modules`, build output and the run's own bookkeeping; a file
+-- | under an ignored path is still reachable by path through every other call.
+-- |
+-- | The result is bounded so one search cannot flood a turn: `limit` is 50 when left out and never
+-- | more than 200, and a list exactly `limit` long may have been cut. There is no offset, because a
+-- | search is a question about where to look rather than a way of reading a file, so the answer to
+-- | a cut list is a narrower query or a narrower `path`.
+-- |
+-- | # Operation
+-- |
+-- | files.search
+-- |
+-- | # Arguments
+-- |
+-- | - `query` — The pattern to look for: a regular expression in Rust syntax, tried against each
+-- |   line on its own. `(?i)` makes it case-insensitive.
+-- | - `options` — Where to look and how many matches to take; `{}` searches the whole workspace for
+-- |   the first 50.
+-- | - `options.path` — The directory to search under, or the one file to search, relative to the
+-- |   workspace or absolute. Left out, the search starts at the workspace root.
+-- | - `options.limit` — The most matches to return. Left out, 50 applies; a request above 200 is
+-- |   answered with the first 200 rather than refused.
+-- |
+-- | # Returns
+-- |
+-- | The matching lines in path order and then line order, each with its path and 1-based line
+-- | number, and an empty array — rather than a failure — when nothing matched. A list exactly
+-- | `limit` long may have been cut.
+-- |
+-- | # Throws
+-- |
+-- | `InvalidArgument` for a blank query, for one that is not a valid regular expression, and for a
+-- | `limit` of zero; `NotFound` for a `path` that is not there.
+search
+  :: forall given rest
+   . Union given rest SearchOptions
+  => String
+  -> Record given
+  -> Effect (Array SearchMatch)
+search query options =
+  Wire.call "search" "files" "Gg.Files.search" [ Wire.wire query, Wire.lower {} options ]
 
 -- | One directory entry, with its kind as an arm rather than a word.
 dirEntry :: Wire.Wire -> DirEntry

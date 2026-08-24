@@ -932,6 +932,60 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getAllByText(/views\.openText/).length).toBeGreaterThan(0);
   });
 
+  it("marks the assistant message of a healed turn and keeps the reply as sent beneath it", () => {
+    // Two responses-as-code turns: one healing rewrote, one it left alone. The model only
+    // ever re-reads the program that ran, so that is the text the `assistant_message`
+    // carries; the reply as sent survives on the turn's `code_execution` record alone.
+    // The operator has to be able to read both — a defect in healing and a mistake by
+    // the model look identical from either text on its own — and has to be told which
+    // agent rows were rewritten, without a clean turn wearing the same mark.
+    const healedProgram = "views.openText('n', '1');";
+    const cleanProgram = "shell.run('ls');";
+    renderMonitor([
+      sessionStarted(["shell", "filesystem"]),
+      roster("root", [held("history", "history-0")]),
+      gg({ type: "turn_started" }),
+      gg({ type: "assistant_message", text: healedProgram }),
+      gg({
+        type: "code_execution",
+        ok: true,
+        toolCalls: 1,
+        healing: {
+          strategies: ["strip-fences", "strip-prose"],
+          original: `Here it is:\n\`\`\`ts\n${healedProgram}\n\`\`\``,
+        },
+      }),
+      gg({ type: "turn_started" }),
+      gg({ type: "assistant_message", text: cleanProgram }),
+      gg({ type: "code_execution", ok: true, toolCalls: 1 }),
+    ]);
+    openTab("Instances");
+    openFile("root activity");
+    // The healed turn's agent row carries the program that ran, marked as healed and
+    // naming the repairs, so the reader knows the text below it is not what was sent.
+    const healedRow = screen
+      .getByText(healedProgram)
+      .closest("[data-event-type]") as HTMLElement;
+    expect(healedRow).toHaveAttribute("data-event-type", "agent");
+    expect(healedRow).toHaveTextContent(
+      "healed by strip-fences, strip-prose — this is the program that ran; the reply as sent is below",
+    );
+    // ...and the reply as the model sent it — prose and fence intact — is the HEALED
+    // row directly beneath, so the two texts can be read against each other.
+    expect(screen.getAllByText("HEALED")).toHaveLength(1);
+    expect(
+      screen.getByText("sent as 4 lines; ran after strip-fences, strip-prose"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Here it is:/).length).toBeGreaterThan(0);
+    // The clean turn wears no mark and adds no HEALED row: its agent row is the reply
+    // verbatim, and there is no second text to show.
+    const cleanRow = screen
+      .getByText(cleanProgram)
+      .closest("[data-event-type]") as HTMLElement;
+    expect(cleanRow).toHaveAttribute("data-event-type", "agent");
+    expect(cleanRow).not.toHaveTextContent(/healed/i);
+  });
+
   it("renders an agent's activity through the shared feed, in the layout the user picked", () => {
     useAppSettings.getState().setEventFeedStyle("stacked");
     renderMonitor();

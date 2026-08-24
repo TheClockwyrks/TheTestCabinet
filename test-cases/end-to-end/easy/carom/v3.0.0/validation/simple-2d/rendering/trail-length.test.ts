@@ -14,8 +14,14 @@
 // length TRAIL_TIME gives it, plus up to two ball radii for however the build
 // caps, glows or rounds the ends. How the trail is styled is the build's.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BALL_R, TRAIL_TIME } from "../../src/constants";
+import {
+  assertDeepEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -46,11 +52,14 @@ it("reaches back about speed * TRAIL_TIME behind the ball", async () => {
   // The recent path really is held as state, oldest sample first
   // (specs/state.md), which is what the trail is drawn from.
   const samples = trail0(h);
-  expect(samples.length).toBeGreaterThan(1);
+  assertGreaterThan(samples.length, 1);
   const times = samples.map((sample) => sample.t);
-  expect([...times].sort((a, b) => a - b)).toEqual(times);
+  assertDeepEqual(
+    [...times].sort((a, b) => a - b),
+    times,
+  );
 
   const reach = trailReach(h, ball);
-  expect(reach).toBeGreaterThanOrEqual(0.5 * expected);
-  expect(reach).toBeLessThanOrEqual(1.5 * expected + 2 * BALL_R);
+  assertGreaterThanOrEqual(reach, 0.5 * expected);
+  assertLessThanOrEqual(reach, 1.5 * expected + 2 * BALL_R);
 });

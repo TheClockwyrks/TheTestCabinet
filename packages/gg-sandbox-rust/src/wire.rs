@@ -24,12 +24,12 @@ use crate::context::{ArchiveHit, ArchiveSearch, MessageRole, ReclaimReport};
 use crate::core::ApiError;
 use crate::delegation::{AgentStatus, Brief, SubagentHandle, SubagentResult};
 use crate::docs::{DocHit, DocKind, DocSearch};
-use crate::files::{DirEntry, EntryKind, FileRead, ImageFile, ReadOptions, TextFile};
+use crate::files::{DirEntry, EntryKind, FileRead, ImageFile, ReadOptions, SearchMatch, TextFile};
 use crate::memories::{MemoryHit, MemoryUsage};
 use crate::programs::ProgramSummary;
 use crate::shell::ShellOutput;
 use crate::tasks::{TaskPatch, TaskStatus, TaskUsage, TextEdit};
-use crate::views::{OpenView, ViewKind, ViewRegion};
+use crate::views::{OpenView, ViewKind, ViewOptions, ViewRegion};
 
 /// Every call in this SDK ends here: the wire's error arm, lifted into the SDK's own.
 pub(crate) fn lift<T>(outcome: Result<T, gen::types::ApiError>) -> Result<T, ApiError> {
@@ -53,6 +53,13 @@ impl ReadOptions {
     /// The two window arguments, in the order every read on the wire takes them.
     pub(crate) fn window(self) -> (Option<u32>, Option<u32>) {
         (self.offset, self.limit)
+    }
+}
+
+impl ViewOptions {
+    /// The three window arguments, in the order `open-file-view` takes them.
+    pub(crate) fn window(self) -> (Option<u32>, Option<u32>, Option<u32>) {
+        (self.offset, self.limit, self.max_line_chars)
     }
 }
 
@@ -190,6 +197,15 @@ pub(crate) fn dir_entry(entry: gen::files::DirEntry) -> DirEntry {
             gen::files::EntryKind::Directory => EntryKind::Directory,
             gen::files::EntryKind::Other => EntryKind::Other,
         },
+    }
+}
+
+/// One line a search matched.
+pub(crate) fn search_match(found: gen::files::SearchMatch) -> SearchMatch {
+    SearchMatch {
+        path: found.path,
+        line: found.line,
+        text: found.text,
     }
 }
 
@@ -363,4 +379,3 @@ pub(crate) fn program_summary(summary: gen::programs::ProgramSummary) -> Program
         error: summary.error,
     }
 }
-

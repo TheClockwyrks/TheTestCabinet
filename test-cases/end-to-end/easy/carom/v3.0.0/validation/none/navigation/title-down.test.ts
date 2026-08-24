@@ -6,7 +6,8 @@
 // player reads it: after the one press, confirming opens the entry the index
 // now names, which from 0 is `VERSUS` at 1.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual } from "../assert";
 import { captureStill, createHarness, type Harness } from "../harness";
 
 let h: Harness;
@@ -26,6 +27,6 @@ it("moves the selection to VERSUS with one down press", async () => {
   await h.tap("Enter");
 
   const opened = await h.snapshot();
-  expect(opened.screen).toBe("countdown");
-  expect(opened.mode).toBe("versus");
+  assertEqual(opened.screen, "countdown");
+  assertEqual(opened.mode, "versus");
 });

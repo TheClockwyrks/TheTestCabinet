@@ -10,7 +10,8 @@
 // `startMatch` opens the countdown and `serve` ends it, and what leaves is
 // whatever the build's own serve produced.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertLessThanOrEqual } from "../assert";
 import { SERVE_SPEED } from "../constants";
 import { ball0, captureReplay, createHarness, type Harness } from "../harness";
 
@@ -69,13 +70,14 @@ it("serves the ball at SERVE_SPEED", async () => {
     return swept;
   });
 
-  expect(launched.hit).toBe(true);
-  expect(
+  assertEqual(launched.hit, true);
+  assertLessThanOrEqual(
     Math.abs(ball0(launched.snapshot).speed - SERVE_SPEED),
-  ).toBeLessThanOrEqual(SPEED_TOLERANCE);
+    SPEED_TOLERANCE,
+  );
   // And the page stayed quiet throughout: nothing the build threw, and nothing
   // it logged as an error, while this harness was driving it. An engineless
   // build loads no assets through a runtime, so there is no asset log to read —
   // the browser's own is the wider reading, and it covers the whole drive.
-  expect(harness.pageErrors).toEqual([]);
+  assertDeepEqual(harness.pageErrors, []);
 });

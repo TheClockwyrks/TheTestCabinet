@@ -32,8 +32,8 @@ public static partial class Views
         /// <summary>Close this view, and any other view sharing its selector.</summary>
         /// <remarks>
         /// <see cref="Views.Close"/> with the selector already supplied, which is the call this
-        /// listing exists to feed. A <see cref="ViewKind.Docs"/> view is the one it does not reach —
-        /// <see cref="Docs.Close"/> takes documentation away — so closing one here returns zero.
+        /// listing exists to feed. A <see cref="ViewKind.Docs"/> view is the one it does not reach,
+        /// so closing one here returns zero.
         /// </remarks>
         /// <returns>how many views went, counting each page of a paged file separately.</returns>
         /// <exception cref="ApiException">

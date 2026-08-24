@@ -25,7 +25,8 @@
 // DOM event. So `armAudio` presses a key through Chromium's own input pipeline —
 // one the specification binds to nothing, so arming disturbs no game state.
 
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
 import { FIELD_CY } from "../constants";
 import {
   LEAD_TICKS,
@@ -86,11 +87,12 @@ it("sounds a cue on the frame of the contact, and not before it", async () => {
     return measured;
   });
 
-  expect(contact.rebound.hit).toBe(true);
-  expect(contact.cues.length).toBeGreaterThan(0);
+  assertEqual(contact.rebound.hit, true);
+  assertGreaterThan(contact.cues.length, 0);
   // Half a second of approach ran before the contact, down a lane with nothing in
   // it, so every sound emitted must belong to the collision itself.
-  expect(contact.cues.map((cue) => cue.frame)).toEqual(
+  assertDeepEqual(
+    contact.cues.map((cue) => cue.frame),
     contact.cues.map(() => contact.frame),
   );
 });

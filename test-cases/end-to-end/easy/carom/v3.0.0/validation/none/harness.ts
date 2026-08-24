@@ -50,6 +50,7 @@ import { gzipSync } from "node:zlib";
 import { expect, inject } from "vitest";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { connectChromium } from "./chromium";
+import { assertTruthy, fail } from "./assert";
 import {
   BALL_R,
   FIELD_CX,
@@ -161,11 +162,11 @@ export interface CaromSnapshot {
  */
 export function ball0(snapshot: CaromSnapshot): BallView {
   const one = snapshot.ball ?? snapshot.balls?.[0];
-  expect(
+  assertTruthy(
     one,
     "snapshot() must report the ball as `ball` (base, gyre) or the balls as " +
       "`balls` (multi); see specs/instrumentation.md",
-  ).toBeTruthy();
+  );
   return one as BallView;
 }
 
@@ -364,8 +365,10 @@ export interface Harness {
    * Why the build's surface cannot be driven, or `null` when it can.
    *
    * A fault here is the build's: the surface is missing, or it is missing an
-   * operation the specification requires. Every operation fails by assertion with
-   * this message rather than throwing, so the fault lands on the points whose
+   * operation the specification requires. It says what was found (`window.__carom
+   * was still absent 10s after the page loaded`), and {@link failSurface} pairs
+   * it with what the specification requires. Every operation fails by assertion
+   * with that pair rather than throwing, so the fault lands on the points whose
    * checks reach the game through the surface.
    */
   readonly surfaceFault: string | null;
@@ -549,17 +552,35 @@ function unexposedSurface(reason: string): CaromDebugApi {
     get: (_target, property): unknown => {
       if (typeof property === "symbol") return undefined;
       if (property === "then" || property === "constructor") return undefined;
-      return () => expect.fail(reason);
+      return () => failSurface(reason);
     },
   });
 }
 
-/** What is wrong with the surface this page installed, or `null` when nothing is. */
+/**
+ * What specs/instrumentation.md requires of the surface: the `Expected:` line of
+ * the failure a build with no usable surface lands on every check that reaches
+ * for it, beside the {@link Harness.surfaceFault} that says what was found.
+ */
+export const SURFACE_REQUIREMENT =
+  `a usable debug and automation surface on window.${HANDLE} as soon as the ` +
+  `game has initialized, carrying every operation specs/instrumentation.md ` +
+  `requires`;
+
+/**
+ * Fail the running check on `fault`, the harness's account of what is wrong
+ * with the build's surface, paired with what the specification requires.
+ */
+export function failSurface(fault: string): never {
+  return fail(SURFACE_REQUIREMENT, fault);
+}
+
+/**
+ * What is wrong with the surface this page installed, or `null` when nothing
+ * is: the surface never appeared, or it appeared without an operation the
+ * specification requires.
+ */
 async function readSurfaceFault(page: Page): Promise<string | null> {
-  const preamble =
-    `this build never installed a usable debug and automation surface, so nothing ` +
-    `can reach the game: specs/instrumentation.md requires the finished surface on ` +
-    `window.${HANDLE} as soon as the game has initialized`;
   try {
     await page.waitForFunction(
       (handle) =>
@@ -569,7 +590,7 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
       { timeout: SURFACE_TIMEOUT_MS },
     );
   } catch {
-    return `${preamble}. window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded.`;
+    return `window.${HANDLE} was still absent ${SURFACE_TIMEOUT_MS / 1000}s after the page loaded`;
   }
   const missing = await page.evaluate(
     ([handle, ops]) => {
@@ -581,9 +602,9 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
     [HANDLE, [...REQUIRED_OPS]] as const,
   );
   if (missing.length > 0) {
-    return `${preamble}. window.${HANDLE} is installed but carries no ${missing
+    return `window.${HANDLE} is installed but carries no ${missing
       .map((op) => `${op}()`)
-      .join(", ")}.`;
+      .join(", ")}`;
   }
   return null;
 }
@@ -623,10 +644,10 @@ export async function createHarness(
   await page.goto(inject("caromUrl"), { waitUntil: "load" });
 
   const surfaceFault = await readSurfaceFault(page);
-  const fail = (): never => expect.fail(surfaceFault ?? "");
+  const refuse = (): never => failSurface(surfaceFault ?? "");
 
   const call = async (operation: string, args: unknown[]): Promise<unknown> => {
-    if (surfaceFault !== null) fail();
+    if (surfaceFault !== null) refuse();
     return page.evaluate(
       ([handle, name, rest]) =>
         (
@@ -688,7 +709,7 @@ export async function createHarness(
    * exactly one frame the game ran.
    */
   const drive = async (frames: number): Promise<CaromSnapshot> => {
-    if (surfaceFault !== null) fail();
+    if (surfaceFault !== null) refuse();
     const deltas: number[] = [];
     for (let i = 0; i < frames; i += 1) deltas.push(clock.delta());
     const result = (await page.evaluate(
@@ -801,7 +822,7 @@ export async function createHarness(
     },
 
     async runFor(ms) {
-      if (surfaceFault !== null) fail();
+      if (surfaceFault !== null) refuse();
       // The one thing here that depends on real elapsed time, so the one thing a
       // browser's own idea of which page matters can distort. The launch already
       // turns the throttling off; bringing the page forward as well means this
@@ -1436,7 +1457,7 @@ function writeReplay(destination: string, recording: Recording | null): void {
  *
  * ```ts
  * const point = await captureReplay(h, "goal", () => driveGoal(h));
- * expect(point.hit).toBe(true);
+ * assertEqual(point.hit, true);
  * ```
  *
  * The assertions stay exactly where they were and read exactly what they did.

@@ -70,8 +70,8 @@ export class ApiError extends Error {
   /**
    * The call that failed, by the key of the operation this program reached for.
    *
-   * `read_file` for `gg.files.readFile`, `read_text_file` for `gg.files.readTextFile`, `open_file`
-   * for `gg.views.openFile`.
+   * gg's own `snake_case` spelling of the call, without its module: `open_text` for
+   * `gg.views.openText`, `open_docs_view` for `gg.views.openDocsView`, `search` for `gg.docs.search`.
    */
   readonly operation: string;
 
