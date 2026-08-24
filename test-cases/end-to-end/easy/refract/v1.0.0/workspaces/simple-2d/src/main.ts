@@ -4,16 +4,10 @@
 // wiring. Everything that is the same in every browser game is the engine's: the
 // frame loop and the delta time it measures, fitting the fixed 1280x720 logical
 // stage into the canvas (the uniform scale, the centered letterbox, the device
-// pixel ratio, and the resync when any of them changes), the keyboard, the audio
-// graph and its first-interaction unlock, and the debug overlay. None of it
-// appears here, and none of it belongs anywhere else in this project.
-//
-// The pointer is the one exception, because it is not the engine's: a beam is
-// drawn by pressing on the stage and dragging, and reading the page's pointer,
-// mapping it into logical stage units through the fit the engine reports, and
-// handing the game a position and its press and release edges are the build's
-// (specs/controls.md). That layer belongs under `src/` beside the game, not
-// here.
+// pixel ratio, and the resync when any of them changes), the keyboard, the
+// pointer it maps into logical stage units, the audio graph and its
+// first-interaction unlock, and the debug overlay. None of it appears here, and
+// none of it belongs anywhere else in this project.
 //
 // What is left is `src/game.ts`.
 

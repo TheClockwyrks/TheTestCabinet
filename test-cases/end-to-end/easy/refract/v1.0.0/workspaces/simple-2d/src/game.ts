@@ -35,12 +35,11 @@
 // `engine.apply` and `engine.state`. Where its implementation lives under `src/`
 // is your call; the only fixed point is that `initialize` returns it.
 //
-// One layer this file leans on does not exist yet either: the POINTER. The engine
-// owns the keyboard, but a beam is drawn by pressing on the stage and dragging, so
-// reading the page's pointer, mapping it into logical stage units through the fit
-// the engine reports, and delivering a position with its press and release edges
-// to the game are yours (`specs/controls.md`). Put that layer in a module of its
-// own beside this one.
+// The POINTER comes from the engine as well. A beam is drawn by pressing on the
+// stage and dragging, and the engine hands `update` the pointer's position
+// already in logical stage units along with its press and release edges — the
+// engine's input documentation, seeded at `engine/`, defines the API, and
+// `specs/controls.md` states what Refract does with the three of them.
 
 import type {
   Game,
