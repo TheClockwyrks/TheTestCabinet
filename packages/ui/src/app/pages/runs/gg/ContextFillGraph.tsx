@@ -114,8 +114,8 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
 // under one extra constraint: they are a **pair** — both are a responses-as-code program's
 // failure — so they had to read as related hues without collapsing into each other.
 //
-// The obvious failure slots were already spent: `board` (a red, since retired with the owned
-// board) and `tool_output` an orange. The
+// The obvious failure slots were already spent: `board` (a red, since retired when the
+// board went tools-only) and `tool_output` an orange. The
 // warm arc will still take one more band, but it will not take two. Sweeping every in-gamut
 // colour from crimson through brown, the only *pairs* that clear the floors together sit ~70°
 // apart in hue (an amber-brown against a rose) and clear them by almost nothing — ΔE 15.5 in

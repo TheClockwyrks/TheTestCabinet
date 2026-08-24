@@ -2341,7 +2341,7 @@ impl Module for MemoriesRuntime {
         self.is_linkable()
     }
 
-    /// Re-resolve the holder-owned configuration from the receiving profile — its limits, its
+    /// Re-resolve the holder's configuration from the receiving profile — its limits, its
     /// [scope](MemoryScope) and the write access that follows from it, the agent
     /// holding it, and the execution mode its notices are named in — refusing a profile that does
     /// not enable memories at all, or that organizes them by a **different**

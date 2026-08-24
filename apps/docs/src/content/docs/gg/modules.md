@@ -148,9 +148,9 @@ that swaps the store underneath a successor, a `shared` memories binding
 re-pointing to the successor's own profile, reports the new id.
 
 Each agent instance reports its whole set as it opens: one roster row per kind,
-naming the store it bound, whether the capability is on, whether its prompt
-carries it, how it came by it (created, inherited, profile, run, transferred or
-forked), and, for memories, the scope it declared and whether it may write. A
+naming the store it bound, whether the capability is on, how it came by it
+(created, inherited, profile, run, transferred or forked), and, for memories,
+the scope it declared and whether it may write. A
 roster cannot change within an incarnation, since every operation that changes
 what an agent holds mints a new agent id, so it is stated once and never
 restated. See [Telemetry](/gg/telemetry/overview/) for the events.
@@ -159,8 +159,8 @@ restated. See [Telemetry](/gg/telemetry/overview/) for the events.
 
 A module instance is not one-to-one with an agent instance, so three surfaces
 read the same folded model at three grains. Between them they answer which
-instances share a store, when it was handed on or copied, whether it is owned or
-reachable through its tools alone, and whether anything is in it. A store
+instances share a store, when it was handed on or copied, what it costs the
+windows carrying it, and whether anything is in it. A store
 described as shared by four holders on one surface reads the same way on the
 other two.
 

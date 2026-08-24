@@ -343,10 +343,11 @@ function ModuleLifetime({ module }: { module: GgModuleInstance }) {
 
 // What the module's band costs the windows it is in, per turn.
 //
-// It is a rent, not a one-off: an owned module's block is re-sent on every request its
-// holder makes, so a shared store that three running agents each carry is being paid for
-// three times a turn. That is the figure that decides whether a capability is earning its
-// keep, and it is the reason the summed cost is stated beside the holder's own.
+// It is a rent, not a one-off: a module's block in the window is re-sent on every
+// request its holder makes, so a shared store that three running agents each carry is
+// being paid for three times a turn. That is the figure that decides whether a
+// capability is earning its keep, and it is the reason the summed cost is stated
+// beside the holder's own.
 function ModuleCost({
   module,
   holder,
@@ -370,7 +371,7 @@ function ModuleCost({
     // file of every agent is a sentence nobody reads twice.
     <p
       className={panels.moduleCost}
-      title="What this store costs the windows carrying it every turn — an owned module's block is re-sent on every request its holder makes."
+      title="What this store costs the windows carrying it every turn — a module's block in the window is re-sent on every request its holder makes."
     >
       {mine && (
         <>

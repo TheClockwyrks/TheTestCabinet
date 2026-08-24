@@ -10,7 +10,8 @@
 // agent-7 do" and the wrong one for the questions this module exists to answer:
 //
 //   - Which instances share this store? (and are any of them still running?)
-//   - Is this holder's copy owned — in its prompt every turn — or merely reachable?
+//   - Does this holder's window carry it every turn, or is it only reachable through
+//     its tools?
 //   - When was it created, carried, copied, linked, dropped?
 //   - What does it cost the windows it is in?
 //   - Did the configuration's declared scope actually resolve the way it asked?
@@ -284,13 +285,12 @@ export interface GgModuleIndex {
   byProfile: Map<string, GgAgentModuleSummary[]>;
 }
 
-// The context band each kind occupies, for the cost attribution. The archive has none —
-// it is out of the window by definition — and history is the whole window rather than a
-// band of it, both of which are handled explicitly below.
+// The context band each kind occupies, for the cost attribution. The archive and the
+// board have none — both are reached through their tools alone — and history is the
+// whole window rather than a band of it, which is handled explicitly below.
 const BAND_BY_KIND: Partial<Record<GgModuleKind, string>> = {
   memories: "memory",
   tasks: "task_list",
-  board: "board",
   skills: "skill",
 };
 
@@ -434,7 +434,8 @@ export function moduleOriginLabel(
 
 // What a module's band costs one holder's window: the latest breakdown's figure for the
 // band, the largest it ever was across the series, and its share of the whole window.
-// History is the whole window rather than a band of it; the archive has no band at all.
+// History is the whole window rather than a band of it; the archive and the board have
+// no band at all.
 function holderCost(
   kind: GgModuleKind,
   state: DerivedGgState | undefined,

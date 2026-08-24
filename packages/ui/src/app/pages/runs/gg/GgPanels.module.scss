@@ -65,8 +65,8 @@
 // this whole map against `CONTEXT_SOURCE_COLORS` in the same commit — do not append.
 // (Index 5, `text_view`, arrived that way, shifting the bands below it down one;
 // indices 4 and 5, the two responses-as-code error bands, arrived together and
-// shifted the six bands from `file_view` on down by two; the `board` band left with
-// the owned board and shifted `history` up one.)
+// shifted the six bands from `file_view` on down by two; the `board` band left when
+// the board went tools-only and shifted `history` up one.)
 // 0 system · 1 user_prompt · 2 assistant · 3 tool_output · 4 compiler_error ·
 // 5 runtime_error · 6 file_view · 7 text_view · 8 docs_view · 9 search_results ·
 // 10 skill · 11 memory · 12 task_list · 13 history

@@ -122,7 +122,7 @@ mod suggest;
 #[path = "docs.search.rs"]
 mod search;
 
-/// **The second source this surface reads**: the code modules this agent loaded, which are owned,
+/// **The second source this surface reads**: the code modules this agent loaded, which are
 /// per-instance and unknown to the compiled-in catalogue.
 #[path = "docs.loaded.rs"]
 mod loaded;
