@@ -153,6 +153,12 @@ reference_implementation = "references/frenzy" # optional correct build (never s
 none = "workspaces/frenzy/none"
 "simple-2d" = "workspaces/frenzy/simple-2d"
 
+# In place of the bare `reference_implementation` path, for a case that names
+# engines: one correct build per engine, keyed by engine slug.
+[reference_implementation]
+none = "references/none/frenzy"
+"simple-2d" = "references/simple-2d/frenzy"
+
 # ADDITIVE specs on top of the common specs; same `{ source, dest, kind }` shape as
 # a `[[spec]]`, and `dest` likewise defaults to `source` with `.hbs` stripped.
 spec = [{ source = "specs/modes/frenzy.md" }]
@@ -524,17 +530,27 @@ additive on top of the case's common ones and take the same shape as the
 corresponding case tables; `workspace` replaces the common workspace rather than
 layering on it; `[[domain]]` tables add to the common domains.
 
-`reference_implementation` names a directory holding a buildable static web
-project that is the correct implementation of this variant, authored in-repo and
-versioned with the case. It is declared on a variant file rather than in
-`test-case.toml`, so each variant may point at its own; a variant that omits it
-has none. By convention the path is `reference-impl/<variant>/`. The project is
-built with the case's `[build]` commands run from that directory, and its static
-output must land in the same `dist/`, `build/`, or `out/` a run's build uses. A
-reference implementation is never seeded into a run: it is the authored answer.
-It is published out-of-band by
+`reference_implementation` declares the buildable static web project that is the
+correct implementation of this variant, authored in-repo and versioned with the
+case. It is declared on a variant file rather than in `test-case.toml`, so each
+variant may point at its own; a variant that omits it has none. It takes one of
+two forms, distinguished by TOML shape alone. A bare path names one directory
+standing for every engine the case supports, the right form when the reference
+build does not vary by engine, which includes every case supporting only `none`.
+A table keyed by engine slug names one directory per engine, because the build a
+reference demonstrates differs under each: an engine-backed build hands its
+runtime surfaces to the vendored engine and keeps only the game, while the
+engineless build carries that runtime itself. The table must name exactly the
+engines the case supports.
+
+By convention a per-engine directory lives at `references/<engine>/<variant>/`.
+Each directory is built with the case's `[build]` commands run from it, and its
+static output must land in the same `dist/`, `build/`, or `out/` a run's build
+uses. A reference implementation is never seeded into a run: it is the authored
+answer. It is published out-of-band by
 [`tcab publish-reference`](/components/cli/overview/#commands), whose served URL
-the backend records, and shown on the case page's Reference tab. It is also what
+the backend records per engine, and shown on the case page's Reference tab. It
+is also what
 [`tcab capture-baselines`](/components/cli/overview/#commands) drives to
 synthesize the baseline half of the validation media.
 

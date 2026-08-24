@@ -75,22 +75,22 @@ These listings accept `--json`.
 
 ### Reference implementations and baselines
 
-`publish-reference --env <prod|staging> <slug> [<version>] [--variant <slug>] [--all-variants]`
-deploys a case's [reference
+`publish-reference --env <prod|staging> <slug> [<version>] [--variant <slug>]
+[--engine <slug>] [--all-variants]` deploys a case's [reference
 implementations](/components/core/results/#reference-implementations) and
 records where they landed. `--env` is required, so a publish can never silently
 target prod; it selects the Cloudflare Pages project (prod's
 `test-cabinet-references` or staging's `test-cabinet-references-staging`).
 `--dry-run` prints the plan without building, deploying or writing anything.
 
-For each targeted variant that declares a
-[`reference_implementation`](/testing/end-to-end/manifests/), the command runs
-the case's `[build]` install then build in that directory, scrubs the output
-with the same secret-redaction pass the
-[publisher](/components/core/results/#secret-redaction) uses, deploys the static
-build to that Pages project under a per-variant branch alias, reads the served
-URL back out of `wrangler`'s output, and writes it into the committed
-`test-cases/reference-builds.lock.json` under the `--env` key. The URL is parsed
+The unit of work is the variant-on-an-engine pair, resolved from each targeted
+variant's [`reference_implementation`](/testing/end-to-end/manifests/) key. For
+each pair the command runs the case's `[build]` install then build in that
+pair's reference directory, scrubs the output with the same secret-redaction
+pass the [publisher](/components/core/results/#secret-redaction) uses, deploys
+the static build to that Pages project under a per-variant, per-engine branch
+alias, reads the served URL back out of `wrangler`'s output, and writes it into
+the committed `test-cases/reference-builds.lock.json` under the `--env` key. The URL is parsed
 rather than constructed because Cloudflare truncates long subdomains.
 
 The command never contacts the backend, so it needs no backend URL or login,

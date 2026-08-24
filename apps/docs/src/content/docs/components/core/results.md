@@ -46,13 +46,15 @@ run's playable build, and it lets a case page show what a faithful build of the
 spec looks like alongside the models' runs.
 
 A reference implementation is authored in the repository and versioned with the
-case. It lives in a directory under the version folder, by convention
-`reference-impl/<variant>/`, and a variant opts in by naming that directory with
-its optional [`reference_implementation`](/testing/end-to-end/manifests/) key.
-Because it is declared per variant, each variant may have its own correct build.
-It is built with the case's existing `[build]` commands run from that directory
-and emits its static site into the same `dist/`, `build/`, or `out/` a run's
-build does.
+case. A variant opts in with its optional
+[`reference_implementation`](/testing/end-to-end/manifests/) key, naming either
+one directory under the version folder that stands for every engine the case
+supports, or one directory per engine slug (by convention
+`references/<engine>/<variant>/`), because the build a reference demonstrates
+differs under each engine. Because it is declared per variant, each variant may
+have its own correct build. Each directory is built with the case's existing
+`[build]` commands run from it and emits its static site into the same `dist/`,
+`build/`, or `out/` a run's build does.
 
 Two properties keep it honest:
 
@@ -61,14 +63,15 @@ Two properties keep it honest:
   nothing else.
 - It is deployed out of band, by a person, rather than as part of any run's
   lifecycle. The [`tcab publish-reference`](/components/cli/overview/#commands)
-  command builds the variant's `reference_implementation` directory with the
-  case `[build]` commands, runs the same [secret-redaction](#secret-redaction)
-  scrubber the run publisher uses over the output, and deploys it to Cloudflare
-  Pages. A required `--env` selects prod's `test-cabinet-references` project or
-  staging's `test-cabinet-references-staging`, on a branch named
-  `<slug>-<version-with-dots-as-dashes>-<variant>`. Cloudflare truncates long
-  subdomains, so the served URL is read back from `wrangler`'s output rather
-  than constructed.
+  command builds each of the variant's reference directories with the case
+  `[build]` commands, runs the same [secret-redaction](#secret-redaction)
+  scrubber the run publisher uses over the output, and deploys each to
+  Cloudflare Pages. A required `--env` selects prod's `test-cabinet-references`
+  project or staging's `test-cabinet-references-staging`, on a branch named
+  `<slug>-<version-with-dots-as-dashes>-<variant>-<engine>`, since a variant's
+  builds on two engines are two deploys. Cloudflare truncates long subdomains,
+  so the served URL is read back from `wrangler`'s output rather than
+  constructed.
 
 ### Recording a reference build
 
@@ -79,14 +82,15 @@ environment first, since prod and staging deploy to different Pages projects.
 
 The backend ingests that lockfile from its own git checkout on the next
 re-ingest, reads the entries for its own `TCAB_ENV`, and reconciles the
-`case_reference_build` table, keyed by `(slug, version, variant)`, to match. It
-upserts each URL and prunes any the lockfile no longer lists.
+`case_reference_build` table, keyed by `(slug, version, variant, engine)`, to
+match. It upserts each URL and prunes any the lockfile no longer lists.
 
 A version's `GET /test-cases/{slug}/versions/{version}` response carries each
-variant's `referenceBuild` URL, and the public snapshot serializes it as each
-variant's `referenceBuild` field. On the case page it appears as a Reference
-tab, shown for a case whose selected variant has a recorded build, embedding the
-game inline with a fullscreen toggle.
+variant's `referenceBuilds` map, keyed by engine, and the public snapshot
+serializes it as the same field. On the case page it appears as a Reference tab,
+shown for a case whose selected variant has a recorded build, embedding the game
+inline with a fullscreen toggle and a switch between engines when more than one
+is recorded.
 
 ### Script references (asset generation)
 
