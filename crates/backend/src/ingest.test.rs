@@ -163,13 +163,16 @@ fn scan_with_progress_emits_a_start_event_with_the_target_count() {
 fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
     // Hidden entries are dropped so the checkout's dotfiles and the store's
     // `.tcab` sidecar never enter a copied definition — except the allowlist a
-    // case ships (`.gitignore`, `.cargo`), which must survive so a backend-driven
-    // run seeds the same set a local run does. Lockstep with `core`'s
-    // `collect_workspace_files` is guaranteed by the shared `is_seeded_dotfile`.
+    // case ships (`.gitignore`, `.cargo`, the prettier config), which must
+    // survive so a backend-driven run seeds the same set a local run does.
+    // Lockstep with `core`'s `collect_workspace_files` is guaranteed by the
+    // shared `is_seeded_dotfile`.
     let src = TempDir::new().unwrap();
     write(&src.path().join("Cargo.toml"), "[package]");
     write(&src.path().join(".gitignore"), "/target/\n");
     write(&src.path().join(".cargo/config.toml"), "[build]\n");
+    write(&src.path().join(".prettierrc.json"), "{}\n");
+    write(&src.path().join(".prettierignore"), "dist/\n");
     write(&src.path().join(".env"), "SECRET=1");
     write(&src.path().join(".tcab"), "sidecar");
     let dst = TempDir::new().unwrap();
@@ -185,6 +188,14 @@ fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
     assert!(
         out.join(".cargo/config.toml").exists(),
         ".cargo/ must survive ingest"
+    );
+    assert!(
+        out.join(".prettierrc.json").exists(),
+        ".prettierrc.json must survive ingest"
+    );
+    assert!(
+        out.join(".prettierignore").exists(),
+        ".prettierignore must survive ingest"
     );
     assert!(
         !out.join(".env").exists(),

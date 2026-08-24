@@ -162,12 +162,16 @@ its build with is a visible part of its own project, installed by the case's
 [init command](#init).
 
 Workspace files are seeded verbatim; they are never rendered as templates.
-Hidden entries are skipped, with two exceptions that are seeded: `.gitignore`
-and `.cargo`. A run's implementation is released as a git repository when it is
+Hidden entries are skipped, with an allowlist of exceptions that are seeded:
+`.gitignore`, `.cargo`, `.prettierrc.json`, and `.prettierignore`. A run's
+implementation is released as a git repository when it is
 [published](/components/core/results/), and the `.gitignore` keeps the build
 artifacts a run produces out of the public per-run source repository. A case
 that builds inside its run tree should ship a `.gitignore` covering its
-artifacts.
+artifacts. `.cargo` carries the Cargo build configuration a Rust case relies
+on, and the two prettier files carry the formatting configuration a case's
+`format` [toolchain command](/testing/end-to-end/manifests/#the-typescript-toolchain)
+checks the produced code against.
 
 The workspace, the specs, the assets, and the seeded reference media all land in
 the one run tree, so no two of them may claim the same destination. A collision

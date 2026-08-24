@@ -8405,13 +8405,19 @@ fn forward_slash_path(rel: &Path) -> PathBuf {
 /// - `.cargo` — Cargo build configuration (`.cargo/config.toml`, e.g. the default
 ///   `wasm32-unknown-unknown` build target) a Rust case's build and local
 ///   iteration rely on.
+/// - `.prettierrc.json` and `.prettierignore` — the formatting configuration a
+///   case's `format` toolchain command (`npx prettier --check .`) checks the
+///   produced code against.
 ///
 /// This is the single source of truth for both local seeding
 /// (`collect_workspace_files`) and backend ingest (`copy_tree`), so the two
 /// always seed the same set. Matching is by the entry's own name, so a `.cargo`
 /// directory is descended into and its (non-hidden) contents seeded.
 pub fn is_seeded_dotfile(name: &str) -> bool {
-    matches!(name, ".gitignore" | ".cargo")
+    matches!(
+        name,
+        ".gitignore" | ".cargo" | ".prettierrc.json" | ".prettierignore"
+    )
 }
 
 fn collect_workspace_files(
