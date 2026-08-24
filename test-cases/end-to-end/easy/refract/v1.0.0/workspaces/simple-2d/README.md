@@ -32,11 +32,10 @@ Implement them, and split the work across new modules under `src/` however you
 like — the board, the ruleset, the tracing, the board generator, rendering, the
 debug surface, and so on.
 
-**The pointer is yours as well.** The engine owns the keyboard, but a beam is
-drawn with the pointer, and taking the player's pointer off the page, mapping its
-position into logical stage units through the fit the engine reports, and
-delivering its movement and its press and release edges to the game are the
-build's. `specs/controls.md` states what Refract does with the three of them.
+**The pointer comes from the engine.** A beam is drawn with the pointer, and
+the engine hands the game its position already in logical stage units along
+with its press and release edges — read the engine's input documentation for
+the API. `specs/controls.md` states what Refract does with the three of them.
 
 The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as `initialize` handed it over, and that is how the game

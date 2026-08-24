@@ -14,10 +14,10 @@ write. What the game reads from that layer is a pointer position in the game's
 logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and
 a release edge. How the layer produces those three is yours to decide.
 {{else}}
-The pointer belongs to the layer the build writes over the engine. What the game
-reads from that layer is a pointer position in the game's logical units on the
-`STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and a release edge. How
-that layer produces those three is yours to decide.
+The pointer belongs to the engine, which documents it in the `engine/`
+directory at the root of this repository. What the game reads from it is a
+pointer position in the game's logical units on the `STAGE_W x STAGE_H`
+(`1280 x 720`) stage, a press edge, and a release edge.
 {{/if}}
 
 The game acts on those three alone, and this file states what it does with them.

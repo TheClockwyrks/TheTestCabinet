@@ -76,15 +76,13 @@ The clock is the exception, because nothing outside this build owns it. The
 surface is what takes the game off real time and advances it, through
 `setAutoStep` and `advance` below.
 {{else}}
-The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
-which documents them in the `engine/` directory at the root of this repository,
-and the surface carries no operation for any of them. The engine advances the game
-frame by frame and can take it off real time, it drives the actions the game
-registers, and it draws and toggles the debug overlay.
-
-The pointer is the game's own. The runtime layer the build writes over the engine
-reports the pointer position in the stage's logical units along with the press and
-release edges, as `specs/controls.md` describes, and hands them to the game.
+The clock, the keyboard, the pointer, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the
+root of this repository, and the surface carries no operation for any of them.
+The engine advances the game frame by frame and can take it off real time, it
+drives the actions the game registers, it reports the pointer position in the
+stage's logical units along with the press and release edges, and it draws and
+toggles the debug overlay.
 {{/if}}
 
 What the overlay shows is Refract's, under Diagnostics below.
@@ -336,7 +334,7 @@ a resumed trace extends. `tracing` is `null` whenever no trace is live, and
 
 Three fields need the game to keep them honest every frame:
 
-- `pointer` mirrors the position the pointer layer reports and whether the
+- `pointer` mirrors the position the pointer input reports and whether the
   pointer is currently pressed, refreshed in every update.
 - `muted` mirrors the runtime's mute bit, refreshed in every update, since the
   runtime owns muting and this is the game's readable copy of it.

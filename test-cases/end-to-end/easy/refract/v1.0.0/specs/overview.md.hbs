@@ -40,14 +40,13 @@ Refract needs from it. How the layer is structured is yours to decide.
 The game is built on the {{engine.name}} engine, which documents itself in the
 `engine/` directory at the root of this repository. It owns the frame loop and
 the delta time the game is given, the input actions the menus are driven by,
-audio cues, asset loading, the canvas fit, and the debug overlay. Read its
-documentation before you start. This specification states only what is specific
-to Refract.
+the pointer the board is traced with, audio cues, asset loading, the canvas
+fit, and the debug overlay. Read its documentation before you start. This
+specification states only what is specific to Refract.
 
-The pointer is not the engine's. Taking the player's pointer off the page,
-mapping its position into logical units through the fit the engine reports, and
-delivering its movement and its press and release edges to the game are yours.
-`specs/controls.md` states what Refract does with them.
+The pointer reaches the game from the engine already in the stage's logical
+units, with its press and release edges. `specs/controls.md` states what
+Refract does with them.
 {{/if}}
 
 ## The project you build in
@@ -203,9 +202,8 @@ both.
 - Write the runtime the game stands on: the frame loop and its delta time, the
   canvas fit, keyboard and pointer input, audio, and the debug overlay.
 {{else}}
-- Build on the {{engine.name}} engine, taking the frame loop, the input actions,
-  audio, and the debug overlay from it, and write the pointer input the board is
-  traced with.
+- Build on the {{engine.name}} engine, taking the frame loop, the input
+  actions, the pointer, audio, and the debug overlay from it.
 {{/if}}
 - Ship both modes, Campaign and Cascade, each reachable from the title menu.
 - Render real graphics on the canvas, drawn as shapes and text rather than as an

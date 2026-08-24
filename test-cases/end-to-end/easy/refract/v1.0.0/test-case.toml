@@ -104,11 +104,12 @@ variants = ["variants/base.toml"]
 # and seeds the modules around it (`src/constants.ts`, `src/main.ts`, and the
 # `src/game.ts` the build writes, debug surface included), while `none` supplies no
 # runtime and no `src/` at all, so the build writes the frame loop, the input, the
-# audio, the overlay and the `window.__refract` surface itself. One thing Refract
-# writes either way: the POINTER. No engine here delivers one, so mapping the
-# page's pointer into the logical stage and reporting its press and release edges
-# belongs to the build under both, which is why `specs/controls.md` branches on the
-# engine only to say where that layer sits.
+# audio, the overlay and the `window.__refract` surface itself. The POINTER the
+# board is traced with follows that split: `simple-2d` owns it and hands the build
+# positions already in logical stage units with press and release edges, while an
+# engineless build maps the page's pointer itself — which is why
+# `specs/controls.md` branches on the engine only to say where the pointer comes
+# from.
 #
 # The game the two describe is the same one, so the review checklist below is the
 # same for either and a score recorded under one engine is comparable with a score
