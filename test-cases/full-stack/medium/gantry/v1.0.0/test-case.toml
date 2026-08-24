@@ -1,0 +1,585 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The manifest format. Format 2 is the one that names engines: it replaces the
+# single `workspace` key with a `[workspaces]` table holding one starter directory
+# per engine.
+format = 2
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "gantry"
+
+# EXPERIMENTAL, deliberately, because this is the first 3D full-stack case and it
+# runs ahead of infrastructure that does not exist yet:
+#
+#   - The run image. `type = "full-stack"` today schedules onto
+#     `test-cabinet-full-stack-2d`, whose six binaries are the 2D set. This case's
+#     asset contract (`specs/assets.md`) needs a 3D full-stack image carrying
+#     `voxel`, `sfx-synth`, `sfx-sample`, and `music`.
+#   - The `simple-3d` engine, declared below, which is not in the engine
+#     catalogue yet. Its branches in the seeded specs and its starter workspace
+#     are written against the simple-2d-shaped contract
+#     (`Game<State, Debug>` / `initialize` / `update` / `render`, `engine.apply`,
+#     `engine.debug`) and must be reconciled against the real engine when it
+#     lands.
+#
+# Until both exist the case must not be scheduled; experimental keeps it hidden
+# from the catalog unless a deployment opts in with
+# `TCAB_BACKEND_ALLOW_EXPERIMENTAL`.
+experimental = true
+
+# Human-readable display name for this test case.
+name = "Gantry"
+
+# Relative difficulty, surfaced on the site. Medium, and a demanding one: a 3D
+# structural solver (two direct-stiffness solves per tick, slack cables, a
+# breakage cascade), a kinetostatic load model driven by programmed motion, an
+# exactly-specified pendulum, a 3D lattice editor with pointer picking, an
+# instruction-tape editor, six authored sites — and, on top of the code, a
+# produced set of eight voxel models and a full cue list. The thinking is genuinely
+# hard (assembling and factoring a stiffness system, keeping a 3D truss from being
+# a mechanism), which is what separates this from an easy case; the sheer size of
+# the job is accounted for in `max_runtime_hours`.
+difficulty = "medium"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["puzzle", "simulation", "3d", "construction", "physics"]
+
+# Short site-facing abstract, shown on the test case card. NOT seeded.
+summary = """
+A 3D crane-building puzzle: rig a tower crane from struts, cables, and rails, \
+write an instruction tape for its four axes, and run it under a real \
+structural simulation — every member carries a computed force, speed swings \
+the load, and the build produces its own voxel models and sound."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded.
+description = "description.md"
+
+# Required per-version changelog entry. NOT seeded.
+changelog = "changelog.md"
+
+# Handlebars prompt template, rendered per run and handed to the model as the
+# build instruction. The harness prepends the standing full-stack asset-quality
+# preamble at render time, so this template does not restate it.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, before the harness session is stopped.
+# Gantry is a large build: the solver and its cascade, the pendulum, the axis
+# controllers, a 3D editor and scene, the tape editor, six sites, the debug
+# surface, and a full asset-production pass through four tools. Eight hours is
+# comfortably more than a healthy build needs while still bounding a runaway
+# session.
+max_runtime_hours = 8
+
+# The test type: an end-to-end playable game whose assets the model also
+# produces during the run. A root key, so it sits above the first table header.
+# See the `experimental` note above for what the type must grow before this case
+# can run.
+type = "full-stack"
+
+# Init command, run in the container once the workspace and specs are seeded and
+# before the harness starts. `npm install` (not `npm ci`) because `packages`
+# injects the `@test-cabinet/voxel-runtime` `file:` dependency, so the lockfile
+# completes at seed time; the same command downloads the Playwright Chromium
+# build so the model can look at its game in a browser without further setup.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: no `assets = [...]` of pre-made art, deliberately: the model produces the
+# game's models and audio itself, during the run (`specs/assets.md`).
+
+# Test Cabinet runtime libraries installed into the run. `voxel-runtime` is the
+# same library the review UI renders a produced voxel model with: the build
+# decodes its committed `.glb`s with `parseGlb` and puts them on screen through
+# the package's `three` binding. Both seeded workspaces already depend on it via
+# its `file:` path under `.tcab/packages/`. (A root key, so it sits above the
+# first table header.)
+packages = ["@test-cabinet/voxel-runtime"]
+
+# Variants: exactly one runs per run. Gantry declares exactly ONE — every run is
+# the same game, and the six sites are content within it, not variants. Nothing
+# in the seeded set branches on the variant; the only axis the specs branch on is
+# `engine.slug`. A root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The engines a run may select. Gantry supports two, and the game is the same
+# under both; what differs is how much of the build is handed over. `none`
+# supplies no runtime and no `src/` at all, so the build writes the frame loop,
+# input, audio, overlay, and the `window.__gantry` surface itself. `simple-3d`
+# vendors the runtime as a package and seeds the modules around the game
+# (`src/constants.ts`, `src/main.ts`, and the `src/game.ts` the build writes).
+# Rendering is the game's under BOTH: each workspace ships `three` and the case's
+# `packages` runtime for the scene.
+#
+# `none` carries no version and is named in the bare `engines` list; `simple-3d`
+# is pinned from 1.0.0 with no ceiling. See the `experimental` note: the engine
+# does not exist in the catalogue yet, and this declaration is written against
+# the contract it is expected to share with `simple-2d`.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-3d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run, one per engine. Both
+# carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration the
+# `[toolchain]` commands run against, an `index.html` holding the canvas, and the
+# `three` + `@test-cabinet/voxel-runtime` dependencies the scene and the produced
+# models are drawn with.
+#
+#   - `none`      supplies the configuration and nothing else: no `src/`.
+#   - `simple-3d` declares the engine in its `package.json` (vendored in at seed
+#                 time) and seeds the case-owned modules: `src/constants.ts`
+#                 (every figure the specification fixes) and `src/main.ts` (the
+#                 entry). The build writes `src/game.ts`.
+[workspaces]
+none = "workspaces/none"
+"simple-3d" = "workspaces/simple-3d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. `npm ci` is deliberate: it requires a committed lockfile.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once the install
+# has completed. `typecheck` GATES: a non-zero exit rates the run broken. The
+# other three are recorded; `test` additionally records the count and coverage
+# the build's own suite reports. These four are exactly the commands
+# `specs/overview.md` tells the build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface, named once here.
+# Reporter-side and never seeded; the seeded `specs/instrumentation.md` documents
+# the same surface as an ordinary debugging feature.
+#
+# The handle names the ENGINELESS contract (`window.__gantry`); an engine run
+# reaches the same operations off `engine.debug`. `tick_hz` is declared because
+# Gantry runs on a fixed simulation tick: a run advances in whole `1/60`-second
+# ticks, which is what lets a validation runtime convert stepped ticks into
+# simulated time.
+[instrumentation]
+handle = "__gantry"
+tick_hz = 60
+
+# The specs. Every one is a COMMON spec, seeded for EVERY run; the single variant
+# declares none of its own. The specification is decomposed by concern:
+# `overview` the game and the project, `world` the frame and the site anatomy,
+# `structure` the members, materials, parts, and editor rules, `statics` the
+# solve and failure, `rigging` the cable, pendulum, attach, and release,
+# `program` the axes, the tape, and the run, `controls` the camera, picking, and
+# key actions, `state` the state shape, `instrumentation` the debug surface,
+# `ui` the screens and audio, `sites` the six fixed sites, and `assets` the
+# production contract.
+#
+# The `.hbs` sources branch on ONE axis, `engine.slug`, which selects what the
+# build is handed and what it must write. Nothing branches on the variant.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+[[spec]]
+source = "specs/world.md"
+
+[[spec]]
+source = "specs/structure.md"
+
+[[spec]]
+source = "specs/statics.md"
+
+[[spec]]
+source = "specs/rigging.md"
+
+[[spec]]
+source = "specs/program.md"
+
+[[spec]]
+source = "specs/controls.md.hbs"
+
+[[spec]]
+source = "specs/state.md.hbs"
+
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+[[spec]]
+source = "specs/ui.md"
+
+[[spec]]
+source = "specs/sites.md"
+
+[[spec]]
+source = "specs/assets.md"
+
+# No `[[reference]]`, no `[[check]]`, and no `[[proof]]`. Gantry fixes no
+# palette, no models, and no scene styling: every build is expected to look
+# different, so there is no honest picture to compare against. What the
+# specification fixes about appearance is stated as legibility
+# (`specs/overview.md`), checked by a reviewer, and the produced assets are
+# judged in play.
+
+# Scoring domains. A reviewer rates each independently while playing the build;
+# the run's overall rating is the WORST across them, so a beautiful yard cannot
+# mask a solver that stands mechanisms up, and a correct solver cannot mask
+# placeholder models.
+[[domain]]
+id = "construction"
+name = "Construction"
+description = "Building the crane: the lattice editor and its picking, the placement rules and refusals, the camera, undo, the static check, and whether rigging a crane feels precise rather than fiddly."
+
+[[domain]]
+id = "simulation"
+name = "Simulation"
+description = "The structural story: forces that read believably, mechanisms and overloads failing the way the check and the run report, breakage and collapse that are legible, and the swing behaving like a real hanging load."
+
+[[domain]]
+id = "choreography"
+name = "Choreography"
+description = "The tape: authoring steps and commands, watching a run play out, the speed/stress/swing trade-off being real, and the cleared-versus-failed loop pulling the player back to improve cost and time."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "The produced voxel models and audio and the 3D scene they sit in: the yard's look, the members and their utilization ramp, the screens and readouts, and the sound."
+
+# Reviewer checklist, in the categories grammar. Reporter-side material — never
+# seeded, so the model never sees it; every item restates a requirement the
+# seeded specification already states, in its vocabulary.
+#
+# NO ITEM DECLARES A `validation` SCRIPT YET, exactly as for the other cases on
+# this branch: the validation suites do not exist, and a manifest naming a script
+# not shipped under `validation/<engine>/` does not resolve. When the suites are
+# written, the mechanical points here (the editor refusals, the static forces on
+# canonical trusses — which have textbook answers to assert against — the axis
+# controller, the pendulum, the attach/release verdicts, and the failure causes)
+# are the ones to move over first.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug and automation surface is present"
+description = "Every operation specs/instrumentation.md names is present as a function on the surface, reached as window.__gantry in an engineless build and off engine.debug in an engine build, and each poses or reads the running game rather than a copy of it."
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "A snapshot carries every field specs/instrumentation.md lists, with version GANTRY_DEBUG_VERSION (1), and its values match what is on screen: the screen, the open site, the structure with derived cost and readiness issues, the tape, and the run with axes, bob, loads, forces, and broken members."
+[[review.categories.items]]
+id = "edits-share-rules"
+title = "Posed edits pass the same rules as clicks"
+description = "addMember, removeMember, setRing, clearRing, and the counterweight operations enter the same placement pipeline the build tools feed: an edit a click would refuse is refused when posed, silently, leaving the structure exactly as it was."
+[[review.categories.items]]
+id = "set-structure-atomic"
+title = "setStructure applies whole or not at all"
+description = "A structure document with any refused element leaves the structure the call found untouched; a valid document replaces it with member ids assigned in list order from 0."
+[[review.categories.items]]
+id = "check-reports-statics"
+title = "check reports readiness and static forces"
+description = "check returns the readiness issues by their stable ids, the cost and budget, and, on a ready structure, whether it stands at the run-start posture plus each member's static force and utilization in id order."
+[[review.categories.items]]
+id = "run-determinism"
+title = "The same structure and tape replay identically"
+description = "Two runs of the same structure and tape produce the same verdict at the same tick with the same forces along the way; nothing anywhere in the game reads randomness or the wall clock."
+[[review.categories.items]]
+id = "overlay"
+title = "The debug overlay reports the game"
+description = "The overlay shows the diagnostics specs/instrumentation.md asks for and updates as the game is played without changing it."
+
+# --- The editor ----------------------------------------------------------------
+[[review.categories]]
+id = "editor"
+title = "The editor"
+[[review.categories.items]]
+id = "lattice-and-envelope"
+title = "Members are placed on the lattice, inside the envelope"
+description = "A member runs between two picked lattice nodes; a placement with an end outside the site's envelope is refused, and the envelope and lattice are visible aids on the build screen."
+[[review.categories.items]]
+id = "length-and-duplicates"
+title = "Length caps and duplicates are enforced"
+description = "A placement past its material's maximum length is refused, as is a second member joining the same two nodes in either direction."
+[[review.categories.items]]
+id = "obstacle-refused"
+title = "A member through an obstacle is refused"
+description = "A placement whose segment intersects an obstacle box is refused."
+[[review.categories.items]]
+id = "budget-enforced"
+title = "The budget is enforced and the cost reads"
+description = "Cost is the sum of member lengths times their material rates plus the ring and counterweights, shown against the budget at all times, and any edit that would exceed the budget is refused."
+[[review.categories.items]]
+id = "ring-placement"
+title = "The ring places by base corner, once"
+description = "The ring occupies its eight flange nodes from a picked base corner, a second ring is refused, a ground-level base corner is refused, and deleting the ring is possible."
+[[review.categories.items]]
+id = "arm-tower-partition"
+title = "The arm meets the tower only through the ring"
+description = "A member that would create a path between a bottom-flange or anchor node and a top-flange node is refused, so the only crossing is the ring itself."
+[[review.categories.items]]
+id = "rail-track-rules"
+title = "The rail forms one straight horizontal track"
+description = "A non-horizontal rail member is refused at placement, and readiness reports invalid-rail unless the rail members form a single collinear, consecutive, arm-side track whose ends sit at distinct distances from the slew axis."
+[[review.categories.items]]
+id = "counterweights"
+title = "Counterweights place and remove on used nodes"
+description = "A counterweight places on a node a member ends at, one per node, is refused elsewhere, and is removed by the delete tool or a second toggle."
+[[review.categories.items]]
+id = "pending-node"
+title = "Two-click placement holds and survives refusal"
+description = "The first click holds a marked pending node; a refused second click keeps it, a click on the pending node or back clears it, and switching materials keeps it."
+[[review.categories.items]]
+id = "delete-and-undo"
+title = "Delete and undo work as specified"
+description = "The delete tool removes the picked member, counterweight, or ring; undo restores the structure to before the most recent edit, step by step, as far back as the site was opened."
+
+# --- The tape -------------------------------------------------------------------
+[[review.categories]]
+id = "tape"
+title = "The tape"
+[[review.categories.items]]
+id = "step-model"
+title = "Steps run in order, moves in a step together"
+description = "The tape executes step by step; a move step's commands drive their axes simultaneously and the step completes only when every commanded axis has arrived and stopped; an action step executes on a single tick."
+[[review.categories.items]]
+id = "command-bounds"
+title = "The editor bounds commands"
+description = "A command is accepted only with a rate above 0 and at most its axis's max rate, and a move only with at least one command and at most one per axis."
+[[review.categories.items]]
+id = "motion-profile"
+title = "An axis ramps, cruises, and brakes"
+description = "A commanded axis visibly accelerates at its fixed acceleration, holds its commanded rate, and brakes to stop at its target rather than jumping between speeds."
+[[review.categories.items]]
+id = "out-of-range-fails"
+title = "An unreachable target fails the run when its step starts"
+description = "A step whose command targets a value outside its axis's range at that moment — a trolley target beyond the track included — ends the run as command-out-of-range."
+[[review.categories.items]]
+id = "start-refusals"
+title = "Starting refuses on readiness issues"
+description = "run with a missing ring, missing or invalid rail, disconnected members, or an empty tape is refused with the issues shown by name, and no run begins."
+
+# --- The simulation --------------------------------------------------------------
+[[review.categories]]
+id = "simulation"
+title = "The simulation"
+[[review.categories.items]]
+id = "static-stand"
+title = "A sound structure stands"
+description = "A braced crane inside its capacities passes check as stable and stands through a run's first ticks with plausible forces: tension in stays, compression in tower legs."
+[[review.categories.items]]
+id = "mechanism-collapses"
+title = "A mechanism collapses at once"
+description = "An under-braced structure — a flat frame with nothing resisting out-of-plane motion — reports unstable in check and ends a run as collapse on its first solve."
+[[review.categories.items]]
+id = "overload-breaks"
+title = "An overloaded member breaks"
+description = "A member whose utilization exceeds 1 breaks permanently for the run, with the break cue, and the run continues if the structure still stands."
+[[review.categories.items]]
+id = "cascade"
+title = "Breakage cascades within the tick"
+description = "When a break shifts load onto members that then exceed their own capacity, they break in the same tick's re-solve, and a cascade that leaves a mechanism ends the run as collapse."
+[[review.categories.items]]
+id = "buckling-length"
+title = "Long struts buckle sooner"
+description = "Compression capacity falls with the square of length beyond BUCKLE_REF (4): the same compressive force that a short strut holds breaks a long one."
+[[review.categories.items]]
+id = "cable-slack"
+title = "A cable carries tension only"
+description = "A cable pushed into compression goes slack and carries zero force instead of pushing, and is taut again once the load reverses."
+[[review.categories.items]]
+id = "ring-limit"
+title = "The ring has a limit"
+description = "A ring connection carried past RING_CAP (6000) ends the run as ring-overload."
+[[review.categories.items]]
+id = "inertial-loads"
+title = "Moving faster loads the structure harder"
+description = "The same lift run with faster slew commands shows higher utilizations — centrifugal and tangential load, not just weight — so a tape can break a crane that stands still."
+[[review.categories.items]]
+id = "structure-obstacle-strike"
+title = "The structure cannot sweep through an obstacle"
+description = "A member standing clear at build time that sweeps into an obstacle as the arm turns ends the run as structure-struck-obstacle."
+
+# --- Rigging and placement -------------------------------------------------------
+[[review.categories]]
+id = "rigging"
+title = "Rigging and placement"
+[[review.categories.items]]
+id = "pendulum-swing"
+title = "The load swings as a pendulum"
+description = "Accelerating the arm or trolley sets the hanging load swinging opposite the acceleration; the swing follows the moving pivot and damps gradually toward hanging straight."
+[[review.categories.items]]
+id = "hoist-follows"
+title = "Hoisting changes the cable length"
+description = "The hoist axis lengthens and shortens the drawn cable at the commanded rate within HOIST_MIN (1) to HOIST_MAX (40), and the bob follows the new length."
+[[review.categories.items]]
+id = "cable-snap"
+title = "Overloading the cable snaps it"
+description = "A tick on which the cable tension exceeds HOIST_CABLE_CAP (3000) — a heavy load jerked hard — ends the run as cable-snap."
+[[review.categories.items]]
+id = "attach-radius"
+title = "Attach takes the load within reach"
+description = "attach with the hook within ATTACH_RADIUS (0.8) of a waiting load's lift point attaches that load, seizing it squarely so the grip's value becomes its yaw, with the attach cue."
+[[review.categories.items]]
+id = "attach-miss-fails"
+title = "Attach with nothing in reach fails the run"
+description = "attach with no waiting load within radius, or with a load already attached, ends the run as attach-missed."
+[[review.categories.items]]
+id = "grip-turns-load"
+title = "The grip turns the load"
+description = "Commanding the grip turns the attached load about the vertical through the bob at up to GRIP_MAX_RATE (45) deg/s, and applies no force to the structure."
+[[review.categories.items]]
+id = "release-tolerances"
+title = "Release inside all three tolerances places the load"
+description = "release with the lift point within PLACE_POS_TOL (0.5) of the target, yaw within PLACE_YAW_TOL (10) degrees, and speed within PLACE_VEL_TOL (0.6) places the load at exactly its target pose, with the placed cue."
+[[review.categories.items]]
+id = "release-drop-fails"
+title = "Release outside a tolerance drops the load"
+description = "release with any of the three tests failing, or with nothing attached, ends the run as release-misplaced."
+[[review.categories.items]]
+id = "load-strikes"
+title = "The carried load collides"
+description = "A carried load swung into an obstacle ends the run as load-struck-obstacle, and the load or bare hook dipping below the ground ends it as load-struck-ground."
+
+# --- The sites -------------------------------------------------------------------
+[[review.categories]]
+id = "sites"
+title = "The sites"
+[[review.categories.items]]
+id = "sites-as-written"
+title = "The six sites are the ones specified"
+description = "Each site's envelope, anchors, budget, loads, obstacles, and par figures match specs/sites.md exactly, in order, nothing substituted or moved."
+[[review.categories.items]]
+id = "site-aids-read"
+title = "A site reads before anything is built"
+description = "Anchors, load starting poses, pads with their footprints and yaws, and obstacles are all marked and identifiable on entering a site."
+[[review.categories.items]]
+id = "unlock-order"
+title = "Sites unlock in order"
+description = "Site 1 is open from the start, clearing site n opens site n + 1, and locked sites cannot be entered."
+[[review.categories.items]]
+id = "best-scores"
+title = "Best scores record and improve"
+description = "A clear records cost and time on the select screen; a later clear replaces the best only at lower cost, or equal cost and lower time."
+[[review.categories.items]]
+id = "run-repeatable"
+title = "Runs never consume the authored state"
+description = "After any run — cleared, failed, or aborted — the structure, the tape, and the loads' starting poses are exactly as authored, and running again starts from the same state."
+
+# --- Presentation ---------------------------------------------------------------
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "stage-fit"
+title = "The stage is fitted and centered"
+description = "The whole STAGE_W x STAGE_H (1280 x 720) stage is inside the window at its own aspect ratio, centered, with even letterboxing, at any window size and pixel density."
+[[review.categories.items]]
+id = "camera-orbit"
+title = "The camera orbits within its limits"
+description = "Keys and pointer drag orbit around CAMERA_TARGET within the pitch limits, the zoom actions move the distance within its limits, and the pose persists across build, program, and run."
+[[review.categories.items]]
+id = "materials-read"
+title = "Strut, cable, and rail are told apart"
+description = "The three materials are distinguishable at a glance in the scene, by form and not by hue alone."
+[[review.categories.items]]
+id = "utilization-ramp"
+title = "Utilization reads on a ramp"
+description = "During a run each member's color follows its utilization on a monotone ramp with a legend, a member near 1 stands out, and a broken member is unmistakable."
+[[review.categories.items]]
+id = "text-legible"
+title = "Every piece of text is legible"
+description = "Screen copy, readouts, and menus are legible against whatever sits behind them at the logical stage size."
+[[review.categories.items]]
+id = "designed-yard"
+title = "The yard is designed rather than left plain"
+description = "The build presents a considered construction yard with a look of its own — ground, sky, light, and chrome — rather than default shapes on an empty field."
+[[review.categories.items]]
+id = "original"
+title = "The game is original to itself"
+description = "The name, the look, the assets, and the branding are Gantry's own and reproduce no existing product."
+
+# --- Produced assets -------------------------------------------------------------
+[[review.categories]]
+id = "produced-assets"
+title = "Produced assets"
+[[review.categories.items]]
+id = "part-models"
+title = "The five part models are produced and placed"
+description = "The ring, trolley, hook, counterweight, and mount are genuine voxel-tool models — not code-drawn boxes — drawn at their subjects at the 1/VOXELS_PER_UNIT (1/8) scale: ring on the slew axis turning with the arm, trolley on the track, hook at the bob, counterweights and mounts at their nodes."
+[[review.categories.items]]
+id = "load-models"
+title = "The three load models fill their classes"
+description = "The crate, container, and drum are produced voxel models that read as their subjects and fill their class boxes, drawn at each load's pose through waiting, hanging, and placed."
+[[review.categories.items]]
+id = "models-via-runtime"
+title = "Models load through the provided runtime"
+description = "The committed .glb files are decoded with @test-cabinet/voxel-runtime's parseGlb and rendered through its three binding, referenced page-relative so the build runs from a sub-path."
+[[review.categories.items]]
+id = "produced-cues"
+title = "The cues are produced audio"
+description = "Every cue in specs/ui.md plays a distinct produced .wav — not silence and not a hand-oscillated stand-in — including a motor loop that loops cleanly while an axis moves."
+[[review.categories.items]]
+id = "produced-music"
+title = "The music bed is produced"
+description = "The title and select screens carry a music-tool bed that suits a machine yard, with its .mid committed beside the .wav."
+
+# --- Screens and audio -----------------------------------------------------------
+[[review.categories]]
+id = "screens"
+title = "Screens and audio"
+[[review.categories.items]]
+id = "title-screen"
+title = "The title screen"
+description = "The game opens on TITLE_TEXT (GANTRY), TAGLINE_TEXT (RIG THE CRANE. RUN THE TAPE.), and TITLE_ITEMS (SITES, HOW TO PLAY) with menuIndex 0, navigated and confirmed by the registered actions with wrapping."
+[[review.categories.items]]
+id = "howto"
+title = "The how-to screen explains the game"
+description = "HOW TO PLAY covers reading a site, the tools and parts, the tape and axes, the speed/stress/swing trade-off, and the set-down tolerances, in a player's words, naming the key bindings; back returns to title."
+[[review.categories.items]]
+id = "select-behavior"
+title = "The select screen lists, highlights, and enters"
+description = "All six sites show number, name, and state without relying on hue alone, plus best scores; the highlight arrives on the site last entered or cleared; confirm enters open sites only; back returns to title."
+[[review.categories.items]]
+id = "build-readouts"
+title = "The build screen's readouts and check"
+description = "Site name, cost against budget, the tool palette with bindings and selection, and the tape's step count all show; check displays readiness issues or static utilizations until the next edit; a refused edit is visible in the moment."
+[[review.categories.items]]
+id = "program-editor"
+title = "The tape editor covers the tape"
+description = "The program screen shows the steps in order, each legible, and offers add, edit, reorder, and remove, with the same yard visible behind."
+[[review.categories.items]]
+id = "run-readouts"
+title = "The run screen's readouts"
+description = "Axis values with live targets, step m / n, the run clock, the cost, the speed, and the utilization legend all show over the live scene."
+[[review.categories.items]]
+id = "failure-copy"
+title = "A failed run reads its cause"
+description = "A failed run stays on the scene as it stood and shows exactly the FAIL_TEXT copy for its cause; back returns to build."
+[[review.categories.items]]
+id = "results-and-par"
+title = "Results shows score against par"
+description = "A cleared run shows CLEARED_TEXT with cost and time beside the site's par figures and offers NEXT SITE (except on site 6), REPLAY, and SITE SELECT in that order."
+[[review.categories.items]]
+id = "speed-toggle"
+title = "Watch speed changes only the watching"
+description = "speed cycles 1x, 2x, 4x on the run screen; the run's outcome, verdict tick, and clock are identical at every speed."
+[[review.categories.items]]
+id = "cue-timing"
+title = "Cues play on their events"
+description = "place, delete, run-start, attach, placed, break, collapse, complete, and fail each play on the tick of their event, at most once on that tick, and creak respects its threshold and cooldown."
+[[review.categories.items]]
+id = "motor-loop"
+title = "The motor loop tracks motion"
+description = "The motor sound loops while any axis's rate is nonzero and is silent when the crane is still."
+[[review.categories.items]]
+id = "mute"
+title = "Mute works from any screen"
+description = "The mute action toggles all sound from any screen and the game stays fully playable muted."

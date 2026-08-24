@@ -1,0 +1,339 @@
+# Gantry — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Gantry carries a debugging and automation surface, `window.__gantry`, so the
+game can be driven and inspected from code without moving a real pointer or
+waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__gantry` as soon as the game
+has initialized. Every scenario driven from code reaches the game through it,
+so it is present and exactly as specified here.
+
+Each operation is a read or a pose of the game's state. A pose arranges the
+game, and the game's own rules run from there exactly as they do in play: an
+edit posed through the surface passes the same placement rules a click does,
+and a run started through it is the same run the `run` action starts.
+
+The surface is inert during normal play, doing nothing until something calls
+it.
+{{else}}
+Gantry carries a debugging and automation surface so the game can be driven
+and inspected from code without moving a real pointer or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `GantryState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<GantryState>`,
+and returns the next `GantryState`; a reading takes the state the same way and
+returns what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.startRun(s))`, and a reading against the engine's
+current state, as `debug.snapshot(engine.state)`. A posed edit passes the same
+placement rules a click does, and a run started through the surface is the same
+run the `run` action starts. Where the surface's implementation lives under
+`src/` is yours to decide; `src/game.ts` declares and exports its type,
+`GantryDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls
+it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic. Gantry uses no
+randomness anywhere, and a run advances only on its fixed tick, so the same
+structure and the same tape produce the same run, tick for tick, every time.
+Two more properties make it driveable from code:
+
+- Render-free core. Game state advances from ticks and input alone,
+  independent of the canvas, of the renderer, and of wall-clock time. The
+  dependency runs one way: the simulation reads nothing from the renderer, and
+  whether an edit is accepted is decided from the structure and the site
+  alone.
+- Silent refusal as data. A pose the rules refuse leaves the state exactly as
+  it was, so a scenario reads the outcome of any pose back from `snapshot` and
+  `check` rather than from a return value.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard, the pointer, and the overlay belong to the runtime layer beneath
+the game, and the surface carries no operation for the registered actions or
+for the overlay. That layer delivers the actions the game registers from the
+key bindings `specs/controls.md` fixes, it reports the pointer position in the
+stage's logical units along with the press and release edges, and it draws and
+toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
+{{else}}
+The clock, the keyboard, the pointer, and the overlay belong to the
+{{engine.name}} engine, which documents them in the `engine/` directory at the
+root of this repository, and the surface carries no operation for any of them.
+The engine advances the game frame by frame and can take it off real time, it
+drives the actions the game registers, it reports the pointer position in the
+stage's logical units, and it draws and toggles the debug overlay.
+{{/if}}
+
+What the overlay shows is Gantry's, under Diagnostics below.
+
+## The operations
+
+The surface carries `version` (`GANTRY_DEBUG_VERSION`, `1`), a plain number,
+and the operations below. Values are plain numbers, strings, booleans, and
+plain objects. A position is `{ x, y, z }` in world units, and every angle is
+in degrees.
+{{#if (eq engine.slug "none")}}
+{{else}}
+
+Each operation's first parameter is the current state,
+`DeepReadonly<GantryState>`. A pose returns the next `GantryState`, built from
+the one it was handed, which it leaves as it was; a reading returns what it
+read. The headings below name the parameters that follow the state.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops
+the frame loop advancing a running run from the wall clock, so the simulation
+moves only when `advance` says so. `setAutoStep(true)` returns it to running
+itself, which is how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas
+shows the state the most recent tick left.
+
+### `advance(ticks)`
+
+Runs `ticks` whole simulation ticks, immediately and in order, each the full
+tick pipeline `specs/program.md` fixes, followed by a render. `ticks` defaults
+to `1`. It applies while a run is in progress and does nothing on other
+screens, where nothing ticks.
+
+Advancing while the game is still stepping automatically adds to what the
+wall clock is already doing, so a scenario that must be reproducible calls
+`setAutoStep(false)` first.
+
+{{/if}}
+{{#if (eq engine.slug "none")}}
+### `reset()`
+{{else}}
+### `reset(state)`
+{{/if}}
+
+Restores every declared field of the game's state to its title-screen value:
+the title screen with its first item highlighted, site `0` open, every site's
+progress cleared and its stored structure and tape empty, the strut tool, no
+pending node, an empty history, the camera at its start pose, an idle run, and
+`simTime` at `0`. `muted` is deliberately untouched: muting is a player
+preference the runtime owns.
+
+Because it restores exactly the declared fields, any state of your own that a
+frame depends on is derivable from them.
+
+{{#if (eq engine.slug "none")}}
+### `snapshot()`
+
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
+
+### `openSite(index)`
+{{else}}
+### `snapshot(state)`
+
+A pure reading of `state`, returned as the plain object under Snapshot shape
+below. It returns no state, because it poses nothing.
+
+### `openSite(state, index)`
+{{/if}}
+
+Poses opening site `index`, counted from `0`, exactly as entering it from the
+select screen does, locked or not: the build screen, that site's stored
+structure and tape, a cleared history, no pending node, and the camera at its
+start pose. It is the surface's way onto any site without playing to it.
+
+{{#if (eq engine.slug "none")}}
+### `addMember(a, b, material)`, `removeMember(id)`
+### `setRing(corner)`, `clearRing()`
+### `addCounterweight(node)`, `removeCounterweight(node)`
+{{else}}
+### `addMember(state, a, b, material)`, `removeMember(state, id)`
+### `setRing(state, corner)`, `clearRing(state)`
+### `addCounterweight(state, node)`, `removeCounterweight(state, node)`
+{{/if}}
+
+Pose single structure edits on the build screen, entering the same rule
+pipeline the build tools feed, so every refusal in `specs/structure.md`
+applies unchanged: a refused edit leaves the structure exactly as it was. Each
+successful edit pushes history exactly as a click would. `addMember` assigns
+the structure's next member id; `removeMember` takes the id to remove. They
+apply on the build screen alone.
+
+{{#if (eq engine.slug "none")}}
+### `setStructure(doc)`
+{{else}}
+### `setStructure(state, doc)`
+{{/if}}
+
+Poses a whole structure at once, on the build screen. `doc` is
+`{ members, ring, counterweights }`: `members` a list of
+`{ a, b, material }`, `ring` a `{ corner }` or `null`, and `counterweights` a
+list of nodes. The document is applied by replacing the site's structure with
+an empty one and posing the ring, then each member in order, then each
+counterweight, through the same rules as above; member ids are assigned in
+list order starting at `0`. If any element is refused, the whole pose is
+refused and the structure the call found stays exactly as it was. A successful
+pose replaces the undo history with the single structure it replaced.
+
+This is the surface's main lever for the crane itself: it puts a chosen
+structure on the site without clicking it together.
+
+{{#if (eq engine.slug "none")}}
+### `setProgram(doc)`
+{{else}}
+### `setProgram(state, doc)`
+{{/if}}
+
+Poses a whole tape, on the build or program screen. `doc` is the list of
+steps, in the shape `specs/state.md` gives them. Each command must name a real
+axis and carry a rate greater than `0` and at most the axis's max rate, and
+each move at least one command, exactly as the tape editor enforces; a
+document breaking any of that is refused whole, leaving the tape as it was.
+Targets are accepted as written and judged at run time
+(`specs/program.md`).
+
+{{#if (eq engine.slug "none")}}
+### `check()`
+{{else}}
+### `check(state)`
+{{/if}}
+
+A pure reading: the editor's static check, computed on the spot. It reports
+
+```js
+{
+  issues: ["no-ring", ...],   // the readiness issues, empty when ready
+  cost: <number>,
+  budget: <number>,
+  stable: <boolean>,
+  members: [{ id, force, utilization }],
+}
+```
+
+With any readiness issue, `stable` is `false` and `members` is empty. With a
+ready structure it runs the two solves of `specs/statics.md` at the run-start
+posture, `slew` `0`, `trolley` `0`, `hoist` `HOIST_START`, the bare hook
+hanging at rest, and no motion: `stable` reports whether both solves are
+regular, and `members` carries each intact member's static force and
+utilization, in member-id order. Nothing breaks and nothing fails during a
+check; a utilization above `1` is simply reported.
+
+{{#if (eq engine.slug "none")}}
+### `startRun()`, `abortRun()`
+{{else}}
+### `startRun(state)`, `abortRun(state)`
+{{/if}}
+
+`startRun` poses the `run` action: the same refusals, the same `run-start`,
+and the same first tick as `specs/program.md` states. A refused start leaves
+the state as it was; `check` says why it would refuse. `abortRun` poses the
+abort, ending a running run with no verdict and returning to the build
+screen.
+
+{{#if (eq engine.slug "none")}}
+A typical scenario calls `openSite`, `setStructure`, and `setProgram` to pose
+the site wanted, `startRun` with `setAutoStep(false)`, then `advance` through
+the run, reading verdicts, forces, and poses from `snapshot()` as it goes.
+{{else}}
+A typical scenario applies `openSite`, `setStructure`, and `setProgram`
+through `engine.apply`, applies `startRun`, steps the engine's own clock
+through the run, and reads verdicts, forces, and poses from
+`debug.snapshot(engine.state)` as it goes.
+{{/if}}
+
+## Snapshot shape
+
+`snapshot` returns:
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "select" | "build" | "program" | "run" | "results",
+  menuIndex: <number>,
+  siteIndex: <number>,
+  cleared: [<boolean>],            // one per site
+  best: [{ cost, time } | null],   // one per site
+  tool: "strut" | "cable" | "rail" | "ring" | "counterweight" | "delete",
+  pendingNode: { x, y, z } | null,
+  camera: { yaw, pitch, dist },
+  structure: {
+    members: [{ id, a, b, material }],
+    ring: { corner } | null,
+    counterweights: [{ x, y, z }],
+    cost: <number>,
+    issues: [<string>],            // the readiness issues, empty when ready
+  },
+  program: [
+    { kind: "move", commands: [{ axis, target, rate }] },
+    { kind: "action", action: "attach" | "release" },
+  ],
+  run: {
+    phase: "idle" | "running" | "cleared" | "failed",
+    cause: <string> | null,
+    tick: <number>,
+    time: <number>,                // tick / TICK_HZ, seconds
+    speedIndex: <number>,
+    stepIndex: <number>,
+    axes: {
+      slew:    { value, rate, command: { target, rate } | null },
+      trolley: { value, rate, command: { target, rate } | null },
+      hoist:   { value, rate, command: { target, rate } | null },
+      grip:    { value, rate, command: { target, rate } | null },
+    },
+    bob: { pos: { x, y, z }, vel: { x, y, z } },
+    attached: <number> | null,
+    loads: [{ phase, pos: { x, y, z }, yaw }],
+    forces: [{ id, force, utilization }],
+    broken: [<number>],
+  },
+  muted: <boolean>,
+  simTime: <number>,
+}
+```
+
+The shape is fixed, and every field is present whatever the screen.
+`structure` and `program` report the open site's; `run` reports its idle
+placeholder whenever no run is in progress, exactly as `specs/state.md` gives
+it. `structure.cost` and `structure.issues` are derived from the rules in
+`specs/structure.md`, `run.forces` is the latest solve in member-id order, and
+`run.loads` is index-aligned with the site's load list. `muted` mirrors the
+runtime's mute bit and `simTime` accumulates every update's delta time,
+whatever the screen.
+
+## Diagnostics
+
+The runtime's debug overlay shows the values the game registers with it as
+diagnostic sources. Register at least the current screen and site, the
+structure's member count, cost, and readiness issue count, the run's phase,
+step index, clock, and cause, each axis's value, the bob's position, the
+highest current utilization and the broken-member count, and the camera pose.
+Keep each one short enough to read on a line, and keep every source a pure
+read, so watching the overlay leaves the game as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
+`Backquote`), and it reads the game without changing it.
+{{else}}
+Registering those values is the whole of Gantry's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the
+read, as `DeepReadonly<GantryState>`, and reads off that argument. Drawing the
+panel, toggling it, and keeping it read-only are the engine's.
+{{/if}}
