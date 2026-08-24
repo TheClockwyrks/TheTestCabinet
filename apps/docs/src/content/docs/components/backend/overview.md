@@ -165,6 +165,7 @@ skipping the public write.
 | `TCAB_ENV` | Deployment environment name, selecting this backend's entries in the reference-builds lockfile. | `local` |
 | `TCAB_R2_*` | Credentials and bucket the public documents and media are uploaded to. | — |
 | `TCAB_PROJECTION_DATABASE_URL` | Connection string of the [public projection](/components/backend/projection/) the backend writes on publish. | — |
+| `TCAB_OPENROUTER_API_KEY` | OpenRouter key the backend's own completion calls are billed to, today only [model probes](/components/backend/api/#model-probes). Distinct from the runners' `OPENROUTER_API_KEY`. Unset, a probe trigger fails with `openrouter_key_missing`. | — |
 | `TCAB_REFERENCE_BROWSER` | Headless browser used to render references at ingest. | image Chromium |
 | `TCAB_GG_REFERENCE` | Directory holding gg's projected reference documents. | `<checkout>/target/gg-reference` |
 | `TCAB_ARTIFACTS_PUBLIC_URL` | Artifact service base URL, advertised to consoles. | — |

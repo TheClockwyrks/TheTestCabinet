@@ -91,14 +91,18 @@ public fun openDocsView(name: String) {
  * what it held.
  *
  * Documentation views are not reached from here: `gg.docs.close` is what takes one away, and it is
- * bought by a capability this call is not. A sweep that included them would hand back `0` for an
+ * bought by a capability of its own, `docview-close`. A sweep that included them would hand back `0` for an
  * agent that may not close one, which reads as a selector that named nothing.
+ *
+ * Closing a view is context management, bought — with [current] — by the `agent-managed-context`
+ * capability: an agent whose run did not enable it is refused.
  *
  * @ggop views.close
  * @param selector What the view is filed under: a file's path, a text view's label, or
  *   `search results`.
  * @return how many views were closed
- * @throws ApiError `INVALID_ARGUMENT` for an empty selector.
+ * @throws ApiError `INVALID_ARGUMENT` for an empty selector, and `UNAVAILABLE` for an agent whose
+ *   run did not buy `agent-managed-context`.
  */
 public fun close(selector: String): Int =
     ggCall("views.close", ggText(selector)).integer()
@@ -110,10 +114,13 @@ public fun close(selector: String): Int =
  * costs in [OpenView.tokens], and — for a paged file view — the [OpenView.region] it covers. It is
  * what a program reads before deciding what to close when the window is filling up.
  *
- * Nothing about it can fail: it reads gg's own live view set behind a binding no run withholds.
+ * It takes no argument, so once granted nothing about it can fail: an empty window is an empty
+ * list. Listing what is open is context management, bought with [close] by the
+ * `agent-managed-context` capability, and an agent whose run did not enable it is refused.
  *
  * @ggop views.current
  * @return every view open in the context window
+ * @throws ApiError `UNAVAILABLE` for an agent whose run did not buy `agent-managed-context`.
  */
 public fun current(): List<OpenView> = Read.openViews(ggCall("views.current"))
 
@@ -146,6 +153,8 @@ public data class OpenView(
      *
      * @ggalias views.close
      * @return how many views were closed, which is `0` when this one has already gone
+     * @throws ApiError `UNAVAILABLE` for an agent whose run did not buy `agent-managed-context`,
+     *   which is what buys closing a view.
      * @throws ApiError `INVALID_ARGUMENT` for an empty selector.
      */
     public fun close(): Int = gg.views.close(selector)

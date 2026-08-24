@@ -40,15 +40,16 @@
 //! **run** ended. Folding that event would report a child's ceiling as the run's outcome, so the
 //! binary records the root loop's own breach and this module never looks at the event.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
     GgCallFailure, GgErrorSummary, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase,
-    GgIssueStatus, GgLimitBreach, GgProgramLanguage, GgResponseHealing, GgRunLimits,
-    GgSessionSummary, GgSlotCost, GgTelemetryKind, GgTurnErrorKind, GgTurnErrorType,
-    GgUndocumentedCalls,
+    GgIssueStatus, GgLimitBreach, GgProgramLanguage, GgProviderStat, GgRejectedResponses,
+    GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost, GgTelemetryKind, GgTurnErrorKind,
+    GgTurnErrorType, GgTurnOutcome, GgUndocumentedCalls,
 };
+use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 /// Accumulates a running session's aggregatable outcome from the telemetry stream it
 /// [observes](Self::observe), so the binary can [finalize](Self::finalize) it into a
@@ -120,6 +121,16 @@ struct SummaryState {
     /// [finalize](SessionSummaryTracker::finalize) time and no second shape that could disagree
     /// with the one the run records.
     errors: GgErrorSummary,
+    /// The run's [rejected-reply rollup](GgRejectedResponses), folded from the
+    /// [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events — the one place a rejected
+    /// call's spend appears, since it is deliberately excluded from the run's own usage.
+    rejected: GgRejectedResponses,
+    /// The longest reply, in characters, of any turn whose outcome **worked** (progressed or
+    /// finished) — a maximum over the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events'
+    /// `response_chars`, the datum a later output ceiling would be judged against.
+    max_response_chars: u64,
+    /// The same maximum in the provider's own unit: completion tokens (output plus reasoning).
+    max_response_output_tokens: u64,
     /// The run's [discovery rollup](GgUndocumentedCalls) — how many calls its models wrote without
     /// ever having read what they do, and which — folded from the same
     /// [`CodeExecution`](GgTelemetryKind::CodeExecution) event
@@ -149,6 +160,25 @@ struct SummaryState {
     issues_completed: BTreeSet<String>,
     /// One entry per [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup, captured in emission order.
     slot_costs: Vec<GgSlotCost>,
+    /// The run's [provider-health rollup](GgProviderStat), keyed `(provider, model)` — a
+    /// [`BTreeMap`] so [finalize](SessionSummaryTracker::finalize) emits the slices in a
+    /// deterministic order (the providerless slice first, then lexicographic) without a sort of
+    /// its own.
+    ///
+    /// Folded from three events, each attributed to the provider its own call named: a
+    /// [`Usage`](GgTelemetryKind::Usage) delta contributes a call with its tokens and cost, a
+    /// [`ResponseRejected`](GgTelemetryKind::ResponseRejected) a rejection, and a
+    /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) a turn — via the pending marker its agent's
+    /// [attribution](AgentAttribution) holds, so a turn whose call named no provider (a model
+    /// timeout named none at all) lands on the providerless slice rather than on a neighbour's.
+    provider_stats: BTreeMap<(Option<String>, Option<String>), ProviderAcc>,
+    /// What is currently known about each agent for provider attribution, keyed by the agent id
+    /// the event rode in on. Events emitted with no agent id (the base emitter's) contribute to
+    /// the slices directly but never to an attribution.
+    attributions: BTreeMap<String, AgentAttribution>,
+    /// Every dispatched tool call — one per [`ToolResult`](GgTelemetryKind::ToolResult), failed or
+    /// not — the denominator [`GgErrorSummary::tool_failures`] is read against.
+    tool_calls: u64,
     /// The [effective toolset](GgSessionSummary::effective_tools) — the exact tool names offered to
     /// the run's (root) agent, in the order presented to the model. Unlike every other field this is
     /// **not** telemetry-derived (no event carries the offered toolset); the binary records it once,
@@ -180,7 +210,101 @@ struct SummaryState {
     healing_enabled: Vec<GgHealingStrategy>,
 }
 
+/// The accumulator behind one `(provider, model)` slice of the
+/// [provider rollup](SummaryState::provider_stats) — the counted fields of a [`GgProviderStat`],
+/// without the key the map already holds.
+#[derive(Default)]
+struct ProviderAcc {
+    /// [`Usage`](GgTelemetryKind::Usage) deltas folded in — calls that reported usage.
+    calls: u64,
+    /// The tokens those calls reported, summed on [`fold_counts`]'s terms.
+    tokens: TokenCounts,
+    /// Their cost, summed on [`fold_cost`]'s terms.
+    cost: Option<Cost>,
+    /// [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events attributed here.
+    rejected: u64,
+    /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events attributed here.
+    turns: u64,
+    /// The turns among them that progressed or finished.
+    working: u64,
+    /// The errored turns among them, keyed by [`GgTurnErrorType::wire_id`] exactly as
+    /// [`GgErrorSummary::by_type`] is.
+    errors: BTreeMap<String, u64>,
+}
+
+/// What the tracker knows about one agent between its events — the state provider attribution
+/// rides on, keyed per agent because the stream is run-wide and two agents' turns interleave
+/// arbitrarily.
+#[derive(Default)]
+struct AgentAttribution {
+    /// The model the agent's most recent [`Usage`](GgTelemetryKind::Usage) delta named. An
+    /// agent's binding is fixed, so this is its model from the first delta on; before that it is
+    /// honestly unknown.
+    model: Option<String>,
+    /// The provider marker the agent's current turn has set — `Some` once this turn's
+    /// `Usage`/`Prompt`/`ResponseRejected` named its serving provider (the inner `None` is a call
+    /// that named none), taken and cleared by the turn's own
+    /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome). A turn that set no marker — its call
+    /// produced no reply at all — is attributed to the providerless slice.
+    pending: Option<Option<String>>,
+}
+
 impl SummaryState {
+    /// The `(provider, model)` slice accumulator, created zeroed on first touch.
+    fn provider_slice(
+        &mut self,
+        provider: Option<String>,
+        model: Option<String>,
+    ) -> &mut ProviderAcc {
+        self.provider_stats.entry((provider, model)).or_default()
+    }
+
+    /// The [attribution](AgentAttribution) for `agent_id`, created empty on first touch.
+    fn attribution(&mut self, agent_id: &str) -> &mut AgentAttribution {
+        self.attributions.entry(agent_id.to_string()).or_default()
+    }
+
+    /// Attribute one turn's [outcome](GgTelemetryKind::TurnOutcome) to the provider its own call
+    /// named — the pending marker `agent_id`'s attribution holds, taken so the next turn starts
+    /// unmarked. A turn with no marker (its call produced no reply), and every turn of an event
+    /// that rode in with no agent id, lands on the providerless slice.
+    ///
+    /// The error is keyed by [`GgTurnErrorType::wire_id`] only when the event carried the type,
+    /// exactly as [`fold_turn_outcome`](Self::fold_turn_outcome)'s open breakdown is — so the
+    /// slice's map stays a strict re-slicing of [`GgErrorSummary::by_type`] by provider.
+    fn fold_turn_provider(
+        &mut self,
+        agent_id: Option<&str>,
+        outcome: GgTurnOutcome,
+        error_type: Option<GgTurnErrorType>,
+    ) {
+        let (provider, model) = match agent_id {
+            Some(agent_id) => {
+                let attribution = self.attribution(agent_id);
+                (
+                    attribution.pending.take().flatten(),
+                    attribution.model.clone(),
+                )
+            }
+            None => (None, None),
+        };
+        let slice = self.provider_slice(provider, model);
+        slice.turns += 1;
+        match outcome {
+            GgTurnOutcome::Progressed | GgTurnOutcome::Finished => slice.working += 1,
+            GgTurnOutcome::Error => {
+                if let Some(error_type) = error_type {
+                    *slice
+                        .errors
+                        .entry(error_type.wire_id().to_string())
+                        .or_default() += 1;
+                }
+            }
+            // A fatal turn is attributed (it advances the slice's `turns`) and charged to nothing,
+            // exactly as the run-wide rollup treats it.
+            GgTurnOutcome::Fatal => {}
+        }
+    }
     /// Fold one code-shaped turn's [healing record](GgResponseHealing) into the run's rollup.
     ///
     /// Split out of [`observe`](SessionSummaryTracker::observe) because it is the one arm with real
@@ -248,15 +372,28 @@ impl SummaryState {
     /// preferred over the kind when both are present, and the kind is the fallback — so a stream
     /// gg did not write still lands in the named counters even if it carried no type at all, and
     /// `errors == by_type.values().sum()` holds for every stream gg *did* write.
+    #[allow(clippy::too_many_arguments)]
     fn fold_turn_outcome(
         &mut self,
+        outcome: GgTurnOutcome,
         error: Option<GgTurnErrorKind>,
         error_type: Option<GgTurnErrorType>,
         consecutive_errors: u64,
         loop_aborts: u64,
         loop_abort_words: u64,
         loop_abort_chars: u64,
+        response_chars: u64,
+        response_output_tokens: u64,
     ) {
+        // The maxima are taken over the turns that **worked**: a progressed or finished outcome.
+        // An errored turn's reply is exactly the thing an output ceiling should be free to cut
+        // short, so folding it in would let one degenerate reply set the figure the ceiling is
+        // meant to be chosen from.
+        if matches!(outcome, GgTurnOutcome::Progressed | GgTurnOutcome::Finished) {
+            self.max_response_chars = self.max_response_chars.max(response_chars);
+            self.max_response_output_tokens =
+                self.max_response_output_tokens.max(response_output_tokens);
+        }
         let rollup = &mut self.errors;
         rollup.turns += 1;
         rollup.max_consecutive = rollup.max_consecutive.max(consecutive_errors);
@@ -433,10 +570,15 @@ impl SessionSummaryTracker {
     /// Called by the [`Emitter`](crate::telemetry::Emitter) for **every** event it emits, so the
     /// accumulated counts always reflect exactly the stream the run recorded. Only the events that
     /// contribute an aggregatable figure are counted; the rest (session/turn lifecycle, assistant
-    /// text, per-turn usage deltas, and the terminal
+    /// text, and the terminal
     /// [`SessionSummary`](GgTelemetryKind::SessionSummary)/[`SessionEnded`](GgTelemetryKind::SessionEnded)
     /// events this summary precedes) are observed and ignored.
-    pub fn observe(&self, kind: &GgTelemetryKind) {
+    ///
+    /// `agent_id` is the id the event rides in on — the emitting agent's, or `None` from the base
+    /// emitter. The [provider rollup](GgProviderStat) needs it: attribution state (an agent's
+    /// model, its current turn's provider marker) is per agent, because the stream is run-wide and
+    /// two agents' turns interleave arbitrarily.
+    pub fn observe(&self, agent_id: Option<&str>, kind: &GgTelemetryKind) {
         let mut state = self.inner.lock().expect("summary tracker lock");
         match kind {
             GgTelemetryKind::AgentSpawned { depth, .. } => {
@@ -485,24 +627,89 @@ impl SessionSummaryTracker {
             // the error ceilings are enforced on, folded here so the run records how error-prone it
             // was even when no ceiling ever stopped it.
             GgTelemetryKind::TurnOutcome {
+                outcome,
                 error,
                 error_type,
                 consecutive_errors,
                 loop_aborts,
                 loop_abort_words,
                 loop_abort_chars,
+                response_chars,
+                response_output_tokens,
                 ..
-            } => state.fold_turn_outcome(
-                *error,
-                *error_type,
-                *consecutive_errors,
-                *loop_aborts,
-                *loop_abort_words,
-                *loop_abort_chars,
-            ),
+            } => {
+                state.fold_turn_outcome(
+                    *outcome,
+                    *error,
+                    *error_type,
+                    *consecutive_errors,
+                    *loop_aborts,
+                    *loop_abort_words,
+                    *loop_abort_chars,
+                    *response_chars,
+                    *response_output_tokens,
+                );
+                // The same judgement, re-sliced by the provider this turn's own call named — the
+                // marker the agent's attribution holds, taken here so the two folds count the one
+                // event and the slices' turns sum to the rollup's denominator by construction.
+                state.fold_turn_provider(agent_id, *outcome, *error_type);
+            }
+            // One delta per model call that reported usage — the call-level half of the provider
+            // rollup: which provider served the call, on which model, at what token spend. The
+            // run-wide totals deliberately stay on the `SlotUsage` rollups; this fold only
+            // re-slices the deltas by serving provider.
+            GgTelemetryKind::Usage {
+                model_id,
+                tokens,
+                cost,
+                provider,
+                ..
+            } => {
+                let slice = state.provider_slice(provider.clone(), Some(model_id.clone()));
+                slice.calls += 1;
+                slice.tokens = fold_counts(slice.tokens, *tokens);
+                slice.cost = fold_cost(slice.cost, *cost);
+                if let Some(agent_id) = agent_id {
+                    let attribution = state.attribution(agent_id);
+                    attribution.model = Some(model_id.clone());
+                    attribution.pending = Some(provider.clone());
+                }
+            }
+            // The turn's request/reply pointer list, read here only for the provider that served
+            // the reply: it is emitted once per model call whether or not the call reported usage,
+            // so it is the marker that keeps a turn attributable when its `Usage` delta was
+            // skipped.
+            GgTelemetryKind::Prompt { provider, .. } => {
+                if let Some(agent_id) = agent_id {
+                    state.attribution(agent_id).pending = Some(provider.clone());
+                }
+            }
+            // A reply gg rejected whole (a length-capped one). Its usage is deliberately absent
+            // from every other rollup — no `Usage` delta was emitted for it — so this fold is the
+            // only place the spend reaches the durable record. The provider that served it is
+            // re-sliced onto the provider rollup, where "which provider caps out?" is answerable.
+            GgTelemetryKind::ResponseRejected {
+                tokens,
+                cost,
+                provider,
+                ..
+            } => {
+                state.rejected.count += 1;
+                state.rejected.tokens = fold_counts(state.rejected.tokens, *tokens);
+                state.rejected.cost = fold_cost(state.rejected.cost, *cost);
+                let model = agent_id.and_then(|agent_id| state.attribution(agent_id).model.clone());
+                state.provider_slice(provider.clone(), model).rejected += 1;
+                if let Some(agent_id) = agent_id {
+                    state.attribution(agent_id).pending = Some(provider.clone());
+                }
+            }
             // One event per dispatched tool call, in either execution mode — the population the
-            // call-failure rollup counts, which is calls rather than turns.
-            GgTelemetryKind::ToolResult { failure, .. } => state.fold_tool_result(*failure),
+            // call-failure rollup counts, which is calls rather than turns. The total is counted
+            // beside the failures so the successful half is derivable from the record.
+            GgTelemetryKind::ToolResult { failure, .. } => {
+                state.tool_calls += 1;
+                state.fold_tool_result(*failure);
+            }
             GgTelemetryKind::BoardState { issues, .. } => {
                 for issue in issues {
                     state.issues_created.insert(issue.id.clone());
@@ -523,7 +730,7 @@ impl SessionSummaryTracker {
                 cost: *cost,
             }),
             // Every other event carries no aggregatable figure of its own: session/turn
-            // lifecycle, assistant text and tool call/result, per-turn usage deltas, the
+            // lifecycle, assistant text and tool calls (their results are counted above), the
             // knowledge-state snapshots (skills/memories/tasks), agent-status/worktree/
             // succession transitions, diagnostic logs, and the terminal summary/ended events
             // this summary itself precedes.
@@ -572,13 +779,69 @@ impl SessionSummaryTracker {
                 ..state.healing.clone()
             },
             errors: state.errors.clone(),
+            tool_calls: state.tool_calls,
+            rejected_responses: state.rejected.clone(),
+            max_response_chars: state.max_response_chars,
+            max_response_output_tokens: state.max_response_output_tokens,
             undocumented_calls: state.undocumented.clone(),
             issues_created: state.issues_created.len() as u64,
             issues_completed: state.issues_completed.len() as u64,
             slot_costs: state.slot_costs.clone(),
+            // The map key carries the identity and the accumulator the counts; the map's own
+            // order (providerless first, then lexicographic) is the deterministic order the
+            // contract promises, so this is a walk rather than a sort.
+            provider_stats: state
+                .provider_stats
+                .iter()
+                .map(|((provider, model_id), acc)| GgProviderStat {
+                    provider: provider.clone(),
+                    model_id: model_id.clone(),
+                    calls: acc.calls,
+                    tokens: acc.tokens,
+                    cost: acc.cost,
+                    rejected: acc.rejected,
+                    turns: acc.turns,
+                    working: acc.working,
+                    errors: acc.errors.clone(),
+                })
+                .collect(),
             effective_tools: state.effective_tools.clone(),
             limits: state.limits,
             limit_hit: state.limit_hit.clone(),
+        }
+    }
+}
+
+/// Sum two [`TokenCounts`], keeping a class `None` only when it is unreported on both sides —
+/// the metrics contract's "unreported is distinct from zero", applied to the rejected rollup.
+fn fold_counts(acc: TokenCounts, delta: TokenCounts) -> TokenCounts {
+    let add = |a: Option<u64>, b: Option<u64>| match (a, b) {
+        (None, None) => None,
+        (a, b) => Some(a.unwrap_or(0) + b.unwrap_or(0)),
+    };
+    TokenCounts {
+        uncached_input: add(acc.uncached_input, delta.uncached_input),
+        cached_input: add(acc.cached_input, delta.cached_input),
+        output: add(acc.output, delta.output),
+        reasoning: add(acc.reasoning, delta.reasoning),
+    }
+}
+
+/// Sum two optional [`Cost`]s on the same "unreported stays unreported" terms as [`fold_counts`].
+fn fold_cost(acc: Option<Cost>, delta: Option<Cost>) -> Option<Cost> {
+    let add = |a: Option<f64>, b: Option<f64>| match (a, b) {
+        (None, None) => None,
+        (a, b) => Some(a.unwrap_or(0.0) + b.unwrap_or(0.0)),
+    };
+    match (acc, delta) {
+        (None, None) => None,
+        (acc, delta) => {
+            let acc = acc.unwrap_or_default();
+            let delta = delta.unwrap_or_default();
+            Some(Cost {
+                comparable: add(acc.comparable, delta.comparable),
+                actual: add(acc.actual, delta.actual),
+            })
         }
     }
 }

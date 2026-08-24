@@ -85,6 +85,8 @@ same task in full. A machine that has never run The Test Cabinet starts with
 
 - [Add or Update a Model](/quickstarts/devops/add-or-update-a-model/) curates a
   model in the app.
+- [Probe a Model](/quickstarts/devops/probe-a-model/) checks a model's
+  responses-as-code readiness before spending gg runs on it.
 - [Publish a Run](/quickstarts/devops/publish-a-run/) reviews a produced run and
   publishes it to the gallery.
 - [Publish a Reference](/quickstarts/devops/publish-a-reference/) deploys a case

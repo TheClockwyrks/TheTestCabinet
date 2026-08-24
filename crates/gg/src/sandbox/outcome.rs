@@ -314,13 +314,17 @@ impl ProgramErrorKind {
     /// "the program faulted" and "the program was fighting a call it could not make", and all three
     /// land under [`ProgramFault`](crate::limits::TurnErrorKind::ProgramFault) at the base level.
     ///
-    /// **It is reached only where a guest reports the throw before its program dies.** On an arm
-    /// whose program dies the way its runtime kills it — which is what
-    /// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) asks of every arm
-    /// that can — nothing is handed up, the failure arrives as [`SandboxError::Trap`] and the turn
-    /// is recorded as [`SandboxTrap`](TurnErrorType::SandboxTrap) whatever the program threw. Which
-    /// arms are which is measured, per failure shape, by gate G8
-    /// (`sandbox/language/g8.rs`) and stated for a reader of the data at
+    /// **It is reached only where a guest reports the throw**, which
+    /// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) requires of every
+    /// guest whose runtime delivers an uncaught failure to its entry point: the interpreted arms,
+    /// the ECMAScript arms and C++ report, and an uncaught failed call is
+    /// [`ProgramApiError`](TurnErrorType::ProgramApiError) on all of them. On an arm whose program
+    /// dies the way its runtime kills it before anything can report — Rust, Swift and the JVM arms
+    /// — nothing is handed up, the failure arrives as [`SandboxError::Trap`] and the turn is
+    /// recorded as [`SandboxTrap`](TurnErrorType::SandboxTrap) whatever the program threw. A
+    /// `Sandbox*` type is otherwise reserved for a ceiling gg imposed or a real trap, never for an
+    /// API failure a program did not catch. Which arms are which is measured, per failure shape, by
+    /// gate G8 (`sandbox/language/g8.rs`) and stated for a reader of the data at
     /// [turn outcomes](https://docs.testcabinet.ai/gg/telemetry/turn-outcomes/).
     ///
     /// **This is the class's only consumer.** The feedback the model reads is the throw's rendered
@@ -418,7 +422,10 @@ pub enum SandboxError {
     /// is excluded from the measurement, so a program waiting on a long `shell` build is never
     /// stopped by it.
     #[error("{}", with_guest_stderr(
-        format!("the program ran longer than its {limit:?} execution timeout and was stopped"),
+        format!(
+            "the program ran longer than its {}s execution timeout and was stopped",
+            limit.as_secs_f64()
+        ),
         said,
     ))]
     Timeout {
@@ -452,12 +459,14 @@ pub enum SandboxError {
     },
     /// The guest trapped for some other reason.
     ///
-    /// On the arms with no exception mechanism reaching the host this is where an **ordinary
-    /// uncaught throw** arrives, because the program died the way its runtime killed it and said
-    /// what it had to say on standard error rather than over `feedback`. What the model reads is
-    /// unaffected — it is the runtime's own words either way — but the turn is recorded as
-    /// [`SandboxTrap`](TurnErrorType::SandboxTrap); see
-    /// [`ProgramErrorKind::turn_error_type`].
+    /// On the arms with no exception mechanism reaching the host (Rust, Swift, Kotlin, Java) this
+    /// is where an **ordinary uncaught throw** arrives, because the program died the way its
+    /// runtime killed it and said what it had to say on standard error rather than over
+    /// `feedback`. What the model reads is unaffected — it is the runtime's own words either way —
+    /// but the turn is recorded as [`SandboxTrap`](TurnErrorType::SandboxTrap); see
+    /// [`ProgramErrorKind::turn_error_type`]. A guest that CAN report a throw must, so on every
+    /// other arm this is a real trap — an exit, a native fault the runtime never saw — and never an
+    /// API failure a program did not catch.
     ///
     /// An explicit `exit` is one of them, and it is **named** rather than being left to a wasm
     /// backtrace — see the classifier's `exit_message`. It shares this variant rather than getting

@@ -38,7 +38,8 @@ use test_cabinet_entities::{
     case_reference_build, case_reference_sheet, comparison, coverage_group, coverage_plan,
     coverage_settings, gg_agent, gg_config, gg_dashboard, gg_saved_query, harness_config, job,
     ladder, ladder_climber, ladder_outcome, ladder_rung, model, model_alias, model_price,
-    publish_job, review, review_plan, review_revision, run, run_link, snapshot_state, tournament,
+    model_probe, model_probe_item, publish_job, review, review_plan, review_revision, run,
+    run_link, snapshot_state, tournament,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -6338,3 +6339,188 @@ fn parse_harness_slug(slug: &str) -> HarnessSlug {
 #[cfg(test)]
 #[path = "db.test.rs"]
 mod tests;
+
+/// The model-probe store: responses-as-code readiness probes of catalog models
+/// (see [`crate::probe`]).
+///
+/// A probe row is inserted `running` when an operator triggers it, its per-call
+/// items are appended as the background runner completes each call, and the row
+/// is finished exactly once with its verdict and spend. Probes are append-only
+/// history — a re-run is a new row — and console-only data: nothing here feeds
+/// the public snapshot.
+impl Db {
+    /// Insert a freshly-triggered probe row (id and timestamps minted by the
+    /// handler; status `running`).
+    pub async fn insert_model_probe(&self, row: model_probe::Model) -> Result<()> {
+        model_probe::ActiveModel {
+            id: Set(row.id),
+            model_slug: Set(row.model_slug),
+            openrouter_slug: Set(row.openrouter_slug),
+            provider: Set(row.provider),
+            user_id: Set(row.user_id),
+            samples: Set(row.samples),
+            max_tokens: Set(row.max_tokens),
+            full_context: Set(row.full_context),
+            request_json: Set(row.request_json),
+            status: Set(row.status),
+            error: Set(row.error),
+            verdict: Set(row.verdict),
+            base_clean_rate: Set(row.base_clean_rate),
+            best_variation_clean_rate: Set(row.best_variation_clean_rate),
+            spend: Set(row.spend),
+            created_at: Set(row.created_at),
+            finished_at: Set(row.finished_at),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// One probe by id, or `None` when unknown.
+    pub async fn get_model_probe(&self, id: &str) -> Result<Option<model_probe::Model>> {
+        Ok(model_probe::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?)
+    }
+
+    /// Every probe of one catalog model, newest first.
+    pub async fn list_model_probes(&self, model_slug: &str) -> Result<Vec<model_probe::Model>> {
+        Ok(model_probe::Entity::find()
+            .filter(model_probe::Column::ModelSlug.eq(model_slug))
+            .order_by_desc(model_probe::Column::CreatedAt)
+            .order_by_desc(model_probe::Column::Id)
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// Whether a probe of this catalog model is still running (the trigger
+    /// endpoint refuses a second concurrent probe of the same model).
+    pub async fn model_probe_running(&self, model_slug: &str) -> Result<bool> {
+        Ok(model_probe::Entity::find()
+            .filter(model_probe::Column::ModelSlug.eq(model_slug))
+            .filter(model_probe::Column::Status.eq("running"))
+            .one(&self.conn())
+            .await?
+            .is_some())
+    }
+
+    /// Append one completed (or errored) probe call.
+    pub async fn insert_model_probe_item(&self, row: model_probe_item::Model) -> Result<()> {
+        model_probe_item::ActiveModel {
+            id: Set(row.id),
+            probe_id: Set(row.probe_id),
+            condition: Set(row.condition),
+            sample: Set(row.sample),
+            provider: Set(row.provider),
+            finish_reason: Set(row.finish_reason),
+            native_finish_reason: Set(row.native_finish_reason),
+            label: Set(row.label),
+            clean: Set(row.clean),
+            response_text: Set(row.response_text),
+            reasoning_text: Set(row.reasoning_text),
+            prompt_tokens: Set(row.prompt_tokens),
+            completion_tokens: Set(row.completion_tokens),
+            cost: Set(row.cost),
+            duration_ms: Set(row.duration_ms),
+            error: Set(row.error),
+            created_at: Set(row.created_at),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// One probe's calls, in matrix order (condition insertion order is not
+    /// stored, so items are ordered by creation, which the sequential runner
+    /// makes matrix order).
+    pub async fn list_model_probe_items(
+        &self,
+        probe_id: &str,
+    ) -> Result<Vec<model_probe_item::Model>> {
+        Ok(model_probe_item::Entity::find()
+            .filter(model_probe_item::Column::ProbeId.eq(probe_id))
+            .order_by_asc(model_probe_item::Column::CreatedAt)
+            .order_by_asc(model_probe_item::Column::Id)
+            .all(&self.conn())
+            .await?)
+    }
+
+    /// The `/stats/providers` probe projection: every probe item's serving
+    /// provider, the probed model's catalog slug (via the owning probe), its
+    /// clean flag, and whether the call errored before classification —
+    /// four columns across the whole store, folded in Rust by
+    /// [`fold_probe_providers`](crate::stats::fold_probe_providers). The label
+    /// travels only as its absence: `None` is the errored call, exactly the
+    /// reading the probe reducer uses.
+    pub async fn probe_item_provider_rows(&self) -> Result<Vec<crate::stats::ProbeItemRow>> {
+        let rows: Vec<(Option<String>, String, bool, Option<String>)> =
+            model_probe_item::Entity::find()
+                .select_only()
+                .column(model_probe_item::Column::Provider)
+                .column(model_probe::Column::ModelSlug)
+                .column(model_probe_item::Column::Clean)
+                .column(model_probe_item::Column::Label)
+                .join(JoinType::InnerJoin, model_probe_item::Relation::Probe.def())
+                .into_tuple()
+                .all(&self.conn())
+                .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(provider, model_slug, clean, label)| {
+                (provider, model_slug, clean, label.is_none())
+            })
+            .collect())
+    }
+
+    /// Finish a probe: stamp its terminal status (`complete`/`failed`), the
+    /// verdict and clean rates when it completed, the failure message when it did
+    /// not, and the summed spend. Returns whether a row matched.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn finish_model_probe(
+        &self,
+        id: &str,
+        status: &str,
+        error: Option<String>,
+        verdict: Option<String>,
+        base_clean_rate: Option<f64>,
+        best_variation_clean_rate: Option<f64>,
+        spend: f64,
+        finished_at: &str,
+    ) -> Result<bool> {
+        let res = model_probe::Entity::update_many()
+            .col_expr(model_probe::Column::Status, Expr::value(status))
+            .col_expr(model_probe::Column::Error, Expr::value(error))
+            .col_expr(model_probe::Column::Verdict, Expr::value(verdict))
+            .col_expr(
+                model_probe::Column::BaseCleanRate,
+                Expr::value(base_clean_rate),
+            )
+            .col_expr(
+                model_probe::Column::BestVariationCleanRate,
+                Expr::value(best_variation_clean_rate),
+            )
+            .col_expr(model_probe::Column::Spend, Expr::value(spend))
+            .col_expr(model_probe::Column::FinishedAt, Expr::value(finished_at))
+            .filter(model_probe::Column::Id.eq(id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Fail every probe still marked `running` — the startup reap. A probe runs
+    /// inside the backend process, so a backend restart always killed it; unlike
+    /// the job-queue reap this is correct on every deployment shape.
+    pub async fn fail_running_model_probes(&self, now: &str) -> Result<u64> {
+        let res = model_probe::Entity::update_many()
+            .col_expr(model_probe::Column::Status, Expr::value("failed"))
+            .col_expr(
+                model_probe::Column::Error,
+                Expr::value("the backend restarted while the probe was running"),
+            )
+            .col_expr(model_probe::Column::FinishedAt, Expr::value(now))
+            .filter(model_probe::Column::Status.eq("running"))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected)
+    }
+}

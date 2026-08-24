@@ -181,17 +181,21 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
 }
 
 /// **What the model reads when a program died**: the engine's own rendering of the failure, which
-/// the guest wrote to standard error and `with_guest_stderr` put in front of gg's own words.
+/// the guest reported over `feedback.report-error`.
 ///
-/// Nothing catches a throw on this arm — capture rather than interception — so an unhandled failure
-/// is a trap that carries the language's words rather than a `ProgramError` gg composed.
+/// Nothing catches a throw on this arm — capture rather than interception — but the guest observes
+/// the uncaught value at its own entry point and reports it, so the failure is a `ProgramError`
+/// carrying the language's words rather than a store-killing trap.
 fn trapped(outcome: &SandboxOutcome) -> String {
     match &outcome.result {
-        Err(error) => error.to_string(),
-        Ok(result) => panic!(
-            "the program did not fail; it logged {:?} and reported {:?}",
-            outcome.logs, result.error
-        ),
+        Err(error) => panic!("the store died instead of the guest reporting: {error:?}"),
+        Ok(result) => match &result.error {
+            Some(error) => error.message.clone(),
+            None => panic!(
+                "the program did not fail; it logged {:?} and reported nothing",
+                outcome.logs
+            ),
+        },
     }
 }
 
@@ -1547,7 +1551,9 @@ main = do
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("program.purs:14:5"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                // The SDK's `ApiError` carries the wire's code and the guest reports it, so the
+                // turn is filed as the program fighting the API, never as a sandbox trap.
+                recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -1571,7 +1577,7 @@ main = do
                 names: &["Failed pattern match"],
                 located: Located::At("program.purs:15:5"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -1615,7 +1621,7 @@ main = Console.log (show (deeper 0))
                 names: &["Maximum call stack size exceeded"],
                 located: Located::At("program.purs:11:24"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::Abort,
@@ -1638,7 +1644,7 @@ main = do
                 names: &["the third step did not finish"],
                 located: Located::At("program.purs:15:5"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
         ],
     );

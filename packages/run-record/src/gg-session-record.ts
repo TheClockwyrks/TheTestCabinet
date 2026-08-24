@@ -368,7 +368,8 @@ export type GgSessionModelErrorKind =
   | "retry_exhausted"
   | "vision_unsupported"
   | "parse"
-  | "response_loop";
+  | "response_loop"
+  | "timeout";
 
 /**
  * Why a model call failed.
@@ -582,10 +583,14 @@ export type GgSessionToolOutcome = {
 /**
  * Which slot of gg's window model a [prompt item](GgSessionPromptItem) came from.
  *
- * The window is not a flat list: two of its three positions are *slots* that are
- * assigned rather than appended, precisely so they cannot accumulate duplicates.
+ * The window is not a flat list: every position but the thread is a *slot* that is
+ * assigned rather than appended, precisely so it cannot accumulate duplicates.
  */
-export type GgSessionPromptSlot = "system" | "thread" | "context_usage";
+export type GgSessionPromptSlot =
+  | "system"
+  | "thread"
+  | "context_usage"
+  | "trailing_notice";
 
 /**
  * Whether a [prompt item](GgSessionPromptItem) is retained verbatim across a compaction

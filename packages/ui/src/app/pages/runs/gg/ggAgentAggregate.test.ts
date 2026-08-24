@@ -844,6 +844,41 @@ describe("deriveGgAgentSummaries", () => {
     ]);
   });
 
+  it("keeps a method and the free function it aliases as two rows of one operation", () => {
+    // gg names a method module-relative with its receiver — `OpenView.close` beside `close`
+    // — so the two spellings of `views.close` are two rows here, each with its own
+    // offered-by count. Folding them by a bare name would report one row and lose the
+    // method's existence; both carry the one operation, so both join to the same figure.
+    const views: GgAgentApi = {
+      module: "views",
+      path: "gg.views",
+      description: "Show the model something.",
+      functions: [
+        { name: "close", operation: "views.close" },
+        { name: "current", operation: "views.current" },
+        { name: "OpenView.close", operation: "views.close" },
+      ],
+    };
+    const summaries = summarize(
+      [
+        spawn("root", "root", "vendor/big"),
+        spawn("w1", "worker", "vendor/small", "root"),
+        offered("w1", [], [views]),
+      ],
+      set(
+        profile("root", "vendor/big", ["subagents"], "Root"),
+        profile("worker", "vendor/small", ["responses-as-code"]),
+      ),
+    );
+
+    const surface = summaries.find((s) => s.profileId === "worker")!.surface!;
+    expect(surface.apis[0]!.functions).toEqual([
+      { name: "close", key: "views.close", offeredBy: 1 },
+      { name: "current", key: "views.current", offeredBy: 1 },
+      { name: "OpenView.close", key: "views.close", offeredBy: 1 },
+    ]);
+  });
+
   it("sums a profile's api calls across its instances, tool or no tool", () => {
     // The other half of the offered-versus-called contrast, and the half the old tool-keyed
     // join could not produce: `views.openFile` runs a `read_file` and `views.current` runs

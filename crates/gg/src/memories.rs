@@ -761,7 +761,7 @@ impl fmt::Display for MemoryError {
             ),
             MemoryError::WouldEmpty(name) => write!(
                 f,
-                "that edit would leave memory `{name}` empty; delete it instead"
+                "the edit would leave memory `{name}` empty; delete it instead"
             ),
             MemoryError::NoKeywords => {
                 write!(f, "`keywords` needs at least one non-empty keyword")

@@ -165,8 +165,8 @@ impl Ending {
     pub(crate) fn finished(summary: String, finish: &str) -> Result<Self, String> {
         if summary.trim().is_empty() {
             return Err(format!(
-                "`{finish}` takes a non-empty summary — one or two sentences saying what you \
-                 did. Your session is NOT over; write the summary and call it again."
+                "`{finish}` requires a non-empty summary (one or two sentences on what was \
+                 done). The session is NOT over; call `{finish}` again with the summary."
             ));
         }
         Ok(Self::Finished { summary })
@@ -192,8 +192,8 @@ impl Ending {
             .collect();
         if items.is_empty() {
             return Err(format!(
-                "`{request_changes}` takes at least one change, each saying what is wrong and \
-                 what to change. If the work needs nothing, call `{approve}` instead. Your \
+                "`{request_changes}` requires at least one change, each naming what is wrong \
+                 and what to change; for work that needs nothing, call `{approve}` instead. The \
                  session is NOT over."
             ));
         }

@@ -49,10 +49,13 @@ stops a single call from flooding the window and forces an agent to be deliberat
 about what it looks at, while costing a round trip per page. The two modes are
 the arms of that experiment.
 
-| Mode | `read_file` returns | Paging arguments |
-| --- | --- | --- |
-| `unlimited` | The whole file, one call. | — |
-| `default-cap` | `lineCap` lines, for a call that names no `limit`. | `offset` and `limit` |
+| Mode | A call that names no `limit` returns |
+| --- | --- |
+| `unlimited` | The rest of the file, from `offset` to its end. |
+| `default-cap` | `lineCap` lines, from `offset`. |
+
+Both modes take `offset` and `limit` and honor them whenever they are given.
+The mode decides only what a call that names no `limit` gets.
 
 The `lineCap` param sets the window a call gets when it asks for no `limit` of
 its own. The capability writes it whichever mode is selected, so a sweep that
@@ -63,20 +66,26 @@ does not recognize each refuse the launch, the last of them naming the two
 modes. A refusal names every value in the configuration gg cannot honour exactly
 as written, so one pass fixes them all.
 
-`default-cap` gives `read_file` two extra arguments, so the agent can page
+`read_file` takes two paging arguments under either mode, so the agent can page
 through a file it did not get at once:
 
-- `offset` — the 1-based line to start from, defaulting to `1`. An offset past
-  the end of the file is an error naming the file's length.
-- `limit` — how many lines to return. A larger value is always honored,
-  verbatim.
+- `offset` — the 1-based line to start from, defaulting to `1` under either
+  mode. An offset past the end of the file is an error naming the file's
+  length.
+- `limit` — how many lines to return. A value that is given is always honored,
+  verbatim, under either mode; under `default-cap` a larger value than the cap
+  is how the agent talks past it.
 
-A windowed result ends with a line saying what the agent is looking at and where
-to continue from:
+A windowed result — one that starts after line 1 or stops short of the file's
+end, whichever mode and whichever arguments produced it — ends with a line
+saying what the agent is looking at and where to continue from:
 
 ```
 [showing lines 251-500 of 1200; continue with offset: 501]
 ```
+
+A result that ran to the end of the file from an `offset` past line 1 still
+says which lines it shows, without a continuation.
 
 ### Whole-file reads under either mode
 
@@ -95,12 +104,13 @@ Two further properties keep the arms comparable:
 - A file shorter than the cap reads identically under both modes, with no window
   note and no paging footer. Only files big enough to be capped differ between
   arms, so a comparison measures the cap rather than incidental formatting.
-- `unlimited` offers `offset` and `limit` nowhere. The tool's schema omits them,
-  and the tool-calling [system prompt](/gg/prompts/) states the cap only under
-  `default-cap`, with this run's own `lineCap` interpolated. Under
-  [responses as code](/gg/responses-as-code/overview/) no prompt states it: the
-  paging footer above carries the file's length and where to continue from, on
-  the read that was actually windowed.
+- The tool's schema offers `offset` and `limit` under both modes and states on
+  `limit` what leaving it out means: the cap under `default-cap`, the end of
+  the file under `unlimited`. The tool-calling [system prompt](/gg/prompts/)
+  states the cap only under `default-cap`, with this run's own `lineCap`
+  interpolated. Under [responses as code](/gg/responses-as-code/overview/) no
+  prompt states it: the paging footer above carries the file's length and
+  where to continue from, on the read that was actually windowed.
 
 A separate 256 KiB byte ceiling backstops every mode, since a file can have
 enormous lines, and applies to whatever the line window selected. A read

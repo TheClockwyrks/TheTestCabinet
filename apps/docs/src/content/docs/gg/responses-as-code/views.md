@@ -29,6 +29,14 @@ made.
 An image is a file view of an image file, whose item carries the picture. A view
 is the only way a picture reaches a code agent's window.
 
+A file view arrives headed by its path and the 1-based inclusive line range it
+shows, `File: src/main.ts:100-250` for a paged read and `File: specs/rules.md:1-N`
+for a whole file, where `N` is the file's total line count. The range is what
+the read returned rather than what the call asked for, and the path is the one
+the view was opened under, relative to the workspace. A view that shows no
+lines, an image or an empty file, is headed by the path alone. The body is the
+file's text and nothing else.
+
 A search view carries a selector like any other view, and a search the agent
 itself ran is keyed under one constant selector, so every such search replaces
 the last. The selector is an argument rather than a constant because [the
@@ -47,10 +55,15 @@ by `gg.views.close`.
 | `gg.views.close(selector)` | Closes every file, text and search view carrying that selector, and returns how many it closed. |
 | `gg.views.current()` | Lists what is open: each view's `kind`, `selector`, `tokens`, a paged file view's `region`, and a `close()` member. |
 
-`openText`, `openDocsView`, `close` and `current` are serviced whatever the run's
-capability set says, so a run that enables no tools can still show its model
-something. `openFile` is gated on `read_file`, because it is a read and the one
-call in the family that dispatches a tool.
+`openText` and `openDocsView` are serviced whatever the run's capability set
+says, so a run that enables no tools can still show its model something.
+`openFile` is gated on `read-file`, because it is a read and the one call in the
+family that dispatches a tool. `close` and `current` — and the `close()` member
+of the view `current` lists — are bought by
+[`agent-managed-context`](/gg/agent-managed-context/), because closing a view and
+listing what is open are context management. A program without it compiles
+against the same SDK as every other, and the call is refused by the membrane with
+the `unavailable` error every withheld call raises.
 
 Closing a selector that names nothing open returns `0`, which is a successful
 call. An empty selector handed to `close` is `invalid-argument`, as is an empty
@@ -124,9 +137,10 @@ closing is what takes back a page the agent still holds.
 | `IMAGE_ATTACH_CAP` | 8 MiB | one attached picture |
 
 Breaching one of the three text-view caps is a catchable `ApiError` with code
-`limit-exceeded` naming the cap, thrown at the call site, and never a
-truncation. The program can split the body, trim it, or write it to a file and
-open a file view of that, in the same turn, before it has finished running.
+`limit-exceeded` stating the offending size and the bound (and, for the turn
+budget, what remains of it), thrown at the call site, and never a truncation.
+The program can split the body, trim it, or write it to a file and open a file
+view of that, in the same turn, before it has finished running.
 `IMAGE_ATTACH_CAP` is not enforced that way: an `openFile` of a picture over it
 is a successful read whose result describes the file and says it is too large to
 display, and no picture is attached.

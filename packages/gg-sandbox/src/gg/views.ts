@@ -68,6 +68,8 @@ export interface OpenView {
    *
    * @ggop views.close
    * @returns how many views were closed, which is zero when this one has already gone.
+   * @throws `ApiError` with `unavailable` for an agent whose run did not buy
+   * `agent-managed-context`, which is what buys closing a view.
    */
   close(): number;
 }
@@ -86,8 +88,10 @@ export interface OpenView {
  * @ggop views.open_file
  * @param path The file to open, relative to the workspace or absolute.
  * @param options The window of lines to show; omit it to show the whole file.
- * @param options.offset The 1-based line to start at.
- * @param options.limit How many lines to show from `offset`.
+ * @param options.offset The 1-based line to start at. Omitted, the view starts at the first line.
+ * @param options.limit How many lines to show from `offset`. Omitted, a capped read policy's
+ * default applies, or the view runs to the end of the file. Both are honoured under every read
+ * policy.
  * @returns the same value `gg.files.readFile` hands back for that window, so a program can use what
  * it just put in front of the agent.
  * @throws `ApiError` with `not-found` for a path that is not there. The read is what fails, so
@@ -188,18 +192,21 @@ function docsName(target: Function | string): string {
  * failure, so a program that tidies up unconditionally needs no guard on every call.
  *
  * Documentation views are not among them: `gg.docs.close` is what takes one of those away, and it is
- * bought by a capability this call is not. A sweep that quietly reached them would answer zero for an
+ * bought by a capability of its own, `docview-close`. A sweep that quietly reached them would answer zero for an
  * agent that may not close one, which reads exactly like a selector that named nothing.
  *
  * Closing a file view forgets what was read, not what exists. Closing a text view discards the only
  * copy of what it held, so anything needed later belongs in a file or a memory first.
+ *
+ * Closing a view is context management, and is bought by the same `agent-managed-context`
+ * capability that buys evicting a file view: an agent whose run did not enable it is refused.
  *
  * @ggop views.close
  * @param selector What the view is filed under: a file's path, a text view's label, or `search
  * results`.
  * @returns how many views were closed, which is zero when the selector named nothing open.
  * @throws `ApiError` with `invalid-argument` for an empty selector, which could never have been a
- * view's name.
+ * view's name, and `unavailable` for an agent whose run did not buy `agent-managed-context`.
  */
 export function close(selector: string): number {
   // A `u32`, so already a `number` — the `bigint` conversion `current` makes is not needed here.
@@ -215,11 +222,13 @@ export function close(selector: string): number {
  *
  * What it enumerates is the context window's contents, not any module's functions.
  *
- * Nothing about it can fail: it reads gg's own live view set behind a binding no run withholds, so
- * there is no argument to refuse and no capability to be without.
+ * It takes no argument, so once granted nothing about it can fail: an empty window is an empty
+ * list. Listing what is open is context management, bought with `close` by the
+ * `agent-managed-context` capability, and an agent whose run did not enable it is refused.
  *
  * @ggop views.current
  * @returns every view open right now, each with what closes it and roughly what it costs.
+ * @throws `ApiError` with `unavailable` for an agent whose run did not buy `agent-managed-context`.
  */
 export function current(): OpenView[] {
   // The method is attached here rather than declared on a class: nothing in a program ever

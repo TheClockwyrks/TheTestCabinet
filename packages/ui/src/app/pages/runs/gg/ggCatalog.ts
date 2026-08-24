@@ -1637,7 +1637,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Agent-managed context",
     group: "Context",
     purpose:
-      "The agent reclaims window space itself: evicting file views, archiving thread sections.",
+      "The agent reclaims window space itself: evicting file views, archiving thread sections, and — under responses as code — closing the views it opened and listing what is open.",
     params: [
       {
         key: "topFileViews",
@@ -1660,10 +1660,16 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       ownershipParam("what it has archived"),
     ],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
+    // The two view calls are responses-as-code only: a tool-calling agent has no `view`
+    // object, so they have no tool beside them. Closing a view and listing what is open are
+    // context management, which is why they are this capability's rather than bound to
+    // every program.
     operations: [
       "context.evict_file_view",
       "context.archive_thread",
       "context.search_archive",
+      "views.close",
+      "views.current",
     ],
     features: [
       {
@@ -1676,6 +1682,12 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         tools: ["archive_thread", "search_archive"],
         operations: ["context.archive_thread", "context.search_archive"],
         hint: "Archiving and searching the archive are granted together: an archive the agent cannot search back is unreadable.",
+      },
+      {
+        label: "Close views",
+        tools: [],
+        operations: ["views.close", "views.current"],
+        hint: "Closing a view and listing what is open are granted together: a program decides what to close by reading what it holds. Responses as code only — a tool-calling agent reclaims file views with the eviction slider and has no text views to close.",
       },
     ],
   },
@@ -2104,12 +2116,20 @@ export const OWNERSHIP_MODULE_KINDS: ReadonlySet<GgModuleKind> = new Set(
 // `capabilityEnabled` facet space, where "is the cost ceiling enabled?" would be a
 // dimension no study wants to slice its results by.
 
-// The two ceilings a run cannot be conducted without, and so the two a fresh
-// configuration is written with. Every other ceiling is unarmed when its field is empty —
-// gg arms no error ceiling, no turn ceiling, no runtime and no cost nobody wrote — while
-// these two have no "off" a run could proceed under: a run always has *some* pool, and the
-// capture journal is always being written.
+// The two ceilings a run cannot be conducted without. Every other ceiling is unarmed
+// when its field is empty — gg arms no error ceiling, no turn ceiling, no runtime and no
+// cost nobody wrote — while these two have no "off" a run could proceed under: a run
+// always has *some* pool, and the capture journal is always being written.
 export const AUTHORED_MAX_PARALLEL = 16;
+
+// The error-ceiling guardrails a fresh configuration is seeded with: five error turns in
+// a row, or a fifth of the last fifty turns, ends an agent. Unlike the two required
+// ceilings these are clearable — an emptied field is that ceiling unarmed, exactly as a
+// stored configuration that omitted it. The seeding is the console's; gg's own contract
+// still arms nothing a saved configuration does not write.
+export const AUTHORED_MAX_CONSECUTIVE_ERRORS = 5;
+export const AUTHORED_MAX_ERROR_RATE = 0.2;
+export const AUTHORED_ERROR_RATE_WINDOW = 50;
 
 // One execution ceiling's control. `key` is the wire field on
 // `GgCapabilitySet.limits`; `kind` is what makes the value legible *and* checkable
@@ -2128,11 +2148,11 @@ export interface RunLimitSpec {
   kind: "count" | "fraction" | "amount" | "mib";
   placeholder?: string;
   hint: string;
-  // What a fresh configuration's field is seeded with, and what an older stored one
-  // missing this ceiling is filled in with when it is opened. Only the two
-  // [required](RunLimitSpec.required) ceilings have one: the rest are unarmed while their
-  // field is empty, and seeding a figure into one of those would arm a ceiling nobody
-  // asked for.
+  // What a fresh configuration's field is seeded with — and, when the ceiling is
+  // [required](RunLimitSpec.required), what an older stored one missing it is filled in
+  // with when it is opened. An optional ceiling's figure is a clearable guardrail: it
+  // seeds fresh configurations only, because filling it into a stored document that left
+  // the ceiling out would arm one nobody asked for.
   defaultValue?: string;
   // Whether gg refuses a run this ceiling is absent from. True of the parallelism cap and
   // the journal ceiling, which bound something every run does, and of nothing else: an
@@ -2184,21 +2204,24 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     label: "Consecutive errors",
     kind: "count",
     placeholder: "no ceiling",
-    hint: "How many error turns in a row end an agent. Empty arms no such ceiling: a run whose model errors every turn spends its turns, its runtime or its cost instead. A turn is an error when the work it declared could not be carried out — a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
+    defaultValue: String(AUTHORED_MAX_CONSECUTIVE_ERRORS),
+    hint: "How many error turns in a row end an agent. Seeded as a guardrail into a fresh configuration; clear the field to unarm the ceiling, and a run whose model errors every turn spends its turns, its runtime or its cost instead. A turn is an error when the work it declared could not be carried out — a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
   },
   {
     key: "maxErrorRate",
     label: "Error rate",
     kind: "fraction",
     placeholder: "no ceiling",
-    hint: "The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all, and neither is armed unless you write it.",
+    defaultValue: String(AUTHORED_MAX_ERROR_RATE),
+    hint: "The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all. Seeded with its window as a guardrail into a fresh configuration; clear both fields to unarm.",
   },
   {
     key: "errorRateWindow",
     label: "Error-rate window (turns)",
     kind: "count",
     placeholder: "no ceiling",
-    hint: "How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns.",
+    defaultValue: String(AUTHORED_ERROR_RATE_WINDOW),
+    hint: "How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns. Seeded with the rate as a guardrail into a fresh configuration; clear both fields to unarm.",
   },
   {
     key: "maxCost",

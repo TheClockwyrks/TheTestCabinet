@@ -880,7 +880,17 @@ pub struct GgAgentApi {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentApiFunction {
-    /// The name a program calls it by — `readFile`, `openDocsView`, `finish`.
+    /// The name a program calls it by, **relative to its module**, in this arm's own spelling:
+    /// a free function is its bare name — `readFile`, `openDocsView`, `finish` — and a method
+    /// carries the receiver it hangs off, in the arm's own separator — `OpenView.close` on
+    /// TypeScript, `OpenView#close` on Java, `open_view::close` on C++. Joining the module's
+    /// [`path`](GgAgentApi::path) onto it with the arm's separator gives the catalogue's
+    /// fully-qualified name (`gg.views.OpenView.close`), which is the key a documentation view
+    /// opens by.
+    ///
+    /// Module-relative rather than bare so that two rows of one module never share a name: an
+    /// arm that binds `close` as a free function **and** as a method on the value `current` lists
+    /// reports `close` and `OpenView.close`, not `close` twice.
     pub name: String,
     /// gg's own identity for what this call does — `files.read_file`, `views.open_docs_view`,
     /// `session.finish` — which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it
@@ -999,8 +1009,11 @@ pub const PARAM_SUMMARY_HEADROOM: &str = "summaryHeadroom";
 /// The stable id of the Phase 2 [agent-managed context] capability: the model-facing
 /// complement to [compaction](CAPABILITY_COMPACTION) that gives the agent agency over
 /// its own window — evicting file views it no longer needs and archiving sections of
-/// its thread (removed from the live window but still searchable). Opt-in, like
-/// compaction.
+/// its thread (removed from the live window but still searchable). Under
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) it also buys the two view calls
+/// that manage the window — `views.close` and `views.current` — since closing a view and
+/// listing what is open are context management; opening a view is not, and stays bound
+/// to every program. Opt-in, like compaction.
 ///
 /// [agent-managed context]: https://docs.testcabinet.ai/gg/agent-managed-context/
 pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
@@ -1355,9 +1368,10 @@ pub const CAPABILITY_FORK: &str = "fork";
 /// a fence the model added, drops explanatory prose from around the program, and halves a reply that
 /// arrived as one completion concatenated with a byte-identical copy of itself. What counts as a
 /// fence tag, or as a line of prose, belongs to the program language; the repairs themselves do not.
-/// Every application is disclosed to the model in its turn feedback
-/// and [counted on the run](GgHealingSummary), because a repair the model is not told about teaches
-/// it nothing and corrupts the figures two configurations would be compared on; each
+/// Every application is [counted on the run](GgHealingSummary) and reported on the operator's
+/// stream, and none of it is disclosed to the model — a repaired reply is simply the reply that ran,
+/// and the one the model's own history carries — so the figures two configurations are compared on
+/// measure the model's compliance rather than its response to being corrected; each
 /// [strategy](GgHealingStrategy) is independently toggleable through the capability's `healing`
 /// param — the first two on unless turned off, and
 /// [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) off unless a run arms it.
@@ -4669,6 +4683,19 @@ pub enum GgTurnErrorType {
     /// A `2xx` response could not be parsed into a reply. Retrying an already-successful-but-
     /// malformed response would not help, so the turn ends on it.
     ModelParse,
+    /// The model call ran into gg's **per-call ceiling** (five minutes) without producing a reply —
+    /// a stalled provider, not a refusal. Unlike every other `model_` type this one does **not**
+    /// end the session: the turn is recorded as this error and the loop asks again, so a stalled
+    /// endpoint costs the run one bounded error turn per stall and the run ends only when the
+    /// [error ceilings](GgRunLimits) say it should.
+    ModelTimeout,
+    /// The reply hit the **provider's output cap** (`finish_reason: length`) and was rejected
+    /// whole: a length-capped reply is presumed a degenerate generation, so it never enters the
+    /// context, its usage is kept out of the run's cost and turn metrics (tallied on
+    /// [`GgSessionSummary::rejected_responses`] instead), and the turn is retried on the same
+    /// terms as [`ModelTimeout`](Self::ModelTimeout) — recorded as this error, bounded by the
+    /// error ceilings.
+    ModelLengthCapped,
     /// The program is not valid source in its [language](GgProgramLanguage) — the parser's own
     /// diagnostics. Nothing ran.
     TranspileSyntax,
@@ -4740,13 +4767,15 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 19] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
         Self::ModelResponseLoop,
         Self::ModelVisionUnsupported,
         Self::ModelParse,
+        Self::ModelTimeout,
+        Self::ModelLengthCapped,
         Self::TranspileSyntax,
         Self::TranspileCompile,
         Self::TranspileUnsupported,
@@ -4773,7 +4802,9 @@ impl GgTurnErrorType {
             | Self::ModelRetryExhausted
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
-            | Self::ModelParse => GgTurnErrorKind::ModelApi,
+            | Self::ModelParse
+            | Self::ModelTimeout
+            | Self::ModelLengthCapped => GgTurnErrorKind::ModelApi,
             Self::TranspileSyntax | Self::TranspileCompile | Self::TranspileUnsupported => {
                 GgTurnErrorKind::Transpile
             }
@@ -4803,6 +4834,8 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model_response_loop",
             Self::ModelVisionUnsupported => "model_vision_unsupported",
             Self::ModelParse => "model_parse",
+            Self::ModelTimeout => "model_timeout",
+            Self::ModelLengthCapped => "model_length_capped",
             Self::TranspileSyntax => "transpile_syntax",
             Self::TranspileCompile => "transpile_compile",
             Self::TranspileUnsupported => "transpile_unsupported",
@@ -4830,6 +4863,8 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model looped every attempt",
             Self::ModelVisionUnsupported => "model cannot see images",
             Self::ModelParse => "unparseable model response",
+            Self::ModelTimeout => "model call timed out",
+            Self::ModelLengthCapped => "length-capped reply rejected",
             Self::TranspileSyntax => "syntax error",
             Self::TranspileCompile => "compiler rejected the program",
             Self::TranspileUnsupported => "unsupported program feature",
@@ -5818,9 +5853,10 @@ pub struct GgReviewer {
 /// name, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly
 /// that reason.
 ///
-/// Every application is disclosed to the model in its turn feedback — a repair the model is never
-/// told about teaches it nothing and corrupts the very question a run of this shape asks, which is
-/// whether models learn the contract.
+/// Every application is counted on the run record and reported on the operator's stream, and none
+/// of it is disclosed to the model: the model's history carries the healed program as its own reply,
+/// so the count answers the question a run of this shape asks — how often the model broke the
+/// contract — unperturbed by any correction.
 ///
 /// Two of the three are armed unless a configuration turns them off, because for those, repairing
 /// is strictly safer than not: the reply they delete from could not have run as sent. The exception
@@ -6546,6 +6582,38 @@ impl GgUndocumentedCalls {
     }
 }
 
+/// The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly
+/// the length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.
+///
+/// This bucket exists so the exclusion is visible rather than silent. A rejected reply's usage is
+/// deliberately kept **out** of the run's cost and turn metrics — a degenerate generation must not
+/// make a run look expensive or long — but the money was still spent, and "how often does this
+/// model cap out, and what does it cost?" is a question the owner asks of the durable record.
+/// Folded from the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgRejectedResponses {
+    /// How many replies were rejected.
+    pub count: u64,
+    /// The tokens the provider billed for them, summed — spend absent from the run's own
+    /// [token totals](crate::metrics::TokenCounts) by design.
+    pub tokens: TokenCounts,
+    /// Their cost, summed, when the provider reported any — spend absent from the run's recorded
+    /// cost by design.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub cost: Option<Cost>,
+}
+
+impl GgRejectedResponses {
+    /// Whether nothing was rejected — the state of the overwhelming majority of runs, and the
+    /// condition the rollup is omitted from the wire on.
+    pub fn is_empty(&self) -> bool {
+        self.count == 0
+    }
+}
+
 /// One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable
 /// tail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a
 /// query can total or slice a gg run's spend per model without replaying the stream.
@@ -6575,6 +6643,61 @@ pub struct GgSlotCost {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub cost: Option<Cost>,
+}
+
+/// One `(provider, model)` health slice in a [`GgSessionSummary`] — which upstream provider
+/// served a run's model calls, and how the calls it served went. Folded from the run's own
+/// stream: the [`Usage`](GgTelemetryKind::Usage) deltas contribute the calls with their tokens
+/// and cost, the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the length-capped
+/// replies, and the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the per-turn judgement,
+/// each attributed to the provider its own call named.
+///
+/// Two invariants hold across a summary's slices: their [`turns`](Self::turns) sum to the
+/// [error rollup](GgErrorSummary::turns)'s denominator, and within a slice `turns` minus
+/// [`working`](Self::working) minus its error count is its fatal turns.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgProviderStat {
+    /// OpenRouter's name for the upstream provider that served this slice's calls. `None` for the
+    /// slice of calls that named none — a gateway that stamps no provider, or a turn whose call
+    /// produced no reply to name one (a model timeout).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub provider: Option<String>,
+    /// The model this slice's agent was running on, as the agent's own
+    /// [`Usage`](GgTelemetryKind::Usage) deltas named it. `None` for a turn or rejection recorded
+    /// before the agent's first usage delta named one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub model_id: Option<String>,
+    /// Model calls folded from the [`Usage`](GgTelemetryKind::Usage) deltas — the calls that
+    /// reported usage. A call that reported neither tokens nor cost emits no delta and reaches
+    /// only the turn figures below.
+    pub calls: u64,
+    /// The tokens those calls reported, summed in the shared [`TokenCounts`] units.
+    pub tokens: TokenCounts,
+    /// Their cost, summed, when any of them reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub cost: Option<Cost>,
+    /// Replies gg [rejected whole](GgRejectedResponses) — the length-capped ones — that this
+    /// slice's provider served. `0`, and omitted, for the ordinary slice with none.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub rejected: u64,
+    /// Turns attributed to this slice: each [`TurnOutcome`](GgTelemetryKind::TurnOutcome) lands on
+    /// the provider its own call named, or on the providerless slice when it named none.
+    pub turns: u64,
+    /// The turns among them that worked — a [progressed](GgTurnOutcome::Progressed) or
+    /// [finished](GgTurnOutcome::Finished) outcome.
+    pub working: u64,
+    /// The errored turns among them, keyed by [`GgTurnErrorType::wire_id`] — the same open,
+    /// string-keyed breakdown [`GgErrorSummary::by_type`] is, and omitted when empty on the same
+    /// terms.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub errors: BTreeMap<String, u64>,
 }
 
 /// The compact, aggregatable summary of one whole gg session — the per-run outcome
@@ -6719,6 +6842,39 @@ pub struct GgSessionSummary {
     /// Unlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a
     /// tool-calling turn fails too, just in fewer ways.
     pub errors: GgErrorSummary,
+    /// Every **dispatched tool call** the run made, in either execution mode — one per
+    /// [`ToolResult`](GgTelemetryKind::ToolResult) event, failed or not. This is the population
+    /// [`GgErrorSummary::tool_failures`] classifies the failed half of, recorded so the successful
+    /// half is derivable: `tool_calls` minus the failures is the calls that succeeded, and on a
+    /// record that carries the figure it is at least the sum of the failures.
+    ///
+    /// `0` — and omitted — for a run that dispatched none, so a reader must treat a summary with
+    /// failures but no total as one whose total was not recorded.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub tool_calls: u64,
+    /// How many model replies gg **rejected whole** — the length-capped ones — and the spend they
+    /// burned; see [`GgRejectedResponses`]. Their usage is excluded from the run's cost and turn
+    /// metrics by design, so this rollup is where it lives instead. Omitted from the wire for the
+    /// ordinary run that rejected nothing.
+    #[serde(default, skip_serializing_if = "GgRejectedResponses::is_empty")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub rejected_responses: GgRejectedResponses,
+    /// The longest reply, in characters, of any turn that **worked** (a progressed or finished
+    /// outcome) — folded as a maximum over the
+    /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events' `response_chars`. Recorded so an
+    /// output ceiling can later be chosen from data rather than guessed: a cap below this figure
+    /// would have truncated a reply that was doing its job. `0` — and omitted — for a run with no
+    /// successful turn.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub max_response_chars: u64,
+    /// The same maximum in the provider's own unit: **completion tokens** (output plus reasoning,
+    /// the figure an output cap is measured in). `0` — and omitted — for a run whose successful
+    /// turns reported no usage.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub max_response_output_tokens: u64,
     /// How many calls the run's models wrote **without ever having read the call's documentation**
     /// — the run's [discovery rollup](GgUndocumentedCalls), folded from the same
     /// [`CodeExecution`](GgTelemetryKind::CodeExecution) events
@@ -6747,6 +6903,14 @@ pub struct GgSessionSummary {
     /// in first-seen order. Empty only for a run that recorded no usage (a launch that never ran a
     /// turn).
     pub slot_costs: Vec<GgSlotCost>,
+    /// The per-`(provider, model)` health rollup for the run — which upstream providers served its
+    /// model calls and how the calls each one served went; see [`GgProviderStat`]. One slice per
+    /// pair observed, in key order with the providerless slice first. Empty — and omitted — when
+    /// no call, turn or rejection was ever folded in, which includes every record from a client
+    /// that reports no usage at all.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub provider_stats: Vec<GgProviderStat>,
     /// The **effective toolset**: the exact set of tool names offered to the run's agent,
     /// in the order they were presented to the model. This is what the run's
     /// [capability set](GgCapabilitySet) *actually resolved to* — a capability contributes
@@ -6999,6 +7163,40 @@ pub enum GgTelemetryKind {
         /// The cost of this accounting, when it could be determined.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         cost: Option<Cost>,
+        /// The upstream **provider** that served the call, when the gateway reported one
+        /// (OpenRouter's `provider` response field). A model id is served by several providers
+        /// behind one name, and provider-shaped failures are only attributable — and a provider
+        /// only blacklistable — if every call's spend names who served it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
+    },
+    /// A model reply gg **rejected whole** instead of using: today, exactly the replies that hit
+    /// the provider's output cap (`finish_reason: length`), which are presumed degenerate.
+    ///
+    /// A rejected reply never enters the context, and its usage is deliberately **excluded** from
+    /// the run's cost and turn metrics — no [`Usage`](Self::Usage) delta is emitted for it — so
+    /// this event is the only place the spend appears, and
+    /// [`GgSessionSummary::rejected_responses`] is its durable sum. The turn that produced it is
+    /// recorded as a [`model_length_capped`](GgTurnErrorType::ModelLengthCapped) error and
+    /// retried, bounded by the error ceilings.
+    ResponseRejected {
+        /// Why the reply was rejected — the provider's own finish reason, today always
+        /// `"length"`. A string so a future rejection class joins without a schema change.
+        reason: String,
+        /// The rejected reply's length in characters, measured by gg — the figure a later
+        /// output ceiling would be judged against.
+        chars: u64,
+        /// The usage the provider billed for the rejected call — spend the run's own metrics do
+        /// not include, kept here so nothing is silently lost.
+        tokens: TokenCounts,
+        /// The rejected call's cost, when the provider reported one. Excluded from the run's
+        /// recorded cost on the same terms as the tokens.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cost: Option<Cost>,
+        /// The upstream provider that served the rejected call, when the gateway named one — the
+        /// attribution that makes a provider-shaped failure blacklistable.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
     },
     /// The per-source breakdown of what fills the context window, assembled for a turn.
     ///
@@ -7123,6 +7321,12 @@ pub enum GgTelemetryKind {
         /// or synthesized response).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         duration_ms: Option<u64>,
+        /// The upstream **provider** that served the call, when the gateway reported one
+        /// (OpenRouter's `provider` response field) — the request/response record's copy of the
+        /// attribution the [`Usage`](Self::Usage) delta carries, so a provider-shaped reply is
+        /// attributable from the message log alone.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
     },
     /// Where one turn's wall-clock went, split into the three phases every turn passes
     /// through: assembling the prompt, waiting on the model, and handling what came back.
@@ -8040,6 +8244,22 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "is_zero_u64")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         loop_abort_chars: u64,
+        /// The reply's length in characters — the model's raw text, before any healing. Carried on
+        /// every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum
+        /// over the turns that **worked** (a progressed or finished outcome): the figure a later
+        /// output ceiling would have to accommodate. `0` — and omitted — for a turn whose reply
+        /// carried no text at all.
+        #[serde(default, skip_serializing_if = "is_zero_u64")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        response_chars: u64,
+        /// The reply's **completion tokens** as the provider billed them (output plus reasoning —
+        /// the figure a provider's output cap is measured in), the companion of
+        /// [`response_chars`](Self::TurnOutcome::response_chars) and the second unit
+        /// [`GgSessionSummary::max_response_output_tokens`] is folded in. `0` — and omitted —
+        /// when the provider reported no usage.
+        #[serde(default, skip_serializing_if = "is_zero_u64")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        response_output_tokens: u64,
     },
     /// An [execution ceiling](GgRunLimits) was breached and the agent's loop is ending on it.
     ///

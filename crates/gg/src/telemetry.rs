@@ -198,8 +198,10 @@ impl Emitter {
     pub fn emit(&self, kind: GgTelemetryKind) {
         // Fold the event into the shared session summary before it is serialized, so the
         // computed [`GgSessionSummary`] derives from exactly the stream the run emitted (across
-        // the root and every agent-scoped child that shares this tracker).
-        self.summary.observe(&kind);
+        // the root and every agent-scoped child that shares this tracker). The agent id rides
+        // along because the summary's provider attribution is per agent, exactly as the emitted
+        // envelope's is.
+        self.summary.observe(self.agent_id.as_deref(), &kind);
 
         let mut event = GgTelemetryEvent::new(now_rfc3339(), kind);
         event.session_id = self.session_id.clone();
@@ -313,11 +315,14 @@ impl Emitter {
     /// when the turn produced no assistant message. `usage`/`cost`/`finish_reason` are the
     /// turn's actual provider outcome, and `duration_ms` the model call's wall-clock
     /// latency (the denominator for the turn's generation throughput), or `None` when the
-    /// response was not produced by a timed model call.
+    /// response was not produced by a timed model call. `provider` is the upstream provider
+    /// the gateway named as serving the call, when it named one, so a provider-shaped reply
+    /// is attributable from the message log alone.
     ///
     /// De-duplication makes this cheap on gg's [append-only](crate::message_log) window: only
     /// the messages new *this* turn (typically just the latest assistant/tool exchange, and
     /// any rebuilt mutable block) carry a body; the rest are one id apiece.
+    #[allow(clippy::too_many_arguments)]
     pub fn log_prompt(
         &self,
         request: &[PromptItem<'_>],
@@ -326,6 +331,7 @@ impl Emitter {
         cost: Option<Cost>,
         finish_reason: String,
         duration_ms: Option<u64>,
+        provider: Option<String>,
     ) {
         // Stream each request message's body the first time this agent sends it, and build
         // the ordered pointer list. `total_tokens` sums the per-item estimates so it agrees
@@ -375,6 +381,7 @@ impl Emitter {
             tokens: usage,
             cost,
             duration_ms,
+            provider,
         });
     }
 }

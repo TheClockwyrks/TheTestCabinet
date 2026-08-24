@@ -435,7 +435,7 @@ fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too()
     views::open_docs_view("read_file")?;
     let closed = views::close("summary")?;
     let missing = views::close("never opened")?;
-    let open = views::current();
+    let open = views::current()?;
     gg::log(format!("{} {:?}", open[0].selector, open[0].kind));
     gg::log(format!("{closed} {missing}"));
     gg::log(match read {
@@ -624,8 +624,8 @@ fn an_inherent_method_reaches_the_operation_it_is_an_alias_of() {
     gg::log(child.id.clone());
 
     views::open_text("summary", "eight files, two failing")?;
-    let open = views::current();
-    gg::log(format!("{} {}", open[0].close()?, views::current().len()));
+    let open = views::current()?;
+    gg::log(format!("{} {}", open[0].close()?, views::current()?.len()));
 "####,
         )),
         &all_operations(),

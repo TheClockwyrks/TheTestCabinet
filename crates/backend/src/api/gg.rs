@@ -38,7 +38,8 @@ use crate::error::ApiError;
 
 use super::AppState;
 use super::jobs::{
-    LaunchAck, LaunchQuery, attribution, build_new_job, now_rfc3339, resolve_gg_model_facts,
+    LaunchAck, LaunchQuery, attribution, build_new_job, launch_models, now_rfc3339,
+    resolve_gg_model_facts,
 };
 
 /// The default variant a gg run targets when the request omits one — the same
@@ -266,6 +267,13 @@ pub async fn launch_gg(
     }
 
     let mut launch = body.into_launch_body().map_err(ApiError::bad_request)?;
+    // Price every model this run binds at enqueue, the same seeding `POST /jobs`
+    // performs, so the catalog can split the run's cost per token class from its
+    // first turn instead of only after the run completes. Missing-only and
+    // best-effort: an already-priced model costs nothing, and an unpriced one
+    // costs a cost split, not the launch. It also runs before the window
+    // resolution below, which then usually finds the window already on record.
+    crate::bootstrap::seed_launch_prices(&state.db, &state.prices, &launch_models(&launch)).await;
     // Tell the run what the catalog knows about the models it binds — the context
     // window each agent's fullness accounting and compaction trigger are measured
     // against. gg keeps no model table of its own and assumes no default, so a model

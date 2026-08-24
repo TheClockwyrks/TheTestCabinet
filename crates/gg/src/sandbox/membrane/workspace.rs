@@ -272,7 +272,8 @@ fn clamp_timeout(requested: Option<f64>, remaining: Option<Duration>) -> Result<
                 code: ErrorCode::InvalidArgument,
                 operation: SHELL_SHELL.key.to_string(),
                 message: format!(
-                    "`timeout_secs` is how many seconds the command may run for, so it must be a                      positive number; `{secs}` names no duration. Omit it to take gg's default of                      {DEFAULT_TIMEOUT_SECS}s."
+                    "`timeout_secs` must be a positive number of seconds (`{secs}` given); \
+                     omit it for the default of {DEFAULT_TIMEOUT_SECS}s."
                 ),
             });
         }

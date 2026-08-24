@@ -816,10 +816,21 @@ impl<A: OperationApi> MembraneState<A> {
     /// Frames are read back through this program's own [locations](Self::locating) on the way out,
     /// so what gg reports is what the model wrote rather than what its compiler emitted.
     pub(crate) fn stderr_kept(&self) -> String {
-        let said = self.stderr.kept();
+        self.relocated(self.stderr.kept())
+    }
+
+    /// `text`, with every frame in it read back through this program's own
+    /// [locations](Self::locating), or as it was when this arm has none.
+    ///
+    /// Applied to everything a guest reports that can carry a frame: what it wrote to standard
+    /// error, and the message and location of a throw it reports over `feedback.report-error`. The
+    /// ECMAScript guest reports a throw with the engine's own stack in the message, stated against
+    /// `program.js`; read here, a frame in it names `program.ts` at the model's own line, exactly
+    /// as the same frame would on the stderr path.
+    pub(crate) fn relocated(&self, text: String) -> String {
         match &self.locations {
-            Some(locations) => locations.rewrite(&said),
-            None => said,
+            Some(locations) => locations.rewrite(&text),
+            None => text,
         }
     }
 
@@ -1165,13 +1176,15 @@ impl<A: OperationApi> MembraneState<A> {
     /// # Which record a cross-arm count must join on
     ///
     /// **The refusal roster, not the turn's error type.** The line above holds only for a guest
-    /// that hands the failure's code up with the throw, and two of the eleven do not. Measured: the
-    /// C# guest reports every uncaught managed exception as `error-kind.other` with no code at all
+    /// that hands the failure's code up with the throw — Python, Ruby, C++ and the three
+    /// ECMAScript-engine arms — and the other five do not. Measured: the C# guest reports every
+    /// uncaught managed exception as `error-kind.other` with no code at all
     /// (`packages/gg-sandbox-csharp/Sources/shell.c`'s `report`), so an uncaught refusal there is
-    /// `program_throw` — and so is an uncaught `not-found`; and Swift's top-level code is not a
+    /// `program_throw` — and so is an uncaught `not-found`; Swift's top-level code is not a
     /// `throws` context its shell can wrap, so an uncaught gg failure is not a program error at all
-    /// but a trapped store. Counting `program_unknown_name` across arms therefore reads correct on
-    /// nine and silently zero on those two.
+    /// but a trapped store, and Rust, Kotlin and Java die the same way. Counting
+    /// `program_unknown_name` across arms therefore reads correct on six and silently wrong on the
+    /// other five.
     ///
     /// What **is** uniform on all eleven is [`record_refusal`](Self::record_refusal) just below:
     /// every refusal is opened and closed as an API call and lands on the turn's roster under gg's

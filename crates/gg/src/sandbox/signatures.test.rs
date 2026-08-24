@@ -245,11 +245,19 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
         "opening a file view is a read, and is bought with reading"
     );
 
-    for name in ["openText", "openDocsView", "close", "current"] {
+    for name in ["openText", "openDocsView"] {
         let entry = member("gg.views", name);
         assert!(
             entry.ending.is_none() && entry.capability.is_none(),
             "`{name}` is bound whatever a run enables"
+        );
+    }
+    for name in ["close", "current"] {
+        let entry = member("gg.views", name);
+        assert_eq!(
+            entry.capability,
+            Some(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT),
+            "`{name}` manages the window, and is bought with the rest of context management"
         );
     }
 
@@ -589,9 +597,13 @@ fn the_gate_of_an_entry_is_synthesized_from_ggs_own_table() {
         by_name("get").capability,
         Some(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY)
     );
-    // And an unconditional one: bound to every program whatever a run enables.
+    // And a view call, bought by agent-managed context — which the fixture, again, never says.
     let close = by_name("close");
-    assert!(close.ending.is_none() && close.capability.is_none());
+    assert!(close.ending.is_none());
+    assert_eq!(
+        close.capability,
+        Some(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT)
+    );
 
     // The fixture never says any of that: the JSON carries an operation id and no gate at all.
     assert!(!fixture::CATALOGUE.contains("\"requires\""));

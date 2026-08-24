@@ -91,12 +91,16 @@ class OpenView:
         iterating over what is in it rather than by writing a selector out per view.
 
         A documentation view is the one this does not take away, for the reason `views.close` does
-        not: `docs.close` is the call for one of those, and it is bought by a capability this one is
-        not.
+        not: `docs.close` is the call for one of those, and it is bought by a capability of its own,
+        `docview-close`.
 
         Returns:
             How many views were closed, which for one page of a paged file is every page of that
                 path.
+
+        Raises:
+            ApiError: `unavailable` for an agent whose run did not buy `agent-managed-context`,
+                which is what buys closing a view.
         """
         # The module-level `close`, not this method: a name in a method body resolves against the
         # module rather than against the class it is declared in, so there is no recursion here.
@@ -217,7 +221,7 @@ def close(selector: str) -> int:
     only copy of what it held, so anything needed later belongs in a file or a memory first.
 
     Documentation views are not reached from here. `docs.close` is what takes one away, and it is
-    bought by a capability this call is not — so a sweep that included them would answer `0` for an
+    bought by a capability of its own, `docview-close` — so a sweep that included them would answer `0` for an
     agent that may not close one, which is indistinguishable from a selector that named nothing.
 
     Args:
@@ -230,9 +234,13 @@ def close(selector: str) -> int:
             that is not open hands back `0` rather than failing, so a program that tidies up
             unconditionally need not guard every call.
 
+    Closing a view is context management, bought — with `views.current` — by the
+    `agent-managed-context` capability: an agent whose run did not enable it is refused.
+
     Raises:
         ApiError: `invalid-argument` for an empty selector, which names nothing rather than
-            everything — no call here closes the window wholesale.
+            everything — no call here closes the window wholesale — and `unavailable` for an agent
+            whose run did not buy `agent-managed-context`.
     """
     return _call(wire.close_view, selector)
 
@@ -245,9 +253,15 @@ def current() -> list[OpenView]:
 
     What it enumerates is the context window's contents, not any module's functions.
 
+    Listing what is open is context management, bought with `views.close` by the
+    `agent-managed-context` capability: an agent whose run did not enable it is refused.
+
     Returns:
         Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and —
             for a paged file view — the `region` it covers.
+
+    Raises:
+        ApiError: `unavailable` for an agent whose run did not buy `agent-managed-context`.
     """
     return [
         OpenView(

@@ -574,6 +574,10 @@ pub enum GgSessionModelErrorKind {
     /// [`attempts`](GgSessionModelError::attempts) count is how many were discarded before the loop
     /// gave up.
     ResponseLoop,
+    /// The call ran into gg's **per-call ceiling** (five minutes) without producing a reply — a
+    /// stalled provider or endpoint. Retryable at the turn level and counted against the run's
+    /// error ceiling; unlike every other class it never ends the session on its own.
+    Timeout,
 }
 
 /// A tool call the agent (or a [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE)
@@ -786,8 +790,8 @@ pub struct GgSessionPromptItem {
 
 /// Which slot of gg's window model a [prompt item](GgSessionPromptItem) came from.
 ///
-/// The window is not a flat list: two of its three positions are *slots* that are
-/// assigned rather than appended, precisely so they cannot accumulate duplicates.
+/// The window is not a flat list: every position but the thread is a *slot* that is
+/// assigned rather than appended, precisely so it cannot accumulate duplicates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -798,6 +802,10 @@ pub enum GgSessionPromptSlot {
     Thread,
     /// The context-usage signal slot, rebuilt and re-assigned after every turn.
     ContextUsage,
+    /// The trailing contract-notice slot — the constant reminder of the
+    /// [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE) reply contract, rendered
+    /// after every other message so it is the last thing the model reads on every turn.
+    TrailingNotice,
 }
 
 /// Whether a [prompt item](GgSessionPromptItem) is retained verbatim across a compaction

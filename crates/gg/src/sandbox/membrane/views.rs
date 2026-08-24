@@ -6,9 +6,13 @@
 //! Because the tool-calling surface has no use for them. A view is how a **program** puts material
 //! into its own agent's window, and a tool-calling turn needs no such call: on that path every tool
 //! result is already an attributable message in the window, so an `open_file_view` tool would
-//! duplicate `read_file` for no gain. No capability offers one, nothing dispatches one by name, and
-//! four of the five are bound to every program whatever a run enables — which is what makes the view
-//! surface the one channel a run that granted nothing at all still has.
+//! duplicate `read_file` for no gain. No capability offers a tool for one and nothing dispatches one
+//! by name. The two that *open* something a program computed or gg holds —
+//! [`open_text_view`](ViewsHost::open_text_view) and [`open_docs_view`](ViewsHost::open_docs_view)
+//! — are bound to every program whatever a run enables, which is what makes the view surface the one
+//! channel a run that granted nothing at all still has. The two that *manage* the window —
+//! [`close_view`](ViewsHost::close_view) and [`current_views`](ViewsHost::current_views) — are
+//! context management and are bought by `agent-managed-context` like the evictions and the archive.
 //!
 //! # One of the five reaches the workspace, and is still recorded as itself
 //!
@@ -154,16 +158,17 @@ impl<A: OperationApi> ViewsHost for MembraneState<A> {
         })
     }
 
-    /// What is open in this agent's window. It cannot fail: an agent with nothing open gets an empty
-    /// list, which is an answer rather than an error.
-    fn current_views(&mut self) -> Vec<OpenView> {
-        self.recorded_ok(VIEWS_CURRENT, |state, rec| {
-            state
+    /// What is open in this agent's window. An agent with nothing open gets an empty list, which is
+    /// an answer rather than an error; the one way the call fails is the gate every bracket asks,
+    /// for an agent whose run did not buy it.
+    fn current_views(&mut self) -> Result<Vec<OpenView>, ApiError> {
+        self.recorded(VIEWS_CURRENT, |state, rec| {
+            Ok(state
                 .api(rec)
                 .current_views()
                 .into_iter()
                 .map(open_view)
-                .collect()
+                .collect())
         })
     }
 }

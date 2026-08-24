@@ -33,7 +33,10 @@ console.log(text);
                 names: &["read_text_file", "not-found", "missing.md"],
                 located: Located::At("program.ts:5:28"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                // The guest reads the `code` off the uncaught `ApiError` and reports it, so the
+                // turn is filed as the program fighting the API — as on Python, Ruby and C++ —
+                // and never as a sandbox trap.
+                recorded: Some(TurnErrorType::ProgramApiError),
             },
             Case {
                 shape: Shape::NativeFault,
@@ -47,7 +50,7 @@ console.log(
                 names: &["TypeError"],
                 located: Located::At("program.ts:5:3"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::FailureValue,
@@ -62,7 +65,7 @@ step();
                 names: &["the third step did not finish"],
                 located: Located::At("program.ts:4:13"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::ResourceFault,
@@ -77,7 +80,7 @@ deeper(0);
                 names: &["Maximum call stack size exceeded"],
                 located: Located::At("program.ts:4:21"),
                 answered: Answered::AtRuntime,
-                recorded: Some(TurnErrorType::SandboxTrap),
+                recorded: Some(TurnErrorType::ProgramThrow),
             },
             Case {
                 shape: Shape::Abort,
@@ -99,4 +102,78 @@ console.log("after the exit");
             },
         ],
     );
+}
+
+/// **An uncaught `views.openFile` of a missing path is the program's fault, not a sandbox limit.**
+///
+/// The owner's ruling: every API function returns a structured error, so an uncaught one is filed
+/// as [`ProgramApiError`](TurnErrorType::ProgramApiError) — the bucket Python, Ruby and C++ already
+/// file it under — and a `sandbox_*` type is recorded only for a real ceiling or a real trap. Before
+/// this, the ECMAScript guest wrote the throw to standard error and aborted, and the model read
+/// `wasm trap: unreachable` under four SDK frames (`sdk:gg/core.js:26:9`, `sdk:internal/errors.js`)
+/// that named files it cannot open.
+///
+/// What is asserted is what the model reads, rendered by the loop's own renderer: the structured
+/// error's code and operation, the path, the program's own frame read back through `tsc`'s map,
+/// and neither an SDK frame nor a trap.
+#[test]
+fn an_uncaught_open_of_a_missing_file_is_a_program_api_error() {
+    use crate::sandbox::fake::{
+        CallLog, FakeOperationApi, all_capabilities, all_operations, granted_operations,
+    };
+    use crate::sandbox::membrane::RunEnding;
+    use crate::sandbox::{ProgramScope, SandboxLimits, run_program};
+
+    let log = CallLog::default();
+    let api = FakeOperationApi::with(&log, g8::responder);
+    let operations = granted_operations(&all_operations(), false);
+    let scope = ProgramScope {
+        capabilities: &all_capabilities(),
+        operations: &operations,
+        modules: &[],
+        ending: RunEnding::None,
+    };
+    let (outcome, _api) = run_program(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        r#"// A view of a file that is not there, uncaught.
+
+import { views } from "gg";
+
+const view = views.openFile(
+  "missing.md",
+);
+console.log(view);
+"#,
+        scope,
+        SandboxLimits::AMPLE,
+        None,
+        api,
+    );
+    let read = crate::agent::code::model_facing(GgProgramLanguage::TypeScript, &outcome);
+    assert_eq!(
+        read.error,
+        Some(TurnErrorType::ProgramApiError),
+        "an uncaught API failure is the program fighting the API, never a sandbox limit:\n{}",
+        read.body
+    );
+    for expected in [
+        "ApiError",
+        "not-found",
+        "open_file",
+        "missing.md",
+        "program.ts:5:20",
+    ] {
+        assert!(
+            read.body.contains(expected),
+            "the model should read {expected:?}; it reads:\n{}",
+            read.body
+        );
+    }
+    for forbidden in ["sdk:", "wasm trap", "sandbox trapped", "(native)"] {
+        assert!(
+            !read.body.contains(forbidden),
+            "the model should not read {forbidden:?}; it reads:\n{}",
+            read.body
+        );
+    }
 }

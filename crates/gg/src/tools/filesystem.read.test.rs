@@ -192,8 +192,10 @@ fn a_disabled_capability_is_owed_nothing_and_still_read() {
 // Unlimited (the control arm)
 // ---------------------------------------------------------------------------
 
+/// A call naming neither `offset` nor `limit` gets the file whole, with no footer: there was no
+/// window to describe.
 #[tokio::test]
-async fn unlimited_returns_the_whole_file_and_offers_no_paging_arguments() {
+async fn unlimited_returns_the_whole_file_when_neither_argument_is_given() {
     let (_dir, ctx) = workspace_with_lines(1_000);
 
     let read = tool(ReadPolicy::Unlimited)
@@ -204,17 +206,157 @@ async fn unlimited_returns_the_whole_file_and_offers_no_paging_arguments() {
     assert!(read.output.ends_with("line 1000\n"));
     assert!(
         !read.output.contains("showing lines"),
-        "an uncapped read has nothing to say about a window"
+        "a whole-file read has nothing to say about a window"
     );
-
-    let schema = tool(ReadPolicy::Unlimited).definition().parameters;
-    let properties = schema["properties"].as_object().unwrap();
-    assert!(properties.contains_key("path"));
+    let data = text_data(&read);
     assert_eq!(
-        properties.len(),
-        1,
-        "no offset/limit knobs when there is nothing to page"
+        (data.first_line, data.last_line, data.total_lines),
+        (1, 1_000, 1_000)
     );
+}
+
+/// The unlimited mode only decides what an absent `limit` means. A `limit` that is named is
+/// honoured exactly as the capped mode honours one, footer and continuation included.
+#[tokio::test]
+async fn unlimited_honours_a_limit() {
+    let (_dir, ctx) = workspace_with_lines(1_000);
+
+    let read = tool(ReadPolicy::Unlimited)
+        .invoke(json!({ "path": "lines.txt", "limit": 10 }), &ctx)
+        .await;
+    assert!(read.ok, "{}", read.output);
+    assert!(read.output.starts_with("line 1\n"));
+    assert!(read.output.contains("line 10\n"));
+    assert!(!read.output.contains("line 11\n"));
+    assert!(
+        read.output
+            .ends_with("[showing lines 1-10 of 1000; continue with offset: 11]"),
+        "{}",
+        read.output
+    );
+    let data = text_data(&read);
+    assert_eq!(
+        (data.first_line, data.last_line, data.total_lines),
+        (1, 10, 1_000)
+    );
+    assert!(!data.contents.contains("showing lines"));
+}
+
+/// An `offset` alone, under the unlimited mode, reads from that line to the end of the file — and
+/// says so, since the read was windowed even though nothing was left to continue with.
+#[tokio::test]
+async fn unlimited_honours_an_offset_alone() {
+    let (_dir, ctx) = workspace_with_lines(1_000);
+
+    let read = tool(ReadPolicy::Unlimited)
+        .invoke(json!({ "path": "lines.txt", "offset": 990 }), &ctx)
+        .await;
+    assert!(read.ok, "{}", read.output);
+    assert!(read.output.starts_with("line 990\n"), "{}", read.output);
+    assert!(!read.output.contains("line 989\n"));
+    assert!(
+        read.output.ends_with("[showing lines 990-1000 of 1000]"),
+        "{}",
+        read.output
+    );
+    let data = text_data(&read);
+    assert_eq!(
+        (data.first_line, data.last_line, data.total_lines),
+        (990, 1_000, 1_000)
+    );
+}
+
+/// `offset` and `limit` together select the page they name, under the unlimited mode as under the
+/// capped one.
+#[tokio::test]
+async fn unlimited_honours_an_offset_and_a_limit_together() {
+    let (_dir, ctx) = workspace_with_lines(1_000);
+
+    let read = tool(ReadPolicy::Unlimited)
+        .invoke(
+            json!({ "path": "lines.txt", "offset": 101, "limit": 50 }),
+            &ctx,
+        )
+        .await;
+    assert!(read.ok, "{}", read.output);
+    assert!(read.output.starts_with("line 101\n"), "{}", read.output);
+    assert!(read.output.contains("line 150\n"));
+    assert!(!read.output.contains("line 151\n"));
+    assert!(
+        read.output
+            .ends_with("[showing lines 101-150 of 1000; continue with offset: 151]"),
+        "{}",
+        read.output
+    );
+    assert_eq!(
+        {
+            let data = text_data(&read);
+            (data.first_line, data.last_line, data.total_lines)
+        },
+        (101, 150, 1_000)
+    );
+}
+
+/// A window that covers the whole file is not a window: no footer, whichever mode and whichever
+/// arguments produced it.
+#[tokio::test]
+async fn a_window_covering_the_whole_file_carries_no_footer_under_either_mode() {
+    let (_dir, ctx) = workspace_with_lines(12);
+
+    for (policy, args) in [
+        (
+            ReadPolicy::Unlimited,
+            json!({ "path": "lines.txt", "limit": 12 }),
+        ),
+        (
+            ReadPolicy::Unlimited,
+            json!({ "path": "lines.txt", "limit": 500 }),
+        ),
+        (
+            ReadPolicy::Unlimited,
+            json!({ "path": "lines.txt", "offset": 1 }),
+        ),
+        (
+            ReadPolicy::Unlimited,
+            json!({ "path": "lines.txt", "offset": 1, "limit": 12 }),
+        ),
+        (ReadPolicy::DefaultCap(250), json!({ "path": "lines.txt" })),
+        (
+            ReadPolicy::DefaultCap(5),
+            json!({ "path": "lines.txt", "limit": 12 }),
+        ),
+    ] {
+        let read = tool(policy).invoke(args.clone(), &ctx).await;
+        assert!(read.ok, "{policy:?} {args}: {}", read.output);
+        assert!(
+            read.output.starts_with("line 1\n") && read.output.ends_with("line 12\n"),
+            "{policy:?} {args}: {}",
+            read.output
+        );
+        assert!(
+            !read.output.contains("showing lines"),
+            "{policy:?} {args}: a window covering the file is not a window"
+        );
+        let data = text_data(&read);
+        assert_eq!(
+            (data.first_line, data.last_line, data.total_lines),
+            (1, 12, 12),
+            "{policy:?} {args}"
+        );
+    }
+}
+
+/// An offset past the end of the file is refused under the unlimited mode exactly as under the
+/// capped one.
+#[tokio::test]
+async fn unlimited_refuses_an_offset_past_the_end() {
+    let (_dir, ctx) = workspace_with_lines(12);
+
+    let read = tool(ReadPolicy::Unlimited)
+        .invoke(json!({ "path": "lines.txt", "offset": 13 }), &ctx)
+        .await;
+    assert!(!read.ok);
+    assert!(read.output.contains("12 lines"), "{}", read.output);
 }
 
 // ---------------------------------------------------------------------------
@@ -509,14 +651,14 @@ async fn an_unterminated_last_line_is_counted() {
 // The tool declaration the model sees
 // ---------------------------------------------------------------------------
 
-/// Two modes, two declarations: the capped one offers the paging arguments and states the
-/// default *as* a default, and the unlimited one offers neither knob.
+/// Two modes, two declarations: both offer the paging arguments, and each states what an absent
+/// `limit` means under it — the cap, stated *as* a default, or the end of the file.
 ///
 /// The cap is stated on `limit` — the argument that overrides it — and nowhere else: the
 /// system prompt already tells the model how many lines a read returns this run, so repeating
 /// it in the tool's own prose is a second copy sent on every request.
 #[test]
-fn each_mode_declares_exactly_the_arguments_it_honors() {
+fn each_mode_declares_the_arguments_it_honors_and_what_limit_defaults_to() {
     let capped = tool(ReadPolicy::DefaultCap(250)).definition();
     let properties = capped.parameters["properties"].as_object().unwrap();
     assert!(properties.contains_key("offset"));
@@ -533,10 +675,18 @@ fn each_mode_declares_exactly_the_arguments_it_honors() {
 
     let unlimited = tool(ReadPolicy::Unlimited).definition();
     let properties = unlimited.parameters["properties"].as_object().unwrap();
-    assert!(!properties.contains_key("offset"));
     assert!(
-        !properties.contains_key("limit"),
-        "there is nothing to page through"
+        properties.contains_key("offset"),
+        "an offset is honoured under every mode"
+    );
+    let limit = properties["limit"]["description"].as_str().unwrap();
+    assert!(
+        limit.contains("end of the file"),
+        "the unlimited mode says what an absent limit means: {limit}"
+    );
+    assert!(
+        !limit.contains("250"),
+        "there is no cap to state under the unlimited mode: {limit}"
     );
 }
 

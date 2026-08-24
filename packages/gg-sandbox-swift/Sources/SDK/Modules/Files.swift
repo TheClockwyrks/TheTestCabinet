@@ -190,7 +190,7 @@ public enum files {
 
     /// A text file's window, as the `FileRead.text` case carries it.
     public struct TextFile: Sendable {
-        /// The file's text, or just the requested window under a capped read policy.
+        /// The file's text, or just the requested window where the read named one.
         public let contents: String
         /// The 1-based first line returned.
         public let firstLine: Int

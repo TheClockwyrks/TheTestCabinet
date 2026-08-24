@@ -194,6 +194,10 @@ getrandom = { workspace = true }
 # the local filesystem rooted at the invocation's workspace, so the tests exercise
 # them against a real temporary directory.
 tempfile = { workspace = true }
+# `start_paused` for the per-model-call timeout tests: the stalled-gateway sockets are
+# real, but the five-minute ceiling elapses the moment the runtime idles on one, so a
+# timeout test costs milliseconds instead of minutes.
+tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true

@@ -209,7 +209,11 @@ pub(super) struct Case {
     /// mechanism capture rather than interception, an uncaught throw on an arm with no exception
     /// mechanism reaching the host dies as a wasm trap and is recorded as
     /// [`SandboxTrap`](TurnErrorType::SandboxTrap) rather than as one of the three
-    /// `Program*` classes. Six arms moved across on this branch and every gate stayed green.
+    /// `Program*` classes. Six arms moved across on this branch and every gate stayed green — and
+    /// the ECMAScript arms later moved back, because a guest that can see the throw at its entry
+    /// point reports it: an uncaught failed call is
+    /// [`ProgramApiError`](TurnErrorType::ProgramApiError) there as on Python, Ruby and C++, and
+    /// `SandboxTrap` is reserved for a real ceiling or trap.
     ///
     /// It is therefore declared per cell rather than derived, and asserted for **every** cell
     /// including the ones [`KNOWN_HOLES`] holds a row for: a hole records what a model *reads*

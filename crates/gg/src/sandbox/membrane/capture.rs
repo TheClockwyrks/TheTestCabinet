@@ -302,12 +302,22 @@ impl<A: OperationApi> feedback::Host for MembraneState<A> {
     /// the run on a claim the program never got to make good; dropping it costs one more turn, in
     /// which the model is told its ending was cancelled and why. The revocation is counted rather
     /// than silent, because a `finish` that did not finish is exactly the fact a model needs.
+    ///
+    /// The message and the location are read back through this program's own
+    /// [locations](MembraneState::relocated) on the way in, for the same reason the stderr path
+    /// is: a guest that reports a throw with its engine's stack in it states the frames against the
+    /// text it evaluated, which on a compiled arm is not the text the model wrote.
     fn report_error(&mut self, error: feedback::ProgramError) {
         self.revoke_completion();
-        self.program_error.get_or_insert(ProgramError {
+        if self.program_error.is_some() {
+            return;
+        }
+        let message = self.relocated(error.message);
+        let location = error.location.map(|location| self.relocated(location));
+        self.program_error = Some(ProgramError {
             kind: classify(error.kind, error.code),
-            message: error.message,
-            location: error.location,
+            message,
+            location,
         });
     }
 }

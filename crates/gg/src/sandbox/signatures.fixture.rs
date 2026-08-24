@@ -8,10 +8,11 @@
 //!
 //! # What the surface was chosen to be
 //!
-//! Four calls, one per kind of [binding](crate::sandbox::Binding) gg has — a tool-backed call
-//! (`files.read_file`), an unconditional view (`views.close`), an ending (`session.finish`) and a
-//! capability (`programs.get`) — so that the projection's gate synthesis is exercised on every arm of
-//! the match rather than on the one that happened to be written down. They are real gg operations,
+//! Four calls across the kinds of [binding](crate::sandbox::Binding) gg has — a tool-backed call
+//! (`files.read_file`), a view call that is also a method's canonical form (`views.close`, bought by
+//! agent-managed context), an ending (`session.finish`) and a capability with no tool behind it
+//! (`programs.get`) — so that the projection's gate synthesis is exercised on more than the one arm
+//! that happened to be written down. They are real gg operations,
 //! because an operation gg does not have would make the fixture prove the opposite of what it is for.
 //!
 //! Their shapes are deliberately not uniform: a free function, a **method** on a handle type, and a

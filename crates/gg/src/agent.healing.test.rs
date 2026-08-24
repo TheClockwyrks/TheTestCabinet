@@ -168,17 +168,49 @@ async fn healing_is_never_disclosed_to_the_model() {
     )
     .await;
 
+    // Nothing on the model's side of the conversation — system, user, or feedback — names the
+    // repair, under the old note's wording or any other. Only the model's own turns are exempt,
+    // since a program is free to say "repair" itself; here none does.
     let leaks = |messages: &[Message]| {
-        messages.iter().any(|message| {
-            message.content.as_deref().is_some_and(|text| {
-                text.contains("repaired your reply")
-                    || text.contains("Markdown code fence you wrapped")
-                    || text.contains("Only text was removed")
+        messages
+            .iter()
+            .filter(|message| message.role != crate::model::Role::Assistant)
+            .any(|message| {
+                message.content.as_deref().is_some_and(|text| {
+                    let folded = text.to_lowercase();
+                    folded.contains("repaired your reply")
+                        || folded.contains("markdown code fence you wrapped")
+                        || folded.contains("only text was removed")
+                        || folded.contains("heal")
+                        || folded.contains("repair")
+                })
             })
-        })
     };
     for (turn, messages) in requests.iter().enumerate().skip(1) {
         assert!(!leaks(messages), "turn {turn} was told what gg repaired");
+    }
+
+    // Under the default `assistantMessages` mode the history holds exactly the healed text and
+    // nothing else of the reply: no fence, no pre-heal copy, nothing alongside it.
+    let code = code_with(HealingConfig::SAFE_REPAIRS);
+    for (turn, reply) in ["```ts\n1;\n```", "```ts\nconst x = ;\n```"]
+        .into_iter()
+        .enumerate()
+    {
+        let healed = healing::heal(
+            reply,
+            &code.healing,
+            crate::sandbox::language(code.language).healing(),
+        );
+        assert!(
+            healed.rewritten(),
+            "the fixture reply needs a repair to test"
+        );
+        assert_eq!(
+            assistant_message(&requests[turn + 1]),
+            healed.program,
+            "turn {turn}'s stored assistant message is the healed program alone"
+        );
     }
 
     // The last one: a program the sandbox stopped. Its own run, because it needs an execution
@@ -431,8 +463,8 @@ fn assistant_message(request: &[Message]) -> String {
 ///
 /// Under `assistantMessages: "response-healing"` the message the model re-reads next turn is the
 /// program gg actually ran — the fence and the prose either side of it gone — not the malformed reply
-/// it sent. (The reply is still healed and still disclosed in the feedback under either mode; the mode
-/// governs only what the transcript stores.)
+/// it sent. (The reply is still healed under either mode, and the model is told of it under neither;
+/// the mode governs only what the transcript stores.)
 #[tokio::test]
 async fn response_healing_mode_records_the_healed_program() {
     let dir = TempDir::new().unwrap();

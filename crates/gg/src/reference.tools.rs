@@ -217,8 +217,9 @@ pub(crate) fn base_configurations() -> Vec<Configuration> {
 /// which has no caps dimension — deliberately, since a gate over one would demand exactly the
 /// enumeration this paragraph refuses.
 ///
-/// * `read_file` offers no `offset`/`limit` arguments at all under the unlimited read mode, since
-///   with the whole file in every result there is nothing to page through;
+/// * `read_file` words its `limit` argument's default differently under the two read modes — the
+///   cap under `default-cap`, the end of the file under `unlimited` — and honours `offset`/`limit`
+///   under both;
 /// * `shell` describes where a command's output went, which is the whole substance of the
 ///   offloading modes;
 /// * `create_issue` demands reviewers under the project-management capability's `reviewers`

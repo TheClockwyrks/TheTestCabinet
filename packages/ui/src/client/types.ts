@@ -137,6 +137,267 @@ export interface ModelListing {
   description: string | null;
 }
 
+// --- Model probes (responses-as-code readiness checks) ---
+
+/** A probe's lifecycle. `running` rows are polled until they go terminal. */
+export type ModelProbeStatus = "running" | "complete" | "failed";
+
+/** A completed probe's overall reading of the model's RaC readiness. */
+export type ModelProbeVerdict =
+  | "ready"
+  | "ready-with-reminders"
+  | "tool-call-overfit"
+  | "not-ready";
+
+/** One responses-as-code readiness probe of a catalog model: gg's real RaC
+ * turn-1 request replayed over a fixed prompt-condition matrix, each reply
+ * classified, and a verdict stored. Mirrors the backend `ModelProbeOut`
+ * (`crates/backend/src/api/model_probes.rs`). */
+export interface ModelProbe {
+  id: string;
+  /** The catalog slug the probe was triggered from. */
+  modelSlug: string;
+  /** The OpenRouter slug the completions were requested under. */
+  openrouterSlug: string;
+  /** The pinned provider, or null for the default route. */
+  provider: string | null;
+  /** Samples per condition. */
+  samples: number;
+  /** Completion-token cap per call. */
+  maxTokens: number;
+  /** Whether the seeded spec views were sent whole instead of trimmed. */
+  fullContext: boolean;
+  status: ModelProbeStatus;
+  /** Why the probe failed, or null. */
+  error: string | null;
+  /** Null until the probe completes. */
+  verdict: ModelProbeVerdict | null;
+  /** The base condition's clean-reply rate (0..=1), or null. */
+  baseCleanRate: number | null;
+  /** The best variation condition's clean-reply rate (0..=1), or null. */
+  bestVariationCleanRate: number | null;
+  /** Total USD spend across the probe's calls, as OpenRouter reported it. */
+  spend: number;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+/** One completion call inside a probe: which provider served it, how it
+ * finished, its classification, and the model's raw reply. Mirrors the backend
+ * `ModelProbeItemOut`. The known `label` values are `clean-program`,
+ * `prose+program`, `program-no-gg`, `fenced`, `tool-token`, `xml-pseudo-tools`,
+ * `cot-leak`, `native-tool-call`, `empty`, and `other`; typed open so a newly
+ * classified shape still renders. */
+export interface ModelProbeItem {
+  id: string;
+  /** The prompt condition (`base`, `no-tools`, `notice`, `combo`). */
+  condition: string;
+  sample: number;
+  /** The provider OpenRouter reported serving the call, or null on error. */
+  provider: string | null;
+  finishReason: string | null;
+  nativeFinishReason: string | null;
+  /** The classified reply shape, or null when the call errored. */
+  label: string | null;
+  /** Whether the reply counts as clean (a bare program over the gg modules). */
+  clean: boolean;
+  /** The model's raw reply content, verbatim. */
+  responseText: string;
+  /** The reply's separate reasoning stream, or null. */
+  reasoningText: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  /** The call's USD cost, or null. */
+  cost: number | null;
+  durationMs: number;
+  /** The transport or gateway error that voided the call, or null. */
+  error: string | null;
+  createdAt: string;
+}
+
+/** One message of the probe's base request, exactly as sent. */
+export interface ModelProbeMessage {
+  role: string;
+  content: string;
+}
+
+/** One condition of the probe matrix, so the console can say what each item's
+ * request added on top of the base request. */
+export interface ModelProbeCondition {
+  name: string;
+  /** Whether the condition appends the no-tools clause to the system prompt. */
+  noToolsClause: boolean;
+  /** Whether the condition appends the trailing user notice. */
+  trailingNotice: boolean;
+  /** Whether the condition counts as a variation in the verdict. */
+  variation: boolean;
+}
+
+/** The `GET /model-probes/{id}` response: the probe with everything the console
+ * shows — what was sent (the base request plus each condition's additions),
+ * every call's classification, and the raw replies. */
+export interface ModelProbeDetail {
+  probe: ModelProbe;
+  items: ModelProbeItem[];
+  /** The base condition's message array exactly as sent. */
+  requestMessages: ModelProbeMessage[];
+  /** The matrix the items' `condition` names refer to. */
+  conditions: ModelProbeCondition[];
+  /** The clause the `no-tools`/`combo` conditions appended to the system prompt. */
+  noToolsClause: string;
+  /** The trailing user message the `notice`/`combo` conditions appended. */
+  noticeMessage: string;
+}
+
+/** The `POST /models/{slug}/probes` request body. Everything is optional: an
+ * empty body probes the default route with the default sampling. */
+export interface ModelProbeTriggerInput {
+  /** Pin every call to this provider. Absent probes the default route. */
+  provider?: string;
+  /** Samples per condition (default 3, at most 8). */
+  samples?: number;
+  /** Completion-token cap per call (default 3500, 256..=16000). */
+  maxTokens?: number;
+  /** Send the seeded spec views whole instead of trimmed (default false). */
+  fullContext?: boolean;
+}
+
+/** One provider route OpenRouter lists for a model, so a probe can pin to it. */
+export interface ModelProbeProvider {
+  /** The provider's display name — the value a probe pins with. */
+  name: string;
+  /** The route's context window in tokens, or null when unreported. */
+  contextLength: number | null;
+}
+
+/** The `GET /models/{slug}/probe-providers` response. */
+export interface ModelProbeProviders {
+  /** The OpenRouter slug the providers were enumerated for. */
+  openrouterSlug: string;
+  providers: ModelProbeProvider[];
+}
+
+// --- Provider & accuracy statistics (folded from stored gg runs + probes) ---
+
+/** One (provider, model) cell's call statistics folded from recorded gg runs.
+ * Mirrors the backend `ProviderCallStatsOut` (`crates/backend/src/api/stats.rs`). */
+export interface ProviderCallStats {
+  /** Distinct gg runs contributing to this cell. */
+  runs: number;
+  /** Model calls that reported usage. */
+  calls: number;
+  /** Tokens across those calls (uncached + cached + output + reasoning). */
+  totalTokens: number;
+  /** Summed comparable USD cost, or null when every slice left it unreported. */
+  cost: number | null;
+  /** Length-capped replies gg rejected whole. */
+  rejected: number;
+  /** Turn outcomes attributed to this cell. */
+  turns: number;
+  /** Turns that worked (progressed or finished). */
+  working: number;
+  /** Errored turns by `GgTurnErrorType` wire id. */
+  errors: Record<string, number>;
+}
+
+/** One model's row under a provider. `modelId` is null when the slice could not
+ * name a model (no usage delta had named the agent's model). */
+export interface ProviderModelStats {
+  modelId: string | null;
+  stats: ProviderCallStats;
+}
+
+/** One upstream provider's run evidence: the models it served and the rolled-up
+ * totals. `provider` is null for calls the gateway never attributed. Mirrors the
+ * backend `ProviderStatsOut`. */
+export interface ProviderStatsEntry {
+  provider: string | null;
+  models: ProviderModelStats[];
+  totals: ProviderCallStats;
+}
+
+/** One probed model's items under a provider, from the model-probe corpus —
+ * evidence gathered by probes, deliberately separate from run evidence. */
+export interface ProbeProviderModel {
+  modelSlug: string;
+  items: number;
+  clean: number;
+  /** Items whose call errored (no classified label). */
+  errored: number;
+}
+
+/** One provider's probe evidence. Mirrors the backend `ProbeProviderStatsOut`. */
+export interface ProbeProviderStats {
+  provider: string | null;
+  models: ProbeProviderModel[];
+}
+
+/** Per-provider health folded from stored gg runs plus probe items
+ * (`GET /stats/providers`). Provider fields only exist on runs recorded after
+ * provider attribution landed — `runsWithProviderData` says how many of the
+ * scanned runs carry any. Mirrors the backend `ProviderStatsResponse`
+ * (`crates/backend/src/api/stats.rs`). */
+export interface ProviderStats {
+  runsScanned: number;
+  runsWithProviderData: number;
+  providers: ProviderStatsEntry[];
+  probes: ProbeProviderStats[];
+}
+
+/** A model's responses-as-code turn accuracy: how its RaC turns split into
+ * valid vs the error classes. Mirrors the backend `RacAccuracyOut`. */
+export interface RacAccuracy {
+  runs: number;
+  turns: number;
+  /** Turns that worked (progressed or finished). */
+  valid: number;
+  /** Compile-class errors (the reply never ran). */
+  compile: number;
+  /** Runtime-class errors (program faults + sandbox limits). */
+  runtime: number;
+  /** Model-API-class errors (timeouts, rejections, parse failures…). */
+  modelErrors: number;
+  /** Missing-completion errors (no program / no call at all). */
+  missing: number;
+  /** The full per-type breakdown by `GgTurnErrorType` wire id. */
+  byType: Record<string, number>;
+  /** Runs folded without exact per-model turn accounting (recorded before
+   * provider slices existed); their valid count is turns − errors. */
+  approximateRuns: number;
+}
+
+/** A model's tool-calling accuracy: dispatched tool calls vs the failed ones by
+ * class. Mirrors the backend `ToolCallingAccuracyOut`. */
+export interface ToolCallingAccuracy {
+  runs: number;
+  /** Dispatched tool calls across the contributing runs. */
+  calls: number;
+  /** Calls that succeeded (calls − failures). */
+  ok: number;
+  /** Failed dispatches by failure class (`invalid-argument`, `not-found`, …). */
+  failures: Record<string, number>;
+  /** Tool-calling runs with dispatch evidence but no recorded call total
+   * (recorded before totals existed) — excluded from the figures above. */
+  runsWithoutCallTotals: number;
+}
+
+/** One model's accuracy halves; either is null when no gg run recorded the
+ * needed figures for that execution mode. */
+export interface ModelAccuracyEntry {
+  modelId: string;
+  rac: RacAccuracy | null;
+  toolCalling: ToolCallingAccuracy | null;
+}
+
+/** Per-model accuracy folded from stored gg runs (`GET /stats/model-accuracy`).
+ * Mirrors the backend `ModelAccuracyResponse` (`crates/backend/src/api/stats.rs`). */
+export interface ModelAccuracy {
+  models: ModelAccuracyEntry[];
+  /** Runs that could not be attributed to any model (multi-model runs recorded
+   * before per-model slices existed). */
+  unattributableRuns: number;
+}
+
 /**
  * One case as the catalog *listing* (`GET /test-cases`) carries it: its versions
  * plus the metadata a card renders. This is deliberately the whole of what a

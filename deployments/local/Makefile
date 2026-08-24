@@ -544,9 +544,13 @@ run-image-%:
 # Secret is mounted optional, so missing creds just leave runs API-key-only.
 secrets:
 	@$(KUBECTL) create namespace '$(NS)' --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
-	@$(KUBECTL) -n '$(NS)' create secret generic tcab-backend-secrets \
-	  --from-literal=TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' \
-	  --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
+	@set -e; \
+	  $(LOAD_ENV); \
+	  extra=""; \
+	  if [ -n "$$OPENROUTER_API_KEY" ]; then extra="--from-literal=TCAB_OPENROUTER_API_KEY=$$OPENROUTER_API_KEY"; fi; \
+	  $(KUBECTL) -n '$(NS)' create secret generic tcab-backend-secrets \
+	    --from-literal=TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' $$extra \
+	    --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null
 	@$(KUBECTL) -n '$(NS)' create secret generic tcab-dispatcher-secrets \
 	  --from-literal=TCAB_BACKEND_SERVICE_TOKEN='$(SERVICE_TOKEN)' \
 	  --dry-run=client -o yaml | $(KUBECTL) apply -f - >/dev/null

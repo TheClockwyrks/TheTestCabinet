@@ -105,8 +105,14 @@ bound is absent rather than listed empty. What is reported is exactly the
 catalogue's own entries, so the read-out and what a program's scope binds are one
 projection of one array.
 
-Each function names the operation it serves (`files.read_file`,
-`views.open_docs_view`, `session.finish`), and that field is load-bearing: every
+Each function is named **relative to its module**, the way the arm spells it:
+a free function is its bare name (`readFile`), and a method carries the receiver
+it hangs off (`OpenView.close` on TypeScript, `OpenView#close` on Java,
+`open_view::close` on C++), so two rows in one module never share a name and a
+reader spelling the call back joins the module's path onto it
+(`gg.views.OpenView.close`). Each function also names the operation it serves
+(`files.read_file`, `views.open_docs_view`, `session.finish`), and that field is
+load-bearing: every
 call a program makes is recorded as an `api_call` under exactly that id, so it is
 the join from a bound function to how many times it was called. No gg tool name
 appears here. A responses-as-code agent writes `gg.views.openFile`, and the

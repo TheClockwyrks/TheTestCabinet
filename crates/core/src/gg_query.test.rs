@@ -369,6 +369,9 @@ fn capability_set() -> GgCapabilitySet {
 
 fn session_summary() -> GgSessionSummary {
     GgSessionSummary {
+        rejected_responses: Default::default(),
+        max_response_chars: 0,
+        max_response_output_tokens: 0,
         terminal_status: "completed".to_string(),
         undocumented_calls: GgUndocumentedCalls::default(),
         agents_spawned: 3,
@@ -404,6 +407,8 @@ fn session_summary() -> GgSessionSummary {
             ]),
             tool_failures: BTreeMap::from([("not-found".to_string(), 5)]),
         },
+        tool_calls: 0,
+        provider_stats: Vec::new(),
         issues_created: 0,
         issues_completed: 0,
         slot_costs: vec![

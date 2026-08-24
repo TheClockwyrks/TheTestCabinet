@@ -16,6 +16,12 @@ A turn that produces both a notice and an error pushes the notices first and the
 error last, so the error is the last thing the model reads before it writes its
 next program.
 
+The views a program opens are headed the same way, qualified by their selector:
+`View: <label>` for a text view, `Documentation: <name>` for a documentation
+view, and `File: <path>:<first>-<last>` for a file view, the path it was opened
+under and the 1-based inclusive line range it shows, `1-N` for a whole file of
+`N` lines. See [views](/gg/responses-as-code/views/).
+
 ## Error messages
 
 The two error bands carry the error and nothing else. No preamble, no advice, no

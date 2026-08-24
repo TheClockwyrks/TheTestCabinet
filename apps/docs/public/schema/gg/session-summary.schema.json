@@ -221,6 +221,97 @@
         }
       ]
     },
+    "GgProviderStat": {
+      "description": "One `(provider, model)` health slice in a [`GgSessionSummary`] — which upstream provider\nserved a run's model calls, and how the calls it served went. Folded from the run's own\nstream: the [`Usage`](GgTelemetryKind::Usage) deltas contribute the calls with their tokens\nand cost, the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the length-capped\nreplies, and the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the per-turn judgement,\neach attributed to the provider its own call named.\n\nTwo invariants hold across a summary's slices: their [`turns`](Self::turns) sum to the\n[error rollup](GgErrorSummary::turns)'s denominator, and within a slice `turns` minus\n[`working`](Self::working) minus its error count is its fatal turns.",
+      "properties": {
+        "calls": {
+          "description": "Model calls folded from the [`Usage`](GgTelemetryKind::Usage) deltas — the calls that\nreported usage. A call that reported neither tokens nor cost emits no delta and reaches\nonly the turn figures below.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Their cost, summed, when any of them reported one."
+        },
+        "errors": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The errored turns among them, keyed by [`GgTurnErrorType::wire_id`] — the same open,\nstring-keyed breakdown [`GgErrorSummary::by_type`] is, and omitted when empty on the same\nterms.",
+          "type": "object"
+        },
+        "modelId": {
+          "description": "The model this slice's agent was running on, as the agent's own\n[`Usage`](GgTelemetryKind::Usage) deltas named it. `None` for a turn or rejection recorded\nbefore the agent's first usage delta named one.",
+          "type": ["string", "null"]
+        },
+        "provider": {
+          "description": "OpenRouter's name for the upstream provider that served this slice's calls. `None` for the\nslice of calls that named none — a gateway that stamps no provider, or a turn whose call\nproduced no reply to name one (a model timeout).",
+          "type": ["string", "null"]
+        },
+        "rejected": {
+          "description": "Replies gg [rejected whole](GgRejectedResponses) — the length-capped ones — that this\nslice's provider served. `0`, and omitted, for the ordinary slice with none.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The tokens those calls reported, summed in the shared [`TokenCounts`] units."
+        },
+        "turns": {
+          "description": "Turns attributed to this slice: each [`TurnOutcome`](GgTelemetryKind::TurnOutcome) lands on\nthe provider its own call named, or on the providerless slice when it named none.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "working": {
+          "description": "The turns among them that worked — a [progressed](GgTurnOutcome::Progressed) or\n[finished](GgTurnOutcome::Finished) outcome.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["calls", "tokens", "turns", "working"],
+      "type": "object"
+    },
+    "GgRejectedResponses": {
+      "description": "The run's **rejected-reply** rollup: how many model replies gg refused to use (today, exactly\nthe length-capped ones — see [`GgTelemetryKind::ResponseRejected`]), and the spend they burned.\n\nThis bucket exists so the exclusion is visible rather than silent. A rejected reply's usage is\ndeliberately kept **out** of the run's cost and turn metrics — a degenerate generation must not\nmake a run look expensive or long — but the money was still spent, and \"how often does this\nmodel cap out, and what does it cost?\" is a question the owner asks of the durable record.\nFolded from the [`ResponseRejected`](GgTelemetryKind::ResponseRejected) events the run emitted.",
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Their cost, summed, when the provider reported any — spend absent from the run's recorded\ncost by design."
+        },
+        "count": {
+          "description": "How many replies were rejected.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The tokens the provider billed for them, summed — spend absent from the run's own\n[token totals](crate::metrics::TokenCounts) by design."
+        }
+      },
+      "required": ["count", "tokens"],
+      "type": "object"
+    },
     "GgSlotCost": {
       "description": "One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable\ntail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a\nquery can total or slice a gg run's spend per model without replaying the stream.\n\nA gg run spans several models (subagents can run on different, possibly cross-provider,\n[slots](GgSlotBinding) than the parent), so cost is accumulated **per slot** rather than\nas one figure for one model. This is the same shape a `SlotUsage` telemetry event carries,\ncaptured once per `(slot, model)` the run touched, so [result aggregation] can answer\n\"does a cheaper subagent slot cost accuracy?\" from the durable record.\n\n[result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/",
       "properties": {
@@ -371,6 +462,18 @@
       "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json#/$defs/GgRunLimits",
       "description": "The [execution ceilings](GgRunLimits) that were actually **in force** for this run — the\nconfigured set with gg's own defaults filled in (the error ceilings a run left unset, and an\nabsent `maxTurns` recorded as unbounded).\n\nRecorded rather than left to be re-derived from the [capability set](GgCapabilitySet)\nbecause a default is otherwise invisible: \"what ceiling was this run bounded by?\" must be\nanswerable for every run, including one that declared none."
     },
+    "maxResponseChars": {
+      "description": "The longest reply, in characters, of any turn that **worked** (a progressed or finished\noutcome) — folded as a maximum over the\n[`TurnOutcome`](GgTelemetryKind::TurnOutcome) events' `response_chars`. Recorded so an\noutput ceiling can later be chosen from data rather than guessed: a cap below this figure\nwould have truncated a reply that was doing its job. `0` — and omitted — for a run with no\nsuccessful turn.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "maxResponseOutputTokens": {
+      "description": "The same maximum in the provider's own unit: **completion tokens** (output plus reasoning,\nthe figure an output cap is measured in). `0` — and omitted — for a run whose successful\nturns reported no usage.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "maxSubagentDepth": {
       "description": "The deepest [subagent depth](GgTelemetryKind::AgentSpawned) reached this run: `0` for a\nsingle-agent run (only the root, at depth 0), `1` for a run that spawned children but no\ngrandchildren, and so on — the correlate for \"how does delegation depth relate to score?\".",
       "format": "uint64",
@@ -388,9 +491,20 @@
       ],
       "description": "The [language](GgProgramLanguage) the run's root agent wrote its programs in — the slice-by\ndimension a cross-language study compares its arms on, and the companion to\n[`execution_mode`](Self::execution_mode): that field says *whether* the run answered in\nprograms, this one says what those programs were written in.\n\n`None` for a tool-calling run, which has no program language at all — as opposed to having\nan unknown one. Recorded once off the run's configuration, like\n[`effective_tools`](Self::effective_tools), rather than derived from the telemetry stream."
     },
+    "providerStats": {
+      "description": "The per-`(provider, model)` health rollup for the run — which upstream providers served its\nmodel calls and how the calls each one served went; see [`GgProviderStat`]. One slice per\npair observed, in key order with the providerless slice first. Empty — and omitted — when\nno call, turn or rejection was ever folded in, which includes every record from a client\nthat reports no usage at all.",
+      "items": {
+        "$ref": "#/$defs/GgProviderStat"
+      },
+      "type": "array"
+    },
     "ranOutOfContext": {
       "description": "Whether the run ever **ran out of context** — its window fullness reached the ceiling\n(`>= 1.0`) at least once. The headline flag behind \"with compaction off, how often did the\nmodel run out of context?\".",
       "type": "boolean"
+    },
+    "rejectedResponses": {
+      "$ref": "#/$defs/GgRejectedResponses",
+      "description": "How many model replies gg **rejected whole** — the length-capped ones — and the spend they\nburned; see [`GgRejectedResponses`]. Their usage is excluded from the run's cost and turn\nmetrics by design, so this rollup is where it lives instead. Omitted from the wire for the\nordinary run that rejected nothing."
     },
     "reviewCycles": {
       "description": "The total number of review **verdicts** the run's reviewers rendered — every\n[`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) plus every\n[`Approved`](GgIssueReviewPhase::Approved) phase — so a single issue that took several\nfix rounds counts each round. The correlate for \"which reviewer produced fewer\nrework cycles?\".",
@@ -414,6 +528,12 @@
     "terminalStatus": {
       "description": "How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this\nsummary precedes. A slice-by facet for \"how often does configuration X finish cleanly?\".\n\nOne of gg's ten terminal statuses, and here they all are: `\"completed\"`; the three ceiling\nendings `\"exhausted\"`, `\"timed_out\"` and `\"limit_exceeded\"`; an operator's `\"canceled\"`; and\nthe five failures `\"model_error\"`, `\"auth_error\"`, `\"hook_error\"`, `\"compaction_failed\"`\nand `\"internal_error\"`.\nWritten out rather than sampled with a \"for example\", because this is where a consumer of\nthe schema meets the vocabulary and a facet built from a partial list does not report the\nstatuses it never heard of — it silently drops the runs that ended on one.\n\nNever `\"error\"`, the status a **launch** failure ends on, even though a reader watching the\nevent stream will see that one: a launch failure stops the session before it has a turn to\nsummarize, and emits no summary beside it.\n\nUnder [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), `completed` is reachable **only**\nthrough an explicit `finish` call inside a program — there is no implicit completion on\nthat path, so `completed` is a statement the model made rather than an absence of further\noutput.",
       "type": "string"
+    },
+    "toolCalls": {
+      "description": "Every **dispatched tool call** the run made, in either execution mode — one per\n[`ToolResult`](GgTelemetryKind::ToolResult) event, failed or not. This is the population\n[`GgErrorSummary::tool_failures`] classifies the failed half of, recorded so the successful\nhalf is derivable: `tool_calls` minus the failures is the calls that succeeded, and on a\nrecord that carries the figure it is at least the sum of the failures.\n\n`0` — and omitted — for a run that dispatched none, so a reader must treat a summary with\nfailures but no total as one whose total was not recorded.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
     },
     "undocumentedCalls": {
       "$ref": "#/$defs/GgUndocumentedCalls",

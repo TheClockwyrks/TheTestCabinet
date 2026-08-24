@@ -70,7 +70,8 @@ struct open_view {
   ///
   /// \returns how many views were closed, which is `0` when it has been closed already.
   /// \throws gg::core::api_error `invalid_argument` when this view's `selector` is empty, which no
-  ///   view gg reports ever is.
+  ///   view gg reports ever is, and `unavailable` for an agent whose run did not buy
+  ///   `agent-managed-context`, which is what buys closing a view.
   std::uint32_t close() const;
 };
 
@@ -139,7 +140,7 @@ void open_docs_view(std::string_view name);
 /// copy of what it held.
 ///
 /// Documentation views are not reached from here. `gg::docs::close` is what takes one away, and it is
-/// bought by a capability this call is not — so a sweep that included them would hand back `0` for
+/// bought by a capability of its own, `docview-close` — so a sweep that included them would hand back `0` for
 /// an agent that may not close one, which reads as a selector that named nothing.
 ///
 /// <ggop>views.close</ggop>
@@ -148,7 +149,9 @@ void open_docs_view(std::string_view name);
 ///   `search results`.
 /// \returns how many views were closed.
 /// \throws gg::core::api_error `invalid_argument` for an empty selector, which names nothing rather
-///   than everything — there is no call here that closes the window wholesale.
+///   than everything — there is no call here that closes the window wholesale — and `unavailable`
+///   for an agent whose run did not buy `agent-managed-context`, the capability that buys closing a
+///   view and listing what is open.
 std::uint32_t close(std::string_view selector);
 
 /// List what is open in the context window right now, with what each one costs.
@@ -157,9 +160,14 @@ std::uint32_t close(std::string_view selector);
 /// `tokens`, and — for a paged file view — the `region` it covers. What it enumerates is the context
 /// window's contents, not any module's functions.
 ///
+/// Listing what is open is context management, bought with `gg::views::close` by the
+/// `agent-managed-context` capability: an agent whose run did not enable it is refused.
+///
 /// <ggop>views.current</ggop>
 ///
 /// \returns every view open in the context window right now.
+/// \throws gg::core::api_error `unavailable` for an agent whose run did not buy
+///   `agent-managed-context`.
 std::vector<views::open_view> current();
 
 }  // namespace views

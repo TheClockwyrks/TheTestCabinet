@@ -189,7 +189,13 @@ segment and no other arm's.
 
 The opening section states the reply contract: the model's whole reply is one
 legal program in this run's language and nothing else, run as that program every
-turn.
+turn. It also states that the session has no tools and no tool-calling protocol:
+tool-call syntax of any kind — native tool-call tokens, XML invoke blocks, JSON
+function-call objects — is an error nothing dispatches, and the reply is one bare
+program with no prose around it and no code fences. Tool-call-trained models
+reach for that syntax by reflex, and the runtime really does dispatch none of it:
+a code turn offers no tool definitions, and a native tool call emitted anyway is
+dropped from the window with a warning.
 
 Three rules follow it, stated for every arm, because none of them is visible in
 a signature and each costs a turn to discover by trying it:
@@ -223,6 +229,22 @@ consequence of a checked arm a model has to act on: the SDK declares every
 function whatever this run enabled, so a call to one the run withheld compiles
 and then fails when it runs, naming the call. What the documentation holds is
 what the run granted.
+
+### The trailing contract notice
+
+The reply contract is also restated at the very end of every request, as one
+constant `Notice`-style sentence: the reply is one bare program in this run's
+language, with no prose, no fences and no tool calls. Measured across models,
+this trailing restatement is the single most effective lever for keeping a
+tool-call-trained model on the contract, so it earns a permanent seat at the
+position models weight most.
+
+It is a [slot](/gg/context-visibility/#slots) rather than a thread item: one
+instance, rendered after everything else on every request, set once per agent
+and cleared when a [succession](/gg/fork-and-exec/) hands the window to a
+different holder. Because everything a provider's prompt cache reads sits before
+it, the notice never disturbs the append-only prompt, and the tail cache marker
+deliberately lands on the newest conversation message rather than on it.
 
 ### Modules
 
@@ -283,10 +305,14 @@ repeat that work.
 
 `View` is qualified by the label the view was opened under (`View: changed-files`),
 because a label is the only thing telling two views apart. A documentation view
-is qualified the same way. A worked example of one heading and its `----` rule
-follows the list, and the list closes on the sentence that makes the vocabulary
-legible: a program that ran is not announced, because the views it opened are
-the result.
+is qualified the same way. `File` is qualified by the path the view was opened
+under and the 1-based inclusive line range it shows
+(`File: src/main.ts:100-250`; a whole file reads `1-N`), because the body is the
+file's text alone. The `File` row describes both the views the run seeds, under
+[autoload](/gg/autoload-specifications/), and the ones the program opens itself.
+A worked example of one heading and its `----` rule follows the list, and the
+list closes on the sentence that makes the vocabulary legible: a program that
+ran is not announced, because the views it opened are the result.
 
 ### Ending a session
 

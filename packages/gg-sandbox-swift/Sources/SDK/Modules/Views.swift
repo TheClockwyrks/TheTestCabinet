@@ -111,14 +111,18 @@ public enum views {
     /// the only copy of what it held, so anything needed later belongs in a file or a memory first.
     ///
     /// Documentation views are not reached from here. `docs.close` is what takes one away, and it is
-    /// bought by a capability this call is not — so a sweep that included them would hand back `0`
+    /// bought by a capability of its own, `docview-close` — so a sweep that included them would hand back `0`
     /// for an agent that may not close one, which reads as a selector that named nothing.
     ///
     /// - Parameter selector: What the view is filed under: a file's path, a text view's label, or
     ///   `search results`.
+    /// Closing a view is context management, bought — with `views.current` — by the
+    /// `agent-managed-context` capability: an agent whose run did not enable it is refused.
+    ///
     /// - Returns: how many views were closed.
     /// - Throws: `core.ApiError` with `.invalidArgument` for an empty selector, which names nothing
-    ///   rather than everything — no call here closes the window wholesale.
+    ///   rather than everything — no call here closes the window wholesale — and `.unavailable` for
+    ///   an agent whose run did not buy `agent-managed-context`.
     /// - ggop: views.close
     @discardableResult
     public static func close(_ selector: String) throws -> Int {
@@ -139,11 +143,19 @@ public enum views {
     /// for a paged file view — the `region` it covers. Reading it is what decides what to close when
     /// the window is filling up.
     ///
+    /// Listing what is open is context management, bought with `views.close` by the
+    /// `agent-managed-context` capability: an agent whose run did not enable it is refused.
+    ///
     /// - Returns: every open view, in no particular order.
+    /// - Throws: `core.ApiError` with `.unavailable` for an agent whose run did not buy
+    ///   `agent-managed-context`.
     /// - ggop: views.current
-    public static func current() -> [OpenView] {
+    public static func current() throws -> [OpenView] {
         var ret = test_cabinet_gg_views_list_open_view_t()
-        test_cabinet_gg_views_current_views(&ret)
+        var err = test_cabinet_gg_types_api_error_t()
+        guard test_cabinet_gg_views_current_views(&ret, &err) else {
+            throw lift(failure: &err)
+        }
         let views = lift(ret.ptr, ret.len) { OpenView(wire: $0) }
         test_cabinet_gg_views_list_open_view_free(&ret)
         return views
@@ -214,7 +226,8 @@ extension views.OpenView {
     ///
     /// - Returns: how many views were closed.
     /// - Throws: `core.ApiError` with `.invalidArgument` when this view's `selector` is empty,
-    ///   which no view gg reports ever is.
+    ///   which no view gg reports ever is, and `.unavailable` for an agent whose run did not buy
+    ///   `agent-managed-context`, which is what buys closing a view.
     /// - ggop-alias: views.close
     @discardableResult
     public func close() throws -> Int {

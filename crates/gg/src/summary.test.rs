@@ -97,6 +97,8 @@ fn turn(
 ) -> GgTelemetryKind {
     GgTelemetryKind::TurnOutcome {
         outcome,
+        response_chars: 0,
+        response_output_tokens: 0,
         // Derived from the type rather than passed in, exactly as gg emits it: the two halves of a
         // recorded error come from one value, so a fixture that could set them independently could
         // assert a shape gg cannot produce.
@@ -193,14 +195,17 @@ fn records_the_effective_toolset_verbatim() {
     let tracker = SessionSummaryTracker::new();
     // A stray telemetry event flows through the same tracker; it must not disturb the recorded
     // toolset.
-    tracker.observe(&GgTelemetryKind::AgentSpawned {
-        profile_id: ROOT_PROFILE_ID.to_string(),
-        model_id: "mock/echo".to_string(),
-        depth: 0,
-        brief: None,
-        worktree: None,
-        cwd: String::new(),
-    });
+    tracker.observe(
+        None,
+        &GgTelemetryKind::AgentSpawned {
+            profile_id: ROOT_PROFILE_ID.to_string(),
+            model_id: "mock/echo".to_string(),
+            depth: 0,
+            brief: None,
+            worktree: None,
+            cwd: String::new(),
+        },
+    );
     tracker.record_effective_tools(vec![
         "shell".to_string(),
         "read_file".to_string(),
@@ -226,14 +231,17 @@ fn records_the_effective_toolset_verbatim() {
 fn counts_agents_and_max_depth() {
     let tracker = SessionSummaryTracker::new();
     for depth in [0_u64, 1, 1, 2] {
-        tracker.observe(&GgTelemetryKind::AgentSpawned {
-            profile_id: ROOT_PROFILE_ID.to_string(),
-            model_id: "mock/echo".to_string(),
-            depth,
-            brief: None,
-            worktree: None,
-            cwd: String::new(),
-        });
+        tracker.observe(
+            None,
+            &GgTelemetryKind::AgentSpawned {
+                profile_id: ROOT_PROFILE_ID.to_string(),
+                model_id: "mock/echo".to_string(),
+                depth,
+                brief: None,
+                worktree: None,
+                cwd: String::new(),
+            },
+        );
     }
     let summary = tracker.finalize("completed");
     assert_eq!(summary.agents_spawned, 4);
@@ -246,27 +254,30 @@ fn counts_agents_and_max_depth() {
 #[test]
 fn counts_compactions_and_context_overflow() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&breakdown(0.4));
-    tracker.observe(&GgTelemetryKind::Compaction {
-        strategy: "self-summarization".to_string(),
-        trigger_fullness: 0.8,
-        before_tokens: 1000,
-        after_tokens: 200,
-        summary_tokens: 120,
-        retained: test_cabinet_core::gg::GgRetainedState {
-            skills: 0,
-            tasks: 0,
-            memories: 0,
-            issues: 0,
+    tracker.observe(None, &breakdown(0.4));
+    tracker.observe(
+        None,
+        &GgTelemetryKind::Compaction {
+            strategy: "self-summarization".to_string(),
+            trigger_fullness: 0.8,
+            before_tokens: 1000,
+            after_tokens: 200,
+            summary_tokens: 120,
+            retained: test_cabinet_core::gg::GgRetainedState {
+                skills: 0,
+                tasks: 0,
+                memories: 0,
+                issues: 0,
+            },
+            before_by_source: Vec::new(),
+            after_by_source: Vec::new(),
+            summary: "a summary".to_string(),
+            summary_fallback: false,
         },
-        before_by_source: Vec::new(),
-        after_by_source: Vec::new(),
-        summary: "a summary".to_string(),
-        summary_fallback: false,
-    });
-    tracker.observe(&breakdown(1.0));
-    tracker.observe(&breakdown(1.2));
-    tracker.observe(&breakdown(0.9));
+    );
+    tracker.observe(None, &breakdown(1.0));
+    tracker.observe(None, &breakdown(1.2));
+    tracker.observe(None, &breakdown(0.9));
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.compactions, 1);
@@ -281,12 +292,15 @@ fn counts_compactions_and_context_overflow() {
 #[test]
 fn a_breakdown_without_fullness_does_not_flag_overflow() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&GgTelemetryKind::ContextBreakdown {
-        by_source: Vec::new(),
-        total_tokens: 100,
-        window_limit: None,
-        fullness: None,
-    });
+    tracker.observe(
+        None,
+        &GgTelemetryKind::ContextBreakdown {
+            by_source: Vec::new(),
+            total_tokens: 100,
+            window_limit: None,
+            fullness: None,
+        },
+    );
     let summary = tracker.finalize("completed");
     assert_eq!(summary.final_fullness, None);
     assert_eq!(summary.context_overflow_count, 0);
@@ -306,12 +320,12 @@ fn counts_code_review_phases() {
         baseline: None,
     };
     // One review that took one fix round: requested → changes → approved.
-    tracker.observe(&phase(GgIssueReviewPhase::Requested));
-    tracker.observe(&phase(GgIssueReviewPhase::ChangesRequested));
-    tracker.observe(&phase(GgIssueReviewPhase::Approved));
+    tracker.observe(None, &phase(GgIssueReviewPhase::Requested));
+    tracker.observe(None, &phase(GgIssueReviewPhase::ChangesRequested));
+    tracker.observe(None, &phase(GgIssueReviewPhase::Approved));
     // A second review approved on the first pass: requested → approved.
-    tracker.observe(&phase(GgIssueReviewPhase::Requested));
-    tracker.observe(&phase(GgIssueReviewPhase::Approved));
+    tracker.observe(None, &phase(GgIssueReviewPhase::Requested));
+    tracker.observe(None, &phase(GgIssueReviewPhase::Approved));
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.issue_reviews, 2);
@@ -326,34 +340,43 @@ fn counts_code_review_phases() {
 fn counts_distinct_issues_created_and_completed_across_board_snapshots() {
     let tracker = SessionSummaryTracker::new();
     // First snapshot: two open issues.
-    tracker.observe(&GgTelemetryKind::BoardState {
-        module_id: "board-0".to_string(),
-        epics: Vec::new(),
-        issues: vec![
-            issue("a", GgIssueStatus::Open),
-            issue("b", GgIssueStatus::InProgress),
-        ],
-    });
+    tracker.observe(
+        None,
+        &GgTelemetryKind::BoardState {
+            module_id: "board-0".to_string(),
+            epics: Vec::new(),
+            issues: vec![
+                issue("a", GgIssueStatus::Open),
+                issue("b", GgIssueStatus::InProgress),
+            ],
+        },
+    );
     // Later: `a` done, `b` still in progress, a new `c` open.
-    tracker.observe(&GgTelemetryKind::BoardState {
-        module_id: "board-0".to_string(),
-        epics: Vec::new(),
-        issues: vec![
-            issue("a", GgIssueStatus::Done),
-            issue("b", GgIssueStatus::InProgress),
-            issue("c", GgIssueStatus::Open),
-        ],
-    });
+    tracker.observe(
+        None,
+        &GgTelemetryKind::BoardState {
+            module_id: "board-0".to_string(),
+            epics: Vec::new(),
+            issues: vec![
+                issue("a", GgIssueStatus::Done),
+                issue("b", GgIssueStatus::InProgress),
+                issue("c", GgIssueStatus::Open),
+            ],
+        },
+    );
     // Later still: `a` reopened, `b` done.
-    tracker.observe(&GgTelemetryKind::BoardState {
-        module_id: "board-0".to_string(),
-        epics: Vec::new(),
-        issues: vec![
-            issue("a", GgIssueStatus::InProgress),
-            issue("b", GgIssueStatus::Done),
-            issue("c", GgIssueStatus::Open),
-        ],
-    });
+    tracker.observe(
+        None,
+        &GgTelemetryKind::BoardState {
+            module_id: "board-0".to_string(),
+            epics: Vec::new(),
+            issues: vec![
+                issue("a", GgIssueStatus::InProgress),
+                issue("b", GgIssueStatus::Done),
+                issue("c", GgIssueStatus::Open),
+            ],
+        },
+    );
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.issues_created, 3, "a, b, c each counted once");
@@ -368,31 +391,37 @@ fn counts_distinct_issues_created_and_completed_across_board_snapshots() {
 #[test]
 fn captures_per_slot_cost_rollups() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&GgTelemetryKind::SlotUsage {
-        profile_id: ROOT_PROFILE_ID.to_string(),
-        model_id: "mock/primary".to_string(),
-        tokens: TokenCounts {
-            uncached_input: Some(1000),
-            cached_input: None,
-            output: Some(200),
-            reasoning: None,
+    tracker.observe(
+        None,
+        &GgTelemetryKind::SlotUsage {
+            profile_id: ROOT_PROFILE_ID.to_string(),
+            model_id: "mock/primary".to_string(),
+            tokens: TokenCounts {
+                uncached_input: Some(1000),
+                cached_input: None,
+                output: Some(200),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.05),
+                actual: Some(0.05),
+            }),
         },
-        cost: Some(Cost {
-            comparable: Some(0.05),
-            actual: Some(0.05),
-        }),
-    });
-    tracker.observe(&GgTelemetryKind::SlotUsage {
-        profile_id: "reviewer".to_string(),
-        model_id: "mock/reviewer".to_string(),
-        tokens: TokenCounts {
-            uncached_input: Some(300),
-            cached_input: None,
-            output: Some(40),
-            reasoning: None,
+    );
+    tracker.observe(
+        None,
+        &GgTelemetryKind::SlotUsage {
+            profile_id: "reviewer".to_string(),
+            model_id: "mock/reviewer".to_string(),
+            tokens: TokenCounts {
+                uncached_input: Some(300),
+                cached_input: None,
+                output: Some(40),
+                reasoning: None,
+            },
+            cost: None,
         },
-        cost: None,
-    });
+    );
 
     let summary = tracker.finalize("model_error");
     assert_eq!(summary.terminal_status, "model_error");
@@ -413,15 +442,24 @@ fn captures_per_slot_cost_rollups() {
 #[test]
 fn observing_the_terminal_events_is_a_no_op() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&GgTelemetryKind::SessionStarted {
-        capability_set: Box::new(GgCapabilitySet::minimal("mock/echo")),
-    });
-    tracker.observe(&GgTelemetryKind::SessionSummary {
-        summary: Box::new(SessionSummaryTracker::new().finalize("completed")),
-    });
-    tracker.observe(&GgTelemetryKind::SessionEnded {
-        status: "completed".to_string(),
-    });
+    tracker.observe(
+        None,
+        &GgTelemetryKind::SessionStarted {
+            capability_set: Box::new(GgCapabilitySet::minimal("mock/echo")),
+        },
+    );
+    tracker.observe(
+        None,
+        &GgTelemetryKind::SessionSummary {
+            summary: Box::new(SessionSummaryTracker::new().finalize("completed")),
+        },
+    );
+    tracker.observe(
+        None,
+        &GgTelemetryKind::SessionEnded {
+            status: "completed".to_string(),
+        },
+    );
     let summary = tracker.finalize("completed");
     assert_eq!(summary.agents_spawned, 0);
     assert!(summary.slot_costs.is_empty());
@@ -436,23 +474,32 @@ fn the_healing_rollup_folds_every_code_execution() {
     let tracker = SessionSummaryTracker::new();
 
     // A clean program: nothing to repair, so it contributes only to the denominator.
-    tracker.observe(&code_turn(GgResponseHealing::default()));
+    tracker.observe(None, &code_turn(GgResponseHealing::default()));
     // A fenced program padded with prose: two strategies, one heal.
-    tracker.observe(&code_turn(healed(&[
-        GgHealingStrategy::StripFences,
-        GgHealingStrategy::StripProse,
-    ])));
+    tracker.observe(
+        None,
+        &code_turn(healed(&[
+            GgHealingStrategy::StripFences,
+            GgHealingStrategy::StripProse,
+        ])),
+    );
     // Nested fences: the same strategy twice on one response is two applications, one heal.
-    tracker.observe(&code_turn(healed(&[
-        GgHealingStrategy::StripFences,
-        GgHealingStrategy::StripFences,
-    ])));
+    tracker.observe(
+        None,
+        &code_turn(healed(&[
+            GgHealingStrategy::StripFences,
+            GgHealingStrategy::StripFences,
+        ])),
+    );
     // The pipeline could not reach a fixpoint, so every repair was discarded and the response ran
     // exactly as sent — an unusual response that was nonetheless healed of nothing.
-    tracker.observe(&code_turn(GgResponseHealing {
-        did_not_converge: true,
-        ..GgResponseHealing::default()
-    }));
+    tracker.observe(
+        None,
+        &code_turn(GgResponseHealing {
+            did_not_converge: true,
+            ..GgResponseHealing::default()
+        }),
+    );
 
     let summary = tracker.finalize("completed");
     assert_eq!(
@@ -483,21 +530,30 @@ fn the_healing_rollup_folds_every_code_execution() {
 #[test]
 fn a_tool_calling_run_reports_a_zeroed_healing_rollup() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&GgTelemetryKind::AgentSpawned {
-        profile_id: ROOT_PROFILE_ID.to_string(),
-        model_id: "mock/echo".to_string(),
-        depth: 0,
-        brief: None,
-        worktree: None,
-        cwd: String::new(),
-    });
-    tracker.observe(&GgTelemetryKind::AssistantMessage {
-        text: "calling a tool".to_string(),
-    });
-    tracker.observe(&GgTelemetryKind::ToolCall {
-        name: "write_file".to_string(),
-        args: serde_json::json!({ "path": "index.html" }),
-    });
+    tracker.observe(
+        None,
+        &GgTelemetryKind::AgentSpawned {
+            profile_id: ROOT_PROFILE_ID.to_string(),
+            model_id: "mock/echo".to_string(),
+            depth: 0,
+            brief: None,
+            worktree: None,
+            cwd: String::new(),
+        },
+    );
+    tracker.observe(
+        None,
+        &GgTelemetryKind::AssistantMessage {
+            text: "calling a tool".to_string(),
+        },
+    );
+    tracker.observe(
+        None,
+        &GgTelemetryKind::ToolCall {
+            name: "write_file".to_string(),
+            args: serde_json::json!({ "path": "index.html" }),
+        },
+    );
     tracker.record_execution_mode("tool_calling");
 
     let summary = tracker.finalize("completed");
@@ -522,23 +578,23 @@ fn a_tool_calling_run_reports_a_zeroed_healing_rollup() {
 fn the_compile_rollup_folds_every_code_execution_that_reported_one() {
     let tracker = SessionSummaryTracker::new();
 
-    tracker.observe(&code_turn_compiling(
-        GgResponseHealing::default(),
-        Some(1_400),
-    ));
+    tracker.observe(
+        None,
+        &code_turn_compiling(GgResponseHealing::default(), Some(1_400)),
+    );
     // A repaired reply compiles like any other, and its cost counts the same.
-    tracker.observe(&code_turn_compiling(
-        healed(&[GgHealingStrategy::StripFences]),
-        Some(1_100),
-    ));
+    tracker.observe(
+        None,
+        &code_turn_compiling(healed(&[GgHealingStrategy::StripFences]), Some(1_100)),
+    );
     // The turn the compiler rejected: it cost real seconds and is exactly the turn whose cost would
     // otherwise vanish, because nothing else about it is non-zero.
-    tracker.observe(&code_turn_compiling(
-        GgResponseHealing::default(),
-        Some(3_900),
-    ));
+    tracker.observe(
+        None,
+        &code_turn_compiling(GgResponseHealing::default(), Some(3_900)),
+    );
     // A turn that reported no figure at all — the shape every TypeScript turn has.
-    tracker.observe(&code_turn(GgResponseHealing::default()));
+    tracker.observe(None, &code_turn(GgResponseHealing::default()));
 
     let summary = tracker.finalize("completed");
     assert_eq!(
@@ -558,8 +614,8 @@ fn the_compile_rollup_folds_every_code_execution_that_reported_one() {
 #[test]
 fn a_run_that_compiled_nothing_reports_zero_rather_than_nothing() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&code_turn(GgResponseHealing::default()));
-    tracker.observe(&code_turn(GgResponseHealing::default()));
+    tracker.observe(None, &code_turn(GgResponseHealing::default()));
+    tracker.observe(None, &code_turn(GgResponseHealing::default()));
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.code_executions, 2);
@@ -624,9 +680,12 @@ fn finalize_carries_the_recorded_ceilings_and_the_breach_that_stopped_the_run() 
 #[test]
 fn a_subagents_breach_is_not_reported_as_the_runs_outcome() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&GgTelemetryKind::LimitExceeded {
-        breach: breach(GgLimitKind::ConsecutiveErrors, "agent-1"),
-    });
+    tracker.observe(
+        None,
+        &GgTelemetryKind::LimitExceeded {
+            breach: breach(GgLimitKind::ConsecutiveErrors, "agent-1"),
+        },
+    );
     // The run itself ended on its own terms.
     tracker.record_limit_hit(None);
     assert_eq!(
@@ -638,9 +697,12 @@ fn a_subagents_breach_is_not_reported_as_the_runs_outcome() {
     // And when the root *does* stop on a ceiling, its breach is the one recorded — not whichever
     // agent happened to emit an event first.
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&GgTelemetryKind::LimitExceeded {
-        breach: breach(GgLimitKind::ErrorRate, "agent-1"),
-    });
+    tracker.observe(
+        None,
+        &GgTelemetryKind::LimitExceeded {
+            breach: breach(GgLimitKind::ErrorRate, "agent-1"),
+        },
+    );
     tracker.record_limit_hit(Some(breach(GgLimitKind::Cost, "root")));
     let summary = tracker.finalize("limit_exceeded");
     assert_eq!(summary.limit_hit, Some(breach(GgLimitKind::Cost, "root")));
@@ -660,13 +722,13 @@ fn a_subagents_breach_is_not_reported_as_the_runs_outcome() {
 #[test]
 fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&progressed());
-    tracker.observe(&errored(GgTurnErrorType::TranspileSyntax, 1));
-    tracker.observe(&errored(GgTurnErrorType::ProgramApiError, 2));
-    tracker.observe(&progressed());
-    tracker.observe(&errored(GgTurnErrorType::SandboxTimeout, 1));
-    tracker.observe(&turn(GgTurnOutcome::Fatal, None, 1, 0));
-    tracker.observe(&turn(GgTurnOutcome::Finished, None, 0, 0));
+    tracker.observe(None, &progressed());
+    tracker.observe(None, &errored(GgTurnErrorType::TranspileSyntax, 1));
+    tracker.observe(None, &errored(GgTurnErrorType::ProgramApiError, 2));
+    tracker.observe(None, &progressed());
+    tracker.observe(None, &errored(GgTurnErrorType::SandboxTimeout, 1));
+    tracker.observe(None, &turn(GgTurnOutcome::Fatal, None, 1, 0));
+    tracker.observe(None, &turn(GgTurnOutcome::Finished, None, 0, 0));
 
     let summary = tracker.finalize("completed");
     assert_eq!(
@@ -715,12 +777,12 @@ fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
 #[test]
 fn the_error_rollup_breaks_the_same_errors_down_by_specific_type() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&errored(GgTurnErrorType::ModelRejected, 1));
-    tracker.observe(&errored(GgTurnErrorType::ModelResponseLoop, 2));
-    tracker.observe(&errored(GgTurnErrorType::ProgramApiError, 3));
-    tracker.observe(&errored(GgTurnErrorType::ProgramApiError, 4));
-    tracker.observe(&errored(GgTurnErrorType::ProgramUnknownName, 5));
-    tracker.observe(&progressed());
+    tracker.observe(None, &errored(GgTurnErrorType::ModelRejected, 1));
+    tracker.observe(None, &errored(GgTurnErrorType::ModelResponseLoop, 2));
+    tracker.observe(None, &errored(GgTurnErrorType::ProgramApiError, 3));
+    tracker.observe(None, &errored(GgTurnErrorType::ProgramApiError, 4));
+    tracker.observe(None, &errored(GgTurnErrorType::ProgramUnknownName, 5));
+    tracker.observe(None, &progressed());
 
     let errors = tracker.finalize("completed").errors;
     assert_eq!(
@@ -753,13 +815,16 @@ fn the_error_rollup_breaks_the_same_errors_down_by_specific_type() {
 #[test]
 fn failed_calls_are_counted_by_class_without_touching_the_turn_figures() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&tool_result(true, None));
-    tracker.observe(&tool_result(false, Some(GgCallFailure::NotFound)));
-    tracker.observe(&tool_result(false, Some(GgCallFailure::NotFound)));
-    tracker.observe(&tool_result(false, Some(GgCallFailure::InvalidArgument)));
+    tracker.observe(None, &tool_result(true, None));
+    tracker.observe(None, &tool_result(false, Some(GgCallFailure::NotFound)));
+    tracker.observe(None, &tool_result(false, Some(GgCallFailure::NotFound)));
+    tracker.observe(
+        None,
+        &tool_result(false, Some(GgCallFailure::InvalidArgument)),
+    );
     // A failure raised outside a tool implementation, which has no class of its own.
-    tracker.observe(&tool_result(false, Some(GgCallFailure::Other)));
-    tracker.observe(&progressed());
+    tracker.observe(None, &tool_result(false, Some(GgCallFailure::Other)));
+    tracker.observe(None, &progressed());
 
     let errors = tracker.finalize("completed").errors;
     assert_eq!(
@@ -787,10 +852,13 @@ fn the_longest_streak_is_the_peak_any_one_agent_reported() {
     // Read as two agents' turns arriving interleaved: one never gets past its second failure, the
     // other reaches three in a row.
     for consecutive in [1_u64, 1, 2, 1, 3] {
-        tracker.observe(&errored(GgTurnErrorType::ModelRetryExhausted, consecutive));
+        tracker.observe(
+            None,
+            &errored(GgTurnErrorType::ModelRetryExhausted, consecutive),
+        );
     }
     // ...and a later recovery must not lower the peak already observed.
-    tracker.observe(&progressed());
+    tracker.observe(None, &progressed());
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.errors.max_consecutive, 3);
@@ -807,14 +875,17 @@ fn the_longest_streak_is_the_peak_any_one_agent_reported() {
 fn discarded_looping_replies_are_counted_without_being_charged_as_errors() {
     let tracker = SessionSummaryTracker::new();
     // Two attempts looped, the third produced a reply, and the turn it produced was perfectly fine.
-    tracker.observe(&turn(GgTurnOutcome::Progressed, None, 0, 2));
+    tracker.observe(None, &turn(GgTurnOutcome::Progressed, None, 0, 2));
     // A later turn looped once more and then failed for an unrelated reason.
-    tracker.observe(&turn(
-        GgTurnOutcome::Error,
-        Some(GgTurnErrorType::TranspileSyntax),
-        1,
-        1,
-    ));
+    tracker.observe(
+        None,
+        &turn(
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorType::TranspileSyntax),
+            1,
+            1,
+        ),
+    );
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.errors.loop_aborts, 3, "a plain sum over the turns");
@@ -841,8 +912,8 @@ fn discarded_looping_replies_are_counted_without_being_charged_as_errors() {
 #[test]
 fn a_run_that_never_armed_loop_detection_reports_no_aborts() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&progressed());
-    tracker.observe(&errored(GgTurnErrorType::MissingCompletionNoCall, 1));
+    tracker.observe(None, &progressed());
+    tracker.observe(None, &errored(GgTurnErrorType::MissingCompletionNoCall, 1));
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.errors.loop_aborts, 0);
@@ -866,10 +937,10 @@ fn a_run_that_never_armed_loop_detection_reports_no_aborts() {
 fn a_tool_calling_run_still_reports_its_error_rate() {
     let tracker = SessionSummaryTracker::new();
     tracker.record_execution_mode("tool_calling");
-    tracker.observe(&progressed());
-    tracker.observe(&errored(GgTurnErrorType::MissingCompletionNoCall, 1));
-    tracker.observe(&errored(GgTurnErrorType::MissingCompletionNoCall, 2));
-    tracker.observe(&turn(GgTurnOutcome::Finished, None, 0, 0));
+    tracker.observe(None, &progressed());
+    tracker.observe(None, &errored(GgTurnErrorType::MissingCompletionNoCall, 1));
+    tracker.observe(None, &errored(GgTurnErrorType::MissingCompletionNoCall, 2));
+    tracker.observe(None, &turn(GgTurnOutcome::Finished, None, 0, 0));
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.code_executions, 0, "nothing code-shaped ran");
@@ -885,14 +956,20 @@ fn a_tool_calling_run_still_reports_its_error_rate() {
 #[test]
 fn only_the_turn_outcome_event_feeds_the_error_rollup() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&breakdown(0.5));
-    tracker.observe(&code_turn(healed(&[GgHealingStrategy::StripFences])));
-    tracker.observe(&GgTelemetryKind::AssistantMessage {
-        text: "working on it".to_string(),
-    });
-    tracker.observe(&GgTelemetryKind::LimitExceeded {
-        breach: breach(GgLimitKind::ConsecutiveErrors, "agent-1"),
-    });
+    tracker.observe(None, &breakdown(0.5));
+    tracker.observe(None, &code_turn(healed(&[GgHealingStrategy::StripFences])));
+    tracker.observe(
+        None,
+        &GgTelemetryKind::AssistantMessage {
+            text: "working on it".to_string(),
+        },
+    );
+    tracker.observe(
+        None,
+        &GgTelemetryKind::LimitExceeded {
+            breach: breach(GgLimitKind::ConsecutiveErrors, "agent-1"),
+        },
+    );
 
     let summary = tracker.finalize("completed");
     assert_eq!(
@@ -901,4 +978,316 @@ fn only_the_turn_outcome_event_feeds_the_error_rollup() {
         "no turn was recorded, so the run made no model calls this rollup knows of"
     );
     assert_eq!(summary.code_executions, 1, "the other rollups still folded");
+}
+
+/// The rejected-reply rollup and the response maxima, folded together because they are two halves
+/// of one ruling: a length-capped reply's spend reaches the summary **only** through the rejected
+/// bucket, and the maxima — the data an output ceiling would later be chosen from — fold only
+/// over the turns that worked, so the degenerate reply that motivated the ceiling can never be
+/// the figure that sets it.
+#[test]
+fn rejected_replies_and_response_maxima_fold_into_the_summary() {
+    let tracker = SessionSummaryTracker::new();
+    let rejected = |output: u64, cost: f64| GgTelemetryKind::ResponseRejected {
+        reason: "length".to_string(),
+        chars: output * 4,
+        tokens: TokenCounts {
+            uncached_input: Some(1_000),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        },
+        cost: Some(Cost {
+            comparable: Some(cost),
+            actual: Some(cost),
+        }),
+        provider: Some("cap-provider".to_string()),
+    };
+    let sized_turn = |outcome: GgTurnOutcome,
+                      error_type: Option<GgTurnErrorType>,
+                      chars: u64,
+                      output_tokens: u64| {
+        match turn(outcome, error_type, u64::from(error_type.is_some()), 0) {
+            GgTelemetryKind::TurnOutcome {
+                outcome,
+                error,
+                error_type,
+                consecutive_errors,
+                turns,
+                loop_aborts,
+                loop_abort_words,
+                loop_abort_chars,
+                ..
+            } => GgTelemetryKind::TurnOutcome {
+                outcome,
+                error,
+                error_type,
+                consecutive_errors,
+                turns,
+                loop_aborts,
+                loop_abort_words,
+                loop_abort_chars,
+                response_chars: chars,
+                response_output_tokens: output_tokens,
+            },
+            other => panic!("not a turn outcome: {other:?}"),
+        }
+    };
+
+    tracker.observe(None, &rejected(65_000, 1.25));
+    // The rejected call's error turn: its (large) reply size must not reach the maxima.
+    tracker.observe(
+        None,
+        &sized_turn(
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorType::ModelLengthCapped),
+            260_000,
+            65_000,
+        ),
+    );
+    tracker.observe(None, &rejected(65_000, 1.30));
+    tracker.observe(
+        None,
+        &sized_turn(
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorType::ModelLengthCapped),
+            260_000,
+            65_000,
+        ),
+    );
+    // The turns that worked: a progressed one and the finishing one set the maxima.
+    tracker.observe(
+        None,
+        &sized_turn(GgTurnOutcome::Progressed, None, 4_200, 900),
+    );
+    tracker.observe(
+        None,
+        &sized_turn(GgTurnOutcome::Finished, None, 6_400, 1_500),
+    );
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(summary.rejected_responses.count, 2);
+    assert_eq!(summary.rejected_responses.tokens.output, Some(130_000));
+    assert_eq!(
+        summary.rejected_responses.tokens.uncached_input,
+        Some(2_000)
+    );
+    assert_eq!(
+        summary.rejected_responses.cost.and_then(|cost| cost.actual),
+        Some(1.25 + 1.30)
+    );
+    assert_eq!(summary.errors.by_type.get("model_length_capped"), Some(&2));
+    assert_eq!(
+        summary.max_response_chars, 6_400,
+        "the maxima fold only over the turns that worked"
+    );
+    assert_eq!(summary.max_response_output_tokens, 1_500);
+}
+
+/// A usage delta as an agent's model call reports it: the model it ran on, the provider that
+/// served it, and a small spend. The profile id is irrelevant to the provider rollup, which keys
+/// on `(provider, model)`.
+fn usage(model: &str, provider: Option<&str>) -> GgTelemetryKind {
+    GgTelemetryKind::Usage {
+        profile_id: ROOT_PROFILE_ID.to_string(),
+        model_id: model.to_string(),
+        tokens: TokenCounts {
+            uncached_input: Some(100),
+            cached_input: None,
+            output: Some(40),
+            reasoning: None,
+        },
+        cost: Some(Cost {
+            comparable: Some(0.01),
+            actual: Some(0.01),
+        }),
+        provider: provider.map(str::to_string),
+    }
+}
+
+/// The slice for `(provider, model)`, or a panic naming what the summary actually holds — the
+/// assertion failure a misattributed fold should produce.
+fn slice<'a>(
+    summary: &'a GgSessionSummary,
+    provider: Option<&str>,
+    model: Option<&str>,
+) -> &'a GgProviderStat {
+    summary
+        .provider_stats
+        .iter()
+        .find(|slice| slice.provider.as_deref() == provider && slice.model_id.as_deref() == model)
+        .unwrap_or_else(|| {
+            panic!(
+                "no ({provider:?}, {model:?}) slice in {:?}",
+                summary.provider_stats
+            )
+        })
+}
+
+/// Attribution is per agent: two agents' events interleave arbitrarily on the run-wide stream,
+/// and each turn still lands on the provider **its own** call named, on the model its own usage
+/// deltas reported.
+#[test]
+fn provider_attribution_follows_each_agents_own_stream() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(Some("root"), &usage("mock/alpha", Some("Alpha")));
+    tracker.observe(Some("helper"), &usage("mock/beta", Some("Beta")));
+    // The interleave: root's turn resolves against root's marker, not helper's.
+    tracker.observe(Some("root"), &progressed());
+    tracker.observe(
+        Some("helper"),
+        &errored(GgTurnErrorType::TranspileCompile, 1),
+    );
+    tracker.observe(Some("root"), &usage("mock/alpha", Some("Alpha")));
+    tracker.observe(Some("root"), &turn(GgTurnOutcome::Finished, None, 0, 0));
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(summary.provider_stats.len(), 2);
+
+    let alpha = slice(&summary, Some("Alpha"), Some("mock/alpha"));
+    assert_eq!((alpha.calls, alpha.turns, alpha.working), (2, 2, 2));
+    assert_eq!(alpha.tokens.uncached_input, Some(200));
+    assert_eq!(alpha.cost.and_then(|cost| cost.actual), Some(0.02));
+    assert!(alpha.errors.is_empty());
+
+    let beta = slice(&summary, Some("Beta"), Some("mock/beta"));
+    assert_eq!((beta.calls, beta.turns, beta.working), (1, 1, 0));
+    assert_eq!(beta.errors.get("transpile_compile"), Some(&1));
+}
+
+/// A turn whose call produced no reply — a model timeout — has no provider to name, so it lands
+/// on the providerless slice for the agent's known model rather than inheriting the provider of
+/// an earlier, unrelated call.
+#[test]
+fn a_turn_whose_call_produced_no_reply_lands_on_the_providerless_slice() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(Some("root"), &usage("mock/alpha", Some("Alpha")));
+    tracker.observe(Some("root"), &progressed());
+    // The timed-out call: no usage, no prompt, no marker — only the outcome.
+    tracker.observe(Some("root"), &errored(GgTurnErrorType::ModelTimeout, 1));
+
+    let summary = tracker.finalize("timed_out");
+    let named = slice(&summary, Some("Alpha"), Some("mock/alpha"));
+    assert_eq!((named.calls, named.turns, named.working), (1, 1, 1));
+    let providerless = slice(&summary, None, Some("mock/alpha"));
+    assert_eq!((providerless.calls, providerless.turns), (0, 1));
+    assert_eq!(providerless.errors.get("model_timeout"), Some(&1));
+}
+
+/// A turn recorded before the agent's first usage delta has no model to attribute to, and says
+/// so: the slice carries the provider its call named and no model at all.
+#[test]
+fn a_turn_before_any_usage_delta_carries_no_model() {
+    let tracker = SessionSummaryTracker::new();
+    // The call reported no usage (its delta was skipped), but its prompt still named who served
+    // it — the marker that keeps the turn attributable.
+    tracker.observe(
+        Some("root"),
+        &GgTelemetryKind::Prompt {
+            request: Vec::new(),
+            total_tokens: 1_200,
+            response_id: None,
+            finish_reason: "stop".to_string(),
+            tokens: TokenCounts::default(),
+            cost: None,
+            duration_ms: Some(900),
+            provider: Some("Alpha".to_string()),
+        },
+    );
+    tracker.observe(Some("root"), &progressed());
+
+    let summary = tracker.finalize("completed");
+    let unmodeled = slice(&summary, Some("Alpha"), None);
+    assert_eq!(
+        (unmodeled.calls, unmodeled.turns, unmodeled.working),
+        (0, 1, 1)
+    );
+}
+
+/// A rejected reply is attributed to the provider that served it — on the agent's known model —
+/// and marks the turn, so the error turn the rejection becomes lands on the same provider.
+#[test]
+fn a_rejected_reply_is_attributed_to_the_provider_that_served_it() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(Some("root"), &usage("mock/alpha", Some("Alpha")));
+    tracker.observe(Some("root"), &progressed());
+    tracker.observe(
+        Some("root"),
+        &GgTelemetryKind::ResponseRejected {
+            reason: "length".to_string(),
+            chars: 260_000,
+            tokens: TokenCounts::default(),
+            cost: None,
+            provider: Some("Capper".to_string()),
+        },
+    );
+    tracker.observe(
+        Some("root"),
+        &errored(GgTurnErrorType::ModelLengthCapped, 1),
+    );
+
+    let summary = tracker.finalize("completed");
+    let capper = slice(&summary, Some("Capper"), Some("mock/alpha"));
+    assert_eq!(capper.rejected, 1);
+    assert_eq!(capper.turns, 1);
+    assert_eq!(capper.errors.get("model_length_capped"), Some(&1));
+}
+
+/// The slices are a strict re-slicing of the run-wide rollup: their `turns` sum to
+/// `errors.turns` whatever mix of agents, providers and outcomes the stream carried — the
+/// invariant the contract promises.
+#[test]
+fn provider_slices_turns_sum_to_the_error_rollups_denominator() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(Some("root"), &usage("mock/alpha", Some("Alpha")));
+    tracker.observe(Some("root"), &progressed());
+    tracker.observe(Some("helper"), &progressed());
+    tracker.observe(Some("root"), &errored(GgTurnErrorType::ModelTimeout, 1));
+    tracker.observe(Some("root"), &usage("mock/alpha", None));
+    tracker.observe(Some("root"), &turn(GgTurnOutcome::Fatal, None, 0, 0));
+
+    let summary = tracker.finalize("internal_error");
+    let attributed: u64 = summary.provider_stats.iter().map(|slice| slice.turns).sum();
+    assert_eq!(attributed, summary.errors.turns);
+    // And the fatal turn is visible as the slice arithmetic the contract documents.
+    let providerless = slice(&summary, None, Some("mock/alpha"));
+    let errored_turns: u64 = providerless.errors.values().sum();
+    assert_eq!(
+        providerless.turns - providerless.working - errored_turns,
+        1,
+        "the fatal turn is attributed and charged to nothing"
+    );
+}
+
+/// Every dispatched call advances the total, failed or not, so the successful half is derivable
+/// from the record: `toolCalls` minus the classified failures.
+#[test]
+fn tool_calls_counts_every_dispatched_result() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(None, &tool_result(true, None));
+    tracker.observe(None, &tool_result(true, None));
+    tracker.observe(None, &tool_result(false, Some(GgCallFailure::NotFound)));
+    tracker.observe(
+        None,
+        &tool_result(false, Some(GgCallFailure::InvalidArgument)),
+    );
+    tracker.observe(None, &tool_result(true, None));
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(summary.tool_calls, 5);
+    let failures: u64 = summary.errors.tool_failures.values().sum();
+    assert_eq!(summary.tool_calls - failures, 3);
+}
+
+/// A run that never named a provider, dispatched a tool or recorded a turn omits the new figures
+/// from the wire entirely — the shape every record written before they existed already has, so
+/// absence stays one statement rather than two.
+#[test]
+fn a_summary_with_no_provider_or_tool_activity_omits_the_new_fields() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(None, &breakdown(0.4));
+    let summary = tracker.finalize("completed");
+    let json = serde_json::to_value(&summary).expect("summary serializes");
+    assert!(json.get("providerStats").is_none());
+    assert!(json.get("toolCalls").is_none());
 }

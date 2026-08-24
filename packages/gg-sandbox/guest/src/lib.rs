@@ -23,14 +23,23 @@
 //! # How a failure reaches the model
 //!
 //! By **capture, not interception** — ruling D8. Nothing here catches a program's throw to describe
-//! it: the engine's own rendering of the exception, with the engine's own `name`, `message` and
-//! stack, goes to standard error, and gg's membrane (`crates/gg/src/sandbox/membrane.rs` routes the
-//! guest's stderr into `GuestStderr`, and `with_guest_stderr` puts it in front of whatever gg says)
-//! hands it to the model unedited. The locations in it are `Exception::stack()`'s, which are the
-//! engine's own, stated against `program.js` — there is no arithmetic anywhere in this crate, which
-//! is ruling D11.
+//! it: the engine delivers an uncaught value to the three places this guest can observe one — the
+//! module's own evaluation promise, the job queue, and the rejection tracker — and what is read
+//! there is the engine's own rendering of it, with the engine's own `name`, `message` and stack.
+//! The locations in it are `Exception::stack()`'s, which are the engine's own, stated against
+//! `program.js` — there is no arithmetic anywhere in this crate, which is ruling D11.
 //!
-//! Four shapes reach stderr that way, and the last two were silent or opaque on the incumbent:
+//! That rendering is **reported over `feedback.report-error`**, with the class the value carries
+//! ([`classify`]), and the guest then returns normally. It used to write the rendering to standard
+//! error and `abort`, so that the crossing ended in a trap; the owner's ruling retired that: an
+//! uncaught `ApiError` is the program's fault and must be filed as `program_api_error` on this arm
+//! exactly as Python, Ruby and C++ file it, and a `sandbox_*` type is reserved for a ceiling gg
+//! imposed or a real wasmtime trap — never for an API failure a program did not catch. Reporting is
+//! still not interception: there is no `catch` between the program and the engine, no chain built
+//! to type a throw, and the message is the engine's words. The WIT's `run` export states the rule
+//! for every guest.
+//!
+//! Four shapes are reported that way, and the last two were silent or opaque on the incumbent:
 //!
 //! * a throw the program did not catch, including an `ApiError` a refused gg call raised;
 //! * a syntax error, at the model's own line, where a `new Function` construction failure had no
@@ -41,9 +50,14 @@
 //! * a **stack overflow**, as `RangeError: Maximum call stack size exceeded` with the frames, rather
 //!   than as a store-killing `wasm trap: call stack exhausted`.
 //!
-//! Having written what happened, the guest **traps**, so gg records a failed turn. It does not call
-//! `feedback.report-error`: that channel is the incumbent's single `catch`, which is the
-//! interception D8 forbids.
+//! Frames the model cannot open — the SDK's own, under the `sdk:` scheme the loader resolves for
+//! the SDK alone, and the `native` frame of the membrane call itself — are struck from the stack
+//! and counted ([`own_frames`]), so what is reported locates the failure in the program's own file.
+//!
+//! The one failure that still ends in a trap is **gg's own execution budget** ([`deadline`]): the
+//! engine answers the interrupt with `InternalError: interrupted` and the frames, the guest writes
+//! that to standard error and aborts, and gg files the turn as the timeout it is, with the engine's
+//! words in front of its own. That is a ceiling gg imposed, which is what a `sandbox_*` type is for.
 //!
 //! # What is deliberately absent
 //!
@@ -169,6 +183,8 @@ mod deadline {
 
 /// One line to standard error, flushed, because a trap follows and an unflushed line is a line the
 /// model never reads.
+///
+/// Reached only on the way to the abort gg's execution budget ends in — see [`report`].
 fn say(line: &str) {
     let mut stderr = std::io::stderr();
     let _ = stderr.write_all(line.as_bytes());
@@ -176,15 +192,33 @@ fn say(line: &str) {
     let _ = stderr.flush();
 }
 
-/// **Report one failure, once**, and record that the turn failed.
+/// One uncaught failure, as the engine rendered it and as gg classes it.
+struct Failure {
+    /// The engine's own text — its `name`, its `message`, its stack (with the frames the model
+    /// cannot open struck) and the properties the thrown value carries.
+    rendered: String,
+    /// The class gg files the turn under, read off the thrown value by [`classify`].
+    kind: bindings::feedback::ErrorKind,
+    /// The wire's own code when the value was a failed gg call.
+    code: Option<bindings::types::ErrorCode>,
+}
+
+/// **Report one failure, once.**
 ///
-/// `prefix` is the shape (`"Uncaught"`, `"Uncaught (in promise)"`) and `rendered` is the engine's own
-/// text — its `name`, its `message` and its stack, unedited. The de-duplication is on `rendered`
-/// alone, and it is not editing: ONE failure genuinely reaches this from two places. A program whose
-/// module body throws rejects the module's own evaluation promise, which the handler attached to it
-/// reports, and it reaches the rejection tracker as well — the second copy is dropped rather than
-/// telling a model it had two problems.
-fn report(prefix: &str, rendered: &str) {
+/// `prefix` is the shape (`"Uncaught"`, `"Uncaught (in promise)"`) and the failure's `rendered` is
+/// the engine's own text. The de-duplication is on `rendered` alone, and it is not editing: ONE
+/// failure genuinely reaches this from two places. A program whose module body throws rejects the
+/// module's own evaluation promise, which the handler attached to it reports, and it reaches the
+/// rejection tracker as well — the second copy is dropped rather than telling a model it had two
+/// problems.
+///
+/// Where it goes depends on one fact: whether gg's execution budget ran out ([`interrupted`]). A
+/// failure of the program's own is reported over `feedback.report-error`, which files the turn as
+/// a `program_*` type with the class the value carried, and the guest then returns normally. A
+/// failure the interrupt produced is gg's ceiling rather than the program's fault, so it goes to
+/// standard error instead, ahead of the abort that files the turn as the timeout it is — the host
+/// reads the budget from the clock and puts these words in front of its own.
+fn report(prefix: &str, failure: Failure) {
     thread_local! {
         static REPORTED: std::cell::RefCell<Vec<String>> = const {
             std::cell::RefCell::new(Vec::new())
@@ -192,19 +226,31 @@ fn report(prefix: &str, rendered: &str) {
     }
     let fresh = REPORTED.with(|reported| {
         let mut reported = reported.borrow_mut();
-        if reported.iter().any(|seen| seen == rendered) {
+        if reported.contains(&failure.rendered) {
             return false;
         }
-        reported.push(rendered.to_string());
+        reported.push(failure.rendered.clone());
         true
     });
-    if fresh {
-        match prefix.is_empty() {
-            true => say(rendered),
-            false => say(&format!("{prefix} {rendered}")),
-        }
+    if !fresh {
+        return;
     }
-    failed(true);
+    let message = match prefix.is_empty() {
+        true => failure.rendered,
+        false => format!("{prefix} {}", failure.rendered),
+    };
+    if interrupted(false) {
+        say(&message);
+        return;
+    }
+    bindings::feedback::report_error(&bindings::feedback::ProgramError {
+        kind: failure.kind,
+        code: failure.code,
+        message,
+        // The stack IS the location, in the engine's own words and the model's own coordinates;
+        // a second coordinate under it would be this guest's arithmetic, which ruling D11 forbids.
+        location: None,
+    });
 }
 
 /// **Rejections that have no handler yet**, by the engine's own rendering of each, held until the
@@ -222,9 +268,9 @@ fn report(prefix: &str, rendered: &str) {
 /// The key is the rendering rather than the promise, and that is exactly as precise as the
 /// reporting: [`report`] de-duplicates on the rendering too, so two rejections this cannot tell
 /// apart are two the model would have read as one.
-fn unhandled<R>(with: impl FnOnce(&mut Vec<String>) -> R) -> R {
+fn unhandled<R>(with: impl FnOnce(&mut Vec<Failure>) -> R) -> R {
     thread_local! {
-        static UNHANDLED: std::cell::RefCell<Vec<String>> = const {
+        static UNHANDLED: std::cell::RefCell<Vec<Failure>> = const {
             std::cell::RefCell::new(Vec::new())
         };
     }
@@ -265,14 +311,17 @@ impl Guest for Component {
         // [`unhandled`] for why the answer is only available after the drain below.
         runtime.set_host_promise_rejection_tracker(Some(Box::new(
             |ctx: Ctx<'_>, _promise: Value<'_>, reason: Value<'_>, handled: bool| {
-                let rendered = describe(&ctx, reason);
+                let failure = failure(&ctx, reason);
                 unhandled(|rejections| match handled {
                     true => {
-                        if let Some(at) = rejections.iter().position(|seen| *seen == rendered) {
+                        if let Some(at) = rejections
+                            .iter()
+                            .position(|seen| seen.rendered == failure.rendered)
+                        {
                             rejections.remove(at);
                         }
                     }
-                    false => rejections.push(rendered),
+                    false => rejections.push(failure),
                 });
             },
         )));
@@ -280,7 +329,11 @@ impl Guest for Component {
         let started = Instant::now();
         if let Some(budget) = budget() {
             runtime.set_interrupt_handler(Some(Box::new(move || {
-                deadline::guest_elapsed(started) > budget
+                let spent = deadline::guest_elapsed(started) > budget;
+                if spent {
+                    interrupted(true);
+                }
+                spent
             })));
         }
 
@@ -300,7 +353,7 @@ impl Guest for Component {
                 Err(_) => {
                     context.with(|ctx| {
                         let thrown = ctx.catch();
-                        report("Uncaught", &describe(&ctx, thrown));
+                        report("Uncaught", failure(&ctx, thrown));
                     });
                     break;
                 }
@@ -309,8 +362,8 @@ impl Guest for Component {
 
         // The queue is empty, so a rejection still here is one nothing in the program ever attached
         // a handler to.
-        for rendered in unhandled(std::mem::take) {
-            report("Uncaught (in promise)", &rendered);
+        for rejection in unhandled(std::mem::take) {
+            report("Uncaught (in promise)", rejection);
         }
 
         // The engine is NOT freed. quickjs-ng asserts `list_empty(&rt->gc_obj_list)` inside
@@ -321,10 +374,11 @@ impl Guest for Component {
         std::mem::forget(context);
         std::mem::forget(runtime);
 
-        if failed(false) {
-            // Die the way a runtime kills a program that threw. The words are already on standard
-            // error, where `with_guest_stderr` puts them in FRONT of whatever gg says about the
-            // trap — so what the model reads first is what its own engine said.
+        if interrupted(false) {
+            // gg's execution budget ran out, which is gg's ceiling and not the program's fault: die
+            // so the host files the turn as the timeout it reads off the clock. The engine's words
+            // are already on standard error, where `with_guest_stderr` puts them in FRONT of
+            // whatever gg says — so what the model reads first is what its own engine said.
             std::process::abort();
         }
     }
@@ -338,17 +392,19 @@ impl Guest for Component {
     }
 }
 
-/// Whether anything has failed this turn; `set` records that something has.
+/// Whether gg's execution budget ran out this turn; `set` records that it has.
 ///
-/// A flag rather than a return value because the three places that can fail — the declaration, the
-/// evaluation, and the job queue — are in three different borrows of the context.
-fn failed(set: bool) -> bool {
+/// Set by the interrupt handler the instant it first answers `true`, and read by [`report`] to tell
+/// the engine's `InternalError: interrupted` — which is gg's ceiling — from a failure of the
+/// program's own. A flag rather than a match on the error's words, because the words are the
+/// engine's and the fact is this guest's.
+fn interrupted(set: bool) -> bool {
     use std::sync::atomic::{AtomicBool, Ordering};
-    static FAILED: AtomicBool = AtomicBool::new(false);
+    static INTERRUPTED: AtomicBool = AtomicBool::new(false);
     if set {
-        FAILED.store(true, Ordering::Relaxed);
+        INTERRUPTED.store(true, Ordering::Relaxed);
     }
-    FAILED.load(Ordering::Relaxed)
+    INTERRUPTED.load(Ordering::Relaxed)
 }
 
 /// gg's execution budget for this turn, when gg named one.
@@ -371,7 +427,7 @@ fn evaluate<'js>(ctx: &Ctx<'js>, program: &str) {
     {
         Ok(declared) => declared,
         Err(caught) => {
-            report("", &render(ctx, caught));
+            report("", render(ctx, caught));
             return;
         }
     };
@@ -383,7 +439,7 @@ fn evaluate<'js>(ctx: &Ctx<'js>, program: &str) {
             // thrown value anybody would otherwise see.
             let on_reject = Function::new(ctx.clone(), move |reason: Value<'js>| {
                 let ctx = reason.ctx().clone();
-                report("Uncaught", &describe(&ctx, reason));
+                report("Uncaught", failure(&ctx, reason));
             })
             .expect("a rejection handler");
             let _: rquickjs::Result<Value<'_>> = promise.then().and_then(|then| {
@@ -395,7 +451,7 @@ fn evaluate<'js>(ctx: &Ctx<'js>, program: &str) {
             });
         }
         Err(caught) => {
-            report("", &render(ctx, caught));
+            report("", render(ctx, caught));
         }
     }
 }
@@ -585,6 +641,58 @@ fn text_of(value: &Value<'_>) -> String {
     }
 }
 
+/// A thrown value, as the engine rendered it ([`describe`]) and as gg classes it ([`classify`]).
+fn failure<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> Failure {
+    let (kind, code) = classify(ctx, &value);
+    Failure {
+        rendered: describe(ctx, value),
+        kind,
+        code,
+    }
+}
+
+/// **The class gg files an uncaught value under**, read off the value and not off its words.
+///
+/// Three classes, and the middle one is why the enum exists. A failed gg call carries the wire's own
+/// `error-code` as its `code` own property beside the `operation` it failed in — on the SDK's
+/// `ApiError` and on the membrane's raw `{ code, operation, message }` record alike — so the host
+/// classifies the turn from a value rather than from prose, and `api-failure` is reported with that
+/// code. A `ReferenceError` is a name the program reached for that nothing bound, which is
+/// `unknown-name` on every guest that withholds a name. Everything else is the program's own.
+///
+/// `code` alone is not enough: a program's own `throw Object.assign(new Error(…), { code })` is
+/// its own failure, and the `operation` beside it is what an `ApiError` has that such a value does
+/// not. A `code` naming no wire case is a program's own value too.
+fn classify<'js>(
+    ctx: &Ctx<'js>,
+    value: &Value<'js>,
+) -> (
+    bindings::feedback::ErrorKind,
+    Option<bindings::types::ErrorCode>,
+) {
+    use bindings::feedback::ErrorKind;
+    let Some(object) = value.as_object() else {
+        return (ErrorKind::Other, None);
+    };
+    let operation = object
+        .get::<_, Value<'js>>("operation")
+        .ok()
+        .filter(rquickjs::Value::is_string);
+    let code = object
+        .get::<_, Value<'js>>("code")
+        .ok()
+        .filter(rquickjs::Value::is_string)
+        .and_then(|code| membrane::from_js_types_error_code(ctx, code).ok());
+    if let (Some(_), Some(code)) = (operation, code) {
+        return (ErrorKind::ApiFailure, Some(code));
+    }
+    let name: Option<String> = object.get("name").ok();
+    match name.as_deref() {
+        Some("ReferenceError") => (ErrorKind::UnknownName, None),
+        _ => (ErrorKind::Other, None),
+    }
+}
+
 /// The engine's own words for a value that was thrown: its `name`, its `message`, its stack and
 /// whatever else it carries, unedited and in the model's own coordinates.
 fn describe<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> String {
@@ -598,10 +706,59 @@ fn describe<'js>(ctx: &Ctx<'js>, value: Value<'js>) -> String {
         let message: String = object.get("message").unwrap_or_default();
         let stack: String = object.get("stack").unwrap_or_default();
         if !message.is_empty() {
-            return format!("{name}: {message}\n{stack}");
+            return format!("{name}: {message}\n{}", own_frames(&stack));
         }
     }
     thrown_value(ctx, &value)
+}
+
+/// `stack` with every frame the model cannot open struck, and a count of what was struck.
+///
+/// The engine writes a frame as `    at <function> (<file>:<line>:<column>)`, or `(native)` for a
+/// call into this guest's own Rust. A frame whose file is the SDK's — under the `sdk:` scheme
+/// [`loader`] resolves for the SDK alone, or the raw `test-cabinet:gg/<interface>` membrane module —
+/// or a native frame, is a frame in code the program did not write and cannot read: an `ApiError`
+/// is constructed four SDK frames deep, and a stack that led with those told a model its failure
+/// was in `sdk:gg/core.js`. What survives is every frame in `program.js` and in a loaded code
+/// module, which is what the invariants say a frame the model reads names. The count closes the
+/// stack so a model can tell a struck stack from a whole one, which is the same rule the host's own
+/// source-map reader follows for a frame in compiled output.
+fn own_frames(stack: &str) -> String {
+    let mut kept = String::with_capacity(stack.len());
+    let mut struck = 0usize;
+    for line in stack.split_inclusive('\n') {
+        let Some(frame) = line.trim_start().strip_prefix("at ") else {
+            kept.push_str(line);
+            continue;
+        };
+        let frame = frame.trim_end();
+        let place = match (frame.rfind('('), frame.ends_with(')')) {
+            (Some(open), true) => &frame[open + 1..frame.len() - 1],
+            _ => frame,
+        };
+        let foreign = place == "native"
+            || place.starts_with(loader::SDK)
+            || place.starts_with(loader::MEMBRANE);
+        match foreign {
+            true => struck += 1,
+            false => kept.push_str(line),
+        }
+    }
+    if struck == 0 {
+        return kept;
+    }
+    if !kept.is_empty() && !kept.ends_with('\n') {
+        kept.push('\n');
+    }
+    let frames = match struck {
+        1 => "frame",
+        _ => "frames",
+    };
+    kept.push_str(&format!(
+        "    … and {struck} more {frames}, inside gg's SDK rather than in code this program \
+         contains.\n"
+    ));
+    kept
 }
 
 /// A thrown value that is **not** an error, as a line of text that says something.
@@ -660,7 +817,7 @@ fn thrown_error(exception: &rquickjs::Exception<'_>) -> String {
             .and_then(|name| name.as_string().and_then(|text| text.to_string().ok()))
             .unwrap_or_else(|| "Error".to_string()),
         exception.message().unwrap_or_default(),
-        exception.stack().unwrap_or_default(),
+        own_frames(&exception.stack().unwrap_or_default()),
     );
     let carried = carried(exception);
     match carried.is_empty() {
@@ -691,12 +848,35 @@ fn carried(exception: &rquickjs::Exception<'_>) -> Vec<String> {
     carried
 }
 
-/// A caught failure, rendered.
-fn render<'js>(ctx: &Ctx<'js>, caught: CaughtError<'js>) -> String {
+/// A caught failure, rendered and classed.
+///
+/// A syntax error arrives here as the engine's `SyntaxError` exception, and is the program's own;
+/// a failure of the engine itself rather than of anything it evaluated (`CaughtError::Error`) has
+/// no value to class and is the program's own as well.
+fn render<'js>(ctx: &Ctx<'js>, caught: CaughtError<'js>) -> Failure {
     match caught {
-        CaughtError::Exception(exception) => thrown_error(&exception),
-        CaughtError::Value(value) => format!("Uncaught {}", describe(ctx, value)),
-        CaughtError::Error(error) => error.to_string(),
+        CaughtError::Exception(exception) => {
+            let value = exception.clone().into_value();
+            let (kind, code) = classify(ctx, &value);
+            Failure {
+                rendered: thrown_error(&exception),
+                kind,
+                code,
+            }
+        }
+        CaughtError::Value(value) => {
+            let (kind, code) = classify(ctx, &value);
+            Failure {
+                rendered: format!("Uncaught {}", describe(ctx, value)),
+                kind,
+                code,
+            }
+        }
+        CaughtError::Error(error) => Failure {
+            rendered: error.to_string(),
+            kind: bindings::feedback::ErrorKind::Other,
+            code: None,
+        },
     }
 }
 

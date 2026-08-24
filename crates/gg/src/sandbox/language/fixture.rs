@@ -212,7 +212,7 @@ impl ProgramLanguage for FixtureLanguage {
         }
         if let Some(line) = source.lines().find(|line| is_use(line)) {
             return Err(PrepareError::Unsupported(format!(
-                "there is no module loader here, so `{}` cannot be resolved",
+                "no module loader is available, so `{}` cannot be resolved",
                 line.trim()
             ))
             .into());

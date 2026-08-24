@@ -166,6 +166,13 @@ definitions its own prompts reference and reads on its own.
 An attached image is logged as a descriptor giving its media type, decoded size
 and the tokens it is charged, never its base64 bytes.
 
+Each turn's `prompt` entry carries the provider that served the call when the
+gateway named one, beside the finish reason, usage and latency it already
+carries, so a provider-shaped reply is attributable from the log alone. A
+[rejected length-capped reply](/gg/execution-limits/#model-api-errors) is logged
+too, as an exchange whose finish reason is the provider's own `length`: the
+reply never enters the window, and the log is where it stays inspectable.
+
 A pooled message also carries its window item's selector tag where it has one:
 for a file view the workspace path it shows, and for an agent view the label the
 agent opened it under. The tag is what makes the window's material attributable
@@ -210,7 +217,7 @@ accounted as history rather than inflating the source's own band.
 
 ### Slots
 
-Two messages are slots rather than thread items, so assigning one overwrites
+Three messages are slots rather than thread items, so assigning one overwrites
 rather than accumulates.
 
 The [context-usage signal](/gg/agent-managed-context/) is rendered after the
@@ -219,6 +226,13 @@ move every turn, so as a thread item it would supersede itself every turn and
 leave a trail of stale readings. Everything a cache can read sits before it,
 rewriting it invalidates no prefix, and it is exactly because it costs nothing
 to rewrite that it reports exact figures rather than rounded ones.
+
+A [responses-as-code](/gg/responses-as-code/overview/) window carries the
+[trailing contract notice](/gg/prompts/#the-trailing-contract-notice) as a third
+slot, rendered after the context-usage signal so it is the last message of every
+request. Unlike the signal it is constant for the life of the agent: it is set
+once, survives a compaction, and is cleared only when the window crosses to a
+different holder.
 
 The system prompt is always the first message of the prompt. It describes the
 agent, its toolset, its roster and its ending calls rather than the
@@ -247,7 +261,9 @@ material in front of itself by opening a view, and gg pushes one message per
 open view into the next prompt. The spellings below are TypeScript's; each
 [language](/gg/languages/overview/) spells them its own way.
 
-- `gg.views.openFile(path)` lands in the File views band, keyed by path.
+- `gg.views.openFile(path)` lands in the File views band, keyed by path, and
+  arrives headed `File: <path>:<first>-<last>`, the 1-based inclusive line range
+  the view shows (`1-N` for a whole file).
 - `gg.views.openText(label, body)` lands in Agent views, keyed by the label.
 - `gg.views.openDocsView(name)` lands in Documentation, keyed by the name of the
   thing it documents.
@@ -291,10 +307,11 @@ the provider's cache from that position onward. These are the removals:
 
 - `evict_file_view` and `archive_thread`, both
   [invoked by the agent](/gg/agent-managed-context/).
-- `gg.views.close(selector)`, which a program may call whether or not it holds
-  the agent-managed-context capability, since closing what it opened itself is
-  not a privilege. It sweeps the file, agent-view and doc-search bands, because
-  a selector is what the model wrote and it need not say which band it meant.
+- `gg.views.close(selector)`, bought by the same
+  [agent-managed-context](/gg/agent-managed-context/) capability, since closing
+  a view is context management too. It sweeps the file, agent-view and
+  doc-search bands, because a selector is what the model wrote and it need not
+  say which band it meant.
 - `gg.docs.close` and `gg.docs.closeAll`, which reach the documentation band and
   are bought by the `docview-close` capability.
 - A [compaction](/gg/compaction/) boundary, which rewrites the window wholesale.

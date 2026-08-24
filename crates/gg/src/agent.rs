@@ -175,8 +175,8 @@ use crate::compaction::{
 use crate::completion;
 use crate::config::GgInvocation;
 use crate::context::{
-    BpeTokenEstimator, ContextModel, FileRegion, PromptItem, Retention, TokenEstimator, TurnRange,
-    UsageSignalOptions, code_heading, tool_output_source,
+    BpeTokenEstimator, ContextModel, FileRegion, PromptItem, Retention, ShownLines, TokenEstimator,
+    TurnRange, UsageSignalOptions, code_heading, tool_output_source,
 };
 use crate::discovery::{CallDiscovery, DiscoveryWarning};
 use crate::docs::{DocViewTypes, DocsRuntime};
@@ -194,7 +194,8 @@ use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
 use crate::message_log::finish_reason_token;
 use crate::model::{
-    LoopAborts, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
+    FinishReason, LoopAborts, Message, ModelClient, ModelError, ModelResponse, ToolCall,
+    ToolDefinition,
 };
 use crate::modules::{
     CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
@@ -4020,6 +4021,7 @@ async fn drive_agent(
             archive_store,
             archive_id,
             code.enabled.then_some(code.language),
+            &granted_operations,
         );
         let autoload =
             AutoloadSetup::resolve(&profile, &mut crate::validate::LaunchReport::Discarding);
@@ -5197,8 +5199,8 @@ async fn wait_for_subagents(
                             return ToolOutcome::failed(
                                 ToolFailure::NotFound,
                                 format!(
-                                    "`{id}` is not one of your subagents; you can only wait for \
-                                     agents you spawned."
+                                    "`{id}` is not one of this agent's subagents; only agents \
+                                     it spawned can be waited on."
                                 ),
                             );
                         }
@@ -5376,15 +5378,15 @@ fn send_message(sub: &mut SubagentContext, args: &Value) -> ToolOutcome {
         None => ToolOutcome::failed(
             ToolFailure::NotFound,
             format!(
-                "`{agent_id}` is not one of your subagents; you can only message agents you \
-                 spawned."
+                "`{agent_id}` is not one of this agent's subagents; only agents it spawned can \
+                 be messaged."
             ),
         ),
         // The agent exists but its lifecycle has moved past being messageable: well-formed, in
         // conflict with the current state, which is what `conflict` means.
         Some(child) if child.is_finished() => ToolOutcome::failed(
             ToolFailure::Conflict,
-            format!("subagent `{agent_id}` has already returned; you cannot message it."),
+            format!("subagent `{agent_id}` has already returned; it no longer receives messages."),
         ),
         Some(child) => match child.inbox.send(message) {
             Ok(()) => ToolOutcome::ok(
@@ -6568,6 +6570,18 @@ impl Agent {
         // So there is nothing here to detect and nothing to undo: whatever this instance inherited,
         // the prompt it reasons under is its own.
         context.set_system(system);
+        // The trailing contract notice, set on the same terms as the system prompt — a property of
+        // this holder, set unconditionally so a code agent that inherited a window gets its own
+        // and a tool-calling agent that inherited a code window sheds its predecessor's. It is one
+        // constant `system` message in a slot that always renders **last** (see
+        // `ContextModel::set_trailing_notice`), so it restates the reply contract at the context
+        // tail of every request without ever disturbing the append-only prompt ahead of it —
+        // measured as the single most effective cross-model lever for keeping a
+        // tool-call-trained model answering with bare programs.
+        context.set_trailing_notice(
+            code.enabled
+                .then(|| prompts::render_contract_notice(code.language)),
+        );
 
         // How the rest of the window opens. A **fresh** one is seeded the way every agent's has
         // always been: the build prompt, then whatever the capabilities pre-load into it. A
@@ -7181,125 +7195,237 @@ impl Agent {
             // The same boundary on the turn's phase accounting: everything before this was
             // assembling the request, everything after handling what it returned.
             turn_timer.model_call_started();
-            let response = match complete_with_vision_recovery(
-                client,
-                context,
-                &tools,
-                &tool_ctx.vision.support,
-                emitter,
-            )
-            .await
-            {
-                Ok(response) => response,
-                Err(err) => {
-                    // Surface the failure loudly — a `Log(error)` and a failed
-                    // session end — rather than discarding the run silently. A
-                    // retry-exhausted transient failure and a fatal one both end the
-                    // session here; the client has already exhausted its own retries, so
-                    // there is nothing left to retry at the turn level in Phase 0.
-                    //
-                    // A [generation loop](crate::loopguard) that survived every attempt is one of
-                    // those retry-exhausted failures and ends the session on exactly the same terms
-                    // — but it is named separately, because "retries exhausted" would send an
-                    // operator looking at the provider for an outage that never happened. What
-                    // actually happened is that the model kept writing the same thing and gg kept
-                    // throwing it away.
-                    //
-                    // The classification is made ONCE, as the value that is recorded, and the log
-                    // line's phrase is read back off it, so no aggregate can disagree with what the
-                    // line says.
-                    let error_type = err.turn_error_type();
-                    // Whose failure this ending is, decided before anything says so out loud —
-                    // because both the record and the sentence below are rendered from this one
-                    // value. A failed model call is the model's, or the operator's when it is the
-                    // credential that was refused…
-                    let status = TerminalStatus::attributed(
-                        if err.is_auth_failure() {
-                            // An auth failure is the run's credential being refused, not the model
-                            // failing at its work, so it ends the session under its own status —
-                            // which the session runner turns into a launch failure.
-                            STATUS_AUTH_ERROR
-                        } else {
-                            STATUS_MODEL_ERROR
-                        },
-                        // …unless gg broke under this call, which the turn recorded below is
-                        // attributed against too. Whose failure the far side of a request was is
-                        // not answerable from the error alone once the run itself is broken, and an
-                        // ending that answered it separately from the turn is how the two records of
-                        // one event came to disagree.
-                        &limits,
-                    );
-                    // Said to the operator as the *ending* was attributed, never as the error reads
-                    // on its own: this path is the one place an agent stops for a gg defect without
-                    // going through [`stop_on_fault`](Self::stop_on_fault), so a line rendered from
-                    // the error alone left an operator reading this agent's stream with a provider
-                    // failure and no hint that the run was already broken — the same disagreement
-                    // between two accounts of one event, in the record a human actually reads.
-                    emitter.emit(log(
-                        "error",
-                        model_call_failed(turn, status, error_type, &err),
-                    ));
-                    // The turn is recorded before the loop leaves, so the accounting never drifts
-                    // from the number of model calls the run made — and it can never breach a
-                    // ceiling, because the session is already ending on the next line. A model API
-                    // failure stays fatal on its first occurrence: the client has already retried
-                    // with backoff over every retryable class, so counting this one and looping
-                    // again would be a second, undocumented retry layer with a worse backoff and no
-                    // jitter.
-                    //
-                    // A loop that survived every attempt keeps the `ModelApi` **base kind** it
-                    // arrives as (the contract has no separate kind for it, deliberately) and is
-                    // published under its own type, `model_response_loop`; the replies it discarded
-                    // on the way are carried on the event too, so the money spent on them is still
-                    // counted — this is the one error path that can have any.
-                    //
-                    // It reads the run a **second** time, a few statements after the ending above
-                    // read it. The two are deliberately not folded into one: folding them would mean
-                    // this seam being *told* the answer rather than deriving it, which needs an
-                    // "already attributed" carrier for outcomes exactly as [`TerminalStatus`] is one
-                    // for statuses — and an entry point that accepted a pre-judged outcome would
-                    // reopen the "somebody forgot" hole both types exist to close, at the eight
-                    // other sites that have no ending beside them to borrow a judgement from.
-                    // Deriving the outcome from `status` here would not help either, since this seam
-                    // re-reads regardless, which is exactly what protects those eight.
-                    //
-                    // The window that leaves is empty today, and it is worth writing down rather
-                    // than trusting. The latch never clears and the ending read first, so the only
-                    // disagreement it could produce is a **stale ending** — `model_error` beside a
-                    // turn recorded as gg's — which is the harmful direction and not a harmless one.
-                    // What closes it is that there is no `.await` between the two reads and gg
-                    // drives every agent on a single current-thread runtime: no other agent can run
-                    // between these statements to raise the latch. It reopens the moment an await
-                    // is introduced between them, or a fault is raised from a thread outside the
-                    // runtime.
-                    let _ = self.record_turn(
-                        &mut agent_limits,
+            // The model call, retried **within this turn** for the two failures the loop recovers
+            // from rather than dying on:
+            //
+            // - a call that hit gg's [per-call ceiling](crate::client::MODEL_CALL_TIMEOUT) — a
+            //   stalled provider;
+            // - a reply that hit the **provider's output cap** (`finish_reason: length`), which is
+            //   presumed a degenerate generation and rejected whole.
+            //
+            // Both are recorded as error turns first — they spend the consecutive-error count and
+            // the error-rate window exactly as a failed model call does, which is what bounds a
+            // model (or an endpoint) that keeps doing it — and then the same request is simply
+            // asked again: nothing entered the context, so the retry is byte-identical and the
+            // turn keeps its number. A rejected attempt is therefore absent from the run's turn
+            // count and its usage absent from the run's tokens and cost (the `ResponseRejected`
+            // event and the summary's rejected rollup carry the spend instead); only the error
+            // ceilings — and the run-wide deadline and an operator's kill, both re-checked
+            // between attempts because a retry chain can outlast a turn boundary — decide when to
+            // stop asking.
+            let response = loop {
+                let attempt_started = Instant::now();
+                let recoverable = match complete_with_vision_recovery(
+                    client,
+                    context,
+                    &tools,
+                    &tool_ctx.vision.support,
+                    emitter,
+                )
+                .await
+                {
+                    // A length-capped reply is rejected whole, before anything reads it: it never
+                    // becomes the assistant turn, so the next attempt's context does not carry it.
+                    // Recorded twice, deliberately — the `ResponseRejected` event (and its summary
+                    // rollup) carries the spend the run's own metrics exclude, and the message log
+                    // keeps the rejected exchange itself so a degenerate reply is inspectable
+                    // rather than merely counted.
+                    Ok(response) if response.finish_reason == FinishReason::Length => {
+                        let size = ResponseSize::of(&response);
+                        emitter.emit(GgTelemetryKind::ResponseRejected {
+                            reason: finish_reason_token(&response.finish_reason),
+                            chars: size.chars,
+                            tokens: response.usage,
+                            cost: response.cost,
+                            provider: response.provider.clone(),
+                        });
+                        emitter.emit(log("error", length_capped_rejected(turn, size, &response)));
+                        let request: Vec<PromptItem<'_>> = context.prompt_items().collect();
+                        let reply = Message::assistant(response.text.clone(), Vec::new());
+                        let reply_tokens = context.estimate(&reply);
+                        emitter.log_prompt(
+                            &request,
+                            Some((&reply, reply_tokens)),
+                            response.usage,
+                            response.cost,
+                            finish_reason_token(&response.finish_reason),
+                            Some(attempt_started.elapsed().as_millis() as u64),
+                            response.provider.clone(),
+                        );
+                        // What loop detection discarded on the way to this reply rides on the
+                        // rejection's own error turn — the reply it preceded is not becoming one.
+                        (TurnErrorType::ModelLengthCapped, response.loop_aborts)
+                    }
+                    Ok(response) => break response,
+                    // A timed-out call: the client surfaced it without spending its own retry
+                    // budget (each internal retry of a stall costs the full ceiling again), so the
+                    // bounded retry is this one.
+                    Err(err @ ModelError::Timeout { .. }) => {
+                        emitter.emit(log("error", model_call_retried(turn, &err)));
+                        (TurnErrorType::ModelTimeout, LoopAborts::none())
+                    }
+                    Err(err) => {
+                        // Surface the failure loudly — a `Log(error)` and a failed
+                        // session end — rather than discarding the run silently. A
+                        // retry-exhausted transient failure and a fatal one both end the
+                        // session here; the client has already exhausted its own retries, so
+                        // there is nothing left to retry at the turn level in Phase 0.
+                        //
+                        // A [generation loop](crate::loopguard) that survived every attempt is one of
+                        // those retry-exhausted failures and ends the session on exactly the same terms
+                        // — but it is named separately, because "retries exhausted" would send an
+                        // operator looking at the provider for an outage that never happened. What
+                        // actually happened is that the model kept writing the same thing and gg kept
+                        // throwing it away.
+                        //
+                        // The classification is made ONCE, as the value that is recorded, and the log
+                        // line's phrase is read back off it, so no aggregate can disagree with what the
+                        // line says.
+                        let error_type = err.turn_error_type();
+                        // Whose failure this ending is, decided before anything says so out loud —
+                        // because both the record and the sentence below are rendered from this one
+                        // value. A failed model call is the model's, or the operator's when it is the
+                        // credential that was refused…
+                        let status = TerminalStatus::attributed(
+                            if err.is_auth_failure() {
+                                // An auth failure is the run's credential being refused, not the model
+                                // failing at its work, so it ends the session under its own status —
+                                // which the session runner turns into a launch failure.
+                                STATUS_AUTH_ERROR
+                            } else {
+                                STATUS_MODEL_ERROR
+                            },
+                            // …unless gg broke under this call, which the turn recorded below is
+                            // attributed against too. Whose failure the far side of a request was is
+                            // not answerable from the error alone once the run itself is broken, and an
+                            // ending that answered it separately from the turn is how the two records of
+                            // one event came to disagree.
+                            &limits,
+                        );
+                        // Said to the operator as the *ending* was attributed, never as the error reads
+                        // on its own: this path is the one place an agent stops for a gg defect without
+                        // going through [`stop_on_fault`](Self::stop_on_fault), so a line rendered from
+                        // the error alone left an operator reading this agent's stream with a provider
+                        // failure and no hint that the run was already broken — the same disagreement
+                        // between two accounts of one event, in the record a human actually reads.
+                        emitter.emit(log(
+                            "error",
+                            model_call_failed(turn, status, error_type, &err),
+                        ));
+                        // The turn is recorded before the loop leaves, so the accounting never drifts
+                        // from the number of model calls the run made — and it can never breach a
+                        // ceiling, because the session is already ending on the next line. A model API
+                        // failure stays fatal on its first occurrence: the client has already retried
+                        // with backoff over every retryable class, so counting this one and looping
+                        // again would be a second, undocumented retry layer with a worse backoff and no
+                        // jitter.
+                        //
+                        // A loop that survived every attempt keeps the `ModelApi` **base kind** it
+                        // arrives as (the contract has no separate kind for it, deliberately) and is
+                        // published under its own type, `model_response_loop`; the replies it discarded
+                        // on the way are carried on the event too, so the money spent on them is still
+                        // counted — this is the one error path that can have any.
+                        //
+                        // It reads the run a **second** time, a few statements after the ending above
+                        // read it. The two are deliberately not folded into one: folding them would mean
+                        // this seam being *told* the answer rather than deriving it, which needs an
+                        // "already attributed" carrier for outcomes exactly as [`TerminalStatus`] is one
+                        // for statuses — and an entry point that accepted a pre-judged outcome would
+                        // reopen the "somebody forgot" hole both types exist to close, at the eight
+                        // other sites that have no ending beside them to borrow a judgement from.
+                        // Deriving the outcome from `status` here would not help either, since this seam
+                        // re-reads regardless, which is exactly what protects those eight.
+                        //
+                        // The window that leaves is empty today, and it is worth writing down rather
+                        // than trusting. The latch never clears and the ending read first, so the only
+                        // disagreement it could produce is a **stale ending** — `model_error` beside a
+                        // turn recorded as gg's — which is the harmful direction and not a harmless one.
+                        // What closes it is that there is no `.await` between the two reads and gg
+                        // drives every agent on a single current-thread runtime: no other agent can run
+                        // between these statements to raise the latch. It reopens the moment an await
+                        // is introduced between them, or a fault is raised from a thread outside the
+                        // runtime.
+                        let _ = self.record_turn(
+                            &mut agent_limits,
+                            emitter,
+                            &limits,
+                            TurnOutcome::Error(error_type),
+                            // A turn that never got a reply at all still says what it threw away
+                            // trying: every attempt looped, so the error carries the whole tally.
+                            match &err {
+                                ModelError::ResponseLoop { discarded, .. } => *discarded,
+                                _ => LoopAborts::none(),
+                            },
+                            ResponseSize::none(),
+                        );
+                        return LoopEnd {
+                            status,
+                            turns: turn + 1,
+                            tokens: total_tokens,
+                            cost: total_cost,
+                            profile_id: self.profile_id.clone(),
+                            final_text: ended_text(
+                                code.enabled,
+                                status,
+                                last_report.as_deref(),
+                                last_text,
+                            ),
+                            ending: None,
+                            limit: None,
+                            handoff: None,
+                        };
+                    }
+                };
+
+                // The shared recoverable tail: the attempt is an error turn — counted against the
+                // ceilings on exactly the terms a failed model call is — and if no ceiling (nor
+                // the run's clock, nor an operator) says stop, the same request goes out again.
+                let (error_type, aborts) = recoverable;
+                if let Some(breach) = self.record_turn(
+                    &mut agent_limits,
+                    emitter,
+                    &limits,
+                    TurnOutcome::Error(error_type),
+                    aborts,
+                    ResponseSize::none(),
+                ) {
+                    return self.stop_on_limit(
                         emitter,
                         &limits,
-                        TurnOutcome::Error(error_type),
-                        // A turn that never got a reply at all still says what it threw away
-                        // trying: every attempt looped, so the error carries the whole tally.
-                        match &err {
-                            ModelError::ResponseLoop { discarded, .. } => *discarded,
-                            _ => LoopAborts::none(),
-                        },
+                        breach,
+                        turn,
+                        total_tokens,
+                        total_cost,
+                        code.enabled,
+                        last_report.as_deref(),
+                        last_text,
                     );
-                    return LoopEnd {
-                        status,
-                        turns: turn + 1,
-                        tokens: total_tokens,
-                        cost: total_cost,
-                        profile_id: self.profile_id.clone(),
-                        final_text: ended_text(
-                            code.enabled,
-                            status,
-                            last_report.as_deref(),
-                            last_text,
-                        ),
-                        ending: None,
-                        limit: None,
-                        handoff: None,
-                    };
+                }
+                if limits.cancel.is_canceled() {
+                    return self.stop_on_cancel(
+                        emitter,
+                        &limits,
+                        turn,
+                        total_tokens,
+                        total_cost,
+                        code.enabled,
+                        last_report.as_deref(),
+                        last_text,
+                    );
+                }
+                if let Some(breach) = limits.check_deadline(&self.id, agent_limits.turns_recorded())
+                {
+                    return self.stop_on_limit(
+                        emitter,
+                        &limits,
+                        breach,
+                        turn,
+                        total_tokens,
+                        total_cost,
+                        code.enabled,
+                        last_report.as_deref(),
+                        last_text,
+                    );
                 }
             };
             // Reaching here means the call returned a response (the error arm returns), so
@@ -7314,6 +7440,9 @@ impl Agent {
             // recorded at whichever of this loop's exits the turn eventually takes — and is empty
             // on a run that left the capability disarmed, which is the default.
             let loop_aborts = response.loop_aborts;
+            // The reply's size — measured on the raw reply, before healing — threaded to every
+            // record_turn of this turn so the outcome event carries it; see [`ResponseSize`].
+            let response_size = ResponseSize::of(&response);
             if loop_aborts.any() {
                 // Said out loud, and said as a `warn`: every one of those replies was generated,
                 // and generation is billed whether or not anybody reads it, yet none of them ever
@@ -7390,8 +7519,11 @@ impl Agent {
             });
             // The text the assistant turn is recorded with. Under post-response healing it is the
             // healed program gg actually ran — but only when healing changed anything
-            // (`rewritten()`); a reply healing left alone is recorded verbatim. Under no-post-processing (and on the tool-calling path) it is always the raw
-            // reply. The healing that runs regardless is still disclosed in the turn's feedback.
+            // (`rewritten()`); a reply healing left alone is recorded verbatim. Under
+            // no-post-processing (and on the tool-calling path) it is always the raw reply. The
+            // healing that runs regardless is never disclosed to the model: it is counted on the
+            // turn's `code_execution` record and logged on the operator's stream, and no feedback
+            // mentions it.
             let assistant_text = match (&healed, code.assistant_messages) {
                 (Some(healed), AssistantMessageMode::ResponseHealing) if healed.rewritten() => {
                     Some(healed.program.clone())
@@ -7426,6 +7558,7 @@ impl Agent {
                 response.cost,
                 finish_reason_token(&response.finish_reason),
                 Some(model_call_ms),
+                response.provider.clone(),
             );
 
             // Replay capture: pin the same window as this turn's *prompt frame*, carrying the four
@@ -7501,6 +7634,7 @@ impl Agent {
                     &limits,
                     TurnOutcome::Progressed,
                     loop_aborts,
+                    response_size,
                 ) {
                     return self.stop_on_limit(
                         emitter,
@@ -7639,6 +7773,7 @@ impl Agent {
                     &limits,
                     decision.turn_outcome(),
                     loop_aborts,
+                    response_size,
                 );
                 match decision {
                     CodeTurnOutcome::Finished { ending } => {
@@ -7944,6 +8079,7 @@ impl Agent {
                     &limits,
                     TurnOutcome::Error(TurnErrorType::MissingCompletionCompaction),
                     loop_aborts,
+                    response_size,
                 );
                 context.push(
                     GgContextSource::System,
@@ -7979,6 +8115,7 @@ impl Agent {
                     &limits,
                     TurnOutcome::Error(TurnErrorType::MissingCompletionNoCall),
                     loop_aborts,
+                    response_size,
                 );
                 context.push(
                     GgContextSource::ToolOutput,
@@ -8071,7 +8208,8 @@ impl Agent {
                         Ok(request) => {
                             compact_request = Some(request);
                             ToolOutcome::ok(
-                                "Your context will be compacted once this turn's tool results are                                  recorded; your next turn opens on the summarized window.",
+                                "Your context will be compacted once this turn's tool results \
+                                 are recorded; your next turn opens on the summarized window.",
                                 "compact accepted",
                             )
                         }
@@ -8287,6 +8425,7 @@ impl Agent {
                     &limits,
                     TurnOutcome::Finished,
                     loop_aborts,
+                    response_size,
                 );
                 return LoopEnd {
                     status: TerminalStatus::attributed(STATUS_HOOK_ERROR, &limits),
@@ -8333,6 +8472,7 @@ impl Agent {
                     &limits,
                     TurnOutcome::Finished,
                     loop_aborts,
+                    response_size,
                 );
                 // A persistent agent hands the file views it still has open to its next instance —
                 // recorded only on this path, because only an agent that *finished its work* has a desk
@@ -8418,6 +8558,7 @@ impl Agent {
                     &limits,
                     TurnOutcome::Progressed,
                     loop_aborts,
+                    response_size,
                 );
                 return LoopEnd {
                     status: TerminalStatus::attributed(STATUS_COMPLETED, &limits),
@@ -8444,6 +8585,7 @@ impl Agent {
                 &limits,
                 TurnOutcome::Progressed,
                 loop_aborts,
+                response_size,
             ) {
                 return self.stop_on_limit(
                     emitter,
@@ -8520,6 +8662,7 @@ impl Agent {
         run: &impl FaultedRun,
         outcome: TurnOutcome,
         loop_aborts: LoopAborts,
+        response: ResponseSize,
     ) -> Option<GgLimitBreach> {
         let outcome = Self::attributed(outcome, run);
         let breach = agent_limits.record(outcome, &self.id);
@@ -8550,6 +8693,11 @@ impl Agent {
             // the provider's own numbers for the one reply that was actually read.
             loop_abort_words: loop_aborts.words,
             loop_abort_chars: loop_aborts.chars,
+            // The reply's size, in the two units an output ceiling would be judged in. Ridden on
+            // the outcome event because the summary folds its maxima over exactly the turns that
+            // worked, and the outcome is the only event that knows which those were.
+            response_chars: response.chars,
+            response_output_tokens: response.output_tokens,
         });
         breach
     }
@@ -8897,6 +9045,36 @@ fn model_call_failed(
     format!("model turn {turn} failed — {}: {err}", error_type.phrase())
 }
 
+/// The operator's `error` line for a **timed-out model call** — the recoverable failure the loop
+/// answers by recording an error turn and asking again, unlike [`model_call_failed`]'s, which end
+/// the session. It says what happens next, because a timeout line that stopped at the symptom
+/// would read like the run is over.
+fn model_call_retried(turn: usize, err: &ModelError) -> String {
+    format!(
+        "model turn {turn} — {}: {err}; the turn will be retried (the error ceilings bound how \
+         often).",
+        err.turn_error_type().phrase(),
+    )
+}
+
+/// The operator's `error` line for a **length-capped reply** the loop rejected whole: what came
+/// back, what it cost, and that none of it reaches the context or the run's metrics.
+fn length_capped_rejected(turn: usize, size: ResponseSize, response: &ModelResponse) -> String {
+    format!(
+        "model turn {turn} — length-capped reply rejected: the reply hit the provider's output \
+         cap ({} characters, {} completion tokens{}); it never enters the context, its usage is \
+         excluded from the run's metrics (tallied under rejected responses), and the turn will \
+         be retried (the error ceilings bound how often).",
+        size.chars,
+        size.output_tokens,
+        response
+            .provider
+            .as_deref()
+            .map(|provider| format!("; provider: {provider}"))
+            .unwrap_or_default(),
+    )
+}
+
 /// This agent's [return value](LoopEnd::final_text) for a loop ending the model did **not** choose.
 ///
 /// The two execution modes answer it differently, and the difference is the whole of
@@ -9014,13 +9192,13 @@ struct AmcSetup {
     /// from the capability, so the per-file breakdown appears exactly when a call could act on it.
     can_evict: bool,
     /// The [program language](GgProgramLanguage) this agent writes in, or `None` when it is not in
-    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode at all.
-    ///
-    /// It decides both halves of what the context-usage signal may say: whether the agent has the
-    /// view-closing call — read off the capability rather than the registry, because `view` is not a
-    /// tool but bound into every program's scope unconditionally, so code mode *is* the condition —
-    /// and how every reclaim call the block names is spelled.
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode at all — how every reclaim call the
+    /// context-usage signal names is spelled.
     program_language: Option<GgProgramLanguage>,
+    /// Whether this agent actually holds `views.close` — read off its resolved grant rather than
+    /// assumed from code mode, since closing a view is bought by this capability and granted by the
+    /// allowlist like every other call, so the signal names it exactly when a program can make it.
+    can_close_views: bool,
     /// Whether this agent actually has `archive_thread`. This is also what arms the per-result
     /// [turn headers](ContextModel::turn_header): the header exists to give an archival its turn
     /// numbers, so an agent that cannot archive should not be paying for one on every result.
@@ -9040,12 +9218,17 @@ impl AmcSetup {
     /// threaded in rather than resolved a second time from the same profile: the language is the
     /// axis a cross-language study slices on, so every consumer must read the one value the run
     /// recorded, not its own re-derivation of it.
+    ///
+    /// `granted_operations` is the agent's resolved responses-as-code grant, handed down for the
+    /// reason the language is: the membrane, the surface and this signal must read one answer to
+    /// what the agent holds.
     fn resolve(
         profile: &GgAgentConfig,
         registry: &ToolRegistry,
         archive: Arc<Mutex<ArchiveStore>>,
         archive_id: String,
         code_language: Option<GgProgramLanguage>,
+        granted_operations: &[OperationId],
     ) -> Self {
         Self {
             enabled: profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
@@ -9053,6 +9236,8 @@ impl AmcSetup {
             archive_id,
             can_evict: registry.offers(EVICT_FILE_VIEW_TOOL),
             program_language: code_language,
+            can_close_views: code_language.is_some()
+                && granted_operations.contains(&crate::sandbox::VIEWS_CLOSE),
             can_archive: registry.offers(ARCHIVE_THREAD_TOOL),
             // Discarding: `resolve_top_file_views` read this same param at launch, with a collecting
             // sink, and refused the run if it named no count.
@@ -9075,6 +9260,7 @@ impl AmcSetup {
         UsageSignalOptions {
             can_evict: self.can_evict,
             program_language: self.program_language,
+            can_close_views: self.can_close_views,
             can_archive: self.can_archive,
             top_file_views: self.top_file_views,
             threshold_percent: self.signal_threshold_percent,
@@ -9527,8 +9713,8 @@ fn hook_failed(
 /// how it ends. Without that, a model handed a bare refusal reasonably concludes it has been stopped.
 fn ending_blocked_feedback(reason: &str, insertion: Option<String>) -> String {
     let mut message = format!(
-        "{reason}\n\nYour session is NOT over. Fix what is described above and declare you are \
-         done again."
+        "{reason}\n\nThe session is NOT over. Fix what is described above and declare the \
+         session done again."
     );
     if let Some(insertion) = insertion {
         message.push_str("\n\n");
@@ -10887,8 +11073,8 @@ struct PromptInputs<'a> {
     /// read the protocol from is (rightly) not rendered for a profile that may not author the board.
     assigned_issue: Option<&'a str>,
     /// Whether [healing]'s fence-stripping strategy is armed, which decides how the prompt states
-    /// the no-code-fence rule — as a repair gg will make and disclose, or as a syntax error the
-    /// model will be handed.
+    /// the no-code-fence rule — as a contract whose breach gg silently repairs (never disclosing the
+    /// repair to the model), or as a syntax error the model will be handed.
     fences_are_stripped: bool,
 }
 
@@ -11013,9 +11199,12 @@ fn check_allowlists(profile: &GgAgentConfig, report: &mut crate::validate::Launc
 /// agent may *call*. That is the question a reader of a run asks — "was this agent offered that call
 /// at all?" — and answering it with the language's compiled surface would report every agent as
 /// having everything.
-/// The view module always appears, because it carries the one thing nothing gates: the channel a
-/// program puts material into its own window with — including documentation. A run that offers no
-/// tools at all must still be able to show its model something.
+/// The view module always appears, because two of its calls nothing gates: the channel a program
+/// puts material into its own window with (`views.open_text`), and documentation with
+/// (`views.open_docs_view`). A run that offers no tools at all must still be able to show its model
+/// something. The rest of the module is gated like any other — closing a view and listing what is
+/// open are bought by [agent-managed context](CAPABILITY_AGENT_MANAGED_CONTEXT) — so which of its
+/// functions appear varies with the profile even though the module itself never drops out.
 ///
 /// The modules, the order they are shown in and the sentence each is introduced by are the
 /// **catalogue's**, reflected from the doc comment written on that module's declaration in the guest
@@ -11073,7 +11262,11 @@ fn api_surface(
                 .entry(function.module)
                 .or_default()
                 .push(GgAgentApiFunction {
-                    name: function.name.to_string(),
+                    // Module-relative rather than bare, so the method an arm hangs off the value
+                    // `current` lists reports as `OpenView.close` beside the free `close` rather
+                    // than as a second `close` a reader keyed on the name would fold into the
+                    // first.
+                    name: crate::sandbox::signatures::module_relative_name(&function).to_string(),
                     operation: function.operation.to_string(),
                 });
         }
@@ -11264,7 +11457,9 @@ pub(crate) fn code_heading_views(
         ),
         (
             GgContextSource::FileView,
-            "the contents of a file seeded into your context",
+            "a file, or a window of one, shown in your context — seeded by the run or opened by \
+             your own file-view call — headed by its path and the 1-based line range shown, as \
+             `File: src/main.ts:100-250` (a whole file reads `1-N`)",
             files,
         ),
         (
@@ -11689,7 +11884,10 @@ async fn autoload_specifications(
             Vec::new(),
         );
         for (rel, outcome) in seeded {
-            context.seed_file_view(rel, outcome.output, outcome.images, retention);
+            // The path is the workspace-relative one the case provided, so the view's heading
+            // names the file as the model would open it itself.
+            let lines = ShownLines::of_read(outcome.data.as_ref());
+            context.seed_file_view(rel, lines, outcome.output, outcome.images, retention);
         }
         return Ok(());
     }
@@ -11985,7 +12183,8 @@ fn record_tool_result(
         // the view so [agent persistence](crate::persistence) can re-open a paged read over the same
         // lines rather than from the top of the file. Taken from what the tool reports rather than from
         // the call's `offset`/`limit`, because the two disagree whenever the run's
-        // [read policy](ReadPolicy) ignores or reduces what was asked for.
+        // [read policy](ReadPolicy) supplies a default the call did not name, or the file ends
+        // before the window does.
         let region = match &outcome.data {
             Some(ApiData::FileText(text)) => FileRegion::covered(
                 text.first_line.into(),
@@ -12083,7 +12282,49 @@ fn record_usage(response: &ModelResponse, emitter: &Emitter, profile_id: &str, m
         model_id: model_id.to_string(),
         tokens: response.usage,
         cost: response.cost,
+        provider: response.provider.clone(),
     });
+}
+
+/// The size of the reply a turn was judged on, in the two units an output ceiling is judged in:
+/// its raw text in **characters** (before any healing — the model's actual output), and its
+/// **completion tokens** as the provider billed them (output plus reasoning, which is the figure a
+/// provider's output cap is measured against).
+///
+/// Threaded into [`record_turn`](Agent::record_turn) so the turn's outcome event carries it and
+/// [`GgSessionSummary::max_response_chars`](test_cabinet_core::gg::GgSessionSummary) /
+/// [`max_response_output_tokens`](test_cabinet_core::gg::GgSessionSummary) can be folded as maxima
+/// over the turns that **worked** — the datum the owner reads before choosing an output ceiling,
+/// which must accommodate every reply that was doing its job.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ResponseSize {
+    /// The reply's raw text, in characters.
+    chars: u64,
+    /// The reply's completion tokens (output plus reasoning), when the provider reported usage.
+    output_tokens: u64,
+}
+
+impl ResponseSize {
+    /// No reply at all — what a turn that never got one records.
+    fn none() -> Self {
+        Self::default()
+    }
+
+    /// Measure `response` — the raw reply, before healing touches it.
+    fn of(response: &ModelResponse) -> Self {
+        Self {
+            chars: response
+                .text
+                .as_deref()
+                .map(|text| text.chars().count() as u64)
+                .unwrap_or(0),
+            output_tokens: response
+                .usage
+                .output
+                .unwrap_or(0)
+                .saturating_add(response.usage.reasoning.unwrap_or(0)),
+        }
+    }
 }
 
 /// Add two [`TokenCounts`], summing each reported class and keeping a class `None`

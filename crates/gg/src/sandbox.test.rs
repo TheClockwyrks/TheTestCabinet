@@ -138,6 +138,19 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
     }
 }
 
+/// The throw a program did not catch, insisting the program ran and threw — the shape a refused
+/// call arrives in: the guest reports the uncaught `ApiError` with its class, rather than dying in
+/// a trap.
+fn uncaught(outcome: &SandboxOutcome) -> &crate::sandbox::ProgramError {
+    match &outcome.result {
+        Ok(result) => result
+            .error
+            .as_ref()
+            .expect("the program threw and did not catch it"),
+        Err(other) => panic!("expected an uncaught program throw, but the sandbox failed: {other}"),
+    }
+}
+
 /// The single line a program logged, parsed as JSON — the shape a program uses to hand back a value
 /// now that a returned one goes nowhere.
 fn logged_json(outcome: &SandboxOutcome) -> Value {
@@ -174,19 +187,23 @@ fn summary_of(completion: &ProgramCompletion) -> &str {
 /// **What the model reads when a program failed at run time.**
 ///
 /// This arm reports a failure by capture rather than interception: nothing in the guest catches a
-/// program's throw to describe it, so the engine's own rendering — its `name`, its `message`, the
-/// stack in the model's own coordinates, and whatever the thrown object carries — goes to standard
-/// error, the guest dies the way its runtime kills it, and gg puts what it said in front of the
-/// trap. So a program fault arrives as a [`Trap`](SandboxError::Trap) whose text is the engine's,
-/// and the assertions below read that text.
+/// program's throw to describe it, so what is reported over `feedback.report-error` is the
+/// engine's own rendering — its `name`, its `message`, the stack in the model's own coordinates,
+/// and whatever the thrown object carries. So a program fault arrives as a
+/// [`ProgramError`](crate::sandbox::outcome::ProgramError) whose text is the engine's, the guest
+/// returns normally, and the assertions below read that text.
 fn program_failure(outcome: &SandboxOutcome) -> String {
     match &outcome.result {
-        Ok(result) => panic!(
-            "the program did not fail; it logged {:?} and reported {:?}",
-            outcome.logs, result.error
-        ),
-        Err(SandboxError::Trap(said)) => said.clone(),
-        Err(other) => panic!("expected a program fault, but the sandbox failed: {other}"),
+        Ok(result) => match &result.error {
+            Some(error) => error.message.clone(),
+            None => panic!(
+                "the program did not fail; it logged {:?} and reported nothing",
+                outcome.logs
+            ),
+        },
+        Err(other) => {
+            panic!("expected a reported program fault, but the store died instead: {other}")
+        }
     }
 }
 
@@ -982,7 +999,8 @@ fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
 /// arrives as a bare record instead of a catchable `ApiError`.
 #[test]
 fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
-    // A run with NO tools at all still has `view`, and three of its four functions.
+    // A run with NO tools at all still has `view`, and the two of its functions that put something
+    // in the window.
     let outcome = run_as(
         "import * as gg from \"gg\";\ngg.views.openText(\"note\", \"what I found\");",
         EndingRole::Standard,
@@ -992,19 +1010,63 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "the program ran and said nothing"
     );
     let outcome = run_as(
-        "import * as gg from \"gg\";\nconsole.log(JSON.stringify(gg.views.current().length));",
+        "import * as gg from \"gg\";\ngg.views.openDocsView(\"openText\");",
         EndingRole::Standard,
     );
-    assert_eq!(logged_json(&outcome), json!(0));
+    assert!(
+        logs(&outcome).is_empty(),
+        "documentation opens for everyone"
+    );
+
+    // Closing a view and listing what is open are context management, bought by
+    // `agent-managed-context`; a run without it is refused both — by gg's own sentence naming the
+    // call, and as the catchable `ApiError` every other withheld call arrives as, since the SDK is
+    // static and the membrane is the whole of the enforcement.
+    for call in ["gg.views.current()", "gg.views.close(\"nothing\")"] {
+        let outcome = run_as(
+            &format!("import * as gg from \"gg\";\n{call};"),
+            EndingRole::Standard,
+        );
+        let name = call.split('(').next().unwrap();
+        let error = uncaught(&outcome);
+        assert_eq!(
+            error.kind,
+            crate::sandbox::ProgramErrorKind::UnknownName,
+            "a withheld view call is the same class as any other name this agent does not hold"
+        );
+        assert!(
+            error
+                .message
+                .contains(&format!("`{name}` is not available.")),
+            "an agent without agent-managed-context is refused `{name}`: {}",
+            error.message
+        );
+    }
     let outcome = run_as(
-        "import * as gg from \"gg\";\nconsole.log(JSON.stringify(gg.views.close(\"nothing\")));",
+        "import * as gg from \"gg\";\ntry { gg.views.current(); }\n\
+         catch (e) { console.log(JSON.stringify({ isApiError: e instanceof gg.core.ApiError, operation: (e as gg.core.ApiError).operation, code: (e as gg.core.ApiError).code })); }",
         EndingRole::Standard,
+    );
+    assert_eq!(
+        logged_json(&outcome),
+        json!({ "isApiError": true, "operation": "current", "code": "unavailable" }),
+        "the refusal is the structured `unavailable` error, catchable like any other"
+    );
+    // The method the listing hands back is the same operation, so it is refused on the same terms
+    // — and since nothing was listed there is nothing to call it on, which is the point.
+
+    // With the capability on, closing a selector that is not open is an answer, not a failure.
+    let (outcome, _) = run(
+        "import * as gg from \"gg\";\nconsole.log(JSON.stringify(gg.views.close(\"nothing\")));",
     );
     assert_eq!(
         logged_json(&outcome),
         json!(0),
         "closing a selector that is not open is an answer, not a failure"
     );
+    let (outcome, _) =
+        run("import * as gg from \"gg\";\nconsole.log(JSON.stringify(gg.views.current().length));");
+    assert_eq!(logged_json(&outcome), json!(0));
 
     // …but `openFile` is a read, and an agent not granted it is refused. The function is bound like
     // every other — the SDK is static — so what the model gets is gg's own sentence naming the call
@@ -1013,7 +1075,7 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "import * as gg from \"gg\";\ngg.views.openFile(\"src/a.ts\");",
         EndingRole::Standard,
     );
-    let said = program_failure(&outcome);
+    let said = uncaught(&outcome).message.clone();
     assert!(
         said.contains("`gg.views.openFile` is not available."),
         "an agent not granted the read is refused `gg.views.openFile`: {said}"

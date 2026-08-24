@@ -46,8 +46,15 @@ fn the_turns_composed_body_budget_refuses_by_total_and_says_what_is_left() {
         .expect("one byte past the ceiling is refused");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
     assert!(
-        refusal.message.contains("MAX_COMPOSED_VIEW_BYTES_PER_TURN"),
-        "a cap that does not name itself cannot be worked around: {}",
+        refusal
+            .message
+            .contains(&MAX_COMPOSED_VIEW_BYTES_PER_TURN.to_string()),
+        "a cap that does not state its bound cannot be worked around: {}",
+        refusal.message
+    );
+    assert!(
+        !refusal.message.contains("MAX_COMPOSED_VIEW_BYTES_PER_TURN"),
+        "the refusal must state the bound's value, not the constant that supplies it: {}",
         refusal.message
     );
     assert!(
@@ -68,14 +75,21 @@ fn a_blank_label_is_an_argument_error() {
     assert!(refusal.message.contains("non-empty label"));
 }
 
-/// Both size caps refuse, name themselves, and carry the size that broke them — the two facts a
-/// program branching on the refusal needs, and nothing else.
+/// Both size caps refuse with the violated rule first, then the size that broke them and the
+/// bound in parentheses — the facts a program branching on the refusal needs, and nothing else:
+/// the constants that supply the bounds are gg's own and stay out of the message.
 #[test]
-fn the_size_caps_name_themselves_and_the_size_that_broke_them() {
+fn the_size_caps_state_the_bound_and_the_size_that_broke_them() {
     let long_label = "l".repeat(MAX_VIEW_LABEL_BYTES + 1);
     let refusal = text_view_refusal(&long_label, "body").expect("the label is over the cap");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
-    assert!(refusal.message.contains("MAX_VIEW_LABEL_BYTES"));
+    assert!(refusal.message.contains("exceeds max length"));
+    assert!(refusal.message.contains(&MAX_VIEW_LABEL_BYTES.to_string()));
+    assert!(
+        !refusal.message.contains("MAX_VIEW_LABEL_BYTES"),
+        "the refusal must state the bound's value, not the constant that supplies it: {}",
+        refusal.message
+    );
     assert!(
         refusal.message.contains(&long_label.len().to_string()),
         "the size that broke the cap has to be in the message: {}",
@@ -85,7 +99,13 @@ fn the_size_caps_name_themselves_and_the_size_that_broke_them() {
     let long_body = "b".repeat(MAX_TEXT_VIEW_BYTES + 1);
     let refusal = text_view_refusal("notes", &long_body).expect("the body is over the cap");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
-    assert!(refusal.message.contains("MAX_TEXT_VIEW_BYTES"));
+    assert!(refusal.message.contains("exceeds max size"));
+    assert!(refusal.message.contains(&MAX_TEXT_VIEW_BYTES.to_string()));
+    assert!(
+        !refusal.message.contains("MAX_TEXT_VIEW_BYTES"),
+        "the refusal must state the bound's value, not the constant that supplies it: {}",
+        refusal.message
+    );
     assert!(
         refusal.message.contains(&long_body.len().to_string()),
         "the size that broke the cap has to be in the message: {}",

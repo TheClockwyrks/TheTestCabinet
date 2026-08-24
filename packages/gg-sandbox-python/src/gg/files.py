@@ -37,7 +37,7 @@ class TextFile:
     """A text file's window, as the text arm of a `FileRead` carries it."""
 
     contents: str
-    """The file's text, or just the requested window under a capped read policy."""
+    """The file's text, or just the requested window where the read named one."""
 
     first_line: int
     """The 1-based first line returned."""
@@ -164,8 +164,9 @@ def read_file(path: str, *, offset: int | None = None, limit: int | None = None)
 
     Args:
         path: The file to read, relative to the workspace or absolute.
-        offset: The 1-based line to start at. Honoured only under a capped read policy.
-        limit: How many lines to return from `offset`. Honoured only under a capped read policy.
+        offset: The 1-based line to start at. Left out, the read starts at the first line.
+        limit: How many lines to return from `offset`. Left out, a capped read policy's default
+            applies, or the read runs to the end of the file.
 
     Returns:
         The `TextFile` for a text file's window, or the `ImageFile` describing a picture whose bytes
@@ -193,11 +194,12 @@ def read_text_file(path: str, *, offset: int | None = None, limit: int | None = 
 
     Args:
         path: The file to read, relative to the workspace or absolute.
-        offset: The 1-based line to start at. Honoured only under a capped read policy.
-        limit: How many lines to return from `offset`. Honoured only under a capped read policy.
+        offset: The 1-based line to start at. Left out, the read starts at the first line.
+        limit: How many lines to return from `offset`. Left out, a capped read policy's default
+            applies, or the read runs to the end of the file.
 
     Returns:
-        The file's text, or the window of it a capped read policy allowed.
+        The file's text, or the window of it the read asked for.
 
     Raises:
         ApiError: `invalid-argument` when the path names a picture, which `read_file` inspects

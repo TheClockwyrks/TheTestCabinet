@@ -72,7 +72,10 @@ The program is a whole program of the agent's own language, on the terms the
 that reaches gg's surface, then one call per file, and nothing else. A Python
 agent is shown Python. Paths are JSON-quoted, so a quote or a backslash in a
 path cannot break the parse. The views arrive as headed `File` items keyed by
-path, the same envelope a real file-view call produces.
+path, the same envelope a real file-view call produces: each is headed by the
+workspace-relative path the case provided and the whole file's line range, as
+`File: specs/rules.md:1-N` with `N` the file's total line count (a reference
+mockup, which shows no lines, is headed `File: reference/board.png`).
 
 The reads run first, and the program holds one call per file that was read.
 Every one of those views is present in the same opening context, since the run

@@ -101,7 +101,7 @@ declare module "test-cabinet:gg/shell" {
 declare module "test-cabinet:gg/files" {
   /** A text file, or the window of one this run's read policy returned. */
   export interface TextRead {
-    /** The file's text, or just the requested window under a capped read policy. */
+    /** The file's text, or just the requested window where the read named one. */
     contents: string;
     /** The 1-based first line returned. */
     firstLine: number;
@@ -143,7 +143,7 @@ declare module "test-cabinet:gg/files" {
     kind: EntryKind;
   }
 
-  /** Read a workspace file. `offset`/`limit` apply only under a capped read policy. */
+  /** Read a workspace file. `offset`/`limit` are honoured under every read policy. */
   export function readFile(
     path: string,
     offset: number | undefined,
@@ -572,7 +572,10 @@ declare module "test-cabinet:gg/views" {
   export function openDocsView(name: string): void;
   /** Close every view carrying `selector`, and return how many were closed. */
   export function closeView(selector: string): number;
-  /** What is open in the agent's window right now. Cannot fail. */
+  /**
+   * What is open in the agent's window right now. Throws `unavailable` for an agent whose run did
+   * not buy `agent-managed-context`; granted, it cannot fail.
+   */
   export function currentViews(): OpenViewRaw[];
 }
 

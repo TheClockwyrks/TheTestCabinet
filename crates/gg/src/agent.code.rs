@@ -46,7 +46,8 @@ use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use crate::board::BOARD_MUTATIONS;
 use crate::context::{
-    DocviewOpen, EvictionResult, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind, ViewsClosed,
+    DocviewOpen, EvictionResult, OpenViewInfo, SEARCH_RESULTS_VIEW, ShownLines, ViewKind,
+    ViewsClosed,
 };
 use crate::docs::{DocKind, DocQuery, DocSearch};
 use crate::ending::Ending;
@@ -266,17 +267,17 @@ pub(super) async fn run_code_turn(
              repair was discarded and the reply was compiled exactly as the model sent it.",
         ));
     }
-    // gg rewrote the model's message before running it, so it says so on the operator's stream as
-    // well as in the model's own feedback. A silent rewrite of a model's output is exactly the class
-    // of thing this harness exists to make visible: a study reading a live run must be able to see
-    // that the program gg compiled was not byte-for-byte the one the model sent, without waiting for
-    // the run's closing rollup.
+    // gg rewrote the model's message before running it, so it says so on the operator's stream —
+    // and only there: the model is never told, and no feedback this turn mentions the repair. A
+    // rewrite of a model's output is exactly the class of thing this harness exists to make visible
+    // to the operator: a study reading a live run must be able to see that the program gg compiled
+    // was not byte-for-byte the one the model sent, without waiting for the run's closing rollup.
     if healed.rewritten() {
         emitter.emit(log(
             "info",
             format!(
                 "the model's reply was repaired before it was compiled ({}); the repairs are \
-                 disclosed to the model in this turn's feedback.",
+                 counted on this turn's record and not disclosed to the model.",
                 healed
                     .strategies()
                     .into_iter()
@@ -1001,22 +1002,22 @@ fn handover_notice(
     let rerun = crate::sandbox::spell(crate::sandbox::language(language), sandbox::PROGRAMS_RERUN);
     if outcome.revoked_rerun {
         return Some(format!(
-            "the program you handed to `{rerun}` was NOT run: your program failed after handing it \
-             over, and a program that did not run to its end did not decide what should run next \
-             either. Fix the fault and hand it over again."
+            "the program handed to `{rerun}` was NOT run: the handing program failed after \
+             handing it over, and a program that did not run to its end decided nothing about \
+             what runs next. Fix the fault and hand it over again."
         ));
     }
     match chain.refused? {
         // The session is ending, so there is no next turn to read a notice — but the turn is only
         // `Finished` if the ending survived, and this arm is reached on the path where it did not.
         ChainRefusal::Ended => Some(format!(
-            "the program you handed to `{rerun}` was NOT run: the same program ended your session, \
+            "the program handed to `{rerun}` was NOT run: the same program ended the session, \
              and an ending outranks a hand-over."
         )),
         ChainRefusal::Exhausted => Some(format!(
-            "the program you handed to `{rerun}` was NOT run: this turn had already run \
-             {MAX_PROGRAM_CHAIN} programs, which is the most one turn may. The last of them is the \
-             turn's program. Hand over once, to a program that does the work."
+            "the program handed to `{rerun}` was NOT run: this turn already ran its maximum of \
+             {MAX_PROGRAM_CHAIN} programs, and the last of them is the turn's program. Hand over \
+             once, to a program that does the work."
         )),
     }
 }
@@ -2556,7 +2557,7 @@ fn text_view_refusal(label: &str, body: &str) -> Option<ViewRefusal> {
         return Some(ViewRefusal {
             failure: ToolFailure::LimitExceeded,
             message: format!(
-                "that label is {} bytes (max {MAX_VIEW_LABEL_BYTES}, MAX_VIEW_LABEL_BYTES)",
+                "label exceeds max length ({} bytes; max {MAX_VIEW_LABEL_BYTES})",
                 label.len()
             ),
         });
@@ -2565,7 +2566,7 @@ fn text_view_refusal(label: &str, body: &str) -> Option<ViewRefusal> {
         return Some(ViewRefusal {
             failure: ToolFailure::LimitExceeded,
             message: format!(
-                "that body is {} bytes (max {MAX_TEXT_VIEW_BYTES}, MAX_TEXT_VIEW_BYTES)",
+                "view body exceeds max size ({} bytes; max {MAX_TEXT_VIEW_BYTES})",
                 body.len()
             ),
         });
@@ -2576,17 +2577,16 @@ fn text_view_refusal(label: &str, body: &str) -> Option<ViewRefusal> {
 /// The refusal the turn's [composed-body budget](MAX_COMPOSED_VIEW_BYTES_PER_TURN) makes about one
 /// `view.openText`, or `None` to let it through.
 ///
-/// It refuses the call that would cross the ceiling rather than truncating it, and names the
-/// constant, so a program that meant to compose something enormous is told what it may still spend
-/// instead of silently showing the model half of what it wrote.
+/// It refuses the call that would cross the ceiling rather than truncating it, and states the
+/// budget and what remains of it, so a program that meant to compose something enormous is told
+/// what it may still spend instead of silently showing the model half of what it wrote.
 fn composed_view_budget_refusal(spent: usize, body: usize) -> Option<ViewRefusal> {
     let remaining = MAX_COMPOSED_VIEW_BYTES_PER_TURN.saturating_sub(spent);
     (body > remaining).then(|| ViewRefusal {
         failure: ToolFailure::LimitExceeded,
         message: format!(
-            "this turn's programs have already composed {spent} bytes of view bodies, and another \
-             {body} would pass gg's ceiling of {MAX_COMPOSED_VIEW_BYTES_PER_TURN} \
-             (MAX_COMPOSED_VIEW_BYTES_PER_TURN); {remaining} bytes are left"
+            "view body exceeds the turn's composed-body budget ({body} bytes; {spent} already \
+             composed; budget {MAX_COMPOSED_VIEW_BYTES_PER_TURN}; {remaining} left)"
         ),
     })
 }
@@ -3328,7 +3328,7 @@ impl OperationApi for LoopOperationApi {
             let Some(position) = api.spawner.fsm.clone() else {
                 return ToolOutcome::failed(
                     ToolFailure::Unavailable,
-                    "you are not running inside a state machine, so there is no state to \
+                    "this agent is not running inside a state machine, so there is no state to \
                      transition to.",
                 );
             };
@@ -3573,9 +3573,10 @@ impl OperationApi for LoopOperationApi {
     /// the session-record entry, the roster line and the read policy are the ones a bare `fs.readFile`
     /// gets; there is no second, quieter read path. What follows it is the view: the `(path,
     /// region)` key comes from what the tool actually **returned** rather than from what the call
-    /// asked for (an unlimited read policy ignores the window; a capped one applies its default when
-    /// the call named none), so
-    /// re-opening the same page supersedes it instead of stacking a second copy beside it.
+    /// asked for (a capped policy applies its default when the call named no `limit`, a window
+    /// running past the end of the file stops at the file's end, and a window covering the whole
+    /// file is no region at all), so re-opening the same page supersedes it instead of stacking a
+    /// second copy beside it.
     ///
     /// The content is cloned rather than moved out of the outcome because the outcome goes on to
     /// become the program's own return value — the model is handed the bytes *and* shown the file
@@ -3611,6 +3612,9 @@ impl OperationApi for LoopOperationApi {
             ),
             _ => None,
         };
+        // The lines the view shows, for its heading — from the same sidecar as the region, so the
+        // heading and the key describe the same read.
+        let lines = ShownLines::of_read(outcome.data.as_ref());
         // The picture, if the read produced one, moves out of the outcome and into the view item:
         // the model looks at it there, and leaving a copy behind would let the membrane attach a
         // second one to the turn.
@@ -3618,6 +3622,7 @@ impl OperationApi for LoopOperationApi {
         let opened = self.context.open_file_view_deduped(
             path.clone(),
             region,
+            lines,
             outcome.output.clone(),
             images,
         );
@@ -3658,10 +3663,12 @@ impl OperationApi for LoopOperationApi {
     /// decision rather than a side effect of tidying: it is the one close that rewrites the middle
     /// of the prompt instead of appending to the end, so it costs the run every cached token after
     /// the view it took away, and it is bought by
-    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) where this call is bound to
-    /// every program. A sweep that reached the documentation band would therefore have to either
-    /// spend a capability the caller did not ask about or silently do nothing for an agent that
-    /// lacks it — and a call that answers `0` where the honest answer is *you may not* is
+    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) where this call is bought
+    /// by [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) — the
+    /// membrane has already asked that gate by the time this runs. A sweep that reached the
+    /// documentation band would therefore have to either spend a second capability the caller did
+    /// not ask about or silently do nothing for an agent that lacks it — and a call that answers
+    /// `0` where the honest answer is *you may not* is
     /// indistinguishable, to the model reading it, from a selector that named nothing. `docs.close`
     /// refuses by name instead, which is an answer.
     ///
@@ -3690,6 +3697,10 @@ impl OperationApi for LoopOperationApi {
         }
         Ok(saturating_u32(files.items + texts.items + searches.items))
     }
+    /// What is open in the window, as the listing `views.current` hands a program. Bought by
+    /// [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) beside
+    /// [`close_view`](Self::close_view), and gated by the membrane before it reaches here; once it
+    /// does there is nothing for it to fail at.
     fn current_views(&mut self) -> Vec<OpenViewInfo> {
         self.context.open_views()
     }

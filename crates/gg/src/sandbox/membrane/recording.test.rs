@@ -249,7 +249,7 @@ fn a_call_no_tool_backs_is_still_recorded() {
     let log = CallLog::default();
     let (mut state, recorded) = recording_membrane(&log);
 
-    state.current_views();
+    state.current_views().expect("granted, so it answers");
     state
         .open_text_view("findings".to_string(), "all green".to_string())
         .expect("the text view opens");
@@ -442,7 +442,7 @@ fn a_failed_api_call_records_the_class_it_threw_with() {
         vec![
             ("files.read_file", Some(GgCallFailure::NotFound)),
             ("files.write_file", Some(GgCallFailure::InvalidArgument)),
-            // A call that cannot fail records no class, because nothing threw.
+            // A granted call with nothing to fail at records no class, because nothing threw.
             ("views.current", None),
         ]
     );

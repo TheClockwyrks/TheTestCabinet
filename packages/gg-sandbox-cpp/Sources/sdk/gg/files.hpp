@@ -30,8 +30,8 @@ namespace files {
 
 /// The window of lines a read covers; `{}` reads the whole file.
 ///
-/// Both fields are honoured only under a capped read policy; under the unlimited policy the whole
-/// file comes back and both are ignored. The system prompt says which policy a run uses.
+/// Both fields are honoured under every read policy. The policy decides only what an empty `limit`
+/// means: its default cap under a capped policy, the end of the file under the unlimited one.
 struct read_window {
   /// The 1-based line to start at; empty starts at the first line.
   std::optional<std::uint32_t> offset;
@@ -41,7 +41,7 @@ struct read_window {
 
 /// A text file's window, as the `gg::files::text_file` alternative of a read carries it.
 struct text_file {
-  /// The file's text, or just the requested window under a capped read policy.
+  /// The file's text, or just the requested window where the read named one.
   std::string contents;
   /// The 1-based first line returned.
   std::uint32_t first_line{};

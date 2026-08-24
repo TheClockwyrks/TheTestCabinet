@@ -113,13 +113,17 @@ public static partial class Views
     /// <summary>Close every view whose selector matches, and hand back how many went.</summary>
     /// <remarks>
     /// For a file, every page of that path closes. Closing a selector that is not open returns zero
-    /// rather than failing.
+    /// rather than failing. Closing a view is context management, bought — with
+    /// <see cref="Current"/> — by the <c>agent-managed-context</c> capability: an agent whose run
+    /// did not enable it is refused.
     /// </remarks>
     /// <param name="selector">A file view's workspace path, or a text view's label.</param>
     /// <returns>how many views went, counting each page of a paged file separately.</returns>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.InvalidArgument"/> for an empty selector, which names nothing rather
-    /// than everything — no call here closes the window wholesale.
+    /// than everything — no call here closes the window wholesale — and
+    /// <see cref="ApiErrorCode.Unavailable"/> for an agent whose run did not buy
+    /// <c>agent-managed-context</c>.
     /// </exception>
     /// <ggop>views.close</ggop>
     public static uint Close(string selector)
@@ -129,16 +133,24 @@ public static partial class Views
     }
 
     /// <summary>List what is open in the context window right now.</summary>
+    /// <remarks>
+    /// Listing what is open is context management, bought with <see cref="Close"/> by the
+    /// <c>agent-managed-context</c> capability: an agent whose run did not enable it is refused.
+    /// </remarks>
     /// <returns>every open view, with what each of them costs.</returns>
+    /// <exception cref="ApiException">
+    /// <see cref="ApiErrorCode.Unavailable"/> for an agent whose run did not buy
+    /// <c>agent-managed-context</c>.
+    /// </exception>
     /// <ggop>views.current</ggop>
     public static IReadOnlyList<OpenView> Current()
     {
-        Internal.Native.CurrentViews(
+        Internal.Wire.Check(Internal.Native.CurrentViews(
             out var kinds,
             out var selectors,
             out var tokens,
             out var offsets,
-            out var limits);
+            out var limits));
         var views = new OpenView[kinds.Length];
         for (var index = 0; index < kinds.Length; index++)
         {

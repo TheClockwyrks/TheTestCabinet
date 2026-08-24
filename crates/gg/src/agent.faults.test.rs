@@ -667,6 +667,7 @@ fn spawn_the_subagent() -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }

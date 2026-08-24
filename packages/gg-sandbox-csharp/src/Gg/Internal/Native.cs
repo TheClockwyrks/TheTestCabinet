@@ -333,7 +333,7 @@ internal static class Native
 
     // A paged file view's region arrives as `-1`/`-1` when the view covers a whole file.
     [MethodImpl(MethodImplOptions.InternalCall)]
-    internal static extern void CurrentViews(
+    internal static extern bool CurrentViews(
         out int[] kinds,
         out string[] selectors,
         out ulong[] tokens,

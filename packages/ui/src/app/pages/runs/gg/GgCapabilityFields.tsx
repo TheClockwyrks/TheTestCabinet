@@ -27,6 +27,7 @@ import {
   statesFromDraft,
   togglesDraftValue,
   togglesOff,
+  featureBundleOffered,
   featureBundleOn,
   paramDefault,
   type GgAgentDraft,
@@ -629,19 +630,21 @@ export function CapabilityBody({
         >
           <span className={runExec.fieldLabel}>Features</span>
           <div className={gg.featureList}>
-            {(cap.features ?? []).map((bundle) => (
-              <div key={bundle.label} className={gg.featureItem}>
-                <label className={gg.featureLabel}>
-                  <Switch
-                    checked={featureBundleOn(agent, bundle)}
-                    disabled={readOnly}
-                    onChange={(on) => onSetFeature(bundle, on)}
-                  />
-                  <span className={gg.featureName}>{bundle.label}</span>
-                </label>
-                {bundle.hint && <HelpTip text={bundle.hint} />}
-              </div>
-            ))}
+            {(cap.features ?? [])
+              .filter((bundle) => featureBundleOffered(agent, bundle))
+              .map((bundle) => (
+                <div key={bundle.label} className={gg.featureItem}>
+                  <label className={gg.featureLabel}>
+                    <Switch
+                      checked={featureBundleOn(agent, bundle)}
+                      disabled={readOnly}
+                      onChange={(on) => onSetFeature(bundle, on)}
+                    />
+                    <span className={gg.featureName}>{bundle.label}</span>
+                  </label>
+                  {bundle.hint && <HelpTip text={bundle.hint} />}
+                </div>
+              ))}
             {/* A feature that changes what an offered call demands, rather than which
                 calls the agent has: same box, same slider, a capability param behind it. */}
             {flags.map((flag) => (

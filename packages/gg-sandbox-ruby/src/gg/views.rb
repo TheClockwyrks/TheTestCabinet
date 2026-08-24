@@ -134,14 +134,18 @@ module GG
     # the only copy of what it held, so anything needed later belongs in a file or a memory first.
     #
     # Documentation views are not reached from here. `GG::Docs.close` is what takes one away, and it
-    # is bought by a capability this call is not — so a sweep that included them would answer `0`
+    # is bought by a capability of its own, `docview-close` — so a sweep that included them would answer `0`
     # for an agent that may not close one, which reads as a selector that named nothing.
+    #
+    # Closing a view is context management, bought — with `GG::Views.current` — by the
+    # `agent-managed-context` capability: an agent whose run did not enable it is refused.
     #
     # @param selector [String] What the view is filed under: a file's path, a text view's label, or
     #   `search results`.
     # @return [Integer] how many views were closed
     # @raise [GG::Core::ApiError] `:invalid_argument` for an empty selector, which names nothing
-    #   rather than everything — no call here closes the window wholesale.
+    #   rather than everything — no call here closes the window wholesale — and `:unavailable` for
+    #   an agent whose run did not buy `agent-managed-context`.
     def self.close(selector)
       Wire.call("close", "views", "closeView", [selector])
     end
@@ -154,7 +158,12 @@ module GG
     # the window is filling up. What it enumerates is the context window's contents, not
     # any module's functions.
     #
+    # Listing what is open is context management, bought with `GG::Views.close` by the
+    # `agent-managed-context` capability: an agent whose run did not enable it is refused.
+    #
     # @return [Array<GG::Views::OpenView>] every view open in the context window
+    # @raise [GG::Core::ApiError] `:unavailable` for an agent whose run did not buy
+    #   `agent-managed-context`.
     def self.current
       Wire.call("current", "views", "currentViews", []).map do |view|
         region = Wire.field(view, "region")
@@ -245,6 +254,8 @@ module GG
       # reach that band: `GG::Docs.close(selector)` is the call for one of those.
       #
       # @return [Integer] how many views were closed, counting every page of one file
+      # @raise [GG::Core::ApiError] `:unavailable` for an agent whose run did not buy
+      #   `agent-managed-context`, which is what buys closing a view.
       def close
         Views.close(@selector)
       end

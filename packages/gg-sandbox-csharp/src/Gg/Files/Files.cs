@@ -36,8 +36,8 @@ public static partial class Files
     /// </para>
     /// </remarks>
     /// <param name="path">The file to read, relative to the workspace or absolute.</param>
-    /// <param name="offset">The 1-based first line, honoured only under a capped read policy.</param>
-    /// <param name="limit">How many lines to read. Left out, the read runs to the end.</param>
+    /// <param name="offset">The 1-based first line. Left out, the read starts at the first line.</param>
+    /// <param name="limit">How many lines to read. Left out, a capped read policy's default applies, or the read runs to the end.</param>
     /// <returns>the file's text window, or the picture's description.</returns>
     /// <exception cref="ApiException"><see cref="ApiErrorCode.NotFound"/> for a missing path.</exception>
     /// <ggop>files.read_file</ggop>
@@ -69,8 +69,8 @@ public static partial class Files
     /// window, the same cost.
     /// </remarks>
     /// <param name="path">The file to read, relative to the workspace or absolute.</param>
-    /// <param name="offset">The 1-based first line, honoured only under a capped read policy.</param>
-    /// <param name="limit">How many lines to read. Left out, the read runs to the end.</param>
+    /// <param name="offset">The 1-based first line. Left out, the read starts at the first line.</param>
+    /// <param name="limit">How many lines to read. Left out, a capped read policy's default applies, or the read runs to the end.</param>
     /// <returns>the text alone, without the line counts <see cref="TextFile"/> reports beside it.</returns>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.InvalidArgument"/> when the path names a picture, which

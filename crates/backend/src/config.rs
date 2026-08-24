@@ -80,6 +80,14 @@ pub struct Config {
     /// supplies it from the same secret the dispatcher reads. Per-job driver
     /// tokens are minted at enqueue and need no configuration.
     pub service_token: Option<String>,
+    /// The OpenRouter API key the backend's own completion calls are billed to
+    /// (`TCAB_OPENROUTER_API_KEY`) — today only the [model
+    /// probes](crate::probe). Distinct from the runners' `OPENROUTER_API_KEY`,
+    /// which is injected into run containers, never into the backend. `None`
+    /// leaves every keyless OpenRouter read (the public catalog) working and
+    /// makes a probe trigger fail with a structured `openrouter_key_missing`
+    /// error.
+    pub openrouter_api_key: Option<String>,
     /// R2 upload configuration, or `None` when snapshot upload is disabled
     /// because the R2 variables were not all supplied (only valid in dev: see
     /// [`Config::from_env`]).
@@ -212,6 +220,7 @@ impl Config {
         let store = PathBuf::from(env_or("TCAB_BACKEND_STORE", DEFAULT_STORE));
         let auth_url = env_or("TCAB_BACKEND_AUTH_URL", DEFAULT_AUTH_URL);
         let service_token = nonempty("TCAB_BACKEND_SERVICE_TOKEN");
+        let openrouter_api_key = nonempty("TCAB_OPENROUTER_API_KEY");
 
         let r2 = R2Config::from_env();
         let deploy_hook_url = std::env::var("TCAB_SITE_DEPLOY_HOOK_URL")
@@ -257,6 +266,7 @@ impl Config {
             store,
             auth_url,
             service_token,
+            openrouter_api_key,
             r2,
             deploy_hook_url,
             coalesce: Duration::from_millis(coalesce_ms),

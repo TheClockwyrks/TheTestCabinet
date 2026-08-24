@@ -275,4 +275,25 @@ describe("apiCallSpellings", () => {
       "gg.delegation.sendMessage",
     );
   });
+
+  it("spells a view close by its free function, with the method a row of its own", () => {
+    // gg names the method module-relative, so the surface carries `close` and
+    // `OpenView.close` as two distinct rows of one operation. The free function is declared
+    // first in the catalogue and wins the spelling; the method's own spelling would be
+    // `gg.views.OpenView.close`, which is exactly the catalogue's key for it.
+    const spellings = apiCallSpellings([
+      {
+        module: "views",
+        path: "gg.views",
+        description: "show yourself something",
+        functions: [
+          { name: "close", operation: "views.close" },
+          { name: "current", operation: "views.current" },
+          { name: "OpenView.close", operation: "views.close" },
+        ],
+      },
+    ]);
+    expect(spellings.get("views.close")).toBe("gg.views.close");
+    expect(spellings.get("views.current")).toBe("gg.views.current");
+  });
 });

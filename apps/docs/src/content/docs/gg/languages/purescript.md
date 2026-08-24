@@ -181,10 +181,12 @@ Diagnostics in the model's own file are deduplicated and capped at eight, since
 the cap applies, so a parse error the cap did not show still makes the whole
 verdict a syntax failure.
 
-A run-time failure is reported by capture: nothing catches a program's throw, the
-engine writes its own rendering to standard error, and gg puts that in front of
-whatever it says about the trap. `Gg.Core.attempt` is how a program handles a
-failure it expects.
+A run-time failure is reported by capture: nothing catches a program's throw,
+and the engine's own rendering is reported to gg over `feedback.report-error`
+with the failure's class, so the turn is a `program_fault` rather than a
+`sandbox_trap` — `program_api_error` for an uncaught `ApiError`,
+`program_throw` for anything else a program throws. `Gg.Core.attempt` is how a
+program handles a failure it expects.
 
 Every frame in that rendering is read back through the map `purs` and `esbuild`
 composed, so a frame in the model's own code names `program.purs`, a frame in a

@@ -81,7 +81,7 @@ fn a_single_block_with_an_unrecognised_tag_is_run_when_its_body_is_code() {
 }
 
 /// An illustrative block beside the program does not make the reply ambiguous: the tagged program
-/// wins, the other is left where it was, and the model is told it was left.
+/// wins, the other is left where it was, and the record says it was left.
 #[test]
 fn a_non_program_tag_beside_a_program_block_is_ignored_not_run() {
     let result = healed(

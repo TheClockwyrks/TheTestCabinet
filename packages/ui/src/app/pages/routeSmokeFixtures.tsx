@@ -335,6 +335,10 @@ function backendClient(): BackendClient {
         storeReady: true,
       }),
     listModels: () => Promise.resolve([]),
+    // The Probes tab lists a model's probes on mount; with no probes it never
+    // reads a detail, so the detail read can refuse.
+    listModelProbes: () => Promise.resolve([]),
+    getModelProbe: () => Promise.reject(new Error("no probes in the fixture")),
     listTestCases: () => Promise.resolve([]),
     listVersions: () => Promise.resolve(["v2.0.0"]),
     resolveVersion: () => Promise.resolve(null),

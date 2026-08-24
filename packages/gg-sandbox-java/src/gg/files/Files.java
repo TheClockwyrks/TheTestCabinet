@@ -56,8 +56,8 @@ public final class Files {
     /**
      * Read a window of lines from a file rather than the whole of it.
      *
-     * <p>The window is honoured only under a capped read policy; where it is not, the whole file
-     * comes back and {@code totalLines} says how much of it the read returned.
+     * <p>The window is honoured under every read policy, and {@code totalLines} says how much of the
+     * file lies outside it.
      *
      * @param path The file to read, relative to the workspace or absolute.
      * @param offset The 1-based first line to read from.
@@ -185,7 +185,7 @@ public final class Files {
     /**
      * A file that turned out to be text, and the window of it the read policy returned.
      *
-     * @param contents The file's text, or the requested window of it under a capped read policy.
+     * @param contents The file's text, or the requested window of it where the read named one.
      * @param firstLine The 1-based first line returned.
      * @param lastLine The 1-based last line returned.
      * @param totalLines The file's whole line count, which is what says whether to page again.

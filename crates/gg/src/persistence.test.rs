@@ -767,6 +767,7 @@ async fn a_code_mode_window_records_and_restores_the_views_a_program_opened() {
     window.open_file_view_deduped(
         "game.js".to_string(),
         None,
+        None,
         "// the first draft\n".to_string(),
         vec![],
     );

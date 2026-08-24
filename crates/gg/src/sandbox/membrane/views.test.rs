@@ -76,7 +76,7 @@ fn a_paged_file_view_reports_its_region() {
         .open_file_view("src/a.ts".to_string(), Some(201), Some(200))
         .expect("the page is read and shown");
 
-    let views = state.current_views();
+    let views = state.current_views().expect("granted, so it answers");
     assert_eq!(views.len(), 1);
     assert_eq!(views[0].kind, ViewKind::File);
     let region = views[0].region.expect("a paged view carries its window");
@@ -157,7 +157,11 @@ fn re_opening_a_selector_is_reported_as_a_supersede() {
         .open_text_view("summary".to_string(), "second".to_string())
         .expect("replaced");
 
-    assert_eq!(state.current_views().len(), 1, "one view, re-stated");
+    assert_eq!(
+        state.current_views().expect("granted").len(),
+        1,
+        "one view, re-stated"
+    );
 
     let opened = state.into_parts().views_opened;
     assert_eq!(opened.len(), 2, "but two calls, both reported");
@@ -251,6 +255,7 @@ fn a_spent_budget_refuses_the_read_but_not_the_report() {
         .expect("a report is never withheld");
     state
         .current_views()
+        .expect("granted")
         .first()
         .expect("and it is in the window");
 

@@ -248,6 +248,13 @@ const COMPLETION_MISSING_TEMPLATE: &str = include_str!("../templates/completion-
 /// it, and how the agent can reclaim space itself.
 const CONTEXT_PRESSURE_TEMPLATE: &str = include_str!("../templates/context-pressure.hbs");
 
+/// The trailing **contract notice** a [responses-as-code](crate::agent) window re-states at its
+/// tail on every request — measured as the single most effective cross-model lever for keeping a
+/// tool-call-trained model on the reply contract. Rendered once per agent (it interpolates only
+/// the language) and held in a window slot, so it is one constant message that always renders
+/// last; see `ContextModel::set_trailing_notice`.
+const CONTRACT_NOTICE_TEMPLATE: &str = include_str!("../templates/contract-notice.hbs");
+
 /// The template names registered with the [engine], in the order they are registered. Each name
 /// is what [`render`] looks up. The tests iterate this list to assert every template parses.
 ///
@@ -286,6 +293,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ),
     ("completion-missing", COMPLETION_MISSING_TEMPLATE),
     ("context-pressure", CONTEXT_PRESSURE_TEMPLATE),
+    ("contract-notice", CONTRACT_NOTICE_TEMPLATE),
 ];
 
 /// The process-wide Handlebars engine, built once with every template registered.
@@ -539,9 +547,11 @@ pub struct SystemContext {
     ///
     /// The prompt tells the model not to wrap its program in a code fence either way; what changes
     /// is the *reason*. With stripping on, "a fence is a syntax error" is simply false — gg removes
-    /// it and says so — and a model that tests the claim learns that gg's rules are negotiable,
-    /// which contaminates the instruction-following signal this capability exists to measure. So the
-    /// armed arm states the repair honestly and calls it a repair rather than the contract.
+    /// it, without telling the model — and a model that tests the claim learns that gg's rules are
+    /// negotiable, which contaminates the instruction-following signal this capability exists to
+    /// measure. So the armed arm states the rule as the contract without dressing it up as a
+    /// compiler error, and says nothing of the repair: healing is counted for the operator, never
+    /// disclosed to the model.
     pub fences_are_stripped: bool,
     /// How much of a file one `read_file` call returns, so a capped run says so up front — and, in
     /// either mode, whether this run's model can be shown an image.
@@ -1201,6 +1211,18 @@ pub struct MemoryNoticeEntry {
 /// Render the [linked-memory notice](crate::memories::MemoriesRuntime::notice).
 pub fn render_memory_notice(context: &MemoryNoticeContext) -> String {
     render("memory-notice", context)
+}
+
+/// Render the [trailing contract notice](CONTRACT_NOTICE_TEMPLATE) for the arm writing in
+/// `program_language` — the one or two sentences restating the responses-as-code reply contract,
+/// which ride at the very tail of every request.
+pub fn render_contract_notice(program_language: GgProgramLanguage) -> String {
+    render(
+        "contract-notice",
+        &LanguageContext {
+            language: language_view(program_language),
+        },
+    )
 }
 
 /// The empty rendering context, for the templates that interpolate nothing and exist purely so

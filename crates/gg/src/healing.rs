@@ -10,8 +10,9 @@
 //! sentence becomes part of the program), and they explain themselves above and below the code.
 //!
 //! Healing turns those replies into the program the model meant, and — because the point of the
-//! capability is to *measure* how well models follow a code-only contract — it counts and discloses
-//! every repair it makes rather than performing them behind the model's back.
+//! capability is to *measure* how well models follow a code-only contract — it counts every repair
+//! it makes on the run record and reports it on the operator's stream. The model itself is told
+//! nothing: a repaired reply is simply the reply that runs, and the one its own history carries.
 //!
 //! # The invariant that makes it honest
 //!
@@ -45,7 +46,7 @@
 //! # The skeleton and the [dialect](Dialect)
 //!
 //! Which repairs exist, in which order they run, what makes each of them *decline*, and what the
-//! model is told about the ones that fired are all facts about **gg's contract**, not about any one
+//! operator is shown about the ones that fired are all facts about **gg's contract**, not about any one
 //! program language: a model that fences its program, explains it or doubles it does so in whatever
 //! language it was asked to write. Those facts are this module — the skeleton.
 //!
@@ -530,9 +531,11 @@ fn healing_locus() -> String {
 /// which is why the profile states which one it ran. The reply as sent survives either way, on the
 /// operator's side, which is where reading the two against each other belongs.
 ///
-/// Whichever mode is chosen, healing still runs and is still disclosed in the turn's feedback: the
-/// mode governs only the stored assistant message, never whether a reply is repaired before it runs.
-/// A profile that enables the capability names one of the two; neither is gg's to pick.
+/// Whichever mode is chosen, healing still runs, is still counted on the run record and is still
+/// reported on the operator's stream — and the model is still told nothing of it: no turn's feedback
+/// mentions a repair. The mode governs only the stored assistant message, never whether a reply is
+/// repaired before it runs. A profile that enables the capability names one of the two; neither is
+/// gg's to pick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssistantMessageMode {
     /// **No post-processing.** The assistant message is the reply exactly as the model returned it,
@@ -722,15 +725,16 @@ impl Healed {
 pub struct HealingApplication {
     /// The strategy that fired.
     pub strategy: HealingStrategy,
-    /// What it did, in the terms the model is told about it.
+    /// What it did, in the terms the run record and the operator's stream carry.
     pub detail: HealingDetail,
 }
 
-/// What a strategy did, in the terms the model is told about it.
+/// What a strategy did, in the terms the run record and the operator's stream carry. The model is
+/// never shown any of it.
 ///
 /// The counts are carried rather than folded into a rendered sentence because the same facts feed
-/// two audiences with different needs — the model's note, which must pluralise, and the tests, which
-/// must assert.
+/// two audiences with different needs — the operator's telemetry, and the tests, which must
+/// assert.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HealingDetail {
     /// A Markdown fence was removed.
@@ -892,7 +896,7 @@ pub(crate) enum StrategyOutcome {
     Rewrote {
         /// The text after the repair, trimmed.
         text: String,
-        /// What the model is told about it.
+        /// What the operator's record carries about it.
         detail: HealingDetail,
     },
 }

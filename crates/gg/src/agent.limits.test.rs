@@ -323,6 +323,7 @@ fn priced_turn(dollars: f64) -> ModelResponse {
             comparable: Some(dollars),
             actual: Some(dollars),
         }),
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -978,6 +979,7 @@ async fn a_limit_stopped_run_keeps_everything_it_built() {
             comparable: Some(1.0),
             actual: Some(1.0),
         }),
+        provider: None,
         loop_aborts: LoopAborts::none(),
     };
     let client = MockClient::new(
@@ -1427,6 +1429,7 @@ fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
         &healthy,
         failed_call,
         LoopAborts::none(),
+        ResponseSize::none(),
     );
     assert!(
         breach.is_some(),
@@ -1448,6 +1451,7 @@ fn an_error_turn_is_the_models_until_gg_breaks_under_it() {
         &broken,
         failed_call,
         LoopAborts::none(),
+        ResponseSize::none(),
     );
     assert!(
         breach.is_none(),

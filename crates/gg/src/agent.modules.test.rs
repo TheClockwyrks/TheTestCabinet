@@ -115,6 +115,7 @@ async fn run_inheritance(dir: &Path, scope: GgMemoryScope) -> Vec<GgTelemetryEve
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let spawn = ModelResponse {
@@ -127,6 +128,7 @@ async fn run_inheritance(dir: &Path, scope: GgMemoryScope) -> Vec<GgTelemetryEve
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         let wait = ModelResponse {
@@ -139,6 +141,7 @@ async fn run_inheritance(dir: &Path, scope: GgMemoryScope) -> Vec<GgTelemetryEve
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            provider: None,
             loop_aborts: LoopAborts::none(),
         };
         Box::new(MockClient::new(

@@ -171,9 +171,8 @@ fn fault_response(op: &str, fault: &WireFault) -> Vec<u8> {
         key(op),
         code_name(ErrorCode::Other),
         &format!(
-            "gg could not read this call ({fault}). That is a defect in gg rather than anything \
-             this program did: the SDK that sent the call and the host that read it are built from \
-             one checkout and have parted. Nothing was done, and calling it again will not help."
+            "the call could not be decoded ({fault}); this is a defect in gg rather than in the \
+             program. Nothing was done, and calling it again will not help."
         ),
     )
 }

@@ -110,12 +110,15 @@ time at all: the outcome's compile field is absent rather than zero.
 
 Everything is a run-time failure, because nothing on the host reads a program.
 
-A program fails by capture: nothing catches its throw to describe it, the engine
-writes its own rendering to standard error, and gg puts that in front of the trap
-that follows. What the model reads is the engine's account of its own failure,
-with every frame located in `program.js`, which is the model's own file. There is
-no map between the two and no arithmetic anywhere, because the bytes that ran are
-the bytes the model sent.
+A program fails by capture: nothing catches its throw to describe it. The
+engine's own rendering is reported to gg over `feedback.report-error` with the
+failure's class, so the turn is a `program_fault` — `program_api_error` for an
+uncaught `ApiError`, `program_unknown_name` for a `ReferenceError`,
+`program_throw` for anything else — and never a `sandbox_trap`. What the model
+reads is the engine's account of its own failure, with every frame located in
+`program.js`, which is the model's own file, and the SDK's own frames struck and
+counted. There is no map between the two and no arithmetic anywhere, because
+the bytes that ran are the bytes the model sent.
 
 Which construct the engine carries a position for, and when a rejected promise
 counts as a failure, are the guest's own rules and are on

@@ -36,6 +36,10 @@ public static partial class Views
         /// <see cref="Docs.Close"/> takes documentation away — so closing one here returns zero.
         /// </remarks>
         /// <returns>how many views went, counting each page of a paged file separately.</returns>
+        /// <exception cref="ApiException">
+        /// <see cref="ApiErrorCode.Unavailable"/> for an agent whose run did not buy
+        /// <c>agent-managed-context</c>, which is what buys closing a view.
+        /// </exception>
         /// <ggop alias="true">views.close</ggop>
         public uint Close() => Views.Close(Selector);
     }

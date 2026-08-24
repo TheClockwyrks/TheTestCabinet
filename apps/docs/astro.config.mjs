@@ -183,6 +183,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "quickstarts/devops/add-or-update-a-model",
+                "quickstarts/devops/probe-a-model",
                 "quickstarts/devops/publish-a-run",
                 "quickstarts/devops/publish-a-reference",
                 "quickstarts/devops/publish-errata",

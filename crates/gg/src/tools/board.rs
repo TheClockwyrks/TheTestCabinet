@@ -905,8 +905,7 @@ impl Tool for WaitForIssueTool {
 
     async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
         ToolOutcome::error(format!(
-            "`{WAIT_FOR_ISSUE_TOOL}` is handled by the loop; it \
-             cannot be dispatched here."
+            "`{WAIT_FOR_ISSUE_TOOL}` cannot be dispatched here; this is a gg defect."
         ))
     }
 }

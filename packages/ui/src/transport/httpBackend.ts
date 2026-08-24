@@ -30,11 +30,17 @@ import type {
   LaunchOrigin,
   LogoFetchResult,
   Model,
+  ModelAccuracy,
   ModelInput,
   ModelListing,
+  ModelProbe,
+  ModelProbeDetail,
+  ModelProbeProviders,
+  ModelProbeTriggerInput,
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
+  ProviderStats,
   PublishEnqueued,
   PublishProgress,
   PublishResult,
@@ -632,6 +638,58 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/models/openrouter?slug=${encodeURIComponent(slug)}`,
         token,
       );
+    },
+
+    async listModelProbes(slug: string): Promise<ModelProbe[]> {
+      const body = await getJson<{ probes: ModelProbe[] }>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/probes`,
+      );
+      return body.probes;
+    },
+
+    async getModelProbe(id: string): Promise<ModelProbeDetail> {
+      return getJson<ModelProbeDetail>(
+        baseUrl,
+        `/model-probes/${encodeURIComponent(id)}`,
+      );
+    },
+
+    async triggerModelProbe(
+      slug: string,
+      input: ModelProbeTriggerInput,
+      token: string,
+    ): Promise<ModelProbe> {
+      const body = await postJson<{ probe: ModelProbe }>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/probes`,
+        input,
+        token,
+      );
+      return body.probe;
+    },
+
+    async listModelProbeProviders(
+      slug: string,
+      token: string,
+    ): Promise<ModelProbeProviders> {
+      return getJson<ModelProbeProviders>(
+        baseUrl,
+        `/models/${encodeURIComponent(slug)}/probe-providers`,
+        token,
+      );
+    },
+
+    async getProviderStats(): Promise<ProviderStats> {
+      // The wire shape matches `ProviderStats` field-for-field (camelCase),
+      // no envelope to unwrap.
+      return getJson<ProviderStats>(baseUrl, "/stats/providers");
+    },
+
+    async getModelAccuracy(): Promise<ModelAccuracy> {
+      // The wire shape matches `ModelAccuracy` field-for-field (camelCase),
+      // no envelope to unwrap.
+      return getJson<ModelAccuracy>(baseUrl, "/stats/model-accuracy");
     },
 
     async listCoverageGroups(token: string): Promise<CoverageGroup[]> {

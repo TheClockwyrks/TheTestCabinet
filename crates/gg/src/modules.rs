@@ -514,6 +514,9 @@ impl HistoryModule {
     pub fn forked(&self) -> Self {
         let mut context = self.context.clone();
         context.clear_system();
+        // The trailing contract notice is a holder property on the same terms as the prompt: the
+        // child's own loop sets its own (or none, on a tool-calling profile).
+        context.set_trailing_notice(None);
         Self {
             context,
             id: self.ids.next(ModuleKind::History),
@@ -612,6 +615,9 @@ impl Module for HistoryModule {
         self.context
             .set_code_mode(ctx.history.program_language.is_some());
         self.context.clear_system();
+        // The trailing contract notice states the *holder's* reply contract, so it crosses to a
+        // successor no more than the system prompt does; the successor's loop sets its own.
+        self.context.set_trailing_notice(None);
         self.origin = GgModuleOrigin::Transferred;
         Ok(())
     }
@@ -1367,6 +1373,7 @@ pub fn fork_modules(
     // toolset, and the child's own loop sets its own before its first turn.
     let mut forked = context.clone();
     forked.clear_system();
+    forked.set_trailing_notice(None);
     let mut history = HistoryModule::from_context(forked, ids.next(ModuleKind::History), ids);
     history.set_origin(GgModuleOrigin::Forked);
     let mut report = vec![GgTransitionModule {

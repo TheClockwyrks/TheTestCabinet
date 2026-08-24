@@ -120,15 +120,20 @@ public final class Views {
      * view discards the only copy of what it held.
      *
      * <p>Documentation views are not reached from here: {@code gg.docs.Docs.close} is what takes
-     * one away, and it is bought by a capability this call is not. A sweep that included them would
+     * one away, and it is bought by a capability of its own, `docview-close`. A sweep that included them would
      * hand back {@code 0} for an agent that may not close one, which reads as a selector that named
      * nothing.
+     *
+     * <p>Closing a view is context management, bought — with {@link #current()} — by the
+     * {@code agent-managed-context} capability: an agent whose run did not enable it is refused.
      *
      * @param selector What the view is filed under: a file's path, a text view's label, or
      *     {@code search results}.
      * @return how many views were closed
      * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} for an empty selector, which names
-     *     nothing rather than everything — no call here closes the window wholesale.
+     *     nothing rather than everything — no call here closes the window wholesale — and
+     *     {@link ApiErrorCode#UNAVAILABLE} for an agent whose run did not buy
+     *     {@code agent-managed-context}.
      * @ggop views.close
      */
     public static int close(String selector) {
@@ -142,7 +147,12 @@ public final class Views {
      * and — for a paged file view — the region it covers. What it enumerates is the context window's
      * contents, not any module's functions.
      *
+     * <p>Listing what is open is context management, bought with {@link #close(String)} by the
+     * {@code agent-managed-context} capability: an agent whose run did not enable it is refused.
+     *
      * @return every view open in the context window
+     * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} for an agent whose run did not buy
+     *     {@code agent-managed-context}.
      * @ggop views.current
      */
     public static List<OpenView> current() {
@@ -173,6 +183,8 @@ public final class Views {
          * does not reach that band: {@code gg.docs.Docs.close} is the call for one of those.
          *
          * @return how many views were closed, which is one unless it had already gone
+         * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} for an agent whose run did not buy
+         *     {@code agent-managed-context}, which is what buys closing a view.
          * @ggalias views.close
          */
         public int close() {

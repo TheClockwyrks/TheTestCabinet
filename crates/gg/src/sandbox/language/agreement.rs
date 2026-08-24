@@ -218,6 +218,11 @@ impl fmt::Display for Disagreement {
 /// The operation that opens a **view of a file**, which is the one view call a gg tool gates.
 const OPEN_FILE: &str = "open_file";
 
+/// The operation that **closes** a view, and the one that **lists** what is open — the two view calls
+/// that manage the window rather than fill it, bought by `agent-managed-context`.
+const CLOSE: &str = "close";
+const CURRENT: &str = "current";
+
 /// The operation that **searches** the documentation, which is the one documentation call nothing
 /// gates.
 const SEARCH: &str = "search";
@@ -260,7 +265,10 @@ const CAPABILITY_FAMILIES: &[(&str, &[&str])] = &[
     (CAPABILITY_MEMORIES, &[FAMILY_MEMORY]),
     (CAPABILITY_TASKS, &[FAMILY_TASKS]),
     (CAPABILITY_PROJECT_MANAGEMENT, &[FAMILY_PROJECT]),
-    (CAPABILITY_AGENT_MANAGED_CONTEXT, &[FAMILY_CONTEXT]),
+    (
+        CAPABILITY_AGENT_MANAGED_CONTEXT,
+        &[FAMILY_CONTEXT, FAMILY_VIEWS],
+    ),
     (CAPABILITY_COMPACTION, &[FAMILY_CONTEXT]),
     (CAPABILITY_SUBAGENTS, &[FAMILY_DELEGATION]),
     (CAPABILITY_EXEC, &[FAMILY_DELEGATION]),
@@ -420,13 +428,16 @@ fn endings(operations: &'static [Operation], complain: &mut impl FnMut(String)) 
     }
 }
 
-/// A view is gated exactly where it reads the workspace, and nowhere else.
+/// A view is gated exactly where it reads the workspace or manages the window, and nowhere else.
 ///
-/// Opening a view of a file is a **read** and is bought by the read capability; the rest of the view
-/// surface is bound to every program whatever a run enables, because a run that offers no tools at
-/// all must still be able to show its model something. A gate that slipped onto the wrong one would
-/// silently withhold the only channel into the context window, or silently open a side door into the
-/// workspace, and neither shows up as a compile error.
+/// Opening a view of a file is a **read** and is bought by the read capability. Closing a view and
+/// listing what is open are **context management** and are bought by `agent-managed-context`, the
+/// capability that buys every other call an agent manages its window with. The rest of the view
+/// surface — opening a text the program computed, opening documentation gg holds — is bound to every
+/// program whatever a run enables, because a run that offers no tools at all must still be able to
+/// show its model something. A gate that slipped onto the wrong one would silently withhold the only
+/// channel into the context window, or silently open a side door into the workspace, and neither
+/// shows up as a compile error.
 fn views(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
     for operation in operations
         .iter()
@@ -434,6 +445,8 @@ fn views(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
     {
         let expected = if operation.id.key == OPEN_FILE {
             Binding::Capability(CAPABILITY_READ_FILE)
+        } else if operation.id.key == CLOSE || operation.id.key == CURRENT {
+            Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
         } else {
             Binding::Always
         };

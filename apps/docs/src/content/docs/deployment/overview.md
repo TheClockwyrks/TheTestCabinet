@@ -172,6 +172,10 @@ files, created from your secret manager rather than committed. The set is:
   `TCAB_BACKEND_SERVICE_TOKEN` or the queue never drains.
 - The backend's R2 credentials and its public-projection connection string, for
   publishing to the [public plane](/deployment/public-gallery/).
+- The backend's OpenRouter key, `TCAB_OPENROUTER_API_KEY`, which its own
+  completion calls ([model probes](/components/backend/api/#model-probes)) are
+  billed to. It is mapped from the same vault secret as the drivers'
+  `OPENROUTER_API_KEY`, so runs and probes spend one credit pool.
 - The publisher's `GH_TOKEN` and `CLOUDFLARE_API_TOKEN`, in the Secret named by
   `TCAB_DISPATCHER_PUBLISHER_SECRETS`.
 

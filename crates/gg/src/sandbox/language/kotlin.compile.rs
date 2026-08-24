@@ -592,12 +592,12 @@ pub(crate) fn verdict(report: &Report, file: &str) -> Result<(), PrepareFailure>
             .all(|diagnostic| diagnostic.file.as_deref() == Some(ENTRY_FILE))
         {
             return Err(PrepareFailure::Program(PrepareError::Unsupported(format!(
-                "gg reaches your program by calling `{program}.main()`, and that does not compile \
-                 against what you wrote: {rendered}\n\nWrite your reply as one Kotlin file \
-                 declaring `fun main()` — no parameters, because `fun main(args: Array<String>)` \
-                 compiles to a method gg's call cannot resolve. Everything else you declare — a \
-                 class, an object, a sealed interface, an enum class, a typealias — goes beside it \
-                 at the top level of the same file.",
+                "the entry point does not compile: gg calls `{program}.main()`, and that call \
+                 does not resolve against this program: {rendered}\n\nWrite the reply as one \
+                 Kotlin file declaring `fun main()` — no parameters, because \
+                 `fun main(args: Array<String>)` compiles to a method the entry call cannot \
+                 resolve. Every other declaration — a class, an object, a sealed interface, an \
+                 enum class, a typealias — goes beside it at the top level of the same file.",
                 program = source::PROGRAM_CLASS,
             ))));
         }

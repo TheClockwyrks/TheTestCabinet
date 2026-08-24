@@ -109,6 +109,9 @@ fn gg_record(id: &str) -> RunRecord {
     record.subject.model_id = "mock/echo".to_string();
     record.subject.gg_capability_set = Some(GgCapabilitySet::minimal("mock/echo"));
     record.subject.gg_summary = Some(GgSessionSummary {
+        rejected_responses: Default::default(),
+        max_response_chars: 0,
+        max_response_output_tokens: 0,
         terminal_status: "completed".to_string(),
         undocumented_calls: GgUndocumentedCalls::default(),
         agents_spawned: 3,
@@ -127,6 +130,8 @@ fn gg_record(id: &str) -> RunRecord {
         compile_ms: 0,
         healing: Default::default(),
         errors: Default::default(),
+        tool_calls: 0,
+        provider_stats: Vec::new(),
         issues_created: 2,
         issues_completed: 2,
         slot_costs: vec![GgSlotCost {
@@ -5764,5 +5769,88 @@ fn a_combination_key_separates_on_a_character_a_model_id_cannot_contain() {
     assert_eq!(
         combination_key(&sample_combo()),
         "claude|claude-sonnet-4-5|",
+    );
+}
+
+#[tokio::test]
+async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_label() {
+    // The `/stats/providers` probe fold reads four columns: the item's serving
+    // provider, the owning probe's model slug (the join), the clean flag, and
+    // "errored" as the absence of a classification label. Prove the projection
+    // against a store with two probes of two models, mixed providers, and one
+    // errored call.
+    let db = Db::connect_in_memory().await.unwrap();
+    let probe = |id: &str, slug: &str| test_cabinet_entities::model_probe::Model {
+        id: id.to_string(),
+        model_slug: slug.to_string(),
+        openrouter_slug: format!("or/{slug}"),
+        provider: None,
+        user_id: "u1".to_string(),
+        samples: 1,
+        max_tokens: 100,
+        full_context: false,
+        request_json: "{}".to_string(),
+        status: "complete".to_string(),
+        error: None,
+        verdict: None,
+        base_clean_rate: None,
+        best_variation_clean_rate: None,
+        spend: 0.0,
+        created_at: "2026-08-23T00:00:00Z".to_string(),
+        finished_at: None,
+    };
+    let item =
+        |id: &str, probe_id: &str, provider: Option<&str>, clean: bool, label: Option<&str>| {
+            test_cabinet_entities::model_probe_item::Model {
+                id: id.to_string(),
+                probe_id: probe_id.to_string(),
+                condition: "base".to_string(),
+                sample: 0,
+                provider: provider.map(str::to_string),
+                finish_reason: None,
+                native_finish_reason: None,
+                label: label.map(str::to_string),
+                clean,
+                response_text: String::new(),
+                reasoning_text: None,
+                prompt_tokens: None,
+                completion_tokens: None,
+                cost: None,
+                duration_ms: 1,
+                error: label.is_none().then(|| "gateway refused".to_string()),
+                created_at: "2026-08-23T00:00:01Z".to_string(),
+            }
+        };
+    db.insert_model_probe(probe("p1", "alpha")).await.unwrap();
+    db.insert_model_probe(probe("p2", "beta")).await.unwrap();
+    db.insert_model_probe_item(item("i1", "p1", Some("acme"), true, Some("clean-program")))
+        .await
+        .unwrap();
+    db.insert_model_probe_item(item("i2", "p1", Some("acme"), false, Some("prose+program")))
+        .await
+        .unwrap();
+    db.insert_model_probe_item(item(
+        "i3",
+        "p2",
+        Some("zenith"),
+        true,
+        Some("clean-program"),
+    ))
+    .await
+    .unwrap();
+    db.insert_model_probe_item(item("i4", "p2", None, false, None))
+        .await
+        .unwrap();
+
+    let mut rows = db.probe_item_provider_rows().await.unwrap();
+    rows.sort();
+    assert_eq!(
+        rows,
+        vec![
+            (None, "beta".to_string(), false, true),
+            (Some("acme".to_string()), "alpha".to_string(), false, false),
+            (Some("acme".to_string()), "alpha".to_string(), true, false),
+            (Some("zenith".to_string()), "beta".to_string(), true, false),
+        ],
     );
 }

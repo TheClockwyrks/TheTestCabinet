@@ -39,13 +39,15 @@ import gg.internal.ggText
  * call hands bytes to the program and places nothing in the context window, and reading a picture
  * describes it without showing it, so a file only read here is a file nobody has looked at.
  *
- * The window is honoured only under a capped read policy; where it is not, the whole file comes back
- * and [TextFile.totalLines] says how much of it was returned.
+ * The window is honoured under every read policy; a read that names no `limit` gets a capped
+ * policy's default, or runs to the end of the file, and [TextFile.totalLines] says how much of the
+ * file was returned.
  *
  * @ggop files.read_file
  * @param path The file to read, relative to the workspace or absolute.
  * @param offset The 1-based line to start at. Left out, the read starts at the first line.
- * @param limit How many lines to return from `offset`. Left out, the read runs to the end.
+ * @param limit How many lines to return from `offset`. Left out, a capped read policy's default
+ *   applies, or the read runs to the end.
  * @return the file's text, or the picture's description
  * @throws ApiError `NOT_FOUND` for a missing path.
  */
@@ -62,7 +64,8 @@ public fun readFile(path: String, offset: Int? = null, limit: Int? = null): File
  * @ggop files.read_text_file
  * @param path The file to read, relative to the workspace or absolute.
  * @param offset The 1-based line to start at. Left out, the read starts at the first line.
- * @param limit How many lines to return from `offset`. Left out, the read runs to the end.
+ * @param limit How many lines to return from `offset`. Left out, a capped read policy's default
+ *   applies, or the read runs to the end.
  * @return the file's text
  * @throws ApiError `INVALID_ARGUMENT` when the path names a picture, which `gg.files.readFile`
  *   inspects and `gg.views.openFile` shows.
@@ -135,7 +138,7 @@ public sealed interface FileRead
 /**
  * A text file's window, as the text arm of a read carries it.
  *
- * @property contents The file's text, or just the requested window under a capped read policy.
+ * @property contents The file's text, or just the requested window where the read named one.
  * @property firstLine The 1-based first line returned.
  * @property lastLine The 1-based last line returned.
  * @property totalLines The file's total line count, so a caller knows whether to page again.

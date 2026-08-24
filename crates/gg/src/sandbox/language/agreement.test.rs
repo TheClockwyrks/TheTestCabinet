@@ -675,6 +675,24 @@ fn a_gating_rule_gg_gets_wrong_is_caught() {
             "the view `views.open_text` is bound by Capability(\"write-file\")",
         ),
         (
+            "a view close handed to every program",
+            Box::new(|rows: &mut Vec<Operation>| {
+                // Closing a view is context management: a row that hands it to every program is a
+                // study unable to withhold the one reclaim that discards a computed value.
+                row(rows, "views.close").binding = Binding::Always;
+            }),
+            "the view `views.close` is bound by Always where gg binds it by \
+             Capability(\"agent-managed-context\")",
+        ),
+        (
+            "the view listing bought by a capability other than context management",
+            Box::new(|rows: &mut Vec<Operation>| {
+                row(rows, "views.current").binding = Binding::Capability(CAPABILITY_READ_FILE);
+            }),
+            "the view `views.current` is bound by Capability(\"read-file\") where gg binds it by \
+             Capability(\"agent-managed-context\")",
+        ),
+        (
             "an operation gated on something that is not a gg capability",
             Box::new(|rows: &mut Vec<Operation>| {
                 row(rows, "shell.shell").binding = Binding::Capability("bash");

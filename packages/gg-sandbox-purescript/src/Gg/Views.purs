@@ -177,7 +177,7 @@ openDocsView name = Wire.call_ "open_docs_view" "views" "Gg.Views.openDocsView" 
 -- | the only copy of what it held, so anything needed later belongs in a file or a memory first.
 -- |
 -- | Documentation views are not reached from here. `Gg.Docs.close` is what takes one away, and it is
--- | bought by a capability this call is not — so a sweep that included them would hand back `0` for
+-- | bought by a capability of its own, `docview-close` — so a sweep that included them would hand back `0` for
 -- | an agent that may not close one, which reads as a selector that named nothing.
 -- |
 -- | # Operation
@@ -199,7 +199,8 @@ openDocsView name = Wire.call_ "open_docs_view" "views" "Gg.Views.openDocsView" 
 -- | # Throws
 -- |
 -- | `InvalidArgument` for an empty selector, which names nothing rather than everything — no call
--- | here closes the window wholesale.
+-- | here closes the window wholesale. `Unavailable` for an agent whose run did not buy
+-- | `agent-managed-context`, the capability that buys closing a view and listing what is open.
 close :: String -> Effect Int
 close selector = Wire.call "close" "views" "Gg.Views.close" [ Wire.wire selector ]
 
@@ -209,8 +210,8 @@ close selector = Wire.call "close" "views" "Gg.Views.close" [ Wire.wire selector
 -- | tidied by folding over what is in it rather than by writing out a selector per view.
 -- |
 -- | A documentation view is the one this does not take away, for the reason `Gg.Views.close` does
--- | not: `Gg.Docs.close` is the call for one of those, and it is bought by a capability this one is
--- | not.
+-- | not: `Gg.Docs.close` is the call for one of those, and it is bought by a capability of its own,
+-- | `docview-close`.
 -- |
 -- | # Alias
 -- |
@@ -243,6 +244,11 @@ closeView view = close view.selector
 -- |
 -- | Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for
 -- | a paged file view — the `region` it covers.
+-- |
+-- | # Throws
+-- |
+-- | `Unavailable` for an agent whose run did not buy `agent-managed-context`, the capability that
+-- | buys listing what is open and closing it.
 current :: Effect (Array OpenView)
 current = map openView <$> Wire.call "current" "views" "Gg.Views.current" []
 

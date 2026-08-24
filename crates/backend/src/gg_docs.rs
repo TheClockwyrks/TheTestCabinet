@@ -1,6 +1,9 @@
 //! The in-memory **gg document index**: one [`GgRunDoc`] per stored gg run, kept
 //! fresh by a per-id reconcile, and the corpus every [TCQ](test_cabinet_core::gg_query)
-//! query on this backend runs over.
+//! query on this backend runs over. The same parse pass extracts a compact
+//! [`GgRunFacts`] per run for the [`/stats` folds](crate::stats), so the two
+//! consumers share one ledger, one freshness rule, and one deserialization of
+//! each record.
 //!
 //! The endpoint this replaced answered each aggregate query by loading *every* gg
 //! run, deserializing every `record_json`, resolving every case manifest, and folding
@@ -62,6 +65,7 @@ use test_cabinet_core::gg_query::{GgDocLifecycle, GgRunDoc, build_run_doc, redac
 use crate::db::{Db, StoredRun};
 use crate::error::Result;
 use crate::snapshot::run_summary_score;
+use crate::stats::GgRunFacts;
 use crate::store::{DefinitionStore, StoredManifest};
 
 /// How long a reconcile's result is trusted before the next read re-checks the
@@ -108,6 +112,10 @@ struct GgIndexEntry {
     /// itself for, cloning the documents to propagate one changed entry would be a
     /// hundred-megabyte memcpy every time a reviewer pressed save.
     doc: Option<Arc<GgRunDoc>>,
+    /// The compact `/stats` extract built from the same parse, on the same
+    /// tombstone terms as [`doc`](Self::doc) — plus one more absence: a record
+    /// that parses but carries no gg summary has no outcome to aggregate.
+    facts: Option<Arc<GgRunFacts>>,
 }
 
 /// The index's contents, behind the lock.
@@ -120,6 +128,10 @@ struct GgIndexState {
     /// corpus nor holds the lock while it evaluates. The rebuild itself clones only
     /// the per-document handles, never the documents.
     corpus: Arc<Vec<Arc<GgRunDoc>>>,
+    /// The facts corpus beside it, rebuilt on exactly the same terms and handed
+    /// to the `/stats` folds the way [`corpus`](Self::corpus) is handed to a
+    /// query.
+    facts: Arc<Vec<Arc<GgRunFacts>>>,
     /// When the last reconcile finished, or `None` before the first one.
     reconciled_at: Option<Instant>,
     /// What the last reconcile did — surfaced for tests and diagnostics.
@@ -184,6 +196,25 @@ impl GgDocIndex {
         Ok(Arc::clone(&state.corpus))
     }
 
+    /// The facts corpus, reconciling first on exactly the terms
+    /// [`documents`](Self::documents) does — one snapshot, read after the lock
+    /// is released.
+    ///
+    /// Takes the same score resolver because the reconcile is shared: the one
+    /// parse pass builds the document (which needs a score) and the facts
+    /// (which do not).
+    pub async fn facts(
+        &self,
+        db: &Db,
+        score_of: &mut (dyn FnMut(&StoredRun) -> Option<f64> + Send),
+    ) -> Result<Arc<Vec<Arc<GgRunFacts>>>> {
+        let mut state = self.state.lock().await;
+        if self.is_stale(&state) {
+            reconcile_into(&mut state, db, score_of).await?;
+        }
+        Ok(Arc::clone(&state.facts))
+    }
+
     /// Reconcile unconditionally, ignoring the TTL, and report what changed.
     ///
     /// Separate from [`documents`](Self::documents) so a caller that has just written
@@ -212,6 +243,7 @@ impl GgDocIndex {
         let mut state = self.state.lock().await;
         state.entries.clear();
         state.corpus = Arc::new(Vec::new());
+        state.facts = Arc::new(Vec::new());
         state.reconciled_at = None;
     }
 
@@ -272,6 +304,7 @@ async fn reconcile_into(
                 GgIndexEntry {
                     updated_at,
                     doc: None,
+                    facts: None,
                 },
             );
         }
@@ -279,6 +312,7 @@ async fn reconcile_into(
             let doc = build_run_doc(&run.record, &lifecycle_of(run, score_of(run)));
             if let Some(entry) = state.entries.get_mut(&run.record.id) {
                 entry.doc = Some(Arc::new(doc));
+                entry.facts = GgRunFacts::from_record(&run.record).map(Arc::new);
             }
         }
     }
@@ -291,6 +325,13 @@ async fn reconcile_into(
                 .entries
                 .values()
                 .filter_map(|entry| entry.doc.clone())
+                .collect(),
+        );
+        state.facts = Arc::new(
+            state
+                .entries
+                .values()
+                .filter_map(|entry| entry.facts.clone())
                 .collect(),
         );
     }

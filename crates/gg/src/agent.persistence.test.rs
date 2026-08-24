@@ -154,6 +154,7 @@ fn read_with(id: &str, arguments: serde_json::Value) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        provider: None,
         loop_aborts: LoopAborts::none(),
     }
 }
@@ -396,12 +397,12 @@ async fn every_page_of_a_paged_file_is_carried_over() {
     assert_eq!(store.desk("owner").files, both_windows);
 }
 
-/// The desk records the window a read **returned**, not the one it asked for. Under an unlimited read
-/// policy `offset`/`limit` are not part of `read_file`'s schema at all and the whole file comes back —
-/// so two such calls are two whole-file views, which collapse to one desk entry rather than being
-/// recorded as two distinct windows the agent never actually had.
+/// The desk records the window a read **returned**, not the one it asked for — and `offset`/`limit`
+/// are honoured under every read policy, the unlimited one included. Two paged reads under the
+/// unlimited policy are two distinct windows, recorded as two desk entries; only a read that named
+/// no window (and so got the whole file) records no region.
 #[tokio::test]
-async fn an_ignored_offset_records_no_region() {
+async fn a_windowed_read_under_the_unlimited_policy_records_its_region() {
     let dir = TempDir::new().unwrap();
     let body: String = (1..=300).map(|n| format!("line {n}\n")).collect();
     std::fs::write(dir.path().join("big.rs"), &body).unwrap();
@@ -422,11 +423,23 @@ async fn an_ignored_offset_records_no_region() {
     assert_eq!(end.status, "completed");
     assert_eq!(
         store.desk("owner").files,
-        vec![OpenFileView {
-            path: "big.rs".to_string(),
-            region: None,
-        }],
-        "both reads returned the whole file, so the desk holds one whole-file view"
+        vec![
+            OpenFileView {
+                path: "big.rs".to_string(),
+                region: Some(FileRegion {
+                    offset: 10,
+                    limit: 5,
+                }),
+            },
+            OpenFileView {
+                path: "big.rs".to_string(),
+                region: Some(FileRegion {
+                    offset: 200,
+                    limit: 5,
+                }),
+            },
+        ],
+        "each windowed read is its own page on the desk, under the unlimited policy too"
     );
 }
 

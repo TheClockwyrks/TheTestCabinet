@@ -149,7 +149,7 @@ fn a_runtime_error_carries_no_report_of_the_turn_around_it() {
             name: "shell".to_string(),
             message: "withheld".to_string(),
         }],
-        view_refusals: vec!["that body is over MAX_TEXT_VIEW_BYTES".to_string()],
+        view_refusals: vec!["view body exceeds max size (99999 bytes; max 65536)".to_string()],
         returned_value: true,
         deferred_note: Some("a microtask ran after the program ended".to_string()),
         ..quiet_outcome()
@@ -164,7 +164,7 @@ fn a_runtime_error_carries_no_report_of_the_turn_around_it() {
     for leaked in [
         "shell",
         "withheld",
-        "MAX_TEXT_VIEW_BYTES",
+        "exceeds max size",
         "return",
         "microtask",
         "finish",
@@ -288,7 +288,7 @@ fn every_unhonoured_hand_over_says_which_way_it_failed() {
     ended.refused = Some(ChainRefusal::Ended);
     let notice = handover_notice(GgProgramLanguage::TypeScript, &ended, &quiet_outcome())
         .expect("an ending speaks");
-    assert!(notice.contains("ended your session"), "{notice}");
+    assert!(notice.contains("ended the session"), "{notice}");
 
     let mut exhausted = ProgramChain::first("p");
     exhausted.refused = Some(ChainRefusal::Exhausted);

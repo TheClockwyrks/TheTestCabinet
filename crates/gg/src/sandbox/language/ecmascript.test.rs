@@ -12,7 +12,7 @@
 //! **Why they live in gg rather than in the guest package.** The guest is a `wasm32-wasip1` cdylib in
 //! its own cargo workspace; `cargo test` there would build quickjs for the host and prove nothing
 //! about the component. The questions worth asking — does the model's byte reach the engine, does a
-//! host call cross, does a failure reach standard error — are all questions about the seam, and the
+//! host call cross, does a failure reach gg — are all questions about the seam, and the
 //! seam is here.
 
 use crate::sandbox::ModuleExportKind;
@@ -22,16 +22,21 @@ use wasmtime::component::HasSelf;
 use crate::sandbox::RunEnding;
 use crate::sandbox::fake::{CallLog, FakeOperationApi};
 use crate::sandbox::membrane::{CodeModule, MembraneState, Sandbox};
+use crate::sandbox::outcome::ProgramError;
 use crate::sandbox::{SandboxError, bounded_store, fake, limits::SandboxLimits};
 
 /// What one run of a program on this guest produced.
 struct Ran {
-    /// What the call returned: `Ok` for a program that ran to its end, `Err` for one its runtime
-    /// killed.
+    /// What the call returned: `Ok` for a program whose guest returned, `Err` for one gg's store
+    /// killed — which on this guest is gg's own execution budget and nothing else.
     result: Result<(), SandboxError>,
-    /// Everything the guest wrote to standard error — the whole of this guest's failure surface, and
-    /// what `with_guest_stderr` puts in front of gg's own words.
-    stderr: String,
+    /// The throw the guest reported over `feedback.report-error`, which is how every failure of the
+    /// program's own reaches gg on this guest.
+    reported: Option<ProgramError>,
+    /// What the guest said about a failure: the reported throw's message, or — for the one failure
+    /// that still ends in a trap — what it wrote to standard error, which `with_guest_stderr` puts
+    /// in front of gg's own words.
+    said: String,
     /// Every line the program produced with `console.*`.
     logs: Vec<String>,
     /// Every gg tool call the membrane serviced, by name.
@@ -39,11 +44,18 @@ struct Ran {
 }
 
 impl Ran {
+    /// Whether the program failed, either way a failure arrives: a throw the guest reported, or a
+    /// store gg killed.
+    fn failed(&self) -> bool {
+        self.result.is_err() || self.reported.is_some()
+    }
+
     /// The whole model-facing text of a failure: what the guest said, then what gg made of it.
     fn model_facing(&self) -> String {
-        match &self.result {
-            Ok(()) => String::new(),
-            Err(error) => format!("{error:?}"),
+        match (&self.result, &self.reported) {
+            (Err(error), _) => format!("{error:?}"),
+            (Ok(()), Some(reported)) => reported.message.clone(),
+            (Ok(()), None) => String::new(),
         }
     }
 }
@@ -119,9 +131,14 @@ fn drive(
         });
     let stderr = store.data().stderr_kept();
     let parts = store.into_data().into_parts();
+    let said = match &parts.program_error {
+        Some(reported) => reported.message.clone(),
+        None => stderr,
+    };
     Ran {
         result,
-        stderr,
+        reported: parts.program_error,
+        said,
         logs: parts.logs,
         calls: log.names(),
     }
@@ -144,7 +161,7 @@ const read = files.readFile("a.ts");
 console.log(`kind=${read.kind}`);
 "#);
     assert!(
-        ran.result.is_ok(),
+        !ran.failed(),
         "the program should have run to its end: {}",
         ran.model_facing()
     );
@@ -162,7 +179,7 @@ fn a_program_may_import_one_family() {
     let ran = run(r#"import { readTextFile } from "gg:files";
 console.log(readTextFile("a.ts").slice(0, 5));
 "#);
-    assert!(ran.result.is_ok(), "{}", ran.model_facing());
+    assert!(!ran.failed(), "{}", ran.model_facing());
     assert!(
         ran.calls.contains(&"read_file".to_string()),
         "the helper is bought by the read it is built on; the membrane saw {:?}",
@@ -187,7 +204,7 @@ const harness = [];
 function lib() {}
 console.log(`${context} ${docs} ${typeof tasks} ${fs} ${view} ${harness.length} ${typeof lib}`);
 "#);
-    assert!(ran.result.is_ok(), "{}", ran.model_facing());
+    assert!(!ran.failed(), "{}", ran.model_facing());
     assert_eq!(
         ran.logs,
         vec!["1 2 function not gg's null 0 function".to_string()]
@@ -201,7 +218,7 @@ fn a_program_may_await_at_the_top_level() {
 const value = await Promise.resolve(files.readFile("a.ts"));
 console.log(`awaited ${value.kind}`);
 "#);
-    assert!(ran.result.is_ok(), "{}", ran.model_facing());
+    assert!(!ran.failed(), "{}", ran.model_facing());
     assert_eq!(ran.logs, vec!["awaited text".to_string()]);
 }
 
@@ -222,11 +239,11 @@ export function firstWord() {
 "#,
         )],
     );
-    assert!(ran.result.is_ok(), "{}", ran.model_facing());
+    assert!(!ran.failed(), "{}", ran.model_facing());
     assert!(
         !ran.logs.is_empty(),
-        "the module's export should have produced a line; stderr was {:?}",
-        ran.stderr
+        "the module's export should have produced a line; it said {:?}",
+        ran.said
     );
 }
 
@@ -246,11 +263,16 @@ fn a_module_in_scope_is_reached_only_through_the_import_the_program_writes() {
     );
 
     let ran = run_with("console.log(csvTools.parse(\"a,b\"));\n", &[module]);
-    let error = ran
-        .result
+    let reported = ran
+        .reported
         .as_ref()
-        .expect_err("an unbound identifier kills the guest");
-    let message = format!("{error:?}\n{}", ran.stderr);
+        .expect("an unbound identifier fails the program");
+    assert_eq!(
+        reported.kind,
+        crate::sandbox::outcome::ProgramErrorKind::UnknownName,
+        "and the engine's ReferenceError is reported as an unknown name: {reported:?}"
+    );
+    let message = reported.message.clone();
     assert!(
         message.contains("ReferenceError") && message.contains("csvTools is not defined"),
         "the engine's own sentence is what the model reads: {message}"
@@ -261,7 +283,7 @@ fn a_module_in_scope_is_reached_only_through_the_import_the_program_writes() {
         "import * as csvTools from \"lib:csvTools\";\n\nconsole.log(csvTools.parse(\"a,b\"));\n",
         &[module],
     );
-    assert!(ran.result.is_ok(), "{}", ran.model_facing());
+    assert!(!ran.failed(), "{}", ran.model_facing());
     assert_eq!(
         ran.logs,
         ["3".to_string()],
@@ -273,44 +295,47 @@ fn a_module_in_scope_is_reached_only_through_the_import_the_program_writes() {
 // What a failure looks like — ruling D8, capture rather than interception
 // -------------------------------------------------------------------------------------------------
 
-/// **An uncaught throw reaches standard error with the engine's own words and the model's own
+/// **An uncaught throw reaches gg with the engine's own words and the model's own
 /// line.**
 ///
 /// The location is `Exception::stack()`'s, stated against `program.js`, which is the file the model's
 /// own bytes were declared as. No offset is subtracted anywhere — ruling D11 — so the line asserted
 /// here is the line of the `throw` in the string above it.
 #[test]
-fn an_uncaught_throw_reaches_standard_error_at_the_models_own_line() {
+fn an_uncaught_throw_reaches_gg_at_the_models_own_line() {
     let ran = run(r#"function inner() {
   throw new Error("the spec file was not where I expected");
 }
 inner();
 "#);
     assert!(
-        ran.result.is_err(),
+        ran.failed(),
         "a program that threw must not be recorded as a turn that succeeded"
     );
     assert!(
-        ran.stderr
+        ran.said
             .contains("Error: the spec file was not where I expected"),
-        "the engine's own message should be on standard error; it was {:?}",
-        ran.stderr
+        "the engine's own message should be what is reported; it was {:?}",
+        ran.said
     );
     assert!(
-        ran.stderr.contains("program.js:2"),
-        "the throw is on line 2 of the program, and the frame should say so; stderr was {:?}",
-        ran.stderr
+        ran.said.contains("program.js:2"),
+        "the throw is on line 2 of the program, and the frame should say so; it said {:?}",
+        ran.said
     );
 }
 
-/// **An `ApiError` a refused call raised, uncaught, reaches the model** — with the SDK's frames and
-/// the program's own line under them.
+/// **An `ApiError` a refused call raised, uncaught, reaches the model** — classed by the code it
+/// carries, with the program's own line and without the SDK's frames above it.
 ///
 /// The refusal is the membrane's own: the scope grants no operations at all, so the host answers
 /// with `unavailable` exactly as it does for a run that was not given the tool. Nothing in the guest
-/// decides this and nothing in the guest catches it.
+/// decides this and nothing in the guest catches it. The guest reads the `code` off the value and
+/// reports `api-failure` with it, and the HOST classes an `unavailable` code as an unknown name —
+/// see the membrane's `capture::classify`. The four SDK frames an `ApiError` is constructed under
+/// are struck and counted, because `sdk:gg/core.js` is not a file the model can open.
 #[test]
-fn a_refused_call_reaches_standard_error_as_an_api_error() {
+fn a_refused_call_reaches_gg_as_an_api_error() {
     warm();
     let log = CallLog::default();
     let state = fake::membrane_with(&log, &[], None, crate::sandbox::fake::canned_outcome);
@@ -324,18 +349,35 @@ files.readFile("notes.md");
         log,
     );
     assert!(
-        ran.result.is_err(),
+        ran.failed(),
         "a program that let a refusal escape did not run to its end"
     );
     assert!(
-        ran.stderr.contains("ApiError"),
-        "the thrown value should name itself; stderr was {:?}",
-        ran.stderr
+        ran.said.contains("ApiError"),
+        "the thrown value should name itself; it said {:?}",
+        ran.said
     );
     assert!(
-        ran.stderr.contains("program.js:2"),
-        "and the frames should reach the model's own line; stderr was {:?}",
-        ran.stderr
+        ran.said.contains("program.js:2"),
+        "and the frames should reach the model's own line; it said {:?}",
+        ran.said
+    );
+    assert!(
+        !ran.said.contains("sdk:") && !ran.said.contains("(native)"),
+        "and the SDK's own frames should have been struck; it said {:?}",
+        ran.said
+    );
+    assert!(
+        ran.said.contains("more frames, inside gg's SDK"),
+        "and the strike should be counted; it said {:?}",
+        ran.said
+    );
+    let reported = ran.reported.as_ref().expect("the throw was reported");
+    assert_eq!(
+        reported.kind,
+        crate::sandbox::outcome::ProgramErrorKind::UnknownName,
+        "a refusal carrying `unavailable` is classed by the host as a name the run does not \
+         offer: {reported:?}"
     );
 }
 
@@ -402,17 +444,23 @@ grind();
         &[],
         log,
     );
-    assert!(ran.result.is_err(), "a program that never ended failed");
     assert!(
-        ran.stderr.contains("interrupted"),
-        "the engine should have stopped it and said so; stderr was {:?} and gg said {}",
-        ran.stderr,
+        matches!(ran.result, Err(SandboxError::Timeout { .. })),
+        "a program that never ended is gg's own ceiling, filed as the timeout it is and never as a \
+         throw the program reported; it returned {:?} and reported {:?}",
+        ran.result,
+        ran.reported
+    );
+    assert!(
+        ran.said.contains("interrupted"),
+        "the engine should have stopped it and said so; it said {:?} and gg said {}",
+        ran.said,
         ran.model_facing()
     );
     assert!(
-        ran.stderr.contains("grind"),
-        "and it should name the function that was looping; stderr was {:?}",
-        ran.stderr
+        ran.said.contains("grind"),
+        "and it should name the function that was looping; it said {:?}",
+        ran.said
     );
 }
 
@@ -427,21 +475,21 @@ work();
 console.log("the program itself ended fine");
 "#);
     assert!(
-        ran.result.is_err(),
+        ran.failed(),
         "a program that left a rejected promise behind did not run to its end; it returned {:?} \
-         with stderr {:?}",
+         and said {:?}",
         ran.result,
-        ran.stderr
+        ran.said
     );
     assert!(
-        ran.stderr.contains("nothing awaited this"),
-        "the rejection's own message should be on standard error; it was {:?}",
-        ran.stderr
+        ran.said.contains("nothing awaited this"),
+        "the rejection's own message should be what is reported; it was {:?}",
+        ran.said
     );
     assert!(
-        ran.stderr.contains("Uncaught (in promise)"),
-        "and it should say what kind of failure it is; stderr was {:?}",
-        ran.stderr
+        ran.said.contains("Uncaught (in promise)"),
+        "and it should say what kind of failure it is; it said {:?}",
+        ran.said
     );
 }
 
@@ -475,16 +523,16 @@ try { await p; } catch (e) { console.log("caught " + e.message); }
     ] {
         let ran = run(handled);
         assert!(
-            ran.result.is_ok(),
+            !ran.failed(),
             "a program that handled its own rejection failed the turn; it returned {:?} with \
              stderr {:?} for:\n{handled}",
             ran.result,
-            ran.stderr
+            ran.said
         );
         assert!(
-            ran.stderr.is_empty(),
-            "and nothing should have been written to standard error; it was {:?} for:\n{handled}",
-            ran.stderr
+            ran.said.is_empty(),
+            "and nothing should have been reported; it said {:?} for:\n{handled}",
+            ran.said
         );
         assert_eq!(ran.logs.len(), 1, "the handler ran, for:\n{handled}");
     }
@@ -494,15 +542,15 @@ const floating = Promise.reject(new Error("one of two"));
 try { await caught; } catch (e) { console.log("caught " + e.message); }
 "#);
     assert!(
-        ran.result.is_err(),
+        ran.failed(),
         "the promise nothing awaited still fails the turn; it returned {:?}",
         ran.result
     );
     assert_eq!(
-        ran.stderr.matches("Uncaught (in promise)").count(),
+        ran.said.matches("Uncaught (in promise)").count(),
         1,
-        "and exactly one of the two is reported; stderr was {:?}",
-        ran.stderr
+        "and exactly one of the two is reported; it said {:?}",
+        ran.said
     );
 }
 
@@ -543,11 +591,11 @@ fn a_frame_carries_the_position_of_the_construct_that_emitted_one() {
         ),
     ] {
         let ran = run(program);
-        assert!(ran.result.is_err(), "the program failed, for:\n{program}");
+        assert!(ran.failed(), "the program failed, for:\n{program}");
         assert!(
-            ran.stderr.contains(expected),
-            "{why}: expected {expected} and stderr was {:?} for:\n{program}",
-            ran.stderr
+            ran.said.contains(expected),
+            "{why}: expected {expected} and it said {:?} for:\n{program}",
+            ran.said
         );
     }
 }
@@ -562,16 +610,16 @@ fn a_syntax_error_names_the_models_own_line() {
 const b = 2;
 const = 3;
 "#);
-    assert!(ran.result.is_err(), "a program that will not parse failed");
+    assert!(ran.failed(), "a program that will not parse failed");
     assert!(
-        ran.stderr.contains("SyntaxError"),
-        "the engine's own diagnosis should be on standard error; it was {:?}",
-        ran.stderr
+        ran.said.contains("SyntaxError"),
+        "the engine's own diagnosis should be what is reported; it was {:?}",
+        ran.said
     );
     assert!(
-        ran.stderr.contains("program.js:3"),
-        "the bad line is line 3 and the diagnosis should say so; stderr was {:?}",
-        ran.stderr
+        ran.said.contains("program.js:3"),
+        "the bad line is line 3 and the diagnosis should say so; it said {:?}",
+        ran.said
     );
 }
 
@@ -588,18 +636,18 @@ fn a_stack_overflow_is_the_engines_own_range_error() {
 }
 down(0);
 "#);
-    assert!(ran.result.is_err(), "a program that overflowed failed");
+    assert!(ran.failed(), "a program that overflowed failed");
     assert!(
-        ran.stderr.contains("RangeError"),
+        ran.said.contains("RangeError"),
         "the engine should have reported the overflow itself rather than letting the host stack \
-         run out; stderr was {:?} and gg said {}",
-        ran.stderr,
+         run out; it said {:?} and gg said {}",
+        ran.said,
         ran.model_facing()
     );
     assert!(
-        ran.stderr.contains("program.js:2"),
-        "and the frames should be the model's own; stderr was {:?}",
-        ran.stderr
+        ran.said.contains("program.js:2"),
+        "and the frames should be the model's own; it said {:?}",
+        ran.said
     );
 }
 
@@ -609,11 +657,11 @@ fn the_membrane_is_not_a_second_spelling_of_the_sdk() {
     let ran = run(r#"import { readFile } from "test-cabinet:gg/files";
 readFile("a.ts", undefined, undefined);
 "#);
-    assert!(ran.result.is_err(), "the import is refused");
+    assert!(ran.failed(), "the import is refused");
     assert!(
-        ran.stderr.contains("gg:<family>") || ran.stderr.contains("import \"gg\""),
-        "the refusal should say what to write instead; stderr was {:?}",
-        ran.stderr
+        ran.said.contains("gg:<family>") || ran.said.contains("import \"gg\""),
+        "the refusal should say what to write instead; it said {:?}",
+        ran.said
     );
 }
 
@@ -692,10 +740,10 @@ gg.context.compact("what happened", ["a.ts"]);
 console.log("every family answered");
 "#);
     assert!(
-        ran.result.is_ok(),
-        "every family should have answered: {} / stderr {:?}",
+        !ran.failed(),
+        "every family should have answered: {} / it said {:?}",
         ran.model_facing(),
-        ran.stderr
+        ran.said
     );
     for expected in [
         "shell",
@@ -742,12 +790,7 @@ console.log(`list=${entries.length} enum=${entries.map((e) => e.kind).join("/")}
 const written = files.writeFile("out.txt", "hello");
 console.log(`u64=${written} type=${typeof written}`);
 "#);
-    assert!(
-        ran.result.is_ok(),
-        "{} / {:?}",
-        ran.model_facing(),
-        ran.stderr
-    );
+    assert!(!ran.failed(), "{} / {:?}", ran.model_facing(), ran.said);
     assert_eq!(
         ran.logs,
         vec![
@@ -770,12 +813,7 @@ const back = new TextDecoder().decode(bytes);
 const cloned = structuredClone({ a: [1, 2], b: new Map([["k", "v"]]) });
 console.log(`${bytes.length} ${back} ${cloned.a[1]} ${cloned.b.get("k")}`);
 "#);
-    assert!(
-        ran.result.is_ok(),
-        "{} / {:?}",
-        ran.model_facing(),
-        ran.stderr
-    );
+    assert!(!ran.failed(), "{} / {:?}", ran.model_facing(), ran.said);
     assert_eq!(ran.logs, vec!["6 héllo 2 v".to_string()]);
 }
 

@@ -113,7 +113,11 @@ the family it belongs to, whether the call takes input, and its `Binding`. A
   profile. Its one row is `delegation.transition_state`, held by an agent
   running a [machine](/gg/fsms/) state with somewhere to go.
 - `Always`, bound to every program whatever a run enables. `docs.search`,
-  `views.open_text`, `views.open_docs_view`, `views.close` and `views.current`.
+  `views.open_text` and `views.open_docs_view`: a run that grants nothing must
+  still be able to show its model something and to find what it holds.
+  `views.close` and `views.current` are not among them — closing a view and
+  listing what is open are context management, bought by
+  `agent-managed-context`.
 
 Capability ids appear only in this table. No signature catalogue, no SDK and
 nothing a reflector emits carries one, so no arm asserts anything about gg's

@@ -53,7 +53,7 @@ data FileRead
 -- |
 -- | # Fields
 -- |
--- | - `contents` — The file's text, or the requested window alone under a capped read policy.
+-- | - `contents` — The file's text, or the requested window alone where the read named one.
 -- | - `firstLine` — The 1-based first line returned.
 -- | - `lastLine` — The 1-based last line returned.
 -- | - `totalLines` — The file's total line count, which is what says whether another page is left.
@@ -141,9 +141,9 @@ instance Show FileRead where
 -- |
 -- | - `path` — The file to read, relative to the workspace or absolute.
 -- | - `options` — The window of lines to read; `{}` reads the whole file.
--- | - `options.offset` — The 1-based line to start at. Honoured only under a capped read policy.
--- | - `options.limit` — How many lines to return from `offset`. Honoured only under a capped read
--- |   policy.
+-- | - `options.offset` — The 1-based line to start at. Left out, the read starts at the first line.
+-- | - `options.limit` — How many lines to return from `offset`. Left out, a capped read policy's
+-- |   default applies, or the read runs to the end of the file.
 -- |
 -- | # Returns
 -- |
@@ -176,13 +176,13 @@ readFile path options =
 -- |
 -- | - `path` — The file to read, relative to the workspace or absolute.
 -- | - `options` — The window of lines to read; `{}` reads the whole file.
--- | - `options.offset` — The 1-based line to start at. Honoured only under a capped read policy.
--- | - `options.limit` — How many lines to return from `offset`. Honoured only under a capped read
--- |   policy.
+-- | - `options.offset` — The 1-based line to start at. Left out, the read starts at the first line.
+-- | - `options.limit` — How many lines to return from `offset`. Left out, a capped read policy's
+-- |   default applies, or the read runs to the end of the file.
 -- |
 -- | # Returns
 -- |
--- | The file's text, or the window of it a capped read policy allowed.
+-- | The file's text, or the window of it the read asked for.
 -- |
 -- | # Throws
 -- |

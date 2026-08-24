@@ -50,10 +50,10 @@ pub const AGGREGATE: &str = "gg";
 const LIB: &str = "lib:";
 
 /// The scheme the SDK's own emitted files are filed under.
-const SDK: &str = "sdk:";
+pub const SDK: &str = "sdk:";
 
 /// The package the membrane's interfaces live in, which the SDK imports by their full specifiers.
-const MEMBRANE: &str = "test-cabinet:gg/";
+pub const MEMBRANE: &str = "test-cabinet:gg/";
 
 /// Resolve a specifier against the module that wrote it.
 pub struct GgResolver;

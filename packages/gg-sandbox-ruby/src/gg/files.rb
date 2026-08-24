@@ -31,10 +31,10 @@ module GG
     # has looked at.
     #
     # @param path [String] The file to read, relative to the workspace or absolute.
-    # @param offset [Integer, nil] The 1-based line to start at. Honoured only under a capped read
-    #   policy.
-    # @param limit [Integer, nil] How many lines to return from `offset`. Honoured only under a
-    #   capped read policy.
+    # @param offset [Integer, nil] The 1-based line to start at. Left out, the read starts at the
+    #   first line.
+    # @param limit [Integer, nil] How many lines to return from `offset`. Left out, a capped read
+    #   policy's default applies, or the read runs to the end of the file.
     # @return [GG::Files::TextFile, GG::Files::ImageFile] the file's window of text, or the
     #   picture's description
     # @raise [GG::Core::ApiError] `:not_found` for a missing path.
@@ -53,10 +53,10 @@ module GG
     # window, the same cost.
     #
     # @param path [String] The file to read, relative to the workspace or absolute.
-    # @param offset [Integer, nil] The 1-based line to start at. Honoured only under a capped read
-    #   policy.
-    # @param limit [Integer, nil] How many lines to return from `offset`. Honoured only under a
-    #   capped read policy.
+    # @param offset [Integer, nil] The 1-based line to start at. Left out, the read starts at the
+    #   first line.
+    # @param limit [Integer, nil] How many lines to return from `offset`. Left out, a capped read
+    #   policy's default applies, or the read runs to the end of the file.
     # @return [String] the file's text, or just the requested window
     # @raise [GG::Core::ApiError] `:invalid_argument` when the path names a picture, which
     #   `GG::Files.read_file` inspects instead and `GG::Views.open_file` displays.
@@ -145,7 +145,7 @@ module GG
     class TextFile
       include Value
 
-      # @return [String] The file's text, or just the requested window under a capped read policy.
+      # @return [String] The file's text, or just the requested window where the read named one.
       attr_reader :contents
 
       # @return [Integer] The 1-based first line returned.

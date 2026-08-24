@@ -1200,10 +1200,14 @@ static MonoBoolean gg_close_view(MonoString *selector, uint32_t *closed) {
   return ok ? 1 : 0;
 }
 
-static void gg_current_views(MonoArray **kinds, MonoArray **selectors, MonoArray **tokens,
-                             MonoArray **offsets, MonoArray **limits) {
+static MonoBoolean gg_current_views(MonoArray **kinds, MonoArray **selectors, MonoArray **tokens,
+                                    MonoArray **offsets, MonoArray **limits) {
   test_cabinet_gg_views_list_open_view_t views;
-  test_cabinet_gg_views_current_views(&views);
+  test_cabinet_gg_views_api_error_t failure;
+  if (!test_cabinet_gg_views_current_views(&views, &failure)) {
+    park(&failure);
+    return 0;
+  }
   *kinds = int_array(views.len);
   *selectors = string_array(views.len);
   *tokens = ulong_array(views.len);
@@ -1218,6 +1222,7 @@ static void gg_current_views(MonoArray **kinds, MonoArray **selectors, MonoArray
     long_array_set(*limits, index, paged ? (int64_t)views.ptr[index].region.val.limit : -1);
   }
   test_cabinet_gg_views_list_open_view_free(&views);
+  return 1;
 }
 
 // ---------------------------------------------------------------------------------------------

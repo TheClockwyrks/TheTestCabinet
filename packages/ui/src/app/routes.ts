@@ -57,6 +57,9 @@ export const routes = {
   testCaseReference: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/reference`,
   models: (): string => "/models",
+  // The Models section's Providers tab — per-provider health folded from
+  // recorded gg runs and probe evidence.
+  modelsProviders: (): string => "/models/providers",
   // The model detail index — its Overview tab, which reports the model one test
   // case at a time. The `?case=`/`?variant=` parameters the tab writes select
   // which cohort it opens on, so a specific reading is linkable.
@@ -66,6 +69,10 @@ export const routes = {
     `/models/${encodeURIComponent(modelId)}/stats`,
   modelRuns: (modelId: string): string =>
     `/models/${encodeURIComponent(modelId)}/runs`,
+  // The Probes tab — the model's responses-as-code readiness probes: trigger
+  // controls, history, and per-probe detail, all on the one page.
+  modelProbes: (modelId: string): string =>
+    `/models/${encodeURIComponent(modelId)}/probes`,
   // The add/edit model config form (consoles only; the static site is read-only
   // and never links here). `modelNew` opens a blank draft, optionally seeded from
   // a run of an unknown model (`?fromRun=<runId>`) or pre-claiming a known id
@@ -362,6 +369,11 @@ export const routePatterns = {
   testCaseArena: "/test-cases/:slug/arena",
   testCaseReference: "/test-cases/:slug/reference",
   models: "/models",
+  // The `/models/providers` static path outranks the `/models/:modelId` dynamic
+  // route, so the section's Providers tab is reachable at a literal segment
+  // beside the model detail (the same literal-beside-param shape `/models/new`
+  // uses).
+  modelsProviders: "/models/providers",
   // The `/models/new` static path outranks the `/models/:modelId` dynamic route,
   // so a blank/seeded config form is reachable at a literal segment beside the
   // model detail (the same literal-beside-param shape `/runs/new` uses).
@@ -370,6 +382,7 @@ export const routePatterns = {
   modelStats: "/models/:modelId/stats",
   modelEdit: "/models/:modelId/edit",
   modelRuns: "/models/:modelId/runs",
+  modelProbes: "/models/:modelId/probes",
   about: "/about",
   aboutTesting: "/about/testing",
   aboutMetrics: "/about/metrics",

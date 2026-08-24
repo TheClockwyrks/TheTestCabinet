@@ -74,7 +74,7 @@ use test_cabinet_core::gg::{
     GgTelemetryKind, PARAM_MAX_RETRIES, PARAM_SUMMARY_HEADROOM,
 };
 
-use crate::context::{ContextModel, Retention, item_heading};
+use crate::context::{ContextModel, Retention, ShownLines, item_heading};
 use crate::docs::DocsRuntime;
 use crate::memories::MemoryCalls;
 use crate::model::{ImageContent, Message, ModelClient, Role};
@@ -694,7 +694,7 @@ pub fn handoff_messages(context: &ContextModel) -> Vec<Message> {
                 GgContextSource::System | GgContextSource::Skill | GgContextSource::Memory
             )
         })
-        .map(|item| handoff_message(item.source, item.label, item.message))
+        .map(|item| handoff_message(item.source, item.label, item.lines, item.message))
         .collect()
 }
 
@@ -705,8 +705,16 @@ pub fn handoff_messages(context: &ContextModel) -> Vec<Message> {
 ///
 /// A message that already opens with its own heading — every synthesized `user` message in a
 /// [code-mode](crate::context::item_heading) run does — is left as it is rather than headed twice.
-fn handoff_message(source: GgContextSource, label: Option<&str>, message: &Message) -> Message {
-    let heading = format!("{}\n----\n", handoff_label(source, label, message.role));
+fn handoff_message(
+    source: GgContextSource,
+    label: Option<&str>,
+    lines: Option<ShownLines>,
+    message: &Message,
+) -> Message {
+    let heading = format!(
+        "{}\n----\n",
+        handoff_label(source, label, lines, message.role)
+    );
     let mut body = message.content.clone().unwrap_or_default();
     for call in &message.tool_calls {
         body.push_str(&format!("\n→ called `{}`({})", call.name, call.arguments));
@@ -721,20 +729,26 @@ fn handoff_message(source: GgContextSource, label: Option<&str>, message: &Messa
 ///
 /// It is read off the item's [source](GgContextSource) **and its selector tag** — the same
 /// [`item_heading`] a code-mode window already prefixes its own messages with, so a run that heads
-/// its messages is not relabelled. The tag matters for exactly one band: a
+/// its messages is not relabelled. The tag matters for the qualified bands: a
 /// [text view](GgContextSource::TextView) is headed `View: {label}`, and asking here for the bare
 /// `View` would fail the already-headed check above and hand the summarizer
 /// `View\n----\nView: notes\n----\n…` — two headings for one message, the second of which it would
-/// reasonably read as content.
+/// reasonably read as content. A [file view](GgContextSource::FileView) is headed by its path and
+/// the [lines](ShownLines) it shows for the same reason, which is why they travel here too.
 ///
 /// The exception is an assistant turn, which has no code heading (a program is the model's own
 /// output, never gg's synthesis) and is exactly the item the flattening must label. `Assistant` is
 /// what the handoff system prompts name it.
-fn handoff_label(source: GgContextSource, label: Option<&str>, role: Role) -> String {
+fn handoff_label(
+    source: GgContextSource,
+    label: Option<&str>,
+    lines: Option<ShownLines>,
+    role: Role,
+) -> String {
     if role == Role::Assistant || source == GgContextSource::Assistant {
         return "Assistant".to_string();
     }
-    item_heading(source, label).unwrap_or_else(|| "Message".to_string())
+    item_heading(source, label, lines).unwrap_or_else(|| "Message".to_string())
 }
 
 // ---------------------------------------------------------------------------

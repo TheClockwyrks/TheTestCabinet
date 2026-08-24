@@ -803,6 +803,137 @@ all. The scoped equivalent is a plan's or ladder's
 `cancel-active` and `cancel-all` discard work in progress, so a client confirms
 first; `cancel-waiting` throws nothing away and does not need to.
 
+## Model probes
+
+A model probe is a responses-as-code readiness check of one catalog model,
+answering whether the model can drive [gg](/gg/overview/)'s RaC mode before any
+run is spent on it. The backend replays gg's real RaC turn-1 request, an
+embedded fixture holding the system prompt, the Carom task, two seeded example
+programs with their results, and the spec views, trimmed by default. The replay
+goes through OpenRouter chat/completions with no tools array, across a fixed
+matrix of four prompt conditions: `base` (the request exactly as gg sends it),
+`no-tools` (an explicit no-tools clause appended to the system prompt), `notice`
+(a trailing user message restating the contract), and `combo` (both). Each
+condition is sampled several times with no temperature set.
+
+Each reply is classified heuristically (`clean-program`, `prose+program`,
+`program-no-gg`, `fenced`, `tool-token`, `xml-pseudo-tools`, `cot-leak`,
+`native-tool-call`, `empty`, `other`); a clean reply is a bare program importing
+from `"gg"`. The verdict thresholds are on the per-condition clean rates. Base
+and every variation at ≥ 80% is `ready`; a variation reaching 80% where base did
+not is `ready-with-reminders`; no variation reaching 80% while tool-call syntax
+appears under the variations is `tool-call-overfit`; anything else is
+`not-ready`.
+
+Probes are append-only history: a re-run is a new dated record. They are
+console-only data and never feed the public snapshot. A probe executes inside
+the backend process, so a backend restart fails any probe still `running`.
+
+### `POST /models/{slug}/probes`
+
+Trigger a probe. Requires a bearer token: the backend spends its own OpenRouter
+key (`TCAB_OPENROUTER_API_KEY`, see
+[Configuration](/components/backend/overview/#configuration)) on the caller's
+behalf. The request body is optional JSON, every field optional:
+
+```jsonc
+{
+  "provider": "…",     // pin every call to this provider (provider.order, fallbacks disabled)
+  "samples": 3,        // samples per condition (default 3, at most 8)
+  "maxTokens": 3500,   // completion-token cap per call
+  "fullContext": false // send the seeded spec views whole instead of trimmed
+}
+```
+
+Answers `202 Accepted` with the probe row already `running`; the probe executes
+in the backend and the row is read back by polling. `409` when a probe of the
+model is already running. `422` when the model has no OpenRouter slug to
+target: a probe targets a curated model's configured OpenRouter slug, falling
+back to the catalog slug itself when it reads as an OpenRouter id. `503` with
+code `openrouter_key_missing` when the backend has no key configured.
+
+### `GET /models/{slug}/probes`
+
+The model's probe history, newest first, under `probes`. Each probe carries its
+status (`running`, `complete`, or `failed`), verdict, base and best-variation
+clean rates, USD spend, and timestamps. An open read.
+
+### `GET /model-probes/{id}`
+
+One probe with its per-call items, the base request messages exactly as sent,
+the condition matrix, and the two variation texts. Each item records its
+condition, sample number, serving provider, finish reasons, classification
+label and clean flag, raw reply text with any separate reasoning text, token
+counts, USD cost, duration, and the error that voided the call. An open read.
+
+### `GET /models/{slug}/probe-providers`
+
+The providers OpenRouter lists for the model, as name and context length, for
+pinning a probe to one. Requires a bearer token, because it reaches a third
+party on the caller's behalf, like the OpenRouter form fill.
+
+## Provider and accuracy statistics
+
+Two aggregate reads fold cross-run statistics for the console's Providers view
+and the model detail's accuracy figures. Both fold from stored gg session
+summaries reached through the gg document index — the same per-id-reconciled,
+TTL-refreshed corpus the gg query endpoints read — so a request
+never re-parses the run store. Provider figures exist only on runs whose
+summary recorded `providerStats`; older runs are counted as scanned but
+contribute no provider rows, and a figure an older record omitted is never
+defaulted.
+
+### `GET /stats/providers`
+
+Per-provider health across every stored gg run, plus the probe store's
+per-provider evidence, kept strictly separate. An open read.
+
+Run evidence: one entry per upstream provider observed in any run's
+`providerStats` slices, each carrying its per-model rows and a total. A row
+reports contributing runs, calls with their summed tokens and USD cost,
+length-capped rejections, and the attributed turns split into working turns and
+an error breakdown keyed by turn error type. The `provider: null` entry
+collects the calls that named no provider — a gateway that stamps none, or a
+turn whose call produced no reply to name one — and sorts last; a `modelId:
+null` row is a slice recorded before the agent's first usage delta named its
+model, on a run more than one model served.
+
+Probe evidence: one entry per provider observed on
+[model-probe](#model-probes) items, per probed model: item count, clean-reply
+count, and errored calls. Probe rows are single-completion replays rather than
+full runs, which is why they are reported beside the run evidence rather than
+folded into it.
+
+The response also reports `runsScanned` (every stored gg run with a recorded
+session summary) and
+`runsWithProviderData`, so a consumer can present sparse provider coverage as
+sparse rather than as zero.
+
+### `GET /stats/model-accuracy`
+
+Per-model accuracy across every stored gg run, split by execution mode. An
+open read.
+
+For responses-as-code runs, a model's entry counts turns and splits them into
+valid (progressed or finished), compile errors, runtime errors (program faults
+plus sandbox limits), model-API errors, and missing completions, with the full
+per-type breakdown beside the named groups. Runs whose summaries carry
+`providerStats` contribute exact per-model figures; older single-model runs
+contribute the run-level error rollup with valid derived as turns minus errors
+(a fatal turn counts as valid there, so the figure can overcount by at most one
+turn per agent) and are tallied under `approximateRuns`.
+
+For tool-calling runs, a model's entry counts dispatched tool calls and splits
+them into ok and failed by failure class. A run contributes only when its
+summary recorded the `toolCalls` dispatch total; a tool-calling run with
+failure evidence but no recorded total is tallied under
+`runsWithoutCallTotals` instead.
+
+A run that cannot be attributed to a single model — an older multi-model run
+with no per-model slices — is counted once under the response's
+`unattributableRuns`. Models are ordered by evidence volume (responses-as-code
+turns plus tool calls), largest first.
+
 ## The console stream
 
 One SSE connection carries everything the console learns about runs it is not

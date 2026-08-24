@@ -1051,6 +1051,73 @@ async fn re_opening_an_image_view_leaves_one_picture_resident() {
     );
 }
 
+/// **`view.openFile` honours `offset`/`limit` under the unlimited read policy, and the view is keyed
+/// by the window it actually covers.**
+///
+/// The drive harness runs every code-mode agent under [`ReadPolicy::Unlimited`], which only decides
+/// what a call naming no `limit` gets. A program that opens one page of a file gets that page — the
+/// footer says which lines — and re-opening the same page supersedes it while a different page sits
+/// beside it, because the `(path, region)` key comes from what the read returned.
+#[tokio::test]
+async fn a_file_view_opened_with_a_window_covers_that_window_under_the_unlimited_policy() {
+    let dir = TempDir::new().unwrap();
+    let body: String = (1..=20).map(|n| format!("line {n}\n")).collect();
+    std::fs::write(dir.path().join("lines.txt"), body).unwrap();
+
+    let (outcome, _, requests) = drive_recorded_code_run(
+        &dir,
+        code_set("mock/primary", json!({})),
+        vec![code_reply(
+            "import * as gg from \"gg\";
+             gg.views.openFile(\"lines.txt\", { offset: 5, limit: 3 });
+             gg.views.openFile(\"lines.txt\", { offset: 5, limit: 3 });
+             gg.views.openFile(\"lines.txt\", { offset: 8, limit: 3 });
+             gg.views.openFile(\"lines.txt\", { offset: 18 });",
+        )],
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let after = requests.get(1).expect("a turn after the program ran");
+    let views: Vec<&str> = after
+        .iter()
+        .filter_map(|m| m.content.as_deref())
+        .filter(|c| c.starts_with("File: lines.txt:"))
+        .collect();
+    assert_eq!(
+        views.len(),
+        3,
+        "the repeated page superseded its first copy; the other two pages sit beside it: {views:#?}"
+    );
+    let page = |start: usize| {
+        views
+            .iter()
+            .find(|v| v.contains(&format!("line {start}\n")))
+            .unwrap_or_else(|| panic!("no view starts at line {start}: {views:#?}"))
+    };
+    let first = page(5);
+    assert!(first.starts_with("File: lines.txt:5-7\n----\n"), "{first}");
+    assert!(
+        first.contains("[showing lines 5-7 of 20; continue with offset: 8]"),
+        "{first}"
+    );
+    assert!(
+        !first.contains("line 4\n") && !first.contains("line 8\n"),
+        "{first}"
+    );
+    let second = page(8);
+    assert!(
+        second.contains("[showing lines 8-10 of 20; continue with offset: 11]"),
+        "{second}"
+    );
+    let tail = page(18);
+    assert!(tail.starts_with("File: lines.txt:18-20\n----\n"), "{tail}");
+    assert!(
+        tail.contains("[showing lines 18-20 of 20]") && tail.contains("line 20\n"),
+        "an offset alone reads to the end of the file: {tail}"
+    );
+}
+
 /// **A program's output goes to the operator — which means it has to go *somewhere*.**
 ///
 /// `console.*` is deliberately not a channel into the model's own window: what a program shows
@@ -1581,6 +1648,7 @@ async fn only_a_program_that_calls_finish_ends_the_session() {
                 finish_reason: FinishReason::Stop,
                 usage: TokenCounts::default(),
                 cost: None,
+                provider: None,
                 loop_aborts: LoopAborts::none(),
             },
             // ...and only now does the run end, because the model wrote a program that says so.
@@ -2154,10 +2222,17 @@ async fn views_opened_before_a_throw_survive_into_the_next_prompt() {
         );
     }
 
-    // And the error is the last thing the model reads, carrying the error alone.
+    // And the error is the last thing the model reads before the trailing contract notice —
+    // which rides after **everything** on every code request (see
+    // `ContextModel::set_trailing_notice`) — carrying the error alone.
+    let last = bodies.last().expect("the window is not empty");
+    assert!(
+        last.starts_with("Reminder: your entire reply"),
+        "the contract notice rides at the very tail: {last}"
+    );
     let error = bodies
-        .last()
-        .expect("the window is not empty")
+        .get(bodies.len() - 2)
+        .expect("the window holds more than the notice")
         .strip_prefix("Runtime error\n----\n")
         .unwrap_or_else(|| panic!("the turn ends on the runtime error: {bodies:#?}"));
     assert!(

@@ -762,10 +762,10 @@ export function GgConfigEditor({
             </p>
             <div className={gg.limitGrid}>
               {RUN_LIMIT_SPECS.map((spec) => (
-                // Only the two ceilings every run has are seeded, so only those two can be
-                // "moved off" anything. An unarmed ceiling's empty field is the setting
-                // rather than a blank standing in for one, so it is offered no reset —
-                // there is nothing to put it back to.
+                // A seeded ceiling — required or error guardrail — can be "moved off"
+                // its authored figure, so it carries the reset. An unseeded ceiling's
+                // empty field is the setting rather than a blank standing in for one, so
+                // it is offered no reset — there is nothing to put it back to.
                 <CapField
                   key={spec.key}
                   label={spec.label}

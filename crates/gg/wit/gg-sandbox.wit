@@ -133,8 +133,9 @@ interface files {
 
     /// A text file, or the window of one this run's read policy returned.
     record text-read {
-        /// The file's text. Under a capped read policy this is the requested window only, with no
-        /// explanatory footer — the window is described by the fields below instead.
+        /// The file's text. Where the read was windowed — by an `offset`/`limit` it named, or by a
+        /// capped read policy's default — this is the window only, with no explanatory footer: the
+        /// window is described by the fields below instead.
         contents: string,
         /// The 1-based first line returned.
         first-line: u32,
@@ -175,9 +176,9 @@ interface files {
 
     /// Read a file.
     ///
-    /// `offset`/`limit` are honoured only under a capped read policy; under the unlimited policy the
-    /// whole file comes back and both are ignored. The system prompt states which policy this run
-    /// uses.
+    /// `offset`/`limit` are honoured under every read policy. The policy decides only what an absent
+    /// `limit` means: its default cap under a capped policy, the end of the file under the unlimited
+    /// one. An absent `offset` starts at the first line under every policy.
     read-file: func(path: string, offset: option<u32>, limit: option<u32>)
         -> result<file-read, api-error>;
 
@@ -783,11 +784,13 @@ interface docs {
 /// the third kind because they are neither — gg holds them, not the workspace and not the program —
 /// and because they are the one kind whose content the model cannot produce for itself.
 ///
-/// `open-text-view`, `open-docs-view`, `close-view` and `current-views` are bound into every
-/// program's scope whatever a run enables — a run with no tools at all must still be able to show
-/// its model something, and must always be able to read what the functions it *does* have do.
-/// `open-file-view` is bound only when the `read-file` tool is: it is a read, and a run with reading
-/// withheld must not get one through a side door.
+/// `open-text-view` and `open-docs-view` are bound into every program's scope whatever a run
+/// enables — a run with no tools at all must still be able to show its model something, and must
+/// always be able to read what the functions it *does* have do. `open-file-view` is bound only when
+/// the `read-file` tool is: it is a read, and a run with reading withheld must not get one through a
+/// side door. `close-view` and `current-views` are bought by the `agent-managed-context`
+/// capability: closing a view and listing what is open are context management, exactly as evicting
+/// a file view is, and a run that withholds the capability refuses both as `unavailable`.
 interface views {
     use types.{api-error};
     use files.{file-read};
@@ -879,8 +882,9 @@ interface views {
 
     /// What is open in your window right now — the views, never the functions. It is named for what
     /// it enumerates because a bare `list` on this interface would read as the object's own
-    /// declarations rather than as the window's contents.
-    current-views: func() -> list<open-view>;
+    /// declarations rather than as the window's contents. Nothing open is an empty list, which is
+    /// an answer; the one failure is `unavailable`, for a run that did not buy the call.
+    current-views: func() -> result<list<open-view>, api-error>;
 }
 
 /// The programs this agent has already run — the fourth model-facing carve-out, and like `session`,
@@ -1122,8 +1126,16 @@ interface feedback {
     /// `addEventListener("unhandledrejection", …)` but never fires it. So the host tells the model
     /// plainly rather than reporting a clean turn over a half-failed program.
     report-deferred: func(note: string);
-    /// The program threw and did not run to its end. Called at most once per run, from the shim's
-    /// single `catch`.
+    /// The program threw and did not run to its end. Called at most once per run, from the one
+    /// place the guest's runtime delivers an uncaught failure to — an interpreter's top-level
+    /// `except`, an engine's exception slot, a rejection tracker — never from a catch chain built
+    /// to type it.
+    ///
+    /// A guest that CAN observe the failure there MUST report it here rather than die: a turn so
+    /// ended is a `program_*` type, and an uncaught failed call is `program_api_error` on every
+    /// arm that reports. The `sandbox_*` types are reserved for a ceiling gg imposed or a real
+    /// wasmtime trap, and a guest that dies of a failure it could have reported files a program
+    /// fault under a sandbox limit.
     ///
     /// It is also what **revokes** a completion the same program declared with `session.finish`: a
     /// program that ended the run and then failed did not check what its summary claims, so the host
@@ -1388,14 +1400,16 @@ world sandbox {
     /// has to say about its own work it says over `feedback`, and what it has to say about its own
     /// death it says the way its runtime says it.
     ///
-    /// A guest with an exception mechanism that survives to the export boundary MAY report an
-    /// uncaught throw over `feedback.report-error`, which is what carries the failure's class to the
-    /// host and files the turn under one of the `program_*` types. A guest without one lets the
-    /// program die as its runtime kills it: the runtime's own words reach the host on standard
-    /// error, the crossing ends in a trap, and the turn is filed as `sandbox_trap`. Both are
+    /// A guest whose runtime delivers an uncaught throw to this export's boundary MUST report it
+    /// over `feedback.report-error` and return normally, which is what carries the failure's class
+    /// to the host and files the turn under one of the `program_*` types. Only a guest whose
+    /// runtime kills the program before any entry point can see the throw lets it die: the
+    /// runtime's own words reach the host on standard error, the crossing ends in a trap, and the
+    /// turn is filed as `sandbox_trap`. Both are
     /// [ruling D8a](https://docs.testcabinet.ai/gg/responses-as-code/invariants/) — the mechanism is
     /// capture rather than interception, and no guest may build a catch chain to type a throw it
-    /// would otherwise have died of.
+    /// would otherwise have died of. A `sandbox_*` type is a ceiling gg imposed or a real trap,
+    /// never an API failure a program did not catch.
     export run: func(
         program: string,
         modules: list<code-module>,

@@ -573,8 +573,8 @@ fn exit_message(status: i32) -> String {
         0 => "the program called exit(0) instead of returning; nothing after the call ran"
             .to_string(),
         _ => "the program called exit with a non-zero status instead of returning; nothing after \
-              the call ran, and the status itself did not reach gg — what crosses the sandbox \
-              boundary is that the exit was a failure, not the number the program passed"
+              the call ran, and the status number does not cross the sandbox boundary — only that \
+              the exit was a failure"
             .to_string(),
     }
 }

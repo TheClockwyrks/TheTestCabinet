@@ -19,7 +19,7 @@ export interface TextFile {
   /** Names this arm of `FileRead` as the text one. */
   kind: "text";
 
-  /** The file's text, or just the requested window under a capped read policy. */
+  /** The file's text, or just the requested window where the read named one. */
   contents: string;
 
   /** The 1-based first line returned. */
@@ -109,9 +109,9 @@ export interface DirEntry {
  * @ggop files.read_file
  * @param path The file to read, relative to the workspace or absolute.
  * @param options The window of lines to read; omit it to read the whole file.
- * @param options.offset The 1-based line to start at. Honoured only under a capped read policy.
- * @param options.limit How many lines to return from `offset`. Honoured only under a capped read
- * policy.
+ * @param options.offset The 1-based line to start at. Omitted, the read starts at the first line.
+ * @param options.limit How many lines to return from `offset`. Omitted, a capped read policy's
+ * default applies, or the read runs to the end of the file.
  * @returns the window of text that was read, or the picture's description where the bytes are an
  * image.
  * @throws `ApiError` with `invalid-argument` for an empty path, and `not-found` for a path that is
@@ -133,11 +133,10 @@ export function readFile(path: string, options?: { offset?: number; limit?: numb
  * @ggop files.read_text_file
  * @param path The file to read, relative to the workspace or absolute.
  * @param options The window of lines to read; omit it to read the whole file.
- * @param options.offset The 1-based line to start at. Honoured only under a capped read policy.
- * @param options.limit How many lines to return from `offset`. Honoured only under a capped read
- * policy.
- * @returns the text that was read: the whole file, or the requested window under a capped read
- * policy.
+ * @param options.offset The 1-based line to start at. Omitted, the read starts at the first line.
+ * @param options.limit How many lines to return from `offset`. Omitted, a capped read policy's
+ * default applies, or the read runs to the end of the file.
+ * @returns the text that was read: the whole file, or the requested window.
  * @throws `ApiError` with `invalid-argument` when the path names a picture, which `readFile`
  * inspects instead and `gg.views.openFile` displays, and `not-found` for a path that is not there.
  */

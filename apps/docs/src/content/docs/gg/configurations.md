@@ -48,8 +48,10 @@ capability group.
 Max parallel agents and the session journal's size are required: gg runs under
 both on every run, and neither has an off it could take instead. Turns per agent,
 wall-clock seconds, cost, consecutive errors, and the error rate with its window
-are each armed by writing a figure and unarmed by leaving the field empty. gg
-arms no ceiling the configuration did not write. [Execution
+are each armed by writing a figure and unarmed by leaving the field empty. A
+fresh configuration seeds the error ceilings (5 consecutive errors, a 0.2 rate
+over 50 turns) for the operator to keep, change, or clear; gg itself arms no
+ceiling the saved configuration did not write. [Execution
 limits](/gg/execution-limits/) states what each one bounds.
 
 One capability is worth knowing before running a compaction study. The [context

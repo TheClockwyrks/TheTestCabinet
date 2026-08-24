@@ -61,7 +61,9 @@ use test_cabinet_core::gg::{
     CAPABILITY_AGENT_PERSISTENCE, GgAgentConfig, GgProgramLanguage, GgTelemetryKind,
 };
 
-use crate::context::{ContextModel, DocviewOpen, OpenFileView, OpenTextView, Retention};
+use crate::context::{
+    ContextModel, DocviewOpen, OpenFileView, OpenTextView, Retention, ShownLines,
+};
 use crate::docs::DocsRuntime;
 use crate::model::ToolCall;
 use crate::sandbox::FileWindow;
@@ -338,8 +340,10 @@ pub async fn restore_file_views(
             // windows, not a single opening brief, and a per-view program keeps each assistant turn
             // paired with the view it produced even when a later read fails and is skipped.
             context.push_assistant(Some(open_file_call(language, view)), Vec::new());
+            let lines = ShownLines::of_read(outcome.data.as_ref());
             context.seed_file_view(
                 view.path.clone(),
+                lines,
                 outcome.output,
                 outcome.images,
                 Retention::Ephemeral,

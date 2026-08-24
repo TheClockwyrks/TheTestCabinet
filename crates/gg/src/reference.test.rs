@@ -196,12 +196,25 @@ fn the_policy_driven_tools_carry_distinct_variants() {
         }
     }
 
-    // The unlimited read mode is the entry's, and it is the one that offers no paging arguments at
-    // all — so the capped variant is where `offset` and `limit` appear. Asserted explicitly because
-    // getting the two the wrong way round would look right on the page and be wrong.
+    // The unlimited read mode is the entry's and the capped one the variant's. Both offer `offset`
+    // and `limit`; what tells them apart is what `limit` defaults to — the end of the file on the
+    // entry, the cap on the variant. Asserted explicitly because getting the two the wrong way
+    // round would look right on the page and be wrong.
     let read_file = tool("read_file");
-    assert!(read_file.parameters["properties"].get("limit").is_none());
-    assert!(read_file.variants[0].parameters["properties"]["limit"].is_object());
+    let entry_limit = read_file.parameters["properties"]["limit"]["description"]
+        .as_str()
+        .unwrap();
+    assert!(
+        entry_limit.contains("end of the file"),
+        "the entry is the unlimited rendering: {entry_limit}"
+    );
+    let variant_limit = read_file.variants[0].parameters["properties"]["limit"]["description"]
+        .as_str()
+        .unwrap();
+    assert!(
+        variant_limit.contains("larger is allowed"),
+        "the variant is the capped rendering: {variant_limit}"
+    );
 
     // The two file-shaped memory strategies disagree about a *required argument*, which is the
     // difference a reader would act on: under `markdown` a memory must be described, because the

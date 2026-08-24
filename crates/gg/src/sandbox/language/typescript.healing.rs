@@ -17,8 +17,8 @@
 //! # Why it lives here and not in `healing.rs`
 //!
 //! Because it is TypeScript's, and the module it serves is deliberately not any language's. The
-//! skeleton owns the contract — the three strategies, their order, their declines, the honesty
-//! disclosure and the delete-only invariant — and this file owns the reading of the text. Splitting
+//! skeleton owns the contract — the three strategies, their order, their declines, the operator's
+//! record of each repair and the delete-only invariant — and this file owns the reading of the text. Splitting
 //! them this way is what lets a second language reuse every repair without inheriting a single one
 //! of the assumptions below, and what lets the skeleton be tested against a dialect that answers
 //! nothing.

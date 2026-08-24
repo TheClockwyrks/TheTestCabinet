@@ -591,6 +591,8 @@ fn only_error_outcomes_count_as_errors() {
                 | TurnErrorType::ModelResponseLoop
                 | TurnErrorType::ModelVisionUnsupported
                 | TurnErrorType::ModelParse
+                | TurnErrorType::ModelTimeout
+                | TurnErrorType::ModelLengthCapped
                 | TurnErrorType::TranspileSyntax
                 | TurnErrorType::TranspileCompile
                 | TurnErrorType::TranspileUnsupported
@@ -786,6 +788,8 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
         TurnErrorType::ModelResponseLoop,
         TurnErrorType::ModelVisionUnsupported,
         TurnErrorType::ModelParse,
+        TurnErrorType::ModelTimeout,
+        TurnErrorType::ModelLengthCapped,
         TurnErrorType::TranspileSyntax,
         TurnErrorType::TranspileCompile,
         TurnErrorType::TranspileUnsupported,
@@ -807,6 +811,8 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
             | TurnErrorType::ModelResponseLoop
             | TurnErrorType::ModelVisionUnsupported
             | TurnErrorType::ModelParse
+            | TurnErrorType::ModelTimeout
+            | TurnErrorType::ModelLengthCapped
             | TurnErrorType::TranspileSyntax
             | TurnErrorType::TranspileCompile
             | TurnErrorType::TranspileUnsupported

@@ -75,9 +75,9 @@ if isinstance(contents, str) and contents.strip() == "":
     print(json.dumps({
         "action": "block",
         "reason": (
-            f"Refusing to write empty contents to {path}. If you meant to clear the file, say so "
-            "explicitly with a shell command; if you did not, your previous response was probably "
-            "truncated — write the whole file again."
+            f"Refusing to write empty contents to {path}: an empty write usually means a "
+            "truncated response. Write the whole file again, or clear the file explicitly "
+            "with a shell command."
         ),
     }))
 else:

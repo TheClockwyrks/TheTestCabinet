@@ -163,7 +163,7 @@ pub enum FileRead {
 /// A text file's window, as the [`FileRead::Text`] arm carries it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextFile {
-    /// The file's text, or just the requested window under a capped read policy.
+    /// The file's text, or just the requested window where the read named one.
     pub contents: String,
     /// The 1-based first line returned.
     pub first_line: u32,
@@ -212,8 +212,9 @@ pub enum EntryKind {
 
 /// The window of lines a read covers. [`Default`] reads the whole file.
 ///
-/// Both fields are honoured only under a capped read policy; under the unlimited policy the whole
-/// file comes back and both are ignored. The system prompt says which policy this run uses.
+/// Both fields are honoured under every read policy. The policy decides only what an absent `limit`
+/// means: its default cap under a capped policy, the end of the file under the unlimited one. An
+/// absent `offset` starts at the first line.
 ///
 /// Rust has no default arguments, and the idiom it reaches for instead is a struct with a [`Default`]
 /// filled in by functional-update syntax:

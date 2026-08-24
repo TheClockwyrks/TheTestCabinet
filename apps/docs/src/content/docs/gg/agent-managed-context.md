@@ -15,10 +15,11 @@ When the capability is off none of the tools below are offered and no
 context-usage signal is rendered, so a configuration that leaves it off behaves
 as a run without the feature.
 
-One reclaim call sits outside the capability: [closing a view](#closing-views),
-which a [responses-as-code](/gg/responses-as-code/overview/) program uses on the
-views it opened itself. Everything else on this page is a privilege a study may
-withhold.
+Under [responses as code](/gg/responses-as-code/overview/) the capability also
+buys the two view calls that manage the window — [closing a view](#closing-views)
+and listing what is open — so everything on this page is a privilege a study may
+withhold. Opening a view is not one: a program may always show its model
+something.
 
 This is the model-facing complement to [compaction](/gg/compaction/): compaction
 is the automatic backstop when the window fills, and agent-managed context lets
@@ -147,17 +148,17 @@ autoloaded specification. The documentation views a code skill's module opened
 are ordinary documentation views, closable by an agent that holds
 `docview-close`.
 
-`gg.views.close` sits beside `evict_file_view` rather than inside it, and the
-two differ twice over:
-
-- It is not gated. `evict_file_view` is one of this capability's calls and a
-  configuration decides whether an agent gets it. `gg.views.close` is bound
-  whatever a run enables, because closing material the agent opened itself is
-  not a privilege.
-- The trade is not the same. An evicted file view is recoverable by
-  re-reading the path. A closed text view held the agent's only copy of
-  something it computed, so closing one discards it unless the agent wrote it
-  down first.
+`gg.views.close` and `gg.views.current` — closing a view, and listing what is
+open — are two of this capability's calls, exactly as `evict_file_view` is:
+closing material and reading the window's contents are context management,
+and a configuration that keeps the capability off keeps both. A program that
+calls either without the capability, or whose agent's allowlist omits the
+operation, is refused by name with the `unavailable` error every other withheld
+call raises. `gg.views.close` still sits beside `evict_file_view` rather than
+inside it, because the trade is not the same: an evicted file view is
+recoverable by re-reading the path, where a closed text view held the agent's
+only copy of something it computed, so closing one discards it unless the agent
+wrote it down first.
 
 ### Closing documentation views
 
@@ -206,9 +207,9 @@ nothing.
 
 Under responses as code hardly anything carries one, because a program's calls
 return into the program and the turn leaves no tool results behind. Everything
-gg puts in such a window is a headed `user` message: a `File`, a `View: <label>`
-or a `Documentation: <name>` view the program opened, or one of gg's own
-messages, each named by its selector rather than by a turn number. The exception
+gg puts in such a window is a headed `user` message: a `File: <path>:<lines>`,
+a `View: <label>` or a `Documentation: <name>` view the program opened, or one
+of gg's own messages, each named by its selector rather than by a turn number. The exception
 is a window carried over from a tool-calling agent by an
 [`exec` or an FSM transition](/gg/fork-and-exec/), whose tool results keep the
 headers they were pushed with.

@@ -52,7 +52,8 @@ std::uint32_t close(std::string_view selector) {
 
 std::vector<views::open_view> current() {
   test_cabinet_gg_views_list_open_view_t ret{};
-  test_cabinet_gg_views_current_views(&ret);
+  test_cabinet_gg_types_api_error_t err{};
+  if (!test_cabinet_gg_views_current_views(&ret, &err)) detail::fail(err);
   std::vector<views::open_view> open =
       detail::lift_each(ret.ptr, ret.len, detail::lift_open_view);
   test_cabinet_gg_views_list_open_view_free(&ret);

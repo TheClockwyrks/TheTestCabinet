@@ -1,10 +1,10 @@
 //! The [wire](super)'s context half: the four context operations, the three documentation
 //! ones, the five view ones and the three the program library carries.
 //!
-//! Two of these return without a `result` at all — `views.current` and, on the host side,
-//! `programs.history`'s sibling — because there is nothing for them to fail at. They still travel as
-//! an ordinary successful response, so the guest reads every answer the same way and no call is
-//! special-cased in a language that has no way to know which ones are.
+//! Every one of them can fail, if only at the gate every bracket asks: `views.current` has nothing
+//! to fail at once it is granted, and still answers `unavailable` to an agent whose run did not buy
+//! it. So the guest reads every answer the same way and no call is special-cased in a language that
+//! has no way to know which ones are.
 
 use super::super::test_cabinet::gg::context::{
     ArchiveHit, ArchiveSearch, Host as ContextHost, MessageRole, ReclaimReport, TurnRange,
@@ -225,10 +225,10 @@ pub(super) fn close_view<A: OperationApi>(
     Ok(integer(ViewsHost::close_view(state, selector)?))
 }
 
-/// `views.current` — what is open. It cannot fail.
+/// `views.current` — what is open. Once granted it cannot fail.
 pub(super) fn current_views<A: OperationApi>(state: &mut MembraneState<A>) -> Answer {
     Ok(Value::List(
-        ViewsHost::current_views(state)
+        ViewsHost::current_views(state)?
             .into_iter()
             .map(open_view)
             .collect(),

@@ -391,7 +391,7 @@ try views.openText("summary", body: text)
 try views.openDocsView("readFile")
 let closed = try views.close("summary")
 let missing = try views.close("never opened")
-let open = views.current()
+let open = try views.current()
 gg.log("\(open[0].selector) \(open[0].kind)")
 gg.log("\(closed) \(missing)")
 switch read {

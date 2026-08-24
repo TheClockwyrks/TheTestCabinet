@@ -24,6 +24,7 @@ A run emits exactly one per model call it made.
 | `turns` | How many turns this agent has recorded, including this one. It is this agent's own running total rather than the run's, and the same figure its turn ceiling is measured against. |
 | `loopAborts` | How many replies [loop detection](/gg/loop-detection/) discarded before this turn produced one. Omitted when zero. |
 | `loopAbortWords`, `loopAbortChars` | How much generated output those discarded replies produced, measured by the detector as they streamed. Present on exactly the turns `loopAborts` is. There is no token count and no price, since an abandoned stream reports no usage, and this output is deliberately absent from the turn's cost. |
+| `responseChars`, `responseOutputTokens` | The reply's size: its raw text in characters, and its completion tokens (output plus reasoning, the unit a provider's output cap is measured in). Omitted when zero. The summary folds `maxResponseChars` and `maxResponseOutputTokens` as maxima over the turns whose outcome was `progressed` or `finished`, which is the datum an output ceiling would later be chosen from. |
 
 `consecutiveErrors` is `0` on every non-error turn, including a `finished` or
 `fatal` one that followed failures. gg's internal counter is cleared only by a
@@ -53,11 +54,11 @@ stored run keys on, so they are stable. `transpile` in particular keeps a name
 wider than its meaning, because the value is what persisted records carry.
 
 Underneath each base kind sits an `errorType`, and that is where the failure is
-named. There are seventeen types, one per distinction gg makes.
+named. There are nineteen types, one per distinction gg makes.
 
 | Base kind | Types under it |
 | --- | --- |
-| `model_api` | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse` |
+| `model_api` | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse`, `model_timeout` (the call ran into gg's [per-call ceiling](/gg/execution-limits/#model-api-errors)), `model_length_capped` (the reply hit the provider's output cap and was [rejected whole](/gg/execution-limits/#model-api-errors)) |
 | `transpile` | `transpile_syntax`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_unsupported` |
 | `program_fault` | `program_api_error` (an uncaught failed call: the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it, either a name that is not in scope or a call the host refused as `unavailable`), `program_throw` |
 | `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
@@ -78,23 +79,29 @@ A slice on this base kind is therefore not a valid cross-arm comparison. Read
 with a host-side preparation step does.
 :::
 
-:::caution[`program_fault` and `sandbox_limit` split one event by arm]
+:::caution[`sandbox_limit` is a ceiling or a real trap, and some arms still trap on a throw]
 A program owns its failures, and gg reads what the program's own runtime said
-rather than intercepting the throw. So an uncaught failure ends the turn the way
-that arm's runtime ends a program, and which base kind the turn lands under
-follows from that.
+rather than intercepting the throw. An arm whose guest can see an uncaught
+failure at its entry point reports it over `feedback.report-error` with the
+failure's class, so an uncaught failed call is `program_api_error`, an unknown
+name `program_unknown_name` and anything else `program_throw` — the same event
+files the same way on every arm that reports. Python, Ruby, C++, TypeScript,
+JavaScript and PureScript report; C# reports but with no code, so its failed
+calls land in `program_throw`.
 
-An arm whose guest reports the throw to the host before it dies hands up the
-failure's class, and the turn is filed under `program_fault`. An arm whose
-program dies as its runtime kills it reports nothing, so the turn is filed as
-`sandbox_trap`, under `sandbox_limit` beside the two ceilings gg imposes. The
-same model mistake therefore counts as a program fault on one arm and a sandbox
-limit on another.
-
-A slice on either base kind is a valid comparison within one arm and not across
-arms. Across arms, read the two together, or read the
+`sandbox_limit` is reserved for a ceiling gg imposed or a real wasmtime trap.
+`sandbox_timeout` and `sandbox_out_of_memory` are the two ceilings;
+`sandbox_trap` is a store that died — an explicit `exit`, a native fault the
+runtime never saw, and, on the arms whose runtime kills the program before any
+entry point can report it, an ordinary uncaught throw. Rust, Swift, Kotlin and
+Java still file every uncaught throw, failed calls included, as `sandbox_trap`,
+and a few shapes trap on otherwise-reporting arms: a native fault on C++, a
+stack overflow on C++ and C#, an explicit exit on C++, C# and Python. A slice on
+`program_fault` across arms therefore undercounts the trapping ones, and a slice
+on `sandbox_trap` overcounts them. The
 [per-arm table](/gg/languages/static-sdks/#the-turn-error-for-an-uncaught-refusal)
-of what each one files.
+says which arm files which shape where, and `crates/gg/src/sandbox/language/g8.rs`
+drives every cell of it.
 :::
 
 Every type's id names its base, because a "top error types" ranking shows one row
@@ -145,7 +152,20 @@ errors.
 failed, by [class](/gg/telemetry/agent-surface/#failure-classes), whether or
 not the program that made it caught the failure. It is a rollup of dispatches, so
 a code-mode call that never reached a tool is not in it. Those are on the stream
-as `api_result` with their class, where a console folds them.
+as `api_result` with their class, where a console folds them. The summary's
+top-level `toolCalls` counts every dispatched call, failed or not. It is the
+denominator `toolFailures` is read against, so `toolCalls` minus the failures is
+the count of calls that succeeded. It is omitted from the wire when zero, so a
+reader must treat a summary with failures but no `toolCalls` as one whose total
+was not recorded rather than as a contradiction.
+
+A [rejected length-capped reply](/gg/execution-limits/#model-api-errors) is an
+error turn here and is additionally recorded on its own terms: a
+`response_rejected` event carries the reply's size, usage, cost and serving
+provider, and the summary's `rejectedResponses` rollup sums the count, tokens
+and cost. That spend is deliberately absent from the run's own usage and cost —
+a degenerate generation must not make a run look expensive — so the rollup is
+the one place it appears.
 
 Three things are deliberately excluded from the error counts. A tool call that
 failed inside a program that carried on is counted in `toolFailures` instead: the
@@ -174,6 +194,38 @@ their own.
 has.summary:true | stats avg(summary.errors.maxConsecutive) as streak by model
 has.summary:true | stats sum(summary.errors.byType.program_api_error) as fights by model
 ```
+
+## Provider attribution
+
+A run's model calls may be served by different upstream providers — OpenRouter
+names the serving provider on each response — and provider-specific failures are
+only diagnosable from a record that says who served what. The summary therefore
+carries `providerStats`: one slice per `(provider, model)` pair observed, folded
+from the same stream as the rollups above.
+
+```jsonc
+"providerStats": [
+  { "provider": "DeepInfra", "modelId": "qwen/qwen3.8-2.4t-a95b",
+    "calls": 41, "tokens": { "uncachedInput": 63167, "output": 71310 },
+    "cost": { "comparable": 0.70, "actual": 0.70 },
+    "turns": 41, "working": 39, "errors": { "transpile_compile": 2 } }
+]
+```
+
+Each slice records the calls that reported usage (`calls`, with their summed
+tokens and cost), the length-capped replies the provider served (`rejected`),
+and the turns attributed to it: `turns`, the `working` (progressed or finished)
+turns among them, and an `errors` map keyed by the same `errorType` wire ids
+`byType` uses. Two invariants hold: the slices' `turns` sum to `errors.turns`,
+and a slice's `turns` minus `working` minus its error count is its fatal turns.
+
+A turn is attributed to the provider named by its own call's `usage`, `prompt`
+or `response_rejected` event. A call that produced no reply — a model timeout —
+names no provider, so its turn lands on the slice with no `provider` key, as
+does any call whose gateway named none. The `modelId` is the one the agent's
+usage deltas named, so a turn before an agent's first usage report carries none.
+The array is omitted from the wire when no call, turn or rejection was ever
+folded into it.
 
 ## Ceilings
 

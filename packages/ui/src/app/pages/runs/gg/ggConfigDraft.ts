@@ -442,13 +442,15 @@ export function blankRunLimits(): GgRunLimitsDraft {
 }
 
 /**
- * A fresh configuration's guardrails: the two [required](RunLimitSpec.required) ceilings
- * written to their authored figures, and every other field empty — which is that ceiling
- * unarmed, and the only thing an empty field here means.
+ * A fresh configuration's guardrails: every ceiling with an
+ * [authored figure](RunLimitSpec.defaultValue) written to it, and every other field
+ * empty — which is that ceiling unarmed, and the only thing an empty field here means.
  *
  * A run always has an agent pool and always writes a capture journal, so those two are
- * always in the document. The turn, runtime, cost and error ceilings are each a guardrail
- * an operator either wants or does not, and gg arms none that nobody wrote.
+ * always in the document. The three error ceilings are seeded as clearable guardrails:
+ * empty the field and the ceiling is unarmed, exactly as one a stored configuration
+ * omitted. The turn, runtime and cost fields start empty, and gg itself arms none that
+ * the saved configuration does not write.
  */
 export function seededRunLimits(): GgRunLimitsDraft {
   const draft = blankRunLimits();
@@ -1995,6 +1997,22 @@ export function featureBundleOn(
 ): boolean {
   const [granted, names] = inAgentVocabulary(agent, bundle);
   return names.every((name) => granted.includes(name));
+}
+
+/**
+ * Whether one of a capability's [feature](CapSpec.features) sliders has anything to grant
+ * in the vocabulary this agent answers on.
+ *
+ * A bundle may live on one surface only — `agent-managed-context`'s view calls are
+ * responses-as-code operations with no tool beside them — and a slider for it on a
+ * tool-calling agent would read as on (every one of no names is granted) and toggle
+ * nothing. The editor shows such a slider only to the agent type it can act for.
+ */
+export function featureBundleOffered(
+  agent: GgAgentDraft,
+  bundle: { tools: ReadonlyArray<string>; operations: ReadonlyArray<string> },
+): boolean {
+  return inAgentVocabulary(agent, bundle)[1].length > 0;
 }
 
 /**

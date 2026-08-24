@@ -106,7 +106,7 @@ pub fn open_docs_view(name: &str) -> Result<(), ApiError> {
 /// copy of what it held, so anything needed later belongs in a file or a memory first.
 ///
 /// Documentation views are not reached from here. [`docs::close`](crate::docs::close) is what takes
-/// one away, and it is bought by a capability this call is not — so a sweep that included them would
+/// one away, and it is bought by a capability of its own, `docview-close` — so a sweep that included them would
 /// hand back `0` for an agent that may not close one, which reads as a selector that named nothing.
 ///
 /// # Arguments
@@ -118,10 +118,14 @@ pub fn open_docs_view(name: &str) -> Result<(), ApiError> {
 ///
 /// How many views were closed, counting each page of a paged file as one of them.
 ///
+/// Closing a view is context management, bought — with [`current`] — by the
+/// `agent-managed-context` capability: an agent whose run did not enable it is refused.
+///
 /// # Errors
 ///
 /// `InvalidArgument` for an empty selector, which names nothing rather than everything — no call
-/// here closes the window wholesale.
+/// here closes the window wholesale. `Unavailable` for an agent whose run did not buy
+/// `agent-managed-context`.
 #[doc(alias = "ggop:views.close")]
 pub fn close(selector: &str) -> Result<u32, ApiError> {
     wire::lift(views::close_view(selector))
@@ -134,16 +138,24 @@ pub fn close(selector: &str) -> Result<u32, ApiError> {
 /// [`region`](OpenView::region) it covers. Reading it is what decides what to close when the window
 /// is filling up.
 ///
+/// Listing what is open is context management, bought with [`close`] by the
+/// `agent-managed-context` capability: an agent whose run did not enable it is refused.
+///
 /// # Returns
 ///
 /// Every view open right now, in no particular order. The cost on each is an estimate, so it ranks
 /// the views worth closing rather than saying exactly what closing one frees.
+///
+/// # Errors
+///
+/// `Unavailable` for an agent whose run did not buy `agent-managed-context`. Granted, it cannot
+/// fail: an empty window is an empty list.
 #[doc(alias = "ggop:views.current")]
-pub fn current() -> Vec<OpenView> {
-    views::current_views()
+pub fn current() -> Result<Vec<OpenView>, ApiError> {
+    Ok(wire::lift(views::current_views())?
         .into_iter()
         .map(wire::open_view)
-        .collect()
+        .collect())
 }
 
 /// Which of the three kinds a view is.
@@ -198,7 +210,8 @@ impl OpenView {
     /// # Errors
     ///
     /// `InvalidArgument` when this view's [`selector`](Self::selector) is empty, which no view gg
-    /// reports ever is.
+    /// reports ever is, and `Unavailable` for an agent whose run did not buy
+    /// `agent-managed-context`, which is what buys closing a view.
     #[doc(alias = "ggop-alias:views.close")]
     pub fn close(&self) -> Result<u32, ApiError> {
         close(&self.selector)

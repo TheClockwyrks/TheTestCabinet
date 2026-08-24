@@ -245,10 +245,14 @@ pub const VIEWS_OPEN_TEXT: OperationId = OperationId::new("views", "open_text");
 pub const VIEWS_OPEN_DOCS_VIEW: OperationId = OperationId::new("views", "open_docs_view");
 
 /// The call that closes a view — what the context-pressure block points an agent at when text views
-/// are holding window it could reclaim.
+/// are holding window it could reclaim. Bought by
+/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT): closing what the program opened is
+/// managing the window, exactly as evicting a file view is.
 pub const VIEWS_CLOSE: OperationId = OperationId::new("views", "close");
 
-/// What is open in the agent's window right now.
+/// What is open in the agent's window right now. Bought by
+/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) beside [`close`](VIEWS_CLOSE): the
+/// listing exists to decide what to close.
 pub const VIEWS_CURRENT: OperationId = OperationId::new("views", "current");
 
 /// The [program library](crate::programs)'s own directory.
@@ -314,7 +318,11 @@ pub enum Binding {
     Machine,
     /// Bound to every program whatever a run enables. A run that grants nothing at all must still be
     /// able to show its model something — and must always be able to *find* what it does hold —
-    /// which is why the view surface is mostly this and why the documentation search is exactly it.
+    /// which is why the two view calls that *open* something gg holds or the program computed
+    /// ([`open_text`](VIEWS_OPEN_TEXT), [`open_docs_view`](VIEWS_OPEN_DOCS_VIEW)) are this and why
+    /// the documentation search ([`search`](DOCS_SEARCH)) is exactly it. Those three are the whole
+    /// of it: closing a view and listing what is open are context management and are bought by
+    /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) like the rest of that family.
     Always,
 }
 
@@ -464,10 +472,11 @@ macro_rules! operation {
 /// failures.
 ///
 /// They are filed under a **twelfth** family rather than joined to `views`, for three reasons that
-/// point the same way. Their gating does not fit that family's rule — a view is bound to every
-/// program except where it reads the workspace (the capability gate's `views` rule), and two of
-/// these are bought by a capability, so folding them in would mean weakening the rule that keeps a
-/// gate off the only channel into a model's window. The namespace and the family are held in
+/// point the same way. Their gating does not fit that family's rule — opening a view is bound to
+/// every program except where it reads the workspace, and managing one is bought by
+/// `agent-managed-context` (the capability gate's `views` rule), and two of these are bought by a
+/// capability of their own, so folding them in would mean weakening the rule that keeps a gate off
+/// the only channel into a model's window. The namespace and the family are held in
 /// bijection, so a `views` family would force `views.search`, naming a search over gg's
 /// documentation after the surface a model shows *itself* things through. And the seam is already
 /// drawn this way everywhere else: they have their own WIT interface, their own membrane file, and
@@ -476,7 +485,9 @@ macro_rules! operation {
 /// What stays behind in `views` is [`open_docs_view`](VIEWS_OPEN_DOCS_VIEW), and that is the right
 /// side of the line rather than a leftover: opening a documentation view *is* putting material into
 /// the window, which is what the view family is, and it is the one of the four that a run can
-/// neither buy nor withhold.
+/// neither buy nor withhold. Closing a view and listing what is open are the family's other half —
+/// managing the window rather than filling it — and are bought by
+/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) with the evictions and the archive.
 pub const OPERATIONS: &[Operation] = &[
     operation!(
         SHELL_SHELL,
@@ -720,8 +731,18 @@ pub const OPERATIONS: &[Operation] = &[
         Binding::Always,
         TAKES_INPUT
     ),
-    operation!(VIEWS_CLOSE, FAMILY_VIEWS, Binding::Always, TAKES_INPUT),
-    operation!(VIEWS_CURRENT, FAMILY_VIEWS, Binding::Always, NO_INPUT),
+    operation!(
+        VIEWS_CLOSE,
+        FAMILY_VIEWS,
+        Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        TAKES_INPUT
+    ),
+    operation!(
+        VIEWS_CURRENT,
+        FAMILY_VIEWS,
+        Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT),
+        NO_INPUT
+    ),
     operation!(
         PROGRAMS_HISTORY,
         FAMILY_PROGRAMS,
