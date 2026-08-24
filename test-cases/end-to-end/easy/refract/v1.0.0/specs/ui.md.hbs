@@ -1,0 +1,169 @@
+# Refract — Screens, menus, and audio
+
+This file defines the screens Refract opens on and plays on, how a player moves
+between them, and audio. The rules those screens present are in
+`specs/beams.md`, the board's geometry and its node forms are in
+`specs/board.md`, and the pointer and keyboard input the screens read are in
+`specs/controls.md`. Every figure and every piece of screen copy below carries
+the name this specification gives it.
+
+## Presentation
+
+Refract fixes no palette, no font, no node artwork, no beam rendering, and no
+background. The look of the optical bench is yours. `specs/overview.md` states
+the visual design, and `specs/board.md` states the few things about a node and a
+beam a player has to read at a glance. One requirement is this file's own: every
+piece of text a screen shows is legible against whatever sits behind it at the
+logical stage size `STAGE_W x STAGE_H` (`1280 x 720`).
+
+## The two modes
+
+Refract ships two ways to play, and the player picks one from the title menu.
+
+| Mode | `state.mode` | What it is | Defined in |
+| --- | --- | --- | --- |
+| Campaign | `campaign` | A fixed course of hand-built boards, worked through in order, with the board layouts in `specs/campaign-boards.md`. | `specs/modes/campaign.md` |
+| Cascade | `cascade` | One unbroken sequence of generated boards that climbs in difficulty for as long as the player keeps solving. | `specs/modes/cascade.md` |
+
+`state.mode` holds the mode the player chose and is read wherever the two differ.
+Both modes are built, and both are reachable from the title menu of every build.
+
+## Screens
+
+`state.screen` names the screen the game is in. This file defines `title`,
+`howto`, and `playing`, which both modes share. Each mode adds screens of its
+own, and its file defines them, where its boards come from, and where each of its
+screens leads: `specs/modes/campaign.md` for Campaign and
+`specs/modes/cascade.md` for Cascade.
+
+### `title`
+
+The main menu, and where the game opens. It is the only place a mode is chosen.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `REFRACT` |
+| Tagline | `TAGLINE_TEXT` | `DRAW THE LIGHT` |
+| Menu | `TITLE_ITEMS` | `CAMPAIGN`, `CASCADE`, `HOW TO PLAY`, in that order |
+
+The menu's items are stacked one above the next under the title and tagline. The
+item at `state.menuIndex` is highlighted and drawn **distinctly** from the
+others, so a player always sees which item `confirm` would accept. `menuIndex`
+is `0` on arriving at the title. `up` and `down` move the highlight by one item
+and wrap at both ends. `back` does nothing.
+
+`confirm` takes the highlighted item:
+
+| Item | Does |
+| --- | --- |
+| `CAMPAIGN` | Sets `state.mode = campaign` and starts the campaign, as `specs/modes/campaign.md` describes. |
+| `CASCADE` | Sets `state.mode = cascade` and starts the sequence, as `specs/modes/cascade.md` describes. |
+| `HOW TO PLAY` | Sets `screen = howto` and `menuIndex = 0`. |
+
+Choosing a mode starts it fresh, whatever was played before it, so a player who
+returns to the title and picks the other mode is never handed a board or a
+progress figure left over from the first.
+
+The bench may show behind the menu, dimmed or otherwise quieted, if that suits
+the look you design.
+
+### `howto`
+
+How to play, written in a player's words rather than as rules of a system. The
+rules are the same in both modes, so one screen serves both. It covers:
+
+- what emitters, lenses, and crystals are, and that each channel has its own two
+  emitters;
+- that a beam is drawn by pressing on a node and dragging along the nodes it
+  should thread, and that releasing leaves the beam as drawn;
+- that a beam runs between its channel's two emitters and threads every lens of
+  that channel;
+- that a segment joins a node to any of the eight nodes around it, diagonals
+  included, and never reaches across an empty cell;
+- that a beam never touches another channel's emitters or lenses;
+- that any beam may cross a crystal, and that every one of a crystal's charges
+  has to be spent, no more and no fewer;
+- that a segment is drawn once, and no two beams share one;
+- that two segments never cross, so only one of the two diagonals of a square of
+  four cells can be drawn;
+- that a move the rules do not allow simply does not take, and the beam stays as
+  it was;
+- the controls, naming the key bound to the `clear` action.
+
+`back` returns to `title` with `menuIndex = 0`.
+
+### `playing`
+
+The live board, and the only screen a beam is drawn on. It is reached in both
+modes and works the same way in each. It shows:
+
+| Element | What the player sees |
+| --- | --- |
+| The board | Every cell of the current board, each node drawn at its cell center. |
+| The beams | Every segment drawn so far, in its channel's hue, visibly connecting the centers of the cells it links. |
+| Per-channel progress | For each channel present on the board, whether that channel's beam is complete, carried on that channel's own hue and silhouette so a player reads at a glance which channels are still open. |
+| The clear control | The key bound to the `clear` action, named on screen rather than left to be discovered. |
+
+A crystal shows its charge count and how many of those charges are currently
+spent, as `specs/board.md` describes, so a player tracks a crystal without
+counting segments.
+
+The current mode adds its own readouts to this screen, and states them itself:
+`specs/modes/campaign.md` for Campaign and `specs/modes/cascade.md` for Cascade.
+Those sit clear of the board, whose extent is given in `specs/board.md`.
+
+## What advances on each screen
+
+`state.simTime` accumulates the frame's delta time on every update, whatever the
+screen, and input is read on every screen. Beyond that:
+
+| Screen | What advances |
+| --- | --- |
+| `title`, `howto` | Nothing. |
+| `playing` | The live trace, the beams it edits, and whether the board is solved. |
+
+Nothing advances on the screens the modes add.
+
+## Menu navigation
+
+Menus are keyboard only, through the registered actions in `specs/controls.md`:
+`up` and `down` move the highlight, `confirm` accepts the highlighted item, and
+`back` returns. The pointer draws beams and does not operate menus. `mute` is
+read on every screen.
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write. Define and play exactly the
+five cues in `CUES`, under exactly these names, one per event:
+{{else}}
+Audio plays through the engine's cue bus. Define and play exactly the five cues
+in `CUES`, under exactly these names, one per event:
+{{/if}}
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `connect` | `CUES.connect` | A segment is added. |
+| `retract` | `CUES.retract` | A segment is removed. |
+| `channel-complete` | `CUES.channelComplete` | A channel's beam becomes complete. |
+| `solved` | `CUES.solved` | The board becomes solved. |
+| `clear` | `CUES.clear` | Every beam is cleared. |
+
+Each is a distinct short sound, so the five events are told apart by ear. Each
+is played on the frame its event happens, from `update`, and at most once on
+that frame; a frame that raises more than one of them plays each of those once.
+`clear` plays only when there was a segment to remove. The five cues are the
+same in both modes.
+
+Muting and the first-interaction unlock belong to the runtime. The game binds
+the `mute` action to the runtime's mute bit and toggles it from any screen, then
+mirrors that bit into `state.muted` every frame. The game stays fully playable
+with sound muted.
+
+## Out of scope
+
+- Network or online play.
+- Touch and gamepad input. The board is drawn with the pointer, and the menus
+  are driven from the keyboard.
+- Persistence of progress or settings between sessions. Each session starts
+  fresh.

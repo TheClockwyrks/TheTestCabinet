@@ -1,0 +1,31 @@
+# The one and only Refract variant: the whole optical bench, both modes. Listed
+# as the single entry in the case manifest's `variants`, so it is the default and
+# every run is a run of it. Every path here would resolve against the version
+# folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The optical bench with both modes: the fixed twenty-four-board Campaign and the endless Cascade."
+
+# This variant declares NO `spec` of its own, and that is deliberate.
+#
+# Campaign and Cascade are not variants. They are modes the player picks from the
+# title menu, the way Carom's Solo and Versus are modes inside every variant, so
+# both `specs/modes/campaign.md` and `specs/modes/cascade.md` are COMMON specs
+# declared in `test-case.toml` and seeded for every run. A build ships both.
+#
+# Nothing in the seeded set branches on the variant either: the specs branch only
+# on the selected engine (`{{#if (eq engine.slug "none")}}`). So there is no mode
+# spec, and no spec of any other kind, to put here. If you came to this file to
+# add one, it almost certainly belongs in `test-case.toml` as a common spec.
+
+# No `reference_implementation` is declared: none has been authored yet, and a
+# variant that omits the key simply has none. When one exists it is a table keyed
+# by engine slug naming a directory per supported engine (`none` and `simple-2d`),
+# because the build a reference demonstrates differs under each.
+
+# No `[workspaces]` table either. The case's common table covers both engines and
+# there is nothing variant-specific to replace it with.
+
+# No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
+# point and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml` rather than being split across two places.

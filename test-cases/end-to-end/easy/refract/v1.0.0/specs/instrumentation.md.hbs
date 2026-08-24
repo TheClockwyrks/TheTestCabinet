@@ -1,0 +1,366 @@
+# Refract — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Refract carries a small debugging and automation surface, `window.__refract`, so
+the game can be driven and inspected from code without moving a real pointer or
+waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__refract` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a read or a pose of the game's state. It arranges the board, and
+the game's own targeting, grab rules, limits, and completion test run from there
+exactly as they do in play, so a scenario driven from code behaves exactly like
+one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Refract carries a small debugging and automation surface so the game can be driven
+and inspected from code without moving a real pointer or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from `engine.debug`,
+and it is reached that way alone: nothing is installed on the page. Every scenario
+driven from code reaches the game through it, so it is present and exactly as
+specified here.
+
+Each operation is a reading or a pose of `RefractState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a writable
+one. A pose takes the current state, as `DeepReadonly<RefractState>`, and returns
+the next `RefractState`; a reading takes the state the same way and returns what
+it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.clear(s))`, and a reading against the engine's current
+state, as `debug.snapshot(engine.state)`. A pose arranges the board, and the
+game's own targeting, grab rules, limits, and completion test run from there
+exactly as they do in play, so a scenario driven from code behaves exactly like
+one played by hand. Where the surface's implementation lives under `src/` is yours
+to decide; `src/game.ts` declares and exports its type, `RefractDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic: every rate integrated
+against the delta time the game is given, so an interval of game time reaches the
+same state however it was divided into frames. Two more properties make it
+driveable from code:
+
+- Render-free core. Game state advances from the elapsed time the game is handed,
+  independent of a canvas, of the frame loop that measured it, and of wall-clock
+  time. The dependency runs one way: the simulation reads nothing from the
+  renderer. Whether a segment may be added is decided from the board and the beams
+  alone, never from anything the renderer holds.
+- Seeded randomness. Any randomness the game uses runs off a generator seeded from
+  `state.rngState`, and it keeps its whole generator state in that field, so
+  reseeding and replaying the same calls reproduces the same result exactly. A
+  build that uses no randomness simply never reads it.
+
+Given the same seed and the same sequence of calls and elapsed game time, the game
+reaches the same state every time.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard, the pointer, and the overlay belong to the runtime layer beneath the
+game, and the surface carries no operation for the registered actions or for the
+overlay. That layer delivers the actions the game registers from the key bindings
+this specification fixes, it reports the pointer position in the stage's logical
+units along with the press and release edges, and it draws and toggles the debug
+overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
+{{else}}
+The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
+which documents them in the `engine/` directory at the root of this repository,
+and the surface carries no operation for any of them. The engine advances the game
+frame by frame and can take it off real time, it drives the actions the game
+registers, and it draws and toggles the debug overlay.
+
+The pointer is the game's own. The runtime layer the build writes over the engine
+reports the pointer position in the stage's logical units along with the press and
+release edges, as `specs/controls.md` describes, and hands them to the game.
+{{/if}}
+
+What the overlay shows is Refract's, under Diagnostics below.
+
+The surface's pointer operations do not stand in for that pointer. They feed the
+same input path it feeds, so a posed press and a player's press are the same event
+to the game, and nothing is bypassed: the hit radius, the grab rules, and the
+limits all run exactly as they do for a player.
+
+## The operations
+
+The surface carries `version` (`REFRACT_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings, and booleans. `x` and `y`
+are in the stage's logical units, and `col` and `row` are cell coordinates as
+`specs/board.md` defines them.
+{{#if (eq engine.slug "none")}}
+{{else}}
+
+Each operation's first parameter is the current state,
+`DeepReadonly<RefractState>`. A pose returns the next `RefractState`, built from
+the one it was handed, which it leaves as it was; a reading returns what it read.
+The headings below name the parameters that follow the state.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop advancing the simulation from the wall clock, so the game changes only
+when `advance` says so. `setAutoStep(true)` returns it to running itself, which is
+how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent frame left.
+
+### `advance(seconds, frames)`
+
+Runs `frames` whole frames covering `seconds` of game time, each worth
+`seconds / frames`, immediately and in order. `frames` defaults to `1`. Each is a
+real frame, the same update the loop runs followed by a render, so the game's own
+completion test and animation produce the result and the canvas reflects it.
+
+Every rate in this game is per second and integrated against the frame's delta
+time, so `advance(1, 1)` and `advance(1, 60)` cover the same second of game time
+and must reach the same outcome, beyond the drift a change in step size explains.
+
+Advancing while the game is still stepping automatically adds to what the wall
+clock is already doing, so a scenario that must be reproducible calls
+`setAutoStep(false)` first.
+
+{{/if}}
+{{#if (eq engine.slug "none")}}
+### `reset(options)`
+{{else}}
+### `reset(state, options)`
+{{/if}}
+
+Restores every declared field of the game's state to its title-screen value: the
+title screen with its first menu item highlighted, `mode` back to `"campaign"`, no
+board in play, every beam empty, no trace live, the pointer reported as up,
+`simTime` at `0`, campaign progress cleared, so no board is recorded solved and
+only the opening board is unlocked, and the cascade progression back to its
+opening state, `solvedCount` at `0` and `tier` at `1`. `options.seed` seeds
+`rngState`, defaulting to `DEFAULT_SEED` (`1`).
+
+`muted` is deliberately untouched: muting is a player preference the runtime owns.
+
+Because it restores exactly the declared fields, any state of your own that a
+frame depends on is derivable from them.
+
+{{#if (eq engine.slug "none")}}
+### `snapshot()`
+
+A pure read of the state, returned as the plain object under Snapshot shape below.
+It changes nothing.
+
+### `startMode(mode)`
+{{else}}
+### `snapshot(state)`
+
+A pure reading of `state`, returned as the plain object under Snapshot shape
+below. It returns no state, because it poses nothing.
+
+### `startMode(state, mode)`
+{{/if}}
+
+Poses the choice of a mode from the title menu, with `mode` being `"campaign"` or
+`"cascade"`. `state.mode` becomes that mode and the game moves to the screen that
+mode opens on, exactly as choosing its menu item does, as
+`specs/modes/campaign.md` and `specs/modes/cascade.md` describe. It leaves the
+progression of both modes as it stands and `simTime` as it is, so a run from a
+clean progression is a `reset` followed by this.
+
+The game runs from there: the board the mode opens with is chosen, and generated
+where the mode generates it, through the game's own code.
+
+{{#if (eq engine.slug "none")}}
+### `loadBoard(board)`
+{{else}}
+### `loadBoard(state, board)`
+{{/if}}
+
+Poses an arbitrary board and moves to `playing` with every beam empty and no trace
+live. `board` is the board notation `specs/board.md` defines, one string per row.
+Boards up to `GRID_MAX_COLS` (`7`) by `GRID_MAX_ROWS` (`6`) are accepted, and cell
+centers follow the formula in `specs/board.md`, so a posed board sits on the stage
+exactly where a played board of the same dimensions would.
+
+This is the surface's main lever: it puts the game on a chosen board without
+playing to it. A board posed this way is a board like any other, and the rules in
+`specs/beams.md` apply to it unchanged.
+
+{{#if (eq engine.slug "none")}}
+### `pointerDown(x, y)`, `pointerMove(x, y)`, `pointerUp()`
+{{else}}
+### `pointerDown(state, x, y)`, `pointerMove(state, x, y)`, `pointerUp(state)`
+{{/if}}
+
+Report a press, a move, and a release at a logical stage position. A press targets
+the node whose cell center is within `NODE_HIT_R` (`44`) of `(x, y)` and begins a
+trace by exactly the grab rules in `specs/controls.md`. A move extends the beam to
+an adjacent node, or retracts it, under those same rules, and a move the limits
+refuse changes nothing and leaves the trace live. The release ends the trace and
+leaves the beam as drawn.
+
+**Each of the three takes effect immediately, when it is called, rather than being
+sampled once per update.** The press, the move, or the release is resolved in the
+state the call returns rather than deferred to the next update.
+{{#if (eq engine.slug "none")}}
+No frame need pass between them, so a whole route can be drawn from code without
+advancing the game at all.
+{{else}}
+Each returns the state that press, move, or release left behind, and the next call
+is handed that state, so a whole route can be drawn from code without a frame
+passing between the calls.
+{{/if}}
+
+A move that satisfies R9 solves the board and ends the trace on the spot, as
+`specs/beams.md` states. The release that follows begins nothing and changes
+nothing.
+
+{{#if (eq engine.slug "none")}}
+### `trace(cells)`
+{{else}}
+### `trace(state, cells)`
+{{/if}}
+
+Sugar over the three pointer operations: a press at the first cell's center, a
+move to each remaining cell's center in turn, then a release. `cells` is a list of
+`{ col, row }`, and each center comes from the formula in `specs/board.md`.
+Because each of those operations takes effect as it is made, one call draws the
+whole route.
+
+Running entirely through the pointer path, a `trace` is subject to every limit a
+hand-drawn trace is. A list the limits refuse part way through leaves the beam
+ending at the last segment they permitted.
+
+{{#if (eq engine.slug "none")}}
+### `clear()`
+{{else}}
+### `clear(state)`
+{{/if}}
+
+The same as the `clear` action in `specs/controls.md`: every beam on the board is
+emptied and any live trace ends. It applies on the `playing` screen alone.
+
+{{#if (eq engine.slug "none")}}
+A typical scenario calls `loadBoard` to pose the board wanted, `trace` once per
+channel to draw its beam, and reads the result from `snapshot()`.
+
+## Snapshot shape
+
+`snapshot()` returns:
+{{else}}
+A typical scenario applies `loadBoard` through
+`engine.apply((s) => debug.loadBoard(s, board))`, then a `trace` per channel the
+same way to draw its beam, and reads the result from `debug.snapshot(engine.state)`.
+
+## Snapshot shape
+
+`snapshot` returns:
+{{/if}}
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "select" | "playing" | "solved" | "complete",
+  mode: "campaign" | "cascade",
+  boardIndex: <number>,        // the campaign board being played, counted from 0
+  solvedBoards: [<number>],    // the campaign indices solved so far, ascending
+  unlockedCount: <number>,     // how many campaign boards are open to the player
+  solvedCount: <number>,       // boards solved in the current cascade run
+  tier: <number>,              // the tier the next cascade board is generated at
+  board: {
+    cols: <number>,
+    rows: <number>,
+    nodes: [
+      { col, row, x, y,
+        kind: "emitter" | "lens" | "crystal",
+        channel: "triangle" | "square" | "diamond" | null,
+        charges: <number | null>,
+        spent: <number | null> },
+    ],
+  },
+  beams: {
+    // one entry per channel present
+    triangle: { cells: [{ col, row }], complete: <boolean> },
+  },
+  solved: <boolean>,
+  tracing: { channel: <string>, live: { col, row } } | null,
+  pointer: { x: <number>, y: <number>, down: <boolean> },
+  muted: <boolean>,
+  simTime: <number>,   // accumulated simulation time, in seconds
+}
+```
+
+The shape is fixed, and every field is present whatever the mode is. `select` and
+`complete` are screens Campaign reaches and Cascade does not, as
+`specs/modes/campaign.md` and `specs/modes/cascade.md` state, and the four
+progress fields belong one pair to each mode. A field the current mode does not
+use reports its resting value rather than going missing:
+
+| Field | Resting value |
+| --- | --- |
+| `boardIndex` | `0` |
+| `solvedBoards` | empty |
+| `unlockedCount` | `1` |
+| `solvedCount` | `0` |
+| `tier` | `1` |
+
+Every field is read straight off the game's state, so what the snapshot reports is
+what the game holds. Four are derived rather than stored:
+
+| Field | Derived from |
+| --- | --- |
+| a node's `x`, `y` | the cell center formula in `specs/board.md` |
+| a crystal's `spent` | the crossings the drawn beams have begun on it |
+| a beam's `complete` | R6 and R7 in `specs/beams.md` |
+| `solved` | R9 in `specs/beams.md` |
+
+A node's `channel` is `null` for a crystal, and its `charges` and `spent` are
+`null` for an emitter and for a lens. `beams` carries one entry per channel
+present on the board and no entry for a channel the board does not use.
+
+A beam's `cells` lists the cells its segments join, **in the order they were
+drawn**, so the last cell is the end the most recent trace worked from and the one
+a resumed trace extends. `tracing` is `null` whenever no trace is live, and
+`tracing.live` names the cell of the live end, which is that last cell.
+
+Three fields need the game to keep them honest every frame:
+
+- `pointer` mirrors the position the pointer layer reports and whether the
+  pointer is currently pressed, refreshed in every update.
+- `muted` mirrors the runtime's mute bit, refreshed in every update, since the
+  runtime owns muting and this is the game's readable copy of it.
+- `simTime` accumulates the delta time of every update, whatever the screen.
+
+## Diagnostics
+
+The runtime's debug overlay shows the values the game registers with it as
+diagnostic sources. Register at least the current `screen` and `mode`, the board's
+`cols` and `rows`, each channel's beam length and whether it is complete, each
+crystal's spent and total charges, whether the board is solved, and the pointer
+position, the same facts the snapshot reports. Keep each one short enough to read
+on a line, and keep every source a pure read, so watching the overlay leaves the
+game as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
+`Backquote`), and it reads the game without changing it.
+{{else}}
+Registering those values is the whole of Refract's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read,
+as `DeepReadonly<RefractState>`, and reads off that argument: a source that closed
+over the state `initialize` built would report the title screen forever, because
+every frame leaves a new value behind. Drawing the panel, toggling it, and keeping
+it read-only are the engine's.
+{{/if}}

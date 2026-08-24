@@ -1,0 +1,191 @@
+# Refract — Cascade
+
+Cascade is one of the two ways to play Refract, reached from the `CASCADE` item
+on the main menu `specs/ui.md` defines. It is one unbroken sequence of boards:
+solving a board hands the player the next one, and the boards keep coming for as
+long as the player wants them. There is no last board. The other way to play is
+the campaign, a fixed course of hand-built boards, which
+`specs/modes/campaign.md` defines.
+
+The boards are not written down anywhere. The game carries a generator that
+produces a board on demand, and that generator is a real part of this build.
+
+This file defines the sequence, the generator's contract, the tier ladder that
+shapes what the generator emits, and the screen shown when a board is solved. The
+rules a board is solved under are in `specs/beams.md`, the grid and the notation
+in `specs/board.md`, the tracing controls in `specs/controls.md`, and what the
+game's state carries in `specs/state.md`. Every figure and every piece of screen
+copy below carries the name this specification gives it.
+
+## Screens
+
+`state.screen` names the screen the game is in. Cascade uses four of them.
+
+| Screen | Shows |
+| --- | --- |
+| `title` | The title, the tagline, and the main menu. |
+| `howto` | The rules in the player's words. |
+| `playing` | The live board, its nodes, and the beams drawn so far. |
+| `solved` | Drawn over the finished board once it is solved. |
+
+`title`, `howto`, and `playing` are defined in `specs/ui.md`. The `solved` screen
+is defined below. The two screens the game has beyond these, `select` and
+`complete`, carry the campaign and are never reached in Cascade;
+`specs/modes/campaign.md` defines them.
+
+## The sequence
+
+Starting Cascade from the main menu sets `state.mode` to `cascade`, sets the
+boards-solved count `state.solvedCount` to `0`, sets `state.tier` to `1`,
+generates the first board, and moves to `playing` with every beam empty.
+`state.mode` stays `cascade` for as long as the player is in the sequence, and
+the fields the campaign uses hold the resting values `specs/state.md` gives them.
+
+A board becomes solved the moment rule R9 in `specs/beams.md` holds. On that
+frame:
+
+- Any live trace ends. `state.tracing` becomes `null` and the beams stay exactly
+  as they were drawn. The release edge that follows begins nothing and changes
+  nothing, so a solved board cannot be un-solved by retracting.
+- `state.solvedCount` increases by one. It increases once per board.
+- `state.tier` is recomputed from the ladder below.
+- The game moves to `solved`.
+
+`back` during `playing` abandons the board and returns to `title`, ending the
+sequence: starting Cascade again begins a fresh one from tier `1`. `confirm`
+during `playing` does nothing, so a board is left only by solving it or by
+`back`.
+
+## The generator
+
+The generator takes a tier and produces one board: a grid within
+`GRID_MAX_COLS` (`7`) columns and `GRID_MAX_ROWS` (`6`) rows, with each cell
+either empty or holding an emitter, a lens, or a crystal.
+
+**Every board the generator emits is solvable under the rules in
+`specs/beams.md`.** This is the generator's central requirement. A board reaches
+the player only when a set of beams satisfying every rule is known to exist for
+it. A board the player cannot finish is the one failure the sequence cannot
+absorb, because the player has no way to skip it.
+
+Each emitted board also satisfies these, which follow from the rules and the
+ladder:
+
+| Requirement | Value |
+| --- | --- |
+| Channels present | the first `n` of `CHANNELS`, `n` from the ladder |
+| Emitters per channel present | exactly `2` |
+| Lenses per channel present | any number, including none |
+| Charges on a crystal | `1` to `MAX_CHARGES` (`3`) |
+| Grid size | within `GRID_MAX_COLS` x `GRID_MAX_ROWS` |
+
+A board arrives with every beam empty. How many cells a board leaves empty is the
+generator's to choose, since it is one of the levers difficulty rides on.
+
+## The tier ladder
+
+`state.tier` grows as boards are solved, widening the grid, adding channels, and
+introducing crystals. The ladder is held in `TIERS`, one entry per tier, and
+`MAX_TIER` (`5`) is the number of entries it holds.
+
+| Tier | Grid, cols x rows | Channels | Crystals |
+| --- | --- | --- | --- |
+| `1` | `4x4` to `5x4` | `1` | none |
+| `2` | `5x4` to `5x5` | `2` | none |
+| `3` | `5x5` to `6x5` | `2` | `1` to `2`, each carrying `1` charge |
+| `4` | `6x5` to `7x5` | `3` | `1` to `3`, each carrying `1` or `2` charges |
+| `5` | `7x6` | `3` | `2` to `4`, each carrying `1` to `3` charges |
+
+- The tier climbs one step every `TIER_ADVANCE` (`4`) boards solved:
+  `state.tier` is
+  `min(floor(state.solvedCount / TIER_ADVANCE) + 1, MAX_TIER)`.
+- `MAX_TIER` is the top of the ladder and holds from the sixteenth board solved
+  onward. Play continues there indefinitely, on fresh boards each time.
+- Where a tier states a range of grid sizes, the generator chooses from that
+  range, so consecutive boards at that tier are not all the same shape. Tier `5`
+  states one size, and every board there is `7x6`.
+- No tier exceeds `GRID_MAX_COLS`, `GRID_MAX_ROWS`, or `MAX_CHARGES`.
+
+## Boards worth solving
+
+A legal board is the floor, not the goal. A player meets far more of these boards
+than any hand-written set could hold, so what the generator emits is the game, and
+its design is part of the work rather than a detail behind it.
+
+What a good board does:
+
+- Uses the whole grid its tier gives it, rather than leaving a large region of the
+  board idle while the puzzle happens in one corner.
+- Makes the player deduce. A board whose every step is the only legal move is
+  solved by following the board rather than by reading it.
+- Interleaves the channels once more than one is present, so the beams share
+  territory and constrain each other instead of occupying separate halves.
+- Places crystals where more than one channel can plausibly reach them, so the
+  charge count is a question rather than a label.
+- Varies. Two boards in a row at the same tier should not read as the same board
+  reshuffled.
+- Grows in difficulty across the ladder in steps a player can feel, without a
+  jump that stalls the sequence.
+
+## Determinism
+
+{{#if (eq engine.slug "none")}}
+All generation runs off the seeded generator state the game's state carries, which
+`specs/state.md` requires of it. It is the whole of the game's generator state.
+{{else}}
+All generation runs off `state.rngState`, the whole of the game's generator state.
+{{/if}}
+
+- Generating a board consumes that state and leaves it advanced, so the next board
+  follows from the state the previous one left.
+- The sequence is therefore a function of the seed alone. Seeding the generator
+  with a given value and solving boards in order produces the same boards, in the
+  same order, every time, on any machine.
+- Boards are generated when they are needed, one at a time. Nothing about the
+  sequence is decided in advance.
+- The generator is the only consumer of randomness in the game. Presentation and
+  audio read nothing from it, so the sequence a seed produces does not depend on
+  how the board is drawn or how many frames it was drawn over.
+
+Seeding the generator is described in `specs/instrumentation.md`.
+
+## The solved screen
+
+`solved` is drawn over the finished board, which stays visible behind it with
+every beam complete, so the player sees the shape they made.
+
+It shows `SOLVED_TITLE_TEXT` (`BOARD SOLVED`), the boards-solved count, and a
+vertical menu of `SOLVED_ITEMS` (`NEXT BOARD`, `RESTART`) in that order.
+`state.menuIndex` is `0` on arriving at the screen, so `NEXT BOARD` is highlighted
+first. The item at `state.menuIndex` is drawn distinctly from the others.
+
+| Item | Does |
+| --- | --- |
+| `NEXT BOARD` | Generates a board at the current `state.tier` and moves to `playing` with every beam empty. |
+| `RESTART` | Returns `state.solvedCount` to `0` and `state.tier` to `1`, generates a board, and moves to `playing`. |
+
+`RESTART` does not reseed the generator. It carries on from the state it holds, so
+a restart drops the player back to tier `1` on boards they have not seen.
+
+Menu navigation uses the registered actions in `specs/controls.md`. `up` and
+`down` move `state.menuIndex` over `SOLVED_ITEMS`, wrapping from the first item to
+the last and from the last to the first. `confirm` takes the highlighted item.
+`back` returns to `title`.
+
+## The count
+
+The boards-solved count is the player's one measure of how far the sequence has
+carried them, so it is on screen while they play.
+
+- During `playing`, show the count beside the label `HUD_SOLVED_LABEL` (`SOLVED`)
+  and the current tier beside `HUD_TIER_LABEL` (`TIER`).
+- Both are legible at the logical stage size and sit clear of the board, whose
+  extent is given in `specs/board.md`.
+- Where they sit and how they are styled is the build's to design, alongside the
+  rest of the presentation.
+
+## Out of scope
+
+- Persistence between sessions. The count starts at `0` every time the page loads.
+- A leaderboard, an account, or any network traffic. The game is self-contained.
+- A timer or a move limit. A board is solved when it is solved.

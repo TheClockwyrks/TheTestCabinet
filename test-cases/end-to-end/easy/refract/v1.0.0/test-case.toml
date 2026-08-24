@@ -1,0 +1,743 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The manifest format. Format 2 is the one that names engines: it replaces the
+# single `workspace` key with a `[workspaces]` table holding one starter directory
+# per engine, and it is the only format under which `engines` and `[[engine]]` are
+# legal. Refract is built two ways — with a runtime handed to it and with no
+# runtime at all — so a single starter directory could not stand for both and
+# format 1 is not an option here.
+format = 2
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "refract"
+
+# Human-readable display name for this test case.
+name = "Refract"
+
+# Relative difficulty of this case, surfaced on the site. Refract is a great deal
+# of *work* — a rules engine, a board generator, twenty-four hand-built boards and
+# two modes — but none of it is hard to reason about: the rules are stated as nine
+# numbered conditions over a grid of at most 7x6 cells, there is no physics, no
+# opponent, and no real-time contest to tune. Difficulty here rates how demanding
+# the *thinking* is, not how long the build takes, and `max_runtime_hours` below
+# is where the size of the job is accounted for. So easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["puzzle", "logic", "2d", "light"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A puzzle of light on a dark optical bench, where a beam is drawn from node to \
+node with the pointer and the rules silently refuse any move that breaks them."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+
+# Required per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected engine) and handed to the model as
+# the build instruction. It injects absolute in-container paths through template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. It exists so a stuck or runaway session cannot run unbounded, not to
+# make the job tight. Refract asks for substantially more construction than a
+# single real-time loop does: a rule engine that decides every move against nine
+# conditions, a pointer tracing model with grab, shorten and retract behavior, a
+# seeded generator that must never emit an unsolvable board, twenty-four fixed
+# boards transcribed exactly, two modes with six screens between them, and — under
+# the engineless run — the whole runtime layer beneath all of that. Three hours is
+# comfortably more than a healthy build of that size needs while still catching a
+# session that never terminates.
+max_runtime_hours = 3
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, and, on an engine run, the
+# vendored engine — and downloads the Playwright Chromium build (the base image
+# ships the OS libraries Chromium links against, but not the browser binary), so
+# the model can build the game and look at it in a browser without any further
+# setup.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Refract declares exactly ONE, so every run of this case is the same game.
+#
+# Campaign and Cascade are NOT variants. They are the two ways to play, chosen by
+# the player from the title menu and reported by the state as `mode`, exactly as
+# Carom's Solo and Versus are modes inside every variant rather than variants of
+# their own. A variant is a difference in the *game a run is asked to build*; a
+# mode is a difference in what the finished game offers its player. Both modes
+# ship in every build, so nothing in the seeded spec set branches on the variant
+# at all — the only axis the specs branch on is `engine.slug`, which changes what
+# the build is handed rather than what it is asked to make.
+#
+# This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# input actions a player drives it with, the audio bus, asset loading, and the
+# on-screen diagnostics. It is a *run dimension*, chosen per run alongside the
+# model, the harness, and the variant, and recorded on the run; it is not a
+# property of the game.
+#
+# Refract supports two, and the game is the same under both. What differs is how
+# much of the build is handed over: `simple-2d` vendors the runtime as a package
+# and seeds the modules around it (`src/constants.ts`, `src/main.ts`, and the
+# `src/game.ts` the build writes, debug surface included), while `none` supplies no
+# runtime and no `src/` at all, so the build writes the frame loop, the input, the
+# audio, the overlay and the `window.__refract` surface itself. One thing Refract
+# writes either way: the POINTER. No engine here delivers one, so mapping the
+# page's pointer into the logical stage and reporting its press and release edges
+# belongs to the build under both, which is why `specs/controls.md` branches on the
+# engine only to say where that layer sits.
+#
+# The game the two describe is the same one, so the review checklist below is the
+# same for either and a score recorded under one engine is comparable with a score
+# recorded under the other; the specs branch only where the deliverable differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` carries a range and is named in an
+# `[[engine]]` table. The range is pinned because a specification is written
+# against a runtime contract: `min_version` is the 1.0.0 API the specs are written
+# against, and there is deliberately no `max_version`, so a later 1.x or 2.x from
+# the host package store is accepted as it lands. Widening or moving a range means
+# a new case version, so the pin is the statement that THIS spec set matches THIS
+# contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to *this game* under it —
+# Refract's actions and key bindings, its five cue names, and what it needs from a
+# pointer — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. Both carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration
+# the `[toolchain]` commands below run against, and an `index.html` holding the
+# canvas. What differs is how much of the build is supplied with them.
+#
+#   - `none`      supplies the configuration and nothing else. There is no `src/`:
+#                 the build writes its own frame loop, canvas fit, keyboard and
+#                 pointer input, audio, diagnostics overlay and `window.__refract`
+#                 surface, and every figure the specification fixes, from the specs
+#                 alone.
+#   - `simple-2d` declares the engine in its `package.json`, which is vendored in
+#                 at seed time so the build imports it by its bare package name,
+#                 and seeds the case-owned modules around the game:
+#                 `src/constants.ts` (every figure this specification fixes — the
+#                 stage and grid geometry, the hit radius, the channel and cue
+#                 names, the campaign length, the tier ladder; the LOOK is not
+#                 among them) and `src/main.ts` (the browser entry). The build
+#                 writes `src/game.ts`: the state, the debug surface its
+#                 `initialize` returns beside that state, the three functions, and
+#                 the `BACKGROUND` color `src/main.ts` hands the engine.
+#
+# The single variant declares no `[workspaces]` of its own, because there is no
+# second game for one to differ in. The seeded files land at the run root
+# (`workspaces/none/package.json` seeds to `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. These run verbatim from the build's repository root:
+# dependencies are installed, then the static build is produced into `dist/`,
+# `build/`, or `out/`. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`, so the validated build installs exactly what the deploy
+# will. Both commands are required; there are no defaults, so every case states
+# exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`), so
+# what is checked here is the code the model wrote against configuration the case
+# fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken`, because code that does
+# not compile is not reviewable. The other three are recorded and gate nothing —
+# `test` additionally records the count and coverage the build's own suite reports,
+# which is how a build that ships tests is told apart from one that ships none.
+# Each is spelled `npx` rather than `npm run <script>` so the check is the case's
+# own statement of what is run and does not depend on the model leaving the seeded
+# scripts intact. These four are exactly the commands `specs/overview.md` tells the
+# build will be run over the finished repository.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. It is reporter-side and never seeded; the seeded specification documents
+# the surface independently, as an ordinary debugging feature the game needs (see
+# specs/instrumentation.md).
+#
+# The handle names the ENGINELESS contract. An engineless build writes the surface
+# itself and installs it on `window.__refract` once the game has initialized, so
+# the handle is what a person opening the console of such a build finds. An engine
+# run has NO global at all: the build writes the surface, its `initialize` returns
+# it beside the state as `[state, debug]`, and a caller reads it back off
+# `engine.debug`. Because the engine holds the state by value and hands every
+# reader a read-only view, that surface is written in the shape of `update` — a
+# pose takes the current state and returns the next, applied through
+# `engine.apply`, and a reading takes the state and returns what it read, called
+# with `engine.state`. One handle, two ways to reach the same operations.
+#
+# There is deliberately no `tick_hz`. Refract mandates no fixed timestep: every
+# rate it has is per second and integrated against the delta time the frame hands
+# it, and its pointer operations take effect the moment they are called rather than
+# being sampled once per tick, so there is no case-wide step size to state. The key
+# is optional precisely so a case clocked this way omits it.
+[instrumentation]
+handle = "__refract"
+
+# The specs. Every one of these is a COMMON spec, seeded for EVERY run of this
+# case, at the `dest` path within the run workspace. The single variant declares
+# none of its own: there is one game here, so there is one spec set.
+#
+# The specification is decomposed by concern, and each file is self-contained
+# enough to be read on its own while naming its siblings where a fact lives
+# elsewhere: `overview.md` the game and the project it is built in, `board.md` the
+# grid geometry and the notation boards are written in, `beams.md` the nine
+# numbered rules, `controls.md` the pointer tracing model and the key actions,
+# `state.md` what the game's state carries, `instrumentation.md` the debug and
+# automation surface, `ui.md` the shared screens and the audio cues,
+# `campaign-boards.md` the twenty-four fixed board layouts, and `modes/campaign.md`
+# and `modes/cascade.md` the two ways to play.
+#
+# The two mode files are common specs like any other. Both modes ship in every
+# build and both are reachable from the title menu, so both files are seeded into
+# every run and each names the other where the game genuinely crosses between them
+# (the title menu offers both, and the six screens are one union). What a mode file
+# does not do is restate the other mode's rules; it points at the other file.
+#
+# Every `.hbs` source is rendered before it lands, and ONE axis is branched on:
+# `engine.slug`, which selects what the build is handed and what it must write.
+# `overview.md.hbs` (the runtime, what is implemented, where the figures come
+# from), `controls.md.hbs` (where the pointer layer sits), `state.md.hbs` (the
+# build's own shape versus the exact `RefractState` declaration),
+# `instrumentation.md.hbs` (the global versus `engine.debug`, and the clock
+# operations only an engineless build needs), `ui.md.hbs` (where cues are played)
+# and the two mode files (how the state is referred to) all branch on it. Nothing
+# branches on the variant. A spec's `dest` defaults to its `source` with a trailing
+# `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path and a plain
+# `.md` source is seeded verbatim.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The board: cells, the cell center formula every position in the game derives
+# from, the three node kinds and their silhouettes, the three channels, and the
+# notation `campaign-boards.md` and the debug surface's `loadBoard` both speak.
+# Seeded verbatim: nothing in it differs by engine.
+[[spec]]
+source = "specs/board.md"
+
+# The ruleset: R1 through R5, the limits checked on every move, and R6 through R9,
+# the completion conditions that decide when a beam is finished and when a board
+# is solved. It is the heart of the case and is seeded verbatim.
+[[spec]]
+source = "specs/beams.md"
+
+# How a player operates the game: the pointer targeting, the grab table, the drawn
+# order a beam is held in, extending, retracting, releasing, clearing, and the
+# registered key actions. It branches on the engine only to say which layer
+# delivers the pointer, because neither engine delivers one.
+[[spec]]
+source = "specs/controls.md.hbs"
+
+# The shape of the game's state. Under `simple-2d` this is the `RefractState`
+# declaration the build writes into `src/game.ts` verbatim, stated by the case
+# rather than by the seeded stub. Under `none` the build owns the shape and the
+# file lists only what the state must carry, because the rest of the specification
+# is written against those facts.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# render-free core; an API to drive and inspect the game from code through its own
+# real input path; and a read-only debug overlay. Framed as an ordinary developer
+# affordance of the game. It branches on the engine for how the surface is reached
+# and for the clock operations only an engineless build owns.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The screens both modes share (`title`, `howto`, `playing`), how a mode is chosen,
+# menu navigation, and the five audio cues.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The twenty-four fixed campaign boards, in the notation `board.md` defines. It is
+# authoritative for every layout, so it is seeded verbatim and the build transcribes
+# it exactly.
+[[spec]]
+source = "specs/campaign-boards.md"
+
+# Campaign: the fixed course, its unlock rule, and the `select`, `solved` and
+# `complete` screens it adds.
+[[spec]]
+source = "specs/modes/campaign.md.hbs"
+
+# Cascade: the endless generated sequence, the generator's solvability contract,
+# the tier ladder, and its `solved` screen.
+[[spec]]
+source = "specs/modes/cascade.md.hbs"
+
+# No `[[reference]]`, no `[[check]]`, and no `[[proof]]`.
+#
+# Refract deliberately fixes no palette, no font, no node artwork, no beam
+# rendering and no background: the look of the optical bench is the build's own
+# design, and `specs/board.md` and `specs/ui.md` say so in as many words. A
+# reference view is a picture a build is compared AGAINST, so there is no honest
+# one to seed here — every build is expected to look different, and a screenshot
+# diff would score the build that copied the mockup best rather than the build that
+# designed the best bench. What the specification does fix about appearance is
+# stated as legibility a player depends on (a channel readable by silhouette as
+# well as hue, a crystal's charges readable without counting, a beam visibly
+# joining cell centers), and that is checked by a reviewer looking at the running
+# game, in the Board and rendering and Presentation categories below.
+#
+# `[[proof]]` is likewise empty: nothing is asked of the build beyond the game
+# itself. The automated load check still runs.
+
+# Scoring domains. A reviewer rates each independently while playing the build, and
+# the run's overall rating is the WORST across them — an immaculate Campaign cannot
+# mask a Cascade that hands the player boards it cannot solve. Every case must
+# declare at least one. The domain ratings are where the reviewer's judgement
+# lives: the look, the polish, and the feel. They are separate from the checklist
+# below, which is scored per point (the categories grammar attaches no domain to a
+# point).
+#
+# One domain per mode, because a build can plausibly get one right and the other
+# wrong, plus the two things that cut across both: the tracing the whole game is
+# operated by, and the presentation this case hands entirely to the build.
+[[domain]]
+id = "campaign"
+name = "Campaign"
+description = "The fixed course: the twenty-four boards, the select grid, and the sense of progress through the four sets."
+
+[[domain]]
+id = "cascade"
+name = "Cascade"
+description = "The endless sequence: whether the generated boards are worth solving and whether the difficulty climbs in steps a player can feel."
+
+[[domain]]
+id = "tracing"
+name = "Tracing"
+description = "How drawing a beam feels: targeting a node, sweeping a route, backing one out, and how a refused move reads in the hand."
+
+[[domain]]
+id = "presentation"
+name = "Presentation"
+description = "The look and sound of the optical bench, which this case leaves entirely to the build: the bench, the node forms, the beams, the screens, and the cues."
+
+# Reviewer checklist, in the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY — a bare name grouping the points a
+# reviewer grades — and each `[[review.categories.items]]` under it is one graded
+# review item, worth one point (the default weight), so a category is worth the
+# number of items it holds. A category carries no prose of its own; each item
+# states in `description` the single observable requirement being checked. The
+# checklist is common to every run: there is one variant and the two engines
+# produce the same game, so nothing here is conditional.
+#
+# The checklist is reporter-side material — never seeded into a run, so the model
+# never sees it. Every item restates a requirement the seeded specification already
+# states, in the spec's own vocabulary and naming the spec's own constants, so a
+# build that read the specs carefully has already been told everything on this
+# list.
+#
+# NO ITEM DECLARES A `validation` SCRIPT. Every point here is decided by a reviewer
+# playing the build. That is deliberate and temporary: this case's validation
+# suites do not exist yet, and a manifest naming a script that is not shipped under
+# `validation/<engine>/` does not resolve. When those suites are written — one
+# directory per engine, `validation/none/` driving the build in Chromium through
+# `window.__refract` and `validation/simple-2d/` running in process against the
+# vendored engine — the mechanical points here (the rule limits, the grab table,
+# the tier formula, the snapshot shape) are the ones to move over first, and each
+# gains a `validation` key naming its suite. Until then this list is what a
+# reviewer works down with the build in front of them, which is why every item is
+# phrased as something a person can SEE happen rather than as an assertion over a
+# number they would have to read out of a console.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The debug surface is a deliverable of the build, not a courtesy: it is how the
+# game is driven and inspected from code, and how every later validation suite will
+# reach it. These points check that it is really there, really wired to the running
+# game, and really deterministic — a surface that reports a plausible-looking object
+# unconnected to what is on screen is the failure mode worth naming.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug and automation surface is present"
+description = "Every operation specs/instrumentation.md names is present as a function on the surface, reached on the page as window.__refract in an engineless build and off engine.debug in an engine build, and each one poses or reads the running game rather than a copy of it."
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "A snapshot carries every field specs/instrumentation.md lists, with version REFRACT_DEBUG_VERSION (1), and the values it reports match what is on screen: the current screen and mode, the board, one beams entry per channel present, the live trace, the pointer, muted, and simTime."
+[[review.categories.items]]
+id = "snapshot-resting-values"
+title = "Fields the current mode does not use report their resting values"
+description = "The shape is fixed whatever the mode: in Cascade, boardIndex is 0, solvedBoards is empty and unlockedCount is 1; in Campaign, solvedCount is 0 and tier is 1. No field goes missing."
+[[review.categories.items]]
+id = "pointer-operations-drive-play"
+title = "The pointer operations drive the real input path"
+description = "pointerDown, pointerMove, pointerUp and trace feed the same path a player's pointer feeds, so the NODE_HIT_R targeting, the grab table and the limits all run, and each call takes effect immediately rather than waiting for the next update."
+[[review.categories.items]]
+id = "reset"
+title = "reset returns the game to its title-screen values"
+description = "reset restores the title screen with its first item highlighted, mode campaign, no board in play, every beam empty, no trace live, simTime 0, campaign progress cleared and cascade progress back to solvedCount 0 and tier 1, seeds rngState from options.seed defaulting to DEFAULT_SEED (1), and leaves muted untouched."
+[[review.categories.items]]
+id = "overlay"
+title = "The debug overlay reports the game"
+description = "The overlay shows the diagnostics specs/instrumentation.md asks for — screen and mode, the board's cols and rows, each channel's beam length and completion, each crystal's spent and total charges, whether the board is solved, and the pointer position — and updates as the game is played without changing it."
+[[review.categories.items]]
+id = "deterministic-core"
+title = "The simulation advances on elapsed time and reads nothing from the renderer"
+description = "The game advances from the delta time each frame hands it rather than from a count of frames, and whether a segment may be added is decided from the board and the beams alone."
+
+# --- Board and rendering ------------------------------------------------------
+# Where everything sits and how it reads. The geometry here is the one part of
+# Refract's appearance the specification does fix, because every pointer position
+# in the game is measured against it: a board drawn off the cell centers makes the
+# hit radius wrong and the game unplayable. The rest of these points are the
+# legibility the player depends on to read a board at all, which is why they are
+# requirements rather than taste.
+[[review.categories]]
+id = "board"
+title = "Board and rendering"
+[[review.categories.items]]
+id = "cell-geometry"
+title = "Nodes sit on the cell centers the formula gives"
+description = "Every node is drawn at the center specs/board.md computes for its cell: adjacent centers CELL_PITCH (96) apart on both axes, the grid centered on BOARD_CX, BOARD_CY (640, 392) whatever its dimensions, so the board does not drift as boards change size."
+[[review.categories.items]]
+id = "node-silhouettes"
+title = "Each channel's nodes carry that channel's silhouette"
+description = "A triangle channel node is a triangle, a square channel node a square, and a diamond channel node a diamond stood on a corner, so a node's channel reads by form and not by hue alone."
+[[review.categories.items]]
+id = "emitter-versus-lens"
+title = "An emitter reads as outlined against a lens's fill"
+description = "An emitter and a lens of the same channel share one silhouette and differ by outline against fill, so a player reads a node's channel and its role in the same glance."
+[[review.categories.items]]
+id = "channel-hues"
+title = "The three channel hues are told apart at a glance"
+description = "Each channel carries one distinct hue and the three are distinguishable on the board without study."
+[[review.categories.items]]
+id = "crystal-readout"
+title = "A crystal shows its charges and how many are spent"
+description = "A crystal's form is clearly distinct from all three channel silhouettes, and it shows both its charge count and its current spent count, readable without counting segments."
+[[review.categories.items]]
+id = "node-radius"
+title = "Every node fits inside NODE_R of its cell center"
+description = "No node's drawn form spills past NODE_R (30) of its cell center, so neighboring nodes never collide."
+[[review.categories.items]]
+id = "beam-route"
+title = "A drawn beam visibly connects the cells it links"
+description = "Every segment drawn so far is visible on the board, joining the centers of the two cells it links so the beam's route is unambiguous, and carries its channel's hue."
+[[review.categories.items]]
+id = "empty-cells"
+title = "An empty cell holds nothing"
+description = "An empty cell is drawn as nothing, or as quiet background texture, and never as something a player could mistake for a node."
+
+# --- Tracing ------------------------------------------------------------------
+# The whole game is operated by one gesture, so it gets its own category and its
+# own domain. Each point below is one row of the grab table or one of the four
+# things a held trace can do, checked separately, because a build that begins a
+# trace correctly and cannot retract is broken in a different way from one that
+# grabs the wrong beam.
+[[review.categories]]
+id = "tracing"
+title = "Tracing"
+[[review.categories.items]]
+id = "hit-radius"
+title = "The pointer targets one node at a time"
+description = "A node is targeted when the pointer is within NODE_HIT_R (44) of its cell center, and no node is targeted when the pointer is farther than that from every center. NODE_HIT_R is below half CELL_PITCH, so two targeting regions never overlap."
+[[review.categories.items]]
+id = "begin-at-emitter"
+title = "A press on an emitter starts that channel's beam"
+description = "Pressing on an emitter of a channel whose beam carries no segments starts that beam at that emitter, and the trace carries that channel."
+[[review.categories.items]]
+id = "resume-from-end"
+title = "A press on either end of a beam resumes it"
+description = "Pressing on either end of a channel's existing beam resumes that beam from that end, whichever end the beam was originally drawn from."
+[[review.categories.items]]
+id = "shorten-from-middle"
+title = "A press inside a beam shortens it to that node"
+description = "Pressing on a node exactly one beam passes through drops every cell after it in the drawn order, leaves the rest of the beam drawn, and resumes the trace from there. A node the beam crosses more than once keeps the last of its occurrences, so the beam loses as few segments as it can."
+[[review.categories.items]]
+id = "shared-node-refused"
+title = "A press on a node two beams share begins no trace"
+description = "Pressing on a node more than one beam passes through leaves the board unchanged and begins no trace, and the grab rows are evaluated in order so an end of a beam still wins over a mid node."
+[[review.categories.items]]
+id = "extend"
+title = "Dragging to an adjacent node adds a segment"
+description = "While the trace is held, moving within NODE_HIT_R of a node adjacent to the live end adds the segment joining them when the limits permit it, and that node becomes the live end."
+[[review.categories.items]]
+id = "retract"
+title = "Backing up removes the last segment"
+description = "Moving within NODE_HIT_R of the node immediately behind the live end removes the last segment and makes that node the live end, so a beam is unwound one segment at a time without releasing."
+[[review.categories.items]]
+id = "release-leaves-partial"
+title = "Releasing leaves the beam as drawn"
+description = "The release ends the trace and leaves the beam exactly as drawn, complete or not. A partial beam persists on the board and a later press on either of its ends resumes it."
+[[review.categories.items]]
+id = "clear"
+title = "The clear action empties every beam"
+description = "The key bound to the clear action, KeyR, empties every beam on the current board at once, leaves the board's nodes untouched and the player on the board, and does nothing on any screen other than playing."
+
+# --- The ruleset --------------------------------------------------------------
+# One point per numbered rule, with R6 Endpoints and R7 Coverage sharing a point
+# because a beam that satisfies one and not the other is not a finished beam, plus
+# three behaviors that make the split between limits and conditions observable.
+# The limits are checked by trying to draw a move that breaks each one and
+# watching it be refused; the completion conditions are checked by finishing a
+# board and by finishing one incorrectly. R5's crystal clause, where the charge
+# is spent on entry, is the subtlest thing in the game, so the refused move into
+# a fully spent crystal gets a point of its own.
+[[review.categories]]
+id = "ruleset"
+title = "The ruleset"
+[[review.categories.items]]
+id = "r1-adjacency"
+title = "R1 Adjacency"
+description = "A segment joins two different nodes whose cells differ by at most 1 in column and at most 1 in row. A segment is never drawn to a non-adjacent node, to an empty cell, or across one."
+[[review.categories.items]]
+id = "r2-exclusion"
+title = "R2 Exclusion"
+description = "A beam never meets an emitter or a lens of another channel: a move onto another channel's node is refused."
+[[review.categories.items]]
+id = "r3-segment-exclusivity"
+title = "R3 Segment exclusivity"
+description = "Each segment carries at most one beam and is used at most once, so a move that would redraw a segment already drawn, by either the same beam or another, is refused."
+[[review.categories.items]]
+id = "r4-diagonal-exclusivity"
+title = "R4 Diagonal exclusivity"
+description = "The two diagonals of any 2x2 block of cells are mutually exclusive: once one is drawn, a move that would draw the other is refused."
+[[review.categories.items]]
+id = "r5-capacity"
+title = "R5 Capacity"
+description = "An emitter carries at most one segment, a lens at most two segments of its own channel, and a crystal carrying n charges is crossed at most n times. A move past any of those limits is refused."
+[[review.categories.items]]
+id = "spent-crystal-refused"
+title = "A move into a fully spent crystal is refused"
+description = "A charge is spent on entering a crystal and the crossing is completed by leaving it, so a beam enters a crystal only while it has an unspent charge and a move into a crystal whose charges are all spent does not take."
+[[review.categories.items]]
+id = "refusal-is-silent"
+title = "A refused move changes nothing and keeps the trace live"
+description = "A move the limits refuse leaves the beam exactly as it was and the trace still held, so a player can sweep the pointer across the board and draw only permitted segments."
+[[review.categories.items]]
+id = "r6-r7-complete"
+title = "R6 Endpoints and R7 Coverage decide a complete beam"
+description = "A channel's beam counts as complete only when it runs between that channel's two emitters with exactly one segment meeting each, and every lens of that channel carries exactly two of its segments. Neither is ever used to refuse a move."
+[[review.categories.items]]
+id = "r8-crystals"
+title = "R8 Crystals"
+description = "A crystal is satisfied when all of its charges are spent and every crossing begun across it has been completed, so a beam left ending on a crystal leaves it unsatisfied."
+[[review.categories.items]]
+id = "r9-solved"
+title = "R9 Solved"
+description = "The board reads as solved exactly when every channel present has a complete beam and every crystal on the board is satisfied, and it is re-evaluated after every change."
+[[review.categories.items]]
+id = "solving-ends-the-trace"
+title = "Solving ends the live trace on the spot"
+description = "On the frame a move solves the board the trace ends, the beams stay exactly as drawn, and the release that follows begins nothing, so a solved board cannot be taken apart by retracting."
+
+# --- Campaign -----------------------------------------------------------------
+# The fixed course. The boards themselves are transcribed from
+# specs/campaign-boards.md, which is authoritative for every layout, so the first
+# point here is simply whether the build shipped the boards it was given rather
+# than boards of its own invention — the single most likely shortcut in this mode.
+[[review.categories]]
+id = "campaign"
+title = "Campaign"
+[[review.categories.items]]
+id = "boards-as-written"
+title = "The twenty-four boards are the ones specified"
+description = "The course holds exactly CAMPAIGN_LENGTH (24) boards, each with the dimensions and the cells specs/campaign-boards.md gives it, in the order it lists them, with nothing substituted, reordered, resized, or reworked."
+[[review.categories.items]]
+id = "sets"
+title = "The boards are grouped into Sets A to D"
+description = "The 24 boards fall into four sets of six, labelled Set A through Set D, shown and labelled on the select screen. A set is a grouping only and gates nothing."
+[[review.categories.items]]
+id = "unlocking"
+title = "Solving a board unlocks the next"
+description = "Board 1 is unlocked from the start and every other board begins locked. Solving board n unlocks board n + 1, and a board stays unlocked and stays marked solved for the rest of the session."
+[[review.categories.items]]
+id = "select-grid"
+title = "The select grid shows every board and its state"
+description = "The grid presents all 24 boards in number order, six columns wide and four rows tall with one row per set, and each board shows its number and reads as locked, unlocked, or solved without relying on hue alone."
+[[review.categories.items]]
+id = "select-navigation"
+title = "The select grid is navigated and entered"
+description = "left and right move the highlight within its row and up and down between rows in the same column, both wrapping. confirm on an unlocked or solved board enters it, confirm on a locked board does nothing, and back returns to title."
+[[review.categories.items]]
+id = "select-highlight-lands"
+title = "The highlight lands where the player left off"
+description = "On arriving at the select screen the highlight sits on the board most recently entered or solved, so a solve is seen landing on the grid, and on board 1 before any board has been entered."
+[[review.categories.items]]
+id = "solved-screen"
+title = "The solved screen offers the right choices"
+description = "Solving a board shows the finished board with the beams still drawn and a menu of next board, replay, and back to select in that order, with next board offered on every board but 24."
+[[review.categories.items]]
+id = "complete-screen"
+title = "Solving the last board completes the campaign"
+description = "The solve that leaves no board unsolved goes to complete rather than solved, states that all CAMPAIGN_LENGTH (24) boards are solved, and offers back to select and back to title in that order."
+[[review.categories.items]]
+id = "board-entry-fresh"
+title = "Entering a board starts it empty"
+description = "Every entry to a board, first attempt or replay, starts it with every beam empty, and back during playing returns to select with the drawn beams discarded."
+
+# --- Cascade ------------------------------------------------------------------
+# The endless sequence. The generator is where this mode's real work is: a board
+# the player cannot finish is the one failure the sequence cannot absorb, because
+# there is no way to skip it, so solvability is the point to check hardest and to
+# check over many boards rather than one.
+[[review.categories]]
+id = "cascade"
+title = "Cascade"
+[[review.categories.items]]
+id = "boards-are-solvable"
+title = "Every generated board is solvable"
+description = "Board after board, across every tier, a set of beams satisfying every rule exists and the player can reach it. No board the sequence hands the player is a dead end."
+[[review.categories.items]]
+id = "boards-are-well-formed"
+title = "Every generated board is well formed"
+description = "Each board fits within GRID_MAX_COLS x GRID_MAX_ROWS (7 x 6), carries the first n of CHANNELS with exactly two emitters for each channel present, and gives every crystal 1 to MAX_CHARGES (3) charges."
+[[review.categories.items]]
+id = "tier-ladder"
+title = "The tier climbs on the ladder specified"
+description = "state.tier is min(floor(solvedCount / TIER_ADVANCE) + 1, MAX_TIER), climbing one step every TIER_ADVANCE (4) boards solved and holding at MAX_TIER (5) from the sixteenth solve onward."
+[[review.categories.items]]
+id = "tier-shapes-the-board"
+title = "Each tier emits the boards its rung describes"
+description = "A board's grid size, channel count, and crystals match the row specs/modes/cascade.md gives its tier, and where a tier states a range of grid sizes consecutive boards at that tier are not all the same shape."
+[[review.categories.items]]
+id = "sequence-is-endless"
+title = "The sequence has no last board"
+description = "Play continues at MAX_TIER indefinitely, on fresh boards each time, and solvedCount keeps rising by one per board solved."
+[[review.categories.items]]
+id = "seeded-sequence"
+title = "A seed reproduces the same sequence"
+description = "Seeding the generator with a given value and solving boards in order produces the same boards in the same order every time, boards are generated one at a time as they are needed, and nothing but the generator reads randomness."
+[[review.categories.items]]
+id = "solved-screen"
+title = "The cascade solved screen"
+description = "Solving a board shows SOLVED_TITLE_TEXT (BOARD SOLVED) over the finished board with the boards-solved count and SOLVED_ITEMS (NEXT BOARD, RESTART) in that order, NEXT BOARD highlighted first."
+[[review.categories.items]]
+id = "restart"
+title = "RESTART drops to tier 1 without reseeding"
+description = "RESTART returns solvedCount to 0 and tier to 1 and generates a board, carrying on from the generator state it holds rather than reseeding, so the player lands on tier 1 boards they have not seen."
+[[review.categories.items]]
+id = "hud"
+title = "The count and the tier are on screen while playing"
+description = "During playing the boards-solved count is shown beside HUD_SOLVED_LABEL (SOLVED) and the current tier beside HUD_TIER_LABEL (TIER), both clear of the board."
+[[review.categories.items]]
+id = "boards-worth-solving"
+title = "The generated boards are worth solving"
+description = "A board uses the whole grid its tier gives it, asks the player to deduce rather than to follow the only legal move, interleaves the channels where more than one is present, places crystals where more than one channel can reach them, and does not read as the previous board reshuffled."
+
+# --- Presentation -------------------------------------------------------------
+# This case fixes no palette, no font, no node artwork, no beam rendering and no
+# background on purpose, so there is nothing to compare a build against and these
+# points check the two things that survive that freedom: that the stage is
+# presented correctly whatever the window is, and that the build actually designed
+# a bench rather than leaving placeholder shapes on a blank field. How GOOD the
+# result looks is rated on the presentation domain, not scored here.
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "stage-fit"
+title = "The stage is fitted and centered"
+description = "The whole STAGE_W x STAGE_H (1280 x 720) stage is inside the window at its own aspect ratio, centered, with even letterboxing, over windows wider and taller than the stage."
+[[review.categories.items]]
+id = "text-legible"
+title = "Every piece of text is legible"
+description = "Screen copy, board labels, and readouts are legible against whatever sits behind them at the logical stage size."
+[[review.categories.items]]
+id = "readouts-clear-of-the-board"
+title = "The readouts sit clear of the board"
+description = "The heading, the footer, and each mode's own readouts sit clear of the board's extent, so nothing overlaps a node or a beam on the largest board."
+[[review.categories.items]]
+id = "designed-bench"
+title = "The bench is designed rather than left plain"
+description = "The build presents a considered optical bench with a look of its own, rather than untouched default shapes on an empty background."
+[[review.categories.items]]
+id = "original"
+title = "The game is original to itself"
+description = "The name, the look, the assets and the branding are Refract's own and reproduce no existing product."
+
+# --- Screens and audio --------------------------------------------------------
+# The screens both modes share, the menu the two modes are chosen from, and the
+# five cues. The mode-specific screens are checked in the Campaign and Cascade
+# categories above; what is here is the part of the shell that is the same
+# whichever mode is being played.
+[[review.categories]]
+id = "screens"
+title = "Screens and audio"
+[[review.categories.items]]
+id = "title-screen"
+title = "The title screen"
+description = "The game opens on the title showing TITLE_TEXT (REFRACT), TAGLINE_TEXT (DRAW THE LIGHT), and TITLE_ITEMS (CAMPAIGN, CASCADE, HOW TO PLAY) in that order, with the item at menuIndex drawn distinctly and menuIndex 0 on arriving."
+[[review.categories.items]]
+id = "title-navigation"
+title = "The title menu is navigated and confirmed"
+description = "up and down move the highlight by one item and wrap at both ends, back does nothing, and confirm takes the highlighted item."
+[[review.categories.items]]
+id = "both-modes-reachable"
+title = "Both modes are reachable from the title"
+description = "CAMPAIGN sets mode to campaign and starts the campaign, CASCADE sets mode to cascade and starts the sequence, and each starts fresh whatever was played before it, so no board or progress figure is carried over from the other mode."
+[[review.categories.items]]
+id = "howto"
+title = "The how-to screen explains the game"
+description = "HOW TO PLAY opens howto, which describes the nodes, drawing a beam, the rules a beam obeys, and that a refused move simply does not take, in a player's words and naming the key bound to clear. back returns to title with menuIndex 0."
+[[review.categories.items]]
+id = "playing-screen"
+title = "The playing screen shows the board and its progress"
+description = "The playing screen shows the current board, every segment drawn so far, per-channel completion carried on each channel's own hue and silhouette, and the key bound to the clear action named on screen."
+[[review.categories.items]]
+id = "menus-are-keyboard"
+title = "The menus are driven from the keyboard"
+description = "Every menu is driven by the registered actions up, down, left, right, confirm and back, and the pointer draws beams rather than operating menus."
+[[review.categories.items]]
+id = "cues"
+title = "The five cues play on their events"
+description = "connect on a segment added, retract on one removed, channel-complete when a channel's beam becomes complete, solved when the board becomes solved, and clear when beams are cleared. Each is a distinct short sound, played on the frame of its event and at most once on that frame, and clear plays only when there was a segment to remove."
+[[review.categories.items]]
+id = "mute"
+title = "Mute works from any screen"
+description = "The mute action toggles sound from any screen and the game stays fully playable with sound muted."

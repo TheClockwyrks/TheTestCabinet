@@ -1,0 +1,129 @@
+# Refract — Controls
+
+This file defines how a player operates the game: the pointer draws beams on the
+board, and the keyboard clears the board and drives the menus. Which segments the
+rules permit is in `specs/beams.md`, and the cell centers the pointer is measured
+against are in `specs/board.md`. Every figure below carries the name this
+specification gives it.
+
+## The pointer
+
+{{#if (eq engine.slug "none")}}
+This game stands on no engine, so the pointer belongs to the runtime layer you
+write. What the game reads from that layer is a pointer position in the game's
+logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and
+a release edge. How the layer produces those three is yours to decide.
+{{else}}
+The pointer belongs to the layer the build writes over the engine. What the game
+reads from that layer is a pointer position in the game's logical units on the
+`STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and a release edge. How
+that layer produces those three is yours to decide.
+{{/if}}
+
+The game acts on those three alone, and this file states what it does with them.
+Each pointer position the game reads is resolved on its own, in the order the
+positions arrive, so a beam grows and unwinds one node at a time as the pointer
+travels.
+
+Menu navigation runs through the actions listed at the end of this file.
+
+## Targeting a node
+
+The pointer targets the node whose cell center lies within `NODE_HIT_R` (`44`) of
+the pointer position. `NODE_HIT_R` is below half of `CELL_PITCH` (`96`), which is
+`48`, so no two targeting regions overlap and at most one node is ever targeted.
+The pointer targets no node when it is farther than `NODE_HIT_R` from every cell
+center, and an empty cell holds no node to target.
+
+## Beginning a trace
+
+A trace runs from a press to the matching release. A press that targets a node
+begins one according to that node's place on the board. The rows below are
+**evaluated in order**, and the first row that matches is the one that applies.
+
+| Targeted node | What the press does |
+| --- | --- |
+| An emitter of a channel whose beam carries no segments | Starts that channel's beam at that emitter. |
+| Either end of a channel's beam | Resumes that beam from that end. |
+| A node exactly one beam passes through | Shortens that beam to end at that node, and resumes it from there. |
+
+A press that matches no row begins no trace and leaves the board unchanged. That
+covers a press on an empty cell, a press off the board, a press on a node that
+carries no beam and is not an emitter of a channel whose beam carries no
+segments, and a press on a node that **more than one beam** passes through. A
+node two beams share is edited by grabbing one of those beams at one of its ends
+or at a node no other beam uses.
+
+The trace carries the channel of the beam it began, and the node it began at is
+the live end.
+
+## The drawn order and shortening
+
+A beam's cells are held in the order they were drawn, starting from the node the
+trace that created the beam began at. Whenever a trace begins on a beam, the beam
+is first oriented so that the node the trace extends from is its **last** cell,
+reversing the held order when the trace begins from the other end. The live end
+is therefore always the beam's last cell.
+
+Shortening drops every cell after the targeted node in that order, leaves the
+rest of the beam drawn, and resumes the trace from the targeted node. A beam that
+crosses a node more than once carries that node more than once, and the last of
+those occurrences in the held order is the one kept, so the beam loses as few
+segments as it can.
+
+## Extending
+
+While the trace is held, the pointer moving within `NODE_HIT_R` of a node
+adjacent to the live end adds the segment joining them, when the rules in
+`specs/beams.md` permit that segment. That node becomes the new live end.
+
+A move those rules refuse changes nothing and the trace stays live, so a player
+can sweep the pointer across the board and draw only permitted segments. A move
+into a crystal whose charges are all spent is one of the refused moves: entering
+a crystal spends a charge, and that crystal has none left to spend.
+
+## Retracting
+
+The pointer moving within `NODE_HIT_R` of the node immediately behind the live
+end removes the last segment, and that node becomes the live end. A beam is
+unwound one segment at a time by backing the pointer along it without releasing.
+
+## Releasing
+
+The release edge ends the trace and leaves the beam exactly as drawn, complete or
+not. A partial beam persists on the board, and a later press on either of its
+ends resumes it. A trace that added no segment leaves its channel's beam carrying
+none, so a later press on either of that channel's emitters starts the beam
+afresh.
+
+A trace also ends the moment the board is solved. On the frame a segment
+satisfies the solved condition the trace ends and the beams stay exactly as
+drawn, and the release edge that follows begins nothing and changes nothing.
+
+## Clearing
+
+The `clear` action empties every beam on the board at once and leaves the board's
+nodes untouched, so a player can start a board over without leaving it. It is
+read on the `playing` screen and does nothing on any other screen.
+
+## Actions and bindings
+
+`ACTIONS` holds the actions the game registers with the runtime, and `BINDINGS`
+maps each action to the keys that fire it. Each action is read once per frame as
+a press edge.
+
+| Action | Effect |
+| --- | --- |
+| `up` | Moves the menu highlight up. |
+| `down` | Moves the menu highlight down. |
+| `left` | Moves the menu highlight left. |
+| `right` | Moves the menu highlight right. |
+| `confirm` | Accepts the highlighted item. |
+| `back` | Leaves the current screen. |
+| `clear` | Empties every beam on the board. |
+| `mute` | Toggles sound, from any screen. |
+
+`clear` is bound to `KeyR`. The remaining bindings are yours, and each action
+carries the keys a player reaches for by habit. The screens these actions move
+between, and where each one leads, are in `specs/ui.md`,
+`specs/modes/campaign.md`, and `specs/modes/cascade.md`.
