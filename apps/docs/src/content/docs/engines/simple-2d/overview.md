@@ -15,7 +15,8 @@ package's own `docs/` directory.
 
 The engine owns the frame loop, the [clock](/engines/simple-2d/apis/clocks/)
 that decides what each frame's delta time is, the fit from the logical design
-size to the canvas, the input action registry and its bindings, the audio bus,
+size to the canvas, the input action registry and its bindings, the pointer
+mapped into the game's logical coordinates, the audio bus,
 the asset loader, the debug overlay together with the frame metrics it reports,
 the draw-command recorder over the context the game draws through, and the debug
 surface the game returned beside its state, held for a caller to read back.

@@ -131,6 +131,44 @@ export interface TouchLayout {
   actions: string[];
 }
 
+/** What one pointer sample reports the pointer doing. */
+export type PointerSampleType = "down" | "move" | "up";
+
+/**
+ * One pointer sample: what happened and where, in the game's logical
+ * coordinates.
+ *
+ * Samples are the per-position record a game that reacts to the path the
+ * pointer traveled reads: a sweep that crossed several targets between two
+ * frames arrives as the ordered positions it visited rather than as the last
+ * one alone.
+ */
+export interface PointerSample {
+  /** What the pointer did. */
+  readonly type: PointerSampleType;
+  /** The logical x the sample landed at. */
+  readonly x: number;
+  /** The logical y the sample landed at. */
+  readonly y: number;
+}
+
+/**
+ * The pointer as a frame reads it: the most recent position, in the game's
+ * logical coordinates, and whether the pointer is held.
+ *
+ * Before the first pointer event the position is `(0, 0)` and `down` is
+ * `false`. A point inside a letterbox bar maps outside `0..width` or
+ * `0..height`, so a game clamps it or treats it as a miss.
+ */
+export interface PointerSnapshot {
+  /** The most recent logical x. */
+  x: number;
+  /** The most recent logical y. */
+  y: number;
+  /** Whether the pointer is held. */
+  down: boolean;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Audio                                                                      */
 /* -------------------------------------------------------------------------- */
@@ -240,8 +278,16 @@ export interface SurfaceMetrics {
   cssHeight(): number;
   /** Device pixels per CSS pixel. */
   dpr(): number;
-  /** The target key events are listened for on. */
+  /** The target key and pointer events are listened for on. */
   events(): EventTarget;
+  /**
+   * The canvas's top-left corner in the client coordinate space pointer events
+   * report their positions in — what the engine subtracts before mapping a
+   * pointer position onto the stage. Absent, the origin reads `(0, 0)`, so a
+   * dispatched pointer event's client position is read as CSS pixels from the
+   * canvas's corner.
+   */
+  origin?(): { x: number; y: number };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -304,6 +350,17 @@ export interface UpdateApi {
     value(name: string): number;
     /** Whether the action was pressed since the last frame. */
     pressed(name: string): boolean;
+    /** The pointer's most recent position and hold, as a fresh copy. */
+    pointer(): PointerSnapshot;
+    /** Whether the pointer was pressed since the last frame. */
+    pointerPressed(): boolean;
+    /** Whether the pointer was released since the last frame. */
+    pointerReleased(): boolean;
+    /**
+     * The pointer samples delivered since the input frame last closed, in
+     * arrival order, as a fresh copy. Reading does not consume the list.
+     */
+    pointerSamples(): PointerSample[];
   };
   readonly audio: {
     /** Play a defined cue. */

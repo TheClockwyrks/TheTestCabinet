@@ -2,9 +2,11 @@
 title: Input
 ---
 
-The engine owns the keyboard. A game registers its named actions and the keys
-that drive them while it initializes, then asks by name what each action is
-doing while it runs. Key events are handled inside the engine.
+The engine owns the keyboard and the pointer. A game registers its named
+actions and the keys that drive them while it initializes, then asks by name
+what each action is doing while it runs; the pointer it reads as a position
+already in the engine's logical coordinates. Key and pointer events are handled
+inside the engine.
 
 Named actions have three consequences. An action is driven by a key or by a
 touch control and the game reads one number either way, so a build is
@@ -92,6 +94,30 @@ during a frame nothing polled stays in that frame rather than surfacing later,
 out of order with the input that caused it. A paused world still renders and
 still closes its input frame, so a pause holds the simulation still while input
 keeps moving at its ordinary rate.
+
+## The pointer
+
+The pointer is the one input whose meaning depends on where the picture is: a
+click is a claim about a position on the stage, and the stage sits letterboxed
+and scaled inside whatever element the page gave the canvas. The engine owns
+that conversion for the same reason it owns the canvas fit — every pointer game
+otherwise re-derives it, usually forgetting the device pixel ratio or the bars —
+so the position a controller reads is in the logical coordinates the camera
+projects into, and a game that needs a world position maps it through the
+camera.
+
+A controller reads the pointer two ways, and they serve different designs. The
+snapshot answers "where is the pointer now, and is it held", which is what
+aiming and hovering need. The sample list holds every position delivered since
+the last frame closed, in arrival order, which is what direct manipulation
+needs: a game that reacts to the path the pointer traveled resolves each sample
+on its own rather than seeing only where the sweep ended.
+
+Press and release edges follow the same rules as action edges: armed by the
+transition, carried per player controller, consumed by that controller's first
+read, and discarded when the frame closes. One logical pointer is tracked, so a
+mouse and a touch drive the game the same way and a multi-touch gesture's
+second finger moves nothing.
 
 ## Touch layouts
 

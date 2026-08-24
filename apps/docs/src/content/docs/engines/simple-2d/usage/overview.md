@@ -35,7 +35,7 @@ for its own module-level variables only for constants.
 | --- | --- |
 | [Creating the Engine](/engines/simple-2d/usage/creating-the-engine/) | The design size, the options `createEngine` takes, sizing the canvas from CSS, choosing a clock, and teardown. |
 | [The Game Loop](/engines/simple-2d/usage/the-game-loop/) | Writing `initialize`, `update`, and `render`, booting the engine, integrating against delta time, pausing, and ending a run. |
-| [Drawing](/engines/simple-2d/usage/drawing/) | Drawing in logical coordinates, the cleared frame, and mapping a pointer position back. |
+| [Drawing](/engines/simple-2d/usage/drawing/) | Drawing in logical coordinates, the cleared frame, and reading the pointer. |
 | [Actions](/engines/simple-2d/usage/actions/) | Registering actions, reading held values and edges, and selecting a touch layout. |
 | [Audio and Assets](/engines/simple-2d/usage/audio-and-assets/) | Defining and loading cues, playing them from `update`, and loading assets under the asset root. |
 | [Diagnostics](/engines/simple-2d/usage/diagnostics/) | Registering overlay sources and choosing what a case's checks can read. |

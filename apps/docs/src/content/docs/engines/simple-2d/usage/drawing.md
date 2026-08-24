@@ -135,21 +135,13 @@ Debug text belongs on the [overlay](/engines/simple-2d/usage/diagnostics/)
 instead, which the engine draws over the finished picture in device pixels and a
 reviewer toggles on demand.
 
-## Mapping a pointer into logical coordinates
+## Reading the pointer
 
 A pointer event reports a position in CSS pixels relative to the browser
-viewport. The fit reported by `engine.viewport()` converts it into the game's own
-coordinates: multiply by the device pixel ratio, subtract the letterbox bar, and
-divide by the scale.
-
-A pointer arrives between frames, so it is folded into the state the way any
-change from outside a frame is: through
-[`engine.apply`](/engines/simple-2d/apis/engine/), with a transition that
-returns the next state from the current one. The listener lives where the
-engine is held — beside `createEngine`, not inside the game — and holds nothing
-of its own; the position it reads goes straight into the state, and the next
-frame's `update` receives it there. Read `engine.viewport()` inside the handler
-so the conversion uses the fit in force at that moment.
+viewport. The engine maps it into the game's own coordinates before the game
+sees it — the device pixel ratio, the letterbox bars, and the scale are all
+applied inside the engine — so `update` reads positions on the same axes
+`render` draws on, through [`UpdateApi.input`](/engines/simple-2d/apis/input/).
 
 ```ts
 import { createEngine } from "@test-cabinet/simple-2d";
@@ -166,37 +158,21 @@ interface Aiming {
 
 const game: Game<Aiming, null> = {
   initialize: () => [{ aim: { x: 320, y: 180 } }, null],
-  update: (state, _api, dt) => stepTowards(state, dt),
+  update: (state, api, dt) => {
+    const pointer = api.input.pointer();
+    const aimed = pointer.down ? { ...state, aim: { x: pointer.x, y: pointer.y } } : state;
+    return stepTowards(aimed, dt);
+  },
   render: (state, api) => drawCrosshair(api.ctx, state.aim),
 };
-
-const engine = createEngine({ canvas, width: 640, height: 360, game });
-await engine.initialize();
-
-canvas.addEventListener("pointerdown", (event) => {
-  const vp = engine.viewport();
-  if (vp.scale === 0) return;
-
-  const rect = canvas.getBoundingClientRect();
-  const dpr = window.devicePixelRatio || 1;
-  const aim: Point = {
-    x: ((event.clientX - rect.left) * dpr - vp.offsetX) / vp.scale,
-    y: ((event.clientY - rect.top) * dpr - vp.offsetY) / vp.scale,
-  };
-  engine.apply((state) => ({ ...state, aim }));
-});
-
-await engine.run();
 ```
 
-`vp.scale` and the two offsets are in device pixels, which is why the CSS-space
-position is multiplied by the device pixel ratio before the bar is subtracted. A
-point inside a letterbox bar maps outside `0..width` or `0..height`, so a game
-either clamps it or treats it as a miss.
+A point inside a letterbox bar maps outside `0..width` or `0..height`, so a
+game either clamps it or treats it as a miss. A game that reacts to the path
+the pointer traveled — drawing, dragging along a route — reads
+`api.input.pointerSamples()` and resolves each sample on its own; the snapshot
+above is where the sweep ended, which is all aiming needs.
 
-The listener is attached after `initialize` resolves because `apply` throws
-before it, and it is attached per engine, so a second engine over a second
-canvas poses its own state and nothing else's. Pointer mapping suits aiming and
-direct manipulation, where the position itself is the input. Everything a case
-checks belongs behind a registered
+The pointer suits aiming and direct manipulation, where the position itself is
+the input. Everything else a case checks belongs behind a registered
 [action](/engines/simple-2d/usage/actions/), which a validator drives by name.

@@ -48,7 +48,9 @@ knows the exact pixel to sample.
 
 A pointer event reports its position in CSS pixels relative to the element, so
 it multiplies by the device pixel ratio before the inverse map:
-`(cssX * dpr - offsetX) / scale`.
+`(cssX * dpr - offsetX) / scale`. This is the map the engine's own
+[pointer input](/engines/simple-2d/apis/input/) applies, so a game reads
+positions already converted.
 
 ## `fitViewport`
 

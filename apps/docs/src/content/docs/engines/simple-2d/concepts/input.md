@@ -2,9 +2,11 @@
 title: Input
 ---
 
-The engine owns the keyboard. A game declares its named actions and the keys
-that drive them while it initializes, then asks by name what each action is
-doing while it updates. Key events are handled inside the engine.
+The engine owns the keyboard and the pointer. A game declares its named actions
+and the keys that drive them while it initializes, then asks by name what each
+action is doing while it updates; the pointer it reads as a position already in
+its own logical coordinates. Key and pointer events are handled inside the
+engine.
 
 Named actions have three consequences. An action is driven by a key or by a
 touch control and the game reads one number either way, so a build is
@@ -73,6 +75,27 @@ The frame loop closes the input frame after the game has rendered, discarding
 every edge nothing consumed. A press is news for exactly one frame, so an edge
 armed during a frame the game did not poll stays in that frame rather than
 surfacing later, out of order with the input that caused it.
+
+## The pointer
+
+The pointer is the one input whose meaning depends on where the picture is: a
+click is a claim about a position on the stage, and the stage sits letterboxed
+and scaled inside whatever element the page gave the canvas. The engine owns
+that conversion for the same reason it owns the canvas fit — every pointer game
+otherwise re-derives it, usually forgetting the device pixel ratio or the bars —
+so the position a game reads is in the logical coordinates it draws in.
+
+A game reads the pointer two ways, and they serve different designs. The
+snapshot answers "where is the pointer now, and is it held", which is what
+aiming and hovering need. The sample list holds every position delivered since
+the last frame closed, in arrival order, which is what direct manipulation
+needs: a game that reacts to the path the pointer traveled resolves each sample
+on its own rather than seeing only where the sweep ended.
+
+Press and release edges follow the same rule as action edges: armed by the
+transition, consumed by the first read, and discarded when the frame closes.
+One logical pointer is tracked, so a mouse and a touch drive the game the same
+way and a multi-touch gesture's second finger moves nothing.
 
 ## Touch layouts
 

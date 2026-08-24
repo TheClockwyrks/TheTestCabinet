@@ -60,16 +60,25 @@ interface SurfaceMetrics {
   cssHeight(): number;
   dpr(): number;
   events(): EventTarget;
+  origin?(): { x: number; y: number };
 }
 ```
 
 The engine reads the canvas's laid-out size and device pixel ratio through this
-seam every frame, and attaches its key listeners to the event target it returns.
-Supplied, it replaces every measurement the engine would otherwise take from the
-DOM, which is what lets the engine run over a canvas with no document behind it.
+seam every frame, and attaches its key and pointer listeners to the event target
+it returns. Supplied, it replaces every measurement the engine would otherwise
+take from the DOM, which is what lets the engine run over a canvas with no
+document behind it.
 
-Absent, the engine reads `clientWidth`, `clientHeight`, and the owning window's
-`devicePixelRatio`, and listens on the canvas's owning document.
+`origin()` is the canvas's top-left corner in the client coordinate space
+pointer events report their positions in, and it is what the engine subtracts
+before mapping a pointer position onto the stage. Absent, the origin reads
+`(0, 0)`, so a dispatched pointer event's client position is read as CSS pixels
+from the canvas's corner.
+
+Absent entirely, the engine reads `clientWidth`, `clientHeight`, the owning
+window's `devicePixelRatio`, and the canvas's bounding rectangle for the origin,
+and listens on the canvas's owning document.
 
 ## `Engine`
 

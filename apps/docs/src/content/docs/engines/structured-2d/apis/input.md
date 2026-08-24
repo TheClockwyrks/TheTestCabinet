@@ -4,9 +4,10 @@ title: Input
 
 A game registers its actions once, from
 [`InitApi.input`](/engines/structured-2d/apis/game-instance/), and reads them
-through a player controller. The engine owns the keyboard and resolves each
-action to a single number, so the game asks what an action is doing rather than
-which key is down.
+through a player controller. The engine owns the keyboard and the pointer: each
+action resolves to a single number, and the pointer resolves to a position in
+the engine's logical coordinates, so the game asks what the player is doing
+rather than reading events.
 
 ## Types
 
@@ -78,6 +79,10 @@ class PlayerController extends Controller {
 interface InputReader {
   value(name: string): number;
   pressed(name: string): boolean;
+  pointer(): PointerSnapshot;
+  pointerPressed(): boolean;
+  pointerReleased(): boolean;
+  pointerSamples(): PointerSample[];
 }
 ```
 
@@ -105,6 +110,71 @@ consumes it.
 The engine closes the input frame after the frame renders, discarding every edge
 left unconsumed. A press is therefore news for exactly one frame. A paused world
 still renders and still closes its input frame.
+
+## The pointer
+
+```ts
+type PointerSampleType = "down" | "move" | "up";
+
+interface PointerSample {
+  readonly type: PointerSampleType;
+  readonly x: number;
+  readonly y: number;
+}
+
+interface PointerSnapshot {
+  x: number;
+  y: number;
+  down: boolean;
+}
+```
+
+The engine tracks one logical pointer in the logical design coordinates handed
+to `createEngine`: each event's client position is taken relative to the
+surface's origin, multiplied by the device pixel ratio, and passed through the
+inverse [viewport map](/engines/structured-2d/apis/camera/). A game that needs
+the position in world units maps it through
+[`camera.logicalToWorld`](/engines/structured-2d/apis/camera/). A point inside
+a letterbox bar maps outside `0..width` or `0..height`, and a game clamps it or
+treats it as a miss.
+
+| Member | Result | Semantics |
+| --- | --- | --- |
+| `pointer()` | `PointerSnapshot` | The most recent position and whether the pointer is held, as a fresh copy. Before the first pointer event the position is `(0, 0)` and `down` is `false`. |
+| `pointerPressed()` | `boolean` | `true` exactly once per press edge per player controller, and the call consumes that controller's copy. |
+| `pointerReleased()` | `boolean` | `true` exactly once per release edge per player controller, and the call consumes that controller's copy. |
+| `pointerSamples()` | `PointerSample[]` | Every sample delivered since the input frame last closed, in arrival order, as a fresh copy. Reading does not consume the list. |
+
+The samples are what a game that resolves each position on its own reads: a
+sweep that crossed several targets between two frames arrives as the ordered
+positions it visited rather than as the last one alone. `pointerSamples()` lists
+at most 1024 samples per frame; a burst past that bound still moves the snapshot
+and the edges, and the samples past it are not listed.
+
+The engine closes the pointer's frame with the actions': when the input frame
+closes, the sample list empties and unconsumed edges are discarded.
+
+## Pointer events
+
+The engine attaches its `pointerdown`, `pointermove`, `pointerup`, and
+`pointercancel` listeners to the same event target its key listeners go on. Each
+listener reads `clientX`, `clientY`, and `isPrimary`, and leaves the event
+otherwise untouched. A non-primary pointer — the second touch of a multi-touch
+gesture — is ignored.
+
+The client position is mapped to the stage against the origin
+[`SurfaceMetrics.origin`](/engines/structured-2d/apis/engine/) reports.
+Dispatching a pointer-shaped event at the target drives the pointer exactly as
+a player's does; over a surface with no `origin`, the origin is `(0, 0)` and a
+dispatched event's client position is read as CSS pixels from the canvas's
+top-left corner.
+
+A `pointerdown` while the pointer is already held, or a `pointerup` while it is
+not, moves the pointer without arming an edge, so the listed samples alternate
+`down` and `up` strictly. A `pointercancel` ends a hold as a release at the last
+known position. While the viewport is degenerate (a `scale` of `0`), a `down`
+or `move` has no place on the stage and is dropped; a release still ends the
+hold at the last known position.
 
 ## Key events
 
@@ -147,6 +217,7 @@ actions, so `TOUCH_LAYOUTS["single-vertical"].actions` is `["up", "down",
 
 ## Exports
 
-`ActionKind`, `ActionBinding`, `RegisteredAction`, `TouchLayout`, and
-`InputReader` are exported as types from `@test-cabinet/structured-2d`, and
-`TOUCH_LAYOUTS` is exported as a value.
+`ActionKind`, `ActionBinding`, `RegisteredAction`, `TouchLayout`,
+`InputReader`, `PointerSampleType`, `PointerSample`, and `PointerSnapshot` are
+exported as types from `@test-cabinet/structured-2d`, and `TOUCH_LAYOUTS` is
+exported as a value.

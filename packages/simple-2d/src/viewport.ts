@@ -139,6 +139,12 @@ export function domSurface(canvas: HTMLCanvasElement): SurfaceMetrics {
     cssHeight: (): number => canvas.clientHeight,
     dpr: (): number => canvas.ownerDocument.defaultView?.devicePixelRatio ?? 1,
     events: (): EventTarget => canvas.ownerDocument,
+    // Measured at each event rather than held: the canvas moves with layout, and
+    // a pointer position is mapped against where the element is now.
+    origin: (): { x: number; y: number } => {
+      const rect = canvas.getBoundingClientRect();
+      return { x: rect.left, y: rect.top };
+    },
   };
 }
 

@@ -66,6 +66,40 @@ export async function tap(h: Harness, action: string): Promise<void> {
 Reading the action's magnitude and reading its press are separate, so a build
 that watches either one sees what a player would have caused.
 
+## Driving the pointer
+
+The engine attaches its pointer listeners to the same target, reading
+`clientX`, `clientY`, and `isPrimary` off each event. Over a surface with no
+`origin`, a dispatched event's client position is read as CSS pixels from the
+canvas's top-left corner, and a suite that pins the surface to the stage's own
+size at a ratio of `1` dispatches logical coordinates directly.
+
+```ts
+function pointerEvent(
+  type: "pointerdown" | "pointermove" | "pointerup",
+  x: number,
+  y: number,
+): Event {
+  return Object.assign(new Event(type), { clientX: x, clientY: y, isPrimary: true });
+}
+
+export async function drag(h: Harness, path: Point[]): Promise<void> {
+  const [first, ...rest] = path;
+  h.keys.dispatchEvent(pointerEvent("pointerdown", first.x, first.y));
+  for (const point of rest) {
+    h.keys.dispatchEvent(pointerEvent("pointermove", point.x, point.y));
+  }
+  const last = path[path.length - 1];
+  h.keys.dispatchEvent(pointerEvent("pointerup", last.x, last.y));
+  await h.engine.advance(1);
+}
+```
+
+Every event dispatched before the frame advances lands in that frame's sample
+list in order, so a sweep across several targets is delivered as the positions
+it visited. A check that needs the press and the release seen on separate
+frames advances between the dispatches instead.
+
 ## Cues
 
 The engine broadcasts `cue:played` for every cue a game plays.

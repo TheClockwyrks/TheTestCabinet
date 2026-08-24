@@ -26,7 +26,7 @@ subscribes to.
 | [Rendering](/engines/structured-2d/concepts/rendering/) | The declarative pipeline, the layer ordering, the render modes, and the direct-drawing path. |
 | [Camera and Viewport](/engines/structured-2d/concepts/camera-and-viewport/) | The three spaces, the camera's projection, following and bounds, and the letterboxed fit. |
 | [Collision](/engines/structured-2d/concepts/collision/) | Channels and responses, the pairs the engine reports, the manifold, and the queries. |
-| [Input](/engines/structured-2d/concepts/input/) | Named actions over bindings, magnitudes and edges consumed per controller, and the touch layout catalogue. |
+| [Input](/engines/structured-2d/concepts/input/) | Named actions over bindings, magnitudes and edges consumed per controller, the pointer, and the touch layout catalogue. |
 | [Audio](/engines/structured-2d/concepts/audio/) | Synthesized and file-backed cues, the first-interaction unlock, and the cue events. |
 | [Assets](/engines/structured-2d/concepts/assets/) | The single asset root, path resolution, and the load events. |
 | [Diagnostics](/engines/structured-2d/concepts/diagnostics/) | The instance and world registries, the overlay drawn in device space, and the frame metrics. |

@@ -12,7 +12,8 @@
  *   the game's fixed logical design size onto whatever size the page gave the
  *   element, resynced every frame so a resize needs no handler at all.
  * - **Input** — named actions over `KeyboardEvent.code` bindings and a closed
- *   catalogue of touch layouts, with edge detection done once and correctly.
+ *   catalogue of touch layouts, with edge detection done once and correctly, and
+ *   a pointer mapped into the game's own logical coordinates.
  * - **Audio** — cues played by name, synthesized or file-backed, and the
  *   first-gesture unlock a browser insists on.
  * - **Assets** — resolution and loading under one fixed root.
@@ -79,6 +80,7 @@ import { EventBus } from "./events";
 import type { FrameCallbacks } from "./frame";
 import { FrameLoop } from "./frame";
 import { InputRegistry } from "./input";
+import { PointerInput } from "./pointer";
 import { ContextRecorder } from "./recording";
 import { applyViewport, domSurface, syncCanvas } from "./viewport";
 
@@ -312,6 +314,11 @@ export function createEngine<S, D = unknown>(
   // real fit rather than a zero one before the first frame runs.
   let viewport = syncCanvas(canvas, width, height, surface);
 
+  // After the layout gate above: a refused layout detaches the key listeners and
+  // rethrows, and constructing the pointer past that point means there is never a
+  // moment where its listeners exist with no engine to detach them.
+  const pointer = new PointerInput(surface, () => viewport);
+
   /** The fit as a caller owns it — a copy, so holding one observes no later frame. */
   const snapshot = (): Viewport => ({
     width: viewport.width,
@@ -378,6 +385,10 @@ export function createEngine<S, D = unknown>(
     input: {
       value: (name): number => input.value(name),
       pressed: (name): boolean => input.pressed(name),
+      pointer: () => pointer.snapshot(),
+      pointerPressed: (): boolean => pointer.pressed(),
+      pointerReleased: (): boolean => pointer.released(),
+      pointerSamples: () => pointer.samples(),
     },
     audio: {
       play: (cue): void => audio.play(cue),
@@ -460,6 +471,7 @@ export function createEngine<S, D = unknown>(
     // Last, so an edge armed during this frame was available to the game's update
     // and is gone before the next one: a press is news for exactly one frame.
     input.endFrame();
+    pointer.endFrame();
   });
 
   const onOverlayKey = (event: Event): void => {
@@ -680,6 +692,7 @@ export function createEngine<S, D = unknown>(
       destroyed = true;
       loop.halt();
       input.detach();
+      pointer.detach();
       target.removeEventListener("keydown", onOverlayKey);
       removeUnlockListeners();
       bus.clear();

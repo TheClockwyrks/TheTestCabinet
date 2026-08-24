@@ -2,8 +2,9 @@
 
 A game declares its actions once, from `InitApi.input` inside `initialize`, and
 reads them every frame from `UpdateApi.input` inside `update`. The engine owns
-the keyboard and resolves each action to a single number, so the game asks what
-an action is doing rather than which key is down.
+the keyboard and the pointer: each action resolves to a single number, and the
+pointer resolves to a position in the game's own logical coordinates, so the
+game asks what the player is doing rather than reading events.
 
 ```ts
 // In initialize:
@@ -13,6 +14,10 @@ api.input.layout(): TouchLayout | null;
 // In update:
 api.input.value(name: string): number;
 api.input.pressed(name: string): boolean;
+api.input.pointer(): PointerSnapshot;
+api.input.pointerPressed(): boolean;
+api.input.pointerReleased(): boolean;
+api.input.pointerSamples(): PointerSample[];
 ```
 
 ## Registering actions
@@ -85,6 +90,75 @@ was built without a surface. Each listener reads `KeyboardEvent.code` and
 
 Dispatching a `KeyboardEvent`-shaped event at that target drives an action
 exactly as a player's key does.
+
+## The pointer
+
+```ts
+type PointerSampleType = "down" | "move" | "up";
+
+interface PointerSample {
+  readonly type: PointerSampleType;
+  readonly x: number;
+  readonly y: number;
+}
+
+interface PointerSnapshot {
+  x: number;
+  y: number;
+  down: boolean;
+}
+```
+
+The engine tracks one logical pointer in the game's logical coordinates: each
+event's position is mapped through the same letterboxed fit the game draws
+under, so the position `update` reads is on the axes `render` draws on. A point
+inside a letterbox bar maps outside `0..width` or `0..height`, and a game
+clamps it or treats it as a miss.
+
+| Member | Result | Semantics |
+| --- | --- | --- |
+| `pointer()` | `PointerSnapshot` | The most recent position and whether the pointer is held, as a fresh copy. Before the first pointer event the position is `(0, 0)` and `down` is `false`. |
+| `pointerPressed()` | `boolean` | `true` exactly once per press edge, which the call consumes. |
+| `pointerReleased()` | `boolean` | `true` exactly once per release edge, which the call consumes. |
+| `pointerSamples()` | `PointerSample[]` | Every sample delivered since the input frame last closed, in arrival order, as a fresh copy. Reading does not consume the list. |
+
+The snapshot is what aiming and hovering read. The sample list is what direct
+manipulation reads: a sweep that crossed several targets between two frames
+arrives as the ordered positions it visited rather than as the last one alone,
+so a game that reacts to the path the pointer traveled resolves each sample on
+its own.
+
+```ts
+update(state, api, dt) {
+  let next = state;
+  for (const sample of api.input.pointerSamples()) {
+    next = resolvePointer(next, sample);
+  }
+  return step(next, dt);
+}
+```
+
+`pointerSamples()` lists at most 1024 samples per frame; a burst past that
+bound still moves the snapshot and the edges, and the samples past it are not
+listed. The input frame closes after the game has rendered: the sample list
+empties and unconsumed edges are discarded, so a press is news for exactly one
+frame.
+
+## Pointer events
+
+The engine attaches its `pointerdown`, `pointermove`, `pointerup`, and
+`pointercancel` listeners to the same event target its key listeners go on.
+Each listener reads `clientX`, `clientY`, and `isPrimary`, and leaves the event
+otherwise untouched. A non-primary pointer — the second touch of a multi-touch
+gesture — is ignored.
+
+Dispatching a pointer-shaped event at that target drives the pointer exactly as
+a player's does.
+
+A `pointerdown` while the pointer is already held, or a `pointerup` while it is
+not, moves the pointer without arming an edge, so the listed samples alternate
+`down` and `up` strictly. A `pointercancel` ends a hold as a release at the
+last known position.
 
 ## Touch layouts
 
