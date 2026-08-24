@@ -26,7 +26,7 @@ pub(super) const FIXTURES: &[&str] = &[
     "fn main() {\n    std::thread::spawn(|| {\n        gg::views::open_text(\"note\", \"done\")\n    }).join().unwrap();\n}",
     "use std::thread;\n\nfn main() {\n    thread::spawn(move || {\n        let rows = gg::files::list_dir(Some(\"src\"))?;\n        gg::views::open_text(\"rows\", &format!(\"{rows:?}\"))?;\n    }).join().unwrap();\n}",
     "fn main() {\n    let handle = std::thread::spawn(|| {\n        gg::views::open_text(\"note\", \"done\")\n    });\n    handle.join().expect(\"worker panicked\");\n}",
-    "fn main() {\n    std::thread::spawn(|| {\n        let notes = gg::files::read_text_file(\"notes.md\", gg::files::ReadOptions::default()).await;\n        gg::views::open_text(\"notes\", &notes)?;\n    }).join().unwrap();\n}",
+    "fn main() {\n    std::thread::spawn(|| {\n        let notes = gg::files::read_file(\"notes.md\", gg::files::ReadOptions::default()).await;\n        gg::views::open_text(\"notes\", &notes)?;\n    }).join().unwrap();\n}",
     "use std::collections::HashMap;\n\nfn main() -> Result<(), gg::Failure> {\n    let mut counts: HashMap<&str, usize> = HashMap::new();\n    counts.insert(\"src\", 1);\n    gg::views::open_text(\"counts\", &format!(\"{counts:?}\"))?;\n    Ok(())\n}",
     "fn helper() -> usize { 1 }\nfn main() -> Result<(), gg::Failure> {\n    gg::views::open_text(\"n\", &helper().to_string())?;\n    Ok(())\n}\nfn helper() -> usize { 1 }\nfn main() -> Result<(), gg::Failure> {\n    gg::views::open_text(\"n\", &helper().to_string())?;\n    Ok(())\n}",
     "fn main() -> Result<(), gg::Failure> {\n    let total = 1;\n    gg::views::open_text(\"n\", &total.to_string())?;\n    let total = 1;\n    gg::views::open_text(\"n\", &total.to_string())?;\n    Ok(())\n}",

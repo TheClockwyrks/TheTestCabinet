@@ -11255,10 +11255,10 @@ fn api_surface(
                 .entry(function.module)
                 .or_default()
                 .push(GgAgentApiFunction {
-                    // Module-relative rather than bare, so the method an arm hangs off the value
-                    // `current` lists reports as `OpenView.close` beside the free `close` rather
-                    // than as a second `close` a reader keyed on the name would fold into the
-                    // first.
+                    // Module-relative rather than bare, so a method an arm hangs off a returned
+                    // value reports qualified — `MemoryHit.read` beside the free `readMemory` —
+                    // rather than as a bare name a reader keyed on the name could mistake for a
+                    // second free function.
                     name: crate::sandbox::signatures::module_relative_name(&function).to_string(),
                     operation: function.operation.to_string(),
                 });

@@ -130,17 +130,18 @@ stands.
 
 Every message you receive is headed by one of the following labels, on its own
 line — a view's label is followed by `: ` and the name it was opened under; a
-file view's by `: `, its path, `:` and the 1-based inclusive line range shown —
-followed by a `----` rule and then the content:
+file view's by `: `, its path, `:`, the 1-based inclusive line range shown and
+the file's total line count — followed by a `----` rule and then the content:
 
 {{#each codeHeadings}}
 - `{{heading}}` — {{description}}
 {{/each}}
 
-For example, lines 100 to 250 of a file you opened a view of arrive as:
+For example, lines 100 to 250 of a 400-line file you opened a view of arrive
+as:
 
 ```
-File: src/main.ts:100-250
+File: src/main.ts:100-250 of 400 lines
 ----
 ...those lines of the file...
 ```

@@ -397,8 +397,8 @@ export interface CapSpec {
   // are independent: gg's operations table decides what a program may call and gg's tool
   // registry decides what a tool call may name, and neither is derived from the other.
   // The lists therefore do not line up entry for entry — `read-file` buys one tool and
-  // three operations (a read into a variable, a read as text, and a read straight into
-  // the window), and `docview-close` and `program-library` buy operations and no tool at
+  // two operations (a read into a variable, and a read straight into the window), and
+  // `docview-close` and `program-library` buy operations and no tool at
   // all — which is the whole reason a capability has to state both.
   operations?: ReadonlyArray<string>;
   // The capability's separately-grantable sub-features, surfaced as per-feature sliders
@@ -1623,7 +1623,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Agent-managed context",
     group: "Context",
     purpose:
-      "The agent reclaims window space itself: evicting file views, archiving thread sections, and — under responses as code — closing the views it opened and listing what is open.",
+      "The agent reclaims window space itself: evicting file views, archiving thread sections, and — under responses as code — closing the views it opened.",
     params: [
       {
         key: "topFileViews",

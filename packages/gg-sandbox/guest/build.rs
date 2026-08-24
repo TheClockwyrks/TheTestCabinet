@@ -57,8 +57,7 @@ const WORLD: &str = "sandbox";
 /// The WIT's own header is the authority for this list and states the reason for each: `feedback` is
 /// the guest's private channel back to gg, `session` carries the calls that end the run, `docs` is
 /// the always-bound documentation lookup, `views` is how a program puts material into its own
-/// context window, `programs` is the library of programs this agent has already run, and `helpers`
-/// holds the convenience wrappers built on a tool without being one.
+/// context window, and `programs` is the library of programs this agent has already run.
 ///
 /// It is what [`bound_operations`](../src/lib.rs) is derived from, and it is checked in both directions:
 /// a name here that is not an interface of the world fails this build, and an interface of the world

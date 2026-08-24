@@ -25,8 +25,8 @@ use crate::healing::{Dialect, Healed, HealingConfig, heal};
 pub(super) const FIXTURES: &[&str] = &[
     "Here is the program.\n\n```cpp\n#include <vector>\n\nint main() {\n  const auto rows = files::list_dir(\"src\");\n  views::open_text(\"rows\", std::format(\"{}\", rows.size()));\n  return 0;\n}\n```\n\nThat lists the directory.",
     "#include <vector>\n#include <string>\n\nint main() {\n  std::vector<std::string> rows;\n  views::open_text(\"rows\", std::format(\"{}\", rows.size()));\n  return 0;\n}\n",
-    "#define LIMIT 40\n\nint main() {\n  const auto notes = files::read_text_file(\"notes.md\", {.limit = LIMIT});\n  views::open_text(\"notes\", notes);\n  return 0;\n}\n",
-    "# Plan\n\nI will read the manifest and show it to myself.\n\n```c++\nint main() {\n  views::open_text(\"notes\", files::read_text_file(\"notes.md\"));\n  return 0;\n}\n```",
+    "#define LIMIT 40\n\nint main() {\n  const auto notes = files::read_file(\"notes.md\", {.limit = LIMIT});\n  views::open_text(\"notes\", notes);\n  return 0;\n}\n",
+    "# Plan\n\nI will read the manifest and show it to myself.\n\n```c++\nint main() {\n  views::open_text(\"notes\", files::read_file(\"notes.md\"));\n  return 0;\n}\n```",
     "int main() {\n  views::open_text(\"n\", \"1\");\n  return 0;\n}\nint main() {\n  views::open_text(\"n\", \"1\");\n  return 0;\n}\n",
     "int helper() { return 1; }\nint main() { views::open_text(\"n\", std::format(\"{}\", helper())); return 0; }\nint helper() { return 1; }\nint main() { views::open_text(\"n\", std::format(\"{}\", helper())); return 0; }\n",
     "int main() {\n  const char *usage = R\"gg(int main() { \"unbalanced\n  and a \\ backslash )gg\";\n  views::open_text(\"usage\", usage);\n  return 0;\n}\n",

@@ -32,7 +32,7 @@ pub(super) const FIXTURES: &[&str] = &[
     "import gg.files.*\nimport gg.views.*\nimport kotlinx.coroutines.runBlocking\n\nfun main() {\n    runBlocking {\n        openText(\"rows\", listDir(\"src\").toString())\n    }\n}",
     "import gg.views.*\nimport kotlin.concurrent.thread\n\nfun main() {\n    thread {\n        openText(\"note\", \"done\")\n    }.join()\n}",
     "import gg.views.*\n\nfun main() {\n    val worker = Thread {\n        openText(\"note\", \"done\")\n    }\n    worker.start()\n    worker.join()\n}",
-    "import gg.files.*\nimport gg.views.*\n\nsuspend fun gather(): String = readTextFile(\"notes.md\")\n\nfun main() {\n    runBlocking {\n        openText(\"notes\", gather())\n    }\n}",
+    "import gg.files.*\nimport gg.views.*\n\nsuspend fun gather(): String = readFile(\"notes.md\")\n\nfun main() {\n    runBlocking {\n        openText(\"notes\", gather())\n    }\n}",
     "import gg.files.*\nimport gg.views.*\nimport kotlin.math.abs\n\nfun main() {\n    val drift = abs(listDir(\"src\").size - 3)\n    openText(\"drift\", drift.toString())\n}",
     "fun main() {\n    val usage = \"\"\"\n        Example:\n\n        runBlocking {\n            val total = 1\n        }\n        \"\"\"\n    val total = 2\n}\n",
     "import gg.views.*\n\nfun main() {\n    val rows = mapOf(\"n\" to 1)\n    openText(\"n\", \"total: ${rows[\"n\"]}\")\n}\n",
@@ -154,7 +154,7 @@ fn the_two_predicates_point_their_errors_in_the_safe_direction() {
     let reply = "/**\n\
                   * Reads the manifest and shows what is in it.\n\
                   */\n\
-                 gg.views.openText(\"manifest\", gg.files.readTextFile(\"manifest.json\"))\n";
+                 gg.views.openText(\"manifest\", gg.files.readFile(\"manifest.json\"))\n";
     assert_eq!(healed(reply).program, reply.trim_end());
 }
 

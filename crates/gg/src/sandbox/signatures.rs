@@ -173,8 +173,8 @@ pub(crate) struct SignatureCatalogue {
     /// through. Nothing is unreachable for not knowing a module's name, because search finds the
     /// function; knowing the name makes the search an exact lookup instead.
     pub modules: Vec<ModuleDoc>,
-    /// **Every model-facing call**, in one array: the tool-backed calls, the helpers, the view calls,
-    /// the program-library calls and the calls that end a session alike.
+    /// **Every model-facing call**, in one array: the tool-backed calls, the view calls, the
+    /// program-library calls and the calls that end a session alike.
     ///
     /// One array rather than a section per gate, because a section was never a fact about the
     /// functions: it was where an arm filed a gate it should never have been asserting. Gating is
@@ -833,8 +833,8 @@ impl<'a> Prose<'a> {
     }
 }
 
-/// Every function `language`'s catalogue documents — the tool-backed calls, the helpers, the view
-/// calls, the program-library calls and the ending calls alike — each projected as a
+/// Every function `language`'s catalogue documents — the tool-backed calls, the view calls, the
+/// program-library calls and the ending calls alike — each projected as a
 /// [`CatalogueFunction`].
 ///
 /// It takes a language because the *spellings* are one language's: two registered languages offer
@@ -927,10 +927,10 @@ fn module_path(catalogue: &'static SignatureCatalogue, id: &'static str) -> &'st
 /// `gg::fsx`.
 ///
 /// It is the name the model reads *inside* a module: `readFile` for a free function, and
-/// `OpenView.close` / `OpenView#close` / `open_view::close` for a method, in the arm's own
-/// separator. The separator is whatever the arm wrote — `.`, `::`, `#`, or a run of them — so the
-/// check is that the character after the prefix is one that cannot continue an identifier, not
-/// that it is any particular one.
+/// `SubagentHandle.send` / `SubagentHandle#send` / `SubagentHandle::send` for a method, in the
+/// arm's own separator. The separator is whatever the arm wrote — `.`, `::`, `#`, or a run of
+/// them — so the check is that the character after the prefix is one that cannot continue an
+/// identifier, not that it is any particular one.
 ///
 /// Two readers hold one implementation of it on purpose. The name rule (`signatures.fqn.rs`) parses
 /// it into segments to hold an arm's names to their shape; [`module_relative_name`] reports it, so
@@ -969,8 +969,9 @@ pub(crate) fn module_relative<'a>(fqn: &'a str, module_path: &str) -> Option<&'a
 /// for an entry whose name the module path does not qualify.
 ///
 /// For a free function the two are the same string. For a method they differ, and the difference is
-/// the point: `OpenView.close` is a row of its own beside `close`, where the bare name would make
-/// one module list `close` twice and a reader keyed on the name would fold them.
+/// the point: `SubagentHandle::send` is a row of its own beside the free `send_message` it aliases,
+/// where the bare `send` would say nothing about the receiver it hangs off — and would leave two
+/// rows of one module free to share a name a reader keyed on it would fold.
 pub(crate) fn module_relative_name(function: &CatalogueFunction) -> &'static str {
     module_relative(function.fqn, function.object).unwrap_or(function.name)
 }

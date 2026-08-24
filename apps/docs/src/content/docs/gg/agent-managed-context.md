@@ -205,8 +205,9 @@ nothing.
 
 Under responses as code hardly anything carries one, because a program's calls
 return into the program and the turn leaves no tool results behind. Everything
-gg puts in such a window is a headed `user` message: a `File: <path>:<lines>`,
-a `View: <label>` or a `Documentation: <name>` view the program opened, or one
+gg puts in such a window is a headed `user` message: a
+`File: <path>:<lines> of <N> lines`, a `View: <label>` or a
+`Documentation: <name>` view the program opened, or one
 of gg's own messages, each named by its selector rather than by a turn number. The exception
 is a window carried over from a tool-calling agent by an
 [`exec` or an FSM transition](/gg/fork-and-exec/), whose tool results keep the

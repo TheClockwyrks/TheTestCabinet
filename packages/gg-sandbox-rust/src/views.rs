@@ -127,8 +127,8 @@ pub fn open_docs_view(name: &str) -> Result<(), ApiError> {
 ///
 /// How many views were closed, counting each page of a paged file as one of them.
 ///
-/// Closing a view is context management, bought — with [`current`] — by the
-/// `agent-managed-context` capability: an agent whose run did not enable it is refused.
+/// Closing a view is context management, bought by the `agent-managed-context`
+/// capability: an agent whose run did not enable it is refused.
 ///
 /// # Errors
 ///

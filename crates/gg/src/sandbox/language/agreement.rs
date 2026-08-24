@@ -104,11 +104,11 @@
 //!   the model reads and is the arm's to choose; the cross-arm join is the operation id.
 //! * **An alias is not propagated.** [`Applicability`] ranges over [`OPERATIONS`], so the
 //!   propagation rule reaches a helper that is a *new capability* and stops there. A second
-//!   spelling of a capability every arm already binds — `OpenView.close()` beside `views.close` —
-//!   needs no row, no exemption and no reason, and this gate is silent about the difference by
-//!   design. The tree measures this way today: five arms bind five such methods, two bind one, and
-//!   four bind none. It is silent because the difference is one of
-//!   **shape**: every arm can close a view, and requiring the rest to hang a method off the same
+//!   spelling of a capability every arm already binds — `MemoryHit.read()` beside
+//!   `memories.read_memory` — needs no row, no exemption and no reason, and this gate is silent
+//!   about the difference by design. Not every arm binds such methods, and the census differs
+//!   between the ones that do. It is silent because the difference is one of
+//!   **shape**: every arm can read a memory, and requiring the rest to hang a method off the same
 //!   declared type would be requiring eleven arms to agree on a receiver, which is the parity the
 //!   re-founding retired. What it costs is real and is stated rather than hidden: an ergonomic
 //!   affordance can differ between two arms of a study without anything going red.
@@ -970,8 +970,8 @@ fn usable_spellings(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagr
 ///
 /// Checked on the **fully-qualified name**, because that is the one field every arm's reflector
 /// resolves to what a program would have to write — `gg.files.readFile`, `gg::files::read_file`,
-/// `Gg.Files.ReadFile`, `GG::Views::OpenView#close`. A separator is enough: what the qualifier *is*
-/// differs per language and none of them is gg's to choose.
+/// `Gg.Files.ReadFile`, `gg.delegation.Delegation.SubagentHandle#send`. A separator is enough:
+/// what the qualifier *is* differs per language and none of them is gg's to choose.
 fn qualified(fqn: &'static str, name: &'static str) -> bool {
     let Some(prefix) = fqn.strip_suffix(name) else {
         // An arm whose fqn does not end in the name it calls the function by is answering a

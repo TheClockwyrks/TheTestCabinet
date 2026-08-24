@@ -534,36 +534,13 @@ declare module "test-cabinet:gg/docs" {
  * Putting material into the agent's own context window — the third model-facing carve-out, beside
  * `session` and `docs`, and never a gg tool. `src/gg/views.ts` is its only importer.
  *
- * The SDK declares all five whatever a run enables, exactly as it declares `finish`; the host is
+ * The SDK declares all four whatever a run enables, exactly as it declares `finish`; the host is
  * what refuses one this agent was not granted. Cataloguing any of them as a tool would break the
  * `bound-operations == ALL_TOOL_NAMES` bijection the guest is checked against, which is why they have
  * their own interface.
  */
 declare module "test-cabinet:gg/views" {
   import type { FileReadRaw } from "test-cabinet:gg/files";
-
-  /** Which of the three kinds a view is, in the WIT's spelling. */
-  export type ViewKindRaw = "file" | "text" | "docs";
-
-  /** The line window a paged file view covers. */
-  export interface ViewRegionRaw {
-    /** The 1-based first line the view shows. */
-    offset: number;
-    /** How many lines it shows. */
-    limit: number;
-  }
-
-  /** One view currently open in the agent's context window. */
-  export interface OpenViewRaw {
-    /** Whether it is a file, text, or documentation view. */
-    kind: ViewKindRaw;
-    /** What closes it: `closeView` for a file, text or search-results view, `closeDocView` for a docs view. */
-    selector: string;
-    /** Roughly what holding it costs, in tokens. A `u64`, so a `bigint` here. */
-    tokens: bigint;
-    /** The window a paged file view covers; `undefined` for whole-file and text views. */
-    region: ViewRegionRaw | undefined;
-  }
 
   /** Read a workspace file and open a view of it. Returns exactly what `readFile` returns. */
   export function openFileView(

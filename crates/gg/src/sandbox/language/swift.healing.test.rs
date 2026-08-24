@@ -25,7 +25,7 @@ pub(super) const FIXTURES: &[&str] = &[
     "Task {\n    try views.openText(\"note\", \"done\")\n}",
     "import Collections\n\nTask {\n    let rows = try files.listDir(\"src\")\n    try views.openText(\"rows\", rows.map(\\.name).joined(separator: \"\\n\"))\n}",
     "let work = Task {\n    try views.openText(\"note\", \"done\")\n}\n_ = await work.value",
-    "Task {\n    let notes = try await files.readTextFile(\"notes.md\")\n    try views.openText(\"notes\", notes)\n}",
+    "Task {\n    let notes = try await files.readFile(\"notes.md\")\n    try views.openText(\"notes\", notes)\n}",
     "import Foundation\n\nlet stamp = Date().timeIntervalSince1970\ntry views.openText(\"stamp\", \"\\(stamp)\")",
     "let total = 1\ntry views.openText(\"n\", \"\\(total)\")\nlet total = 1\ntry views.openText(\"n\", \"\\(total)\")",
     "func helper() -> Int { 1 }\ntry views.openText(\"n\", \"\\(helper())\")\nfunc helper() -> Int { 1 }\ntry views.openText(\"n\", \"\\(helper())\")",

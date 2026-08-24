@@ -34,7 +34,7 @@ pub(super) const FIXTURES: &[&str] = &[
     "import gg.views.Views;\nimport java.util.Arrays;\n\npublic final class Program {\n    public static void main(String[] args) {\n        char comma = \',\';\n        String[] parts = \"a,b\".split(String.valueOf(comma));\n        Views.openText(\"parts\", Arrays.toString(parts));\n    }\n}",
     "import gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        int total = 1;\n        Views.openText(\"total\", String.valueOf(total));\n    }\n}\n\nimport gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        int total = 1;\n        Views.openText(\"total\", String.valueOf(total));\n    }\n}",
     "# Plan\n\nimport gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        int total = 1;\n        Views.openText(\"total\", String.valueOf(total));\n    }\n}",
-    "I\'ll read `Main.java` first.\n\nimport gg.files.Files;\nimport gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        Views.openText(\"source\", Files.readTextFile(\"Main.java\"));\n    }\n}\n\nThat should be enough.",
+    "I\'ll read `Main.java` first.\n\nimport gg.files.Files;\nimport gg.views.Views;\n\npublic final class Program {\n    public static void main(String[] args) {\n        Views.openText(\"source\", Files.readFile(\"Main.java\"));\n    }\n}\n\nThat should be enough.",
     "I have finished the task. Everything works.",
 ];
 
@@ -95,12 +95,12 @@ fn an_inline_code_span_is_prose_here_and_is_not_in_typescript() {
     );
 
     let result = healed(&format!(
-        "{line}\n\nString source = fs.readTextFile(\"Main.java\");\nview.openText(\"source\", \
+        "{line}\n\nString source = fs.readFile(\"Main.java\");\nview.openText(\"source\", \
          source);\n\nThat should be enough."
     ));
     assert_eq!(
         result.program,
-        "String source = fs.readTextFile(\"Main.java\");\nview.openText(\"source\", source);"
+        "String source = fs.readFile(\"Main.java\");\nview.openText(\"source\", source);"
     );
     assert_eq!(result.strategies(), vec![HealingStrategy::StripProse]);
 }
@@ -141,7 +141,7 @@ fn the_two_predicates_point_their_errors_in_the_safe_direction() {
     let reply = "/**\n\
                   * Reads the manifest and shows what is in it.\n\
                   */\n\
-                 view.openText(\"manifest\", fs.readTextFile(\"manifest.json\"));\n";
+                 view.openText(\"manifest\", fs.readFile(\"manifest.json\"));\n";
     assert_eq!(healed(reply).program, reply.trim_end());
 }
 

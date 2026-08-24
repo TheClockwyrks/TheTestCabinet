@@ -864,15 +864,17 @@ export type GgAgentApiFunction = {
   /**
    * The name a program calls it by, **relative to its module**, in this arm's own spelling:
    * a free function is its bare name — `readFile`, `openDocsView`, `finish` — and a method
-   * carries the receiver it hangs off, in the arm's own separator — `OpenView.close` on
-   * TypeScript, `OpenView#close` on Java, `open_view::close` on C++. Joining the module's
+   * carries the receiver it hangs off, in the arm's own separator — `SubagentHandle.send` on
+   * Kotlin, `SubagentHandle#send` on Java, `SubagentHandle::send` on Rust. Joining the module's
    * [`path`](GgAgentApi::path) onto it with the arm's separator gives the catalogue's
-   * fully-qualified name (`gg.views.OpenView.close`), which is the key a documentation view
-   * opens by.
+   * fully-qualified name (`gg.delegation.SubagentHandle.send`), which is the key a documentation
+   * view opens by.
    *
-   * Module-relative rather than bare so that two rows of one module never share a name: an
-   * arm that binds `close` as a free function **and** as a method on the value `current` lists
-   * reports `close` and `OpenView.close`, not `close` twice.
+   * Module-relative rather than bare so that two rows of one module never share a name: an arm
+   * that binds `send_message` as a free function **and** `send` as a method on the handle its
+   * spawn call returns reports `send_message` and `SubagentHandle::send` — two spellings of one
+   * operation, under two distinct names — where a bare `send` would say nothing about what it
+   * hangs off.
    */
   name: string;
   /**

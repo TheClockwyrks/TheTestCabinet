@@ -12,7 +12,7 @@ The interface between a program and gg is a
 [WIT](https://component-model.bytecodealliance.org/design/wit.html) membrane,
 `crates/gg/wit/gg-sandbox.wit`. It declares one function per operation, with
 typed parameters and a typed `result<T, api-error>`, grouped one interface per
-family: `types`, `shell`, `files`, `helpers`, `skills`, `memories`, `tasks`,
+family: `types`, `shell`, `files`, `skills`, `memories`, `tasks`,
 `board`, `context`, `session`, `docs`, `views`, `programs`, `delegation`,
 `feedback`. Three properties follow, and each is required:
 
