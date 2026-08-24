@@ -1,0 +1,121 @@
+# Gantry — Camera, pointer, and key actions
+
+This file defines how the player operates the game: the registered key
+actions, the orbit camera, pointer picking on the build screen, and what each
+screen does with them. What the edits themselves mean is `specs/structure.md`
+and `specs/program.md`; what each screen shows is `specs/ui.md`.
+
+{{#if (eq engine.slug "none")}}
+The runtime layer you write delivers the input: it maps the key bindings below
+to the actions the game reads, and it reports the pointer's position in logical
+stage units along with its press and release edges.
+{{else}}
+The {{engine.name}} engine delivers the input: the game registers the actions
+below against their bindings, and the engine reports the pointer's position in
+logical stage units along with its press and release edges. The engine's own
+documentation defines the input API; this file states what Gantry registers
+and does with it.
+{{/if}}
+
+## The actions
+
+| Action | Binding (`KeyboardEvent.code`) | Does |
+| --- | --- | --- |
+| `up`, `down`, `left`, `right` | `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight` | menu navigation; camera orbit on the 3D screens |
+| `zoom-in`, `zoom-out` | `Equal`, `Minus` | camera distance |
+| `confirm` | `Enter` | take the highlighted menu item |
+| `back` | `Escape` | leave the screen, as `specs/ui.md` states per screen; abort on the run screen; cancel a pending first node on the build screen |
+| `tool-strut` | `Digit1` | select the strut tool |
+| `tool-cable` | `Digit2` | select the cable tool |
+| `tool-rail` | `Digit3` | select the rail tool |
+| `tool-ring` | `Digit4` | select the ring tool |
+| `tool-counterweight` | `Digit5` | select the counterweight tool |
+| `tool-delete` | `Digit6` | select the delete tool |
+| `undo` | `KeyZ` | undo the most recent structure edit |
+| `check` | `KeyC` | the static check, on the build screen (`specs/instrumentation.md`) |
+| `program` | `KeyP` | build screen to program screen |
+| `build` | `KeyB` | program screen to build screen |
+| `run` | `KeyG` | start the run, from build or program (`specs/program.md`) |
+| `speed` | `KeyS` | cycle `RUN_SPEEDS` on the run screen |
+| `mute` | `KeyM` | toggle sound, on every screen |
+
+The tool, undo, check, and screen-switch actions apply where the table says
+and do nothing elsewhere; the menus are driven by the four directions,
+`confirm`, and `back` alone.
+
+## The camera
+
+The build, program, and run screens show the 3D yard through an orbit camera:
+it looks at `CAMERA_TARGET` (`(0, 6, 0)`) from a yaw, a pitch, and a distance.
+
+| Figure | Value |
+| --- | --- |
+| Start pose | yaw `CAMERA_START_YAW` (`45`), pitch `CAMERA_START_PITCH` (`30`), distance `CAMERA_START_DIST` (`40`) |
+| Pitch limits | `CAMERA_PITCH_MIN` (`10`) to `CAMERA_PITCH_MAX` (`80`) degrees |
+| Distance limits | `CAMERA_DIST_MIN` (`10`) to `CAMERA_DIST_MAX` (`80`) |
+| Key orbit rate | `ORBIT_KEY_RATE` (`90`) deg/s |
+| Zoom rate | `ZOOM_RATE` (`20`) units/s |
+| Drag orbit | `ORBIT_PER_PX` (`0.25`) degrees per logical pixel |
+
+The four direction actions orbit, `left` and `right` in yaw and `up` and
+`down` in pitch, and the zoom actions move the distance, each against the
+frame's delta time. Dragging the pointer orbits too: a press that is not a
+click (below) turns yaw and pitch by `ORBIT_PER_PX` per logical pixel of
+pointer movement. The camera pose persists across the three screens and
+resets to the start pose when a site is opened.
+
+## Clicks and picking
+
+On the build screen the pointer both orbits and edits, told apart by
+movement: a press that moves less than `CLICK_SLOP` (`6`) logical pixels
+before its release is a click, applied at the release position; anything
+longer is an orbit drag and edits nothing.
+
+A click picks by screen distance:
+
+- A node pick considers every lattice node in the envelope, projected to the
+  stage; the candidate is the nearest within `NODE_PICK_PX` (`20`) logical
+  pixels of the click, ties going to the node nearest the camera. The
+  candidate under the pointer is highlighted before the click, so the player
+  sees what a click would take.
+- A member pick considers every member's projected segment; the candidate is
+  the nearest within `MEMBER_PICK_PX` (`12`) logical pixels.
+
+A click with no candidate in range does nothing.
+
+## The build tools
+
+The selected tool decides what a click does. Every edit passes through the
+rules in `specs/structure.md`, and a refused edit changes nothing on screen
+beyond the refusal being visible in the moment (`specs/ui.md`).
+
+- Strut, cable, rail: the first click picks a node and holds it pending,
+  visibly marked; the second click on another node places the member between
+  them and clears the pending node. A second click on the pending node itself,
+  or `back`, clears it without placing. A second click that the rules refuse
+  leaves the pending node held, so a slip does not cost the selection.
+  Switching tools keeps a pending node; it belongs to the placement, not the
+  material.
+- Ring: a click places the ring by its base corner at the picked node.
+- Counterweight: a click on a node without a counterweight places one there; a
+  click on a node carrying one removes it.
+- Delete: a click removes what it picks, the nearest in screen distance of a
+  member within `MEMBER_PICK_PX`, a counterweight within `NODE_PICK_PX` of its
+  node, or the ring within `NODE_PICK_PX` of any of its eight flange nodes.
+
+`undo` reverses the most recent structure-changing edit, as far back as the
+site was opened, exactly as `specs/structure.md` states.
+
+## Editing the tape
+
+The program screen edits the tape with the pointer and the menu actions. The
+exact widgets are the build's design; what the player can do is fixed: add a
+step, a move or an action; give a move its commands, each an axis, a target,
+and a rate the editor accepts under `specs/program.md`; edit, reorder, and
+remove existing steps; and read the whole tape in order. Every edit is
+reflected in the state's program (`specs/state.md`).
+
+## The run screen
+
+The run screen takes `speed`, `mute`, and `back` alone: watching, not
+steering, with `back` aborting as `specs/program.md` states.

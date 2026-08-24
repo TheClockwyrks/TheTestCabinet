@@ -1,0 +1,26 @@
+# The one and only Gantry variant: the whole game, all six sites. Listed as the
+# single entry in the case manifest's `variants`, so it is the default and every
+# run is a run of it.
+slug = "base"
+name = "Base"
+description = "The full crane yard: six sites, from the first lift to the heavy haul."
+
+# This variant declares NO `spec` of its own, and that is deliberate. The six
+# sites are content inside every build, the way Refract's twenty-four boards
+# are, not variants; nothing in the seeded set branches on the variant at all —
+# the only axis the specs branch on is `engine.slug`.
+
+# No `reference_implementation` yet. The authored correct builds — one per
+# supported engine, by convention `references/none/` and
+# `references/simple-3d/` — are still to be written, and a declared path must
+# exist for the case to resolve. Declare the table here when they land:
+#
+#   [reference_implementation]
+#   none = "references/none"
+#   "simple-3d" = "references/simple-3d"
+
+# No `[workspaces]` table either: the case's common table covers both engines
+# and there is nothing variant-specific to replace it with. No
+# `[[review.categories]]` and no `[[domain]]`: with a single variant, every
+# point and every rated domain applies to every run, so they are all declared
+# commonly in `test-case.toml`.
