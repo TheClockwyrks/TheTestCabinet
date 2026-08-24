@@ -1,0 +1,239 @@
+# Input
+
+A game declares its actions once, from `InitApi.input` inside `initialize`, and
+reads them every frame from `UpdateApi.input` inside `update`. The engine owns
+the keyboard and the pointer: each action resolves to a single number, and the
+pointer resolves to a position in the game's own logical coordinates, so the
+game asks what the player is doing rather than reading events.
+
+```ts
+// In initialize:
+api.input.register(name: string, binding: ActionBinding): void;
+api.input.layout(): TouchLayout | null;
+
+// In update:
+api.input.value(name: string): number;
+api.input.pressed(name: string): boolean;
+api.input.pointer(): PointerSnapshot;
+api.input.pointerPressed(): boolean;
+api.input.pointerReleased(): boolean;
+api.input.pointerSamples(): PointerSample[];
+```
+
+## Registering actions
+
+```ts
+type ActionKind = "digital" | "analog";
+
+interface ActionBinding {
+  keys: string[];
+  kind?: ActionKind;
+}
+```
+
+`keys` are `KeyboardEvent.code` values rather than `key` values, so a binding is
+layout-independent: `KeyW` is the same physical key on QWERTY and AZERTY.
+
+```ts
+initialize(api) {
+  api.input.register("thrust", { keys: ["ArrowUp", "KeyW"] });
+  api.input.register("fire", { keys: ["Space"] });
+  api.input.register("steer", { keys: ["ArrowLeft", "ArrowRight"], kind: "analog" });
+  return [{ /* ... */ }, null];
+}
+```
+
+`kind` defaults to `"digital"`. Re-registering a name replaces its binding
+wholesale, returns the action to rest, and keeps its position in the
+registration order. Any name is accepted.
+
+## Reading actions
+
+| Member | Result | Semantics |
+| --- | --- | --- |
+| `value(name)` | `number` | The action's resolved magnitude. A `"digital"` action reports `0` or `1`. An `"analog"` action reports the magnitude as given, and a held key gives it full deflection. An unregistered name reports `0`. |
+| `pressed(name)` | `boolean` | `true` exactly once per armed edge, which the call consumes. An unregistered name reports `false`. |
+
+`value` is for things that happen while a key is held, and `pressed` is for
+things that happen once per press:
+
+```ts
+update(state, api, dt) {
+  // Held: applied every frame it is down.
+  const dir = api.input.value("right") - api.input.value("left");
+  const x = state.x + dir * SPEED * dt;
+
+  // Edge: fires once per press, however long the key is held.
+  const bullets = api.input.pressed("fire")
+    ? [...state.bullets, spawn(state)]
+    : state.bullets;
+
+  return { ...state, x, bullets };
+}
+```
+
+An edge is armed whenever a change takes the resolved value from `0` to
+non-zero, whatever the source. Pressing a second key bound to an already-held
+action is not a new press, and a key event whose `repeat` flag is set arms
+nothing.
+
+The engine closes the input frame after the game has rendered, discarding every
+edge left unconsumed. A press is therefore news for exactly one frame, so read
+each edge in the `update` that follows it.
+
+## Key events
+
+The engine attaches its `keydown` and `keyup` listeners to the event target the
+`surface` option supplies, and to the canvas's owning document when the engine
+was built without a surface. Each listener reads `KeyboardEvent.code` and
+`KeyboardEvent.repeat` and leaves the event otherwise untouched.
+
+Dispatching a `KeyboardEvent`-shaped event at that target drives an action
+exactly as a player's key does.
+
+## The pointer
+
+```ts
+type PointerSampleType = "down" | "move" | "up";
+
+interface PointerSample {
+  readonly type: PointerSampleType;
+  readonly x: number;
+  readonly y: number;
+}
+
+interface PointerSnapshot {
+  x: number;
+  y: number;
+  down: boolean;
+}
+```
+
+The engine tracks one logical pointer in the game's logical coordinates: each
+event's position is mapped through the same letterboxed fit the game draws
+under, so the position `update` reads is on the axes `render` draws on. A point
+inside a letterbox bar maps outside `0..width` or `0..height`, and a game
+clamps it or treats it as a miss.
+
+| Member | Result | Semantics |
+| --- | --- | --- |
+| `pointer()` | `PointerSnapshot` | The most recent position and whether the pointer is held, as a fresh copy. Before the first pointer event the position is `(0, 0)` and `down` is `false`. |
+| `pointerPressed()` | `boolean` | `true` exactly once per press edge, which the call consumes. |
+| `pointerReleased()` | `boolean` | `true` exactly once per release edge, which the call consumes. |
+| `pointerSamples()` | `PointerSample[]` | Every sample delivered since the input frame last closed, in arrival order, as a fresh copy. Reading does not consume the list. |
+
+The snapshot is what aiming and hovering read. The sample list is what direct
+manipulation reads: a sweep that crossed several targets between two frames
+arrives as the ordered positions it visited rather than as the last one alone,
+so a game that reacts to the path the pointer traveled resolves each sample on
+its own.
+
+```ts
+update(state, api, dt) {
+  let next = state;
+  for (const sample of api.input.pointerSamples()) {
+    next = resolvePointer(next, sample);
+  }
+  return step(next, dt);
+}
+```
+
+`pointerSamples()` lists at most 1024 samples per frame; a burst past that
+bound still moves the snapshot and the edges, and the samples past it are not
+listed. The input frame closes after the game has rendered: the sample list
+empties and unconsumed edges are discarded, so a press is news for exactly one
+frame.
+
+## Pointer events
+
+The engine attaches its `pointerdown`, `pointermove`, `pointerup`, and
+`pointercancel` listeners to the same event target its key listeners go on.
+Each listener reads `clientX`, `clientY`, and `isPrimary`, and leaves the event
+otherwise untouched. A non-primary pointer — the second touch of a multi-touch
+gesture — is ignored.
+
+Dispatching a pointer-shaped event at that target drives the pointer exactly as
+a player's does.
+
+A `pointerdown` while the pointer is already held, or a `pointerup` while it is
+not, moves the pointer without arming an edge, so the listed samples alternate
+`down` and `up` strictly. A `pointercancel` ends a hold as a release at the
+last known position.
+
+## Touch layouts
+
+A touch layout is the name of a control scheme and the action vocabulary it
+brings with it. Selection is declarative: it tags the actions the game registers
+rather than drawing controls or registering anything.
+
+```ts
+interface TouchLayout {
+  name: string;
+  actions: string[];
+}
+
+const TOUCH_LAYOUTS: Readonly<Record<string, TouchLayout>>;
+```
+
+The layout is chosen at construction, through `EngineOptions.layout`, and holds
+for the engine's lifetime:
+
+```ts
+const engine = createEngine({ canvas, width: 640, height: 360, game, layout: "dpad-4" });
+```
+
+| Layout | Controls | Own vocabulary |
+| --- | --- | --- |
+| `dual-vertical` | Two vertical sliders, one per side | `p1-up`, `p1-down`, `p2-up`, `p2-down` |
+| `single-vertical` | One vertical slider | `up`, `down` |
+| `dpad-4` | A four-way pad | `up`, `down`, `left`, `right` |
+| `dpad-4-two-buttons` | A four-way pad and two action buttons | `up`, `down`, `left`, `right`, `a`, `b` |
+
+The menu actions `["confirm", "back", "pause", "mute"]` are appended to every
+entry's own vocabulary in that order, so
+`TOUCH_LAYOUTS["single-vertical"].actions` is `["up", "down", "confirm", "back",
+"pause", "mute"]`.
+
+A game built with a layout registers that layout's action names, so the scheme
+and the bindings agree:
+
+```ts
+initialize(api) {
+  const layout = api.input.layout();
+  for (const name of layout?.actions ?? []) {
+    api.input.register(name, { keys: KEYS_FOR[name] ?? [] });
+  }
+  return [{ /* ... */ }, null];
+}
+```
+
+`api.input.layout()` returns a fresh copy the caller owns, or `null` when the
+engine was built without one.
+
+## `RegisteredAction`
+
+```ts
+interface RegisteredAction {
+  name: string;
+  keys: string[];
+  kind: ActionKind;
+  layout: string | null;
+}
+```
+
+The resolved form of a registration: the binding with its defaults filled in and
+its layout provenance attached. `layout` is the selected layout's name when that
+layout's vocabulary contains the action name, and `null` otherwise.
+
+## Errors
+
+| Condition | Result |
+| --- | --- |
+| `EngineOptions.layout` names a layout outside `TOUCH_LAYOUTS` | `createEngine` throws, naming every valid layout |
+| `register` with a `kind` outside `ActionKind` | `Error` naming the value |
+
+## The overlay toggle key
+
+The backtick key (`Backquote`) toggles the debug overlay. It is engine chrome
+handled by a listener the engine owns rather than a registered action, so the
+action registry stays exactly the vocabulary the build bound.

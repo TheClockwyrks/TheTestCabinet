@@ -1,0 +1,28 @@
+{
+  "name": "refract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Refract — a puzzle game of light traced across an optical bench, running entirely in the browser, on no engine.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "test": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@napi-rs/canvas": "^0.1",
+    "@vitest/coverage-v8": "^3",
+    "eslint": "^9",
+    "playwright": "^1.61.0",
+    "prettier": "^3",
+    "typescript": "^5",
+    "typescript-eslint": "^8",
+    "vite": "^6",
+    "vitest": "^3"
+  }
+}
