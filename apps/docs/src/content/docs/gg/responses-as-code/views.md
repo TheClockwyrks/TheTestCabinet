@@ -29,21 +29,22 @@ made.
 An image is a file view of an image file, whose item carries the picture. A view
 is the only way a picture reaches a code agent's window.
 
-A file view arrives headed by its path and the 1-based inclusive line range it
-shows, `File: src/main.ts:100-250` for a paged read and `File: specs/rules.md:1-N`
-for a whole file, where `N` is the file's total line count. The range is what
-the read returned rather than what the call asked for, and the path is the one
-the view was opened under, relative to the workspace. A view that shows no
-lines, an image or an empty file, is headed by the path alone. The body is the
-file's text and nothing else.
+A file view arrives headed by its path, the 1-based inclusive line range it
+shows and the file's total line count, `File: src/main.ts:100-250 of 400 lines`
+for a paged read and `File: specs/rules.md:1-N of N lines` for a whole file.
+The range is what the read returned rather than what the call asked for, the
+total says how much of the file the range covers — so a partial read is
+distinguishable from a full one — and the path is the one the view was opened
+under, relative to the workspace. A view that shows no lines, an image or an
+empty file, is headed by the path alone. The body is the file's text and
+nothing else.
 
 A search view carries a selector like any other view, and a search the agent
 itself ran is keyed under one constant selector, so every such search replaces
 the last. The selector is an argument rather than a constant because [the
 opening turn](#the-opening-turn) keys one listing per module and each has to
-survive the next. `gg.views.current` reports a search view as a text view, which
-is what it behaves like at that boundary: composed text under one label, closed
-by `gg.views.close`.
+survive the next. A search view behaves like a text view at that boundary:
+composed text under one label, closed by `gg.views.close`.
 
 ## Opening and closing views
 
@@ -53,15 +54,13 @@ by `gg.views.close`.
 | `gg.views.openText(label, body)` | Opens the text view keyed by `label`. |
 | `gg.views.openDocsView(target)` | Opens the documentation view for one bound function or type. |
 | `gg.views.close(selector)` | Closes every file, text and search view carrying that selector, and returns how many it closed. |
-| `gg.views.current()` | Lists what is open: each view's `kind`, `selector`, `tokens`, a paged file view's `region`, and a `close()` member. |
 
 `openText` and `openDocsView` are serviced whatever the run's capability set
 says, so a run that enables no tools can still show its model something.
 `openFile` is gated on `read-file`, because it is a read and the one call in the
-family that dispatches a tool. `close` and `current` — and the `close()` member
-of the view `current` lists — are bought by
-[`agent-managed-context`](/gg/agent-managed-context/), because closing a view and
-listing what is open are context management. A program without it compiles
+family that dispatches a tool. `close` is bought by
+[`agent-managed-context`](/gg/agent-managed-context/), because closing a view is
+context management. A program without it compiles
 against the same SDK as every other, and the call is refused by the membrane with
 the `unavailable` error every withheld call raises.
 

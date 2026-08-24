@@ -166,7 +166,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "import { files } from \"gg\";\n",
         "\n",
         "const entries = files.listDir(\"src\").filter((e) => e.kind === \"file\");\n",
-        "const texts = entries.map((e) => files.readTextFile(`src/${e.name}`));\n",
+        "const texts = entries.map((e) => files.readFile(`src/${e.name}`).contents);\n",
         "const written = files.writeFile(\"out/summary.txt\", texts.join(\"\\n\"));\n",
         "console.log(JSON.stringify({ files: entries.map((f) => f.name), written }));\n",
     ));
@@ -192,12 +192,12 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
             .collect::<Vec<_>>(),
         [
             "files.list_dir",
-            "files.read_text_file",
-            "files.read_text_file",
+            "files.read_file",
+            "files.read_file",
             "files.write_file"
         ],
-        "and the roster names what the MODEL wrote, which is `readTextFile` twice — the log above \
-         names the read each of them was serviced by"
+        "and the roster names what the MODEL wrote — the log above names the read each call was \
+         serviced by"
     );
 
     // 3. The arm's variable, observed rather than inferred. `openText` takes two strings; this
@@ -242,7 +242,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
     );
 
     // 4. THE DOCUMENTED SPELLING. `import { files } from "gg";` is the line every documentation view
-    // of `gg.files` states, and `gg.files.readTextFile` is the name every search hit carries and the
+    // of `gg.files` states, and `gg.files.readFile` is the name every search hit carries and the
     // prompt quotes — the call site is that name with its leading `gg.` dropped, which is the one
     // difference the prompt's language rules spell out. One named binding per bound module, plus the
     // `ApiError` the aggregate exports beside them.
@@ -251,7 +251,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "import { session, shell, skills, tasks, views } from \"gg\";\n",
         "import { ApiError } from \"gg\";\n",
         "\n",
-        "views.openText(\"scratch\", files.readTextFile(\"notes.md\"));\n",
+        "views.openText(\"scratch\", files.readFile(\"notes.md\").contents);\n",
         "shell.shell(\"ls\");\n",
         "board.createEpic({ prefix: \"epc\", title: \"E\", description: \"D\" });\n",
         "tasks.addTask({ id: \"t1\", title: \"T\" });\n",
@@ -260,7 +260,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "delegation.sendMessage(\"agent-1\", \"more\");\n",
         "skills.readSkill(\"testing\");\n",
         "try {\n",
-        "  files.readTextFile(\"a.ts\", { offset: -1 });\n",
+        "  files.readFile(\"a.ts\", { offset: -1 });\n",
         "} catch (error) {\n",
         "  console.log(`${error instanceof ApiError} ${error.code}`);\n",
         "}\n",
@@ -361,7 +361,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "console.log(gg.memories.searchMemories([\"build\"])[0].read());\n",
         "gg.delegation.spawnSubagent({ agent: \"worker\", prompt: \"go\" }).send(\"more\");\n",
         "gg.views.openText(\"scratch\", \"shown\");\n",
-        "console.log(String(gg.views.current()[0].close()));\n",
+        "console.log(String(gg.views.close(\"scratch\")));\n",
     ));
     assert_eq!(
         logs(&outcome),
@@ -623,12 +623,12 @@ fn g8_a_runtime_failure_reaches_the_model() {
 
 import { files } from "gg";
 
-const text = files.readTextFile(
+const text = files.readFile(
   "missing.md",
 );
 console.log(text);
 "#,
-                names: &["read_text_file", "not-found", "missing.md"],
+                names: &["read_file", "not-found", "missing.md"],
                 located: Located::At("program.js:6:3"),
                 answered: Answered::AtRuntime,
                 // The guest reads the `code` off the uncaught `ApiError` and reports it, so the

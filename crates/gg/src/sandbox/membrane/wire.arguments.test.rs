@@ -64,7 +64,6 @@ const ALIASES: &[(&str, &str)] = &[
     ("views.open_file", "open-file-view"),
     ("views.open_text", "open-text-view"),
     ("views.close", "close-view"),
-    ("views.current", "current-views"),
 ];
 
 #[test]

@@ -985,15 +985,15 @@ impl<A: OperationApi> MembraneState<A> {
     /// Bridge one typed membrane call to gg's real toolset, turning a failed outcome into the typed
     /// error the program sees thrown.
     ///
-    /// This is what twenty-eight of the twenty-nine bound operations call. The twenty-ninth is `shell`,
-    /// which needs a non-`ok` outcome as a value — see [`call_raw`](Self::call_raw).
+    /// This is what twenty-seven of the twenty-eight bound operations call. The twenty-eighth is
+    /// `shell`, which needs a non-`ok` outcome as a value — see [`call_raw`](Self::call_raw).
     ///
     /// The [`Recording`] is the caller's proof that the API call it is servicing has already been
     /// recorded under its own identity, and `id` is that identity said again for the dispatch —
     /// the same [operation](OperationId) the bracket was opened with, because that is the call the
-    /// model wrote. What runs underneath may be shared: `files.read_file`, `files.read_text_file`
-    /// and `views.open_file` are three operations over one internal read, and each is recorded,
-    /// refused and reported as itself.
+    /// model wrote. What runs underneath may be shared: `files.read_file` and `views.open_file`
+    /// are two operations over one internal read, and each is recorded, refused and reported as
+    /// itself.
     fn call(
         &mut self,
         recording: Recording,
@@ -1310,10 +1310,9 @@ impl<A: OperationApi> MembraneState<A> {
     ///
     /// [`ApiError::operation`] carries the **operation's key**, never the name of whatever ran
     /// underneath. The field's name belongs to the failure type every call shares; what goes in it
-    /// is the call the program wrote, so `gg.files.readTextFile` reports `read_text_file` and
-    /// `gg.views.openFile` reports `open_file` even though one internal read serviced all three.
-    /// Reporting the internal name would put a word in front of the model that its SDK does not
-    /// spell and that no arm can type.
+    /// is the call the program wrote, so `gg.views.openFile` reports `open_file` even though the
+    /// read underneath it is the one `files.read_file` performs. Reporting the internal name would
+    /// put a word in front of the model that its SDK does not spell and that no arm can type.
     fn api_error(&self, id: OperationId, outcome: &ToolOutcome) -> ApiError {
         ApiError {
             code: error_code(outcome.failure),

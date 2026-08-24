@@ -54,7 +54,6 @@ import * as context from "test-cabinet:gg/context";
 import * as delegation from "test-cabinet:gg/delegation";
 import * as docs from "test-cabinet:gg/docs";
 import * as files from "test-cabinet:gg/files";
-import * as helpers from "test-cabinet:gg/helpers";
 import * as memories from "test-cabinet:gg/memories";
 import * as programs from "test-cabinet:gg/programs";
 import * as session from "test-cabinet:gg/session";
@@ -78,7 +77,6 @@ globalThis.__ggWire = {
   delegation,
   docs,
   files,
-  helpers,
   memories,
   programs,
   session,
@@ -232,9 +230,8 @@ function attachStreams() {
  * the sandbox trapped. The timers are the quieter half: they accept a callback, return a handle,
  * and never fire it, because `run` is synchronous and nothing polls after it returns.
  *
- * Ruby's own `sleep` is deliberately **not** here: Opal implements it as a busy wait, so it burns
- * the guest's fuel and the execution deadline reaches it like any other runaway — which is what a
- * ceiling is for.
+ * Ruby's own `sleep` is deliberately **not** here: Opal implements it as a busy wait, so the
+ * execution deadline reaches it like any other runaway — which is what a ceiling is for.
  */
 const DENIED_GLOBALS = [
   ["setTimeout", "there is no event loop, so a scheduled callback would never run"],

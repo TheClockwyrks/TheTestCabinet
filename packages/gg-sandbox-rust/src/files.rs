@@ -1,13 +1,9 @@
 //! Read, write, edit, list and search the files of the workspace.
 //!
-//! Reading is the cheap direction of this sandbox and writing is the expensive one, so a program that
-//! reads a dozen files to decide what to change is well shaped, while one that rewrites forty large
-//! files in a single turn will exhaust its fuel budget.
-//!
 //! Nothing here places anything in the agent's context window: showing something is what the
 //! `gg::views` module is for.
 
-use crate::bindings::test_cabinet::gg::{files, helpers};
+use crate::bindings::test_cabinet::gg::files;
 use crate::core::ApiError;
 use crate::wire;
 
@@ -54,34 +50,7 @@ pub fn read_file(path: &str, options: ReadOptions) -> Result<FileRead, ApiError>
     wire::lift(files::read_file(path, offset, limit)).map(wire::file_read)
 }
 
-/// Read a text file and hand back its contents directly.
-///
-/// [`read_file`] without the narrowing, for the common case: the same read, the same window, the same
-/// cost.
-///
-/// # Arguments
-///
-/// * `path` — The file to read, relative to the workspace or absolute.
-/// * `options` — The window of lines to read; `files::ReadOptions::default()` reads the whole file.
-///
-/// # Returns
-///
-/// The same text [`read_file`] would have put in its [`FileRead::Text`] arm, with nothing to unwrap.
-///
-/// # Errors
-///
-/// `InvalidArgument` when the path names a picture, which [`read_file`] inspects instead and
-/// [`views::open_file`](crate::views::open_file) displays.
-#[doc(alias = "ggop:files.read_text_file")]
-pub fn read_text_file(path: &str, options: ReadOptions) -> Result<String, ApiError> {
-    let (offset, limit) = options.window();
-    wire::lift(helpers::read_text_file(path, offset, limit))
-}
-
 /// Write UTF-8 text to a file, creating parent directories and replacing what is there.
-///
-/// Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in
-/// one program exhausts its fuel budget, so a large rewrite is best split across several turns.
 ///
 /// # Arguments
 ///

@@ -36,7 +36,7 @@
 //! standard library and the panic machinery are the floor, and a call that cannot fail costs
 //! nothing on top of it. The **first fallible** SDK call is what adds ~14 KB — the error type, and
 //! the wire a result decodes through — and every call after it is nearly free: one
-//! `views::open_text` is 78,626 bytes and a `files::read_text_file` followed by a `gg::log` is
+//! `views::open_text` is 78,626 bytes and one adding a second fallible read plus a `gg::log` is
 //! 81,667. So the figure a model's own program actually costs is the second row, and the first is
 //! the floor beneath it rather than a typical turn.
 //!

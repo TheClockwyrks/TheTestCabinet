@@ -1,19 +1,19 @@
 //! The [wire](super)'s context half: the four context operations, the three documentation
-//! ones, the five view ones and the three the program library carries.
+//! ones, the four view ones and the three the program library carries.
 //!
-//! Every one of them can fail, if only at the gate every bracket asks: `views.current` has nothing
-//! to fail at once it is granted, and still answers `unavailable` to an agent whose run did not buy
-//! it. So the guest reads every answer the same way and no call is special-cased in a language that
-//! has no way to know which ones are.
+//! Every one of them can fail, if only at the gate every bracket asks: `programs.history` has
+//! nothing to fail at once it is granted, and still answers `unavailable` to an agent whose run did
+//! not buy it. So the guest reads every answer the same way and no call is special-cased in a
+//! language that has no way to know which ones are.
 
 use super::super::test_cabinet::gg::context::{
     ArchiveHit, ArchiveSearch, Host as ContextHost, MessageRole, ReclaimReport, TurnRange,
 };
 use super::super::test_cabinet::gg::docs::{DocHit, DocSearch, Host as DocsHost};
 use super::super::test_cabinet::gg::programs::{Host as ProgramsHost, ProgramSummary};
-use super::super::test_cabinet::gg::views::{Host as ViewsHost, OpenView, ViewKind, ViewRegion};
+use super::super::test_cabinet::gg::views::Host as ViewsHost;
 use super::super::{MembraneState, OperationApi};
-use super::wire_coding::{Value, argument, integer, optional, record, text, texts, wide};
+use super::wire_coding::{Value, argument, integer, optional, record, text, texts};
 use super::workspace::file_read;
 use super::{Answer, Failure};
 
@@ -234,41 +234,6 @@ pub(super) fn close_view<A: OperationApi>(
 ) -> Answer {
     let selector = argument(arguments, op, 0)?.text("the selector")?;
     Ok(integer(ViewsHost::close_view(state, selector)?))
-}
-
-/// `views.current` — what is open. Once granted it cannot fail.
-pub(super) fn current_views<A: OperationApi>(state: &mut MembraneState<A>) -> Answer {
-    Ok(Value::List(
-        ViewsHost::current_views(state)?
-            .into_iter()
-            .map(open_view)
-            .collect(),
-    ))
-}
-
-/// One `open-view`.
-fn open_view(view: OpenView) -> Value {
-    record([
-        (
-            "kind",
-            text(match view.kind {
-                ViewKind::File => "file",
-                ViewKind::Text => "text",
-                ViewKind::Docs => "docs",
-            }),
-        ),
-        ("selector", text(view.selector)),
-        ("tokens", wide(view.tokens)),
-        ("region", optional(view.region, view_region)),
-    ])
-}
-
-/// The `view-region` record.
-fn view_region(region: ViewRegion) -> Value {
-    record([
-        ("offset", integer(region.offset)),
-        ("limit", integer(region.limit)),
-    ])
 }
 
 // ---------------------------------------------------------------------------------------------

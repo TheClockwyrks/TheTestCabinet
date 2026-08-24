@@ -8,7 +8,7 @@
  * the shared vocabulary.
  *
  * **Why an error type at all.** A `result<T, api-error>` surfaces in JavaScript as a *throw*, so the
- * happy path of a program is already unwrapped — `const text = readTextFile(p)` is a string, not
+ * happy path of a program is already unwrapped — `const skill = readSkill(name)` is a string, not
  * something to unwrap — and a failure stops the program instead of poisoning it with `undefined`.
  * What the component model throws, though, is a bare record: `e instanceof Error` is `false`,
  * `String(e)` is `"Error: [object Object] (see error.payload)"`, and the fields are hidden one level

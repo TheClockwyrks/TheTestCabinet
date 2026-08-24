@@ -186,28 +186,26 @@ fn a_granted_call_reaches_the_loop_and_answers_with_a_record() {
 /// A failed call comes back as the three fields of the `api-error` it already was — the same code,
 /// the same key, the same sentence the other ten arms are given.
 ///
-/// `read_text_file` over a picture is the failure chosen because the host function *itself* raises
-/// it, on the narrowing that is the whole difference between it and `read_file`: so what is asserted
-/// is that an `api-error` built inside the typed implementation crosses this wire unaltered, rather
-/// than that a fake said no.
+/// `views.open_text` with a blank label is the failure chosen because the api *itself* raises it,
+/// before anything is dispatched: so what is asserted is that an `api-error` built inside the typed
+/// implementation crosses this wire unaltered, rather than that a fake said no.
 #[test]
 fn a_failed_call_comes_back_as_the_api_error_it_already_was() {
     let log = CallLog::default();
     let mut state = membrane(&log);
     let response = crossing(
         &mut state,
-        "files.read_text_file",
+        "views.open_text",
         request(vec![
-            Value::Text("logo.png".to_string()),
-            Value::None,
-            Value::None,
+            Value::Text("   ".to_string()),
+            Value::Text("body".to_string()),
         ]),
     );
-    let (operation, code, message) = failure(&response).expect("reading a picture as text fails");
-    assert_eq!(operation, "read_text_file");
+    let (operation, code, message) = failure(&response).expect("a blank label names nothing");
+    assert_eq!(operation, "open_text");
     assert_eq!(code, "invalid-argument");
     assert!(
-        message.contains("logo.png") && message.contains("not text"),
+        message.contains("label"),
         "the failure lost its own sentence: {message}"
     );
 }

@@ -1,16 +1,11 @@
 /**
  * Read, write, edit, list and search the files of the workspace.
  *
- * Reading is the cheap direction of this sandbox and writing is the expensive one, so a program that
- * reads a dozen files to decide what to change is well shaped, while one that rewrites forty large
- * files in a single turn will exhaust its fuel budget.
- *
  * Nothing here places anything in the agent's context window: every call hands its answer to the
  * program, and a view is what puts something in front of the agent.
  */
 
 import * as raw from "test-cabinet:gg/files";
-import * as helpers from "test-cabinet:gg/helpers";
 import { U32_MAX, call, opts, uint } from "../internal/errors.js";
 import { asFileRead } from "../internal/lower.js";
 import { ApiError } from "./core.js";
@@ -143,33 +138,7 @@ export function readFile(path: string, options?: { offset?: number; limit?: numb
 }
 
 /**
- * Read a text file and hand back its contents directly.
- *
- * `readFile` without the narrowing, for the common case: the same read, the same window, the same
- * cost.
- *
- * @ggop files.read_text_file
- * @param path The file to read, relative to the workspace or absolute.
- * @param options The window of lines to read; omit it to read the whole file.
- * @param options.offset The 1-based line to start at. Omitted, the read starts at the first line.
- * @param options.limit How many lines to return from `offset`. Omitted, a capped read policy's
- * default applies, or the read runs to the end of the file.
- * @returns the text that was read: the whole file, or the requested window.
- * @throws `ApiError` with `invalid-argument` when the path names a picture, which `readFile`
- * inspects instead and `gg.views.openFile` displays, and `not-found` for a path that is not there.
- */
-export function readTextFile(path: string, options?: { offset?: number; limit?: number }): string {
-  const o = opts<{ offset?: number; limit?: number }>("readTextFile", options);
-  const offset = uint("readTextFile", "offset", o?.offset, U32_MAX);
-  const limit = uint("readTextFile", "limit", o?.limit, U32_MAX);
-  return call(() => helpers.readTextFile(path, offset, limit));
-}
-
-/**
  * Write UTF-8 text to a file, creating parent directories and replacing what is there.
- *
- * Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in
- * one program exhausts its fuel budget, so a large rewrite is best split across several turns.
  *
  * @ggop files.write_file
  * @param path Where to write, relative to the workspace or absolute. Parent directories are created.

@@ -112,9 +112,7 @@ use std::time::Duration;
 use test_cabinet_core::gg::{GgCallFailure, GgProgramLanguage};
 
 use crate::board::IssueStatus;
-use crate::context::{
-    ContextModel, DocviewOpen, OpenViewInfo, SEARCH_RESULTS_VIEW, TurnRange, ViewKind,
-};
+use crate::context::{ContextModel, DocviewOpen, SEARCH_RESULTS_VIEW, TurnRange, ViewKind};
 use crate::discovery::CallDiscovery;
 use crate::docs::{DocQuery, DocViewTypes, DocsRuntime};
 use crate::ending::EndingRole;
@@ -803,7 +801,6 @@ impl OperationApi for BootstrapApi {
         ) -> ViewOpenOutcome;
         open_text_view(label: String, body: String) -> Result<SandboxViewOpened, ViewRefusal>;
         close_view(selector: String) -> Result<u32, ViewRefusal>;
-        current_views() -> Vec<OpenViewInfo>;
         program_history() -> Vec<ProgramSummary>;
         program_source(turn: Option<u64>) -> Result<String, ProgramRefusal>;
     }

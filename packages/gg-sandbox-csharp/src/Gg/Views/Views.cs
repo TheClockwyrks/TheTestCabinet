@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 
 namespace Gg;
 
@@ -134,9 +133,8 @@ public static partial class Views
     /// <summary>Close every view whose selector matches, and hand back how many went.</summary>
     /// <remarks>
     /// For a file, every page of that path closes. Closing a selector that is not open returns zero
-    /// rather than failing. Closing a view is context management, bought — with
-    /// <see cref="Current"/> — by the <c>agent-managed-context</c> capability: an agent whose run
-    /// did not enable it is refused.
+    /// rather than failing. Closing a view is context management, bought by the
+    /// <c>agent-managed-context</c> capability: an agent whose run did not enable it is refused.
     /// </remarks>
     /// <param name="selector">A file view's workspace path, or a text view's label.</param>
     /// <returns>how many views went, counting each page of a paged file separately.</returns>
@@ -153,37 +151,4 @@ public static partial class Views
         return closed;
     }
 
-    /// <summary>List what is open in the context window right now.</summary>
-    /// <remarks>
-    /// Listing what is open is context management, bought with <see cref="Close"/> by the
-    /// <c>agent-managed-context</c> capability: an agent whose run did not enable it is refused.
-    /// </remarks>
-    /// <returns>every open view, with what each of them costs.</returns>
-    /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.Unavailable"/> for an agent whose run did not buy
-    /// <c>agent-managed-context</c>.
-    /// </exception>
-    /// <ggop>views.current</ggop>
-    public static IReadOnlyList<OpenView> Current()
-    {
-        Internal.Wire.Check(Internal.Native.CurrentViews(
-            out var kinds,
-            out var selectors,
-            out var tokens,
-            out var offsets,
-            out var limits));
-        var views = new OpenView[kinds.Length];
-        for (var index = 0; index < kinds.Length; index++)
-        {
-            var region = offsets[index] < 0
-                ? null
-                : new ViewRegion((uint)offsets[index], (uint)limits[index]);
-            views[index] = new OpenView(
-                (ViewKind)kinds[index],
-                selectors[index],
-                tokens[index],
-                region);
-        }
-        return views;
-    }
 }

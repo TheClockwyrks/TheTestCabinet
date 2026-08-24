@@ -152,8 +152,8 @@ module GG
     # by a capability of its own — so a sweep that included them would answer `0` for an agent that
     # may not close one, which reads as a selector that named nothing.
     #
-    # Closing a view is context management, bought — with `GG::Views.current` — by the
-    # `agent-managed-context` capability: an agent whose run did not enable it is refused.
+    # Closing a view is context management, bought by the `agent-managed-context` capability: an
+    # agent whose run did not enable it is refused.
     #
     # @param selector [String] What the view is filed under: a file's path, a text view's label, or
     #   `search results`.
@@ -166,116 +166,5 @@ module GG
     end
     operation :close, "views.close"
 
-    # List what is open in the context window right now.
-    #
-    # Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and —
-    # for a paged file view — the `region` it covers. Reading it is what decides what to close when
-    # the window is filling up. What it enumerates is the context window's contents, not
-    # any module's functions.
-    #
-    # Listing what is open is context management, bought with `GG::Views.close` by the
-    # `agent-managed-context` capability: an agent whose run did not enable it is refused.
-    #
-    # @return [Array<GG::Views::OpenView>] every view open in the context window
-    # @raise [GG::Core::ApiError] `:unavailable` for an agent whose run did not buy
-    #   `agent-managed-context`.
-    def self.current
-      Wire.call("current", "views", "currentViews", []).map do |view|
-        region = Wire.field(view, "region")
-        OpenView.new(
-          kind: Wire.symbol(`#{view}.kind`),
-          selector: Wire.field(view, "selector"),
-          tokens: Wire.integer(`#{view}.tokens`),
-          region: region.nil? ? nil : ViewRegion.new(
-            offset: Wire.field(region, "offset"),
-            limit: Wire.field(region, "limit")
-          )
-        )
-      end
-    end
-    operation :current, "views.current"
-
-    # Which of the three kinds a view is.
-    #
-    # The taxonomy is closed at three deliberately: everything on disk is a file, everything a
-    # program can compute is a string, and documentation is neither — gg holds it.
-    module ViewKind
-      # A file that was opened; its selector is the path.
-      FILE = :file
-
-      # A computed value; its selector is the label it was given.
-      TEXT = :text
-
-      # A module, function or type's documentation; its selector is that entry's key.
-      DOCS = :docs
-    end
-
-    # The window of lines a paged file view covers; absent for a whole-file view.
-    class ViewRegion
-      include Value
-
-      # @return [Integer] The 1-based first line the view shows.
-      attr_reader :offset
-
-      # @return [Integer] How many lines it shows.
-      attr_reader :limit
-
-      # @api private
-      def initialize(offset:, limit:)
-        @offset = offset
-        @limit = limit
-        freeze
-      end
-    end
-
-    # One view open in the context window, as `GG::Views.current` reports it.
-    class OpenView
-      include Value
-      extend Surface::Operations
-
-      # @return [GG::Views::ViewKind] Whether it is a file, text, or documentation view.
-      attr_reader :kind
-
-      # What it is filed under, and what `GG::Views.close` takes.
-      #
-      # A file's path, a text view's label or `search results`, and for a documentation view the
-      # key it was opened under.
-      #
-      # @return [String] the selector this view is filed under
-      attr_reader :selector
-
-      # @return [Integer] Roughly what holding it costs, in tokens.
-      attr_reader :tokens
-
-      # @return [GG::Views::ViewRegion, nil] The line window a paged file view covers; `nil` for a
-      #   whole-file view and for text views.
-      attr_reader :region
-
-      # @api private
-      def initialize(kind:, selector:, tokens:, region:)
-        @kind = kind
-        @selector = selector
-        @tokens = tokens
-        @region = region
-        freeze
-      end
-
-      # Close this view, freeing the tokens it occupied.
-      #
-      # `GG::Views.close` with the selector already supplied, which is what makes tidying a window
-      # read as ordinary Ruby: `GG::Views.current.each(&:close)`.
-      #
-      # A documentation view is the one this does not take away, because `GG::Views.close` does not
-      # reach that band: taking one of those back is a different call, bought by a capability of
-      # its own.
-      #
-      # @return [Integer] how many views were closed, counting every page of one file
-      # @raise [GG::Core::ApiError] `:unavailable` for an agent whose run did not buy
-      #   `agent-managed-context`, which is what buys closing a view.
-      def close
-        Views.close(@selector)
-      end
-      member_operation :close, "views.close"
-    end
   end
 end

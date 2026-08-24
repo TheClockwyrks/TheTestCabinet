@@ -1,9 +1,5 @@
 /// Read, write, edit, list and search the files of the workspace.
 ///
-/// Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
-/// that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
-/// large files in a single turn will exhaust its fuel budget.
-///
 /// Nothing here places anything in the agent's context window: showing something is what the
 /// `gg.views` module is for.
 ///
@@ -57,41 +53,7 @@ public enum files {
         }
     }
 
-    /// Read a text file and hand back its contents directly.
-    ///
-    /// `files.readFile` without the narrowing, for the common case: the same read, the same window,
-    /// the same cost.
-    ///
-    /// - Parameters:
-    ///   - path: The file to read, relative to the workspace or absolute.
-    ///   - offset: The 1-based line to start at. Left out, the read starts at the first line.
-    ///   - limit: How many lines to return from `offset`. Left out, the read runs to the end.
-    /// - Returns: the file's text.
-    /// - Throws: `core.ApiError` with `.invalidArgument` when the path names a picture, which
-    ///   `files.readFile` inspects instead and `views.openFile` displays.
-    /// - ggop: files.read_text_file
-    public static func readTextFile(
-        _ path: String, offset: Int? = nil, limit: Int? = nil
-    ) throws -> String {
-        try withScratch { scratch in
-            var path = scratch.string(path)
-            var ret = sandbox_string_t()
-            var err = test_cabinet_gg_types_api_error_t()
-            let ok = withWindow(offset, limit) { offset, limit in
-                test_cabinet_gg_helpers_read_text_file(&path, offset, limit, &ret, &err)
-            }
-            guard ok else { throw lift(failure: &err) }
-            let contents = lift(ret)
-            sandbox_string_free(&ret)
-            return contents
-        }
-    }
-
     /// Write UTF-8 text to a file, creating parent directories and replacing what is there.
-    ///
-    /// Writing is the expensive direction of this sandbox: rewriting more than a few dozen large
-    /// files in one program exhausts its fuel budget, so a large rewrite is best split across
-    /// several turns.
     ///
     /// - Parameters:
     ///   - path: Where to write, relative to the workspace or absolute. Parent directories are

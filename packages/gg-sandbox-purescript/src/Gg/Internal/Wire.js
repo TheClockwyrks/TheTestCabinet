@@ -35,7 +35,7 @@ const notExported = (operation, written) =>
   );
 
 // `namespace` is gg's own name for the family holding the function; `written` is the
-// fully-qualified name a PureScript program writes — `Gg.Files.readTextFile` — and its last segment
+// fully-qualified name a PureScript program writes — `Gg.Files.readFile` — and its last segment
 // is the family's own name for the same function. One string rather than two because the two halves
 // are the same word: what differs is the qualifier.
 export const callImpl =

@@ -283,27 +283,6 @@ static MonoBoolean gg_read_file(MonoString *path, int32_t offset, int32_t limit,
   return 1;
 }
 
-static MonoBoolean gg_read_text_file(MonoString *path, int32_t offset, int32_t limit,
-                                     MonoString **contents) {
-  char *utf8 = lift(path);
-  sandbox_string_t owned = borrow(utf8);
-  uint32_t offset_storage = 0;
-  uint32_t limit_storage = 0;
-  sandbox_string_t result;
-  test_cabinet_gg_helpers_api_error_t failure;
-  const bool ok =
-      test_cabinet_gg_helpers_read_text_file(&owned, maybe_u32(offset, &offset_storage),
-                                             maybe_u32(limit, &limit_storage), &result, &failure);
-  if (utf8 != NULL) mono_free(utf8);
-  if (!ok) {
-    park(&failure);
-    return 0;
-  }
-  *contents = lower(&result);
-  sandbox_string_free(&result);
-  return 1;
-}
-
 static MonoBoolean gg_write_file(MonoString *path, MonoString *contents, uint64_t *written) {
   char *path_utf8 = lift(path);
   char *contents_utf8 = lift(contents);
@@ -1230,31 +1209,6 @@ static MonoBoolean gg_close_view(MonoString *selector, uint32_t *closed) {
   return ok ? 1 : 0;
 }
 
-static MonoBoolean gg_current_views(MonoArray **kinds, MonoArray **selectors, MonoArray **tokens,
-                                    MonoArray **offsets, MonoArray **limits) {
-  test_cabinet_gg_views_list_open_view_t views;
-  test_cabinet_gg_views_api_error_t failure;
-  if (!test_cabinet_gg_views_current_views(&views, &failure)) {
-    park(&failure);
-    return 0;
-  }
-  *kinds = int_array(views.len);
-  *selectors = string_array(views.len);
-  *tokens = ulong_array(views.len);
-  *offsets = long_array(views.len);
-  *limits = long_array(views.len);
-  for (size_t index = 0; index < views.len; index++) {
-    int_array_set(*kinds, index, (int32_t)views.ptr[index].kind);
-    mono_array_setref(*selectors, index, lower(&views.ptr[index].selector));
-    ulong_array_set(*tokens, index, views.ptr[index].tokens);
-    const bool paged = views.ptr[index].region.is_some;
-    long_array_set(*offsets, index, paged ? (int64_t)views.ptr[index].region.val.offset : -1);
-    long_array_set(*limits, index, paged ? (int64_t)views.ptr[index].region.val.limit : -1);
-  }
-  test_cabinet_gg_views_list_open_view_free(&views);
-  return 1;
-}
-
 // ---------------------------------------------------------------------------------------------
 // programs
 // ---------------------------------------------------------------------------------------------
@@ -1335,7 +1289,6 @@ static const binding_t bindings[] = {
     {"Gg.Internal.Native::EditFile", (const void *)gg_edit_file, "edit_file"},
     {"Gg.Internal.Native::ListDir", (const void *)gg_list_dir, "list_dir"},
     {"Gg.Internal.Native::Search", (const void *)gg_search, "search"},
-    {"Gg.Internal.Native::ReadTextFile", (const void *)gg_read_text_file, NULL},
     {"Gg.Internal.Native::ReadSkill", (const void *)gg_read_skill, "read_skill"},
     {"Gg.Internal.Native::ReadMemory", (const void *)gg_read_memory, "read_memory"},
     {"Gg.Internal.Native::EditMemory", (const void *)gg_edit_memory, "edit_memory"},
@@ -1374,7 +1327,6 @@ static const binding_t bindings[] = {
     {"Gg.Internal.Native::OpenTextView", (const void *)gg_open_text_view, NULL},
     {"Gg.Internal.Native::OpenDocsView", (const void *)gg_open_docs_view, NULL},
     {"Gg.Internal.Native::CloseView", (const void *)gg_close_view, NULL},
-    {"Gg.Internal.Native::CurrentViews", (const void *)gg_current_views, NULL},
     {"Gg.Internal.Native::History", (const void *)gg_history, NULL},
     {"Gg.Internal.Native::GetProgram", (const void *)gg_get_program, NULL},
     {"Gg.Internal.Native::Rerun", (const void *)gg_rerun, NULL},

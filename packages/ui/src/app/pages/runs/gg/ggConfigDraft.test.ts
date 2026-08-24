@@ -2869,10 +2869,10 @@ describe("a capability that is on and grants nothing", () => {
   }
 
   it("offers the view-call slider to a code agent and not to a tool-calling one", () => {
-    // Closing a view and listing what is open have no tool beside them, so the slider has
-    // nothing to grant a tool-calling agent and is not shown one.
+    // Closing a view has no tool beside it, so the slider has nothing to grant a
+    // tool-calling agent and is not shown one.
     const views = MANAGED.features!.find((b) => b.label === "Close views")!;
-    expect(views.operations).toEqual(["views.close", "views.current"]);
+    expect(views.operations).toEqual(["views.close"]);
     expect(featureBundleOffered(armed("rac"), views)).toBe(true);
     expect(featureBundleOffered(armed("tools"), views)).toBe(false);
     expect(featureBundleOffered(armed("tools"), MANAGED.features![0]!)).toBe(

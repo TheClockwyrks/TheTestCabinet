@@ -435,14 +435,11 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     let (outcome, log) = evaluate(
         &prepare(&program(
             r####"
-  const std::string text = gg::files::read_text_file("notes.md", {.offset = 1, .limit = 2});
   const auto read = gg::views::open_file("notes.md", {.offset = 1, .limit = 2});
-  gg::views::open_text("summary", text);
+  gg::views::open_text("summary", "eight files, two failing");
   gg::views::open_docs_view("read_file");
   const std::uint32_t closed = gg::views::close("summary");
   const std::uint32_t missing = gg::views::close("never opened");
-  const auto open = gg::views::current();
-  gg::log(std::format("{} {}", open[0].selector, open[0].kind == gg::views::view_kind::file));
   gg::log(std::format("{} {}", closed, missing));
   const std::string shown = std::holds_alternative<gg::files::text_file>(read)
                                 ? std::get<gg::files::text_file>(read).contents
@@ -470,21 +467,20 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
         canned_outcome,
     );
     let lines = logs(&outcome);
-    assert_eq!(lines[0], "notes.md true");
     // Closing something that is not open is `0` rather than a failure, so a program that tidies up
     // unconditionally does not have to guard every call.
-    assert_eq!(lines[1], "1 0");
-    assert_eq!(lines[2], "contents of notes.md");
+    assert_eq!(lines[0], "1 0");
+    assert_eq!(lines[1], "contents of notes.md");
     // A search hands the program a page it can read in the turn that asked for it — the count, the
     // echoed offset, and the hits themselves. The double models no catalogue, so the honest page is
     // an empty one; what this proves is the crossing, which is the half no other test covers on this
     // arm. The ranking over a real catalogue is the documentation runtime's own to prove.
-    assert_eq!(lines[3], "0 0 0");
+    assert_eq!(lines[2], "0 0 0");
     // Closing documentation is the one part of this family a run buys, and this run did not: the
     // program is refused by the host, as the exception a C++ author catches, under the call's own
     // name rather than by a name that was never in scope — a compiled arm cannot withhold a name.
-    assert_eq!(lines[4], "unavailable on close");
-    assert_eq!(lines[5], "unavailable on close_all");
+    assert_eq!(lines[3], "unavailable on close");
+    assert_eq!(lines[4], "unavailable on close_all");
     // Every view the program opened is recorded, the documentation one and the search's own
     // included — a search puts its page in the window as well as handing it back.
     assert_eq!(
@@ -518,10 +514,10 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     );
     assert_eq!(logs(&granted), ["0 0"]);
 
-    // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `gg::views::open_file` performs. Neither has a tool name of its own, which is exactly the point — a
-    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
-    assert_eq!(log.names(), ["read_file", "read_file"]);
+    // One read reached gg's dispatch and arrived as `read_file`: the one `gg::views::open_file`
+    // performs. It has no tool name of its own, which is exactly the point — a view is a read gg
+    // also shows you.
+    assert_eq!(log.names(), ["read_file"]);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
@@ -595,7 +591,8 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     let (outcome, _log) = run_with(
         r####"
   try {
-    gg::log(gg::files::read_text_file("gone.cpp"));
+    gg::files::read_file("gone.cpp");
+    gg::log("read it");
   } catch (const gg::core::api_error &failure) {
     if (failure.code() != gg::core::api_error_code::not_found) throw;
     gg::log(std::format("{} on {}", gg::core::gg_name(failure.code()), failure.operation()));
@@ -607,10 +604,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.cpp".to_string())
         },
     );
-    assert_eq!(
-        logs(&outcome),
-        ["not-found on read_text_file", "carried on"]
-    );
+    assert_eq!(logs(&outcome), ["not-found on read_file", "carried on"]);
 
     // Let out: gg's shell catches what escapes `main`, so an uncaught failure is a reported,
     // RECOVERABLE program error rather than a trap — and it carries the failed call's own gg code,
@@ -620,7 +614,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     let (outcome, _log) = run_with(
         r####"
   gg::log("before");
-  gg::files::read_text_file("gone.cpp");
+  gg::files::read_file("gone.cpp");
   gg::log("after");
 "####,
         &all_operations(),
@@ -632,7 +626,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     assert!(
         error
             .message
-            .contains("`read_text_file` failed (not-found): no such file: gone.cpp"),
+            .contains("`read_file` failed (not-found): no such file: gone.cpp"),
         "the model reads gg's own sentence rather than a C++ type name: {}",
         error.message
     );
@@ -1130,7 +1124,6 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
         [
             ("gg::board::issue_created::wait", "board.wait_for_issue"),
             ("gg::memories::memory_hit::read", "memories.read_memory"),
-            ("gg::views::open_view::close", "views.close"),
             (
                 "gg::delegation::subagent_handle::send",
                 "delegation.send_message"

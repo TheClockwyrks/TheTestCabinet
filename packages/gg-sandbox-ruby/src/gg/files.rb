@@ -3,10 +3,6 @@
 module GG
   # Read, write, edit and list the files of the workspace.
   #
-  # Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
-  # that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
-  # large files in a single turn will exhaust its fuel budget.
-  #
   # Nothing here places anything in the agent's context window; a view is what does that.
   module Files
     extend Surface::Operations
@@ -46,33 +42,7 @@ module GG
     end
     operation :read_file, "files.read_file", tool: "read_file"
 
-    # Read a text file and hand back its contents directly.
-    #
-    # `GG::Files.read_file` without the narrowing, for the common case: the same read, the same
-    # window, the same cost.
-    #
-    # @param path [String] The file to read, relative to the workspace or absolute.
-    # @param offset [Integer, nil] The 1-based line to start at. Left out, the read starts at the
-    #   first line.
-    # @param limit [Integer, nil] How many lines to return from `offset`. Left out, a capped read
-    #   policy's default applies, or the read runs to the end of the file.
-    # @return [String] the file's text, or just the requested window
-    # @raise [GG::Core::ApiError] `:invalid_argument` when the path names a picture, which
-    #   `GG::Files.read_file` inspects instead and `GG::Views.open_file` displays.
-    def self.read_text_file(path, offset: nil, limit: nil)
-      Wire.call("read_text_file", "helpers", "readTextFile", [
-                  path,
-                  Wire.js(Check.uint("read_text_file", "offset", offset)),
-                  Wire.js(Check.uint("read_text_file", "limit", limit))
-                ])
-    end
-    operation :read_text_file, "files.read_text_file", tool: "read_file"
-
     # Write UTF-8 text to a file, creating parent directories and replacing what is there.
-    #
-    # Writing is the expensive direction of this sandbox: rewriting more than a few dozen large
-    # files in one program exhausts its fuel budget, so a large rewrite is best split across several
-    # turns.
     #
     # The contents may be given as a block, which is what a Ruby program reaches for when the text
     # is assembled rather than held: `GG::Files.write_file("notes.md") { rows.join("\n") }`.

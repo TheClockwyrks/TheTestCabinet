@@ -262,8 +262,9 @@ open view into the next prompt. The spellings below are TypeScript's; each
 [language](/gg/languages/overview/) spells them its own way.
 
 - `gg.views.openFile(path)` lands in the File views band, keyed by path, and
-  arrives headed `File: <path>:<first>-<last>`, the 1-based inclusive line range
-  the view shows (`1-N` for a whole file).
+  arrives headed `File: <path>:<first>-<last> of <N> lines`, the 1-based
+  inclusive line range the view shows and the file's total line count (a whole
+  file's range runs `1-N`).
 - `gg.views.openText(label, body)` lands in Agent views, keyed by the label.
 - `gg.views.openDocsView(name)` lands in Documentation, keyed by the name of the
   thing it documents.

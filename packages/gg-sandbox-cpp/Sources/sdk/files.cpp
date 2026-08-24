@@ -34,21 +34,6 @@ files::file_read read_file(std::string_view path, files::read_window window) {
   return detail::lift_file_read(ret);
 }
 
-std::string read_text_file(std::string_view path, files::read_window window) {
-  detail::scratch scratch;
-  detail::window lines(window);
-  sandbox_string_t lowered = scratch.str(path);
-  sandbox_string_t ret{};
-  test_cabinet_gg_types_api_error_t err{};
-  if (!test_cabinet_gg_helpers_read_text_file(&lowered, lines.offset(), lines.limit(), &ret,
-                                              &err)) {
-    detail::fail(err);
-  }
-  std::string contents = detail::lift(ret);
-  sandbox_string_free(&ret);
-  return contents;
-}
-
 std::uint64_t write_file(std::string_view path, std::string_view contents) {
   detail::scratch scratch;
   sandbox_string_t lowered_path = scratch.str(path);

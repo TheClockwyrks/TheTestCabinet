@@ -64,8 +64,8 @@ const WORLD: &str = "sandbox";
 /// a name here that is not an interface of the world fails this build, and an interface of the world
 /// that is not here contributes its functions to the tool list. That is the property gg's
 /// `every_registered_language_binds_exactly_the_tools_gg_offers` compares against `ALL_TOOL_NAMES`.
-const NOT_OPERATION_INTERFACES: [&str; 6] =
-    ["helpers", "session", "docs", "views", "programs", "feedback"];
+const NOT_OPERATION_INTERFACES: [&str; 5] =
+    ["session", "docs", "views", "programs", "feedback"];
 
 fn main() {
     let manifest = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets this"));

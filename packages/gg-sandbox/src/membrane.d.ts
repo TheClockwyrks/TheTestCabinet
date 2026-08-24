@@ -178,22 +178,6 @@ declare module "test-cabinet:gg/files" {
   ): SearchMatch[];
 }
 
-/**
- * The convenience wrappers built on a tool without being one.
- *
- * Imported rather than composed in the guest out of {@link readFile}, so the host can tell the two
- * apart: a helper the guest built would arrive as its wrapped tool's call and be recorded under a
- * function the model never wrote.
- */
-declare module "test-cabinet:gg/helpers" {
-  /** Read a text file's contents. A path naming a picture is `invalid-argument`. */
-  export function readTextFile(
-    path: string,
-    offset: number | undefined,
-    limit: number | undefined,
-  ): string;
-}
-
 /** The authored skill library. */
 declare module "test-cabinet:gg/skills" {
   /** Read an authored skill by name, returning its body with the front matter stripped. */
@@ -594,11 +578,6 @@ declare module "test-cabinet:gg/views" {
   export function openDocsView(name: string): void;
   /** Close every view carrying `selector`, and return how many were closed. */
   export function closeView(selector: string): number;
-  /**
-   * What is open in the agent's window right now. Throws `unavailable` for an agent whose run did
-   * not buy `agent-managed-context`; granted, it cannot fail.
-   */
-  export function currentViews(): OpenViewRaw[];
 }
 
 /**

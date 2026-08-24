@@ -1389,9 +1389,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
     tools: ["read_file"],
-    // Three operations over one read: into a variable, as text, and straight into the
-    // agent's own window. gg buys all three with this one capability.
-    operations: ["files.read_file", "files.read_text_file", "views.open_file"],
+    // Two operations over one read: into a variable, and straight into the agent's own
+    // window. gg buys both with this one capability.
+    operations: ["files.read_file", "views.open_file"],
   },
   {
     id: "write-file",
@@ -1646,16 +1646,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       ownershipParam("what it has archived"),
     ],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
-    // The two view calls are responses-as-code only: a tool-calling agent has no `view`
-    // object, so they have no tool beside them. Closing a view and listing what is open are
-    // context management, which is why they are this capability's rather than bound to
-    // every program.
+    // The view call is responses-as-code only: a tool-calling agent has no `view`
+    // object, so it has no tool beside it. Closing a view is context management, which is
+    // why it is this capability's rather than bound to every program.
     operations: [
       "context.evict_file_view",
       "context.archive_thread",
       "context.search_archive",
       "views.close",
-      "views.current",
     ],
     features: [
       {
@@ -1672,8 +1670,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       {
         label: "Close views",
         tools: [],
-        operations: ["views.close", "views.current"],
-        hint: "Closing a view and listing what is open are granted together: a program decides what to close by reading what it holds. Responses as code only — a tool-calling agent reclaims file views with the eviction slider and has no text views to close.",
+        operations: ["views.close"],
+        hint: "Responses as code only — a tool-calling agent reclaims file views with the eviction slider and has no text views to close.",
       },
     ],
   },

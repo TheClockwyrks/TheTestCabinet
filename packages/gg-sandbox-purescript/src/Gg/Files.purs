@@ -1,14 +1,9 @@
 -- | Read, write, edit, search and list the files of the workspace.
 -- |
--- | Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
--- | that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
--- | large files in a single turn will exhaust its fuel budget.
--- |
 -- | Nothing here places anything in the agent's context window: a value a program gets back from
 -- | this module is the program's alone until a view shows it.
 module Gg.Files
   ( readFile
-  , readTextFile
   , writeFile
   , editFile
   , listDir
@@ -189,44 +184,7 @@ readFile path options =
   fileRead TextFile ImageFile
     <$> Wire.call "read_file" "files" "Gg.Files.readFile" [ Wire.wire path, Wire.lower {} options ]
 
--- | Read a text file and hand back its contents directly.
--- |
--- | `Gg.Files.readFile` without the narrowing, for the common case: the same read, the same window,
--- | the same cost.
--- |
--- | # Operation
--- |
--- | files.read_text_file
--- |
--- | # Arguments
--- |
--- | - `path` — The file to read, relative to the workspace or absolute.
--- | - `options` — The window of lines to read; `{}` reads the whole file.
--- | - `options.offset` — The 1-based line to start at. Left out, the read starts at the first line.
--- | - `options.limit` — How many lines to return from `offset`. Left out, a capped read policy's
--- |   default applies, or the read runs to the end of the file.
--- |
--- | # Returns
--- |
--- | The file's text, or the window of it the read asked for.
--- |
--- | # Throws
--- |
--- | `InvalidArgument` when the path names a picture, which `Gg.Files.readFile` inspects instead and
--- | `Gg.Views.openFile` displays.
-readTextFile
-  :: forall given rest
-   . Union given rest ReadOptions
-  => String
-  -> Record given
-  -> Effect String
-readTextFile path options =
-  Wire.call "read_file" "files" "Gg.Files.readTextFile" [ Wire.wire path, Wire.lower {} options ]
-
 -- | Write UTF-8 text to a file, creating parent directories and replacing what is there.
--- |
--- | Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files
--- | in one program exhausts its fuel budget, so a large rewrite is best split across several turns.
 -- |
 -- | # Operation
 -- |

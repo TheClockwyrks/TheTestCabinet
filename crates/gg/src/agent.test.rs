@@ -1970,7 +1970,7 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
             .content
             .as_deref()
             .unwrap_or("")
-            .starts_with("File: SPEC.md:1-3\n----\n# The spec\n"),
+            .starts_with("File: SPEC.md:1-3 of 3 lines\n----\n# The spec\n"),
         "{:?}",
         views[0].message().content
     );

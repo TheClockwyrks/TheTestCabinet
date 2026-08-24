@@ -390,14 +390,11 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_swift_too()
             r####"
 import gg
 
-let text = try files.readTextFile("notes.md", offset: 1, limit: 2)
 let read = try views.openFile("notes.md", offset: 1, limit: 2)
-try views.openText("summary", body: text)
+try views.openText("summary", body: "eight files, two failing")
 try views.openDocsView("readFile")
 let closed = try views.close("summary")
 let missing = try views.close("never opened")
-let open = try views.current()
-gg.log("\(open[0].selector) \(open[0].kind)")
 gg.log("\(closed) \(missing)")
 switch read {
 case .text(let file): gg.log(file.contents.split(separator: "\n").first.map(String.init) ?? "")
@@ -424,24 +421,20 @@ try session.finish("read the file and showed myself the result")
         canned_outcome,
     );
     let lines = logs(&outcome);
-    // What is still open is the file view, carrying the enum case rather than the word the wire
-    // used; the text view the program closed is gone, and a documentation view is gg's to deliver on
-    // the next turn rather than something `current` reports.
-    assert_eq!(lines[0], "notes.md file");
     // Closing something that is not open is `0` rather than a failure, so a program that tidies up
     // unconditionally does not have to guard every call.
-    assert_eq!(lines[1], "1 0");
-    assert_eq!(lines[2], "contents of notes.md");
+    assert_eq!(lines[0], "1 0");
+    assert_eq!(lines[1], "contents of notes.md");
     // A search hands the program a page it can read in the turn that asked for it — the count, the
     // echoed offset, and the hits themselves. The double models no catalogue, so the honest page is
     // an empty one; what this proves is the crossing, which is the half no other test covers on this
     // arm. The ranking over a real catalogue is the documentation runtime's own to prove.
-    assert_eq!(lines[3], "0 0 0");
+    assert_eq!(lines[2], "0 0 0");
     // Closing documentation is the one part of this family a run buys, and this run did not: the
     // program is refused by the host, as the error a Swift author catches, under the call's own name
     // rather than by a name that was never in scope — a compiled arm cannot withhold a name.
-    assert_eq!(lines[4], "unavailable on close");
-    assert_eq!(lines[5], "unavailable on close_all");
+    assert_eq!(lines[3], "unavailable on close");
+    assert_eq!(lines[4], "unavailable on close_all");
     // Every view the program opened is recorded, the documentation one and the search's own
     // included — a search puts its page in the window as well as handing it back.
     assert_eq!(
@@ -477,10 +470,10 @@ gg.log("\(try docs.close("gg.views.openText")) \(try docs.closeAll())")
     );
     assert_eq!(logs(&granted), ["0 0"]);
 
-    // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `views.openFile` performs. Neither has a tool name of its own, which is exactly the point — a
-    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
-    assert_eq!(log.names(), ["read_file", "read_file"]);
+    // One read reached gg's dispatch and arrived as `read_file`: the one `views.openFile`
+    // performs. It has no tool name of its own, which is exactly the point — a view is a read gg
+    // also shows you.
+    assert_eq!(log.names(), ["read_file"]);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
@@ -499,7 +492,10 @@ import gg
 
 let files = ["a", "b"]
 gg.log("\(files.count)")
-gg.log(try gg.files.readTextFile("notes.md"))
+switch try gg.files.readFile("notes.md") {
+case .text(let file): gg.log(file.contents)
+case .image(let picture): gg.log(picture.label)
+}
 "####,
         &all_operations(),
         canned_outcome,
@@ -580,7 +576,8 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
 import gg
 
 do {
-    gg.log(try files.readTextFile("gone.swift"))
+    _ = try files.readFile("gone.swift")
+    gg.log("read it")
 } catch let failure as core.ApiError where failure.code == .notFound {
     gg.log("\(failure.code) on \(failure.operation)")
 }
@@ -594,7 +591,7 @@ gg.log("carried on")
             )
         },
     );
-    assert_eq!(logs(&outcome), ["notFound on read_text_file", "carried on"]);
+    assert_eq!(logs(&outcome), ["notFound on read_file", "carried on"]);
 
     // Let out: Swift's top-level code is not a `throws` context anything can wrap, so an uncaught
     // failure is a TRAP rather than a reported error. What a model reads is what the runtime says
@@ -606,7 +603,7 @@ gg.log("carried on")
 import gg
 
 gg.log("before")
-_ = try files.readTextFile("gone.swift")
+_ = try files.readFile("gone.swift")
 gg.log("after")
 "####,
         &all_operations(),
@@ -623,7 +620,7 @@ gg.log("after")
         "an uncaught failure did not say what happened to it: {failure}"
     );
     assert!(
-        failure.contains("`read_text_file` failed (not-found): no such file: gone.swift"),
+        failure.contains("`read_file` failed (not-found): no such file: gone.swift"),
         "the model reads gg's own sentence rather than a Swift type name: {failure}"
     );
 

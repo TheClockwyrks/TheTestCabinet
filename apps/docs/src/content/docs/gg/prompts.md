@@ -306,9 +306,10 @@ repeat that work.
 `View` is qualified by the label the view was opened under (`View: changed-files`),
 because a label is the only thing telling two views apart. A documentation view
 is qualified the same way. `File` is qualified by the path the view was opened
-under and the 1-based inclusive line range it shows
-(`File: src/main.ts:100-250`; a whole file reads `1-N`), because the body is the
-file's text alone. The `File` row describes both the views the run seeds, under
+under, the 1-based inclusive line range it shows and the file's total line
+count (`File: src/main.ts:100-250 of 400 lines`; a whole file's range runs
+`1-N`), because the body is the file's text alone. The `File` row describes both
+the views the run seeds, under
 [autoload](/gg/autoload-specifications/), and the ones the program opens itself.
 A worked example of one heading and its `----` rule follows the list, and the
 list closes on the sentence that makes the vocabulary legible: a program that

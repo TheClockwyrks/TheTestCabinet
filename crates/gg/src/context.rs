@@ -145,11 +145,11 @@ pub struct ContextItem {
     /// depending on how it had been read.
     region: Option<FileRegion>,
     /// For a [`FileView`](GgContextSource::FileView) of a **text** file, the 1-based inclusive line
-    /// range the view shows — what its [heading](item_heading) reports after the path. Unlike
-    /// [`region`](Self::region) it is set for a whole-file view too (`1-N`, `N` the file's total
-    /// line count), which is why it is a second field rather than a reading of the region: the
-    /// region is `None` for a whole file *by design*, so it cannot say how long the file is. `None`
-    /// for an image view, for a tool-calling read, and for every other kind of item.
+    /// range the view shows and the file's total line count — what its [heading](item_heading)
+    /// reports after the path. Unlike [`region`](Self::region) it is set for a whole-file view too
+    /// (`1-N of N lines`), which is why it is a second field rather than a reading of the region:
+    /// the region is `None` for a whole file *by design*, so it cannot say how long the file is.
+    /// `None` for an image view, for a tool-calling read, and for every other kind of item.
     lines: Option<ShownLines>,
     /// The [session turn](ContextModel::begin_turn) this item was pushed on — the number
     /// [`archive_thread`](ContextModel::archive_thread) selects ranges of, and the number a tool
@@ -206,19 +206,23 @@ impl ContextItem {
     }
 }
 
-/// The 1-based inclusive line range a text [file view](GgContextSource::FileView) **shows** — the
-/// qualifier its [heading](item_heading) carries after the path, as `File: src/main.rs:100-250`.
+/// The 1-based inclusive line range a text [file view](GgContextSource::FileView) **shows**, and
+/// the file's total line count — the qualifier its [heading](item_heading) carries after the path,
+/// as `File: src/main.rs:100-250 of 400 lines`.
 ///
-/// It is what the read **actually returned**, exactly as a [`FileRegion`] is, and for the same
-/// reason: a heading that said what the call asked for would describe lines the body does not
-/// hold. A whole-file read shows `1-N` with `N` the file's total line count, so the model can tell
-/// a whole file from the first page of one without counting.
+/// The range is what the read **actually returned**, exactly as a [`FileRegion`] is, and for the
+/// same reason: a heading that said what the call asked for would describe lines the body does not
+/// hold. The total is the file's, so a partial read is distinguishable from a full one without
+/// counting: a whole-file read shows `1-N of N lines`, and the first page of a longer file shows
+/// the same range over a larger total.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShownLines {
     /// The 1-based first line shown.
     pub first: u64,
     /// The 1-based last line shown, inclusive.
     pub last: u64,
+    /// The file's total line count, which says how much of the file the range covers.
+    pub total: u64,
 }
 
 impl ShownLines {
@@ -230,6 +234,7 @@ impl ShownLines {
             Some(ApiData::FileText(text)) if text.last_line >= text.first_line => Some(Self {
                 first: text.first_line.into(),
                 last: text.last_line.into(),
+                total: text.total_lines.into(),
             }),
             _ => None,
         }
@@ -291,7 +296,7 @@ pub struct OpenFileView {
     pub region: Option<FileRegion>,
 }
 
-/// Which of the two [view](ContextModel::open_views) kinds a view is — the whole taxonomy, and
+/// Which of the two view kinds a view is — the whole taxonomy, and
 /// closed on purpose.
 ///
 /// Everything on disk is a file and everything a program can compute is a string, so a directory
@@ -395,23 +400,6 @@ pub struct ViewsClosed {
     /// onward — and for the [documentation band](GgContextSource::DocsView), which nothing else can
     /// disturb, this is the *only* thing that ever does.
     pub earliest_removed: Option<usize>,
-}
-
-/// One view of either kind open in the window, as [`open_views`](ContextModel::open_views) reports
-/// it — what backs the model-facing `view.current()`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpenViewInfo {
-    /// Whether this is a file or a text view.
-    pub kind: ViewKind,
-    /// The view's selector: a file view's workspace path, or a text view's label.
-    pub selector: String,
-    /// The estimated tokens the view occupies. Views that share a selector *and* a region are
-    /// reported as one entry carrying their combined cost, because that is what closing the
-    /// selector reclaims.
-    pub tokens: u64,
-    /// The `offset`/`limit` window a **paged** file view covers; `None` for a whole-file view and
-    /// for every text view.
-    pub region: Option<FileRegion>,
 }
 
 /// What opening a view did to the window: whether it replaced a view that was already open, whether
@@ -2389,8 +2377,8 @@ impl ContextModel {
     /// asymmetry is enormous in the other direction: a picture is re-uploaded whole on every
     /// subsequent request for as long as it is resident (up to `IMAGE_ATTACH_CAP`, 8 MiB, each), so
     /// an agent re-opening one screenshot across twenty turns would leave twenty copies of it in the
-    /// window and pay to upload all twenty on every request thereafter, while
-    /// [`open_views`](Self::open_views) — which reports what is *open* — showed it one. Nothing in
+    /// window and pay to upload all twenty on every request thereafter, while what is *open*
+    /// remained one view. Nothing in
     /// the accounting would name the other nineteen, and nothing the agent could close would reach
     /// them.
     ///
@@ -2420,51 +2408,6 @@ impl ContextModel {
             }
             item.tokens = self.estimator.estimate_message(&item.message);
         }
-    }
-
-    /// Every view **open** in the window, in the order it was opened — what backs the model-facing
-    /// `view.current()`.
-    ///
-    /// Views sharing a selector *and* a region are reported as one entry carrying their combined
-    /// cost, because that is what closing the selector reclaims. (Only a native `read_file` can
-    /// produce such a pair; the view API supersedes instead.)
-    ///
-    /// A [`Pinned`](Retention::Pinned) view is left out, for the same reason
-    /// [`open_file_views`](Self::open_file_views) and [`top_file_views`](Self::top_file_views) leave
-    /// it out: this is the list `view.close` acts on, and a locked autoloaded specification cannot
-    /// be closed. Offering the model an entry whose close silently reclaims nothing is worse than
-    /// not listing it.
-    pub fn open_views(&self) -> Vec<OpenViewInfo> {
-        let mut open: Vec<OpenViewInfo> = Vec::new();
-        for item in &self.items {
-            if item.retention.is_pinned() {
-                continue;
-            }
-            let kind = match item.source {
-                GgContextSource::FileView => ViewKind::File,
-                GgContextSource::TextView => ViewKind::Text,
-                GgContextSource::DocsView => ViewKind::Docs,
-                GgContextSource::SearchResults => ViewKind::Search,
-                _ => continue,
-            };
-            // A view whose selector is unknown (a malformed native read) is unnameable, so there is
-            // nothing useful to report about it.
-            let Some(selector) = item.label.clone() else {
-                continue;
-            };
-            match open.iter_mut().find(|view| {
-                view.kind == kind && view.selector == selector && view.region == item.region
-            }) {
-                Some(existing) => existing.tokens += item.tokens as u64,
-                None => open.push(OpenViewInfo {
-                    kind,
-                    selector,
-                    tokens: item.tokens as u64,
-                    region: item.region,
-                }),
-            }
-        }
-        open
     }
 
     /// The [text views](GgContextSource::TextView) currently open, **with their bodies**, newest
@@ -2568,9 +2511,10 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
 /// of them apart. A **read skill** shares the word and keeps the
 /// bare `Documentation`, because its body opens by naming the skill and it cannot be closed anyway.
 ///
-/// A [`FileView`](GgContextSource::FileView) is qualified by its path **and the line range it
-/// shows**: `File: src/main.rs:100-250` for a paged read, `File: specs/rules.md:1-N` (`N` the
-/// file's total line count) for a whole file. The body is the file's text and nothing else — the
+/// A [`FileView`](GgContextSource::FileView) is qualified by its path, **the line range it shows
+/// and the file's total line count**: `File: src/main.rs:100-250 of 400 lines` for a paged read,
+/// `File: specs/rules.md:1-N of N lines` for a whole file — so a partial read is distinguishable
+/// from a full one. The body is the file's text and nothing else — the
 /// read's `[showing lines …]` footer is the only other place the window is stated, and only a paged
 /// read carries one — so the heading is where the model learns which file it is looking at and how
 /// much of it. The path is the selector the view was opened under, workspace-relative as the model
@@ -2594,7 +2538,9 @@ pub(crate) fn item_heading(
             Some(label),
         ) => Some(format!("{heading}: {label}")),
         (GgContextSource::FileView, Some(path)) => Some(match lines {
-            Some(ShownLines { first, last }) => format!("{heading}: {path}:{first}-{last}"),
+            Some(ShownLines { first, last, total }) => {
+                format!("{heading}: {path}:{first}-{last} of {total} lines")
+            }
             None => format!("{heading}: {path}"),
         }),
         _ => Some(heading.to_string()),

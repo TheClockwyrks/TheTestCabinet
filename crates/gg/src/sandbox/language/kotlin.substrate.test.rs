@@ -1202,12 +1202,12 @@ fn g8_a_runtime_failure_reaches_the_model() {
                 shape: Shape::ApiError,
                 program: r#"// G8 (a): a gg call the host answers `not-found`, uncaught.
 fun main() {
-    val text = gg.files.readTextFile(
+    val text = gg.files.readFile(
         "missing.md"
     )
 }
 "#,
-                names: &["read_text_file", "not-found", "missing.md"],
+                names: &["read_file", "not-found", "missing.md"],
                 located: Located::At("Program.kt:3"),
                 answered: Answered::AtRuntime,
                 recorded: Some(TurnErrorType::SandboxTrap),

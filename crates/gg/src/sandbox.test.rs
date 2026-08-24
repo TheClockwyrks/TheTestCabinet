@@ -225,7 +225,7 @@ fn a_program_runs_typed_calls_in_order() {
     // capability exists for — it cannot be written at all against untyped tool output.
     let (outcome, log) = run(concat!(
         "import * as gg from \"gg\";\nconst files = gg.files.listDir(\"src\").filter((e) => e.kind === \"file\" && e.name.endsWith(\".ts\"));\n",
-        "const texts = files.map((e) => gg.files.readTextFile(`src/${e.name}`));\n",
+        "const texts = files.map((e) => { const r = gg.files.readFile(`src/${e.name}`); return r.kind === \"text\" ? r.contents : \"\"; });\n",
         "const written = gg.files.writeFile(\"out/summary.txt\", texts.join(\"\\n\"));\n",
         "console.log(JSON.stringify({ files: files.map((f) => f.name), written }));",
     ));
@@ -245,8 +245,8 @@ fn a_program_runs_typed_calls_in_order() {
             .collect::<Vec<_>>(),
         [
             "files.list_dir",
-            "files.read_text_file",
-            "files.read_text_file",
+            "files.read_file",
+            "files.read_file",
             "files.write_file"
         ],
         "the host's own record must match what the loop was actually asked to do"
@@ -297,7 +297,8 @@ fn a_program_runs_typed_calls_in_order() {
     //
     // One call per bound module, the directory every module carries, and the one gg name bound bare.
     let (outcome, log) = run(concat!(
-        "import * as gg from \"gg\";\ngg.views.openText(\"scratch\", gg.files.readTextFile(\"notes.md\"));\n",
+        "import * as gg from \"gg\";\nconst notes = gg.files.readFile(\"notes.md\");\n",
+        "gg.views.openText(\"scratch\", notes.kind === \"text\" ? notes.contents : \"\");\n",
         "gg.shell.shell(\"ls\");\n",
         "gg.board.createEpic({ prefix: \"epc\", title: \"E\", description: \"D\" });\n",
         "gg.tasks.addTask({ id: \"t1\", title: \"T\" });\n",
@@ -626,7 +627,8 @@ fn the_limits_stop_a_runaway_program() {
             "import * as gg from \"gg\";\n",
             "let total = 0;\n",
             "for (let i = 0; i < 20; i++) {\n",
-            "  const text = gg.files.readTextFile(`src/file-${i}.ts`);\n",
+            "  const read = gg.files.readFile(`src/file-${i}.ts`);\n",
+            "  const text = read.kind === \"text\" ? read.contents : \"\";\n",
             "  total += gg.files.writeFile(`src/file-${i}.ts`, text.replace(/alpha/g, \"beta\"));\n",
             "}\n",
             "console.log(total);",
@@ -1018,42 +1020,35 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "documentation opens for everyone"
     );
 
-    // Closing a view and listing what is open are context management, bought by
-    // `agent-managed-context`; a run without it is refused both — by gg's own sentence naming the
+    // Closing a view is context management, bought by
+    // `agent-managed-context`; a run without it is refused — by gg's own sentence naming the
     // call, and as the catchable `ApiError` every other withheld call arrives as, since the SDK is
     // static and the membrane is the whole of the enforcement.
-    for call in ["gg.views.current()", "gg.views.close(\"nothing\")"] {
-        let outcome = run_as(
-            &format!("import * as gg from \"gg\";\n{call};"),
-            EndingRole::Standard,
-        );
-        let name = call.split('(').next().unwrap();
-        let error = uncaught(&outcome);
-        assert_eq!(
-            error.kind,
-            crate::sandbox::ProgramErrorKind::UnknownName,
-            "a withheld view call is the same class as any other name this agent does not hold"
-        );
-        assert!(
-            error
-                .message
-                .contains(&format!("`{name}` is not available.")),
-            "an agent without agent-managed-context is refused `{name}`: {}",
-            error.message
-        );
-    }
     let outcome = run_as(
-        "import * as gg from \"gg\";\ntry { gg.views.current(); }\n\
+        "import * as gg from \"gg\";\ngg.views.close(\"nothing\");",
+        EndingRole::Standard,
+    );
+    let error = uncaught(&outcome);
+    assert_eq!(
+        error.kind,
+        crate::sandbox::ProgramErrorKind::UnknownName,
+        "a withheld view call is the same class as any other name this agent does not hold"
+    );
+    assert!(
+        error.message.contains("`gg.views.close` is not available."),
+        "an agent without agent-managed-context is refused `gg.views.close`: {}",
+        error.message
+    );
+    let outcome = run_as(
+        "import * as gg from \"gg\";\ntry { gg.views.close(\"nothing\"); }\n\
          catch (e) { console.log(JSON.stringify({ isApiError: e instanceof gg.core.ApiError, operation: (e as gg.core.ApiError).operation, code: (e as gg.core.ApiError).code })); }",
         EndingRole::Standard,
     );
     assert_eq!(
         logged_json(&outcome),
-        json!({ "isApiError": true, "operation": "current", "code": "unavailable" }),
+        json!({ "isApiError": true, "operation": "close", "code": "unavailable" }),
         "the refusal is the structured `unavailable` error, catchable like any other"
     );
-    // The method the listing hands back is the same operation, so it is refused on the same terms
-    // — and since nothing was listed there is nothing to call it on, which is the point.
 
     // With the capability on, closing a selector that is not open is an answer, not a failure.
     let (outcome, _) = run(
@@ -1064,9 +1059,6 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         json!(0),
         "closing a selector that is not open is an answer, not a failure"
     );
-    let (outcome, _) =
-        run("import * as gg from \"gg\";\nconsole.log(JSON.stringify(gg.views.current().length));");
-    assert_eq!(logged_json(&outcome), json!(0));
 
     // …but `openFile` is a read, and an agent not granted it is refused. The function is bound like
     // every other — the SDK is static — so what the model gets is gg's own sentence naming the call
@@ -1096,41 +1088,25 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "`view.openFile` is a `read_file`, argument for argument"
     );
 
-    // What is open, as data. `JSON.stringify` is the assertion: a `u64` that reached the program as
-    // a `bigint` would throw here rather than merely reading oddly.
-    let (outcome, _) = run(
-        "import * as gg from \"gg\";\ngg.views.openFile(\"src/a.ts\");\n\
-         gg.views.openText(\"summary\", \"the body\");\n\
-         console.log(JSON.stringify(gg.views.current().map((v) => ({\n\
-             kind: v.kind, selector: v.selector, tokens: typeof v.tokens, region: v.region ?? null,\n\
-         }))));",
-    );
-    assert_eq!(
-        logged_json(&outcome),
-        json!([
-            { "kind": "file", "selector": "src/a.ts", "tokens": "number", "region": null },
-            { "kind": "text", "selector": "summary", "tokens": "number", "region": null },
-        ]),
-        "a whole-file read has no region, and no token count reaches a program as a `bigint`"
-    );
-
-    // Re-stating an intent replaces it: two `openText`s of one label are one view.
+    // Re-stating an intent replaces it: two `openText`s of one label are one view, which is
+    // what the close of that label reports.
     let (outcome, _) = run(
         "import * as gg from \"gg\";\ngg.views.openText(\"summary\", \"first\");\n\
          gg.views.openText(\"summary\", \"second\");\n\
-         console.log(JSON.stringify(gg.views.current().map((v) => v.selector)));",
+         console.log(JSON.stringify(gg.views.close(\"summary\")));",
     );
-    assert_eq!(logged_json(&outcome), json!(["summary"]));
+    assert_eq!(logged_json(&outcome), json!(1));
 
-    // Closing reports how many it closed, and leaves the rest.
+    // Closing reports how many it closed, and leaves the rest: `a` closes once, and `b` is
+    // still there for its own close to find.
     let (outcome, _) = run(
         "import * as gg from \"gg\";\ngg.views.openText(\"a\", \"x\");\n\
          gg.views.openText(\"b\", \"y\");\n\
          console.log(JSON.stringify({\n\
-             closed: gg.views.close(\"a\"), left: gg.views.current().map((v) => v.selector),\n\
+             closed: gg.views.close(\"a\"), left: gg.views.close(\"b\"),\n\
          }));",
     );
-    assert_eq!(logged_json(&outcome), json!({ "closed": 1, "left": ["b"] }));
+    assert_eq!(logged_json(&outcome), json!({ "closed": 1, "left": 1 }));
 
     // A refused view arrives as a catchable `ApiError` naming the call the program made, by the
     // key of the operation it wrote — the same identity every other failed call on this membrane

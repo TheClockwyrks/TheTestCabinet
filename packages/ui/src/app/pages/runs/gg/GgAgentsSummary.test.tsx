@@ -271,10 +271,10 @@ const API_SURFACE_EVENTS: HarnessEvent[] = [
   ]),
 ];
 
-// The same again, over the three functions that share one core: `files.readFile`,
-// `files.readTextFile` and `views.openFile` all run a `read_file`, and each is recorded as
-// itself. Both reviewers wrote `views.openFile` and neither wrote the other two, so a profile
-// that read every file through one of them must not be reported as having called the rest.
+// The same again, over the two functions that share one core: `files.readFile` and
+// `views.openFile` both run a `read_file`, and each is recorded as itself. Both reviewers
+// wrote `views.openFile` and neither wrote the other, so a profile that read every file
+// through one of them must not be reported as having called the rest.
 const SHARED_CORE_EVENTS: HarnessEvent[] = [
   ...EVENTS,
   ...["r1", "r2"].flatMap((id) => [
@@ -283,10 +283,7 @@ const SHARED_CORE_EVENTS: HarnessEvent[] = [
         module: "files",
         path: "gg.files",
         description: "the run's working tree",
-        functions: [
-          { name: "readFile", operation: "files.read_file" },
-          { name: "readTextFile", operation: "files.read_text_file" },
-        ],
+        functions: [{ name: "readFile", operation: "files.read_file" }],
       },
       {
         module: "views",
@@ -662,11 +659,11 @@ describe("GgAgentsSummary offered surface", () => {
     expect(within(section).queryByText("read_file")).toBeNull();
   });
 
-  it("counts three functions over one core as three functions", () => {
-    // `files.readFile`, `files.readTextFile` and `views.openFile` all run a `read_file`. Both
-    // reviewers wrote `views.openFile` and neither wrote the other two, so claiming the tool's
-    // figure for each in turn would report six calls where two happened — and would leave two
-    // functions the model genuinely never wrote reading as ones it used.
+  it("counts two functions over one core as two functions", () => {
+    // `files.readFile` and `views.openFile` both run a `read_file`. Both reviewers wrote
+    // `views.openFile` and neither wrote the other, so claiming the tool's figure for each in
+    // turn would report four calls where two happened — and would leave a function the model
+    // genuinely never wrote reading as one it used.
     const { detail } = openReviewer(stubNav(), SHARED_CORE_EVENTS);
     const section = within(detail).getByRole("region", {
       name: "Reviewer apis",
@@ -679,11 +676,9 @@ describe("GgAgentsSummary offered surface", () => {
       "gg.views.openFile was called 2 times.",
     );
 
-    for (const name of ["readFile", "readTextFile"]) {
-      const untouched = chip(section, name);
-      expect(untouched).toHaveAttribute("data-uncalled");
-      expect(within(untouched).getByText("0×")).toBeInTheDocument();
-    }
+    const untouched = chip(section, "readFile");
+    expect(untouched).toHaveAttribute("data-uncalled");
+    expect(within(untouched).getByText("0×")).toBeInTheDocument();
   });
 
   it("renders no section at all for a run that reported no surface", () => {

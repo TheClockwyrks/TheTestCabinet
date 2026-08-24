@@ -26,19 +26,6 @@ namespace gg {
 /// <ggmodule>views</ggmodule>
 namespace views {
 
-/// Which of the three kinds a view is.
-///
-/// The taxonomy is closed at three deliberately: everything on disk is a file, everything a
-/// program can compute is a string, and documentation is neither, because gg holds it.
-enum class view_kind {
-  /// An opened file; its selector is the path.
-  file,
-  /// A computed value; its selector is the label it was opened under.
-  text,
-  /// A documentation entry; its selector is the key it was opened under.
-  docs,
-};
-
 /// The window of lines a file view shows, and the cut its long lines get; `{}` shows the whole file.
 ///
 /// `offset` and `limit` are the same window a read takes, honoured under every read policy; the
@@ -55,42 +42,6 @@ struct view_options {
   /// A cut line is annotated in place as `foo (123 more chars...)`. The range is `1..=65536`, and
   /// a value outside it refuses the open.
   std::optional<std::uint32_t> max_line_chars;
-};
-
-/// The window of lines a paged file view covers.
-struct view_region {
-  /// The 1-based first line the view shows.
-  std::uint32_t offset{};
-  /// How many lines it shows.
-  std::uint32_t limit{};
-};
-
-/// One view open in the agent's context window.
-struct open_view {
-  /// Whether it is a file, text, or documentation view.
-  views::view_kind kind{};
-  /// What closes it.
-  ///
-  /// A file's path, a text view's label or `search results` for `gg::views::close`, and for a
-  /// documentation view the key it was opened under.
-  std::string selector;
-  /// Roughly what holding it costs, in tokens.
-  std::uint64_t tokens{};
-  /// The line window a paged file view covers; empty for a whole-file view and for text views.
-  std::optional<views::view_region> region;
-
-  /// Close this view, freeing the tokens it occupied.
-  ///
-  /// A documentation view is the one this does not take away, because `gg::views::close` does not
-  /// reach that band.
-  ///
-  /// <ggop-alias>views.close</ggop-alias>
-  ///
-  /// \returns how many views were closed, which is `0` when it has been closed already.
-  /// \throws gg::core::api_error `invalid_argument` when this view's `selector` is empty, which no
-  ///   view gg reports ever is, and `unavailable` for an agent whose run did not buy
-  ///   `agent-managed-context`, which is what buys closing a view.
-  std::uint32_t close() const;
 };
 
 /// Read a file and show it, so the program gets the bytes and the context window gets the file.
@@ -179,25 +130,9 @@ void open_docs_view(std::string_view name);
 /// \returns how many views were closed.
 /// \throws gg::core::api_error `invalid_argument` for an empty selector, which names nothing rather
 ///   than everything — there is no call here that closes the window wholesale — and `unavailable`
-///   for an agent whose run did not buy `agent-managed-context`, the capability that buys closing a
-///   view and listing what is open.
+///   for an agent whose run did not buy `agent-managed-context`, the capability that buys closing
+///   a view.
 std::uint32_t close(std::string_view selector);
-
-/// List what is open in the context window right now, with what each one costs.
-///
-/// Each entry carries its `kind`, the `selector` that closes it, roughly what it costs in
-/// `tokens`, and — for a paged file view — the `region` it covers. What it enumerates is the context
-/// window's contents, not any module's functions.
-///
-/// Listing what is open is context management, bought with `gg::views::close` by the
-/// `agent-managed-context` capability: an agent whose run did not enable it is refused.
-///
-/// <ggop>views.current</ggop>
-///
-/// \returns every view open in the context window right now.
-/// \throws gg::core::api_error `unavailable` for an agent whose run did not buy
-///   `agent-managed-context`.
-std::vector<views::open_view> current();
 
 }  // namespace views
 

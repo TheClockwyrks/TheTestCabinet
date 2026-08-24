@@ -25,9 +25,10 @@ A program, written in TypeScript:
 import { files, session, views } from "gg";
 
 const specs = files.listDir("specs").filter((e) => e.kind === "file");
-const missing = specs.filter(
-  (e) => !files.readTextFile(`specs/${e.name}`).includes("## Rules"),
-);
+const missing = specs.filter((e) => {
+  const read = files.readFile(`specs/${e.name}`);
+  return read.kind === "text" && !read.contents.includes("## Rules");
+});
 views.openText("missing-rules", missing.map((e) => e.name).join("\n"));
 if (missing.length === 0) {
   session.finish(`Checked ${specs.length} spec files; each has rules.`);

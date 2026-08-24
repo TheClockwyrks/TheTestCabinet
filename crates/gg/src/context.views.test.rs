@@ -159,13 +159,14 @@ fn a_paged_file_view_is_headed_by_its_path_and_the_lines_it_shows() {
         Some(ShownLines {
             first: 100,
             last: 250,
+            total: 400,
         }),
         "const x = 1;".to_string(),
         Vec::new(),
     );
     assert_eq!(
         bodies(&ctx),
-        vec!["File: foo/bar.ts:100-250\n----\nconst x = 1;".to_string()]
+        vec!["File: foo/bar.ts:100-250 of 400 lines\n----\nconst x = 1;".to_string()]
     );
     // The lines are the heading's business, not the key's: the region alone still keys the view.
     assert_eq!(
@@ -184,26 +185,34 @@ fn a_whole_file_view_is_headed_one_to_its_total_line_count() {
     ctx.open_file_view_deduped(
         "src/main.ts".to_string(),
         None,
-        Some(ShownLines { first: 1, last: 42 }),
+        Some(ShownLines {
+            first: 1,
+            last: 42,
+            total: 42,
+        }),
         "export {}".to_string(),
         Vec::new(),
     );
     assert_eq!(
         bodies(&ctx),
-        vec!["File: src/main.ts:1-42\n----\nexport {}".to_string()]
+        vec!["File: src/main.ts:1-42 of 42 lines\n----\nexport {}".to_string()]
     );
     // A whole-file view's key is still `(path, None)`, so re-opening it supersedes it.
     ctx.open_file_view_deduped(
         "src/main.ts".to_string(),
         None,
-        Some(ShownLines { first: 1, last: 43 }),
+        Some(ShownLines {
+            first: 1,
+            last: 43,
+            total: 43,
+        }),
         "export {};\n".to_string(),
         Vec::new(),
     );
-    assert_eq!(ctx.open_views().len(), 1);
+    assert_eq!(ctx.open_file_views().len(), 1);
     assert_eq!(
         ctx.items().last().unwrap().message().content.as_deref(),
-        Some("File: src/main.ts:1-43\n----\nexport {};\n")
+        Some("File: src/main.ts:1-43 of 43 lines\n----\nexport {};\n")
     );
 }
 
@@ -214,7 +223,11 @@ fn a_seeded_spec_is_headed_by_its_workspace_relative_path_and_whole_range() {
     // read reported for it.
     ctx.seed_file_view(
         "specs/rules.md".to_string(),
-        Some(ShownLines { first: 1, last: 7 }),
+        Some(ShownLines {
+            first: 1,
+            last: 7,
+            total: 7,
+        }),
         "# Carom\n".to_string(),
         Vec::new(),
         Retention::Pinned,
@@ -222,10 +235,17 @@ fn a_seeded_spec_is_headed_by_its_workspace_relative_path_and_whole_range() {
     let item = &ctx.items()[0];
     assert_eq!(item.label(), Some("specs/rules.md"));
     assert_eq!(item.region(), None);
-    assert_eq!(item.lines(), Some(ShownLines { first: 1, last: 7 }));
+    assert_eq!(
+        item.lines(),
+        Some(ShownLines {
+            first: 1,
+            last: 7,
+            total: 7,
+        })
+    );
     assert_eq!(
         item.message().content.as_deref(),
-        Some("File: specs/rules.md:1-7\n----\n# Carom\n")
+        Some("File: specs/rules.md:1-7 of 7 lines\n----\n# Carom\n")
     );
 }
 
@@ -241,18 +261,23 @@ fn shown_lines_come_from_what_the_read_reported() {
             byte_truncated: false,
         })
     };
-    // A paged read: the window it returned.
+    // A paged read: the window it returned, and the file's own total.
     assert_eq!(
         ShownLines::of_read(Some(&text(100, 250, 1000))),
         Some(ShownLines {
             first: 100,
-            last: 250
+            last: 250,
+            total: 1000,
         })
     );
-    // A whole-file read: `1-N`.
+    // A whole-file read: `1-N of N lines`.
     assert_eq!(
         ShownLines::of_read(Some(&text(1, 42, 42))),
-        Some(ShownLines { first: 1, last: 42 })
+        Some(ShownLines {
+            first: 1,
+            last: 42,
+            total: 42,
+        })
     );
     // An empty file shows no lines, and so carries no range.
     assert_eq!(ShownLines::of_read(Some(&text(1, 0, 0))), None);
@@ -324,7 +349,7 @@ fn reopening_across_turns_leaves_a_history_corpse_with_no_selector() {
         ctx.tokens_for(GgContextSource::TextView),
         ctx.items()[1].tokens() as u64
     );
-    assert_eq!(ctx.open_views().len(), 1);
+    assert_eq!(ctx.open_text_views().len(), 1);
 }
 
 #[test]
@@ -357,7 +382,7 @@ fn reopening_a_file_view_supersedes_only_the_same_page() {
 
     // Two pages of one file are two views and must coexist — a program paging through a file is not
     // a program changing its mind.
-    assert_eq!(ctx.open_views().len(), 2);
+    assert_eq!(ctx.open_file_views().len(), 2);
 
     let opened = ctx.open_file_view_deduped(
         "a.ts".to_string(),
@@ -546,7 +571,11 @@ fn a_superseded_image_view_stops_carrying_its_picture() {
         2,
         "the retagged copy stays in the window"
     );
-    assert_eq!(ctx.open_views().len(), 1, "but only the live view is open");
+    assert_eq!(
+        ctx.open_file_views().len(),
+        1,
+        "but only the live view is open"
+    );
     assert_eq!(
         resident_images(&ctx),
         1,
@@ -578,7 +607,7 @@ fn re_opening_one_picture_every_turn_leaves_exactly_one_picture_resident() {
 
     // The workflow this exists for: a program re-renders a screenshot and looks at it again, turn
     // after turn. If a retired copy kept its bytes the window would end up holding twenty pictures
-    // that `view.current()` reports as one, and the run would upload all twenty on every request.
+    // for what is really one open view, and the run would upload all twenty on every request.
     for turn in 1..=20 {
         ctx.begin_turn(turn);
         ctx.open_file_view_deduped(
@@ -590,7 +619,7 @@ fn re_opening_one_picture_every_turn_leaves_exactly_one_picture_resident() {
         );
     }
 
-    assert_eq!(ctx.open_views().len(), 1, "one view is open");
+    assert_eq!(ctx.open_file_views().len(), 1, "one view is open");
     assert_eq!(
         resident_images(&ctx),
         1,
@@ -790,94 +819,6 @@ fn closing_a_file_view_by_path_closes_every_page_of_it() {
 // ---------------------------------------------------------------------------
 // Reporting: `view.current()` and persistence
 // ---------------------------------------------------------------------------
-
-#[test]
-fn open_views_reports_both_kinds_with_their_own_token_cost() {
-    let mut ctx = code_model();
-    ctx.begin_turn(1);
-    let region = FileRegion {
-        offset: 201,
-        limit: 200,
-    };
-    ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
-    ctx.open_file_view_deduped(
-        "a.ts".to_string(),
-        Some(region),
-        None,
-        "export {}".to_string(),
-        Vec::new(),
-    );
-
-    let open = ctx.open_views();
-
-    assert_eq!(
-        open,
-        vec![
-            OpenViewInfo {
-                kind: ViewKind::Text,
-                selector: "summary".to_string(),
-                tokens: ctx.items()[0].tokens() as u64,
-                region: None,
-            },
-            OpenViewInfo {
-                kind: ViewKind::File,
-                selector: "a.ts".to_string(),
-                tokens: ctx.items()[1].tokens() as u64,
-                region: Some(region),
-            },
-        ]
-    );
-    // Every view is accounted, and the two bands together are what the views cost the window.
-    assert_eq!(
-        open.iter().map(|view| view.tokens).sum::<u64>(),
-        ctx.tokens_for(GgContextSource::TextView) + ctx.tokens_for(GgContextSource::FileView)
-    );
-}
-
-#[test]
-fn open_views_folds_duplicate_native_reads_into_one_entry() {
-    let mut ctx = code_model();
-    ctx.begin_turn(1);
-    ctx.push_file_view(Some("a.ts".to_string()), None, "c1", "once", Vec::new());
-    ctx.push_file_view(Some("a.ts".to_string()), None, "c2", "once", Vec::new());
-
-    let open = ctx.open_views();
-
-    // What closing the selector reclaims is both of them, so one entry carrying the combined cost is
-    // what the model needs to decide whether to.
-    assert_eq!(open.len(), 1);
-    assert_eq!(
-        open[0].tokens,
-        (ctx.items()[0].tokens() + ctx.items()[1].tokens()) as u64
-    );
-}
-
-#[test]
-fn open_views_omits_what_cannot_be_closed() {
-    let mut ctx = code_model();
-    ctx.push_file_view_with_retention(
-        Some("specs/rules.md".to_string()),
-        None,
-        "c1",
-        "the rules",
-        Vec::new(),
-        Retention::Pinned,
-    );
-    // A malformed native read has no selector at all, so no call could name it.
-    ctx.push_file_view(None, None, "c2", "unattributable", Vec::new());
-    ctx.begin_turn(1);
-    ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
-
-    assert_eq!(
-        ctx.open_views(),
-        vec![OpenViewInfo {
-            kind: ViewKind::Text,
-            selector: "summary".to_string(),
-            tokens: ctx.items()[2].tokens() as u64,
-            region: None,
-        }]
-    );
-}
 
 #[test]
 fn open_text_views_report_the_body_the_agent_supplied() {

@@ -403,9 +403,9 @@ function ownTags(node, sourceFile, name) {
  * without replacing it, and the brief already said what the call did.
  *
  * There is deliberately no matching rule for `@throws`. Most of this surface can fail and says so,
- * but `gg.views.current` reads gg's own live view set behind a binding no run withholds, so it has
- * no failure to describe — and a rule that made it invent one would be a rule for producing
- * sentences rather than for producing documentation.
+ * but a call may truthfully have no failure of its own to describe — and a rule that made its
+ * author invent one would be a rule for producing sentences rather than for producing
+ * documentation.
  *
  * # Two readings of one tag
  *
@@ -1001,7 +1001,7 @@ async function build(language) {
       // What its own `@throws` tags DECLARE, and nothing else: not what the body can raise, not
       // what the sandbox reaches for on its behalf, and not `ApiError` folded in because every call
       // on this surface can throw one. An entry with an empty list is one whose author documented
-      // no failure, which is what `gg.views.current` truthfully is.
+      // no failure.
       throws: resolver.references(prose.thrown, where),
       types,
     });

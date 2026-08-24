@@ -11451,8 +11451,9 @@ pub(crate) fn code_heading_views(
         (
             GgContextSource::FileView,
             "a file, or a window of one, shown in your context — seeded by the run or opened by \
-             your own file-view call — headed by its path and the 1-based line range shown, as \
-             `File: src/main.ts:100-250` (a whole file reads `1-N`)",
+             your own file-view call — headed by its path, the 1-based line range shown and the \
+             file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's \
+             range runs `1-N`)",
             files,
         ),
         (

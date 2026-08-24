@@ -1100,9 +1100,7 @@ fn the_views_docs_program_library_and_endings_modules_are_reached_in_ruby_too() 
 require "gg"
 GG::Views.open_text("summary", "eight files, two failing")
 GG::Views.open_text("scratch") { ["a", "b"].join("\n") }
-open = GG::Views.current
-puts "#{open.size} #{open.map(&:selector).join(",")} #{open.first.kind == GG::Views::ViewKind::TEXT} #{open.first.tokens}"
-puts "#{GG::Views.close("scratch")} #{GG::Views.close("never opened")} #{GG::Views.current.size}"
+puts "#{GG::Views.close("scratch")} #{GG::Views.close("never opened")}"
 
 # The documentation of a function, named with a Symbol, with a String, and with the method itself.
 GG::Views.open_docs_view(:read_file)
@@ -1110,7 +1108,7 @@ GG::Views.open_docs_view("write_file")
 GG::Views.open_docs_view(GG::Files.method(:read_file))
 
 whole = GG::Views.open_file("notes.md")
-puts "#{whole.class} #{GG::Views.current.select { |v| v.kind == GG::Views::ViewKind::FILE }.map(&:region).inspect}"
+puts "#{whole.class} #{whole.first_line}-#{whole.last_line}"
 GG::Session.finish("done")
 "##,
         &all_operations(),
@@ -1120,12 +1118,11 @@ GG::Session.finish("done")
         canned_outcome,
     );
     let lines = logs(&outcome);
-    assert_eq!(lines[0], "2 summary,scratch true 6");
-    assert_eq!(lines[1], "1 0 1");
+    assert_eq!(lines[0], "1 0");
     assert!(
-        lines[2].starts_with("GG::Files::TextFile"),
+        lines[1].starts_with("GG::Files::TextFile"),
         "{:?}",
-        lines[2]
+        lines[1]
     );
     // The program library is bound from the capability rather than from a tool name, and a reviewer
     // gets the other ending group and no `finish` at all.
@@ -1603,7 +1600,7 @@ fn the_embedded_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
             .iter()
             .filter(|name| name.starts_with("test-cabinet:gg/"))
             .count(),
-        15,
+        14,
         "the whole gg half of the membrane, the shim's own feedback channel included"
     );
 
@@ -1932,7 +1929,7 @@ why { GG::Board.create_issue("t", "in", "out", "done", "worker", reviewer: ["r1"
 why { GG::Tasks.add_task("id", "t", desc: "oops") }
 why { GG::Files.read_file("a.rb", start: 3) }
 why { GG::Files.list_dir("src", deep: true) }
-why { GG::Views.current(deep: true) }
+why { GG::Programs.history(deep: true) }
 "##,
         &all_operations(),
         &[],

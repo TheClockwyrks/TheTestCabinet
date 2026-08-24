@@ -93,10 +93,9 @@ impl<A: OperationApi> MembraneState<A> {
     /// [operation id](OperationId) for it.
     ///
     /// The id and not the internal call's name, on the rule this whole membrane keeps: the record is
-    /// of what the **model wrote**, and three operations may share one internal read. Keying it on
-    /// what ran would make `views.open_file` and `files.read_text_file` both report as the read they
-    /// were composed out of, which is the reading the offered-versus-called contrast exists to rule
-    /// out.
+    /// of what the **model wrote**, and two operations may share one internal read. Keying it on
+    /// what ran would make `views.open_file` report as the read it is composed out of, which is the
+    /// reading the offered-versus-called contrast exists to rule out.
     ///
     /// `completed` is whether the **call** succeeded, which is not always whether the internal call
     /// reported success: a `shell` command that exits non-zero is a completed call whose result the

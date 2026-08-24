@@ -121,8 +121,8 @@ appears here. A responses-as-code agent writes `gg.views.openFile`, and the
 The join is at the grain of the operation, which makes both directions of the
 contrast trustworthy. A function that dispatches nothing is counted like any
 other, so an ending call and a view call have figures instead of blanks, and
-three functions over one implementation (`gg.files.readFile`,
-`gg.files.readTextFile` and `gg.views.openFile` all perform one read) are three
+two functions over one implementation (`gg.files.readFile` and
+`gg.views.openFile` both perform one read) are two
 figures, so a function the model ignored reads as ignored rather than inheriting
 its neighbour's calls. Where one arm offers two spellings of one operation, both
 rows carry the same figure, because gg counts what was done rather than which

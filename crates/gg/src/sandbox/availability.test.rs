@@ -401,22 +401,20 @@ fn nothing_here_narrows_the_ungated_surface() {
             "`{id}` is bound to every program whatever a run enables"
         );
     }
-    // And the calls that MANAGE the window are not among them: closing a view and listing what is
-    // open are bought by agent-managed context, so the bare profile is refused both.
-    for id in [VIEWS_CLOSE_ID, VIEWS_CURRENT_ID] {
-        let operation = super::super::operation(id).expect("a table row");
-        assert!(
-            !grants.permits(operation),
-            "`{id}` is context management, which a bare profile has not bought"
-        );
-    }
+    // And the call that MANAGES the window is not among them: closing a view is bought by
+    // agent-managed context, so the bare profile is refused it.
+    let operation = super::super::operation(VIEWS_CLOSE_ID).expect("a table row");
+    assert!(
+        !grants.permits(operation),
+        "`{VIEWS_CLOSE_ID}` is context management, which a bare profile has not bought"
+    );
 }
 
 /// The ids this module's last test reaches for, named here rather than imported into the whole
 /// file: they are the only operations it asks about that it does not narrow.
 use super::super::operations::{
     DOCS_SEARCH as DOCS_SEARCH_ID, VIEWS_CLOSE as VIEWS_CLOSE_ID,
-    VIEWS_CURRENT as VIEWS_CURRENT_ID, VIEWS_OPEN_TEXT as VIEWS_OPEN_TEXT_ID,
+    VIEWS_OPEN_TEXT as VIEWS_OPEN_TEXT_ID,
 };
 
 /// **An allowlist entry that answers to no operation comes back**, because a name that grants

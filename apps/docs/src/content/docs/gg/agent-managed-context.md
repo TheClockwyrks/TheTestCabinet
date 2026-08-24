@@ -16,10 +16,9 @@ context-usage signal is rendered, so a configuration that leaves it off behaves
 as a run without the feature.
 
 Under [responses as code](/gg/responses-as-code/overview/) the capability also
-buys the two view calls that manage the window — [closing a view](#closing-views)
-and listing what is open — so everything on this page is a privilege a study may
-withhold. Opening a view is not one: a program may always show its model
-something.
+buys the view call that manages the window — [closing a view](#closing-views) —
+so everything on this page is a privilege a study may withhold. Opening a view
+is not one: a program may always show its model something.
 
 This is the model-facing complement to [compaction](/gg/compaction/): compaction
 is the automatic backstop when the window fills, and agent-managed context lets
@@ -73,8 +72,8 @@ itself.
 
 Text Views is the band a responses-as-code agent fills itself with
 `gg.views.openText`. It carries no nested list, because its selectors are labels
-the agent chose and `gg.views.current()` answers the same question on demand
-without spending a slot of the window every turn.
+the agent chose, and every open view is already in front of it in the window
+itself.
 
 ### Shares and per-file breakdown
 
@@ -148,11 +147,10 @@ autoloaded specification. The documentation views a code skill's module opened
 are ordinary documentation views, closable by an agent that holds
 `docview-close`.
 
-`gg.views.close` and `gg.views.current` — closing a view, and listing what is
-open — are two of this capability's calls, exactly as `evict_file_view` is:
-closing material and reading the window's contents are context management,
-and a configuration that keeps the capability off keeps both. A program that
-calls either without the capability, or whose agent's allowlist omits the
+`gg.views.close` — closing a view — is one of this capability's calls, exactly
+as `evict_file_view` is: closing material is context management, and a
+configuration that keeps the capability off withholds it. A program that
+calls it without the capability, or whose agent's allowlist omits the
 operation, is refused by name with the `unavailable` error every other withheld
 call raises. `gg.views.close` still sits beside `evict_file_view` rather than
 inside it, because the trade is not the same: an evicted file view is

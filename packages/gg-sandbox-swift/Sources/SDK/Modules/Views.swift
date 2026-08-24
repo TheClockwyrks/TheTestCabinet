@@ -131,8 +131,8 @@ public enum views {
     ///
     /// - Parameter selector: What the view is filed under: a file's path, a text view's label, or
     ///   `search results`.
-    /// Closing a view is context management, bought — with `views.current` — by the
-    /// `agent-managed-context` capability: an agent whose run did not enable it is refused.
+    /// Closing a view is context management, bought by the `agent-managed-context`
+    /// capability: an agent whose run did not enable it is refused.
     ///
     /// - Returns: how many views were closed.
     /// - Throws: `core.ApiError` with `.invalidArgument` for an empty selector, which names nothing
@@ -152,100 +152,4 @@ public enum views {
         }
     }
 
-    /// List what is open in the context window right now.
-    ///
-    /// Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and —
-    /// for a paged file view — the `region` it covers. Reading it is what decides what to close when
-    /// the window is filling up.
-    ///
-    /// Listing what is open is context management, bought with `views.close` by the
-    /// `agent-managed-context` capability: an agent whose run did not enable it is refused.
-    ///
-    /// - Returns: every open view, in no particular order.
-    /// - Throws: `core.ApiError` with `.unavailable` for an agent whose run did not buy
-    ///   `agent-managed-context`.
-    /// - ggop: views.current
-    public static func current() throws -> [OpenView] {
-        var ret = test_cabinet_gg_views_list_open_view_t()
-        var err = test_cabinet_gg_types_api_error_t()
-        guard test_cabinet_gg_views_current_views(&ret, &err) else {
-            throw lift(failure: &err)
-        }
-        let views = lift(ret.ptr, ret.len) { OpenView(wire: $0) }
-        test_cabinet_gg_views_list_open_view_free(&ret)
-        return views
-    }
-
-    /// Which of the three kinds a view is.
-    public enum ViewKind: Sendable {
-        /// A file that was opened; its selector is the path.
-        case file
-        /// A computed value; its selector is the label it was given.
-        case text
-        /// An entry's documentation; its selector is the key it was opened under.
-        case docs
-
-        init(wire: test_cabinet_gg_views_view_kind_t) {
-            switch Int32(wire) {
-            case TEST_CABINET_GG_VIEWS_VIEW_KIND_FILE: self = .file
-            case TEST_CABINET_GG_VIEWS_VIEW_KIND_TEXT: self = .text
-            default: self = .docs
-            }
-        }
-    }
-
-    /// The window of lines a paged file view covers.
-    public struct ViewRegion: Sendable {
-        /// The 1-based first line the view shows.
-        public let offset: Int
-        /// How many lines it shows.
-        public let limit: Int
-
-        init(wire: test_cabinet_gg_views_view_region_t) {
-            offset = Int(wire.offset)
-            limit = Int(wire.limit)
-        }
-    }
-
-    /// One view open in the context window, as `views.current` reports it.
-    public struct OpenView: Sendable {
-        /// Whether it is a file, text, or documentation view.
-        public let kind: ViewKind
-        /// What closes it.
-        ///
-        /// A file's path, a text view's label or `search results` for `views.close`, and for a
-        /// documentation view the key it was opened under.
-        public let selector: String
-        /// Roughly what holding it costs, in tokens.
-        public let tokens: Int
-        /// The line window a paged file view covers; `nil` for a whole-file view and for text views.
-        public let region: ViewRegion?
-
-        init(wire: test_cabinet_gg_views_open_view_t) {
-            kind = ViewKind(wire: wire.kind)
-            selector = lift(wire.selector)
-            tokens = Int(wire.tokens)
-            region = wire.region.is_some ? ViewRegion(wire: wire.region.val) : nil
-        }
-    }
-}
-
-extension views.OpenView {
-    /// Close this view, with its selector already supplied.
-    ///
-    /// `views.close` for the common case where the open view is in hand. Every view under the same
-    /// selector closes, which for a paged file is every page of that path.
-    ///
-    /// A documentation view is the one this does not take away, because `views.close` does not reach
-    /// that band.
-    ///
-    /// - Returns: how many views were closed.
-    /// - Throws: `core.ApiError` with `.invalidArgument` when this view's `selector` is empty,
-    ///   which no view gg reports ever is, and `.unavailable` for an agent whose run did not buy
-    ///   `agent-managed-context`, which is what buys closing a view.
-    /// - ggop-alias: views.close
-    @discardableResult
-    public func close() throws -> Int {
-        try views.close(selector)
-    }
 }

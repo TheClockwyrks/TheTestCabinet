@@ -10,7 +10,6 @@
 use super::super::test_cabinet::gg::files::{
     DirEntry, EntryKind, FileRead, Host as FilesHost, ImageRead, SearchMatch, TextRead,
 };
-use super::super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::super::test_cabinet::gg::shell::{Host as ShellHost, ShellOutput};
 use super::super::{MembraneState, OperationApi};
 use super::wire_coding::{Value, argument, integer, optional, record, text, wide};
@@ -36,19 +35,6 @@ pub(super) fn read_file<A: OperationApi>(
     let path = argument(arguments, op, 0)?.text("the path")?;
     let (offset, limit) = window(op, arguments)?;
     Ok(file_read(FilesHost::read_file(state, path, offset, limit)?))
-}
-
-/// `files.read_text_file` — read a text file's contents directly.
-pub(super) fn read_text_file<A: OperationApi>(
-    state: &mut MembraneState<A>,
-    op: &str,
-    arguments: &[Value],
-) -> Answer {
-    let path = argument(arguments, op, 0)?.text("the path")?;
-    let (offset, limit) = window(op, arguments)?;
-    Ok(text(HelpersHost::read_text_file(
-        state, path, offset, limit,
-    )?))
 }
 
 /// `files.write_file` — write a file whole.

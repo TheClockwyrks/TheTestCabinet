@@ -399,15 +399,12 @@ fn the_view_object_the_documentation_the_helper_and_the_standard_ending_are_reac
 using Gg;
 using System;
 
-var text = Files.ReadTextFile("notes.md", offset: 1, limit: 2);
 var read = Views.OpenFile("notes.md", offset: 1, limit: 2);
-Views.OpenText("summary", text);
+Views.OpenText("summary", "eight files, two failing");
 Views.OpenDocsView("ReadFile");
 Views.OpenFile("wide.md", offset: 1, limit: 2, maxLineChars: 80);
 var closed = Views.Close("summary");
 var missing = Views.Close("never opened");
-var open = Views.Current();
-Console.WriteLine($"{open[0].Selector} {open[0].Kind}");
 Console.WriteLine($"{closed} {missing}");
 Console.WriteLine(read is Files.TextFile file ? file.Contents.Split('\n')[0] : ((Files.ImageFile)read).Label);
 Session.Finish("read the file and showed myself the result");
@@ -419,14 +416,10 @@ Session.Finish("read the file and showed myself the result");
         canned_outcome,
     );
     let lines = logs(&outcome);
-    // What is still open is the file view, carrying the enum member rather than the word the wire
-    // used; the text view the program closed is gone, and a documentation view is gg's to deliver on
-    // the next turn rather than something `Current` reports.
-    assert_eq!(lines[0], "notes.md File");
     // Closing something that is not open is `0` rather than a failure, so a program that tidies up
     // unconditionally does not have to guard every call.
-    assert_eq!(lines[1], "1 0");
-    assert_eq!(lines[2], "contents of notes.md");
+    assert_eq!(lines[0], "1 0");
+    assert_eq!(lines[1], "contents of notes.md");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -445,11 +438,11 @@ Session.Finish("read the file and showed myself the result");
         outcome.completion
     );
 
-    // Three reads reached gg's dispatch and all arrived as `read_file`: the helper's, and the two
-    // `Views.OpenFile` performs. None has a tool name of its own, which is exactly the point — a
-    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you. The
-    // third carries the view's own line cut, which crosses only when the program wrote one.
-    assert_eq!(log.names(), ["read_file", "read_file", "read_file"]);
+    // Two reads reached gg's dispatch and both arrived as `read_file`: the two `Views.OpenFile`
+    // performs. Neither has a tool name of its own, which is exactly the point — a view is a
+    // read gg also shows you. The second carries the view's own line cut, which crosses only
+    // when the program wrote one.
+    assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
@@ -461,7 +454,7 @@ Session.Finish("read the file and showed myself the result");
         .map(|call| call.args)
         .collect();
     assert_eq!(
-        reads[2],
+        reads[1],
         json!({ "path": "wide.md", "offset": 1, "limit": 2, "maxLineChars": 80 })
     );
 
@@ -646,7 +639,7 @@ child.Send("prefer the simpler parser");
 Console.WriteLine(child.Id);
 
 Views.OpenText("summary", "eight files, two failing");
-Console.WriteLine($"{Views.Current()[0].Close()} {Views.Current().Count}");
+Console.WriteLine($"{Views.Close("summary")}");
 "####,
         ),
         &all_operations(),
@@ -660,8 +653,8 @@ Console.WriteLine($"{Views.Current()[0].Close()} {Views.Current().Count}");
             "EPIC-1 wait registered",
             "build-commands the memory contents",
             "agent-1",
-            // The view the method closed was the one it hung off, and nothing is left behind it.
-            "1 0",
+            // The close answered with the one view its label named.
+            "1",
         ]
     );
     assert_eq!(
@@ -725,7 +718,8 @@ using System;
 
 try
 {
-    Console.WriteLine(Files.ReadTextFile("gone.cs"));
+    Files.ReadFile("gone.cs");
+    Console.WriteLine("read it");
 }
 catch (ApiException failure) when (failure.Code == ApiErrorCode.NotFound)
 {
@@ -738,7 +732,7 @@ Console.WriteLine("carried on");
             ToolOutcome::failed(ToolFailure::NotFound, "no such file: gone.cs".to_string())
         },
     );
-    assert_eq!(logs(&outcome), ["NotFound on read_text_file", "carried on"]);
+    assert_eq!(logs(&outcome), ["NotFound on read_file", "carried on"]);
 
     // Let out: reported as a recoverable model-facing error carrying the exception's own
     // `ToString()` — the type, gg's own sentence, AND the managed frames. This arm is the only
@@ -751,7 +745,7 @@ using Gg;
 using System;
 
 Console.WriteLine("before");
-Files.ReadTextFile("gone.cs");
+Files.ReadFile("gone.cs");
 Console.WriteLine("after");
 "####,
         &all_operations(),
@@ -767,7 +761,7 @@ Console.WriteLine("after");
         reported.message
     );
     assert!(
-        reported.message.contains("Gg.Files.ReadTextFile"),
+        reported.message.contains("Gg.Files.ReadFile"),
         "an uncaught failure did not name the SDK function that raised it: {}",
         reported.message
     );
@@ -1127,7 +1121,6 @@ fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
         [
             ("Gg.Board.IssueCreated.Wait", "board.wait_for_issue"),
             ("Gg.Memories.MemoryHit.Read", "memories.read_memory"),
-            ("Gg.Views.OpenView.Close", "views.close"),
             (
                 "Gg.Delegation.SubagentHandle.Send",
                 "delegation.send_message"

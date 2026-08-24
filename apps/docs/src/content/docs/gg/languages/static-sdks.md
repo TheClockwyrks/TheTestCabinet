@@ -92,8 +92,8 @@ raises. It carries three fields.
 
 - `code` is `unavailable`.
 - `operation` carries the key of the operation the program reached for:
-  `read_file` for `gg.files.readFile`, `read_text_file` for
-  `gg.files.readTextFile`, so a `catch` branches on that key.
+  `read_file` for `gg.files.readFile`, `open_file` for `gg.views.openFile`, so
+  a `catch` branches on that key.
 - `message` says the call is not available, written in this program's own
   spelling of it.
 

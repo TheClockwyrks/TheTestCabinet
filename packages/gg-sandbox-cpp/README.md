@@ -111,7 +111,7 @@ gg::files::read_file("src/main.cpp", {.limit = 40});
 gg::tasks::update_task("t1", {.description = gg::tasks::text_edit::clear(),
                               .status = gg::tasks::task_status::done});
 try {
-  gg::views::open_text("notes", gg::files::read_text_file("notes.md"));
+  gg::views::open_file("notes.md");
 } catch (const gg::core::api_error &failure) {
   if (failure.code() != gg::core::api_error_code::not_found) throw;
 }

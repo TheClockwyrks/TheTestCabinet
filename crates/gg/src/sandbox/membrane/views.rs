@@ -10,11 +10,11 @@
 //! by name. The two that *open* something a program computed or gg holds —
 //! [`open_text_view`](ViewsHost::open_text_view) and [`open_docs_view`](ViewsHost::open_docs_view)
 //! — are bound to every program whatever a run enables, which is what makes the view surface the one
-//! channel a run that granted nothing at all still has. The two that *manage* the window —
-//! [`close_view`](ViewsHost::close_view) and [`current_views`](ViewsHost::current_views) — are
-//! context management and are bought by `agent-managed-context` like the evictions and the archive.
+//! channel a run that granted nothing at all still has. The one that *manages* the window —
+//! [`close_view`](ViewsHost::close_view) — is context management and is bought by
+//! `agent-managed-context` like the evictions and the archive.
 //!
-//! # One of the five reaches the workspace, and is still recorded as itself
+//! # One of the four reaches the workspace, and is still recorded as itself
 //!
 //! [`open_file_view`](ViewsHost::open_file_view) **performs a read**. It goes through
 //! [`dispatch`](MembraneState), so it keeps the wall-clock deadline guard, the ordered roster entry
@@ -23,13 +23,13 @@
 //! item, keyed by the path it came from.
 //!
 //! Every one of those records names `views.open_file`, because that is what the **model** wrote. The
-//! internal read is shared with `files.read_file` and `files.read_text_file` — three operations over
-//! one implementation — and none of the three is recorded, refused or reported as either of the
-//! others. A program that opened a view of a file it may not read is refused `views.open_file`; a
+//! internal read is shared with `files.read_file` — two operations over one implementation — and
+//! neither is recorded, refused or reported as the other. A program that opened a view of a file it
+//! may not read is refused `views.open_file`; a
 //! read that fails throws with `open_file` in the error's `operation` field; and the turn's roster carries
 //! one entry per call the model made.
 //!
-//! The other four bypass `dispatch`, whose deadline guard is wrong for them: it would withhold them
+//! The other three bypass `dispatch`, whose deadline guard is wrong for them: it would withhold them
 //! at exactly the moment they matter most — the same carve-out
 //! [`finish`](super::MembraneState::declare) has, for the same reason: they perform no work, and a
 //! turn that cannot report what it found is worse than one that reports late. They are recorded as
@@ -52,13 +52,12 @@
 //! cap a cap on the whole arm rather than one of two budgets that cannot see each other.
 
 use super::test_cabinet::gg::types::ApiError;
-use super::test_cabinet::gg::views::{FileRead, Host as ViewsHost, OpenView, ViewKind, ViewRegion};
+use super::test_cabinet::gg::views::{FileRead, Host as ViewsHost};
 use super::workspace::{file_read, read_window};
 use super::{MembraneState, OperationApi, error_code};
-use crate::context::{FileRegion, OpenViewInfo, ViewKind as HostViewKind};
 use crate::sandbox::invoker::{ViewOpenOutcome, ViewRefusal};
 use crate::sandbox::operations::{
-    OperationId, VIEWS_CLOSE, VIEWS_CURRENT, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
+    OperationId, VIEWS_CLOSE, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
 };
 
 impl<A: OperationApi> ViewsHost for MembraneState<A> {
@@ -161,20 +160,6 @@ impl<A: OperationApi> ViewsHost for MembraneState<A> {
             }
         })
     }
-
-    /// What is open in this agent's window. An agent with nothing open gets an empty list, which is
-    /// an answer rather than an error; the one way the call fails is the gate every bracket asks,
-    /// for an agent whose run did not buy it.
-    fn current_views(&mut self) -> Result<Vec<OpenView>, ApiError> {
-        self.recorded(VIEWS_CURRENT, |state, rec| {
-            Ok(state
-                .api(rec)
-                .current_views()
-                .into_iter()
-                .map(open_view)
-                .collect())
-        })
-    }
 }
 
 impl<A: OperationApi> MembraneState<A> {
@@ -196,60 +181,6 @@ impl<A: OperationApi> MembraneState<A> {
             operation: id.key.to_string(),
             message: refusal.message,
         }
-    }
-}
-
-/// One open view as the membrane declares it.
-///
-/// Destructured field by field rather than read through dots, on the rule this membrane holds
-/// everywhere: a field added to [`OpenViewInfo`] then fails to compile *here*, which is where
-/// someone has to decide whether a program should be told about it.
-fn open_view(view: OpenViewInfo) -> OpenView {
-    let OpenViewInfo {
-        kind,
-        selector,
-        tokens,
-        region,
-    } = view;
-    OpenView {
-        kind: match kind {
-            HostViewKind::File => ViewKind::File,
-            HostViewKind::Text => ViewKind::Text,
-            HostViewKind::Docs => ViewKind::Docs,
-            // The [search-results view](crate::context::ViewKind::Search) is declared to a program
-            // as a **text** view, and this is the one place gg's own taxonomy and the guest's do not
-            // line up.
-            //
-            // It is a compromise with a date on it rather than a judgement. `view-kind` is a WIT
-            // enum, and a component's import is only satisfied by a host whose types it is a
-            // supertype of — so adding a fourth case to it makes every one of the eleven committed
-            // guests refuse to instantiate until it is rebuilt, which is the stage that reshapes the
-            // SDKs and not this one. What is chosen instead is the word that is *behaviourally*
-            // right at this boundary: like a text view and unlike a documentation view, the results
-            // carry composed text under one label and are closed by `view.close` rather than by the
-            // capability-bought `docs.close-doc-view`. A model told `docs` would reach for the close
-            // that cannot remove it.
-            //
-            // Nothing about the measurement rides on this. The band is gg's own either way, so what
-            // discovery costs a window is still reported apart from every other view.
-            HostViewKind::Search => ViewKind::Text,
-        },
-        selector,
-        tokens,
-        region: region.map(view_region),
-    }
-}
-
-/// A view's line window, narrowed to the `u32` the membrane declares.
-///
-/// The host's [`FileRegion`] counts lines in `u64`. Saturating rather than wrapping is the only
-/// honest direction: a file with more than four billion lines does not exist, and a wrap would turn
-/// a preposterous number into a small plausible one the model would then act on.
-fn view_region(region: FileRegion) -> ViewRegion {
-    let FileRegion { offset, limit } = region;
-    ViewRegion {
-        offset: u32::try_from(offset).unwrap_or(u32::MAX),
-        limit: u32::try_from(limit).unwrap_or(u32::MAX),
     }
 }
 

@@ -23,7 +23,7 @@ use std::time::Duration;
 use test_cabinet_core::gg::GgCallFailure;
 
 use crate::board::IssueStatus;
-use crate::context::{OpenViewInfo, TurnRange, ViewKind};
+use crate::context::{TurnRange, ViewKind};
 use crate::discovery::CallDiscovery;
 use crate::docs::DocSearch;
 use crate::memories::MemoryCode;
@@ -56,9 +56,9 @@ pub struct FunctionSummary {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxToolCall {
     /// What the **model wrote**, as gg's own [operation id](super::operations::OperationId) for it —
-    /// `files.read_text_file`, `views.open_file`. Never the name of whatever ran underneath: three
+    /// `files.read_file`, `views.open_file`. Never the name of whatever ran underneath: two
     /// operations share one internal read, and a roster keyed on the implementation would report
-    /// two of them as the third.
+    /// one of them as the other.
     pub name: String,
     /// Whether the call succeeded.
     pub ok: bool,
@@ -228,7 +228,7 @@ pub trait OperationApi: Send + 'static {
     /// Independent of the tool layer by construction: the membrane brackets every host function with
     /// this pair, and only *some* of those host functions go on to dispatch a tool. That is what
     /// makes `views.openFile` a `views.open_file` here and a `read_file` on the tool stream, and
-    /// what gives `views.current` — which dispatches nothing at all — a count.
+    /// what gives `views.openText` — which dispatches nothing at all — a count.
     ///
     /// Called **before** the work, so anything the call produces (a bridged `ToolCall`/`ToolResult`
     /// pair, a delegation's whole subtree of child events) lands inside the bracket, exactly as the
@@ -479,9 +479,6 @@ pub trait OperationApi: Send + 'static {
     /// path — and report how many were closed. A selector that is not open closes `0`, which is not
     /// a failure. Documentation is [closed by its own call](Self::close_docviews).
     fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal>;
-    /// What is open in this agent's window right now, in the order it was opened. Charged against
-    /// no cap: it opens nothing and reads nothing off disk.
-    fn current_views(&mut self) -> Vec<OpenViewInfo>;
     /// Every program this agent has run that its [library](crate::programs::ProgramLibrary) still
     /// holds — the whole of `programs.history()`.
     ///

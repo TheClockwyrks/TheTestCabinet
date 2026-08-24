@@ -1020,10 +1020,9 @@ pub const PARAM_SUMMARY_HEADROOM: &str = "summaryHeadroom";
 /// complement to [compaction](CAPABILITY_COMPACTION) that gives the agent agency over
 /// its own window — evicting file views it no longer needs and archiving sections of
 /// its thread (removed from the live window but still searchable). Under
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) it also buys the two view calls
-/// that manage the window — `views.close` and `views.current` — since closing a view and
-/// listing what is open are context management; opening a view is not, and stays bound
-/// to every program. Opt-in, like compaction.
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) it also buys the view call that
+/// manages the window — `views.close` — since closing a view is context management;
+/// opening a view is not, and stays bound to every program. Opt-in, like compaction.
 ///
 /// [agent-managed context]: https://docs.testcabinet.ai/gg/agent-managed-context/
 pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
@@ -3370,7 +3369,6 @@ const DEFAULT_TOOLS: &[&str] = &[
 const DEFAULT_OPERATIONS: &[&str] = &[
     "shell.shell",
     "files.read_file",
-    "files.read_text_file",
     "files.write_file",
     "files.edit_file",
     "files.list_dir",
@@ -7092,7 +7090,7 @@ pub enum GgTelemetryKind {
         ///
         /// It is here because eleven arms legitimately spell one operation eleven ways, and by
         /// design they do: an arm's surface answers to its own language, so `read_file`,
-        /// `readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things
+        /// `readFile` and `ReadFile` are all real spellings of things
         /// gg has exactly one name for. A study comparing arms — or comparing two agents of one run
         /// written in two languages — joins on this and on nothing else.
         ///

@@ -29,7 +29,7 @@ use crate::memories::{MemoryHit, MemoryUsage};
 use crate::programs::ProgramSummary;
 use crate::shell::ShellOutput;
 use crate::tasks::{TaskPatch, TaskStatus, TaskUsage, TextEdit};
-use crate::views::{OpenView, ViewKind, ViewOptions, ViewRegion};
+use crate::views::ViewOptions;
 
 /// Every call in this SDK ends here: the wire's error arm, lifted into the SDK's own.
 pub(crate) fn lift<T>(outcome: Result<T, gen::types::ApiError>) -> Result<T, ApiError> {
@@ -324,23 +324,6 @@ pub(crate) fn doc_search(found: gen::docs::DocSearch) -> DocSearch {
                 summary: hit.summary,
             })
             .collect(),
-    }
-}
-
-/// One view open in the window.
-pub(crate) fn open_view(view: gen::views::OpenView) -> OpenView {
-    OpenView {
-        kind: match view.kind {
-            gen::views::ViewKind::File => ViewKind::File,
-            gen::views::ViewKind::Text => ViewKind::Text,
-            gen::views::ViewKind::Docs => ViewKind::Docs,
-        },
-        selector: view.selector,
-        tokens: view.tokens,
-        region: view.region.map(|region| ViewRegion {
-            offset: region.offset,
-            limit: region.limit,
-        }),
     }
 }
 

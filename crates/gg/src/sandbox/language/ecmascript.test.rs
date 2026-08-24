@@ -176,13 +176,14 @@ console.log(`kind=${read.kind}`);
 /// **One family on its own**, which is the other spelling a program may write.
 #[test]
 fn a_program_may_import_one_family() {
-    let ran = run(r#"import { readTextFile } from "gg:files";
-console.log(readTextFile("a.ts").slice(0, 5));
+    let ran = run(r#"import { readFile } from "gg:files";
+const read = readFile("a.ts");
+console.log(read.kind === "text" ? read.contents.slice(0, 5) : read.kind);
 "#);
     assert!(!ran.failed(), "{}", ran.model_facing());
     assert!(
         ran.calls.contains(&"read_file".to_string()),
-        "the helper is bought by the read it is built on; the membrane saw {:?}",
+        "the family import reaches the same read; the membrane saw {:?}",
         ran.calls
     );
 }
@@ -234,7 +235,8 @@ console.log(firstWord());
             "helper",
             r#"import { files } from "gg";
 export function firstWord() {
-  return files.readTextFile("a.ts").split(/\s+/)[0];
+  const read = files.readFile("a.ts");
+  return read.kind === "text" ? read.contents.split(/\s+/)[0] : read.kind;
 }
 "#,
         )],

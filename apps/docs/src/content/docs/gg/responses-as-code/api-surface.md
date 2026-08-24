@@ -53,7 +53,6 @@ gives the fully-qualified names, which are what everything gg prints uses:
 | --- | --- |
 | `gg.shell.shell(command: string, options?: { timeoutSecs?: number })` | `ShellOutput` |
 | `gg.files.readFile(path: string, options?: { offset?: number; limit?: number })` | `FileRead` |
-| `gg.files.readTextFile(path: string, options?: { offset?: number; limit?: number })` | `string` |
 | `gg.files.writeFile(path: string, contents: string)` | `number` (bytes written) |
 | `gg.files.editFile(path: string, oldString: string, newString: string)` | `void` |
 | `gg.files.listDir(path?: string)` | `DirEntry[]` |
@@ -104,10 +103,9 @@ the family it belongs to, whether the call takes input, and its `Binding`. A
 
 - `Capability(id)`, bought by a gg capability the agent holds and named in that
   agent's [allowlist](/gg/configurations/#granting-calls). 42 rows, and a
-  capability commonly buys several: `read-file` alone buys `files.read_file`,
-  `files.read_text_file` and `views.open_file`, which are three separately
-  documented, separately called and separately grantable operations over one
-  read.
+  capability commonly buys several: `read-file` alone buys `files.read_file`
+  and `views.open_file`, which are two separately documented, separately called
+  and separately grantable operations over one read.
 - `Ending(role)`, bought by the agent's ending role. `session.finish` is
   `Standard`; `session.approve` and `session.request_changes` are `Review`.
 - `Machine`, bought by where the instance stands rather than by anything on its
@@ -116,9 +114,8 @@ the family it belongs to, whether the call takes input, and its `Binding`. A
 - `Always`, bound to every program whatever a run enables. `docs.search`,
   `views.open_text` and `views.open_docs_view`: a run that grants nothing must
   still be able to show its model something and to find what it holds.
-  `views.close` and `views.current` are not among them — closing a view and
-  listing what is open are context management, bought by
-  `agent-managed-context`.
+  `views.close` is not among them — closing a view is context management,
+  bought by `agent-managed-context`.
 
 Capability ids appear only in this table. No signature catalogue, no SDK and
 nothing a reflector emits carries one, so no arm asserts anything about gg's
@@ -209,7 +206,9 @@ function, and the entries are searchable and closable like any other.
 import * as csvTools from "lib:csvTools";
 import { files, views } from "gg";
 
-const rows = csvTools.parseCsv(files.readTextFile("data/vendor.csv"));
+const read = files.readFile("data/vendor.csv");
+if (read.kind !== "text") throw new Error("expected text");
+const rows = csvTools.parseCsv(read.contents);
 views.openText("rows", `${rows.length} rows, ${rows[0].length} columns`);
 ```
 

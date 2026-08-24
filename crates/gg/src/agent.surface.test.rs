@@ -344,12 +344,6 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
         functions_on(&apis, "gg.files"),
         vec![
             ("readFile".to_string(), "files.read_file".to_string()),
-            // The helper's operation is its own, not the `read_file` it shares a core with: two
-            // API functions over one core are two operations, and each is counted as itself.
-            (
-                "readTextFile".to_string(),
-                "files.read_text_file".to_string()
-            ),
             ("writeFile".to_string(), "files.write_file".to_string()),
             ("editFile".to_string(), "files.edit_file".to_string()),
             ("listDir".to_string(), "files.list_dir".to_string()),
@@ -361,9 +355,8 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
     );
     // The view channel is the case the old tool-keyed join could not express: `openFile` runs a
     // `read_file` and the other two run nothing at all, and all three are counted as themselves.
-    // `close`, `current` and the `OpenView.close` method are absent: this profile has no
-    // agent-managed context, which is what buys them — `views_close_and_current_are_bought_by_agent_managed_context`
-    // is where they appear.
+    // `close` is absent: this profile has no agent-managed context, which is what buys it —
+    // `views_close_is_bought_by_agent_managed_context` is where it appears.
     assert_eq!(
         functions_on(&apis, "gg.views"),
         vec![
@@ -634,24 +627,24 @@ fn the_surface_reports_the_bound_catalogue_and_nothing_else() {
     }
 }
 
-/// **Closing a view and listing what is open are bought by agent-managed context**, and the surface
+/// **Closing a view is bought by agent-managed context**, and the surface
 /// says so: a profile without the capability — and without `docview-close`, which is the other
-/// capability a reader might suppose buys a close — reports none of `close`, `current` or the
-/// `OpenView.close` method, and one with it reports all three.
+/// capability a reader might suppose buys a close — reports no
+/// `close`, and one with it reports it.
 ///
-/// The run this pins was audited with both capabilities off and a surface listing all three, which
-/// is exactly the over-report the operations table's gate exists to prevent: the surface, the
+/// The run this pins was audited with the capability off and a surface listing the call anyway,
+/// which is exactly the over-report the operations table's gate exists to prevent: the surface, the
 /// documentation runtime and the membrane ask one predicate, so a row bound to every program is
 /// offered, findable and serviced everywhere at once.
 #[test]
-fn views_close_and_current_are_bought_by_agent_managed_context() {
+fn views_close_is_bought_by_agent_managed_context() {
     let mut profile = GgCapabilitySet::minimal("mock/echo").root().clone();
     assert!(
         !profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
             && !profile.is_enabled(CAPABILITY_DOCVIEW_CLOSE),
         "the fixture starts without either capability"
     );
-    let managing = ["close", "current", "OpenView.close"];
+    let managing = ["close"];
     let names = |apis: &[GgAgentApi]| -> Vec<String> {
         functions_on(apis, "gg.views")
             .into_iter()
@@ -694,26 +687,17 @@ fn views_close_and_current_are_bought_by_agent_managed_context() {
             names(&with)
         );
     }
-    // Both rows of the operation carry its one identity, so the join to a run's calls is one join.
-    assert_eq!(
-        functions_on(&with, "gg.views")
-            .into_iter()
-            .filter(|(_, operation)| operation == "views.close")
-            .map(|(name, _)| name)
-            .collect::<Vec<_>>(),
-        vec!["close".to_string(), "OpenView.close".to_string()],
-        "the free function and the method are two rows of one operation, the free one first"
-    );
 }
 
 /// **A method is named with its receiver**, module-relative, in the arm's own separator — never as
-/// a bare name that collides with the free function beside it.
+/// a bare name that collides with a free function beside it.
 ///
-/// The surface used to report `OpenView.close` as a second `close`, and every reader keyed on the
-/// name folded the two: the console showed one row and spelled both calls `gg.views.close`. The name
-/// is the catalogue's fully-qualified one with the module path stripped, so it is `OpenView.close`
-/// here, `IssueCreated.wait` on the board, and — on an arm whose module path ends in the class the
-/// free functions hang off — the tail after *that* path, which is why Java's is asserted too.
+/// The surface used to report a receiver method as a second copy of the free function it aliases,
+/// and every reader keyed on the name folded the two: the console showed one row and spelled both
+/// calls the same way. The name is the catalogue's fully-qualified one with the module path
+/// stripped, so it is `IssueCreated.wait` on the board — and, on an arm whose module path ends in
+/// the class the free functions hang off, the tail after *that* path, which is why Java's is
+/// asserted too.
 #[test]
 fn a_method_on_the_surface_carries_its_receiver() {
     let mut profile = GgCapabilitySet::minimal("mock/echo").root().clone();
@@ -727,33 +711,20 @@ fn a_method_on_the_surface_carries_its_receiver() {
         EndingRole::Standard,
         GgProgramLanguage::TypeScript,
     );
-    let views: Vec<String> = functions_on(&typescript, "gg.views")
-        .into_iter()
-        .map(|(name, _)| name)
-        .collect();
-    assert_eq!(
-        views.iter().filter(|name| *name == "close").count(),
-        1,
-        "the free `close` appears once, and the method is not a second one: {views:?}"
-    );
-    assert!(
-        views.contains(&"OpenView.close".to_string()),
-        "the method carries its receiver: {views:?}"
-    );
     let board: Vec<String> = functions_on(&typescript, "gg.board")
         .into_iter()
         .map(|(name, _)| name)
         .collect();
     assert!(
         board.contains(&"IssueCreated.wait".to_string()),
-        "every receiver method is named the same way, not only the view's: {board:?}"
+        "the method carries its receiver: {board:?}"
     );
     assert!(
         !board.contains(&"wait".to_string()),
-        "and never as its bare member name: {board:?}"
+        "and never its bare member name: {board:?}"
     );
 
-    // Java's module path is the class its free functions hang off (`gg.views.Views`), so the tail
+    // Java's module path is the class its free functions hang off (`gg.board.Board`), so the tail
     // after it is the receiver and the member alone, in Java's own separator.
     let java = api_surface(
         &capabilities,
@@ -761,20 +732,21 @@ fn a_method_on_the_surface_carries_its_receiver() {
         EndingRole::Standard,
         GgProgramLanguage::Java,
     );
-    let java_views: Vec<String> = java
+    let java_board: Vec<String> = java
         .iter()
-        .find(|api| api.module == "views")
-        .expect("Java binds a views module")
+        .find(|api| api.module == "board")
+        .expect("Java binds a board module")
         .functions
         .iter()
         .map(|function| function.name.clone())
         .collect();
     assert!(
-        java_views.contains(&"OpenView#close".to_string()),
-        "Java's method is module-relative after `gg.views.Views`: {java_views:?}"
+        java_board.contains(&"IssueCreated#await".to_string())
+            || java_board.contains(&"IssueCreated#wait".to_string()),
+        "Java's method is module-relative after `gg.board.Board`: {java_board:?}"
     );
     assert!(
-        java_views.contains(&"close".to_string()),
-        "and its static method is the bare name, as every free function is: {java_views:?}"
+        java_board.contains(&"createIssue".to_string()),
+        "and its static method is the bare name, as every free function is: {java_board:?}"
     );
 }

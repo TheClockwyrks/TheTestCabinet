@@ -845,18 +845,18 @@ describe("deriveGgAgentSummaries", () => {
   });
 
   it("keeps a method and the free function it aliases as two rows of one operation", () => {
-    // gg names a method module-relative with its receiver — `OpenView.close` beside `close`
-    // — so the two spellings of `views.close` are two rows here, each with its own
-    // offered-by count. Folding them by a bare name would report one row and lose the
-    // method's existence; both carry the one operation, so both join to the same figure.
+    // gg names a method module-relative with its receiver — `SubagentHandle.send` beside
+    // `sendMessage` — so the two spellings of `delegation.send_message` are two rows here,
+    // each with its own offered-by count. Folding them by a bare name would report one row
+    // and lose the method's existence; both carry the one operation, so both join to the
+    // same figure.
     const views: GgAgentApi = {
-      module: "views",
-      path: "gg.views",
-      description: "Show the model something.",
+      module: "delegation",
+      path: "gg.delegation",
+      description: "Hand work to children.",
       functions: [
-        { name: "close", operation: "views.close" },
-        { name: "current", operation: "views.current" },
-        { name: "OpenView.close", operation: "views.close" },
+        { name: "sendMessage", operation: "delegation.send_message" },
+        { name: "SubagentHandle.send", operation: "delegation.send_message" },
       ],
     };
     const summaries = summarize(
@@ -873,22 +873,21 @@ describe("deriveGgAgentSummaries", () => {
 
     const surface = summaries.find((s) => s.profileId === "worker")!.surface!;
     expect(surface.apis[0]!.functions).toEqual([
-      { name: "close", key: "views.close", offeredBy: 1 },
-      { name: "current", key: "views.current", offeredBy: 1 },
-      { name: "OpenView.close", key: "views.close", offeredBy: 1 },
+      { name: "sendMessage", key: "delegation.send_message", offeredBy: 1 },
+      { name: "SubagentHandle.send", key: "delegation.send_message", offeredBy: 1 },
     ]);
   });
 
   it("sums a profile's api calls across its instances, tool or no tool", () => {
     // The other half of the offered-versus-called contrast, and the half the old tool-keyed
-    // join could not produce: `views.openFile` runs a `read_file` and `views.current` runs
+    // join could not produce: `views.openFile` runs a `read_file` and `views.openText` runs
     // nothing, and both are calls this profile's programs made.
     const summaries = summarize(
       [
         spawn("root", "root", "vendor/big"),
         spawn("w1", "worker", "vendor/small", "root"),
         apiCall("w1", "views.open_file"),
-        apiCall("w1", "views.current"),
+        apiCall("w1", "views.open_text"),
         spawn("w2", "worker", "vendor/small", "root"),
         apiCall("w2", "views.open_file"),
       ],
@@ -900,7 +899,7 @@ describe("deriveGgAgentSummaries", () => {
 
     const worker = summaries.find((s) => s.profileId === "worker")!;
     expect(worker.apiCalls.get("views.open_file")).toBe(2);
-    expect(worker.apiCalls.get("views.current")).toBe(1);
+    expect(worker.apiCalls.get("views.open_text")).toBe(1);
     expect(summaries.find((s) => s.profileId === "root")!.apiCalls.size).toBe(
       0,
     );

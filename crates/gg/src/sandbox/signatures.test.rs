@@ -160,23 +160,6 @@ fn every_carve_out_entry_carries_an_identity() {
     assert_eq!(request_changes.key, "request_changes");
 }
 
-/// `readTextFile` is a **helper**, not a gg tool: it wraps `read_file` for the common case, and
-/// listing it among the tools would put a name in the model's head that no capability controls.
-#[test]
-fn read_text_file_is_a_helper_not_a_tool() {
-    let helper = function("readTextFile");
-    assert!(
-        !ALL_TOOL_NAMES.contains(&helper.key),
-        "the helper claims the identity of a gg tool: `{}`",
-        helper.key
-    );
-    assert_eq!(
-        helper.capability,
-        Some(CAPABILITY_READ_FILE),
-        "the helper is bought by the capability the read it wraps is bought by"
-    );
-}
-
 /// **TypeScript spells its four ending calls the way its SDK declares them**, on the objects gg
 /// groups them under.
 ///
@@ -252,19 +235,15 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
             "`{name}` is bound whatever a run enables"
         );
     }
-    for name in ["close", "current"] {
-        let entry = member("gg.views", name);
-        assert_eq!(
-            entry.capability,
-            Some(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT),
-            "`{name}` manages the window, and is bought with the rest of context management"
-        );
-    }
+    let close = member("gg.views", "close");
+    assert_eq!(
+        close.capability,
+        Some(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT),
+        "`close` manages the window, and is bought with the rest of context management"
+    );
 
-    // Five operations, and a sixth entry that is a second way to reach one of them: `OpenView.close`
-    // is the selector-supplying member on the value `current` lists, an alias of `views.close` that
-    // is gated as `views.close` and adds no capability. Counting the two apart is what keeps "how
-    // many things can this module do" separate from "how many ways are there to write them".
+    // Four operations, counted apart from any second ways to write one: "how many things can this
+    // module do" is a different figure from "how many ways are there to write them".
     let catalogued = functions();
     let views: Vec<_> = catalogued
         .iter()
@@ -275,16 +254,16 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
             .iter()
             .filter(|function| function.alias_of.is_none())
             .count(),
-        5,
-        "the view surface is the five operations and nothing else"
+        4,
+        "the view surface is the four operations and nothing else"
     );
     assert_eq!(
         views
             .iter()
             .filter_map(|function| function.alias_of.map(|alias| (function.fqn, alias)))
             .collect::<Vec<_>>(),
-        [("gg.views.OpenView.close", "views.close")],
-        "and its one alias says which operation it is a second way to reach"
+        [] as [(&str, &str); 0],
+        "and it carries no second way to reach one of them"
     );
 
     // The projection the docs runtime reads carries the same gates, which is what makes a withheld
@@ -300,7 +279,7 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
     assert_eq!(projected("openFile").object, "gg.views");
     assert!(projected("openText").capability.is_none());
     assert!(projected("openText").ending.is_none());
-    assert!(!projected("current").prose.brief.is_empty());
+    assert!(!projected("close").prose.brief.is_empty());
 }
 
 /// **`finish` is not a gg tool, and no gg tool is called `finish`.**
@@ -358,15 +337,6 @@ fn catalogue_functions_carry_object_and_gate() {
         !read.prose.brief.is_empty(),
         "every function carries a brief"
     );
-
-    // The helper is bought by the capability the read it wraps is bought by, and lives in that
-    // read's module.
-    let helper = functions
-        .iter()
-        .find(|function| function.name == "readTextFile")
-        .expect("readTextFile is documented");
-    assert_eq!(helper.object, "gg.files");
-    assert_eq!(helper.capability, Some(CAPABILITY_READ_FILE));
 }
 
 /// A type's declaration is returned verbatim, so what a doc lookup shows is what the SDK wrote — and

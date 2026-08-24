@@ -499,7 +499,6 @@ fn the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with() 
             "test-cabinet:gg/docs",
             "test-cabinet:gg/feedback",
             "test-cabinet:gg/files",
-            "test-cabinet:gg/helpers",
             "test-cabinet:gg/memories",
             "test-cabinet:gg/programs",
             "test-cabinet:gg/session",

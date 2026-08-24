@@ -551,7 +551,6 @@
           "operations": [
             "shell.shell",
             "files.read_file",
-            "files.read_text_file",
             "files.write_file",
             "files.edit_file",
             "files.list_dir",

@@ -13,97 +13,20 @@ it computed reaches that model — `print` reaches nobody the program can hear b
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
 from typing import Callable
 
 from wit_world.imports import views as wire
 
-from ._registry import alias, missing, operation
+from ._registry import missing, operation
 from .core import ApiError, ApiErrorCode, _call, _uint
 from .files import FileRead, _as_file_read
 
 __all__ = [
-    "OpenView",
-    "ViewKind",
-    "ViewRegion",
     "close",
-    "current",
     "open_docs_view",
     "open_file",
     "open_text",
 ]
-
-
-class ViewKind(Enum):
-    """Which of the three kinds a view is.
-
-    The taxonomy is closed at three deliberately: everything on disk is a file, everything a program
-    can compute is a string, and documentation is neither — gg holds it.
-    """
-
-    FILE = "file"
-    """A file that was opened; its selector is the path."""
-
-    TEXT = "text"
-    """A computed value; its selector is the label it was given."""
-
-    DOCS = "docs"
-    """An entry's documentation; its selector is the key it was opened under."""
-
-
-@dataclass(frozen=True)
-class ViewRegion:
-    """The window of lines a paged file view covers; absent for a whole-file view."""
-
-    offset: int
-    """The 1-based first line the view shows."""
-
-    limit: int
-    """How many lines it shows."""
-
-
-@dataclass(frozen=True)
-class OpenView:
-    """One view open in the context window, as `current` reports it."""
-
-    kind: ViewKind
-    """Whether it is a file, text, or documentation view."""
-
-    selector: str
-    """What it is filed under, and what `close` takes.
-
-    A file's path, a text view's label or `search results`, and for a documentation view the key it
-    was opened under.
-    """
-
-    tokens: int
-    """Roughly what holding it costs, in tokens."""
-
-    region: ViewRegion | None
-    """The line window a paged file view covers; `None` for a whole-file view and for text views."""
-
-    @alias("views.close")
-    def close(self) -> int:
-        """Close this view, freeing the tokens it occupied.
-
-        `views.close` with the selector already supplied, which is what lets a window be tidied by
-        iterating over what is in it rather than by writing a selector out per view.
-
-        A documentation view is the one this does not take away, for the reason `views.close` does
-        not: taking one of those back is a different call, bought by a capability of its own.
-
-        Returns:
-            How many views were closed, which for one page of a paged file is every page of that
-                path.
-
-        Raises:
-            ApiError: `unavailable` for an agent whose run did not buy `agent-managed-context`,
-                which is what buys closing a view.
-        """
-        # The module-level `close`, not this method: a name in a method body resolves against the
-        # module rather than against the class it is declared in, so there is no recursion here.
-        return close(self.selector)
 
 
 @operation("views.open_file")
@@ -252,8 +175,8 @@ def close(selector: str) -> int:
             that is not open hands back `0` rather than failing, so a program that tidies up
             unconditionally need not guard every call.
 
-    Closing a view is context management, bought — with `views.current` — by the
-    `agent-managed-context` capability: an agent whose run did not enable it is refused.
+    Closing a view is context management, bought by the `agent-managed-context` capability: an
+    agent whose run did not enable it is refused.
 
     Raises:
         ApiError: `invalid-argument` for an empty selector, which names nothing rather than
@@ -261,39 +184,6 @@ def close(selector: str) -> int:
             whose run did not buy `agent-managed-context`.
     """
     return _call(wire.close_view, selector)
-
-
-@operation("views.current")
-def current() -> list[OpenView]:
-    """List what is open in the context window right now.
-
-    Reading it is what decides what to close when the window is filling up.
-
-    What it enumerates is the context window's contents, not any module's functions.
-
-    Listing what is open is context management, bought with `views.close` by the
-    `agent-managed-context` capability: an agent whose run did not enable it is refused.
-
-    Returns:
-        Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and —
-            for a paged file view — the `region` it covers.
-
-    Raises:
-        ApiError: `unavailable` for an agent whose run did not buy `agent-managed-context`.
-    """
-    return [
-        OpenView(
-            kind=ViewKind[view.kind.name],
-            selector=view.selector,
-            tokens=view.tokens,
-            region=(
-                None
-                if view.region is None
-                else ViewRegion(offset=view.region.offset, limit=view.region.limit)
-            ),
-        )
-        for view in _call(wire.current_views)
-    ]
 
 
 __getattr__ = missing(__name__, __all__)

@@ -431,8 +431,8 @@ fn endings(operations: &'static [Operation], complain: &mut impl FnMut(String)) 
 
 /// A view is gated exactly where it reads the workspace or manages the window, and nowhere else.
 ///
-/// Opening a view of a file is a **read** and is bought by the read capability. Closing a view and
-/// listing what is open are **context management** and are bought by `agent-managed-context`, the
+/// Opening a view of a file is a **read** and is bought by the read capability. Closing a view is
+/// **context management** and is bought by `agent-managed-context`, the
 /// capability that buys every other call an agent manages its window with. The rest of the view
 /// surface — opening a text the program computed, opening documentation gg holds — is bound to every
 /// program whatever a run enables, because a run that offers no tools at all must still be able to

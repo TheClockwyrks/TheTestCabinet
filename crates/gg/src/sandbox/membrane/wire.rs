@@ -37,8 +37,8 @@
 //!
 //! The seam's rule that a capability reaches a program as a typed, namespaced binding rather than as
 //! a dispatcher taking a name as data is a rule about **what a model writes**. A model writing Java
-//! writes `Files.readTextFile("notes.txt")` and one writing Kotlin writes
-//! `gg.files.readTextFile("notes.txt")`; this is one layer below anything either can see, in a
+//! writes `Files.readFile("notes.txt")` and one writing Kotlin writes
+//! `gg.files.readFile("notes.txt")`; this is one layer below anything either can see, in a
 //! package no catalogue describes.
 //!
 //! # What it cannot do
@@ -218,7 +218,6 @@ fn dispatch<A: OperationApi>(
         "shell.shell" => workspace::shell(state, op, arguments),
         // files
         "files.read_file" => workspace::read_file(state, op, arguments),
-        "files.read_text_file" => workspace::read_text_file(state, op, arguments),
         "files.write_file" => workspace::write_file(state, op, arguments),
         "files.edit_file" => workspace::edit_file(state, op, arguments),
         "files.list_dir" => workspace::list_dir(state, op, arguments),
@@ -261,7 +260,6 @@ fn dispatch<A: OperationApi>(
         "views.open_text" => context::open_text_view(state, op, arguments),
         "views.open_docs_view" => context::open_docs_view(state, op, arguments),
         "views.close" => context::close_view(state, op, arguments),
-        "views.current" => context::current_views(state),
         // programs
         "programs.history" => context::history(state),
         "programs.get" => context::get(state, op, arguments),

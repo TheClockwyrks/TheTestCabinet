@@ -140,33 +140,6 @@ pub fn close(selector: &str) -> Result<u32, ApiError> {
     wire::lift(views::close_view(selector))
 }
 
-/// List what is open in the context window right now.
-///
-/// Each view's [`kind`](OpenView::kind), the [`selector`](OpenView::selector) that closes it, roughly
-/// what it costs in [`tokens`](OpenView::tokens), and — for a paged file view — the
-/// [`region`](OpenView::region) it covers. Reading it is what decides what to close when the window
-/// is filling up.
-///
-/// Listing what is open is context management, bought with [`close`] by the
-/// `agent-managed-context` capability: an agent whose run did not enable it is refused.
-///
-/// # Returns
-///
-/// Every view open right now, in no particular order. The cost on each is an estimate, so it ranks
-/// the views worth closing rather than saying exactly what closing one frees.
-///
-/// # Errors
-///
-/// `Unavailable` for an agent whose run did not buy `agent-managed-context`. Granted, it cannot
-/// fail: an empty window is an empty list.
-#[doc(alias = "ggop:views.current")]
-pub fn current() -> Result<Vec<OpenView>, ApiError> {
-    Ok(wire::lift(views::current_views())?
-        .into_iter()
-        .map(wire::open_view)
-        .collect())
-}
-
 /// The window of lines a file view shows, and the cut its long lines get. [`Default`] shows the whole file.
 ///
 /// `offset` and `limit` are the same window a read takes, honoured under every read policy; the
@@ -189,61 +162,3 @@ pub struct ViewOptions {
     pub max_line_chars: Option<u32>,
 }
 
-/// Which of the three kinds a view is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ViewKind {
-    /// A file that was opened; its selector is the path.
-    File,
-    /// A computed value; its selector is the label it was given.
-    Text,
-    /// An entry's documentation; its selector is the key it was opened under.
-    Docs,
-}
-
-/// The window of lines a paged file view covers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ViewRegion {
-    /// The 1-based first line the view shows.
-    pub offset: u32,
-    /// How many lines it shows.
-    pub limit: u32,
-}
-
-/// One view open in the context window, as [`current`] reports it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpenView {
-    /// Whether it is a file, text, or documentation view.
-    pub kind: ViewKind,
-    /// What closes it.
-    ///
-    /// A file's path, a text view's label or `search results` for [`close`], and for a documentation
-    /// view the key it was opened under.
-    pub selector: String,
-    /// Roughly what holding it costs, in tokens.
-    pub tokens: u64,
-    /// The line window a paged file view covers; `None` for a whole-file view and for text views.
-    pub region: Option<ViewRegion>,
-}
-
-impl OpenView {
-    /// Close this view, with its selector already supplied.
-    ///
-    /// [`close`] for the common case where the open view is in hand — so every view under the same
-    /// selector goes, which for a paged file is every page of that path.
-    ///
-    /// A documentation view is the one this does not take away, for the reason [`close`] gives.
-    ///
-    /// # Returns
-    ///
-    /// How many views were closed, which is `0` when this one has been closed already.
-    ///
-    /// # Errors
-    ///
-    /// `InvalidArgument` when this view's [`selector`](Self::selector) is empty, which no view gg
-    /// reports ever is, and `Unavailable` for an agent whose run did not buy
-    /// `agent-managed-context`, which is what buys closing a view.
-    #[doc(alias = "ggop-alias:views.close")]
-    pub fn close(&self) -> Result<u32, ApiError> {
-        close(&self.selector)
-    }
-}

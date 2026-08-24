@@ -220,13 +220,13 @@ fn a_withheld_function_is_not_findable() {
     );
 }
 
-/// **Closing a view and listing what is open are findable only with agent-managed context.** The two
-/// used to be bound to every program, so they are asserted by key — the qualified one, since `docs`
+/// **Closing a view is findable only with agent-managed context.** The call
+/// used to be bound to every program, so it is asserted by key — the qualified one, since `docs`
 /// has a `close` of its own: a search for the view surface
-/// still finds the calls that open something for an agent with nothing enabled, and finds the two
-/// that manage the window only once the capability that buys them is on.
+/// still finds the calls that open something for an agent with nothing enabled, and finds the one
+/// that manages the window only once the capability that buys it is on.
 #[test]
-fn closing_and_listing_views_are_findable_only_with_agent_managed_context() {
+fn closing_views_is_findable_only_with_agent_managed_context() {
     let without = runtime(&[]);
     let hits = without.search(ask("view")).expect("a usable query");
     let found = keys(&hits);
@@ -235,17 +235,14 @@ fn closing_and_listing_views_are_findable_only_with_agent_managed_context() {
         "opening a view is bound to every program: {found:?}"
     );
     assert!(
-        !found.contains(&"gg.views.current") && !found.contains(&"gg.views.close"),
-        "an agent without agent-managed context must not find the calls that manage its window: \
+        !found.contains(&"gg.views.close"),
+        "an agent without agent-managed context must not find the call that manages its window: \
          {found:?}"
     );
     let with = runtime(&[CAPABILITY_AGENT_MANAGED_CONTEXT]);
     let hits = with.search(ask("view")).expect("a usable query");
     let found = keys(&hits);
-    assert!(
-        found.contains(&"gg.views.current") && found.contains(&"gg.views.close"),
-        "{found:?}"
-    );
+    assert!(found.contains(&"gg.views.close"), "{found:?}");
 }
 
 /// A **capability-bought** family is filtered on exactly the same predicate — the one that reads gg's

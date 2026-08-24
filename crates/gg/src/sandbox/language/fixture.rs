@@ -547,8 +547,8 @@ fn reshaped_catalogue(edit: impl FnOnce(&mut Value)) -> String {
 /// It is derived from a *real arm's* catalogue, reflected out of that arm's SDK on every build, so
 /// the surface it is cut from changes under it — and the changes that matter are the ones in the
 /// same direction as the reshape. The source arm has
-/// since grown exactly the shapes this reshape produces: an `OpenView.close` method and a
-/// `SubagentHandle.send` one, spelled the way the promotions below spell them. Conditioning each
+/// since grown exactly the shape this reshape produces: a
+/// `SubagentHandle.send` method, spelled the way the promotions below spell it. Conditioning each
 /// promotion on the entry being the arm's **canonical** binding was not enough on its own, because
 /// the arm's own method then survives beside the promoted one under the same fully-qualified name,
 /// and the tests that read the fixture fail with a sentence about the *gate*.
@@ -632,10 +632,10 @@ fn reshape(document: &mut Value) {
 /// Drop every second way into an operation that the source arm offers, and every member function
 /// its types list, leaving the arm's canonical bindings and nothing else.
 ///
-/// This is what keeps the fixture still while the arm moves. The source arm offers five convenience
-/// helpers today, two of them (`SubagentHandle.send` and `OpenView.close`) in exactly the shape the
+/// This is what keeps the fixture still while the arm moves. The source arm offers four convenience
+/// helpers today, one of them (`SubagentHandle.send`) in exactly the shape the
 /// promotions above produce and under exactly the fully-qualified name they produce it under — so
-/// left in place they would be a second entry with one key, and the tests that read the fixture
+/// left in place it would be a second entry with one key, and the tests that read the fixture
 /// would fail with a sentence about the *gate* rather than about the collision. Rather than special
 /// -casing those two, the reshape takes its input from what an arm cannot vary: which operations it
 /// binds canonically. Every alias it then has is one this file cut.

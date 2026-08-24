@@ -4,15 +4,8 @@ namespace Gg;
 
 /// <summary>Read, write, edit and list the files of the workspace.</summary>
 /// <remarks>
-/// <para>
-/// Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
-/// that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
-/// large files in a single turn will exhaust its fuel budget.
-/// </para>
-/// <para>
 /// Nothing here places anything in the agent's context window: a read hands bytes to the program,
 /// and a view — the <c>Gg.Views</c> module — is what puts something in front of the model.
-/// </para>
 /// </remarks>
 /// <ggmodule>files</ggmodule>
 public static partial class Files
@@ -63,32 +56,7 @@ public static partial class Files
             : new ImageFile(mediaType, label, (ulong)numbers[4], numbers[5] != 0, notShownReason);
     }
 
-    /// <summary>Read a text file and hand back its contents directly.</summary>
-    /// <remarks>
-    /// <see cref="ReadFile"/> without the narrowing, for the common case: the same read, the same
-    /// window, the same cost.
-    /// </remarks>
-    /// <param name="path">The file to read, relative to the workspace or absolute.</param>
-    /// <param name="offset">The 1-based first line. Left out, the read starts at the first line.</param>
-    /// <param name="limit">How many lines to read. Left out, a capped read policy's default applies, or the read runs to the end.</param>
-    /// <returns>the text alone, without the line counts <see cref="TextFile"/> reports beside it.</returns>
-    /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.InvalidArgument"/> when the path names a picture, which
-    /// <see cref="ReadFile"/> inspects instead.
-    /// </exception>
-    /// <ggop>files.read_text_file</ggop>
-    public static string ReadTextFile(string path, uint? offset = null, uint? limit = null)
-    {
-        Internal.Wire.Check(Internal.Native.ReadTextFile(path, Internal.Wire.Slot(offset), Internal.Wire.Slot(limit), out var contents));
-        return contents;
-    }
-
     /// <summary>Write UTF-8 text to a file, creating parent directories and replacing what is there.</summary>
-    /// <remarks>
-    /// Writing is the expensive direction of this sandbox: rewriting more than a few dozen large
-    /// files in one program exhausts its fuel budget, so a large rewrite is best split across
-    /// several turns.
-    /// </remarks>
     /// <param name="path">Where to write, relative to the workspace or absolute.</param>
     /// <param name="contents">The UTF-8 text to write. It replaces the file entirely.</param>
     /// <returns>how many bytes were written.</returns>

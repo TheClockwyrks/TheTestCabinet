@@ -360,10 +360,10 @@ fn a_language_that_writes_ml_signatures_is_read_by_its_own_notation() {
     );
 
     // The other direction: a nullary ML signature whose type merely *mentions* brackets is not read
-    // as taking anything, which is what made `current :: Effect (Array OpenView)` fail.
+    // as taking anything, which is what once made `current :: Effect (Array OpenView)` fail.
     let nullary = a_language_whose_catalogue(|document| {
-        entry(document, "views.current")["signatures"] = json!([{
-            "signature": "current :: Effect (Array OpenView)",
+        entry(document, "docs.close_all")["signatures"] = json!([{
+            "signature": "close_all :: Effect (Array Int)",
             "parameters": [],
         }]);
     });
@@ -498,9 +498,9 @@ fn a_catalogue_that_does_not_cover_gg_s_capabilities_is_caught() {
         (
             "a call the arm says takes an argument where gg says it takes none",
             Box::new(|document: &mut Value| {
-                let current = entry(document, "views.current");
-                current["signatures"] = json!([{
-                    "signature": "current(limit: number): OpenView[]",
+                let history = entry(document, "programs.history");
+                history["signatures"] = json!([{
+                    "signature": "history(limit: number): ProgramSummary[]",
                     "parameters": [{
                         "name": "limit",
                         "type": "number",
@@ -682,14 +682,6 @@ fn a_gating_rule_gg_gets_wrong_is_caught() {
                 row(rows, "views.close").binding = Binding::Always;
             }),
             "the view `views.close` is bound by Always where gg binds it by \
-             Capability(\"agent-managed-context\")",
-        ),
-        (
-            "the view listing bought by a capability other than context management",
-            Box::new(|rows: &mut Vec<Operation>| {
-                row(rows, "views.current").binding = Binding::Capability(CAPABILITY_READ_FILE);
-            }),
-            "the view `views.current` is bound by Capability(\"read-file\") where gg binds it by \
              Capability(\"agent-managed-context\")",
         ),
         (

@@ -18,10 +18,6 @@ namespace gg {
 
 /// Read, write, edit, list and search the files of the workspace.
 ///
-/// Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
-/// that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
-/// large files in a single turn will exhaust its fuel budget.
-///
 /// Nothing here places anything in the agent's context window: showing something is what the
 /// `gg::views` module is for.
 ///
@@ -157,24 +153,7 @@ struct dir_entry {
 /// \throws gg::core::api_error `not_found` for a missing path.
 files::file_read read_file(std::string_view path, files::read_window window = {});
 
-/// Read a text file and hand back its contents directly, without the narrowing.
-///
-/// It takes the same window as `gg::files::read_file` and is the shape a program wants whenever the
-/// path is known to be text.
-///
-/// <ggop>files.read_text_file</ggop>
-///
-/// \param path The file to read, relative to the workspace or absolute.
-/// \param window The lines to read; `{}` reads the whole file.
-/// \returns the file's text.
-/// \throws gg::core::api_error `invalid_argument` when the path names a picture, which
-///   `gg::files::read_file` describes and `gg::views::open_file` shows.
-std::string read_text_file(std::string_view path, files::read_window window = {});
-
 /// Write UTF-8 text to a file, creating parent directories and replacing whatever was there.
-///
-/// Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files
-/// in one program exhausts its fuel budget, so a large rewrite is split across several turns.
 ///
 /// <ggop>files.write_file</ggop>
 ///

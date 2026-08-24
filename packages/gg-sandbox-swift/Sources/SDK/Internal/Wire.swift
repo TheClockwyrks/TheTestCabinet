@@ -17,9 +17,8 @@
 //
 // **Lifting** (C → Swift) has to copy and then free. What an import hands back is memory the guest
 // owns: `String(decoding:)` copies it into a Swift value, and the generated `*_free` gives it back.
-// A program that reads a hundred files in a loop would otherwise grow its own heap until the fuel
-// ceiling stopped it, and the failure would read as "your program was too expensive" rather than as
-// a leak.
+// A program that reads a hundred files in a loop would otherwise grow its own heap until the
+// memory ceiling stopped it, and the failure would read as an out-of-memory rather than as a leak.
 
 // ------------------------------------------------------------------------------------------------
 // Lowering

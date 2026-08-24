@@ -14,7 +14,7 @@ public enum core {
     ///
     /// Every fallible function in this SDK is `throws` and throws one of these, which is what a
     /// Swift author expects of a fallible call and what makes `try` the whole of the ceremony:
-    /// `let notes = try files.readTextFile("notes.md")` binds a `String`, and a failure ends the
+    /// `let skill = try skills.readSkill("testing")` binds a `String`, and a failure ends the
     /// program with gg told exactly which call failed and on which line.
     ///
     /// A failure a program expects is an ordinary `catch` on `code`, which is a value rather than
@@ -22,7 +22,7 @@ public enum core {
     ///
     /// ```swift
     /// do {
-    ///     try views.openText("notes", body: try files.readTextFile("notes.md"))
+    ///     try views.openFile("notes.md")
     /// } catch let failure as core.ApiError where failure.code == .notFound {
     ///     try files.writeFile("notes.md", contents: "")
     /// }

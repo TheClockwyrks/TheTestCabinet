@@ -18,9 +18,10 @@ next program.
 
 The views a program opens are headed the same way, qualified by their selector:
 `View: <label>` for a text view, `Documentation: <name>` for a documentation
-view, and `File: <path>:<first>-<last>` for a file view, the path it was opened
-under and the 1-based inclusive line range it shows, `1-N` for a whole file of
-`N` lines. See [views](/gg/responses-as-code/views/).
+view, and `File: <path>:<first>-<last> of <N> lines` for a file view — the path
+it was opened under, the 1-based inclusive line range it shows and the file's
+total line count, so a partial read is distinguishable from a whole file. See
+[views](/gg/responses-as-code/views/).
 
 ## Error messages
 

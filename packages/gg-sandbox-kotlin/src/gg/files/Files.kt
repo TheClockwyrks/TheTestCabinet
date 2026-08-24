@@ -1,10 +1,6 @@
 /**
  * Read, write, edit and list the files of the workspace.
  *
- * Reading is the cheap direction of this sandbox and writing is the expensive one, so a program that
- * reads a dozen files to decide what to change is well shaped, while one that rewrites forty large
- * files in a single turn will exhaust its fuel budget.
- *
  * Nothing here places anything in the agent's context window: a read hands bytes to the program, and
  * a view — the `gg.views` module — is what puts something in front of the model.
  *
@@ -57,27 +53,7 @@ public fun readFile(path: String, offset: Int? = null, limit: Int? = null): File
     )
 
 /**
- * Read a text file and hand back its contents directly.
- *
- * `gg.files.readFile` without the narrowing, for the common case where the file is known to be text.
- *
- * @ggop files.read_text_file
- * @param path The file to read, relative to the workspace or absolute.
- * @param offset The 1-based line to start at. Left out, the read starts at the first line.
- * @param limit How many lines to return from `offset`. Left out, a capped read policy's default
- *   applies, or the read runs to the end.
- * @return the file's text
- * @throws ApiError `INVALID_ARGUMENT` when the path names a picture, which `gg.files.readFile`
- *   inspects and `gg.views.openFile` shows.
- */
-public fun readTextFile(path: String, offset: Int? = null, limit: Int? = null): String =
-    ggCall("files.read_text_file", ggText(path), ggNumber(offset), ggNumber(limit)).text()
-
-/**
  * Write text to a file, creating parent directories and replacing whatever was there.
- *
- * Writing is the expensive direction of the sandbox: rewriting more than a few dozen large files in
- * one program exhausts its fuel budget, so a large rewrite is better split across several turns.
  *
  * @ggop files.write_file
  * @param path Where to write, relative to the workspace or absolute. Parent directories are created.

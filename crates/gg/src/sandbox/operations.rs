@@ -17,8 +17,8 @@
 //! a tool name and a tool name is not usable here; nothing in this table is derived from gg's tool
 //! vocabulary, and nothing in that vocabulary is derived from this table.
 //!
-//! Which is not to say the two are equals. Responses-as-code is the strictly richer surface: fourteen
-//! operations have no tool behind them at all, three operations share one read, and a program
+//! Which is not to say the two are equals. Responses-as-code is the strictly richer surface: thirteen
+//! operations have no tool behind them at all, two operations share one read, and a program
 //! composes calls a tool-calling turn can only make one at a time. Tool calling is the **subset**,
 //! and a gate that held the two in bijection would be asserting a symmetry gg does not have.
 //!
@@ -111,10 +111,6 @@ pub const SHELL_SHELL: OperationId = OperationId::new("shell", "shell");
 
 /// Read a workspace file, as the variant the read returns.
 pub const FILES_READ_FILE: OperationId = OperationId::new("files", "read_file");
-
-/// Read a workspace file's text directly — the one helper, which shares
-/// [`read_file`](FILES_READ_FILE)'s gate and has an identity of its own.
-pub const FILES_READ_TEXT_FILE: OperationId = OperationId::new("files", "read_text_file");
 
 /// Write a workspace file whole.
 pub const FILES_WRITE_FILE: OperationId = OperationId::new("files", "write_file");
@@ -253,11 +249,6 @@ pub const VIEWS_OPEN_DOCS_VIEW: OperationId = OperationId::new("views", "open_do
 /// managing the window, exactly as evicting a file view is.
 pub const VIEWS_CLOSE: OperationId = OperationId::new("views", "close");
 
-/// What is open in the agent's window right now. Bought by
-/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) beside [`close`](VIEWS_CLOSE): the
-/// listing exists to decide what to close.
-pub const VIEWS_CURRENT: OperationId = OperationId::new("views", "current");
-
 /// The [program library](crate::programs)'s own directory.
 pub const PROGRAMS_HISTORY: OperationId = OperationId::new("programs", "history");
 
@@ -296,10 +287,9 @@ pub enum Binding {
     /// halves are asked.
     ///
     /// More than one operation may name the same capability, and most do: a capability is a *family*
-    /// of calls in gg's configuration surface, and `read-file` alone buys three — `files.read_file`,
-    /// `files.read_text_file` and `views.open_file` are three operations over one read. They are
-    /// separate operations because they are separately documented, separately called and separately
-    /// grantable.
+    /// of calls in gg's configuration surface, and `read-file` alone buys two — `files.read_file`
+    /// and `views.open_file` are two operations over one read. They are separate operations because
+    /// they are separately documented, separately called and separately grantable.
     Capability(&'static str),
     /// Bought by **where this instance stands**, and by nothing on its own profile: the one call an
     /// agent holds because of a machine it was placed in rather than because of a capability
@@ -324,7 +314,7 @@ pub enum Binding {
     /// which is why the two view calls that *open* something gg holds or the program computed
     /// ([`open_text`](VIEWS_OPEN_TEXT), [`open_docs_view`](VIEWS_OPEN_DOCS_VIEW)) are this and why
     /// the documentation search ([`search`](DOCS_SEARCH)) is exactly it. Those three are the whole
-    /// of it: closing a view and listing what is open are context management and are bought by
+    /// of it: closing a view is context management and is bought by
     /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) like the rest of that family.
     Always,
 }
@@ -488,8 +478,8 @@ macro_rules! operation {
 /// What stays behind in `views` is [`open_docs_view`](VIEWS_OPEN_DOCS_VIEW), and that is the right
 /// side of the line rather than a leftover: opening a documentation view *is* putting material into
 /// the window, which is what the view family is, and it is the one of the four that a run can
-/// neither buy nor withhold. Closing a view and listing what is open are the family's other half —
-/// managing the window rather than filling it — and are bought by
+/// neither buy nor withhold. Closing a view is the family's other half —
+/// managing the window rather than filling it — and is bought by
 /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) with the evictions and the archive.
 pub const OPERATIONS: &[Operation] = &[
     operation!(
@@ -500,12 +490,6 @@ pub const OPERATIONS: &[Operation] = &[
     ),
     operation!(
         FILES_READ_FILE,
-        FAMILY_FILESYSTEM,
-        Binding::Capability(CAPABILITY_READ_FILE),
-        TAKES_INPUT
-    ),
-    operation!(
-        FILES_READ_TEXT_FILE,
         FAMILY_FILESYSTEM,
         Binding::Capability(CAPABILITY_READ_FILE),
         TAKES_INPUT
@@ -745,12 +729,6 @@ pub const OPERATIONS: &[Operation] = &[
         FAMILY_VIEWS,
         Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT),
         TAKES_INPUT
-    ),
-    operation!(
-        VIEWS_CURRENT,
-        FAMILY_VIEWS,
-        Binding::Capability(CAPABILITY_AGENT_MANAGED_CONTEXT),
-        NO_INPUT
     ),
     operation!(
         PROGRAMS_HISTORY,

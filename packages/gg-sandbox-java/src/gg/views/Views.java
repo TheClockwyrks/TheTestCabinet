@@ -6,8 +6,6 @@ import gg.files.Files;
 import gg.internal.Coding;
 import gg.internal.Read;
 import gg.internal.Value;
-import java.util.List;
-import java.util.Optional;
 
 /**
  * Put a file, a computed value or an entry's documentation into the context window.
@@ -166,7 +164,7 @@ public final class Views {
      * of its own, and a sweep that included them would hand back {@code 0} for an agent that may
      * not close one, which reads as a selector that named nothing.
      *
-     * <p>Closing a view is context management, bought — with {@link #current()} — by the
+     * <p>Closing a view is context management, bought by the
      * {@code agent-managed-context} capability: an agent whose run did not enable it is refused.
      *
      * @param selector What the view is filed under: a file's path, a text view's label, or
@@ -180,81 +178,5 @@ public final class Views {
      */
     public static int close(String selector) {
         return Coding.call("views.close", Value.of(selector)).integer();
-    }
-
-    /**
-     * List what is open in the context window right now, with what each costs.
-     *
-     * <p>Each entry carries its kind, the selector that closes it, roughly what it costs in tokens,
-     * and — for a paged file view — the region it covers. What it enumerates is the context window's
-     * contents, not any module's functions.
-     *
-     * <p>Listing what is open is context management, bought with {@link #close(String)} by the
-     * {@code agent-managed-context} capability: an agent whose run did not enable it is refused.
-     *
-     * @return every view open in the context window
-     * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} for an agent whose run did not buy
-     *     {@code agent-managed-context}.
-     * @ggop views.current
-     */
-    public static List<OpenView> current() {
-        return Read.openViews(Coding.call("views.current"));
-    }
-
-    // -------------------------------------------------------------------------------------------
-    // The types a view hands back
-    // -------------------------------------------------------------------------------------------
-
-    /**
-     * One view open in the context window, as the current set reports it.
-     *
-     * @param kind Whether it is a file, a text or a documentation view.
-     * @param selector What {@link Views#close} takes: a path, a label or {@code search results}; a
-     *     documentation view's is its entry's key.
-     * @param tokens Roughly what holding it costs, in tokens.
-     * @param region The line window a paged file view covers; empty for a whole-file view and for
-     *     every text view.
-     */
-    public record OpenView(ViewKind kind, String selector, int tokens,
-            Optional<ViewRegion> region) {
-
-        /**
-         * Close this view, which is {@link Views#close} on its own selector.
-         *
-         * <p>A documentation view is the one this does not take away, because {@link Views#close}
-         * does not reach that band.
-         *
-         * @return how many views were closed, which is one unless it had already gone
-         * @throws ApiError {@link ApiErrorCode#UNAVAILABLE} for an agent whose run did not buy
-         *     {@code agent-managed-context}, which is what buys closing a view.
-         * @ggalias views.close
-         */
-        public int close() {
-            return Views.close(selector);
-        }
-    }
-
-    /**
-     * Which of the three kinds a view is.
-     *
-     * <p>The taxonomy is closed at three deliberately: everything on disk is a file, everything a
-     * program can compute is a string, and documentation is neither — gg holds it.
-     */
-    public enum ViewKind {
-        /** A file, whose selector is its path. */
-        FILE,
-        /** A computed value, whose selector is the label it was opened under. */
-        TEXT,
-        /** One entry's documentation, whose selector is that entry's key. */
-        DOCS
-    }
-
-    /**
-     * The window of lines a paged file view covers.
-     *
-     * @param offset The 1-based first line the view shows.
-     * @param limit How many lines it shows.
-     */
-    public record ViewRegion(int offset, int limit) {
     }
 }

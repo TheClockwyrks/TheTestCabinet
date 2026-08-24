@@ -25,13 +25,13 @@ fn g8_a_runtime_failure_reaches_the_model() {
 
 import { files } from "gg";
 
-const text: string = files.readTextFile(
+const text: files.FileRead = files.readFile(
   "missing.md",
 );
 console.log(text);
 "#,
-                names: &["read_text_file", "not-found", "missing.md"],
-                located: Located::At("program.ts:5:28"),
+                names: &["read_file", "not-found", "missing.md"],
+                located: Located::At("program.ts:5:36"),
                 answered: Answered::AtRuntime,
                 // The guest reads the `code` off the uncaught `ApiError` and reports it, so the
                 // turn is filed as the program fighting the API — as on Python, Ruby and C++ —

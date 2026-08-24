@@ -108,7 +108,6 @@ or removed in gg fails against the binary that would otherwise silently not impl
 OPERATION_BOUND: dict[str, str] = {
     "shell.shell": "shell",
     "files.read_file": "read_file",
-    "files.read_text_file": "read_file",
     "files.write_file": "write_file",
     "files.edit_file": "edit_file",
     "files.list_dir": "list_dir",
@@ -153,8 +152,7 @@ the committed artifact. What buys a call at *run time* is gg's own operations ta
 membrane; what is here is only "which gg tool does this SDK implement a function for", which is a
 claim about this package rather than about a run.
 
-Three of these are not one-to-one, and each says something real. `files.read_text_file` is a helper
-rather than a tool of its own, so it is bought by the read it is built on; `views.open_file` performs
-that same read on the way to showing the file, so a run with reading withheld must not get one
-through a side door. Everything else names the tool that shares its key.
+One of these is not one-to-one, and it says something real. `views.open_file` performs the same
+read `files.read_file` does on the way to showing the file, so a run with reading withheld must not
+get one through a side door. Everything else names the tool that shares its key.
 """

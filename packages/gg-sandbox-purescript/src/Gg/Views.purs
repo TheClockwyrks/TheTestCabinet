@@ -9,19 +9,12 @@ module Gg.Views
   , openText
   , openDocsView
   , close
-  , closeView
-  , current
-  , ViewKind(..)
-  , ViewRegion
-  , OpenView
   , OpenFileOptions
   ) where
 
 import Prelude
 
 import Data.Generic.Rep (class Generic)
-import Data.Maybe (Maybe)
-import Data.Show.Generic (genericShow)
 import Effect (Effect)
 import Gg.Files (FileRead(..))
 import Gg.Internal.Read (fileRead)
@@ -31,54 +24,6 @@ import Prim.Row (class Union)
 -- | The window of lines a file view shows, and how long a line of it may run. Every field is
 -- | optional; `{}` shows the whole file with its lines whole.
 type OpenFileOptions = (offset :: Int, limit :: Int, maxLineChars :: Int)
-
--- | Which of the three kinds a view is.
--- |
--- | The taxonomy is closed at three on purpose: everything on disk is a file, everything a program
--- | can compute is a string, and documentation is neither — gg holds it.
-data ViewKind
-  -- | A file that was opened; its selector is the path.
-  = FileView
-  -- | A computed value; its selector is the label it was given.
-  -- |
-  -- | A directory listing, a command's output, a child agent's answer and an assembled table are all
-  -- | this.
-  | TextView
-  -- | An entry's documentation; its selector is that entry's key.
-  | DocsView
-
-derive instance Eq ViewKind
-derive instance Generic ViewKind _
-instance Show ViewKind where
-  show = genericShow
-
--- | The window of lines a **paged** file view covers.
--- |
--- | # Fields
--- |
--- | - `offset` — The 1-based first line the view shows.
--- | - `limit` — How many lines it shows.
-type ViewRegion =
-  { offset :: Int
-  , limit :: Int
-  }
-
--- | One view open in the context window right now.
--- |
--- | # Fields
--- |
--- | - `kind` — Whether it is a file, a text or a documentation view.
--- | - `selector` — What closes it: a file's path, a text view's label, or a documentation entry's key.
--- | - `tokens` — Roughly what holding it costs, in tokens.
--- | - `region` — The line window a paged file view covers.
--- |
--- |   `Nothing` for a whole-file view and for every text view.
-type OpenView =
-  { kind :: ViewKind
-  , selector :: String
-  , tokens :: Int
-  , region :: Maybe ViewRegion
-  }
 
 -- | Read a file and place it in the context window, keyed by its path.
 -- |
@@ -221,70 +166,6 @@ openDocsView name = Wire.call_ "open_docs_view" "views" "Gg.Views.openDocsView" 
 -- |
 -- | `InvalidArgument` for an empty selector, which names nothing rather than everything — no call
 -- | here closes the window wholesale. `Unavailable` for an agent whose run did not buy
--- | `agent-managed-context`, the capability that buys closing a view and listing what is open.
+-- | `agent-managed-context`, the capability that buys closing a view.
 close :: String -> Effect Int
 close selector = Wire.call "close" "views" "Gg.Views.close" [ Wire.wire selector ]
-
--- | Close a view that is open, freeing the tokens it occupied.
--- |
--- | `Gg.Views.close` with the selector already taken out of the view, which is what lets a window be
--- | tidied by folding over what is in it rather than by writing out a selector per view.
--- |
--- | A documentation view is the one this does not take away, for the reason `Gg.Views.close` does
--- | not: taking one of those away is bought by a capability of its own, `docview-close`.
--- |
--- | # Alias
--- |
--- | views.close
--- |
--- | # Arguments
--- |
--- | - `view` — The view to close, as `Gg.Views.current` listed it.
--- |
--- | # Returns
--- |
--- | How many views were closed, which for one page of a paged file is every page of that path.
-closeView :: OpenView -> Effect Int
-closeView view = close view.selector
-
--- | List what is open in the context window right now.
--- |
--- | What it enumerates is the context window's contents, not any module's functions. Reading it is
--- | what informs a decision about what to close when the window is filling up.
--- |
--- | # Operation
--- |
--- | views.current
--- |
--- | # Arguments
--- |
--- | (none)
--- |
--- | # Returns
--- |
--- | Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for
--- | a paged file view — the `region` it covers.
--- |
--- | # Throws
--- |
--- | `Unavailable` for an agent whose run did not buy `agent-managed-context`, the capability that
--- | buys listing what is open and closing it.
-current :: Effect (Array OpenView)
-current = map openView <$> Wire.call "current" "views" "Gg.Views.current" []
-
--- | One open view. A paged file view carries the window it covers; nothing else does.
-openView :: Wire.Wire -> OpenView
-openView value =
-  { kind: viewKind (Wire.text "kind" value)
-  , selector: Wire.text "selector" value
-  , tokens: Wire.field "tokens" value
-  , region: Wire.optional "region" value
-  }
-
--- | Which kind of view this is. The wire's set is closed at three and gg owns it, so the fallback
--- | exists only because the conversion has to be total.
-viewKind :: String -> ViewKind
-viewKind = case _ of
-  "file" -> FileView
-  "docs" -> DocsView
-  _ -> TextView

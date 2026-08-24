@@ -11,10 +11,6 @@ import java.util.Optional;
 /**
  * Read, write, edit and list the files of the workspace.
  *
- * <p>Reading is the cheap direction of this sandbox and writing is the expensive one, so a program
- * that reads a dozen files to decide what to change is well shaped, while one that rewrites forty
- * large files in a single turn will exhaust its fuel budget.
- *
  * <p>Nothing here places anything in the context window: a read hands bytes to the program, and a
  * view — the {@code gg.views.Views} module — is what puts something in front of the model.
  *
@@ -72,43 +68,7 @@ public final class Files {
     }
 
     /**
-     * Read a text file and hand back its contents directly.
-     *
-     * <p>{@link #readFile(String)} without the narrowing, for the common case: the same read, the
-     * same window, the same cost.
-     *
-     * @param path The file to read, relative to the workspace or absolute.
-     * @return the file's text
-     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when the path names a picture, which
-     *     {@link #readFile(String)} inspects instead.
-     * @ggop files.read_text_file
-     */
-    public static String readTextFile(String path) {
-        return Coding.call("files.read_text_file", Value.of(path), Value.none(), Value.none())
-                .text();
-    }
-
-    /**
-     * Read a window of lines of a text file, handing back just those lines.
-     *
-     * @param path The file to read, relative to the workspace or absolute.
-     * @param offset The 1-based first line to read from.
-     * @param limit How many lines to read from {@code offset}.
-     * @return the window of the file's text
-     * @throws ApiError {@link ApiErrorCode#INVALID_ARGUMENT} when the path names a picture.
-     * @ggop files.read_text_file
-     */
-    public static String readTextFile(String path, int offset, int limit) {
-        return Coding.call("files.read_text_file", Value.of(path), Value.of(offset),
-                Value.of(limit)).text();
-    }
-
-    /**
      * Write UTF-8 text to a file, creating parent directories and replacing what is there.
-     *
-     * <p>Writing is the expensive direction of this sandbox: rewriting more than a few dozen large
-     * files in one program exhausts its fuel budget, so a large rewrite is best split across several
-     * turns.
      *
      * @param path Where to write, relative to the workspace or absolute. Parent directories are
      *     created as needed.

@@ -240,7 +240,7 @@ describe("apiCallSpellings", () => {
         description: "the workspace",
         functions: [
           { name: "readFile", operation: "files.read_file" },
-          { name: "readTextFile", operation: "files.read_text_file" },
+          { name: "writeFile", operation: "files.write_file" },
         ],
       },
       {
@@ -251,7 +251,7 @@ describe("apiCallSpellings", () => {
       },
     ]);
     expect(spellings.get("files.read_file")).toBe("gg.files.readFile");
-    expect(spellings.get("files.read_text_file")).toBe("gg.files.readTextFile");
+    expect(spellings.get("files.write_file")).toBe("gg.files.writeFile");
     expect(spellings.get("views.open_file")).toBe("gg.views.openFile");
   });
 
@@ -276,24 +276,4 @@ describe("apiCallSpellings", () => {
     );
   });
 
-  it("spells a view close by its free function, with the method a row of its own", () => {
-    // gg names the method module-relative, so the surface carries `close` and
-    // `OpenView.close` as two distinct rows of one operation. The free function is declared
-    // first in the catalogue and wins the spelling; the method's own spelling would be
-    // `gg.views.OpenView.close`, which is exactly the catalogue's key for it.
-    const spellings = apiCallSpellings([
-      {
-        module: "views",
-        path: "gg.views",
-        description: "show yourself something",
-        functions: [
-          { name: "close", operation: "views.close" },
-          { name: "current", operation: "views.current" },
-          { name: "OpenView.close", operation: "views.close" },
-        ],
-      },
-    ]);
-    expect(spellings.get("views.close")).toBe("gg.views.close");
-    expect(spellings.get("views.current")).toBe("gg.views.current");
-  });
 });

@@ -1068,11 +1068,11 @@ import gg.files.Files;
 
 public final class Program {
     public static void main(String[] args) {
-        String text = Files.readTextFile("missing.md");
+        Files.FileRead text = Files.readFile("missing.md");
     }
 }
 "#,
-                names: &["read_text_file", "not-found", "missing.md"],
+                names: &["read_file", "not-found", "missing.md"],
                 located: Located::At("Program.java:6"),
                 answered: Answered::AtRuntime,
                 recorded: Some(TurnErrorType::SandboxTrap),

@@ -13,10 +13,10 @@
 //!
 //! What runs underneath is recorded under the same identity, and that is the point rather than a
 //! coincidence: a dispatched call is pinned in the [replay](crate::capture) under the **operation**,
-//! so a re-run feeds the recorded outcome back to the call the model actually wrote. Several
-//! operations share one implementation (`files.read_file`, `files.read_text_file` and
-//! `views.open_file` are all reads), so a replay keyed on the implementation would feed one
-//! operation's recorded outcome to another's call. Fourteen operations reach no internal dispatch at
+//! so a re-run feeds the recorded outcome back to the call the model actually wrote. Two
+//! operations may share one implementation (`files.read_file` and `views.open_file` are both
+//! reads), so a replay keyed on the implementation would feed one
+//! operation's recorded outcome to another's call. Thirteen operations reach no internal dispatch at
 //! all, and a call the membrane refused ran nothing whatsoever though the model made it — both are
 //! still API calls, and both are recorded here.
 //!

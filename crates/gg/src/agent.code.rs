@@ -46,8 +46,7 @@ use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use crate::board::BOARD_MUTATIONS;
 use crate::context::{
-    DocviewOpen, EvictionResult, OpenViewInfo, SEARCH_RESULTS_VIEW, ShownLines, ViewKind,
-    ViewsClosed,
+    DocviewOpen, EvictionResult, SEARCH_RESULTS_VIEW, ShownLines, ViewKind, ViewsClosed,
 };
 use crate::docs::{DocKind, DocQuery, DocSearch};
 use crate::ending::Ending;
@@ -3829,14 +3828,6 @@ impl OperationApi for LoopOperationApi {
         }
         Ok(saturating_u32(files.items + texts.items + searches.items))
     }
-    /// What is open in the window, as the listing `views.current` hands a program. Bought by
-    /// [`agent-managed-context`](test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) beside
-    /// [`close_view`](Self::close_view), and gated by the membrane before it reaches here; once it
-    /// does there is nothing for it to fail at.
-    fn current_views(&mut self) -> Vec<OpenViewInfo> {
-        self.context.open_views()
-    }
-
     /// The shapes of the programs this agent's [library](crate::programs) still holds.
     ///
     /// Nothing is dispatched, nothing is charged and nothing is recorded: it reads gg's own state,

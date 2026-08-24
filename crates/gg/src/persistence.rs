@@ -10,10 +10,10 @@
 //!   profile's name as an [exclusivity key](crate::subagents::ExclusiveKey), so the existing
 //!   [scheduler](crate::subagents::Scheduler) queues the second instance behind the first — inside
 //!   the run's one global parallelism pool, not beside it. [`exclusive_key`] is the whole of it.
-//! - **The desk carries over.** [`AgentPersistence`] is the run-global record of the
-//!   [views](crate::context::ContextModel::open_views) — [files](crate::context::OpenFileView) and
-//!   [text](crate::context::OpenTextView) alike — each persistent profile had open when one of its
-//!   instances last finished successfully. The next instance re-opens them
+//! - **The desk carries over.** [`AgentPersistence`] is the run-global record of the open views —
+//!   [files](crate::context::ContextModel::open_file_views) and
+//!   [text](crate::context::ContextModel::open_text_views) alike — each persistent profile had open
+//!   when one of its instances last finished successfully. The next instance re-opens them
 //!   ([files](restore_file_views), then [text](restore_text_views)) as the first thing in its
 //!   window.
 //!

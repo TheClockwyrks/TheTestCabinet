@@ -109,7 +109,7 @@ public fun openDocsView(name: String) {
  * own, and a sweep that included them would hand back `0` for an agent that may not close one, which
  * reads as a selector that named nothing.
  *
- * Closing a view is context management, bought — with [current] — by the `agent-managed-context`
+ * Closing a view is context management, bought by the `agent-managed-context`
  * capability: an agent whose run did not enable it is refused.
  *
  * @ggop views.close
@@ -121,81 +121,3 @@ public fun openDocsView(name: String) {
  */
 public fun close(selector: String): Int =
     ggCall("views.close", ggText(selector)).integer()
-
-/**
- * List what is open in the context window right now.
- *
- * Each view carries its [OpenView.kind], the [OpenView.selector] that closes it, roughly what it
- * costs in [OpenView.tokens], and — for a paged file view — the [OpenView.region] it covers. It is
- * what a program reads before deciding what to close when the window is filling up.
- *
- * It takes no argument, so once granted nothing about it can fail: an empty window is an empty
- * list. Listing what is open is context management, bought with [close] by the
- * `agent-managed-context` capability, and an agent whose run did not enable it is refused.
- *
- * @ggop views.current
- * @return every view open in the context window
- * @throws ApiError `UNAVAILABLE` for an agent whose run did not buy `agent-managed-context`.
- */
-public fun current(): List<OpenView> = Read.openViews(ggCall("views.current"))
-
-/**
- * One view open in the context window.
- *
- * @property kind Whether it is a file, text, or documentation view.
- * @property selector What closes it.
- *
- *   A path, a label or `search results` for `gg.views.close`. A documentation view's selector is
- *   the key it was opened under, which `gg.views.close` does not reach.
- * @property tokens Roughly what holding it costs, in tokens.
- * @property region The line window a paged file view covers; `null` for a whole-file view and for
- *   text views.
- */
-public data class OpenView(
-    val kind: ViewKind,
-    val selector: String,
-    val tokens: Int,
-    val region: ViewRegion?,
-) {
-    /**
-     * Close this view, with its selector already supplied.
-     *
-     * `gg.views.close` for the common case where the listed view is in hand, written as a member so
-     * that the value carrying the selector is what the call hangs off.
-     *
-     * A documentation view is the one this does not take away, because `gg.views.close` does not
-     * reach that band.
-     *
-     * @ggalias views.close
-     * @return how many views were closed, which is `0` when this one has already gone
-     * @throws ApiError `UNAVAILABLE` for an agent whose run did not buy `agent-managed-context`,
-     *   which is what buys closing a view.
-     * @throws ApiError `INVALID_ARGUMENT` for an empty selector.
-     */
-    public fun close(): Int = gg.views.close(selector)
-}
-
-/**
- * Which of the three kinds a view is.
- *
- * The taxonomy is closed at three deliberately: everything on disk is a file, everything a program
- * can compute is a string, and documentation is neither, because gg holds it.
- */
-public enum class ViewKind {
-    /** A file that was opened; its selector is the path. */
-    FILE,
-
-    /** A value that was shown; its selector is the label it was given. */
-    TEXT,
-
-    /** An entry's documentation; its selector is the key it was opened under. */
-    DOCS,
-}
-
-/**
- * The window of lines a paged file view covers.
- *
- * @property offset The 1-based first line the view shows.
- * @property limit How many lines it shows.
- */
-public data class ViewRegion(val offset: Int, val limit: Int)

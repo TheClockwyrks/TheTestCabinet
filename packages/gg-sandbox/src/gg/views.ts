@@ -17,63 +17,6 @@ import { asFileRead } from "../internal/lower.js";
 import type { FileRead } from "./files.js";
 
 /**
- * Which of the three kinds a view is.
- *
- * The taxonomy is closed at three deliberately: everything on disk is a file, everything a program
- * computes is a string, and documentation is neither, because gg holds it. A directory listing, a
- * command's output, a child agent's answer and an assembled table are all text views.
- */
-export type ViewKind =
-  /** A file that was opened; its selector is the path. */
-  | "file"
-  /** A value that was shown; its selector is the label it was given. */
-  | "text"
-  /** An entry's documentation; its selector is that entry's key. */
-  | "docs";
-
-/** The window of lines a **paged** file view covers; absent for a whole-file view. */
-export interface ViewRegion {
-  /** The 1-based first line the view shows. */
-  offset: number;
-
-  /** How many lines it shows. */
-  limit: number;
-}
-
-/** One view open in the context window, as `current` reports it. */
-export interface OpenView {
-  /** Whether it is a file, a text, or a documentation view. */
-  kind: ViewKind;
-
-  /**
-   * What it is keyed by, and what closes it.
-   *
-   * A file's path, a text view's label or `search results` for `close`, and for a documentation
-   * view the fully-qualified name of the entry it documents.
-   */
-  selector: string;
-
-  /** Roughly what holding it costs, in tokens. */
-  tokens: number;
-
-  /** The line window a paged file view covers; absent for a whole-file view and for a text view. */
-  region?: ViewRegion;
-
-  /**
-   * Close this view, with its selector already supplied.
-   *
-   * `gg.views.close` for the common case where the listed view is in hand. A documentation view is
-   * the one it does not take away, exactly as that call does not.
-   *
-   * @ggop views.close
-   * @returns how many views were closed, which is zero when this one has already gone.
-   * @throws `ApiError` with `unavailable` for an agent whose run did not buy
-   * `agent-managed-context`, which is what buys closing a view.
-   */
-  close(): number;
-}
-
-/**
  * Read a file and show it to the agent, handing the program the same value `gg.files.readFile` does.
  *
  * The split from `gg.files.readFile` is the point: that call gets bytes for the program, this one
@@ -227,35 +170,4 @@ function docsName(target: Function | string): string {
 export function close(selector: string): number {
   // A `u32`, so already a `number` — the `bigint` conversion `current` makes is not needed here.
   return call(() => raw.closeView(selector));
-}
-
-/**
- * List what is open in the context window right now.
- *
- * Each entry carries its `kind`, the `selector` that closes it, roughly what it costs in `tokens`,
- * and — for a paged file view — the `region` it covers. It is the thing to read before deciding what
- * to close when the window is filling up.
- *
- * What it enumerates is the context window's contents, not any module's functions.
- *
- * It takes no argument, so once granted nothing about it can fail: an empty window is an empty
- * list. Listing what is open is context management, bought with `close` by the
- * `agent-managed-context` capability, and an agent whose run did not enable it is refused.
- *
- * @ggop views.current
- * @returns every view open right now, each with what closes it and roughly what it costs.
- * @throws `ApiError` with `unavailable` for an agent whose run did not buy `agent-managed-context`.
- */
-export function current(): OpenView[] {
-  // The method is attached here rather than declared on a class: nothing in a program ever
-  // constructs an `OpenView`, and a constructible declaration would be one inviting it to.
-  return call(() => raw.currentViews()).map((view) => ({
-    kind: view.kind,
-    selector: view.selector,
-    tokens: Number(view.tokens),
-    region: view.region,
-    close(): number {
-      return close(view.selector);
-    },
-  }));
 }

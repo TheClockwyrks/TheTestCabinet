@@ -178,14 +178,6 @@ context::message_role lift_message_role(test_cabinet_gg_context_message_role_t w
   }
 }
 
-views::view_kind lift_view_kind(test_cabinet_gg_views_view_kind_t wire) {
-  switch (wire) {
-    case TEST_CABINET_GG_VIEWS_VIEW_KIND_FILE: return views::view_kind::file;
-    case TEST_CABINET_GG_VIEWS_VIEW_KIND_TEXT: return views::view_kind::text;
-    default: return views::view_kind::docs;
-  }
-}
-
 std::string_view lower(docs::doc_kind kind) {
   switch (kind) {
     case docs::doc_kind::module: return "module";
@@ -318,15 +310,6 @@ docs::doc_search lift_doc_search(test_cabinet_gg_docs_doc_search_t& wire) {
                          });
   test_cabinet_gg_docs_doc_search_free(&wire);
   return found;
-}
-
-views::open_view lift_open_view(const test_cabinet_gg_views_open_view_t& wire) {
-  views::open_view open;
-  open.kind = lift_view_kind(wire.kind);
-  open.selector = lift(wire.selector);
-  open.tokens = wire.tokens;
-  if (wire.region.is_some) open.region = views::view_region{wire.region.val.offset, wire.region.val.limit};
-  return open;
 }
 
 programs::program_summary lift_program_summary(const test_cabinet_gg_programs_program_summary_t& wire) {

@@ -1481,13 +1481,12 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText(/2 modules · 5 functions/)).toBeInTheDocument();
   });
 
-  it("counts three functions over one core as three functions", () => {
-    // The catalogue really does bind three functions over one read: `fs.readFile`,
-    // `fs.readTextFile` and `view.openFile` all run a `read_file`. That is a fact about the
-    // core they share and not about what the model wrote, so each of them is recorded — and
-    // counted — as itself. Reporting the tool's figure against all three said three calls
-    // where one happened, and left two functions the model never wrote reading exactly like
-    // the one it used.
+  it("counts two functions over one core as two functions", () => {
+    // The catalogue really does bind two functions over one read: `fs.readFile` and
+    // `view.openFile` both run a `read_file`. That is a fact about the core they share and
+    // not about what the model wrote, so each of them is recorded — and counted — as
+    // itself. Reporting the tool's figure against both said two calls where one happened,
+    // and left a function the model never wrote reading exactly like the one it used.
     renderMonitor([
       sessionStarted(["filesystem"]),
       gg({
@@ -1505,10 +1504,7 @@ describe("GgRunMonitorPage", () => {
             module: "files",
             path: "gg.files",
             description: "Read and write the workspace.",
-            functions: [
-              { name: "readFile", operation: "files.read_file" },
-              { name: "readTextFile", operation: "files.read_text_file" },
-            ],
+            functions: [{ name: "readFile", operation: "files.read_file" }],
           },
           {
             module: "views",
@@ -1532,13 +1528,11 @@ describe("GgRunMonitorPage", () => {
       "title",
       "gg.views.openFile was called 1 time.",
     );
-    // The two the model did not write. Under the old tool-keyed join both read as called
-    // once, because the read they share a core with had run.
-    for (const name of ["gg.files.readFile", "gg.files.readTextFile"]) {
-      const row = surfaceRow("offered apis", name);
-      expect(row).toHaveAttribute("data-uncalled");
-      expect(row).toHaveTextContent(`0×${name}`);
-    }
+    // The one the model did not write. Under the old tool-keyed join it read as called
+    // once, because the read it shares a core with had run.
+    const uncalled = surfaceRow("offered apis", "gg.files.readFile");
+    expect(uncalled).toHaveAttribute("data-uncalled");
+    expect(uncalled).toHaveTextContent("0×gg.files.readFile");
   });
 
   it("names the documentation arm a code instance was on", () => {
@@ -1640,7 +1634,7 @@ describe("GgRunMonitorPage", () => {
             description: "Read and write the workspace.",
             functions: [
               { name: "readFile", operation: "files.read_file" },
-              { name: "readTextFile", operation: "files.read_text_file" },
+              { name: "writeFile", operation: "files.write_file" },
             ],
           },
         ],
@@ -1649,12 +1643,12 @@ describe("GgRunMonitorPage", () => {
     openTab("Instances");
     openFile("root apis");
 
-    const row = surfaceRow("offered apis", "gg.files.readTextFile");
+    const row = surfaceRow("offered apis", "gg.files.writeFile");
     expect(row).toHaveAttribute("data-uncalled");
-    expect(row).toHaveTextContent(/^0×gg\.files\.readTextFile$/);
+    expect(row).toHaveTextContent(/^0×gg\.files\.writeFile$/);
     expect(row).toHaveAttribute(
       "title",
-      "gg.files.readTextFile was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
+      "gg.files.writeFile was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
     );
     // And the words the figure replaced are gone from the row entirely — not moved into the
     // hover text, which is where a replaced wording usually survives. The tooltip says the

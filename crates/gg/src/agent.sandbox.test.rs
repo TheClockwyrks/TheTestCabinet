@@ -679,8 +679,8 @@ async fn composed_calls_stream_call_then_result_telemetry_in_order() {
     let (outcome, events) = drive_code_run(&dir, code_set("mock/primary", json!({})), |b| {
         one_program(
             &b.model_id,
-            "import * as gg from \"gg\";\nconst text = gg.files.readTextFile(\"seed.txt\");\n\
-             gg.files.writeFile(\"copy.txt\", text.toUpperCase());\n\
+            "import * as gg from \"gg\";\nconst read = gg.files.readFile(\"seed.txt\");\n\
+             gg.files.writeFile(\"copy.txt\", read.kind === \"text\" ? read.contents.toUpperCase() : \"\");\n\
              const entries = gg.files.listDir(\".\");\n\
              console.log(String(entries.length));",
         )
@@ -691,8 +691,8 @@ async fn composed_calls_stream_call_then_result_telemetry_in_order() {
     assert_eq!(
         api_telemetry(&events),
         vec![
-            ("call", "files.read_text_file".to_string()),
-            ("result", "files.read_text_file".to_string()),
+            ("call", "files.read_file".to_string()),
+            ("result", "files.read_file".to_string()),
             ("call", "files.write_file".to_string()),
             ("result", "files.write_file".to_string()),
             ("call", "files.list_dir".to_string()),
@@ -1096,7 +1096,10 @@ async fn a_file_view_opened_with_a_window_covers_that_window_under_the_unlimited
             .unwrap_or_else(|| panic!("no view starts at line {start}: {views:#?}"))
     };
     let first = page(5);
-    assert!(first.starts_with("File: lines.txt:5-7\n----\n"), "{first}");
+    assert!(
+        first.starts_with("File: lines.txt:5-7 of 20 lines\n----\n"),
+        "{first}"
+    );
     assert!(
         first.contains("[showing lines 5-7 of 20; continue with offset: 8]"),
         "{first}"
@@ -1111,7 +1114,10 @@ async fn a_file_view_opened_with_a_window_covers_that_window_under_the_unlimited
         "{second}"
     );
     let tail = page(18);
-    assert!(tail.starts_with("File: lines.txt:18-20\n----\n"), "{tail}");
+    assert!(
+        tail.starts_with("File: lines.txt:18-20 of 20 lines\n----\n"),
+        "{tail}"
+    );
     assert!(
         tail.contains("[showing lines 18-20 of 20]") && tail.contains("line 20\n"),
         "an offset alone reads to the end of the file: {tail}"
@@ -1228,7 +1234,7 @@ async fn a_program_reclaim_really_acts_on_the_live_window() {
             &b.model_id,
             &[
                 // Turn 1: read a large file, so the thread carries a large turn.
-                "import * as gg from \"gg\";\ngg.files.readTextFile(\"big.txt\").length;",
+                "import * as gg from \"gg\";\ngg.files.readFile(\"big.txt\").kind;",
                 // Turn 2: both reclaims, reporting what each one says it freed. Returning the
                 // reports at all proves the loop rewrote the outcomes: an un-rewritten outcome has
                 // no structured result and would have thrown.
@@ -1886,7 +1892,7 @@ async fn a_sandbox_limit_counts_as_an_error_turn_but_a_handled_tool_failure_does
         set,
         vec![
             code_reply(
-                "import * as gg from \"gg\";\nlet caught = false;\ntry {\n  gg.files.readTextFile(\"absent.txt\");\n} catch (e) {\n  \
+                "import * as gg from \"gg\";\nlet caught = false;\ntry {\n  gg.files.readFile(\"absent.txt\");\n} catch (e) {\n  \
                  caught = true;\n}\ngg.files.writeFile(\"handled.txt\", String(caught));\ncaught;",
             ),
             code_reply(FINISHING_PROGRAM),

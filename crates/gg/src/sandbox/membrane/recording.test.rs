@@ -2,8 +2,8 @@
 //! wrote**, that no host function is missing one, and that the record is independent of the tool
 //! record beside it.
 //!
-//! The centrepiece is [`every_host_function_records_its_own_api_call`], which calls all fifty
-//! of them and compares the identities recorded against
+//! The centrepiece is [`every_host_function_records_its_own_api_call`], which calls all
+//! forty-eight of them and compares the identities recorded against
 //! [`OPERATIONS`](crate::sandbox::OPERATIONS). It is deliberately exhaustive rather
 //! than a sample: a host function that forgot its bracket produces a *silent zero* on the console —
 //! a page saying the model ignored a call it in fact used — which is the one failure this whole
@@ -25,7 +25,6 @@ use super::super::test_cabinet::gg::delegation::{
 };
 use super::super::test_cabinet::gg::docs::Host as DocsHost;
 use super::super::test_cabinet::gg::files::Host as FilesHost;
-use super::super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::super::test_cabinet::gg::memories::{Host as MemoriesHost, MemoryEdit, MemoryInput};
 use super::super::test_cabinet::gg::programs::Host as ProgramsHost;
 use super::super::test_cabinet::gg::session::Host as SessionHost;
@@ -52,7 +51,6 @@ fn recording_membrane(log: &CallLog) -> (MembraneState<FakeOperationApi>, ApiLog
 fn call_everything(state: &mut MembraneState<FakeOperationApi>) {
     let _ = state.shell("echo hi".to_string(), None);
     let _ = state.read_file("src/main.rs".to_string(), None, None);
-    let _ = state.read_text_file("src/main.rs".to_string(), None, None);
     let _ = state.write_file("out.txt".to_string(), "body".to_string());
     let _ = state.edit_file("out.txt".to_string(), "a".to_string(), "b".to_string());
     let _ = state.list_dir(None);
@@ -160,7 +158,6 @@ fn call_everything(state: &mut MembraneState<FakeOperationApi>) {
     let _ = state.open_text_view("findings".to_string(), "all green".to_string());
     let _ = state.open_docs_view("readFile".to_string());
     let _ = state.close_view("findings".to_string());
-    let _ = state.current_views();
 
     let _ = state.history();
     let _ = state.get(None);
@@ -266,7 +263,9 @@ fn a_call_no_tool_backs_is_still_recorded() {
     let log = CallLog::default();
     let (mut state, recorded) = recording_membrane(&log);
 
-    state.current_views().expect("granted, so it answers");
+    state
+        .close_view("nothing".to_string())
+        .expect("granted, so it answers");
     state
         .open_text_view("findings".to_string(), "all green".to_string())
         .expect("the text view opens");
@@ -274,7 +273,7 @@ fn a_call_no_tool_backs_is_still_recorded() {
 
     assert_eq!(
         recorded.operations(),
-        vec!["views.current", "views.open_text", "session.finish"]
+        vec!["views.close", "views.open_text", "session.finish"]
     );
     assert!(
         log.calls().is_empty(),
@@ -313,35 +312,6 @@ fn opening_a_file_view_is_recorded_as_the_view_call_and_not_as_a_read() {
         log.names(),
         vec!["read_file"],
         "the tool layer still records what actually ran"
-    );
-}
-
-/// **`fs.readTextFile` is its own call**, not a `fs.readFile` the model did not write.
-///
-/// It is the one helper, it shares `readFile`'s core and its `read_file` tool, and it has its own
-/// host function for exactly this: composed in the guest it was indistinguishable from the function
-/// it wrapped, so it reported a zero of its own while inflating its neighbour's figure.
-#[test]
-fn the_text_read_helper_is_recorded_apart_from_the_read_it_shares_a_core_with() {
-    let log = CallLog::default();
-    let (mut state, recorded) = recording_membrane(&log);
-
-    let text = state
-        .read_text_file("src/main.rs".to_string(), None, None)
-        .expect("the read returns text");
-    state
-        .read_file("src/main.rs".to_string(), None, None)
-        .expect("the bare read returns a variant");
-
-    assert!(!text.is_empty());
-    assert_eq!(
-        recorded.operations(),
-        vec!["files.read_text_file", "files.read_file"]
-    );
-    assert_eq!(
-        log.names(),
-        vec!["read_file", "read_file"],
-        "one core, two API functions"
     );
 }
 
@@ -448,7 +418,7 @@ fn a_failed_api_call_records_the_class_it_threw_with() {
 
     let _ = state.read_file("missing.rs".to_string(), None, None);
     let _ = state.write_file("../escape.txt".to_string(), "body".to_string());
-    let _ = state.current_views();
+    let _ = state.close_view("nothing".to_string());
 
     let calls = recorded.calls();
     assert_eq!(
@@ -460,7 +430,7 @@ fn a_failed_api_call_records_the_class_it_threw_with() {
             ("files.read_file", Some(GgCallFailure::NotFound)),
             ("files.write_file", Some(GgCallFailure::InvalidArgument)),
             // A granted call with nothing to fail at records no class, because nothing threw.
-            ("views.current", None),
+            ("views.close", None),
         ]
     );
 }

@@ -67,15 +67,14 @@ fn a_call_outside_the_allowlist_is_unavailable_without_reaching_the_invoker() {
     );
 }
 
-/// **Closing a view and listing what is open are withheld exactly like any other ungranted call.**
+/// **Closing a view is withheld exactly like any other ungranted call.**
 ///
-/// They are bought by `agent-managed-context`, and the two are asserted by name because they used
-/// to be bound to every program: a regression that put them back would be invisible to every other
-/// test here, which grants a maximal agent. The gate is the membrane's, so the fake api is never
-/// reached — and `current_views` in particular, which once could not fail, is refused before the
-/// live view set is consulted at all.
+/// It is bought by `agent-managed-context`, and it is asserted by name because it used to be
+/// bound to every program: a regression that put it back would be invisible to every other test
+/// here, which grants a maximal agent. The gate is the membrane's, so the fake api is never
+/// reached.
 #[test]
-fn closing_and_listing_views_are_unavailable_without_agent_managed_context() {
+fn closing_views_is_unavailable_without_agent_managed_context() {
     let log = CallLog::default();
     let mut state = membrane_with(
         &log,
@@ -92,11 +91,6 @@ fn closing_and_listing_views_are_unavailable_without_agent_managed_context() {
     assert_eq!(error.code, ErrorCode::Unavailable);
     assert_eq!(error.operation, "close");
 
-    let error = ViewsHost::current_views(&mut state)
-        .expect_err("listing what is open is bought by agent-managed-context");
-    assert_eq!(error.code, ErrorCode::Unavailable);
-    assert_eq!(error.operation, "current");
-
     let parts = state.into_parts();
     assert_eq!(
         parts
@@ -104,8 +98,8 @@ fn closing_and_listing_views_are_unavailable_without_agent_managed_context() {
             .iter()
             .map(|refusal| refusal.name.as_str())
             .collect::<Vec<_>>(),
-        ["views.close", "views.current"],
-        "both are filed as refusals under gg's own operation ids"
+        ["views.close"],
+        "it is filed as a refusal under gg's own operation id"
     );
     assert_eq!(
         parts.views_opened.len(),

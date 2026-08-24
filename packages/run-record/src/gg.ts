@@ -3056,7 +3056,7 @@ export type GgTelemetryKind =
        *
        * It is here because eleven arms legitimately spell one operation eleven ways, and by
        * design they do: an arm's surface answers to its own language, so `read_file`,
-       * `readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things
+       * `readFile` and `ReadFile` are all real spellings of things
        * gg has exactly one name for. A study comparing arms — or comparing two agents of one run
        * written in two languages — joins on this and on nothing else.
        *
@@ -4253,7 +4253,7 @@ export type GgTelemetryEvent = {
        *
        * It is here because eleven arms legitimately spell one operation eleven ways, and by
        * design they do: an arm's surface answers to its own language, so `read_file`,
-       * `readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things
+       * `readFile` and `ReadFile` are all real spellings of things
        * gg has exactly one name for. A study comparing arms — or comparing two agents of one run
        * written in two languages — joins on this and on nothing else.
        *

@@ -270,7 +270,7 @@ fn carries_an_assignment(line: &str) -> bool {
     })
 }
 
-/// Whether `line` opens with `identifier(`, `a.b(` or `a.b.c(` — `println(`, `fs.readTextFile(`,
+/// Whether `line` opens with `identifier(`, `a.b(` or `a.b.c(` — `println(`, `fs.readFile(`,
 /// `rows.stream(`.
 fn opens_with_call(line: &str) -> bool {
     let mut chars = line.char_indices().peekable();

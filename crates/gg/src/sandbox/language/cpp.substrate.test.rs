@@ -1040,12 +1040,16 @@ fn a_whole_cpp_program_a_model_would_write_runs_through_the_turn_path() {
     let (outcome, _api) = crate::sandbox::run_program(
         crate::sandbox::language(GgProgramLanguage::Cpp),
         r#"#include <string>
+#include <variant>
 
 #include <gg/files.hpp>
 #include <gg/views.hpp>
 
 int main() {
-  const std::string notes = gg::files::read_text_file("notes.md");
+  const auto read = gg::files::read_file("notes.md");
+  const std::string notes = std::holds_alternative<gg::files::text_file>(read)
+                                ? std::get<gg::files::text_file>(read).contents
+                                : std::string{};
   gg::views::open_text("notes", notes);
   return 0;
 }
