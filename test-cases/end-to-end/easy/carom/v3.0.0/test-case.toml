@@ -677,6 +677,65 @@ failure_cap = "passable"
 validation = { script = "paddle-movement/speed-versus-p2.test.ts", outputs = [
   { id = "move", name = "Player two's paddle moving at its speed (Versus)", kind = "replay" },
 ] }
+# The pre-serve countdown is checked as its own four points, one per way a paddle
+# is controlled: the hold locks the ball and never the paddles (specs/balls.md,
+# The paddles during the countdown), so a paddle must move during the countdown
+# exactly as it does in a rally, and the AI must run its rule there. Each check
+# starts the match with the menu keys so the build's own countdown is what runs,
+# moves the paddle, and reads the screen on the frame the movement was measured:
+# still the countdown, the ball still held. A build that freezes its paddles until
+# the serve — a habit some models fall into — fails these four rather than the
+# speed points above, which read their rate inside the same hold without saying so.
+[[review.categories.items]]
+id = "countdown-solo-player"
+title = "Human paddle moves during the countdown (Solo)"
+description = "In Solo, a movement key held while the screen is countdown and the ball is held moves the left paddle at PADDLE_SPEED (720 units per second), within 2 percent, with the screen still countdown and the ball still held when the movement is read."
+domains = ["single-player"]
+failure_cap = "scuffed"
+# Automated validation: start a Solo match with the menu keys, hold a movement key
+# inside the countdown, measure the paddle's rate, and read the screen on the frame
+# the window closes. See validation/<engine>/paddle-movement/countdown-solo-player.test.ts.
+validation = { script = "paddle-movement/countdown-solo-player.test.ts", outputs = [
+  { id = "move", name = "The human paddle moving during the countdown (Solo)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "countdown-solo-ai"
+title = "AI paddle moves during the countdown (Solo)"
+description = "In Solo, the AI paddle posed near the bottom bound while the screen is countdown returns to within AI_HOME_DEADZONE (18) of AI_HOME_Y (360) and reports vy 0 before the countdown ends, with the screen still countdown and the ball still held when it is read."
+domains = ["single-player"]
+failure_cap = "scuffed"
+# Automated validation: start a Solo match with the menu keys, pose the AI paddle far
+# from home during the countdown, hand it to the real AI, and read it back with the
+# hold still running. See validation/<engine>/paddle-movement/countdown-solo-ai.test.ts.
+validation = { script = "paddle-movement/countdown-solo-ai.test.ts", outputs = [
+  { id = "home", name = "The AI paddle returning home during the countdown", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "countdown-versus-p1"
+title = "Player one paddle moves during the countdown (Versus)"
+description = "In Versus, a player-one movement key held while the screen is countdown and the ball is held moves the left paddle at PADDLE_SPEED (720 units per second), within 2 percent, and the right paddle not at all, with the screen still countdown and the ball still held when the movement is read."
+domains = ["versus"]
+failure_cap = "scuffed"
+# Automated validation: start a Versus match with the menu keys, hold a player-one
+# movement key inside the countdown, measure the left paddle's rate, and read the
+# screen on the frame the window closes. See
+# validation/<engine>/paddle-movement/countdown-versus-p1.test.ts.
+validation = { script = "paddle-movement/countdown-versus-p1.test.ts", outputs = [
+  { id = "move", name = "Player one's paddle moving during the countdown (Versus)", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "countdown-versus-p2"
+title = "Player two paddle moves during the countdown (Versus)"
+description = "In Versus, a player-two movement key held while the screen is countdown and the ball is held moves the right paddle at PADDLE_SPEED (720 units per second), within 2 percent, and the left paddle not at all, with the screen still countdown and the ball still held when the movement is read."
+domains = ["versus"]
+failure_cap = "scuffed"
+# Automated validation: start a Versus match with the menu keys, hold a player-two
+# movement key inside the countdown, measure the right paddle's rate, and read the
+# screen on the frame the window closes. See
+# validation/<engine>/paddle-movement/countdown-versus-p2.test.ts.
+validation = { script = "paddle-movement/countdown-versus-p2.test.ts", outputs = [
+  { id = "move", name = "Player two's paddle moving during the countdown (Versus)", kind = "replay" },
+] }
 [[review.categories.items]]
 id = "bound-top"
 title = "Paddle stops at the top bound"

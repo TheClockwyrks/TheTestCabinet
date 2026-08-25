@@ -45,4 +45,7 @@ are yours.
   `p2-up` and `p2-down`.
 - Each paddle is then integrated and clamped as the playfield specification
   states.
-- Both paddles move on every `countdown` and `playing` frame.
+- Both paddles move on every `countdown` and `playing` frame. The pre-serve
+  countdown is not an exception: a movement action held while the ball waits
+  moves that player's paddle at `PADDLE_SPEED`, for either player. A build whose
+  paddles cannot be moved until the ball is served breaks this rule.

@@ -241,6 +241,16 @@ carries its own hold timer, independent of the other two.
 - The screen becomes `playing` on the first `countdown` frame on which no ball is
   held, after the balls have been advanced.
 
+### The paddles during the hold
+
+The hold holds the balls, never the paddles. On every `countdown` frame both
+paddles are moved exactly as they are on a `playing` frame: the human-controlled
+paddles from the movement actions held that frame, at `PADDLE_SPEED`, and the AI
+paddle from the AI's own rule, so a player takes position before the launch and
+the AI returns home before it. A build that freezes the paddles, ignores the
+movement actions, or pins the paddles to the center while the hold timers run is
+wrong.
+
 ## After a point
 
 A point is scored on the frame, after the balls have been advanced and resolved,
@@ -275,11 +285,26 @@ on that same frame:
 - The serve leaves at `SERVE_SPEED` (`520`) at `SERVE_ANGLE` (`12deg`) from
   horizontal: `vx = dir * SERVE_SPEED * cos(SERVE_ANGLE)` with `dir = -1` toward
   `"left"` and `+1` toward `"right"`, and
-  `vy = s * SERVE_SPEED * sin(SERVE_ANGLE)` with `s` either `+1` or `-1`. Whether
-  `s` is fixed or drawn from the seeded generator is yours.
+  `vy = s * SERVE_SPEED * sin(SERVE_ANGLE)` with `s` either `+1` or `-1`.
+- `s` is drawn from the generator seeded by `state.rngState` on every serve, the
+  first serve of a match and every serve after a point alike, with `+1` and `-1`
+  each equally likely. The draw is what makes it a serve rather than a replay: a
+  sign that is fixed, or that follows a rule such as alternating from one serve
+  to the next, is not drawn. Over a run of serves toward the same receiver the
+  ball therefore leaves upward on some and downward on others.
 
 The ball is not advanced on the frame it is served. An elapsed `holdTimer` is the
 one thing that serves the ball.
+
+### The paddles during the countdown
+
+The countdown holds the ball, never the paddles. On every `countdown` frame both
+paddles are moved exactly as they are on a `playing` frame: the human-controlled
+paddle from the movement actions held that frame, at `PADDLE_SPEED`, and the AI
+paddle from the AI's own rule, so a player takes position before the serve and
+the AI returns home before it. A build that freezes the paddles, ignores the
+movement actions, or pins the paddles to the center while `holdTimer` runs is
+wrong, whether the countdown is the first of the match or follows a point.
 
 ## After a point
 

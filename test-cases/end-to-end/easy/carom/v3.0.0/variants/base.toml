@@ -120,6 +120,32 @@ validation = { script = "gameplay/serve-angle.test.ts", outputs = [
   { id = "serve", name = "A ball leaving at the serve angle", kind = "replay" },
 ] }
 [[review.categories.items]]
+id = "serve-sign-p1"
+title = "Serve sign is drawn (toward player one)"
+description = "Over sixteen consecutive serves toward player one, every serve leaves with vx < 0 at SERVE_ANGLE (12 degrees) from horizontal within 2 degrees, and the ball leaves upward (vy < 0) on at least one serve and downward (vy > 0) on at least one."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: open a fresh match (first serve toward player one), then
+# serve sixteen times in a row, re-serving from the live rally each time, reading
+# every launch's direction, angle and vertical sign. See
+# validation/<engine>/gameplay/serve-sign-p1.test.ts.
+validation = { script = "gameplay/serve-sign-p1.test.ts", outputs = [
+  { id = "serves", name = "A run of serves toward player one, some up and some down", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "serve-sign-p2"
+title = "Serve sign is drawn (toward player two)"
+description = "After player one scores, over sixteen consecutive serves toward player two, every serve leaves with vx > 0 at SERVE_ANGLE (12 degrees) from horizontal within 2 degrees, and the ball leaves upward (vy < 0) on at least one serve and downward (vy > 0) on at least one."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+# Automated validation: drive a real point out the right goal so player two
+# receives, then serve sixteen times in a row, re-serving from the live rally each
+# time, reading every launch's direction, angle and vertical sign. See
+# validation/<engine>/gameplay/serve-sign-p2.test.ts.
+validation = { script = "gameplay/serve-sign-p2.test.ts", outputs = [
+  { id = "serves", name = "A run of serves toward player two, some up and some down", kind = "replay" },
+] }
+[[review.categories.items]]
 id = "countdown-length"
 title = "Countdown length"
 description = "From match start, the ball is served on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed, within one frame."
