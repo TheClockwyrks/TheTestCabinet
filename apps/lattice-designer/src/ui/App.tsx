@@ -232,6 +232,43 @@ export function App() {
       });
   }, [openFile, currentText, timelineProblem]);
 
+  /**
+   * Load a scenario's components onto the CURRENT board instead of adopting its
+   * grid, dropping anything whose footprint falls outside and reporting the count.
+   * The open file stays attached, so a later Save goes to the file being edited,
+   * not to the one imported from.
+   */
+  const importScenario = useCallback(
+    (name: string) => {
+      if (dirty && !window.confirm("Discard unsaved changes and import " + name + "?")) {
+        return;
+      }
+      setFileNotice(null);
+      void readScenario(name)
+        .then((json) => {
+          const grid = design.grid;
+          const loaded = fromScenario(json).design.entities;
+          const kept = loaded.filter((e) => inBounds(e, grid));
+          const dropped = loaded.length - kept.length;
+          setDesign({ grid, entities: kept });
+          setSelected(null);
+          const size = `${grid.width}×${grid.height}`;
+          const fit =
+            dropped === 0
+              ? `all ${kept.length} components fit`
+              : `${dropped} of ${loaded.length} did not fit ${size}`;
+          const target = openFile
+            ? `; Save still targets ${openFile.name}.json`
+            : "";
+          setFileNotice(`imported ${name}.json onto ${size} — ${fit}${target}`);
+        })
+        .catch((err: unknown) => {
+          setFileNotice(`could not import ${name}: ${describe(err)}`);
+        });
+    },
+    [dirty, design.grid, openFile],
+  );
+
   // Editing a design that came from a file makes it a new design, not an edit of
   // that file — so closing is explicit and leaves the layout on the board.
   const closeScenario = useCallback(() => {
@@ -296,6 +333,7 @@ export function App() {
         onClear={clearAll}
         onTimeline={setTimeline}
         onOpen={openScenario}
+        onImport={importScenario}
         onSave={saveScenario}
         onClose={closeScenario}
       />

@@ -27,6 +27,10 @@ Then open the printed URL (defaults to <http://localhost:1431>).
   `cases/*.json` (`small`, `medium`, `large`) onto the board, grid and all. The
   layout is normalised into the editor's model, and placement order is preserved —
   the scenario contract reads that order as the order of the canonical state.
+- **Import here** — loads a scenario's components onto the **current** board
+  instead of adopting its grid, dropping anything whose footprint does not fit and
+  saying how many; enlarge the board and import again to bring more of it in.
+  Whatever file is open stays the save target.
 - **Save** — writes the open scenario back to the same file. It lights up only when
   the design differs from what is on disk, so opening a file and saving it unedited
   is impossible (and would be a no-op: the round trip is byte-for-byte identical).

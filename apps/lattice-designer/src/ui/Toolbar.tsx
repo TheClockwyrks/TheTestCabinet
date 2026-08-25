@@ -11,6 +11,7 @@
 // the case grades at those exact ticks — so it is displayed for review and written
 // back as-is, never silently recomputed.
 
+import { useState } from "react";
 import { GRID_PRESETS, type Design, type Timeline } from "../model";
 import type { ScenarioSummary } from "../scenarioFiles";
 import type { SimStatus } from "../sim";
@@ -41,6 +42,7 @@ interface ToolbarProps {
   onClear: () => void;
   onTimeline: (timeline: Timeline) => void;
   onOpen: (name: string) => void;
+  onImport: (name: string) => void;
   onSave: () => void;
   onClose: () => void;
 }
@@ -63,9 +65,14 @@ export function Toolbar({
   onClear,
   onTimeline,
   onOpen,
+  onImport,
   onSave,
   onClose,
 }: ToolbarProps) {
+  // Which scenario Open and Import act on, which is not necessarily the file being
+  // edited: an import leaves `openFile` alone.
+  const [chosen, setChosen] = useState("");
+
   const download = () => {
     const blob = new Blob([exportText], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -90,13 +97,11 @@ export function Toolbar({
       {scenarios !== null && (
         <div className="group file">
           <select
-            value={openFile ?? ""}
-            onChange={(e) => {
-              if (e.target.value) onOpen(e.target.value);
-            }}
-            title="Open a scenario from the case's cases/ folder"
+            value={chosen}
+            onChange={(e) => setChosen(e.target.value)}
+            title="A scenario from the case's cases/ folder"
           >
-            <option value="">open scenario…</option>
+            <option value="">choose scenario…</option>
             {scenarios.map((s) => (
               <option key={s.name} value={s.name}>
                 {s.name} · {s.grid.width}×{s.grid.height} · {s.entities}{" "}
@@ -104,6 +109,25 @@ export function Toolbar({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={() => onOpen(chosen)}
+            disabled={!chosen}
+            title="Load it for editing, grid and all, and edit that file"
+          >
+            Open
+          </button>
+          <button
+            type="button"
+            onClick={() => onImport(chosen)}
+            disabled={!chosen}
+            title={`Load its components onto the current ${design.grid.width}×${design.grid.height} board, dropping anything that does not fit. Whatever file is open stays the save target.`}
+          >
+            Import here
+          </button>
+          <span className="editing">
+            {openFile ? `editing ${openFile}.json` : "no file"}
+          </span>
           <button
             type="button"
             onClick={onSave}

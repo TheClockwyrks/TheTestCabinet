@@ -284,3 +284,26 @@ A single inserter loading a crafter is now Factorio-style filtered (checksums un
   new behavior is covered by unit tests. `rules.md` (Pickup + the idle phase) documents
   it, and `replay/assets/lattice-core.wasm` was rebuilt so browser playback and the
   factory designer match the graded engine.
+
+The `medium` factory is now drawn by hand, and a stale `large` oracle was re-solved:
+
+- **`medium` is designer-authored, not generator output.** It was laid out in the
+  dev-only factory designer (`apps/lattice-designer`) rather than emitted by
+  `lattice gen --layout bus`, so it has no seed and cannot be regenerated from one.
+  On the same 48×32 grid it holds **630 entities** (was 424): 8 sources, 35 furnaces,
+  18 assemblers, 156 inserters, 5 splitters and 406 belts, 127 of them `express` and
+  the rest `fast`. Two sinks drain it — the tree's final product (**3,117**
+  `assembler` over 300,000 ticks) and surplus `iron-gear` (**4,682**) — each a single
+  item type, neither raw ore nor coal. A sink on `copper-plate`, `iron-plate` or
+  `circuit` is not viable: all three are consumed as fast as they are made, and
+  draining any of them costs the transport reference ~37B, over the ceiling.
+- **The fuel gate is intact and wider than before.** Transport is correct at **19.6B**,
+  under the 40B ceiling; naive **exhausts a 300B limit** (the old generated `medium`
+  cost it ~188B), so only an efficient engine passes.
+- **`cases/large.out` was re-solved.** It had been stale since the filtered-inserter
+  change, which assumed no scenario exercised the mixed-belt pickup — `large` does, so
+  its committed answer diverged from the engine at every snapshot past tick 1,250 and
+  would have failed a correct submission. `small`, the eight smoke oracles and all nine
+  training references were re-solved and confirmed unchanged.
+- **Playback regenerated.** `replay/assets/reference-*.json` were rebuilt from the
+  scored set and re-vendored into `@test-cabinet/ui`.

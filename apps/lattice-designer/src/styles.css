@@ -305,6 +305,13 @@ select {
 .file select {
   max-width: 320px;
 }
+.file button {
+  white-space: nowrap;
+}
+.file .editing {
+  color: var(--muted);
+  font-size: 12px;
+}
 .status .notice {
   color: var(--accent);
 }
