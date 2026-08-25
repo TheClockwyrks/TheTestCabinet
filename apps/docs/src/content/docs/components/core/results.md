@@ -344,7 +344,7 @@ independently.
 
 A [game-jam](/testing/game-jam/overview/) case grades its items on a five-level
 scale instead: `broken`, `poor`, `neutral`, `great`, and `incredible`, worth 0,
-1, 3, 5, and 10 points. A graded item's available points are ten times its
+2, 5, 8, and 10 points. A graded item's available points are ten times its
 weight, and it earns its tier's points times its weight. A reserved `overall`
 verdict carries the reviewer's whole-game mark on the same scale.
 
