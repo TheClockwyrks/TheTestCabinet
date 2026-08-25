@@ -37,6 +37,25 @@ file changes the declaration and leaves every play site alone. Declaring a name
 that already holds a cue replaces it, which is what lets a sound be retuned
 mid-run.
 
+## Looping cues
+
+A cue played once ends on its own. A cue looped sounds until the game stops it,
+which is what an engine hum, a held thruster, or a music bed needs. A
+file-backed cue loops its decoded buffer seamlessly, and a synthesized cue holds
+its waveform at its starting frequency and its gain, so the same five numbers
+that describe a bleep also describe a drone.
+
+A cue is either looping or not. Starting a loop that is already running does
+nothing, and stopping one that is not running does nothing, so a game drives a
+loop from its state on every frame without counting starts against stops. Each
+transition is announced once, as `cue:looped` when the loop starts and
+`cue:stopped` when it ends.
+
+A loop belongs to the cue name. Redeclaring a looping name stops the loop, mute
+silences and restores every running loop in place, and a loop requested before
+the unlock is looping from that moment and begins to sound when the context
+opens. Destroying the engine stops every loop.
+
 ## Muted and unlocked
 
 The bus carries two bits, because a silent game is silent for one of two very
@@ -61,10 +80,10 @@ A browser that refuses a context, or one whose context dies partway through a
 run, degrades the bus to one that accepts cues, announces them, and sounds
 nothing. The frame proceeds unchanged.
 
-Playing a cue that was never declared raises an error. Silence is the expected
-outcome of a muted or still-locked bus, so a mistyped name would otherwise be
-indistinguishable from a cue that played inaudibly, and the mistake would survive
-to the end of the run unnoticed.
+Playing, looping, or stopping a cue that was never declared raises an error.
+Silence is the expected outcome of a muted or still-locked bus, so a mistyped
+name would otherwise be indistinguishable from a cue that played inaudibly, and
+the mistake would survive to the end of the run unnoticed.
 
 ## Cues are observed as they play
 

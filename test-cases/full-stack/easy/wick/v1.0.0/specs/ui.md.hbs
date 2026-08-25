@@ -1,0 +1,272 @@
+# Wick — Screens, menus, and audio
+
+This file defines the screens Wick opens on and plays on, what each shows, how a
+player moves between them, and the game's audio. The rules the screens present
+are in `specs/world.md`, `specs/progression.md`, and `specs/evolutions.md`;
+the actions the menus are driven by are bound in
+`specs/controls.md`; and the icons, sprites, and sounds the screens draw and
+play are the produced files `specs/assets.md` lists. Every figure and every
+piece of screen copy below carries the name this specification gives it.
+
+## Presentation
+
+Wick fixes no palette, no font, no layout, and no styling for any screen. The
+look of the night is yours, and `specs/overview.md` states what a player reads
+at a glance in the world. Two requirements are this file's own. Every piece of
+text a screen shows is legible against whatever sits behind it at the logical
+stage size `STAGE_W x STAGE_H` (`1280 x 720`), the HUD included, which is drawn
+over the live world. On every menu the item at `menuIndex` is drawn distinctly
+from the others, so a player always sees which item `confirm` would accept.
+
+## Screens
+
+`screen` names the screen the game is in.
+
+| Screen | Purpose |
+| --- | --- |
+| `title` | The front door: the title, the tagline, and the main menu. |
+| `howto` | How the game is played, in a player's words. |
+| `playing` | The night: the world, the lamplighter, and the HUD. The only screen that ticks. |
+| `levelup` | An overlay over the held world, offering a level-up's choices. |
+| `chest` | An overlay over the held world, showing what a chest did. |
+| `paused` | The world held still under `PAUSED_TEXT`. |
+| `fallen` | The run's end when health ran out. |
+| `dawn` | The run's end when the clock reached dawn. |
+
+### `title`
+
+The game opens here, and the debug surface's `reset` returns here.
+
+| Element | Constant | Content |
+| --- | --- | --- |
+| Title | `TITLE_TEXT` | `WICK` |
+| Tagline | `TAGLINE_TEXT` | `KEEP THE LIGHT` |
+| Menu | `TITLE_ITEMS` | `LIGHT THE LAMP`, `HOW TO PLAY`, in that order |
+
+The menu's items are stacked one above the next under the title and tagline.
+`menuIndex` is `0` on arriving. `up` and `down` move the highlight by one item
+and wrap at both ends, `confirm` takes the highlighted item, and `back` does
+nothing.
+
+| Item | Does |
+| --- | --- |
+| `LIGHT THE LAMP` | Starts a fresh run, defined below, and sets `screen = playing`. |
+| `HOW TO PLAY` | Sets `screen = howto` and `menuIndex = 0`. |
+
+The night may show behind the menu, dimmed or otherwise quieted.
+
+### `howto`
+
+How to play, written in a player's words rather than as the rules of a system.
+It covers:
+
+- that the lamplighter only moves, and that every tool fires on its own, each
+  on its own rhythm;
+- that everything in the dark is drawn to the light and hurts on touch;
+- that what falls leaves gems, that gems raise the lamp's level, and that each
+  level offers a choice of one from three;
+- that there are six tool slots and six trinket slots;
+- that the big ones drop chests, and that a chest transforms a tool at its top
+  level when the lamplighter carries its trinket;
+- that the night ends at dawn, `10:00` on the clock, and that reaching it is
+  the win;
+- the controls, naming the keys `BINDINGS` gives each action: the arrows or
+  `WASD` to move, `Enter` or `Space` to confirm, `Escape` to go back, `P` to
+  pause, and `M` to mute.
+
+`back` returns to `title` with `menuIndex = 0`.
+
+### `playing`
+
+The live night, and the only screen the simulation ticks on. It shows the
+world through the view, the `STAGE_W x STAGE_H` rectangle centered on the
+lamplighter, with the ground pattern repeating in world space so motion reads,
+and every enemy, projectile, zone, gem, and pickup inside the view drawn at its
+world position. The lamplighter is drawn at the stage center
+`(STAGE_CX, STAGE_CY)` (`640, 360`), facing the way `facing` says.
+
+The HUD is drawn over the world and reads against it:
+
+| Element | What the player sees |
+| --- | --- |
+| Health | A bar filled to `hp / maxHp`, with both numbers beside it. |
+| Experience | A bar filled to `xp / xpToNext`, labeled with `LEVEL_LABEL` (`LEVEL`) and the current level, as `LEVEL 4`. |
+| Clock | The run clock as `m:ss`, counting up from `0:00` in whole seconds, the seconds always two digits. |
+| Kills | The kill count. |
+| Weapon slots | `WEAPON_SLOTS` (`6`) slots in slot order, each held weapon as its icon with one pip per level held, and an empty slot visibly empty. |
+| Passive slots | `PASSIVE_SLOTS` (`6`) slots, the same way. |
+| Cooldowns | On each weapon's slot, how much of its cooldown timer is still to run, from all of it on the tick it fires to none on the tick it fires again. A weapon whose timer is `0` shows none to run; a Lantern slot's timer covers the set's life and the gap after it together. |
+
+### `levelup`
+
+An overlay over the world, which stays drawn beneath it exactly as the tick
+that opened the overlay left it. It shows `LEVEL_UP_TEXT`
+(`THE LAMP BURNS BRIGHTER`) and the offers in `offers`, listed vertically in
+that order. Each offer shows three things:
+
+| Part | Content |
+| --- | --- |
+| Icon | The item's produced icon. |
+| Name | The weapon's name from `WEAPON_NAMES`, the passive's from `PASSIVES`, or `LAMP_OIL_NAME` (`Lamp Oil`). |
+| Tag | `OFFER_NEW_TEXT` (`NEW`) for an item not yet held, else `LEVEL_LABEL` and the level it would become, as `LEVEL 3`. Lamp oil is never held, so its tag is `NEW`. |
+
+`menuIndex` is `0` on opening. `up` and `down` move the highlight and wrap at
+both ends, and `confirm` accepts the highlighted offer, as
+`specs/progression.md` states. Then, if another level-up is queued, the next
+overlay opens with a fresh set of offers and `menuIndex = 0`; else
+`screen = playing` and the simulation resumes on the next tick. `back` and
+`pause` do nothing here.
+
+### `chest`
+
+An overlay over the held world, opened as `specs/progression.md` states. It
+shows
+`CHEST_TEXT` (`A CHEST OPENS`) and the result in `chestResult`:
+
+| `kind` | Shows |
+| --- | --- |
+| `evolve` | The evolved weapon's icon and its name from `WEAPON_NAMES`. |
+| `level` | The item's icon and name, and `LEVEL_LABEL` with the level it became. |
+| `heal` | That the lamplighter was healed `CHEST_HEAL` (`30`), in words of your own. |
+
+`confirm` closes the overlay: `screen = playing`, and the simulation resumes on
+the next tick. `up`, `down`, `back`, and `pause` do nothing here.
+
+### `paused`
+
+The world held still, with the HUD, under `PAUSED_TEXT` (`PAUSED`). `pause`
+returns to `playing`, and `back` abandons the run and returns to `title` with
+`menuIndex = 0`. `up`, `down`, and `confirm` do nothing here.
+
+### `fallen` and `dawn`
+
+The two ends of a run. `fallen` shows `FALLEN_TEXT` (`THE LIGHT WENT OUT`) and
+`dawn` shows `DAWN_TEXT` (`DAWN`); each shows the run's figures and the same
+menu below them. The world may stay drawn beneath.
+
+| Element | Content |
+| --- | --- |
+| Time survived | The run clock at the end, as `m:ss`. |
+| Level | The level reached. |
+| Kills | The kill count. |
+| Menu | `END_ITEMS`: `TRY AGAIN`, `TITLE`, in that order. |
+
+`menuIndex` is `0` on arriving. `up` and `down` move the highlight and wrap,
+and `confirm` takes the highlighted item: `TRY AGAIN` starts a fresh run and
+sets `screen = playing`, and `TITLE` returns to `title` with `menuIndex = 0`.
+`back` does what `TITLE` does.
+
+## A fresh run
+
+`LIGHT THE LAMP`, `TRY AGAIN`, and the debug surface's `start` each begin a
+fresh run, and whatever the previous run held is discarded. A fresh run has the
+run clock at `0:00`, the lamplighter at the world origin `(0, 0)` with
+`hp = BASE_MAX_HP` (`100`) and `facing = "right"`, level `1` with `xp = 0` and
+`kills = 0`, Taper at level `1` alone in the first weapon slot and no passive
+held, no enemy, projectile, zone, gem, or pickup in the world, no level-up
+queued, and the spawn director on with its timer at `0`, as `specs/enemies.md`
+states.
+
+## What advances on each screen
+
+`state.simTime` accumulates the frame's delta time on every update, whatever
+the screen, and input is read on every screen. The simulation is the exception:
+
+| Screen | What advances |
+| --- | --- |
+| `title`, `howto` | Nothing. |
+| `playing` | The simulation, in whole ticks of `TICK_DT` (`1/60`) consumed from the accumulated delta time, as `specs/overview.md` states. |
+| `levelup`, `chest`, `paused` | Nothing. The world beneath holds exactly the tick it was at; the delta time left unconsumed when the screen left `playing` is discarded, so the accumulator is `0` on every screen but `playing`. |
+| `fallen`, `dawn` | Nothing. |
+
+## Menu navigation
+
+Menus are keyboard only, through the registered actions in `specs/controls.md`:
+`up` and `down` move the highlight, `confirm` accepts the highlighted item, and
+`back` returns. `menuIndex` is `0` on entering every screen, and on a screen
+with no menu it stays `0`. Every move of a highlight plays `menu-move`,
+and every accepted item plays `menu-confirm`. `pause` is read on `playing` and
+`paused` alone, the movement actions are read as held values on `playing`
+alone, and `mute` is read on every screen.
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write, and what it plays are the
+produced files `specs/assets.md` lists. Define and play exactly the fifteen
+cues in `CUES`, under exactly these names, one per event:
+{{else}}
+Audio plays through the engine's cue bus, each cue bound with `api.audio.load`
+to the produced file `specs/assets.md` lists. Define and play exactly the
+fifteen cues in `CUES`, under exactly these names, one per event:
+{{/if}}
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `hit` | `CUES.hit` | An enemy takes damage. At most once per tick. |
+| `kill` | `CUES.kill` | An enemy dies. At most once per tick. |
+| `gem` | `CUES.gem` | A gem is collected. At most once per tick. |
+| `hurt` | `CUES.hurt` | The lamplighter takes damage. At most once per tick. |
+| `level-up` | `CUES.levelUp` | A level-up overlay opens. |
+| `choose` | `CUES.choose` | An offer is accepted. |
+| `chest` | `CUES.chest` | A chest overlay opens. |
+| `evolve` | `CUES.evolve` | A weapon evolves. |
+| `pickup` | `CUES.pickup` | Bread or a draft is collected. |
+| `fallen` | `CUES.fallen` | The run ends fallen. |
+| `dawn` | `CUES.dawn` | The run ends at dawn. |
+| `menu-move` | `CUES.menuMove` | A menu highlight moves. |
+| `menu-confirm` | `CUES.menuConfirm` | A menu item is confirmed. |
+| `music` | `CUES.music` | Loops from the start of a run to its end. |
+| `hum` | `CUES.hum` | Loops while Halo or Corona is held on `playing`. |
+
+The first thirteen are one-shot cues, each a distinct sound so the events are
+told apart by ear. Each is played from `update` on the tick its event happens,
+or on the frame for a menu event, and at most once on that tick: a tick on
+which twenty enemies take damage plays `hit` once, and a tick that raises
+several different cues plays each of those once. A cue is played by a tick or
+a frame, never by a pose of the debug surface.
+
+### The loops
+
+`LOOPING_CUES` holds the two cues that loop until stopped rather than playing
+once.
+
+- `music` starts on the tick a fresh run starts and keeps playing through
+  `levelup`, `chest`, and `paused`. It stops on the tick the run ends, fallen
+  or at dawn, and when `back` on `paused` abandons the run. `title` and `howto`
+  carry no music.
+- `hum` is looping on every update exactly when `screen` is `playing` and a
+  held weapon is `halo` or `corona`. It starts on the update that first makes
+  both true, whether Halo was just acquired or play just resumed from an
+  overlay or a pause, and it stops on the update either stops being true.
+
+{{#if (eq engine.slug "none")}}
+The audio layer you write supports a looping cue: starting a loop plays the
+cue's file end to end without a gap until the loop is stopped, and a cue is
+either looping or not, so starting one that is already looping changes nothing.
+Loops are started and stopped from `update`, like every other cue.
+
+Muting and the first-interaction unlock belong to the runtime. The game binds
+the `mute` action to the runtime's mute bit and toggles it from any screen,
+then mirrors that bit into `state.muted` every frame. Muting silences a running
+loop without stopping it, and the loop returns in place when unmuted. The game
+stays fully playable with sound muted.
+{{else}}
+`api.audio.loop` starts a cue looping, `api.audio.stop` ends it, and
+`api.audio.looping` reports whether it is; a file-backed cue loops its decoded
+buffer seamlessly, and a cue is either looping or not. Loops are started and
+stopped from `update`, like every other cue.
+
+Muting and the first-gesture unlock belong to the engine. The game binds the
+`mute` action to `api.audio.setMuted` and toggles it from any screen, then
+mirrors `api.audio.muted()` into `state.muted` every frame. A muted loop keeps
+looping silently and returns when unmuted. The game stays fully playable with
+sound muted.
+{{/if}}
+
+## Out of scope
+
+- Network or online play.
+- Touch and gamepad input. Every screen is driven from the keyboard.
+- Persistence of progress or settings between sessions. Each session starts
+  fresh.

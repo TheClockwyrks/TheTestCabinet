@@ -38,7 +38,7 @@ surface a validator exercises is the surface the game was written against.
 | [Camera](/engines/structured-2d/apis/camera/) | `Camera`, `CameraSnapshot`, `Viewport`, `fitViewport`, `applyViewport`, `syncCanvas`, and the three spaces. |
 | [Clocks](/engines/structured-2d/apis/clocks/) | The `Clock` interface and the five clocks a run's deltas can come from. |
 | [Input](/engines/structured-2d/apis/input/) | Action registration, `ActionBinding`, the read methods, the pointer, and `TOUCH_LAYOUTS`. |
-| [Audio](/engines/structured-2d/apis/audio/) | `CueSpec`, `WorldAudio`, synthesized and file-backed cues, and the mute and unlock calls. |
+| [Audio](/engines/structured-2d/apis/audio/) | `CueSpec`, `WorldAudio`, synthesized and file-backed cues, looping, and the mute and unlock calls. |
 | [Assets](/engines/structured-2d/apis/assets/) | `loadImage`, `loadAudio`, `load`, `resolve`, and the asset root. |
 | [Diagnostics](/engines/structured-2d/apis/diagnostics/) | Source registration on the instance and the world, `FrameMetrics`, the overlay, and its toggle. |
 | [Recording](/engines/structured-2d/apis/recording/) | The recorder's engine members, `Recording`, `RecordedFrame`, `DrawState`, `DrawOp`, and `DrawValue`. |

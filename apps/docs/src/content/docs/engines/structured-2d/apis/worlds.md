@@ -166,6 +166,9 @@ world's timers are cleared when it closes.
 ```ts
 interface WorldAudio {
   play(cue: string): void;
+  loop(cue: string): void;
+  stop(cue: string): void;
+  looping(cue: string): boolean;
   setMuted(muted: boolean): void;
   muted(): boolean;
 }
@@ -174,7 +177,10 @@ interface WorldAudio {
 | Member | Effect |
 | --- | --- |
 | `play` | Emits `cue:played` and, when audible, sounds the [cue](/engines/structured-2d/apis/audio/). Playing a cue that was never declared throws, naming the cue. |
-| `setMuted` | Sets the mute bit. A muted cue still emits its event, reporting `gain: 0`. |
+| `loop` | Starts the cue looping if it is not already, emitting `cue:looped` once. Throws for an undeclared cue. |
+| `stop` | Stops the cue's loop if it is looping, emitting `cue:stopped` once. Throws for an undeclared cue. |
+| `looping` | Whether the cue is looping. `false` for an undeclared cue. |
+| `setMuted` | Sets the mute bit. A muted cue still emits its event, reporting `gain: 0`, and every running loop follows the bit live. |
 | `muted` | The current mute bit. |
 
 ## Pausing

@@ -36,6 +36,27 @@ file changes the declaration and leaves every play site alone. Declaring a name
 that already holds a cue replaces it, which is what lets a sound be retuned
 mid-run.
 
+## Looping cues
+
+A cue played once ends on its own. A cue looped sounds until a tick stops it,
+which is what an engine hum, a held thruster, or a music bed needs. A
+file-backed cue loops its decoded buffer seamlessly, and a synthesized cue holds
+its waveform at its starting frequency and its gain, so the same five numbers
+that describe a bleep also describe a drone.
+
+A cue is either looping or not. Starting a loop that is already running does
+nothing, and stopping one that is not running does nothing, so an actor or a
+game mode drives a loop from its state on every tick without counting starts
+against stops. Each transition is announced once, as `cue:looped` when the loop
+starts and `cue:stopped` when it ends.
+
+A loop belongs to the cue name, and so to the engine rather than to the world
+currently open: it runs across a level transition until a tick stops it.
+Redeclaring a looping name stops the loop, mute silences and restores every
+running loop in place, and a loop requested before the unlock is looping from
+that moment and begins to sound when the context opens. Destroying the engine
+stops every loop.
+
 ## Cue definitions live on the engine
 
 A cue is a fact about the game, not about the world currently open. Definitions
@@ -68,10 +89,10 @@ the context opened.
 
 ## Playing an undeclared cue is an error
 
-Playing a cue that was never declared throws, naming the cue. Silence is the
-expected outcome of a muted or a still-locked bus, so the throw is what
-distinguishes a mistyped name from a cue that played inaudibly, and the run
-itself reports the mistake on the frame that made it.
+Playing, looping, or stopping a cue that was never declared throws, naming the
+cue. Silence is the expected outcome of a muted or a still-locked bus, so the
+throw is what distinguishes a mistyped name from a cue that played inaudibly,
+and the run itself reports the mistake on the frame that made it.
 
 ## Cues are observed as they play
 

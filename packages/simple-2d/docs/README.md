@@ -14,7 +14,7 @@ The engine owns:
 - Clearing and transforming the drawing context before every frame.
 - Keyboard listening, action binding, and edge detection.
 - Pointer tracking, mapped into the game's own logical coordinates.
-- The Web Audio graph, cue synthesis, mute, and the first-gesture unlock.
+- The Web Audio graph, cue synthesis, looping, mute, and the first-gesture unlock.
 - Asset URL resolution under the fixed `assets/` root.
 - The diagnostics overlay and its toggle key.
 - The draw-command recorder over the drawing context.
@@ -316,7 +316,7 @@ draws, so scaling never appears in the game's own code.
 | --- | --- |
 | `frame.md` | The loop, the clocks, `run` and `advance`, and `FrameInfo`. |
 | `input.md` | Actions, key bindings, edges, the pointer, and the touch layout catalogue. |
-| `audio.md` | Cue definition, file-backed cues, playback, mute, and the unlock. |
+| `audio.md` | Cue definition, file-backed cues, playback, looping, mute, and the unlock. |
 | `assets.md` | The asset root, the loaders, the path rules, and the load events. |
 | `diagnostics.md` | The overlay, frame metrics, and the display formatting. |
 | `debug.md` | Declaring a debug surface, returning it beside the state, and driving it through `apply` and `state`. |

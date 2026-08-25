@@ -1,0 +1,1407 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# Format 2 names engines: it replaces the single `workspace` key with a
+# `[workspaces]` table holding one starter directory per engine.
+format = 2
+
+# The case's stable identity: the definition-store key, recorded in every run.
+slug = "wick"
+
+# Human-readable display name for this test case.
+name = "Wick"
+
+# Experimental until the case carries what a public version must: the
+# validation suites under `validation/none/` and `validation/simple-2d/`, a
+# `validation` key on every review item, and the two reference implementations
+# `variants/base.toml` describes. A version that runs freezes, and a frozen
+# version can never gain a validator, so this keeps the version off the catalog
+# unless a deployment opts in with `TCAB_BACKEND_ALLOW_EXPERIMENTAL`. Drop the
+# key when the suites and references land.
+experimental = true
+
+# Relative difficulty, surfaced on the site. Easy: the case is a great deal of
+# BREADTH, not depth of reasoning. Every rule is a table row or a one-line
+# formula; there is no physics to tune, no opponent to model, and no solver.
+# What it measures is whether a build carries sixteen weapons, ten passives,
+# thirteen enemies, a twenty-window schedule, and a full produced asset set all
+# the way through without dropping or blurring a row. The size of the job is
+# accounted for in `max_runtime_hours`, not here.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["survival", "action", "2d", "roster"]
+
+# Short site-facing abstract, shown on the test case card. NOT seeded.
+summary = """
+A survival game of one lamplighter against a moth-choked night: the player \
+only moves, sixteen weapons fire on their own, thirteen enemies arrive on a \
+ten-minute schedule that ends with the Dark, and the build draws every sprite \
+and produces every sound itself."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded.
+description = "description.md"
+
+# Required per-version changelog entry. NOT seeded.
+changelog = "changelog.md"
+
+# Handlebars prompt template, rendered per run and handed to the model as the
+# build instruction. The harness prepends the standing full-stack asset-quality
+# preamble at render time, so this template does not restate it.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, before the harness session is stopped.
+# Wick is a large build by count: ten weapons with eight-row tables and six
+# evolved rows, ten derived stats, thirteen enemy behaviors, a spawn director
+# with twenty windows and seven events, the level-up economy, eight screens, the
+# debug surface, and a produced set of some forty sprites and sheets, twenty-seven
+# icons, fifteen cues, and a music bed. Eight hours is comfortably more than a
+# healthy build needs while still bounding a runaway session.
+max_runtime_hours = 8
+
+# The test type: an end-to-end playable game whose assets the model also
+# produces during the run, on the full-stack-2d image with the six 2D asset
+# tools on PATH. A root key, so it sits above the first table header.
+type = "full-stack"
+
+# Init command, run in the container once the workspace and specs are seeded and
+# before the harness starts. `npm install` (not `npm ci`) because an engine run
+# writes the vendored engine's `file:` dependency into `package.json` at seed
+# time, so the lockfile completes here; the same command downloads the Playwright
+# Chromium build so the model can look at its game in a browser.
+init = "npm install && npx playwright install chromium"
+
+# NOTE: no `assets = [...]` of pre-made art, deliberately: the model produces the
+# game's sprites and audio itself, during the run (`specs/assets.md`). And no
+# `packages`: Wick plays no particle system, so no runtime library ships into the
+# run; any flourish beyond the produced sprites is drawn in code.
+
+# Variants: exactly one runs per run. Wick declares exactly ONE — every run is
+# the same game, and the roster is content within it, not variants. Nothing in
+# the seeded set branches on the variant; the only axis the specs branch on is
+# `engine.slug`. A root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The engines a run may select. Wick supports two, and the game is the same
+# under both; what differs is how much of the build is handed over. `none`
+# supplies no runtime and no `src/` at all, so the build writes the frame loop,
+# input, audio with looping cues, asset loading, the overlay, and the
+# `window.__wick` surface itself. `simple-2d` vendors the runtime as a package and
+# seeds the modules around the game (`src/constants.ts`, `src/main.ts`, and the
+# `src/game.ts` the build writes). The engine's `loop`, `stop`, and `looping`
+# audio operations are what the music bed and the hum ride on under it.
+#
+# `none` carries no version and is named in the bare `engines` list; `simple-2d`
+# is pinned from 1.0.0 with no ceiling, the API the specs are written against.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run, one per engine. Both
+# carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration the
+# `[toolchain]` commands run against and an `index.html` holding the canvas.
+#
+#   - `none`      supplies the configuration and nothing else: no `src/`.
+#   - `simple-2d` declares the engine in its `package.json` (vendored in at seed
+#                 time) and seeds the case-owned modules: `src/constants.ts`
+#                 (every figure the specification fixes) and `src/main.ts` (the
+#                 entry). The build writes `src/game.ts`.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/simple-2d"
+
+# How validation (and the per-run static deploy) turns a produced implementation
+# into a served site. `npm ci` is deliberate: it requires a committed lockfile.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once the install
+# has completed. `typecheck` GATES: a non-zero exit rates the run broken. The
+# other three are recorded; `test` additionally records the count and coverage
+# the build's own suite reports. These four are exactly the commands
+# `specs/overview.md` tells the build will be run over the finished repository.
+# Both seeded `.prettierignore` files exclude `specs/` (and `engine/` under the
+# engine) so `format` walks the build's own files alone.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface, named once here.
+# Reporter-side and never seeded; the seeded `specs/instrumentation.md` documents
+# the same surface as an ordinary debugging feature.
+#
+# The handle names the ENGINELESS contract (`window.__wick`); an engine run
+# reaches the same operations off `engine.debug`. `tick_hz` is declared because
+# Wick runs on a fixed simulation tick: a run advances in whole `1/60`-second
+# ticks, which is what lets a validation runtime convert stepped ticks into
+# simulated time.
+[instrumentation]
+handle = "__wick"
+tick_hz = 60
+
+# The specs. Every one is a COMMON spec, seeded for EVERY run; the single variant
+# declares none of its own. The specification is decomposed by concern:
+# `overview` the game and the project, `world` the plane, the camera, the order
+# of a tick, the timer rule, the lamplighter, contact, the endings, and the gems
+# and pickups, `weapons` the ten base weapons and their tables, `evolutions` the
+# six recipes, the chest result, and the evolved rows, `passives` the ten
+# passives and the derived stats, `progression` xp, slots, offers, and the two
+# overlays, `enemies` the roster and the spawn director, `controls` the actions,
+# `state` the state shape, `instrumentation` the debug surface, `ui` the screens
+# and audio, and `assets` the production contract.
+#
+# The `.hbs` sources branch on ONE axis, `engine.slug`, which selects what the
+# build is handed and what it must write. Nothing branches on the variant.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+[[spec]]
+source = "specs/world.md"
+
+[[spec]]
+source = "specs/weapons.md"
+
+[[spec]]
+source = "specs/evolutions.md"
+
+[[spec]]
+source = "specs/passives.md"
+
+[[spec]]
+source = "specs/progression.md"
+
+[[spec]]
+source = "specs/enemies.md"
+
+[[spec]]
+source = "specs/controls.md.hbs"
+
+[[spec]]
+source = "specs/state.md.hbs"
+
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+[[spec]]
+source = "specs/ui.md.hbs"
+
+[[spec]]
+source = "specs/assets.md.hbs"
+
+# No `[[reference]]`, no `[[check]]`, and no `[[proof]]`. Wick fixes no palette,
+# no sprite artwork, and no screen styling: every build is expected to look
+# different, so there is no honest picture to compare against. What the
+# specification fixes about appearance is stated as legibility, checked by a
+# reviewer, and the produced assets are judged in play.
+
+# Scoring domains. A reviewer rates each independently while playing the build;
+# the run's overall rating is the WORST across them, so a beautiful night cannot
+# mask a weapon that never fires, and a correct roster cannot mask placeholder
+# sprites.
+[[domain]]
+id = "survival"
+name = "Survival"
+description = "Movement, contact, and pressure: walking the lamplighter through a closing crowd, taking and recovering damage, and the arc of a night from the first moth to the Dark and dawn."
+
+[[domain]]
+id = "arsenal"
+name = "Arsenal"
+description = "How the weapons and passives feel and read: each tool firing on its own rhythm at the target and shape the specification gives it, a new level or passive visibly changing the fight, and an evolution reading as a transformation."
+
+[[domain]]
+id = "progression"
+name = "Progression"
+description = "Level-ups, offers, chests, and evolutions: gems filling the bar, the overlay's choices, slots filling in order, and a chest paying off a maxed weapon carried beside its passive."
+
+[[domain]]
+id = "presentation"
+name = "Presentation & Assets"
+description = "The produced sprites, animation, icons, and audio, and the HUD and screens they sit in: the night's look and its originality, thirteen silhouettes told apart, effects drawn where they hit, and the sound of the night."
+
+# Reviewer checklist, in the categories grammar. Reporter-side material — never
+# seeded, so the model never sees it; every item restates a requirement the
+# seeded specification already states, in its vocabulary, one observable
+# behavior per item, weighted 1 each (the default).
+#
+# NO ITEM DECLARES A `validation` SCRIPT YET, which is why the version is
+# `experimental`: the validation suites do not exist, and a manifest naming a
+# script not shipped under `validation/<engine>/` does not resolve. Every item
+# below is written so a script can decide it from the debug surface and the
+# figures the specs state, with the one-tick tolerance the timer rule in
+# `specs/world.md` implies.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug and automation surface is present"
+description = "Every operation specs/instrumentation.md names is present as a function on the surface, reached as window.__wick in an engineless build and off engine.debug in an engine build, with version WICK_DEBUG_VERSION (1)."
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "A snapshot carries every field specs/instrumentation.md lists, accumulator included, on every screen, with the eight derived fields (time, xpToNext, maxHp, armor, moveSpeed, pickupRadius, spawnWindow, aliveCommons) computed from the state."
+[[review.categories.items]]
+id = "reset-restores-fields"
+title = "reset restores every declared field to its title-screen value"
+description = "After reset the screen is title with menuIndex 0, run is the idle run specs/state.md gives, and accumulator and simTime are 0."
+[[review.categories.items]]
+id = "reset-seeds-rng"
+title = "reset seeds the generator"
+description = "reset seeds rngState from options.seed, or from DEFAULT_SEED (1) when no seed is given, so two resets with the same seed leave the same rngState."
+[[review.categories.items]]
+id = "reset-keeps-muted"
+title = "reset leaves muted untouched"
+description = "muted holds the same value after reset as before it."
+[[review.categories.items]]
+id = "reset-stops-loops"
+title = "reset stops any looping cue"
+description = "After reset and the next update, neither music nor hum is looping."
+[[review.categories.items]]
+id = "start-fresh-run"
+title = "start begins a fresh run from any screen"
+description = "start poses exactly what LIGHT THE LAMP does from any screen: the idle run with Taper at level 1 and cooldown 0 in the first weapon slot, screen playing, menuIndex 0, and autoSpawn true."
+[[review.categories.items]]
+id = "start-keeps-rng-and-sim-time"
+title = "start leaves rngState and simTime as they are"
+description = "rngState and simTime hold the same values after start as before it, so a run from a known seed is a reset followed by start."
+[[review.categories.items]]
+id = "stepping-off-real-time"
+title = "The game steps off real time in whole ticks"
+description = "The run advances an exact number of TICK_DT (1/60) ticks when stepped from code (setAutoStep and step under none; a constant clock with advance under the engine), and the same seed, calls, and tick count reach the same run and rngState every time."
+[[review.categories.items]]
+id = "spawn-enemy-real-path"
+title = "spawnEnemy goes through the real spawn path"
+description = "An enemy spawned at (x, y) appears in the next snapshot at (x, y) with the next id and its maxHp scaled by the run clock exactly as the director's spawns are."
+[[review.categories.items]]
+id = "spawn-enemy-drift-heading"
+title = "spawnEnemy aims a drifting enemy at the lamplighter"
+description = "A gnat spawned through spawnEnemy carries the unit heading from (x, y) toward the lamplighter's center."
+[[review.categories.items]]
+id = "clear-enemies"
+title = "clearEnemies removes every enemy and nothing else"
+description = "After clearEnemies on playing, enemies is empty, elites and the Dark included, kills is unchanged, and no gem or pickup was dropped."
+[[review.categories.items]]
+id = "spawn-pickup"
+title = "spawnPickup places a gem or a pickup at (x, y)"
+description = "spawnPickup with a gem tier places an unattracted gem of that tier at (x, y) with the next id, and with a pickup kind places that pickup there."
+[[review.categories.items]]
+id = "grant-new-item"
+title = "grant adds a new item at level 1"
+description = "grant with a weapon or passive not held adds it at level 1 to the first free slot of its kind, a weapon with cooldown 0."
+[[review.categories.items]]
+id = "grant-level"
+title = "grant raises a held item one level"
+description = "grant with a held item below its max raises its level by one with every effect a level brings, a Tallow level raising hp by TALLOW_HP_PER_LEVEL (15) as well."
+[[review.categories.items]]
+id = "grant-lamp-oil"
+title = "grant heals with lamp-oil"
+description = "grant with lamp-oil raises hp by LAMP_OIL_HEAL (30), capped at maxHp."
+[[review.categories.items]]
+id = "grant-refuses-illegal"
+title = "grant leaves the state untouched for an illegal id"
+description = "grant with an id that is not a legal candidate, the slot kind full, the item at its max, an evolved weapon, or a base weapon whose evolution is held, leaves the snapshot exactly as it was."
+[[review.categories.items]]
+id = "set-offers-presented"
+title = "setOffers fixes the next overlay's offers"
+description = "A list of 1 to OFFER_COUNT (3) distinct ids, every one a legal candidate when the next level-up overlay opens, is presented as given, in order."
+[[review.categories.items]]
+id = "set-offers-discarded"
+title = "setOffers discards an illegal list whole"
+description = "A list holding any id that is not a legal candidate when the overlay opens is discarded whole and the overlay draws at random."
+[[review.categories.items]]
+id = "set-offers-consumed"
+title = "setOffers is consumed by one overlay"
+description = "After the overlay a setOffers list applied to has opened, the next level-up overlay draws at random."
+[[review.categories.items]]
+id = "add-xp-gain-path"
+title = "addXp levels the lamplighter as a gem does"
+description = "addXp adds the amount with no multiplier through the real gain path, so level-ups queue, overflow carries, and the level-up overlay opens on the spot."
+[[review.categories.items]]
+id = "choose"
+title = "choose accepts the offer at an index"
+description = "On levelup, choose(index) applies the offer at that index exactly as confirm on it would, and an index outside the offers leaves the state as it was."
+[[review.categories.items]]
+id = "set-player"
+title = "setPlayer applies a patch to the lamplighter"
+description = "setPlayer sets exactly the fields of x, y, hp, and facing the patch names, hp capped at maxHp, and leaves the fields it omits as they were."
+[[review.categories.items]]
+id = "set-time-tick"
+title = "setTime sets the clock"
+description = "After setTime(seconds) the tick is round(seconds × TICK_HZ) and the snapshot's time and spawnWindow follow."
+[[review.categories.items]]
+id = "set-time-marks-events"
+title = "setTime marks past events fired without spawning"
+description = "After setTime every scripted event at or before the new clock is in firedEvents, nothing was spawned by them, and an event after the new clock fires when the clock reaches it."
+[[review.categories.items]]
+id = "set-time-resets-timer"
+title = "setTime resets the spawn timer on a window change"
+description = "A setTime that changes the spawn window leaves spawnTimer at 0, and one that does not leaves it as it was."
+[[review.categories.items]]
+id = "pause-resume"
+title = "pause and resume pose the pause action"
+description = "pause on playing moves to paused, resume on paused returns to playing, and each on any other screen leaves the state as it was."
+[[review.categories.items]]
+id = "open-chest"
+title = "openChest poses collecting a chest"
+description = "openChest on playing opens the chest overlay with the same result collecting a chest produces and chestResult reporting it, and on any other screen leaves the state as it was."
+[[review.categories.items]]
+id = "close-overlay"
+title = "closeOverlay poses confirm on an overlay"
+description = "closeOverlay on levelup accepts the highlighted offer, on chest closes the overlay to playing, and on any other screen leaves the state as it was."
+[[review.categories.items]]
+id = "poses-set-no-verdict"
+title = "No operation decides an outcome"
+description = "Hits, kills, gems, experience, level-ups, and evolutions come only from stepping the real systems after a pose, and no pose plays a cue."
+[[review.categories.items]]
+id = "overlay-diagnostics"
+title = "The debug overlay reports the game"
+description = "The overlay toggles on the backtick and shows at least the sources specs/instrumentation.md lists (screen, clock, level and xp, hp, kills, position and facing, enemy count and window, projectile and zone counts, gem count, weapons with levels and cooldowns, passives, autoSpawn, pendingLevelUps), updating as the game is played without changing it."
+
+# --- Movement, contact, and the night -------------------------------------------
+[[review.categories]]
+id = "movement-and-contact"
+title = "Movement, contact, and the night"
+[[review.categories.items]]
+id = "move-speed"
+title = "The lamplighter moves at MOVE_SPEED"
+description = "A held cardinal direction moves the lamplighter MOVE_SPEED (180) units per second with no Bellows held, integrated per tick."
+[[review.categories.items]]
+id = "diagonal-equals-cardinal"
+title = "Diagonal speed equals cardinal speed"
+description = "Two perpendicular directions held together move the lamplighter along the normalized diagonal at the same speed as one direction alone."
+[[review.categories.items]]
+id = "opposed-cancel"
+title = "Opposed directions cancel"
+description = "Holding up and down together, or left and right together, moves the lamplighter nowhere on that axis."
+[[review.categories.items]]
+id = "facing-horizontal"
+title = "Facing follows the horizontal input"
+description = "facing starts right and becomes left or right on any tick whose horizontal input is non-zero, in that direction."
+[[review.categories.items]]
+id = "facing-holds-vertical"
+title = "Facing holds through vertical-only movement"
+description = "A tick with no horizontal input, at rest or moving straight up or down, leaves facing as it was."
+[[review.categories.items]]
+id = "tick-order"
+title = "A tick applies its phases in the specified order"
+description = "The clock rises, the lamplighter moves, recovery applies, enemies move, weapons fire, projectiles and zones move and hit, contact resolves, pickups and gems collect, the director runs, and the endings are checked, in the order specs/world.md fixes, so an enemy spawned on a tick sits at its spawn point and a bolt fired on a tick sits at the lamplighter's center in that tick's snapshot."
+[[review.categories.items]]
+id = "timer-rule"
+title = "Timers are due on the exact tick"
+description = "A timer set to s seconds is due exactly round(s × TICK_HZ) ticks after it was set and reads 0 from that tick, so a contact cooldown of CONTACT_COOLDOWN (0.5) re-hits on the 30th tick and a cooldown of 1.35 fires on the 81st."
+[[review.categories.items]]
+id = "contact-hit"
+title = "An overlapping enemy hits for its damage"
+description = "An enemy whose center is closer than its radius plus PLAYER_RADIUS (12) to the lamplighter and whose contactCooldown is 0 removes its damage from hp on that tick."
+[[review.categories.items]]
+id = "contact-cooldown-set"
+title = "A hit sets the enemy's contact cooldown"
+description = "An enemy that hit has contactCooldown at CONTACT_COOLDOWN (0.5) in that tick's snapshot."
+[[review.categories.items]]
+id = "contact-cooldown-counts-out-of-contact"
+title = "A contact cooldown counts down out of contact"
+description = "An enemy's contactCooldown falls by TICK_DT on every tick it is alive whether or not it overlaps the lamplighter."
+[[review.categories.items]]
+id = "contact-rehit"
+title = "Continuous contact re-hits every CONTACT_COOLDOWN"
+description = "An enemy held in contact hits once every CONTACT_COOLDOWN (0.5) seconds, and several overlapping enemies each hit on their own schedule."
+[[review.categories.items]]
+id = "armor-and-floor"
+title = "Armor reduces a hit to no less than MIN_DAMAGE_TAKEN"
+description = "A contact hit removes max(MIN_DAMAGE_TAKEN (1), enemy damage − armor), so Brass reduces every hit by its level and never below 1."
+[[review.categories.items]]
+id = "recovery"
+title = "Recovery adds health every tick"
+description = "hp rises by recovery × TICK_DT on every playing tick, capped at maxHp, so Tinder at level 1 restores 0.5 health per second."
+[[review.categories.items]]
+id = "fallen-at-zero"
+title = "Health at 0 ends the run fallen"
+description = "A tick that leaves hp at or below 0 ends the run with screen fallen, and the run ticks no further."
+[[review.categories.items]]
+id = "dawn-at-600"
+title = "Dawn ends the run at DAWN_TIME"
+description = "The tick on which the run clock reaches DAWN_TIME (600), tick 36000, ends the run with screen dawn whatever is alive."
+[[review.categories.items]]
+id = "dawn-precedence"
+title = "Dawn takes precedence over falling"
+description = "A tick on which the clock reaches DAWN_TIME and hp reaches 0 ends the run at dawn."
+[[review.categories.items]]
+id = "end-beats-overlay"
+title = "A tick that ends the run opens no overlay"
+description = "A tick that ends the run and also queues a level-up or collects a chest ends with screen fallen or dawn, the level-up staying queued and no chest overlay shown."
+[[review.categories.items]]
+id = "fixed-tick"
+title = "The simulation advances in whole ticks"
+description = "Each frame's delta time accumulates and whole TICK_DT ticks are consumed, the remainder waiting, so an interval of game time reaches the same state however it was divided into frames."
+[[review.categories.items]]
+id = "only-playing-ticks"
+title = "Only the playing screen ticks"
+description = "The level-up and chest overlays, the pause screen, and every other screen advance nothing, holding the world exactly as the last tick left it."
+[[review.categories.items]]
+id = "accumulator-discarded"
+title = "Leaving playing discards the accumulator"
+description = "accumulator is 0 on every screen but playing, the delta time left unconsumed when an overlay opened or the run ended being discarded."
+[[review.categories.items]]
+id = "camera-centered"
+title = "The camera is centered on the lamplighter"
+description = "The lamplighter is drawn at (STAGE_CX, STAGE_CY) (640, 360) at all times and every world object at its world position minus the player's plus the stage center."
+[[review.categories.items]]
+id = "ground-scrolls"
+title = "The ground reads as sliding under the lamplighter"
+description = "A pattern fixed in world space and repeating on both axes scrolls beneath the lamplighter as it moves, so motion reads with no other reference."
+
+# --- Weapons -----------------------------------------------------------------
+[[review.categories]]
+id = "weapons"
+title = "Weapons"
+[[review.categories.items]]
+id = "fires-on-first-tick"
+title = "A weapon fires on the first tick it is held"
+description = "A weapon's cooldown timer is 0 on acquisition, so it fires on the first playing tick it is held."
+[[review.categories.items]]
+id = "cooldown-period"
+title = "A weapon fires again when its timer is due"
+description = "After firing, a weapon's timer is set to its current cooldown and it fires again exactly when that timer is due, round(cooldown × TICK_HZ) ticks later."
+[[review.categories.items]]
+id = "nearest-enemy"
+title = "The nearest enemy is by center distance, ties by lowest id"
+description = "Weapons that target the nearest enemy pick the live enemy with the smallest distance between centers, and the lowest id among equals."
+[[review.categories.items]]
+id = "no-target-restarts"
+title = "A weapon needing a target restarts its cooldown without one"
+description = "With no enemy alive, Ember, Beacon, Spark, and Sconce fire nothing and their cooldown timers are set to their current cooldown."
+[[review.categories.items]]
+id = "pierce-zero-dies"
+title = "A projectile with pierce 0 dies on its first hit"
+description = "A projectile whose pierce is 0 is removed by the first enemy it hits."
+[[review.categories.items]]
+id = "pierce-counts-down"
+title = "Every hit lowers pierce by one"
+description = "A projectile with pierce n has pierce n − 1 after one hit and hits n + 1 enemies before it is removed."
+[[review.categories.items]]
+id = "pierce-infinite"
+title = "Infinite pierce is never lowered or removed by a hit"
+description = "A projectile with pierce INFINITE_PIERCE (−1) keeps that value through every hit and is removed only when its ttl is due."
+[[review.categories.items]]
+id = "finite-pierce-hits-once"
+title = "A finite-pierce projectile hits a given enemy at most once"
+description = "A projectile with finite pierce that stays overlapping an enemy damages it once in its life."
+[[review.categories.items]]
+id = "hit-removes-damage"
+title = "A hit removes the weapon's damage"
+description = "A hit removes the weapon's damage per hit, table damage × damageMul, from the enemy's real-valued hp."
+[[review.categories.items]]
+id = "death-on-tick"
+title = "An enemy at or below 0 dies on that tick"
+description = "An enemy whose hp is at or below 0 is removed on that tick with the kill count up by one and its drop at its center."
+[[review.categories.items]]
+id = "taper-facing-slash"
+title = "Taper slashes in the facing direction from the player's x"
+description = "Taper's slash is a width × height rectangle whose near vertical edge is at the player's x, extending width in the facing direction, centered vertically, hitting on the tick it fires alone."
+[[review.categories.items]]
+id = "taper-second-side"
+title = "Taper at amount 2 slashes both sides"
+description = "From level 3, or with Mirror, a second slash fires the same tick on the opposite side, and any amount above TAPER_MAX_AMOUNT (2) adds nothing."
+[[review.categories.items]]
+id = "taper-table"
+title = "Taper honors its level table"
+description = "At level 1 the slash is damage 10, cooldown 1.35, 120 × 40, amount 1; at level 8 it is damage 30, cooldown 1.2, 160 × 56, amount 2, as TAPER_LEVELS gives."
+[[review.categories.items]]
+id = "ember-nearest"
+title = "Ember fires at the nearest enemy"
+description = "Ember's bolt leaves the player's center toward the nearest enemy's center at the tick of firing and flies straight for its duration."
+[[review.categories.items]]
+id = "ember-amount-distinct"
+title = "Ember's amount fires at distinct nearest enemies"
+description = "With amount n, n bolts fire on the same tick at the n nearest distinct enemies, fewer if fewer exist."
+[[review.categories.items]]
+id = "ember-table"
+title = "Ember honors its level table"
+description = "At level 1 the bolt is damage 10, cooldown 1.2, speed 400, radius 8, pierce 0, duration 2, amount 1; at level 8 it is damage 25, cooldown 0.8, speed 450, radius 10, pierce 2, amount 3, as EMBER_LEVELS gives."
+[[review.categories.items]]
+id = "pin-facing-spread"
+title = "Pin fires darts in the facing direction, spread vertically"
+description = "Pin's darts fly horizontally in the facing direction, and dart i of n starts at player.y + (i − (n − 1) / 2) × PIN_SPREAD (10)."
+[[review.categories.items]]
+id = "pin-fires-alone"
+title = "Pin fires whether or not any enemy exists"
+description = "Pin's darts fire on an empty field, with no target required."
+[[review.categories.items]]
+id = "pin-table"
+title = "Pin honors its level table"
+description = "At level 1 the dart is damage 6, cooldown 0.5, speed 600, radius 6, pierce 1, duration 1.5, amount 1; at level 8 it is damage 15, cooldown 0.35, speed 700, radius 7, pierce 3, amount 5, as PIN_LEVELS gives."
+[[review.categories.items]]
+id = "lantern-orbit"
+title = "Lanterns orbit the player and follow it"
+description = "On firing, amount lanterns appear evenly spaced on a circle of radius orbit around the player, lantern i at i × 360 / amount degrees from +x, and revolve at LANTERN_ANGULAR_SPEED (180) degrees per second clockwise, following the player."
+[[review.categories.items]]
+id = "lantern-fires-alone"
+title = "Lantern fires whether or not any enemy exists"
+description = "A Lantern set appears on an empty field, with no target required."
+[[review.categories.items]]
+id = "lantern-duration"
+title = "Lanterns vanish when their duration is due"
+description = "A Lantern set's zones are removed exactly when a ttl of duration is due."
+[[review.categories.items]]
+id = "lantern-timer"
+title = "Lantern's timer covers the set and the gap"
+description = "On firing, Lantern's cooldown timer is set to duration plus its current cooldown, so the next set appears once the previous set has been gone for the cooldown."
+[[review.categories.items]]
+id = "lantern-rehit"
+title = "Each lantern re-hits every LANTERN_REHIT"
+description = "Each lantern damages a given enemy at most once per LANTERN_REHIT (0.5), and re-hits on exactly that interval while overlapping."
+[[review.categories.items]]
+id = "lantern-table"
+title = "Lantern honors its level table"
+description = "At level 1 it is damage 10, cooldown 3, orbit 90, radius 14, duration 3, amount 1; at level 8 it is damage 25, cooldown 2.5, orbit 120, radius 20, duration 4, amount 4, as LANTERN_LEVELS gives."
+[[review.categories.items]]
+id = "halo-aura-zone"
+title = "Halo is a permanent aura centered on the player"
+description = "From the first playing tick Halo is held, one aura zone of radius follows the player's center on every tick for as long as Halo is held."
+[[review.categories.items]]
+id = "halo-pulse"
+title = "Halo pulses every cooldown"
+description = "Halo pulses on the first playing tick it is held and on every tick its timer is due, each pulse damaging every enemy whose circle overlaps the aura; amount is ignored."
+[[review.categories.items]]
+id = "halo-radius-per-tick"
+title = "Halo's radius follows its level and areaMul each tick"
+description = "The aura's radius in a snapshot is the current level's table radius × areaMul, changing on the tick after a Halo or Glass level is gained."
+[[review.categories.items]]
+id = "halo-table"
+title = "Halo honors its level table"
+description = "At level 1 the aura is damage 3, pulse 1, radius 80; at level 8 it is damage 8, pulse 0.6, radius 120, as HALO_LEVELS gives."
+[[review.categories.items]]
+id = "oil-scatter"
+title = "Oil Splash scatters puddles at random near the player"
+description = "On firing, amount puddles land at independent uniformly random points within OIL_SCATTER (400) of the player and stay where they landed for their duration."
+[[review.categories.items]]
+id = "oil-fires-alone"
+title = "Oil Splash fires whether or not any enemy exists"
+description = "Oil Splash's puddles land on an empty field, with no target required."
+[[review.categories.items]]
+id = "oil-pulse"
+title = "A puddle pulses every OIL_PULSE"
+description = "A puddle damages every enemy overlapping it on the tick it appears and on every OIL_PULSE (0.3) interval of ticks after, for its life."
+[[review.categories.items]]
+id = "oil-table"
+title = "Oil Splash honors its level table"
+description = "At level 1 a puddle is damage 4, cooldown 3, radius 50, duration 2.5, amount 1; at level 8 it is damage 8, cooldown 2, radius 70, duration 4, amount 4, as OIL_SPLASH_LEVELS gives."
+[[review.categories.items]]
+id = "spark-random-target"
+title = "Spark strikes random enemies within SPARK_RANGE"
+description = "Each strike lands on a distinct enemy chosen uniformly at random among those within SPARK_RANGE (600) of the player, fewer if fewer exist."
+[[review.categories.items]]
+id = "spark-none-in-range"
+title = "Spark restarts its cooldown with nothing in range"
+description = "With enemies alive but none within SPARK_RANGE (600), Spark fires nothing and its timer is set to its current cooldown."
+[[review.categories.items]]
+id = "spark-splash"
+title = "A strike splashes over its area"
+description = "A strike deals damage to its target and to every other enemy within area of the target's center on the tick it lands."
+[[review.categories.items]]
+id = "spark-no-lingering-hitbox"
+title = "A strike damages nothing after landing"
+description = "A strike zone holds SPARK_FLASH (0.2) and deals no damage on any tick after the one it landed on."
+[[review.categories.items]]
+id = "spark-table"
+title = "Spark honors its level table"
+description = "At level 1 a strike is damage 15, cooldown 2, area 40, amount 1; at level 8 it is damage 40, cooldown 1.4, area 70, amount 4, as SPARK_LEVELS gives."
+[[review.categories.items]]
+id = "shard-aims"
+title = "A shard flies toward the nearest enemy or the facing direction"
+description = "A shard leaves the player's center toward the nearest enemy, or in the facing direction when no enemy exists, so Shard fires on an empty field."
+[[review.categories.items]]
+id = "shard-bounces"
+title = "A shard bounces off the edges of the view"
+description = "When a shard's center would leave the 1280 × 720 view centered on the player's position of that tick, that velocity component reverses and the position clamps to the edge."
+[[review.categories.items]]
+id = "shard-rehit"
+title = "A shard re-hits every SHARD_REHIT"
+description = "A shard has infinite pierce and damages a given enemy at most once per SHARD_REHIT (0.5), re-hitting on exactly that interval while overlapping."
+[[review.categories.items]]
+id = "shard-spread"
+title = "Shards spread by SHARD_SPREAD"
+description = "Amount n shards fire on the same tick with directions rotated by (i − (n − 1) / 2) × SHARD_SPREAD (15) degrees."
+[[review.categories.items]]
+id = "shard-table"
+title = "Shard honors its level table"
+description = "At level 1 a shard is damage 8, cooldown 2.5, speed 500, radius 8, duration 3, amount 1; at level 8 it is damage 20, cooldown 1.8, speed 600, radius 10, duration 5, amount 3, as SHARD_LEVELS gives."
+[[review.categories.items]]
+id = "sconce-decel-return"
+title = "A sconce decelerates and comes back past its launch point"
+description = "A sconce launches toward the nearest enemy at speed under constant acceleration −SCONCE_DECEL (600) along its launch direction, reverses at speed / 600 seconds, and returns past its launch point for its duration."
+[[review.categories.items]]
+id = "sconce-rehit"
+title = "A sconce re-hits every SCONCE_REHIT"
+description = "A sconce has infinite pierce and damages a given enemy at most once per SCONCE_REHIT (0.5), re-hitting on exactly that interval while overlapping."
+[[review.categories.items]]
+id = "sconce-spread"
+title = "Sconces spread by SCONCE_SPREAD"
+description = "Amount n sconces launch on the same tick with directions rotated by (i − (n − 1) / 2) × SCONCE_SPREAD (20) degrees."
+[[review.categories.items]]
+id = "sconce-table"
+title = "Sconce honors its level table"
+description = "At level 1 a sconce is damage 12, cooldown 2, speed 600, radius 12, duration 2.5, amount 1; at level 8 it is damage 30, cooldown 1.4, radius 16, amount 4, as SCONCE_LEVELS gives."
+[[review.categories.items]]
+id = "flare-all-in-radius"
+title = "Flare hits every enemy within its radius"
+description = "On firing, every enemy whose center is within radius of the player takes damage on that tick, and amount is ignored."
+[[review.categories.items]]
+id = "flare-burst-drawn"
+title = "Flare's burst is drawn for FLARE_FLASH"
+description = "A burst zone holds FLARE_FLASH (0.4), is drawn for that long, and deals no damage on any tick after the one it fired on."
+[[review.categories.items]]
+id = "flare-fires-alone"
+title = "Flare fires whether or not any enemy exists"
+description = "Flare's cooldown runs and its burst fires on an empty field, with no target required."
+[[review.categories.items]]
+id = "flare-table"
+title = "Flare honors its level table"
+description = "At level 1 the burst is damage 100, cooldown 60, radius 640; at level 8 it is damage 500, cooldown 40, radius 640, as FLARE_LEVELS gives."
+[[review.categories.items]]
+id = "effects-at-hitbox"
+title = "Every weapon effect is drawn where its shape is"
+description = "Each of the sixteen weapons' effects is drawn over the live shape it damages, at the scaled size, for exactly as long as the zone or projectile exists."
+
+# --- Passives -------------------------------------------------------------------
+[[review.categories]]
+id = "passives"
+title = "Passives"
+[[review.categories.items]]
+id = "wick-damage"
+title = "Wick multiplies weapon damage"
+description = "Every weapon's damage per hit is its table damage × (1 + WICK_DAMAGE_PER_LEVEL (0.1) × wick level), a real number."
+[[review.categories.items]]
+id = "oil-cooldown"
+title = "Oil shortens every cooldown, floored at MIN_COOLDOWN"
+description = "Every weapon's cooldown, Halo's and Corona's pulse and Flare's burst interval included, is max(MIN_COOLDOWN (0.1), table cooldown × (1 − OIL_COOLDOWN_PER_LEVEL (0.08) × oil level)), read each time a timer is set."
+[[review.categories.items]]
+id = "glass-area"
+title = "Glass scales every weapon length when a shape is created"
+description = "Every radius, width, height, orbit, and area a weapon's table gives, projectile collision radii included, is the table value × (1 + GLASS_AREA_PER_LEVEL (0.1) × glass level) read when the shape is created, and a Glass level gained afterward leaves a live projectile, puddle, slash, or Lantern set as it was."
+[[review.categories.items]]
+id = "glass-area-permanent"
+title = "Glass resizes the auras and Chandelier every tick"
+description = "The Halo or Corona aura's radius and a Chandelier lantern's orbit and radius follow the areaMul in force on each tick, changing on the tick after a Glass level is gained."
+[[review.categories.items]]
+id = "brass-armor"
+title = "Brass adds flat armor"
+description = "armor is BRASS_ARMOR_PER_LEVEL (1) × brass level, up to Brass's max level 3, and reduces every contact hit as specs/world.md states."
+[[review.categories.items]]
+id = "mirror-amount"
+title = "Mirror adds to every amount"
+description = "Every weapon with an amount fires table amount + MIRROR_AMOUNT_PER_LEVEL (1) × mirror level projectiles, puddles, strikes, or lanterns, while Halo, Corona, and Flare ignore it and Taper and Pyre cap at 2."
+[[review.categories.items]]
+id = "bellows-speed"
+title = "Bellows multiplies move speed"
+description = "moveSpeed is MOVE_SPEED (180) × (1 + BELLOWS_SPEED_PER_LEVEL (0.1) × bellows level), with diagonal speed still equal to cardinal."
+[[review.categories.items]]
+id = "tallow-hp"
+title = "Tallow raises max health and current health together"
+description = "maxHp is BASE_MAX_HP (100) + TALLOW_HP_PER_LEVEL (15) × tallow level, and each Tallow level gained raises hp by 15 on the same tick, through whichever path grants it."
+[[review.categories.items]]
+id = "tinder-recovery"
+title = "Tinder adds continuous recovery"
+description = "recovery is BASE_RECOVERY (0) + TINDER_RECOVERY_PER_LEVEL (0.5) × tinder level health per second, applied every tick and capped at maxHp."
+[[review.categories.items]]
+id = "soot-xp"
+title = "Soot multiplies experience from gems"
+description = "A collected gem adds GEM_VALUES[tier] × (1 + SOOT_XP_PER_LEVEL (0.1) × soot level) experience, a real number."
+[[review.categories.items]]
+id = "lure-pickup"
+title = "Lure widens the pickup radius"
+description = "pickupRadius is PICKUP_RADIUS (48) × (1 + LURE_PICKUP_PER_LEVEL (0.25) × lure level), read on every tick, so a gem outside the base radius is attracted on the first tick Lure brings it inside."
+[[review.categories.items]]
+id = "passive-max-levels"
+title = "Each passive stops at its max level"
+description = "Wick, Oil, Glass, Bellows, Tallow, Tinder, Soot, and Lure level to 5, Brass to 3, and Mirror to 2, as PASSIVES gives, and a passive at its max is never offered again."
+[[review.categories.items]]
+id = "speed-duration-fixed"
+title = "Projectile speed and duration are never modified"
+description = "Every projectile's speed and duration, every re-hit and pulse interval, and every spread and scatter distance are used as written at every passive level."
+
+# --- Progression ----------------------------------------------------------------
+[[review.categories]]
+id = "progression"
+title = "Progression"
+[[review.categories.items]]
+id = "xp-curve"
+title = "The experience curve is XP_BASE + XP_STEP × (level − 1)"
+description = "Leaving level 1 takes XP_BASE (5) experience, level 2 takes 15, level 3 takes 25, and so on by XP_STEP (10), so 500 collected experience reaches level 11."
+[[review.categories.items]]
+id = "overflow-carries"
+title = "Overflow experience carries into the next level"
+description = "When xp reaches xpToNext, xp falls by xpToNext and level rises by 1, and the remainder counts toward the next level."
+[[review.categories.items]]
+id = "multiple-levelups-queue"
+title = "One gem can queue several level-ups"
+description = "A gain that crosses several thresholds at once raises the level that many times and queues that many level-ups in pendingLevelUps."
+[[review.categories.items]]
+id = "overlay-same-tick"
+title = "The level-up overlay opens on the tick the first level-up queues"
+description = "A playing tick that ends with pendingLevelUps above 0 runs to completion and opens the levelup overlay with menuIndex 0, freezing the world exactly as that tick left it."
+[[review.categories.items]]
+id = "chest-before-levelup"
+title = "A chest collected on a level-up tick opens first"
+description = "A tick that both collects a chest and queues a level-up opens the chest overlay, and the level-up overlay opens at the end of the next playing tick."
+[[review.categories.items]]
+id = "pool-held-items"
+title = "The pool offers +1 level on held items below max"
+description = "Every held base weapon below MAX_WEAPON_LEVEL (8) and every held passive below its own max level is a candidate, as a +1 level offer."
+[[review.categories.items]]
+id = "pool-new-weapons"
+title = "The pool offers new base weapons only while a weapon slot is free"
+description = "With a weapon slot free, every base weapon not held whose evolution is not held is a candidate; with all WEAPON_SLOTS (6) filled, no new weapon is offered."
+[[review.categories.items]]
+id = "pool-new-passives"
+title = "The pool offers new passives only while a passive slot is free"
+description = "With a passive slot free, every passive not held is a candidate; with all PASSIVE_SLOTS (6) filled, no new passive is offered."
+[[review.categories.items]]
+id = "pool-excludes-evolved"
+title = "Evolved weapons and their bases are never candidates"
+description = "An evolved weapon is never offered, and while it is held the base weapon it came from is not a candidate either."
+[[review.categories.items]]
+id = "offers-three-distinct"
+title = "An overlay offers OFFER_COUNT distinct candidates"
+description = "Each overlay presents OFFER_COUNT (3) distinct candidates drawn uniformly at random without replacement, and every candidate of a pool smaller than 3."
+[[review.categories.items]]
+id = "pool-recomputed"
+title = "A queued second overlay draws from a fresh pool"
+description = "When level-ups remain queued after a choice, the next overlay opens immediately with a pool computed from the slots as the acceptance left them."
+[[review.categories.items]]
+id = "lamp-oil-fallback"
+title = "An empty pool offers lamp-oil alone"
+description = "When no candidate exists the overlay offers exactly one item, lamp-oil, tagged NEW, which heals LAMP_OIL_HEAL (30) capped at maxHp and fills no slot."
+[[review.categories.items]]
+id = "offer-tags"
+title = "Each offer shows icon, name, and NEW or LEVEL n"
+description = "Every offer shows the item's produced icon, its display name, and OFFER_NEW_TEXT (NEW) for an item not held or LEVEL_LABEL (LEVEL) with the level it would become."
+[[review.categories.items]]
+id = "accept-new-item"
+title = "Accepting a new item fills the first free slot at level 1"
+description = "A new weapon or passive enters the first free slot of its kind at level 1, and a new weapon's cooldown timer starts at 0."
+[[review.categories.items]]
+id = "accept-level"
+title = "Accepting a held item raises it one level"
+description = "A held item's level rises by 1, its table row and derived-stat terms read the new level from the next tick, and a weapon's running timer keeps counting."
+[[review.categories.items]]
+id = "overlay-navigation"
+title = "The overlay is navigated with wrap and confirm"
+description = "up and down move the highlight with wrap at both ends, confirm accepts the highlighted offer, and back and pause do nothing on the overlay."
+[[review.categories.items]]
+id = "slots-limit"
+title = "Slots hold six weapons and six passives in acquisition order"
+description = "weapons and passives each fill in slot order to WEAPON_SLOTS (6) and PASSIVE_SLOTS (6), and an item keeps its slot for the run."
+
+# --- Evolutions -----------------------------------------------------------------
+[[review.categories]]
+id = "evolutions"
+title = "Evolutions"
+[[review.categories.items]]
+id = "recipe-eligibility"
+title = "A recipe needs the maxed base plus its passive at any level"
+description = "A base weapon evolves only when held at MAX_WEAPON_LEVEL (8) with its recipe passive held at any level and a chest is opened; a weapon below 8 or without its passive stays as it is."
+[[review.categories.items]]
+id = "chest-first-in-slot-order"
+title = "A chest evolves the first eligible weapon in slot order"
+description = "Opening a chest checks the held weapons first slot first and evolves the first eligible one only, so one chest evolves at most one weapon."
+[[review.categories.items]]
+id = "evolved-takes-slot"
+title = "An evolved weapon replaces its base in the same slot"
+description = "The evolved weapon takes the base's slot with level 1, and the base weapon is gone from the loadout."
+[[review.categories.items]]
+id = "evolved-timer-zero"
+title = "An evolved weapon's timer starts at 0"
+description = "The evolved weapon's cooldown timer is 0 on evolution, so it fires on the first playing tick it is held."
+[[review.categories.items]]
+id = "recipe-passive-kept"
+title = "The recipe passive stays held"
+description = "After an evolution the recipe passive is still in its slot at its level."
+[[review.categories.items]]
+id = "chest-fallback-level"
+title = "A chest with nothing eligible levels a random held item"
+description = "When no weapon is eligible the chest grants one level to a uniformly random held weapon below 8 or passive below its max, and chestResult reports the item and the level it became."
+[[review.categories.items]]
+id = "chest-fallback-heal"
+title = "A chest with nothing to level heals CHEST_HEAL"
+description = "When no held item is below its max the chest heals CHEST_HEAL (30) capped at maxHp and chestResult reports the heal."
+[[review.categories.items]]
+id = "pyre"
+title = "Pyre: Taper's slash on both sides that heals per hit"
+description = "Pyre (Taper at 8 plus Wick) slashes 200 × 60 on both sides every firing at damage 60 and cooldown 1.2, and each enemy hit heals the lamplighter PYRE_HEAL (1), capped at maxHp."
+[[review.categories.items]]
+id = "beacon"
+title = "Beacon: Ember's bolt, fast and piercing"
+description = "Beacon (Ember at 8 plus Oil) fires at the nearest enemy every 0.25 seconds: damage 20, speed 500, radius 10, pierce 2, duration 2, amount 1 plus amountBonus, as BEACON_STATS gives."
+[[review.categories.items]]
+id = "hail"
+title = "Hail: Pin's dart in a fan of six"
+description = "Hail (Pin at 8 plus Mirror) fires 6 plus amountBonus darts in the facing direction spread by PIN_SPREAD: damage 15, cooldown 0.5, speed 700, radius 7, pierce 3, duration 1.5, as HAIL_STATS gives."
+[[review.categories.items]]
+id = "chandelier"
+title = "Chandelier: Lantern's orbit made permanent"
+description = "Chandelier (Lantern at 8 plus Glass) keeps 4 plus amountBonus lanterns of radius 20 on an orbit of 120 at all times with ttl null and its timer at 0, at damage 25 and re-hit LANTERN_REHIT (0.5), as CHANDELIER_STATS gives."
+[[review.categories.items]]
+id = "chandelier-respaces"
+title = "Chandelier replaces its lanterns when amount changes"
+description = "On the tick Chandelier's amount changes, its lantern zones are replaced by amount new zones with fresh ids and empty hits, evenly spaced from the angle the lowest-id lantern held."
+[[review.categories.items]]
+id = "corona"
+title = "Corona: Halo's aura that heals per kill"
+description = "Corona (Halo at 8 plus Tinder) pulses a radius-150 aura every 0.5 seconds for 12 damage, keeps the hum, and heals the lamplighter CORONA_HEAL (1) per enemy a pulse kills, as CORONA_STATS gives."
+[[review.categories.items]]
+id = "corona-new-zone"
+title = "Corona replaces the Halo aura zone"
+description = "On the first playing tick after Halo evolves, the aura zone with weapon halo is gone and one with weapon corona and a fresh id is present."
+[[review.categories.items]]
+id = "blaze"
+title = "Blaze: Oil Splash's puddles, five at a time"
+description = "Blaze (Oil Splash at 8 plus Soot) scatters 5 plus amountBonus puddles of radius 70 every 2 seconds, each lasting 4 seconds and dealing 8 every BLAZE_PULSE (0.2), as BLAZE_STATS gives."
+[[review.categories.items]]
+id = "passives-apply-to-evolved"
+title = "Passives still apply to evolved weapons"
+description = "damageMul, cooldownMul, areaMul, and amountBonus apply to an evolved weapon's fixed row exactly as to a base weapon's table row."
+[[review.categories.items]]
+id = "evolved-never-leveled"
+title = "An evolved weapon is never leveled further"
+description = "An evolved weapon has a single level, is never a level-up offer, and is never the item a chest's fallback levels."
+
+# --- Enemies and the spawn director ---------------------------------------------
+[[review.categories]]
+id = "enemies"
+title = "Enemies and the spawn director"
+[[review.categories.items]]
+id = "moth"
+title = "Moth: 5 hp, speed 100, damage 5, radius 10"
+description = "A moth spawns with the ENEMIES row for moth."
+[[review.categories.items]]
+id = "bat"
+title = "Bat: 8 hp, speed 140, damage 5, radius 10"
+description = "A bat spawns with the ENEMIES row for bat."
+[[review.categories.items]]
+id = "rat"
+title = "Rat: 15 hp, speed 120, damage 8, radius 12"
+description = "A rat spawns with the ENEMIES row for rat."
+[[review.categories.items]]
+id = "gnat"
+title = "Gnat: 2 hp, speed 160, damage 3, radius 8"
+description = "A gnat spawns with the ENEMIES row for gnat."
+[[review.categories.items]]
+id = "beetle"
+title = "Beetle: 25 hp, speed 60, damage 10, radius 14"
+description = "A beetle spawns with the ENEMIES row for beetle."
+[[review.categories.items]]
+id = "wisp"
+title = "Wisp: 12 hp, speed 90, damage 6, radius 10"
+description = "A wisp spawns with the ENEMIES row for wisp."
+[[review.categories.items]]
+id = "spider"
+title = "Spider: 40 hp, speed 80, damage 12, radius 14"
+description = "A spider spawns with the ENEMIES row for spider."
+[[review.categories.items]]
+id = "crow"
+title = "Crow: 30 hp, speed 150, damage 10, radius 12"
+description = "A crow spawns with the ENEMIES row for crow."
+[[review.categories.items]]
+id = "shade"
+title = "Shade: 60 hp, speed 70, damage 15, radius 16"
+description = "A shade spawns with the ENEMIES row for shade."
+[[review.categories.items]]
+id = "hound"
+title = "Hound: 120 hp, speed 110, damage 20, radius 18"
+description = "A hound spawns with the ENEMIES row for hound."
+[[review.categories.items]]
+id = "mothwing"
+title = "Mothwing: 600 hp, speed 90, damage 20, radius 28"
+description = "A mothwing spawns with the ENEMIES row for mothwing, its hp exactly 600 and unscaled."
+[[review.categories.items]]
+id = "owl"
+title = "Owl: 2000 hp, speed 100, damage 30, radius 36"
+description = "An owl spawns with the ENEMIES row for owl, its hp exactly 2000 and unscaled."
+[[review.categories.items]]
+id = "dark"
+title = "The Dark: 10000 hp, speed 170, damage 50, radius 40"
+description = "The Dark spawns with the ENEMIES row for dark, its hp exactly 10000 and unscaled."
+[[review.categories.items]]
+id = "chase-recomputes-heading"
+title = "A chaser re-aims at the lamplighter every tick"
+description = "A chasing enemy's heading is the unit vector from its center to the lamplighter's center, recomputed on every tick before it steps speed × TICK_DT along it, so it turns as the lamplighter moves."
+[[review.categories.items]]
+id = "gnat-drift"
+title = "A gnat keeps the heading it spawned with"
+description = "A gnat advances speed × TICK_DT along its spawn heading on every tick and never re-targets, so one that misses flies on until it despawns."
+[[review.categories.items]]
+id = "wisp-weave"
+title = "A wisp weaves beside its chasing anchor"
+description = "A wisp's anchor chases the lamplighter and its position is the anchor plus the perpendicular (heading rotated +90 degrees) times WISP_AMPLITUDE (40) × sin(2π × age / WISP_PERIOD (1))."
+[[review.categories.items]]
+id = "small-gem-drops"
+title = "Moth, bat, rat, and gnat drop a small gem"
+description = "Each of the four small-gem rows drops one small gem at its center on the tick it dies."
+[[review.categories.items]]
+id = "medium-gem-drops"
+title = "Beetle, wisp, spider, crow, and shade drop a medium gem"
+description = "Each of the five medium-gem rows drops one medium gem at its center on the tick it dies."
+[[review.categories.items]]
+id = "large-gem-drops"
+title = "A hound drops a large gem"
+description = "A hound drops one large gem at its center on the tick it dies."
+[[review.categories.items]]
+id = "elite-drops-chest"
+title = "Mothwing and the Owl drop a chest"
+description = "A mothwing or an owl drops one chest at its center on the tick it dies, and no gem."
+[[review.categories.items]]
+id = "dark-drops-nothing"
+title = "The Dark drops nothing"
+description = "The Dark's death leaves no gem, no chest, no bread, and no draft."
+[[review.categories.items]]
+id = "elites-never-despawn"
+title = "Elites and the Dark never despawn by distance"
+description = "A mothwing, an owl, and the Dark stay on the field farther than DESPAWN_DISTANCE (1200) from the lamplighter."
+[[review.categories.items]]
+id = "dark-flare-immune"
+title = "The Dark is immune to Flare"
+description = "A Flare burst deals the Dark no damage, as FLARE_IMMUNE lists, while every other weapon damages it as any enemy."
+[[review.categories.items]]
+id = "hp-scaling"
+title = "Common health scales by HP_SCALE_PER_MINUTE at spawn"
+description = "A common enemy spawns with maxHp = row hp × (1 + HP_SCALE_PER_MINUTE (0.15) × floor(time / 60)), a real number kept for its life whatever the clock does afterward."
+[[review.categories.items]]
+id = "spawn-ring"
+title = "Spawns land on the ring at SPAWN_DISTANCE"
+description = "A director spawn lands exactly SPAWN_DISTANCE (760) from the lamplighter's center at a uniformly random angle."
+[[review.categories.items]]
+id = "despawn"
+title = "Commons beyond DESPAWN_DISTANCE are removed"
+description = "A common enemy, gnats included, farther than DESPAWN_DISTANCE (1200) from the lamplighter is removed with no gem, no kill, and no cue."
+[[review.categories.items]]
+id = "window-table"
+title = "Each window spawns its types at its interval"
+description = "In window min(19, floor(time / SPAWN_WINDOW (30))) the director spawns one enemy of a type chosen uniformly from that window's types every interval seconds, from moths every 1.0 second in window 0 to hound, shade, spider every 0.1 in window 19, as SPAWN_WINDOWS gives."
+[[review.categories.items]]
+id = "spawn-timer-resets"
+title = "The spawn timer is 0 at run start and on every window change"
+description = "A spawn lands on the first tick of a run and on the first tick of every window, then every interval seconds between."
+[[review.categories.items]]
+id = "spawn-cap"
+title = "The cap holds the timer's spawns"
+description = "With aliveCommons, the live commons other than gnats, at or above the window's cap, the timer rests at 0 and no window spawn lands until there is room."
+[[review.categories.items]]
+id = "outside-the-cap"
+title = "Gnats, elites, and the Dark stand outside the cap"
+description = "Gnats, mothwings, the Owl, and the Dark are never counted in aliveCommons and spawn whether or not the cap is full."
+[[review.categories.items]]
+id = "gnat-swarm"
+title = "A gnat swarm lines up and drifts across the lamplighter"
+description = "At 1:00, 4:00, and 7:00, SWARM_SIZE (24) gnats spawn at once, evenly spaced along a SWARM_LINE (720) line centered SPAWN_DISTANCE from the lamplighter perpendicular to a random direction d, all heading −d."
+[[review.categories.items]]
+id = "elite-events"
+title = "Mothwings arrive at 2:00 and 5:00 and the Owl at 7:30"
+description = "A mothwing spawns at a spawn point on the exact tick of 2:00 and again at 5:00 whether or not the first lives, and an owl at 7:30, each once per run."
+[[review.categories.items]]
+id = "dark-event"
+title = "The Dark arrives at 9:00"
+description = "The Dark spawns at a spawn point on the exact tick of 9:00, once per run, and pursues the lamplighter until dawn."
+[[review.categories.items]]
+id = "events-only-with-director"
+title = "Scripted events fire only while the director runs"
+description = "Every event in EVENTS fires on exactly its tick and only while autoSpawn is true, is recorded in firedEvents, and never fires twice."
+[[review.categories.items]]
+id = "auto-spawn-off"
+title = "Turning the director off stops spawns and events"
+description = "With autoSpawn false no window spawn and no scripted event fires, nothing already alive is removed, and turning it back on resumes where the timer and fired events stand."
+
+# --- Gems and pickups -----------------------------------------------------------
+[[review.categories]]
+id = "pickups"
+title = "Gems and pickups"
+[[review.categories.items]]
+id = "gem-values"
+title = "Gem tiers are worth GEM_VALUES"
+description = "A collected small gem adds 1, a medium 3, and a large 10 experience before Soot, as GEM_VALUES gives."
+[[review.categories.items]]
+id = "gem-attract"
+title = "A gem within the pickup radius becomes attracted"
+description = "A gem whose center is within pickupRadius (PICKUP_RADIUS (48) with no Lure) of the lamplighter becomes attracted on that tick and stays attracted."
+[[review.categories.items]]
+id = "gem-flight"
+title = "An attracted gem flies at GEM_SPEED"
+description = "An attracted gem moves GEM_SPEED (600) × TICK_DT toward the lamplighter's center on every tick."
+[[review.categories.items]]
+id = "gem-stops-at-center"
+title = "An attracted gem stops at the lamplighter's center"
+description = "An attracted gem closer than one tick's flight to the lamplighter's center lands on the center rather than passing it."
+[[review.categories.items]]
+id = "gem-collect"
+title = "A gem collects at COLLECT_RADIUS"
+description = "A gem is removed and its experience added on the tick, after it moves, on which it is within COLLECT_RADIUS (8) of the lamplighter's center."
+[[review.categories.items]]
+id = "chest-collect"
+title = "A chest is collected on contact"
+description = "A chest is collected on the tick the distance between its center and the lamplighter's is less than PICKUP_ITEM_RADIUS (16) plus PLAYER_RADIUS, at every Lure level."
+[[review.categories.items]]
+id = "chest-opens-overlay"
+title = "Collecting a chest opens the chest overlay"
+description = "The tick that collects a chest runs to completion and ends with screen chest and chestResult set."
+[[review.categories.items]]
+id = "one-chest-per-tick"
+title = "One chest is collected per tick"
+description = "When two chests meet the collection condition on one tick, the lowest-id chest alone is collected and the other waits for the next playing tick."
+[[review.categories.items]]
+id = "bread-heals"
+title = "Bread heals BREAD_HEAL on contact"
+description = "Collecting bread heals BREAD_HEAL (30) capped at maxHp."
+[[review.categories.items]]
+id = "draft-attracts-all"
+title = "A draft attracts every gem on the field"
+description = "Collecting a draft makes every gem on the field attracted at once."
+[[review.categories.items]]
+id = "drop-draws"
+title = "A common kill draws for bread, then for a draft"
+description = "Each common kill draws once from the seeded generator for bread with probability BREAD_CHANCE (0.02) and, only when bread did not drop, once more for a draft with DRAFT_CHANCE (0.005), so at most one of the two drops beside the gem."
+[[review.categories.items]]
+id = "pickups-persist"
+title = "Gems and pickups never despawn"
+description = "A gem or pickup stays on the field at any distance until it is collected."
+
+# --- Screens --------------------------------------------------------------------
+[[review.categories]]
+id = "screens"
+title = "Screens"
+[[review.categories.items]]
+id = "title-copy"
+title = "The title screen shows its copy and menu"
+description = "The game opens on TITLE_TEXT (WICK), TAGLINE_TEXT (KEEP THE LIGHT), and TITLE_ITEMS (LIGHT THE LAMP, HOW TO PLAY) with menuIndex 0."
+[[review.categories.items]]
+id = "title-navigation"
+title = "The title menu wraps and confirms"
+description = "On title, up and down move the highlight with wrap at both ends, confirm takes the highlighted item, and back does nothing."
+[[review.categories.items]]
+id = "howto-screen"
+title = "The how-to screen explains the game"
+description = "HOW TO PLAY says, in a player's words, that only movement is steered, that tools fire on their own, that gems level the lamp with a choice of one from three, the six tool and six trinket slots, chests transforming a maxed tool beside its trinket, dawn at 10:00, and the controls with their key names."
+[[review.categories.items]]
+id = "howto-back"
+title = "back leaves the how-to screen"
+description = "back on howto returns to title with menuIndex 0."
+[[review.categories.items]]
+id = "hud-health"
+title = "The HUD shows health as a bar with numbers"
+description = "A bar filled to hp / maxHp with both numbers beside it is legible over the world."
+[[review.categories.items]]
+id = "hud-experience"
+title = "The HUD shows experience with the level"
+description = "A bar filled to xp / xpToNext, labeled LEVEL_LABEL (LEVEL) and the current level, is legible over the world."
+[[review.categories.items]]
+id = "hud-clock"
+title = "The HUD clock counts up as m:ss"
+description = "The run clock shows as m:ss from 0:00 in whole seconds with two-digit seconds, and reads 10:00 at dawn."
+[[review.categories.items]]
+id = "hud-kills"
+title = "The HUD shows the kill count"
+description = "The kill count is shown and rises by one on every enemy death."
+[[review.categories.items]]
+id = "hud-slots"
+title = "The HUD shows twelve slots in slot order"
+description = "WEAPON_SLOTS (6) and PASSIVE_SLOTS (6) slots show in slot order, each held item as its produced icon and an empty slot visibly empty."
+[[review.categories.items]]
+id = "hud-level-pips"
+title = "Each held item shows one pip per level"
+description = "Every held weapon and passive on the HUD shows exactly as many pips as its level."
+[[review.categories.items]]
+id = "hud-evolved-icon"
+title = "An evolved weapon's icon replaces its base's"
+description = "After an evolution the slot shows the evolved weapon's icon in place of the base weapon's."
+[[review.categories.items]]
+id = "hud-cooldowns"
+title = "Each weapon's cooldown state is readable"
+description = "Each weapon slot shows how much of its cooldown timer is still to run, from all of it on the tick it fires to none on the tick it fires again."
+[[review.categories.items]]
+id = "levelup-overlay"
+title = "The level-up overlay"
+description = "The overlay shows LEVEL_UP_TEXT (THE LAMP BURNS BRIGHTER) and the offers listed vertically over the frozen world, with the highlighted offer drawn distinctly."
+[[review.categories.items]]
+id = "chest-overlay"
+title = "The chest overlay"
+description = "The overlay shows CHEST_TEXT (A CHEST OPENS) and the result in chestResult (the evolved weapon's icon and name, the item leveled with its new level, or the heal) over the frozen world."
+[[review.categories.items]]
+id = "chest-overlay-confirm"
+title = "confirm alone closes the chest overlay"
+description = "On chest, confirm sets screen to playing and chestResult to null, and up, down, back, and pause do nothing."
+[[review.categories.items]]
+id = "paused-screen"
+title = "The pause screen"
+description = "pause on playing shows PAUSED_TEXT (PAUSED) over the held world with the HUD."
+[[review.categories.items]]
+id = "pause-resumes"
+title = "pause resumes from the pause screen"
+description = "pause on paused returns to playing with the world exactly as it was."
+[[review.categories.items]]
+id = "pause-abandons"
+title = "back on the pause screen abandons the run"
+description = "back on paused returns to title with menuIndex 0 and the idle run."
+[[review.categories.items]]
+id = "pause-inert-on-overlays"
+title = "pause does nothing on an overlay"
+description = "pause on levelup or chest leaves the screen as it is."
+[[review.categories.items]]
+id = "fallen-screen"
+title = "The fallen screen"
+description = "A run ending fallen shows FALLEN_TEXT (THE LIGHT WENT OUT), the time survived as m:ss, the level, the kills, and END_ITEMS (TRY AGAIN, TITLE) with menuIndex 0."
+[[review.categories.items]]
+id = "dawn-screen"
+title = "The dawn screen"
+description = "A run ending at dawn shows DAWN_TEXT (DAWN), the same figures, and the same menu."
+[[review.categories.items]]
+id = "end-try-again"
+title = "TRY AGAIN starts a fresh run"
+description = "On fallen and dawn, confirming TRY AGAIN starts a fresh run on playing."
+[[review.categories.items]]
+id = "end-title"
+title = "TITLE returns to the title screen"
+description = "On fallen and dawn, confirming TITLE returns to title with menuIndex 0."
+[[review.categories.items]]
+id = "end-back"
+title = "back on an end screen returns to the title"
+description = "On fallen and dawn, back does what TITLE does."
+[[review.categories.items]]
+id = "fresh-run-state"
+title = "A fresh run starts from the specified state"
+description = "LIGHT THE LAMP and TRY AGAIN each begin with the clock at 0:00, the lamplighter at the origin facing right with BASE_MAX_HP (100), level 1 with xp 0 and kills 0, Taper alone at level 1, and the director on with its timer at 0."
+[[review.categories.items]]
+id = "fresh-run-discards"
+title = "A fresh run discards the previous run"
+description = "Nothing alive or lying on the field, no offer, no queued level-up, and no chest result carries from the previous run into a fresh one."
+[[review.categories.items]]
+id = "menu-index-resets"
+title = "menuIndex is 0 on entering every screen"
+description = "Every arrival on any screen sets menuIndex to 0, and on a screen with no menu it stays 0."
+[[review.categories.items]]
+id = "mute-toggles"
+title = "Mute toggles from any screen"
+description = "The mute action toggles all sound from every screen, and muted mirrors the runtime's bit in the next snapshot."
+[[review.categories.items]]
+id = "mute-loop-returns"
+title = "A muted loop returns in place"
+description = "A loop running when mute is toggled on keeps looping silently and is audible again in place when toggled off."
+[[review.categories.items]]
+id = "mute-playable"
+title = "The game stays playable muted"
+description = "Every screen and every action works with sound muted."
+
+# --- Audio ----------------------------------------------------------------------
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "cue-hit"
+title = "hit plays when an enemy takes damage"
+description = "The hit cue plays on any tick an enemy takes damage, at most once on that tick."
+[[review.categories.items]]
+id = "cue-kill"
+title = "kill plays when an enemy dies"
+description = "The kill cue plays on any tick an enemy dies, at most once on that tick."
+[[review.categories.items]]
+id = "cue-gem"
+title = "gem plays when a gem is collected"
+description = "The gem cue plays on any tick a gem is collected, at most once on that tick."
+[[review.categories.items]]
+id = "cue-hurt"
+title = "hurt plays when the lamplighter takes damage"
+description = "The hurt cue plays on any tick the lamplighter takes contact damage, at most once on that tick."
+[[review.categories.items]]
+id = "cue-level-up"
+title = "level-up plays when a level-up overlay opens"
+description = "The level-up cue plays on each opening of the level-up overlay, a queued second overlay included."
+[[review.categories.items]]
+id = "cue-choose"
+title = "choose plays when an offer is accepted"
+description = "The choose cue plays on each accepted offer."
+[[review.categories.items]]
+id = "cue-chest"
+title = "chest plays when a chest overlay opens"
+description = "The chest cue plays on each opening of the chest overlay."
+[[review.categories.items]]
+id = "cue-evolve"
+title = "evolve plays when a weapon evolves"
+description = "The evolve cue plays on the tick a chest evolves a weapon, and not on a chest that levels or heals."
+[[review.categories.items]]
+id = "cue-pickup"
+title = "pickup plays for bread and a draft"
+description = "The pickup cue plays on collecting bread or a draft, and not on a gem or a chest."
+[[review.categories.items]]
+id = "cue-fallen"
+title = "fallen plays when the run ends fallen"
+description = "The fallen cue plays on the tick the run ends with the light out."
+[[review.categories.items]]
+id = "cue-dawn"
+title = "dawn plays when the run ends at dawn"
+description = "The dawn cue plays on the tick the run reaches DAWN_TIME."
+[[review.categories.items]]
+id = "cue-menu-move"
+title = "menu-move plays when a highlight moves"
+description = "The menu-move cue plays on every move of a menu highlight, on the title, the overlays, and the end screens."
+[[review.categories.items]]
+id = "cue-menu-confirm"
+title = "menu-confirm plays when a menu item is confirmed"
+description = "The menu-confirm cue plays on every confirmed menu item."
+[[review.categories.items]]
+id = "music-starts-on-run"
+title = "The music starts with a fresh run"
+description = "music is looping from the tick a fresh run starts."
+[[review.categories.items]]
+id = "music-through-overlays"
+title = "The music persists through overlays and pause"
+description = "music keeps looping through levelup, chest, and paused."
+[[review.categories.items]]
+id = "music-stops-on-end"
+title = "The music stops when the run ends"
+description = "music stops on the tick the run ends fallen or at dawn."
+[[review.categories.items]]
+id = "music-stops-on-abandon"
+title = "The music stops when a run is abandoned"
+description = "music stops when back on paused abandons the run."
+[[review.categories.items]]
+id = "music-silent-on-title"
+title = "The music is silent off the run"
+description = "music is not looping on title or howto."
+[[review.categories.items]]
+id = "hum-loop"
+title = "The hum loops exactly while Halo or Corona is held on playing"
+description = "hum is looping on every update exactly when screen is playing and a held weapon is halo or corona: it starts when both first hold, whether Halo was just acquired or play resumed, and stops when either stops holding."
+[[review.categories.items]]
+id = "cues-distinct"
+title = "The thirteen one-shot cues are distinct files"
+description = "Each of the thirteen one-shot cues is bound to a different produced file, and no two of those files are identical."
+
+# --- Presentation ---------------------------------------------------------------
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "stage-fit"
+title = "The stage is fitted and centered"
+description = "The whole STAGE_W x STAGE_H (1280 x 720) stage is inside the window at its own aspect ratio, centered, with even letterboxing in the stage background color, at any window size and pixel density."
+[[review.categories.items]]
+id = "lamplighter-reads"
+title = "The lamplighter is animated and faces its way"
+description = "The lamplighter at the stage center plays its walk cycle while moving, its idle sprite while still, and faces the way facing says."
+[[review.categories.items]]
+id = "enemies-distinguishable"
+title = "The thirteen enemies are told apart by form"
+description = "Each enemy type has its own silhouette, told apart from every other at a glance by form rather than hue alone, at about the size of its collision circle."
+[[review.categories.items]]
+id = "elites-larger"
+title = "The elites and the Dark read as larger"
+description = "Mothwing, the Owl, and the Dark read as larger and heavier than any common enemy."
+[[review.categories.items]]
+id = "evolved-effects-distinct"
+title = "An evolved weapon's effect is visibly distinct from its base's"
+description = "Pyre, Beacon, Hail, Chandelier, Corona, and Blaze each read at a glance as a transformed version of their base weapon's effect."
+[[review.categories.items]]
+id = "gems-by-size"
+title = "Gem tiers are told apart by size"
+description = "Small, medium, and large gems are distinguishable by size and form, small under medium under large."
+[[review.categories.items]]
+id = "pickups-distinct"
+title = "Chest, bread, and draft are told apart"
+description = "The three pickups are distinguishable from each other and from any gem."
+[[review.categories.items]]
+id = "overlays-quiet-world"
+title = "Overlays read over a quieted world"
+description = "The level-up overlay, the chest overlay, and the pause screen read over the frozen world beneath them, with that world visibly quieted."
+[[review.categories.items]]
+id = "text-legible"
+title = "Every piece of text is legible"
+description = "Screen copy, the HUD, offers, and menus are legible against whatever sits behind them at the logical stage size."
+
+# --- Produced assets ------------------------------------------------------------
+[[review.categories]]
+id = "produced-assets"
+title = "Produced assets"
+[[review.categories.items]]
+id = "lamplighter-sprites"
+title = "The lamplighter's walk sheet and idle sprite are produced"
+description = "A draw-sheet walk cycle of 4 to 6 frames and a draw idle sprite, about 24 x 32, are produced and the game animates the walk while moving."
+[[review.categories.items]]
+id = "common-enemy-sheets"
+title = "Each common enemy has a produced walk cycle"
+description = "Each of the ten common enemies has a draw-sheet walk cycle of 2 to 4 frames sized about twice its radius, and every enemy visibly walks on its frames for as long as it lives."
+[[review.categories.items]]
+id = "elite-sheets"
+title = "Mothwing and the Owl have produced walk cycles"
+description = "Mothwing (about 56 x 56) and the Owl (about 72 x 72) each have a draw-sheet walk cycle of 2 to 4 frames that plays while they live."
+[[review.categories.items]]
+id = "dark-sheet"
+title = "The Dark has a produced walk cycle"
+description = "The Dark has a draw-sheet walk cycle of 2 to 4 frames about 80 x 80 that plays while it lives."
+[[review.categories.items]]
+id = "death-puff"
+title = "A shared death puff plays once on every death"
+description = "A draw-sheet puff of 3 to 4 frames about 24 x 24 plays once through at the position an enemy died and is then gone, damaging nothing."
+[[review.categories.items]]
+id = "base-weapon-effects"
+title = "The ten base weapon effects are produced"
+description = "The slash, bolt, dart, lantern, aura ring, puddle, strike sheet, shard, spinning sconce sheet, and flare burst sheet are produced sprites drawn over their shapes, the strike and burst playing once over their flash time and the sconce spinning for its life."
+[[review.categories.items]]
+id = "evolved-weapon-effects"
+title = "The six evolved weapon effects are produced"
+description = "Pyre, Beacon, Hail, Chandelier, Corona, and Blaze each have a produced effect of the same form as its base's and distinct from it."
+[[review.categories.items]]
+id = "icons-produced"
+title = "The twenty-seven icons are produced"
+description = "Sixteen weapon icons, ten passive icons, and the lamp-oil icon, about 24 x 24 each, are produced draw sprites."
+[[review.categories.items]]
+id = "icons-distinct"
+title = "The icons are told apart at a glance"
+description = "Each of the twenty-seven icons is distinguishable from every other, and an evolved icon reads as a transformed version of its base's."
+[[review.categories.items]]
+id = "icons-drawn"
+title = "The HUD and overlays draw the produced icons"
+description = "Every held slot, every level-up offer, and the chest overlay's result show the item's produced icon."
+[[review.categories.items]]
+id = "gem-sprites"
+title = "The three gem sprites are produced"
+description = "Small, medium, and large gems are produced draw sprites about 8, 12, and 16 across."
+[[review.categories.items]]
+id = "pickup-sprites"
+title = "The chest, bread, and draft sprites are produced"
+description = "Chest, bread, and draft are produced draw sprites about 24 x 24."
+[[review.categories.items]]
+id = "ground-tile"
+title = "The ground tile is produced and tiles seamlessly"
+description = "A produced draw tile about 64 x 64 sits flush against itself on all four sides and is repeated in world space as the ground."
+[[review.categories.items]]
+id = "pixel-art-scale"
+title = "Sprites are drawn at one unit per pixel, sampled nearest-neighbor"
+description = "Every produced sprite stands as many units wide as it is pixels wide and is drawn with image smoothing off, so it stays crisp at the stage's fit."
+[[review.categories.items]]
+id = "produced-cues"
+title = "Every cue is a produced sound"
+description = "Each of the thirteen one-shot cues and the hum plays a produced .wav from sfx-synth or sfx-sample."
+[[review.categories.items]]
+id = "produced-music"
+title = "The music bed is produced with its .mid committed"
+description = "The music is a music-tool bed with its .mid committed beside the .wav, and the .wav's last and first samples are continuous."
+[[review.categories.items]]
+id = "hum-loops-cleanly"
+title = "The hum loops cleanly"
+description = "The hum's .wav is authored to loop, its last and first samples continuous."
+[[review.categories.items]]
+id = "assets-page-relative"
+title = "Produced files load page-relative and the build invokes no tool"
+description = "Every committed file is referenced relative to the page so the build runs from a sub-path, the built site fetches nothing outside its own dist/, and npm ci and npm run build invoke no asset tool."

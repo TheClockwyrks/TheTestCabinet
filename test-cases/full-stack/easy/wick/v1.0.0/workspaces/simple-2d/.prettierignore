@@ -1,0 +1,13 @@
+# Everything that is not authored source: installed packages, build output,
+# coverage reports, captured proof, the vendored engine and its documentation,
+# and the supplied specification.
+node_modules/
+/dist/
+/build/
+/out/
+coverage/
+proof/
+.tcab/
+package-lock.json
+engine/
+specs/

@@ -182,6 +182,11 @@ naming the cue. The engine reports every play regardless of the unlock state, so
 a cue check needs no gesture. Unlocking affects audibility, which a suite
 running in process has nothing to observe.
 
+A loop is checked the same way. `cue:looped` is broadcast once when a cue starts
+looping and `cue:stopped` once when it ends, so a check that a thruster hum
+starts with the key and ends with its release subscribes to both and asserts the
+order, or reads the bus directly through `world.audio.looping`.
+
 ## Other engine events
 
 `asset:loaded`, `asset:failed`, and `audio:unlocked` are subscribed to the same

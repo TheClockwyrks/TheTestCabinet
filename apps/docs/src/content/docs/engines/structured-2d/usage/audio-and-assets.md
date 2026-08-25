@@ -178,6 +178,33 @@ export class ArenaMode extends GameMode {
 Play a name that was defined or loaded. Playing any other name throws, so the
 run itself is what catches a typo.
 
+## Looping a cue
+
+`world.audio.loop` starts a cue sounding continuously and `world.audio.stop`
+ends it. Both act only on a transition, so drive a loop from the object's state
+on every tick rather than tracking whether it was started.
+
+```ts
+// A pawn holds its engine hum for as long as it is thrusting.
+import { Pawn } from "@test-cabinet/structured-2d";
+
+export class Ship extends Pawn {
+  thrusting = false;
+
+  tick(dt: number): void {
+    if (this.thrusting) this.world.audio.loop("thrust");
+    else this.world.audio.stop("thrust");
+    this.integrate(dt);
+  }
+}
+```
+
+A synthesized cue loops as a held tone at its `freq` and `gain`, and a
+file-backed cue loops its clip seamlessly, which is how a produced music bed is
+played from a game mode's `beginPlay`. `world.audio.looping("thrust")` reports
+whether the loop is running, and a loop keeps running across a level transition
+until a tick stops it.
+
 ## Muting
 
 Every touch layout carries a `mute` action. Read it from a player controller and
@@ -197,7 +224,9 @@ export class ShipController extends PlayerController {
 ```
 
 A muted cue still plays in every sense but audibility: the call succeeds and the
-`cue:played` event still fires, at a gain of zero.
+`cue:played` event still fires, at a gain of zero. A running loop follows the
+mute bit live, silenced by `setMuted(true)` and restored by `setMuted(false)`
+without restarting.
 
 ## Surfacing a failed load
 

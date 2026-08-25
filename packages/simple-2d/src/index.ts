@@ -392,6 +392,9 @@ export function createEngine<S, D = unknown>(
     },
     audio: {
       play: (cue): void => audio.play(cue),
+      loop: (cue): void => audio.loop(cue),
+      stop: (cue): void => audio.stop(cue),
+      looping: (cue): boolean => audio.looping(cue),
       setMuted: (muted): void => audio.setMuted(muted),
       muted: (): boolean => audio.muted(),
     },
@@ -686,6 +689,10 @@ export function createEngine<S, D = unknown>(
      * cleared, and the subscriptions go last: a handler typically closes over the
      * caller's own scene, and leaving the bus subscribed after teardown keeps that
      * scope alive and lets a stale handler observe a successor engine's events.
+     *
+     * The audio bus is silenced in between: a looping cue would otherwise outlive
+     * the engine that started it, sounding on a page whose game is gone. Silencing
+     * announces nothing, since the subscriptions are about to go with it.
      */
     destroy(): void {
       if (destroyed) return;
@@ -695,6 +702,7 @@ export function createEngine<S, D = unknown>(
       pointer.detach();
       target.removeEventListener("keydown", onOverlayKey);
       removeUnlockListeners();
+      audio.silence();
       bus.clear();
     },
   };

@@ -1,0 +1,175 @@
+# Wick — The assets you produce
+
+Wick ships with no pre-made art or sound. The machine this project is built on
+carries asset tools on its `PATH`, and the build produces every sprite, sheet,
+icon, and sound the game uses with them, commits the produced files, and wires
+them in. This file is the contract: what to produce, which tool produces it,
+and how the game consumes it.
+
+Production is a one-time step. The tools are development tools of this
+machine; the committed files are the assets, and the build bundles them, so
+`npm ci` and `npm run build` invoke no tool and the built site fetches nothing
+from outside its own `dist/`. Loading a produced file below states where the
+committed files live; their layout under it is yours.
+
+## The tools
+
+| Tool | Produces | Used for |
+| --- | --- | --- |
+| `draw` | a single sprite → one PNG | the still sprites: the idle lamplighter, the icons, the gems, the pickups, the ground tile, and the effects that hold one shape |
+| `draw-sheet` | a sprite sheet → one PNG per frame | everything that moves on its own: the walk cycles, the death puff, and the animated effects |
+| `sfx-synth` | a procedural sound → `.wav` | the cues |
+| `sfx-sample` | a sampled sound over a baked pack → `.wav` | the cues |
+| `music` | sequenced music over a baked bank → `.wav` + `.mid` | the music bed |
+
+Each is a command-line tool, and `<tool> --help` states its operations
+(`<tool> <operation> --help` for one operation's flags). In outline, each
+records the operations you run and then renders the finished file. `draw` and
+`draw-sheet` rasterize a fixed-size RGBA canvas from drawing operations;
+`draw-sheet` takes a `--frame` on each operation, so a sheet lands as separate
+files, one per frame, and it offers layers with keyframes, for a shape painted
+once and moved across the frames. The audio tools record voices, layers, or
+notes and render a PCM `.wav`. `sfx-sample` draws on a baked sample pack and
+`music` on a baked instrument bank, both browsed through their help; `music`
+emits a portable `.mid` beside the `.wav` you play, and both are committed.
+
+`particle-2d` is on the `PATH` as well. Wick plays no particle system, and any
+flourish beyond the produced sprites is drawn in code.
+
+## The sprites
+
+Every sprite is pixel art drawn at one unit per pixel, so a sprite `24` pixels
+wide stands `24` units wide in the world, and the game samples it
+nearest-neighbor (`imageSmoothingEnabled = false`) so it stays crisp at the
+stage's fit. The sizes below are the intent rather than a tolerance: each thing
+reads at its world scale, an enemy filling about its collision circle and the
+lamplighter standing a little taller than the enemies around it. Produce
+these:
+
+| Asset | Tool | Frames | Sized about |
+| --- | --- | --- | --- |
+| lamplighter walk | `draw-sheet` | `4` to `6` | `24 x 32` |
+| lamplighter idle | `draw` | `1` | `24 x 32` |
+| each of the ten common enemies, a walk cycle | `draw-sheet` | `2` to `4` each | twice its radius in `ENEMIES`, from `16` for a gnat to `36` for a hound |
+| mothwing | `draw-sheet` | `2` to `4` | `56 x 56` |
+| owl | `draw-sheet` | `2` to `4` | `72 x 72` |
+| the Dark | `draw-sheet` | `2` to `4` | `80 x 80` |
+| enemy death puff, shared by every enemy | `draw-sheet` | `3` to `4` | `24 x 24` |
+| the ten base weapon effects | `draw` / `draw-sheet` | as the table below | matched to the shape it damages |
+| the six evolved weapon effects | `draw` / `draw-sheet` | as their base | matched to the shape it damages |
+| the sixteen weapon icons, the ten passive icons, and the lamp-oil icon | `draw` | `1` each | `24 x 24` |
+| gems: small, medium, large | `draw` | `1` each | `8`, `12`, `16` |
+| chest, bread, draft | `draw` | `1` each | `24 x 24` |
+| ground tile | `draw` | `1` | `64 x 64` |
+
+Every enemy is told from every other at a glance, by silhouette and not by hue
+alone, and the two elites and the Dark read as larger and heavier than the
+commons. The three gem tiers are told apart by size and form. The ground tile
+sits flush against itself on all four sides, since the ground is that tile
+repeated across the world.
+
+### The weapon effects
+
+Each weapon has one effect the game draws wherever the weapon's shape is live,
+as `specs/weapons.md` and `specs/evolutions.md` define that shape. Produce each
+effect at about its weapon's level-`1` size and scale it in code to the live
+shape, which `areaMul` and later levels grow.
+
+| Effect | Weapon | Form | Drawn over |
+| --- | --- | --- | --- |
+| slash | Taper | one sprite | the `width x height` rectangle, for `SLASH_FLASH` (`0.1`) seconds |
+| bolt | Ember | one sprite | the bolt's circle, for its life |
+| dart | Pin | one sprite | the dart's circle, for its life |
+| lantern | Lantern | one sprite | each lantern's circle, for its life |
+| aura ring | Halo | one sprite, a ring | the aura's radius, always, with its pulse readable |
+| puddle | Oil Splash | one sprite | the puddle's circle, for its life |
+| strike | Spark | a sheet, played once | the strike's `area`, for `SPARK_FLASH` (`0.2`) seconds |
+| shard | Shard | one sprite | the shard's circle, for its life |
+| sconce | Sconce | a sheet, spinning | the sconce's circle, for its life |
+| flare burst | Flare | a sheet, played once | the burst's radius, for `FLARE_FLASH` (`0.4`) seconds |
+
+Each of the six evolved weapons, Pyre, Beacon, Hail, Chandelier, Corona, and
+Blaze, has an effect of the same form as its base's and visibly distinct from
+it, so a player sees at a glance that the tool has transformed.
+
+### Animation
+
+A sheet's frames are separate PNG files the game animates, advancing the frame
+on a timer of your choosing so the motion reads at world scale. The lamplighter
+plays the walk cycle while moving and the idle sprite while still, and faces
+the way `facing` says: produce one facing and mirror it in code, or produce
+both. Each enemy loops its walk cycle for as long as it lives. The death puff
+plays once through at the position an enemy died and is then gone; it is a
+picture, and it damages nothing. The strike and the flare burst play once
+through over their flash time, and the sconce spins for its life.
+
+### The icons
+
+The twenty-seven icons are the items as a player knows them: the sixteen
+weapons, base and evolved, the ten passives, and lamp oil. Each is told from
+every other at a glance, and an evolved weapon's icon reads as a transformed
+version of its base's. The HUD's slots and the level-up and chest overlays draw
+them beside the names `specs/ui.md` states.
+
+## Loading a produced file
+
+Every produced file is loaded page-relative: the built site is served from a
+sub-path as well as from a root, and the project's Vite config already emits
+relative URLs.
+{{#if (eq engine.slug "none")}}
+Commit the files under `assets/`, import each PNG and `.wav` through the
+bundler (or resolve it with `new URL(..., import.meta.url)`), and use the URL
+that comes back.
+{{else}}
+Commit the files under `public/assets/`, which Vite serves at the engine's
+asset root `assets/` and copies into `dist/` unchanged, and load each image
+with `api.assets.loadImage` and each sound with `api.audio.load`, awaited in
+`initialize`, so every asset is decoded before the first frame; the engine's
+`assets.md` states the root and the path rules.
+{{/if}}
+
+Hold the decoded images and sounds in a module-level table filled once at
+load and read by rendering and the audio path. The game's state carries data
+alone, and the simulation reads no image.
+
+## The sound
+
+Produce a distinct sound for every cue `specs/ui.md` lists, with `sfx-synth`
+and/or `sfx-sample` as suits each: `hit`, `kill`, `gem`, `hurt`, `level-up`,
+`choose`, `chest`, `evolve`, `pickup`, `fallen`, `dawn`, `menu-move`,
+`menu-confirm`, and the `hum` that loops under Halo and Corona. Produce the
+`music` bed with `music`: a piece for the whole of a ten-minute night. `hum`
+and `music` are each authored to loop cleanly, the file's end running into its
+start with no click, no gap, and no jump in level.
+
+Play the `.wav`s keyed to the cues exactly as `specs/ui.md` states, through
+the runtime's audio path.
+{{#if (eq engine.slug "none")}}
+Decode each file with the Web Audio API and loop `music` and `hum` through a
+looping buffer source.
+{{else}}
+Bind each cue to its file with `api.audio.load` and loop `music` and `hum`
+through `api.audio.loop` and `api.audio.stop`.
+{{/if}}
+
+Sound reads the night's character, so hold it to the same bar as the sprites.
+`hit` and `gem` sound many times a second late in the night, so each is short
+and light; `kill` sits above `hit`; `hurt` is unmistakable in a crowd of the
+other cues; `fallen` and `dawn` carry weight; `hum` sits under the music; and
+the music bed stays welcome for the full ten minutes.
+
+## What is drawn in code
+
+Everything else on screen is drawn in code, with no produced file behind it:
+the HUD's bars, pips, clock, kill count, cooldown readout, and slot frames;
+every menu, overlay, and screen and all of their text; the ground, as the
+produced tile repeated in world space; and the debug overlay. The produced
+sprites sit in that scene; the scene itself is the build's.
+
+## Genuinely produced
+
+The assets are produced with these tools and wired into the game. Every moth,
+bolt, and gem on screen is a produced sprite, every enemy visibly walks on its
+produced frames, every slot and offer carries a produced icon, and every cue
+plays a produced sound. Everything the game shows and plays traces to a file
+produced here or to the chrome drawn in code listed above.

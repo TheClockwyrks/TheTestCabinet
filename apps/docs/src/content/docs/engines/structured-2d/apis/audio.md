@@ -66,10 +66,10 @@ interface CueSpec {
 | Field | Unit | Default | Meaning |
 | --- | --- | --- | --- |
 | `wave` | — | `"sine"` | The oscillator waveform. |
-| `freq` | hertz | required | The starting frequency. |
-| `freqTo` | hertz | `freq` | The frequency swept to linearly across the duration. |
-| `gain` | `0`–`1` | `0.2` | The peak gain the envelope decays from. |
-| `durationMs` | milliseconds | required | How long the cue sounds. |
+| `freq` | hertz | required | The starting frequency. A loop holds it. |
+| `freqTo` | hertz | `freq` | The frequency swept to linearly across the duration. A loop ignores it. |
+| `gain` | `0`–`1` | `0.2` | The peak gain the envelope decays from. A loop holds it. |
+| `durationMs` | milliseconds | required | How long the cue sounds. A loop ignores it. |
 
 `durationMs` is milliseconds, and the delta time a `tick` receives is seconds.
 
@@ -78,6 +78,9 @@ interface CueSpec {
 ```ts
 interface WorldAudio {
   play(cue: string): void;
+  loop(cue: string): void;
+  stop(cue: string): void;
+  looping(cue: string): boolean;
   setMuted(muted: boolean): void;
   muted(): boolean;
 }
@@ -86,12 +89,32 @@ interface WorldAudio {
 | Member | Behavior |
 | --- | --- |
 | `play` | Emits `cue:played` and, when audible, sounds the cue. Returns immediately. |
-| `setMuted` | Sets the mute bit. A muted cue still emits its event. |
+| `loop` | Starts the cue looping if it is not already: emits `cue:looped` once and, when audible, sounds the cue continuously until stopped. Does nothing for a cue already looping. |
+| `stop` | Stops the cue's loop if it is looping and emits `cue:stopped`. Does nothing for a cue that is not looping. |
+| `looping` | Whether the cue is looping. `false` for an undeclared cue. |
+| `setMuted` | Sets the mute bit. A muted cue still emits its event, and every running loop follows the bit live. |
 | `muted` | The mute bit. |
 
 Playback belongs to a tick, so what a frame sounds is decided by the same code
 that advanced the simulation. An actor, a component, a controller, and a game
 mode all reach the bus through the world they belong to.
+
+## Looping
+
+A file-backed cue loops its decoded buffer seamlessly. A synthesized cue holds
+its `wave` at `freq` at its `gain` until stopped, with no sweep and no decay. A
+cue is either looping or not; `loop` and `stop` each act once per transition
+and emit once per transition.
+
+Mute is live: `setMuted(true)` silences every running loop and `setMuted(false)`
+restores each one's gain, without stopping or restarting it. A loop started
+before the unlock is looping from that call, with its event emitted, and begins
+to sound when the gesture opens the context.
+
+Loops belong to the engine with the cue definitions, so a loop started in one
+level keeps running across a transition until a tick stops it. Redeclaring a
+looping cue, through `define` or `load` under the same name, stops the loop and
+emits `cue:stopped`. `engine.destroy()` stops every loop.
 
 ## `AudioState`
 
@@ -118,19 +141,23 @@ broadcaster](/engines/structured-2d/apis/engine/), subscribed with
 
 ```ts
 "cue:played": { cue: string; t: number; gain: number };
+"cue:looped": { cue: string; t: number; gain: number };
+"cue:stopped": { cue: string; t: number };
 "audio:unlocked": Record<string, never>;
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `cue` | The name that was played. |
-| `t` | The frame loop's accumulated simulated time in milliseconds when it played. |
-| `gain` | The gain it played at. |
+| `cue` | The name that was played, started looping, or stopped. |
+| `t` | The frame loop's accumulated simulated time in milliseconds at that moment. |
+| `gain` | The gain it played or started looping at. |
 
-A play on a muted bus reports `gain: 0`. A play on an unmuted bus reports the
-spec's `gain` for a synthesized cue and `1` for a file-backed cue.
+A play or a loop on a muted bus reports `gain: 0`. On an unmuted bus it reports
+the spec's `gain` for a synthesized cue and `1` for a file-backed cue.
+`cue:looped` is emitted once per loop, when it starts, and `cue:stopped` once,
+when it ends.
 
-Handlers run synchronously at the moment of the play, so a subscriber sees the
+Handlers run synchronously at the moment of the call, so a subscriber sees the
 frame a cue belongs to. The broadcaster lives on the engine, so a subscription
 made before [`engine.initialize`](/engines/structured-2d/apis/engine/) captures
 the cues a game plays from its start level onward and across every transition.
@@ -139,7 +166,8 @@ the cues a game plays from its start level onward and across every transition.
 
 | Condition | Result |
 | --- | --- |
-| `play` names a cue that was never declared | Throws, naming the cue |
+| `play`, `loop`, or `stop` names a cue that was never declared | Throws, naming the cue |
+| `looping` names a cue that was never declared | Returns `false` |
 | `load` is given a path the asset loader refuses | Rejects with the `resolve` error, and the cue stays undeclared |
 | `load` cannot fetch or decode the audio | Rejects with the cause, and the cue stays undeclared |
 | `load` rejects inside the instance's `initialize` or the start level's `load` | `engine.initialize` rejects with the cause |

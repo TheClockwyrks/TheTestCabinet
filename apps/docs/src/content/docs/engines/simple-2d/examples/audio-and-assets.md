@@ -197,7 +197,9 @@ design rather than about timing.
 sweep, a gain, and a duration in milliseconds. `load` binds a cue name to an
 audio file under the asset root, which is how a clip produced by the
 [audio asset-generation](/testing/asset-generation/audio-binaries/) tools is
-played. Both are played by name from `update` through `api.audio.play`.
+played. Both are played by name from `update` through `api.audio.play`, and
+either kind is looped by name through `api.audio.loop` and ended through
+`api.audio.stop`.
 
 Reading `left` and `right` into locals before the `||` keeps both edges
 consumed, so a frame that starts two directions at once leaves nothing armed for

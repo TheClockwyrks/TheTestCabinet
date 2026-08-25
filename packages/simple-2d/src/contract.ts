@@ -183,13 +183,16 @@ export interface PointerSnapshot {
 export interface CueSpec {
   /** The oscillator waveform; defaults to a sine. */
   wave?: "sine" | "square" | "sawtooth" | "triangle";
-  /** The starting frequency in hertz. */
+  /** The starting frequency in hertz. A loop holds it. */
   freq: number;
-  /** The frequency to sweep to over the cue's duration; absent holds `freq`. */
+  /**
+   * The frequency to sweep to over the cue's duration; absent holds `freq`. A
+   * loop ignores it.
+   */
   freqTo?: number;
-  /** Peak gain in `[0, 1]`; defaults to the engine's cue gain. */
+  /** Peak gain in `[0, 1]`; defaults to the engine's cue gain. A loop holds it. */
   gain?: number;
-  /** How long the cue sounds, in milliseconds. */
+  /** How long the cue sounds, in milliseconds. A loop ignores it. */
   durationMs: number;
 }
 
@@ -219,6 +222,10 @@ export interface EngineEventMap {
   "asset:failed": { path: string; url: string; reason: string };
   /** A cue played. `t` is frame-loop time; `gain` is `0` while muted. */
   "cue:played": { cue: string; t: number; gain: number };
+  /** A cue started looping. `t` is frame-loop time; `gain` is `0` while muted. */
+  "cue:looped": { cue: string; t: number; gain: number };
+  /** A looping cue stopped. `t` is frame-loop time. */
+  "cue:stopped": { cue: string; t: number };
   /** A user gesture unlocked the audio context. */
   "audio:unlocked": Record<string, never>;
 }
@@ -365,7 +372,13 @@ export interface UpdateApi {
   readonly audio: {
     /** Play a defined cue. */
     play(cue: string): void;
-    /** Mute or unmute the bus. */
+    /** Start a defined cue looping. Nothing happens if it already is. */
+    loop(cue: string): void;
+    /** Stop a looping cue. Nothing happens if it is not looping. */
+    stop(cue: string): void;
+    /** Whether a cue is looping. `false` for an undeclared cue. */
+    looping(cue: string): boolean;
+    /** Mute or unmute the bus. Every running loop follows the bit live. */
     setMuted(muted: boolean): void;
     /** Whether the bus is muted. */
     muted(): boolean;
