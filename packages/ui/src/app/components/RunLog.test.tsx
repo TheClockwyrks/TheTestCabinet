@@ -467,7 +467,7 @@ describe("RunLog code cell", () => {
   it("renders the code figure lifted onto the summary card", () => {
     const run = summary("r-code", "alpha");
     run.code = {
-      analyzerVersion: 2,
+      analyzerVersion: 1,
       authoredBasis: "seedCommit",
       treeBasis: "preValidation",
       truncated: false,
@@ -478,7 +478,7 @@ describe("RunLog code cell", () => {
     const { container } = renderWithCodeColumn([run]);
     const cell = codeCell(container);
     expect(cell.textContent).toBe("1,250");
-    expect(cell.getAttribute("title")).toContain("analyzer v2");
+    expect(cell.getAttribute("title")).toContain("analyzer v1");
     expect(cell.getAttribute("title")).not.toContain("truncated");
   });
 
@@ -502,7 +502,7 @@ describe("RunLog code cell", () => {
   it("marks a figure whose basis makes it incomparable", () => {
     const run = summary("r-loose", "alpha");
     run.code = {
-      analyzerVersion: 2,
+      analyzerVersion: 1,
       authoredBasis: "allFiles",
       treeBasis: "postValidation",
       truncated: true,

@@ -4737,16 +4737,20 @@ async fn push_lifts_the_code_analyzer_version_and_leaves_it_null_without_an_anal
 
 #[tokio::test]
 async fn the_lifted_analyzer_version_describes_the_stored_result_not_the_server() {
-    // A backend redeployed with a newer analyzer must not restamp an older run's figures
-    // with a generation that did not compute them — the column would then say the corpus
-    // is homogeneous when it is not, which is the exact failure it exists to prevent.
+    // A backend whose binary carries one analyzer generation must not restamp a stored
+    // run's figures with a generation that did not compute them — the column would then
+    // say the corpus is homogeneous when it is not, which is the exact failure it exists
+    // to prevent. So the lift reads the record's own stamp, never the server's constant.
     let db = Db::connect_in_memory().await.unwrap();
-    let mut record = record_with_code_analysis("older");
-    record.code_analysis.as_mut().unwrap().analyzer_version = 1;
+    let other_generation = test_cabinet_core::CODE_ANALYZER_VERSION + 1;
+    let mut record = record_with_code_analysis("other");
+    record.code_analysis.as_mut().unwrap().analyzer_version = other_generation;
     db.push(&record, &links(), None).await.unwrap();
 
-    assert_eq!(lifted(&db, "older").await.code_analyzer_version, Some(1));
-    assert_ne!(test_cabinet_core::CODE_ANALYZER_VERSION, 1);
+    assert_eq!(
+        lifted(&db, "other").await.code_analyzer_version,
+        Some(other_generation as i32)
+    );
 }
 
 #[tokio::test]

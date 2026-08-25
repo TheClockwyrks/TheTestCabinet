@@ -87,7 +87,7 @@ describe("lookupMetric", () => {
 
 describe("codeFigureFamilies", () => {
   const summary = {
-    analyzerVersion: 2,
+    analyzerVersion: 1,
     size: { files: 3, codeLines: 120 },
     api: { exports: 4, unreferencedExports: 1 },
     // Absent, as a pure-Rust tree's would be.

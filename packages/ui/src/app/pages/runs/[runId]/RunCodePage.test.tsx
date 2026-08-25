@@ -46,7 +46,7 @@ vi.mock("../../../data/galleryContext", () => ({
 const RUN_ID = "run-code";
 
 const SUMMARY: CodeAnalysisSummary = {
-  analyzerVersion: 2,
+  analyzerVersion: 1,
   authoredBasis: "seedCommit",
   treeBasis: "preValidation",
   languages: ["typeScript"],
@@ -133,7 +133,7 @@ const SUMMARY: CodeAnalysisSummary = {
 };
 
 const DOCUMENT = {
-  analyzerVersion: 2,
+  analyzerVersion: 1,
   summary: SUMMARY,
   files: [
     {

@@ -56,7 +56,7 @@ const FILES = [
 ];
 
 const DOCUMENT = {
-  analyzerVersion: 2,
+  analyzerVersion: 1,
   summary: {} as CodeAnalysisDocument["summary"],
   files: FILES,
   symbols: [

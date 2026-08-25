@@ -142,7 +142,7 @@ describe("symbolsUnder", () => {
 
   const files = [file("src/a.ts"), file("src/b.ts"), file("other/c.ts")];
   const document = {
-    analyzerVersion: 2,
+    analyzerVersion: 1,
     summary: {} as CodeAnalysisDocument["summary"],
     files,
     symbols: [

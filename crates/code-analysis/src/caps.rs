@@ -88,7 +88,7 @@ pub const MAX_FILES: usize = 20_000;
 /// them together or not at all, and bump the analyzer version when you do, because a cap
 /// change is a definition change.
 ///
-/// It was 256 KiB in the first generation, against a per-byte figure measured on a shape
+/// An earlier calibration used 256 KiB, against a per-byte figure measured on a shape
 /// that cost two source bytes per recursion level. `syn` is several times hungrier than
 /// that figure admitted, so the cap came down with the constant going up rather than the
 /// stack ceiling going up alone: a file this large that is *entirely* degenerate already

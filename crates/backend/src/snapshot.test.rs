@@ -2132,7 +2132,7 @@ async fn a_run_s_code_analysis_publishes_as_a_summary_on_the_card_and_a_keyed_do
     let run = analysed_run(
         &store,
         "r1",
-        serde_json::json!({ "analyzerVersion": 2, "files": [{ "path": "src/main.ts" }] }),
+        serde_json::json!({ "analyzerVersion": 1, "files": [{ "path": "src/main.ts" }] }),
     );
     let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
         .build(now())
@@ -2147,7 +2147,7 @@ async fn a_run_s_code_analysis_publishes_as_a_summary_on_the_card_and_a_keyed_do
         .expect("the runs index");
     let index: serde_json::Value = serde_json::from_slice(&runs_index.bytes).unwrap();
     let card = &index["runs"][0]["code"];
-    assert_eq!(card["analyzerVersion"], 2);
+    assert_eq!(card["analyzerVersion"], 1);
     assert_eq!(card["authoredBasis"], "allFiles");
     assert_eq!(card["treeBasis"], "preValidation");
     assert_eq!(card["truncated"], false);
@@ -2196,7 +2196,7 @@ async fn the_published_code_analysis_document_is_scrubbed() {
         &store,
         "r1",
         serde_json::json!({
-            "analyzerVersion": 2,
+            "analyzerVersion": 1,
             "files": [{ "path": "src/keys/sk-ant-api03-notreal-value.ts" }],
         }),
     );
@@ -2229,7 +2229,7 @@ async fn two_snapshot_refreshes_upload_the_code_analysis_object_once() {
     // The second build is handed exactly what the first uploaded, which is what the
     // publisher does (it lists the `media/` prefix before building).
     let (_tmp, store) = empty_store();
-    let run = analysed_run(&store, "r1", serde_json::json!({ "analyzerVersion": 2 }));
+    let run = analysed_run(&store, "r1", serde_json::json!({ "analyzerVersion": 1 }));
 
     let first = SnapshotBuilder::new(vec![run.clone()], vec![manifest()], store.clone())
         .build(now())

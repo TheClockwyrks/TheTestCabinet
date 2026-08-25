@@ -10,7 +10,7 @@ import { CodeProvenanceStrip } from "./CodeProvenanceStrip";
 
 function summary(over: Partial<CodeAnalysisSummary> = {}): CodeAnalysisSummary {
   return {
-    analyzerVersion: 2,
+    analyzerVersion: 1,
     authoredBasis: "seedCommit",
     treeBasis: "preValidation",
     languages: ["typeScript"],
@@ -38,7 +38,7 @@ describe("CodeProvenanceStrip", () => {
     expect(screen.getByText("Exact")).toBeInTheDocument();
     expect(screen.getByText("Pre-validation")).toBeInTheDocument();
     expect(screen.getByText("TypeScript")).toBeInTheDocument();
-    expect(screen.getByText("v2")).toBeInTheDocument();
+    expect(screen.getByText("v1")).toBeInTheDocument();
     expect(container.querySelector("ul")).toBeNull();
   });
 

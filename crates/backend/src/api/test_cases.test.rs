@@ -527,7 +527,7 @@ async fn the_code_analysis_route_negotiates_exactly_as_the_replay_route_does() {
     // convention if the second artifact cannot quietly grow its own handler. The Code tab
     // is a browser and gets the stored bytes verbatim; a gzip-unaware client gets them
     // decoded.
-    let stored = gzipped(br#"{"analyzerVersion":2}"#);
+    let stored = gzipped(br#"{"analyzerVersion":1}"#);
     let browser = run_artifact_response(
         &accept_encoding(Some("gzip, deflate, br")),
         crate::store::CODE_ANALYSIS_ARTIFACT,
@@ -549,7 +549,7 @@ async fn the_code_analysis_route_negotiates_exactly_as_the_replay_route_does() {
     let (status, headers, body) = read_response(cli).await;
     assert_eq!(status, StatusCode::OK);
     assert!(!headers.contains_key(header::CONTENT_ENCODING));
-    assert_eq!(body, br#"{"analyzerVersion":2}"#);
+    assert_eq!(body, br#"{"analyzerVersion":1}"#);
 }
 
 #[test]

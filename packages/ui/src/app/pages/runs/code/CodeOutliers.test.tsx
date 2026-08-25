@@ -60,7 +60,7 @@ function symbol(over: Partial<CodeSymbolEntry> = {}): CodeSymbolEntry {
 
 function document(over: Partial<CodeAnalysisDocument> = {}): CodeAnalysisDocument {
   return {
-    analyzerVersion: 2,
+    analyzerVersion: 1,
     summary: {} as CodeAnalysisDocument["summary"],
     files: [file("src/game.ts", 100), file("src/ui/hud.ts", 50)],
     symbols: [],

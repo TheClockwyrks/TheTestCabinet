@@ -86,13 +86,7 @@ pub const CODE_ANALYSIS_ARTIFACT: &str = "code-analysis";
 /// cap changes** — a cap change is a definition change, because it changes which files
 /// contribute. Do *not* bump for a purely additive metric, which older records simply
 /// lack.
-///
-/// **Generation 2** re-derived the parse guard's stack numbers (the per-file byte cap
-/// halved, the nesting prescan grew to cover angle brackets) and moved
-/// [`tests.testLineRatio`](CodeTestSummary::test_line_ratio) onto a parsed-only
-/// denominator. Both are definition changes: which files contribute, and what a ratio is a
-/// share of.
-pub const CODE_ANALYZER_VERSION: u32 = 2;
+pub const CODE_ANALYZER_VERSION: u32 = 1;
 
 /// How the analyzer decided which files the **model** wrote, as opposed to which were
 /// seeded into the workspace before it started.
