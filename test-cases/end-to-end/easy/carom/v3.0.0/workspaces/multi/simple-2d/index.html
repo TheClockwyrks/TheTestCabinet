@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Carom</title>
+    <!--
+      An inline, empty icon: without one Chromium requests /favicon.ico on its
+      own, and the dev server answers 404 — a console error a build did not
+      cause, that the validators would otherwise hold against it.
+    -->
+    <link rel="icon" href="data:," />
     <style>
       html,
       body {
