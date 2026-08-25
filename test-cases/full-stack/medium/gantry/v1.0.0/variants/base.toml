@@ -19,8 +19,8 @@ description = "The full crane yard: six sites, from the first lift to the heavy 
 #   none = "references/none"
 #   "simple-3d" = "references/simple-3d"
 
-# No `[workspaces]` table either: the case's common table covers both engines
-# and there is nothing variant-specific to replace it with. No
+# No `[workspaces]` table either: the case's common table covers every engine it
+# declares and there is nothing variant-specific to replace it with. No
 # `[[review.categories]]` and no `[[domain]]`: with a single variant, every
 # point and every rated domain applies to every run, so they are all declared
 # commonly in `test-case.toml`.

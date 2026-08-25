@@ -36,16 +36,28 @@ scheduled until they exist:
    selects the 3D image is an open infra decision. The `voxel` binary's
    single-model config workflow also needs a decision for producing several
    models in one run (per-model working directories or config overrides).
-2. **The `simple-3d` engine.** The manifest declares it, and the spec `.hbs`
-   branches and the `workspaces/simple-3d` seed are written against the
-   contract it is expected to share with `simple-2d`
-   (`Game<State, Debug>`, `initialize`/`update`/`render`, `engine.apply`,
-   `engine.debug`, seeded `src/constants.ts` + `src/main.ts`). Reconcile all
-   of that against the real engine when it lands — `structured-3d` support
-   would be a later version.
+2. **The `simple-3d` engine.** The spec `.hbs` branches and the
+   `workspaces/simple-3d` seed are written against the contract it is expected
+   to share with `simple-2d` (`Game<State, Debug>`,
+   `initialize`/`update`/`render`, `engine.apply`, `engine.debug`, seeded
+   `src/constants.ts` + `src/main.ts`). Reconcile all of that against the real
+   engine when it lands — `structured-3d` support would be a later version.
 
-Resolution will fail on the unknown `simple-3d` slug until the engine catalogue
-knows it; that is expected while the case is experimental.
+   The manifest **does not declare it yet.** The engine catalogue is closed
+   (`crates/core/src/engine.rs`), so an undeclarable slug does not degrade
+   gracefully: it makes this whole version fail to resolve, which took the
+   repo-wide catalog gates in `crates/core/tests/catalog_and_seeding.rs` down
+   with it. `experimental` does not cover for that — it is read off an
+   already-resolved version, so it hides a case that is otherwise valid.
+
+   So the `simple-3d` declaration is **parked**: the `[[engine]]` table and the
+   `[workspaces]` key are commented into `test-case.toml` beside the live
+   `engines` list, ready to restore. Everything else is still authored and
+   still committed — the starter workspace, the `{{else}}` halves of the spec
+   branches (inert while only `none` renders), and the reference notes in
+   `variants/base.toml`. The case ships `none`-only until the engine lands, and
+   this version is not frozen, so restoring it edits in place rather than
+   minting a new version.
 
 ## Still to do before the case leaves experimental
 

@@ -20,12 +20,18 @@ slug = "gantry"
 #     `test-cabinet-full-stack-2d`, whose six binaries are the 2D set. This case's
 #     asset contract (`specs/assets.md`) needs a 3D full-stack image carrying
 #     `voxel`, `sfx-synth`, `sfx-sample`, and `music`.
-#   - The `simple-3d` engine, declared below, which is not in the engine
-#     catalogue yet. Its branches in the seeded specs and its starter workspace
-#     are written against the simple-2d-shaped contract
-#     (`Game<State, Debug>` / `initialize` / `update` / `render`, `engine.apply`,
-#     `engine.debug`) and must be reconciled against the real engine when it
-#     lands.
+#   - The `simple-3d` engine, which is not in the engine catalogue yet. Its
+#     branches in the seeded specs and its starter workspace are written against
+#     the simple-2d-shaped contract (`Game<State, Debug>` / `initialize` /
+#     `update` / `render`, `engine.apply`, `engine.debug`) and must be reconciled
+#     against the real engine when it lands. Because the catalogue is closed, the
+#     engine cannot merely be *declared* ahead of itself — the version would fail
+#     to resolve — so the declaration is parked and the case ships `none`-only
+#     until then. The `engines` key below carries the restoration steps.
+#
+# Note that `experimental` is not what makes any of the above safe: it is read
+# off an already-resolved version, so it hides a case that is otherwise VALID.
+# Everything this case declares must still resolve today.
 #
 # Until both exist the case must not be scheduled; experimental keeps it hidden
 # from the catalog unless a deployment opts in with
@@ -106,39 +112,50 @@ packages = ["@test-cabinet/voxel-runtime"]
 # `engine.slug`. A root key, so it must precede the first table header.
 variants = ["variants/base.toml"]
 
-# The engines a run may select. Gantry supports two, and the game is the same
-# under both; what differs is how much of the build is handed over. `none`
-# supplies no runtime and no `src/` at all, so the build writes the frame loop,
-# input, audio, overlay, and the `window.__gantry` surface itself. `simple-3d`
-# vendors the runtime as a package and seeds the modules around the game
-# (`src/constants.ts`, `src/main.ts`, and the `src/game.ts` the build writes).
-# Rendering is the game's under BOTH: each workspace ships `three` and the case's
-# `packages` runtime for the scene.
+# The engines a run may select. Gantry is DESIGNED for two, but declares only
+# `none` today — see the `experimental` note. `none` supplies no runtime and no
+# `src/` at all, so the build writes the frame loop, input, audio, overlay, and
+# the `window.__gantry` surface itself. Rendering is the game's either way: the
+# workspace ships `three` and the case's `packages` runtime for the scene.
 #
-# `none` carries no version and is named in the bare `engines` list; `simple-3d`
-# is pinned from 1.0.0 with no ceiling. See the `experimental` note: the engine
-# does not exist in the catalogue yet, and this declaration is written against
-# the contract it is expected to share with `simple-2d`.
+# The `simple-3d` half is PARKED, not abandoned. The engine catalogue is closed
+# (`crates/core/src/engine.rs`), so declaring a slug it does not carry makes this
+# whole version fail to resolve — and `experimental` cannot hold it, because that
+# flag is read off an already-resolved version and only hides a case that is
+# otherwise valid. The starter workspace, the specs' `engine.slug` branches, and
+# the reference notes in `variants/base.toml` are all still authored and still on
+# disk; the only thing removed is the declaration. When the engine lands, restore
+# the table below and the `[workspaces]` key beside it, and reconcile both against
+# the real contract:
+#
+#   [[engine]]
+#   slug = "simple-3d"
+#   min_version = "1.0.0"
+#
+# This version is not frozen, so that restoration edits it in place rather than
+# minting a new one.
 engines = ["none"]
 
-[[engine]]
-slug = "simple-3d"
-min_version = "1.0.0"
-
-# The starter project seeded into the root of every run, one per engine. Both
-# carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration the
+# The starter project seeded into the root of every run, one per engine. It
+# carries the Vite/TypeScript/ESLint/Prettier/Vitest configuration the
 # `[toolchain]` commands run against, an `index.html` holding the canvas, and the
 # `three` + `@test-cabinet/voxel-runtime` dependencies the scene and the produced
-# models are drawn with.
+# models are drawn with. `none` supplies that configuration and nothing else: no
+# `src/`.
 #
-#   - `none`      supplies the configuration and nothing else: no `src/`.
-#   - `simple-3d` declares the engine in its `package.json` (vendored in at seed
-#                 time) and seeds the case-owned modules: `src/constants.ts`
-#                 (every figure the specification fixes) and `src/main.ts` (the
-#                 entry). The build writes `src/game.ts`.
+# This table must name EXACTLY the engines declared above (the resolver checks
+# both directions), so the `simple-3d` entry is parked with its declaration and
+# restored alongside it:
+#
+#   "simple-3d" = "workspaces/simple-3d"
+#
+# That directory is still committed. It declares the engine in its `package.json`
+# (vendored in at seed time) and seeds the case-owned modules: `src/constants.ts`
+# (every figure the specification fixes) and `src/main.ts` (the entry), leaving
+# the build to write `src/game.ts`. Nothing audits for unreferenced files, so it
+# sits inert until the key returns.
 [workspaces]
 none = "workspaces/none"
-"simple-3d" = "workspaces/simple-3d"
 
 # How validation (and the per-run static deploy) turns a produced implementation
 # into a served site. `npm ci` is deliberate: it requires a committed lockfile.

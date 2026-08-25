@@ -577,6 +577,7 @@ unheld
 # Gantry v1.0.0 authoring notes and manifest prose: the load model — static
 # solves under inertial loads derived from prescribed motion.
 kinetostatic
+undeclarable
 
 # Wick v1.0.0: the enemy roster, the weapon re-hit intervals, and the checklist ids.
 mothwing
