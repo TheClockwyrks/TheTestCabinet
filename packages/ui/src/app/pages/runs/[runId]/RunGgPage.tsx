@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ProgressBar } from "@test-cabinet/ui";
+import { ProgressBar, Spinner } from "@test-cabinet/ui";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { useRunEvents } from "../../../data/useRunEvents";
@@ -65,7 +65,7 @@ function RunGgBody({ run }: { run: RunRecord }) {
       progress && progress.total ? progress.received / progress.total : null;
     return (
       <div className={styles.loading}>
-        <p className={styles.notice}>Loading gg telemetry…</p>
+        <Spinner variant="flap" label="Loading gg telemetry…" />
         <ProgressBar value={value} ariaLabel="Loading recorded gg telemetry" />
       </div>
     );
@@ -105,8 +105,7 @@ function RunGgBody({ run }: { run: RunRecord }) {
             capabilitySet={capabilitySet}
             runtime={runtime}
             timeoutSeconds={timeoutSeconds}
-          >
-          </GgDashboard>
+          ></GgDashboard>
         }
       />
     </section>

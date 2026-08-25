@@ -8,14 +8,10 @@ import type {
   GgReferenceLanguage,
   GgReferenceModule,
 } from "@test-cabinet/run-record/gg-reference";
-import {
-  FsExplorer,
-  FsFileRow,
-  FsFolder,
-  useFsFolders,
-} from "../../runs/gg/GgFsExplorer";
+import { LoadingState } from "../../../components/LoadingState";
+import { FsFileRow, FsFolder, useFsFolders } from "../../runs/gg/GgFsExplorer";
 import { fsIndent } from "../../runs/gg/ggFsTree";
-import { PROGRAM_LANGUAGE_NAMES } from "../programLanguages";
+import { PROGRAM_LANGUAGE_NAMES, isProgramLanguage } from "../programLanguages";
 import { Section, Verbatim } from "./GgReferenceParts";
 import { useEntrySelection, useRevealSelection } from "./referenceSelection";
 import panels from "../../runs/gg/GgPanels.module.scss";
@@ -62,10 +58,9 @@ import exec from "../../runs/RunExec.module.scss";
 // the index both tabs read from — is `GgReferencePage`'s, and lives above the two so
 // switching tabs does not throw the documents away. See `GgReferencePage.tsx`.
 
-/** One module's folder in the sidebar: the module, the family it came from, its entries. */
+/** One module's folder in the sidebar: the module, and the entries that named it. */
 interface ModuleGroup {
   module: GgReferenceModule;
-  category: GgReferenceCategory | null;
   entries: GgReferenceEntry[];
 }
 
@@ -158,16 +153,12 @@ export function GgReferenceApiTab({
     return (arm?.modules ?? [])
       .map((module) => ({
         module,
-        category:
-          index.categories.find(
-            (category) => category.id === module.category,
-          ) ?? null,
         entries: entries.filter(
           (entry) => entry.module === module.id && matches(entry),
         ),
       }))
       .filter((group) => group.entries.length > 0);
-  }, [arm, entries, filter, index.categories]);
+  }, [arm, entries, filter]);
 
   // With no `?fn=`, the pane opens on the first row of the **tree** — not on
   // `entries[0]`. The document is in catalogue order, whose first module is not the first
@@ -240,54 +231,30 @@ export function GgReferenceApiTab({
     onSelectLanguage(next);
   };
 
-  return (
-    <div className={styles.arm}>
-      <ArmPicker languages={languages} selected={language} onSelect={pick} />
+  // Whether there is a tree to draw at all. Every state that is not a document — the
+  // fetch failed, the address names no arm, the document is still loading, the document
+  // decodes hollow — renders its message in the detail pane instead, beside the picker
+  // that is the way out of most of them.
+  const ready =
+    error == null &&
+    language != null &&
+    !loading &&
+    arm != null &&
+    arm.entries.length > 0;
 
-      {error ? (
-        // The backend's own sentence, not ours: a deployment with no reference documents
-        // answers with a message naming the script that writes them and the variable that
-        // points at them, and paraphrasing it here would drop the one thing that fixes it.
-        <p className={`${exec.notice} ${exec.error}`}>{error}</p>
-      ) : language == null ? (
-        <p className={styles.empty}>
-          {requestedLanguage ? (
-            <>
-              gg {index.ggVersion} registers no program language called{" "}
-              <code>{requestedLanguage}</code>. Pick one of the{" "}
-              {languages.length} arms above.
-            </>
-          ) : (
-            <>
-              This deployment&apos;s gg registers no program language, so there
-              is no responses-as-code surface to show.
-            </>
-          )}
-        </p>
-      ) : loading || arm == null ? (
-        <p className={styles.empty}>
-          Loading the {PROGRAM_LANGUAGE_NAMES[language]} surface…
-        </p>
-      ) : arm.entries.length === 0 ? (
-        // A third state between "loading" and "a tree", because a document that decodes
-        // and carries nothing is served `200` and would otherwise render as a tree with
-        // no rows — which reads as a filter that matched nothing, with an empty filter
-        // box beside it. There is no such thing as a legitimately empty arm: every
-        // registered one carries at least the types-only module. So this says what it
-        // really is, a broken projection in *this deployment*, rather than letting the
-        // reader conclude their own search was at fault. The backend logs the same fact
-        // when it loads the document.
-        <p className={styles.empty}>
-          This deployment&apos;s document for the{" "}
-          {PROGRAM_LANGUAGE_NAMES[language]} arm of gg {arm.ggVersion} is empty.
-          That is a broken projection rather than an arm gg does not have — the
-          documents are written by <code>gg reference --out</code> and read from
-          the directory <code>TCAB_GG_REFERENCE</code> names.
-        </p>
-      ) : (
-        <FsExplorer
-          sidebarLabel="API modules"
-          sidebarHead={
+  return (
+    <div className={styles.armExplorer}>
+      {/* The left column: the arm picker, then the sidebar whose contents it decides.
+          The picker shares the sidebar's width rather than taking a full row of its
+          own, so the detail pane starts level with it and runs down to the same bottom
+          edge the sidebar stops at. */}
+      <div className={styles.armSide}>
+        <ArmSelect languages={languages} selected={language} onSelect={pick} />
+        {ready && (
+          <nav className={styles.sidebar} aria-label="API modules">
+            {/* The filter leads the sidebar and stays put: the entry list below it is
+                the scroll container, so the box never scrolls away from its own
+                results and no row ever slides underneath it. */}
             <div className={styles.filter}>
               <input
                 className={styles.filterInput}
@@ -297,153 +264,171 @@ export function GgReferenceApiTab({
                 aria-label="Filter this arm's surface"
                 onChange={(event) => setFilter(event.target.value)}
               />
-              {/* Said once, because the two are easy to confuse and the difference is
-                  the whole shape of this page. gg's own `search` ranks its hits and
-                  returns only what a run granted; this box hides rows of the maximal
-                  pool and reorders nothing. Reimplementing the ranking here would be a
-                  frozen copy of an algorithm that lives in gg — the second source of
-                  truth again — and it would answer a different question anyway.
-
-                  The needle survives an arm switch, deliberately: a phrase from a
-                  description ("compaction") means the same thing on every arm, and
-                  silently emptying the box would be a second surprise on top of the
-                  document changing. A needle that was a *spelling* will match nothing
-                  on the next arm — and the tree says so, with the needle still visible
-                  in the box that caused it. */}
-              <p className={styles.filterNote}>
-                Hides rows here. gg&apos;s own documentation search ranks its
-                hits and returns only what a run granted; this page is the whole
-                pool.
-              </p>
             </div>
-          }
-          tree={
-            groups.length === 0 ? (
-              // In the sidebar, where the reader is looking, rather than under the
-              // explorer: the empty thing is the tree, and a note somewhere else on the
-              // page would leave the tree reading as broken rather than as filtered.
-              <li className={styles.objectCaption} style={fsIndent(1)}>
-                Nothing on this arm matches that.
-              </li>
-            ) : (
-              groups.map((group) => (
-                <FsFolder
-                  key={group.module.id}
-                  depth={0}
-                  // Open by default, like the Tools tree: this is a fixed document read by
-                  // scanning, not a live stream that needs collapsing.
-                  open={folders.isOpen(group.module.id, true)}
-                  onToggle={() => folders.toggle(group.module.id, true)}
-                  ariaLabel={`${group.module.path} entries`}
-                  name={group.module.path}
-                  meta={
-                    <span className={panels.fsMeta}>
-                      {group.entries.length}
-                    </span>
-                  }
-                >
-                  {/* The module's own line, as the folder's first child rather than as a
-                      second line in its row — see `.objectCaption`. `fsIndent(1)` is the same
-                      inline indent the rows below take, which is what puts it in their column
-                      instead of against the sidebar's edge.
-
-                      The module's summary rather than its family's description: the family is
-                      a grouping of gg's, and what a reader picking a folder wants is the
-                      sentence the module itself is introduced by — the same one the model is
-                      given. */}
+            <div className={styles.entries}>
+              <ul className={panels.fsTree}>
+                {groups.length === 0 ? (
+                  // In the sidebar, where the reader is looking, rather than under the
+                  // explorer: the empty thing is the tree, and a note somewhere else on
+                  // the page would leave the tree reading as broken rather than as
+                  // filtered.
                   <li className={styles.objectCaption} style={fsIndent(1)}>
-                    {group.module.summary}
+                    Nothing on this arm matches that.
                   </li>
-                  {group.entries.map((entry) => (
-                    <FsFileRow
-                      key={entry.fqn}
-                      depth={1}
-                      selected={selected?.fqn === entry.fqn}
-                      onSelect={() => openEntry(entry.fqn)}
-                      ariaLabel={`${entry.kind} ${entry.fqn}`}
-                      name={entry.name}
-                      // Only the declarations are marked. Functions are what a reader comes
-                      // for and are the majority of every folder, so a badge on those would
-                      // be a badge on nearly every row; the types are the ones a reader is
-                      // surprised to find in a list of calls.
-                      meta={
-                        entry.kind === "type" ? (
-                          <span className={panels.fsMeta}>type</span>
-                        ) : undefined
-                      }
-                    />
-                  ))}
-                </FsFolder>
-              ))
-            )
-          }
-        >
-          {selected ? (
-            <EntryDetail
-              entry={selected}
-              arm={arm}
-              category={
-                index.categories.find(
-                  (category) => category.id === selected.category,
-                ) ?? null
-              }
-              module={
-                arm.modules.find((module) => module.id === selected.module) ??
-                null
-              }
-              onSelect={openEntry}
-            />
-          ) : (
-            <div className={panels.panelBody}>
-              {/* Guarded on `requested`, because this sentence is only ever true of a
-                  name the *address* supplied. With no `?fn=` the pane opens on the
-                  tree's first row and this branch is unreachable — unless the document
-                  is malformed in a way that leaves entries filed under modules it does
-                  not declare, and then quoting a name the reader never typed ("carries
-                  nothing called .") would blame them for it. */}
-              <p className={styles.empty}>
-                {requested != null ? (
-                  <>
-                    The {PROGRAM_LANGUAGE_NAMES[language]} arm of gg{" "}
-                    {arm.ggVersion} carries nothing called{" "}
-                    <code>{requested}</code>. The eleven SDKs are idiomatic
-                    rather than transliterations, so a name one arm spells this
-                    way another may spell differently — or may not declare at
-                    all. Pick one from the list.
-                  </>
                 ) : (
-                  <>
-                    Nothing on the {PROGRAM_LANGUAGE_NAMES[language]} arm of gg{" "}
-                    {arm.ggVersion} could be opened: its entries name modules
-                    the document does not declare. That is a broken projection —
-                    the documents are written by <code>gg reference --out</code>
-                    .
-                  </>
+                  groups.map((group) => (
+                    <FsFolder
+                      key={group.module.id}
+                      depth={0}
+                      // Open by default, like the Tools tree: this is a fixed document
+                      // read by scanning, not a live stream that needs collapsing.
+                      open={folders.isOpen(group.module.id, true)}
+                      onToggle={() => folders.toggle(group.module.id, true)}
+                      ariaLabel={`${group.module.path} entries`}
+                      name={group.module.path}
+                      meta={
+                        <span className={panels.fsMeta}>
+                          {group.entries.length}
+                        </span>
+                      }
+                    >
+                      {group.entries.map((entry) => (
+                        <FsFileRow
+                          key={entry.fqn}
+                          depth={1}
+                          selected={selected?.fqn === entry.fqn}
+                          onSelect={() => openEntry(entry.fqn)}
+                          ariaLabel={`${entry.kind} ${entry.fqn}`}
+                          name={entry.name}
+                          // Only the declarations are marked. Functions are what a
+                          // reader comes for and are the majority of every folder, so a
+                          // badge on those would be a badge on nearly every row; the
+                          // types are the ones a reader is surprised to find in a list
+                          // of calls.
+                          meta={
+                            entry.kind === "type" ? (
+                              <span className={panels.fsMeta}>type</span>
+                            ) : undefined
+                          }
+                        />
+                      ))}
+                    </FsFolder>
+                  ))
                 )}
-              </p>
+              </ul>
             </div>
-          )}
-        </FsExplorer>
-      )}
+          </nav>
+        )}
+      </div>
+
+      <div className={styles.armDetail}>
+        {error ? (
+          // The backend's own sentence, not ours: a deployment with no reference
+          // documents answers with a message naming the script that writes them and the
+          // variable that points at them, and paraphrasing it here would drop the one
+          // thing that fixes it.
+          <p className={`${exec.notice} ${exec.error}`}>{error}</p>
+        ) : language == null ? (
+          <p className={styles.empty}>
+            {requestedLanguage ? (
+              <>
+                gg {index.ggVersion} registers no program language called{" "}
+                <code>{requestedLanguage}</code>. Pick one of the{" "}
+                {languages.length} arms from the picker.
+              </>
+            ) : (
+              <>
+                This deployment&apos;s gg registers no program language, so
+                there is no responses-as-code surface to show.
+              </>
+            )}
+          </p>
+        ) : loading || arm == null ? (
+          <LoadingState
+            label={`Loading the ${PROGRAM_LANGUAGE_NAMES[language]} surface…`}
+            size="section"
+          />
+        ) : arm.entries.length === 0 ? (
+          // A third state between "loading" and "a tree", because a document that
+          // decodes and carries nothing is served `200` and would otherwise render as a
+          // tree with no rows — which reads as a filter that matched nothing, with an
+          // empty filter box beside it. There is no such thing as a legitimately empty
+          // arm: every registered one carries at least the types-only module. So this
+          // says what it really is, a broken projection in *this deployment*, rather
+          // than letting the reader conclude their own search was at fault. The backend
+          // logs the same fact when it loads the document.
+          <p className={styles.empty}>
+            This deployment&apos;s document for the{" "}
+            {PROGRAM_LANGUAGE_NAMES[language]} arm of gg {arm.ggVersion} is
+            empty. That is a broken projection rather than an arm gg does not
+            have — the documents are written by <code>gg reference --out</code>{" "}
+            and read from the directory <code>TCAB_GG_REFERENCE</code> names.
+          </p>
+        ) : selected ? (
+          <EntryDetail
+            entry={selected}
+            arm={arm}
+            category={
+              index.categories.find(
+                (category) => category.id === selected.category,
+              ) ?? null
+            }
+            module={
+              arm.modules.find((module) => module.id === selected.module) ??
+              null
+            }
+            onSelect={openEntry}
+          />
+        ) : (
+          <div className={panels.panelBody}>
+            {/* Guarded on `requested`, because this sentence is only ever true of a
+                name the *address* supplied. With no `?fn=` the pane opens on the
+                tree's first row and this branch is unreachable — unless the document
+                is malformed in a way that leaves entries filed under modules it does
+                not declare, and then quoting a name the reader never typed ("carries
+                nothing called .") would blame them for it. */}
+            <p className={styles.empty}>
+              {requested != null ? (
+                <>
+                  The {PROGRAM_LANGUAGE_NAMES[language]} arm of gg{" "}
+                  {arm.ggVersion} carries nothing called{" "}
+                  <code>{requested}</code>. The eleven SDKs are idiomatic rather
+                  than transliterations, so a name one arm spells this way
+                  another may spell differently — or may not declare at all.
+                  Pick one from the list.
+                </>
+              ) : (
+                <>
+                  Nothing on the {PROGRAM_LANGUAGE_NAMES[language]} arm of gg{" "}
+                  {arm.ggVersion} could be opened: its entries name modules the
+                  document does not declare. That is a broken projection — the
+                  documents are written by <code>gg reference --out</code>.
+                </>
+              )}
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 /**
- * The arm picker: every program language this deployment can serve, all at once.
+ * The arm picker: a dropdown over every program language this deployment can serve,
+ * sitting above the sidebar whose contents it decides.
  *
- * All eleven rather than a dropdown, because this row is the only place on the console
- * where the breadth of the surface is visible — a reader who does not know gg has a Swift
- * arm will not think to open a menu looking for one.
+ * Each option carries the arm's own function count, and every arm listed is one the
+ * deployment can actually serve: the backend rebuilds the index's language list from the
+ * documents it loaded, counting each one, so an option here is never one whose only
+ * answer is a `404` and a number here is never a number nobody counted. An arm gg
+ * registers whose document did not ship is therefore *absent* from this menu rather than
+ * present and broken.
  *
- * Each carries its own function count, and every arm listed is one the deployment can
- * actually serve: the backend rebuilds the index's language list from the documents it
- * loaded, counting each one, so a button here is never a button whose only answer is a
- * `404` and a number here is never a number nobody counted. An arm gg registers whose
- * document did not ship is therefore *absent* from this row rather than present and
- * broken — which is why the row's length is worth reading.
+ * When the address names an arm this deployment does not register, nothing is selected —
+ * the placeholder holds the slot — rather than the menu quietly showing a different arm
+ * than the one the address asked for.
  */
-function ArmPicker({
+function ArmSelect({
   languages,
   selected,
   onSelect,
@@ -453,28 +438,22 @@ function ArmPicker({
   onSelect: (language: GgProgramLanguage) => void;
 }) {
   return (
-    <div className={styles.arms} role="group" aria-label="SDK arm">
+    <select
+      className={styles.armSelect}
+      aria-label="SDK arm"
+      value={selected ?? ""}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (isProgramLanguage(next)) onSelect(next);
+      }}
+    >
+      {selected == null && <option value="">Pick an SDK arm…</option>}
       {languages.map((entry) => (
-        <button
-          key={entry.id}
-          type="button"
-          className={
-            entry.id === selected
-              ? `${styles.armButton} ${styles.armButtonActive}`
-              : styles.armButton
-          }
-          aria-pressed={entry.id === selected}
-          // The bare number on the chip is the count a reader compares arms by; what it
-          // counts, and the other two the index carries, are here rather than on the chip
-          // because eleven chips each carrying three figures is a wall of numbers.
-          title={`${entry.functionCount} functions, ${entry.typeCount} types, across ${entry.moduleCount} modules`}
-          onClick={() => onSelect(entry.id)}
-        >
-          {PROGRAM_LANGUAGE_NAMES[entry.id]}
-          <span className={styles.armCount}>{entry.functionCount}</span>
-        </button>
+        <option key={entry.id} value={entry.id}>
+          {PROGRAM_LANGUAGE_NAMES[entry.id]} · {entry.functionCount} functions
+        </option>
       ))}
-    </div>
+    </select>
   );
 }
 
@@ -497,14 +476,6 @@ function EntryDetail({
   /** Open another entry of this same arm, by its fully-qualified name. */
   onSelect: (fqn: string) => void;
 }) {
-  // The arm's own spelling of the call that opens a documentation view, found by the
-  // operation id — the one identifier that is the same on all eleven arms. Naming the
-  // reader's own arm's spelling is the point: the sentence below claims this block is
-  // what *that* call returns, so it should quote the call as this arm writes it.
-  const lookup =
-    arm.entries.find((other) => other.operation === "views.open_docs_view") ??
-    null;
-
   return (
     <div className={panels.panelBody}>
       <div className={styles.detail}>
@@ -517,15 +488,6 @@ function EntryDetail({
             {/* A declaration rather than a call, marked, because everything else on this
                 page is something a program invokes. */}
             {entry.kind === "type" && <span className={styles.chip}>type</span>}
-            {/* gg's own name for what this call DOES, which is the one thing about it
-                that is the same in all eleven arms — and the string a run's records name
-                it by, so a reader who has this page open and a run's calls in front of
-                them is looking at the same identifier in both. */}
-            {entry.operation && (
-              <span className={`${styles.chip} ${styles.chipKey}`}>
-                {entry.operation}
-              </span>
-            )}
             {/* A convenience this arm hangs off the value it operates on, beside the free
                 function every arm has. A fact about the arm, not about gg — which is what
                 eleven idiomatic SDKs means in practice. */}
@@ -569,18 +531,6 @@ function EntryDetail({
                 <span className={styles.chip}>always available</span>
               )}
           </div>
-          {/* Where the block below came from, said on every entry. It is the difference
-              between a page that documents gg and a page that *is* gg's documentation,
-              and a reader who does not know which one they are on cannot use either. */}
-          <p className={styles.note}>
-            Below is the documentation view gg renders for this name — the same
-            bytes a program is handed by{" "}
-            <code>
-              {lookup ? lookup.fqn : "the documentation-view call"}(&quot;
-              {entry.fqn}&quot;)
-            </code>{" "}
-            mid-session, not a rendering of it made for this page.
-          </p>
         </header>
 
         <Verbatim label="Documentation view" text={entry.body} />
@@ -659,14 +609,6 @@ function TypeReferences({
 
   return (
     <Section label="Types this signature reaches">
-      <p className={styles.note}>
-        Every declaration the signature reaches, <em>transitively closed</em>,
-        plus the failures this entry&rsquo;s own documentation declares. Opening
-        this function mid-session appends type views exactly <em>one</em> level
-        deep, and only those the agent&rsquo;s <code>docViewTypes</code> flags
-        select — each row is marked with the flags that would place it, and each
-        chip is that flag on its own.
-      </p>
       <ul className={styles.typeRefs}>
         {rows.map((row) => (
           <li key={row.fqn} className={styles.typeRef}>

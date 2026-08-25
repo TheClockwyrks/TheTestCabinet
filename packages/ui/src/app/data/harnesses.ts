@@ -26,3 +26,21 @@ export const harnesses: HarnessSummary[] = [
   { slug: "opencode", displayName: "OpenCode" },
   { slug: "pi", displayName: "Pi" },
 ];
+
+/**
+ * The first-party gg run mode's identity in run records. gg is deliberately
+ * **not** in {@link harnesses} — the core excludes it from `HarnessSlug::ALL`
+ * for the same reason: it is not a third-party CLI a launch surface offers as a
+ * harness row, it is chosen as a run mode and configured through a gg
+ * configuration. But every run it conducts records `harnessSlug: "gg"`, so the
+ * surfaces that read or filter *recorded* runs must know it.
+ */
+export const GG_HARNESS: HarnessSummary = { slug: "gg", displayName: "gg" };
+
+/**
+ * Every harness a recorded run can name — the launchable CLI catalog plus the
+ * first-party gg run mode. Filter controls over recorded runs offer this list;
+ * launch and planning pickers keep using {@link harnesses}, since a gg run is
+ * launched through its configuration rather than as a bare harness.
+ */
+export const recordedHarnesses: HarnessSummary[] = [...harnesses, GG_HARNESS];

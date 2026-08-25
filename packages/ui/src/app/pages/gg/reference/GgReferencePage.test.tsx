@@ -185,7 +185,9 @@ describe("GgReferencePage", () => {
     await screen.findByRole("heading", { name: "gg.files.readFile" });
 
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Rust/ }));
+      fireEvent.change(screen.getByRole("combobox", { name: "SDK arm" }), {
+        target: { value: "rust" },
+      });
     });
     await screen.findByRole("heading", { name: "gg::files::read_file" });
 

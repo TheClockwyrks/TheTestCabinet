@@ -13,7 +13,11 @@
 // actually laid out — `cap.*`, `tool.*`, `summary.*`, `metric.*` — and a flat list of
 // several hundred names is a list nobody reads.
 import { useMemo, useState } from "react";
-import type { GgFieldCatalog, GgFieldInfo } from "@test-cabinet/run-record/gg-query";
+import { Spinner } from "@test-cabinet/ui";
+import type {
+  GgFieldCatalog,
+  GgFieldInfo,
+} from "@test-cabinet/run-record/gg-query";
 import { asDisplay, formatIdentifier, formatLiteral } from "../query";
 import styles from "./GgDiscover.module.scss";
 
@@ -65,11 +69,18 @@ const NAMESPACE_LABELS: Record<string, string> = {
   has: "Presence markers",
 };
 
-export function GgFieldSidebar({ catalog, onInsert, loading = false }: GgFieldSidebarProps) {
+export function GgFieldSidebar({
+  catalog,
+  onInsert,
+  loading = false,
+}: GgFieldSidebarProps) {
   const [needle, setNeedle] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  const groups = useMemo(() => groupFields(catalog.fields, needle), [catalog.fields, needle]);
+  const groups = useMemo(
+    () => groupFields(catalog.fields, needle),
+    [catalog.fields, needle],
+  );
 
   return (
     <aside className={styles.sidebar} aria-label="Fields">
@@ -89,13 +100,15 @@ export function GgFieldSidebar({ catalog, onInsert, loading = false }: GgFieldSi
       />
 
       {groups.length === 0 ? (
-        <p className={styles.sidebarEmpty}>
-          {loading
-            ? "Loading fields…"
-            : needle
+        loading ? (
+          <Spinner variant="flap" label="Loading fields…" />
+        ) : (
+          <p className={styles.sidebarEmpty}>
+            {needle
               ? "No field matches that."
               : "No gg runs have been recorded yet."}
-        </p>
+          </p>
+        )
       ) : (
         groups.map((group) => (
           <section key={group.name} className={styles.fieldGroup}>
@@ -118,7 +131,10 @@ export function GgFieldSidebar({ catalog, onInsert, loading = false }: GgFieldSi
                       </button>
                       {/* The document count, always shown — the number that makes a
                           deliberately sparse field visible before it is queried. */}
-                      <span className={styles.fieldCount} title="Documents carrying it">
+                      <span
+                        className={styles.fieldCount}
+                        title="Documents carrying it"
+                      >
                         {field.documents.toLocaleString("en-US")}
                       </span>
                       <span className={styles.fieldKind}>{field.kind}</span>
@@ -128,7 +144,9 @@ export function GgFieldSidebar({ catalog, onInsert, loading = false }: GgFieldSi
                           className={styles.fieldExpand}
                           aria-expanded={isOpen}
                           aria-label={`${isOpen ? "Hide" : "Show"} values of ${field.name}`}
-                          onClick={() => setExpanded(isOpen ? null : field.name)}
+                          onClick={() =>
+                            setExpanded(isOpen ? null : field.name)
+                          }
                         >
                           {isOpen ? "−" : "+"}
                         </button>
@@ -141,9 +159,13 @@ export function GgFieldSidebar({ catalog, onInsert, loading = false }: GgFieldSi
                             <button
                               type="button"
                               className={styles.valueRow}
-                              onClick={() => onInsert(predicateText(field.name, entry.value))}
+                              onClick={() =>
+                                onInsert(predicateText(field.name, entry.value))
+                              }
                             >
-                              <span className={styles.valueName}>{asDisplay(entry.value)}</span>
+                              <span className={styles.valueName}>
+                                {asDisplay(entry.value)}
+                              </span>
                               <span className={styles.valueCount}>
                                 {entry.count.toLocaleString("en-US")}
                               </span>
@@ -170,7 +192,10 @@ export function GgFieldSidebar({ catalog, onInsert, loading = false }: GgFieldSi
  * `cap.compaction.summaryHeadroom` as well as `cap.compaction` — which is the point, since
  * the params are exactly the fields nobody knows exist.
  */
-function groupFields(fields: readonly GgFieldInfo[], needle: string): FieldGroup[] {
+function groupFields(
+  fields: readonly GgFieldInfo[],
+  needle: string,
+): FieldGroup[] {
   const lowered = needle.trim().toLowerCase();
   const byNamespace = new Map<string, GgFieldInfo[]>();
   for (const field of fields) {
@@ -183,7 +208,11 @@ function groupFields(fields: readonly GgFieldInfo[], needle: string): FieldGroup
   }
   return [...byNamespace.entries()]
     .map(([name, group]) => ({ name, fields: group }))
-    .sort((a, b) => namespaceRank(a.name) - namespaceRank(b.name) || (a.name < b.name ? -1 : 1));
+    .sort(
+      (a, b) =>
+        namespaceRank(a.name) - namespaceRank(b.name) ||
+        (a.name < b.name ? -1 : 1),
+    );
 }
 
 /** Where a namespace sits: the curated order first, everything else after it. */
@@ -203,7 +232,11 @@ function predicateText(name: string, value: string | number | boolean): string {
   const rendered = asDisplay(value);
   const literal =
     typeof value === "string"
-      ? formatLiteral({ raw: rendered, quoted: false, span: { start: 0, end: 0 } })
+      ? formatLiteral({
+          raw: rendered,
+          quoted: false,
+          span: { start: 0, end: 0 },
+        })
       : rendered;
   return `${fieldText(name)}:${literal}`;
 }

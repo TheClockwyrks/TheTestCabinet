@@ -1868,7 +1868,7 @@ function ExistingReviews({
           )}
           {aggScore && (
             <span className={styles.muted}>
-              {aggScore.earned.toFixed(1)} / {aggScore.total} pts (avg of{" "}
+              {formatPoints(aggScore.earned)} / {aggScore.total} pts (avg of{" "}
               {aggScore.reviews})
             </span>
           )}

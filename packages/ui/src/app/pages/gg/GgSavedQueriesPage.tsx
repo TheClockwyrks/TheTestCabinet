@@ -25,6 +25,8 @@ import type {
 } from "@test-cabinet/run-record/gg-query";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -105,14 +107,17 @@ export function GgSavedQueriesPage() {
     }
   }, [backend, draft, editing, token, reload]);
 
+  const { confirm } = useConfirm();
+
   const remove = useCallback(
     async (query: GgSavedQuery) => {
       if (!backend?.deleteGgSavedQuery || !token) return;
       if (
-        !window.confirm(
-          `Delete the saved query “${query.name}”? Dashboards built from it keep ` +
-            `their own copy of the text.`,
-        )
+        !(await confirm({
+          title: "Delete saved query",
+          message: `Delete “${query.name}”? Dashboards built from it keep their own copy of the text.`,
+          confirmLabel: "Delete",
+        }))
       ) {
         return;
       }
@@ -126,7 +131,7 @@ export function GgSavedQueriesPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload],
+    [backend, token, reload, confirm],
   );
 
   return (
@@ -217,7 +222,7 @@ export function GgSavedQueriesPage() {
           they run over is deployment-wide either way.
         </p>
       ) : loading ? (
-        <p className={styles.empty}>Loading saved queries…</p>
+        <LoadingState size="section" label="Loading saved queries…" />
       ) : saved.length === 0 ? (
         <p className={styles.empty}>
           Nothing saved yet. Compose a question in Discover and use its Save

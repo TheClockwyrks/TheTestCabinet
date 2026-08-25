@@ -12,4 +12,14 @@ describe("formatPoints", () => {
     expect(formatPoints(0.5)).toBe("0.5");
     expect(formatPoints(1 / 3)).toBe("0.33");
   });
+
+  it('never shows a ".0" suffix but keeps non-zero decimals', () => {
+    // Review items are integer-weighted, so a whole score reads "5", not "5.0";
+    // a fraction that *rounds* to a whole trims away too, while a genuinely
+    // non-zero fractional part stays.
+    expect(formatPoints(5.0)).toBe("5");
+    expect(formatPoints(5.001)).toBe("5");
+    expect(formatPoints(5.1)).toBe("5.1");
+    expect(formatPoints(14.5)).toBe("14.5");
+  });
 });

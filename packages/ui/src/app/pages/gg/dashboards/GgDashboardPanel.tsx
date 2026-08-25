@@ -20,6 +20,7 @@
 //   range, so "why is that number that" is one click from the editor, the field sidebar
 //   and the completer.
 import { Link } from "react-router";
+import { Spinner } from "@test-cabinet/ui";
 import type { GgQueryResponse } from "@test-cabinet/run-record/gg-query";
 import { GgBucketTable } from "../discover/GgBucketTable";
 import { GgDocTable } from "../discover/GgDocTable";
@@ -70,7 +71,7 @@ export function GgDashboardPanel({
           {errors.join(" · ")}
         </p>
       ) : !result ? (
-        <p className={styles.panelMeta}>Loading…</p>
+        <Spinner variant="flap" label="Loading…" />
       ) : (
         <>
           <p className={styles.panelMeta}>

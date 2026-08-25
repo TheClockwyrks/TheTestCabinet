@@ -23,6 +23,8 @@ import type {
 } from "@test-cabinet/run-record/gg-query";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -97,10 +99,20 @@ export function GgDashboardsPage() {
     }
   }, [backend, draft, editing, token, reload]);
 
+  const { confirm } = useConfirm();
+
   const remove = useCallback(
     async (board: GgDashboard) => {
       if (!backend?.deleteGgDashboard || !token) return;
-      if (!window.confirm(`Delete the dashboard “${board.name}”?`)) return;
+      if (
+        !(await confirm({
+          title: "Delete dashboard",
+          message: `Delete the dashboard “${board.name}”?`,
+          confirmLabel: "Delete",
+        }))
+      ) {
+        return;
+      }
       setBusy(true);
       try {
         await backend.deleteGgDashboard(board.id, token);
@@ -111,7 +123,7 @@ export function GgDashboardsPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload],
+    [backend, token, reload, confirm],
   );
 
   /** Open the editor on a copy of an existing board — the same path "Duplicate the
@@ -314,7 +326,7 @@ export function GgDashboardsPage() {
           either way.
         </p>
       ) : loading ? (
-        <p className={styles.empty}>Loading dashboards…</p>
+        <LoadingState size="section" label="Loading dashboards…" />
       ) : boards.length === 0 ? (
         <p className={styles.empty}>
           No dashboards yet. Duplicate the built-in overview to start from

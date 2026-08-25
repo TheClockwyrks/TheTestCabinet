@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { harnesses } from "../data/harnesses";
+import { recordedHarnesses } from "../data/harnesses";
 import { useModels } from "../data/useModels";
 import { useTestCases } from "../data/useTestCases";
 import type { RunFacetName, RunFilterState } from "./useRunFilters";
@@ -169,7 +169,9 @@ function useFacetOptions(
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((testCase) => ({ value: testCase.slug, label: testCase.name })),
       version: versions.map((version) => ({ value: version, label: version })),
-      harness: harnesses.map((harness) => ({
+      // Recorded identities, not the launchable catalog: a gg run records
+      // `harnessSlug: "gg"` and must be filterable like any other harness.
+      harness: recordedHarnesses.map((harness) => ({
         value: harness.slug,
         label: harness.displayName,
       })),

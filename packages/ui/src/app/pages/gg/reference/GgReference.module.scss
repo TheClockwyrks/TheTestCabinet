@@ -1,10 +1,11 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
 @use "../../../styles/halo" as h;
+@use "../../../styles/forms" as f;
 @use "../../../styles/breakpoints" as bp;
 
-// The gg **Reference** section: the tab bar, the prose that frames the document, and
-// the detail pane's typography.
+// The gg **Reference** section: the tab bar, the API tab's own explorer shell (arm
+// picker over sidebar, detail pane beside both), and the detail pane's typography.
 //
 // The two-pane shell, the tree, and the panel body are NOT here — they are the gg
 // explorer's own, imported wholesale from `pages/runs/gg` (see `GgReferenceToolsPage`
@@ -17,23 +18,19 @@
 
 // --- The section frame --------------------------------------------------------
 
-// The paragraph under the header explaining where the document comes from. Muted, so
-// it reads as the frame around the reference rather than as part of it.
-.intro {
-  margin: 0 0 t.$space-md;
-  max-width: 52rem;
-  font-size: t.$font-sm;
-  line-height: 1.6;
-  color: t.$color-text-muted;
-  @include h.halo;
-}
-
-// A figure in the intro line — the gg version the documents were projected from, and the
-// counts that size the surface. A reference with no version on it is a reference you
-// cannot check, so the stamp is part of the sentence rather than tucked in a corner.
-.version {
-  color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+// The tab bar's body: whichever tab (or non-document state) is on screen, laid out as a
+// filling column so an explorer inside grows to the bottom of the page.
+//
+// The negative bottom margin is the one place the page tunes the gap under the sidebar
+// and the detail pane: `PageLayout`'s `.main` reserves `$space-2xl` under every page,
+// which is more frame than a full-height explorer needs, so the body reclaims half of it
+// and stops `$space-2xl / 2` above the viewport edge instead.
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: -(t.$space-2xl * 0.5);
 }
 
 // The Tools/API tab bar. Deliberately the *same* bar the test-case catalog and the
@@ -93,79 +90,89 @@
   @include h.halo;
 }
 
-// --- The SDK arm picker -------------------------------------------------------
+// --- The API tab's explorer ---------------------------------------------------
 
-// The API tab's own column: the arm picker, then whichever of the arm's states applies.
-// A column that fills its host, so the explorer below the picker still reaches the bottom
-// of the page — the picker is a fixed strip and everything left over is the document.
-.arm {
+// The API tab's two panes: a left column holding the arm picker over the sidebar, and
+// the detail pane filling everything beside them. The picker deliberately does NOT take
+// a full-width row of its own — it shares the sidebar's column, so the detail pane
+// starts level with it and both stop at the same bottom edge. Mirrors the shared
+// explorer's `.explorer` geometry (see GgPanels.module.scss), which the Tools tab still
+// uses directly.
+.armExplorer {
   flex: 1 1 auto;
+  min-height: 18rem;
+  display: flex;
+  gap: t.$space-md;
+  align-items: stretch;
+}
+
+// The left column: the dropdown, then the sidebar filling the rest of the height. Sized
+// exactly as the shared explorer sizes its sidebar, so the two tabs' trees line up.
+.armSide {
+  flex: 0 0 auto;
+  width: 17rem;
+  max-width: 40%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: t.$space-sm;
-  min-height: 0;
 }
 
-// All eleven arms at once, wrapping rather than scrolling. A dropdown would hide the one
-// fact this row exists to state — that gg's surface is offered in eleven idiomatic SDKs —
-// behind a click, and a reader who does not know there is a Swift arm does not go looking
-// in a menu for one.
-.arms {
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-xs;
-}
-
-.armButton {
-  display: inline-flex;
-  align-items: baseline;
-  gap: t.$space-xs;
-  padding: t.$space-2xs t.$space-sm;
-  font-family: inherit;
+// The SDK arm dropdown. Mirrors the run listing's facet selects so the console's
+// dropdowns read as one family.
+.armSelect {
+  width: 100%;
+  font: inherit;
   font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  background: none;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
   border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-lg;
-  cursor: pointer;
-
-  &:hover {
-    color: t.$color-text;
-    border-color: color-mix(in srgb, t.$color-accent 45%, transparent);
-  }
+  border-radius: t.$radius-sm;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
 
   &:focus-visible {
     outline: t.$border-hairline solid t.$color-accent;
-    outline-offset: 2px;
+    border-color: t.$color-accent;
   }
 }
 
-// The arm being read, in the accent the rest of the page reserves for "this is the thing
-// that decides what you are looking at".
-.armButtonActive {
-  color: t.$color-accent;
-  border-color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+// The API sidebar: the filter pinned at the top, the entries scrolling under their own
+// scrollbar below it. Drawn like the shared explorer's sidebar, but laid out as a column
+// with `overflow: hidden` so only `.entries` scrolls — the filter can never leave the
+// viewport, and no row ever slides underneath it.
+.sidebar {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
 }
 
-// How many functions the arm carries, from the index — so an arm nobody has opened yet
-// and an arm whose document failed to project do not look alike before either is fetched.
-.armCount {
-  font-size: 0.72rem;
-  color: t.$color-text-muted;
+// The detail pane beside the sidebar column, filling the rest of the row. The same
+// column the shared explorer's content pane is, so `panelBody` children fill and scroll
+// identically on both tabs.
+.armDetail {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
 }
 
 // --- The tree filter ----------------------------------------------------------
 
-// The filter box at the top of the API sidebar, and the line under it saying what it is
-// not. Sticky: the sidebar is the scroll container and a filter that scrolled away from
-// its own results would be a control you have to go back up to change.
+// The filter box leading the API sidebar. A fixed header of the sidebar's column rather
+// than a sticky row of the scroll container, ruled off from the entries below it.
 .filter {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: t.$space-2xs t.$space-2xs t.$space-xs;
-  background: s.$panel-bg;
+  flex: 0 0 auto;
+  padding: t.$space-xs;
+  border-bottom: t.$border-hairline solid t.$color-border;
 }
 
 .filterInput {
@@ -179,15 +186,14 @@
   font-size: t.$font-sm;
 }
 
-// Why this box is not gg's search. The two answer different questions — this hides rows
-// of the maximal pool, gg's ranks hits and returns only what a run granted — and a reader
-// who conflated them would draw conclusions about a run from a page that knows nothing
-// about any run.
-.filterNote {
-  margin: t.$space-2xs 0 0;
-  font-size: 0.68rem;
-  line-height: 1.35;
-  color: t.$color-text-muted;
+// The scrolling half of the sidebar: the tree, and nothing else. Carries the inner
+// padding the shared explorer puts on the sidebar itself, so the rows sit off the
+// border the same way the Tools tree's do.
+.entries {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: t.$space-xs;
 }
 
 // --- The sidebar's object captions --------------------------------------------

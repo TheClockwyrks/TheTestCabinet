@@ -11,7 +11,7 @@
 //
 // **The body.** The block on the page is the documentation view gg rendered, verbatim. If
 // it ever became something the console assembled out of structured fields, the page would
-// stop being what its own intro paragraph claims it is and nothing would look wrong.
+// stop showing what a model is actually given and nothing would look wrong.
 //
 // **The arm.** Eleven SDKs spell the same capabilities eleven ways, so picking one has to
 // fetch that one's document and show that one's spellings — and has to keep the reader on
@@ -295,10 +295,12 @@ function renderAt(path: string) {
   );
 }
 
-/** Click an arm in the picker and let both the pick and its fetch settle. */
-async function pickArm(name: string) {
+/** Pick an arm in the dropdown by its id and let both the pick and its fetch settle. */
+async function pickArm(id: string) {
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: new RegExp(name) }));
+    fireEvent.change(screen.getByRole("combobox", { name: "SDK arm" }), {
+      target: { value: id },
+    });
   });
 }
 
@@ -343,19 +345,21 @@ describe("GgReferenceApiTab", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("captions each module with its own summary, not its family's", async () => {
+  it("lists the modules bare, with no inline summary under the folder", async () => {
     renderAt("/gg/reference/api");
     const sidebar = await screen.findByRole("navigation", {
       name: "API modules",
     });
-    // The sentence the module's own declaration is introduced by — the one the model is
-    // given — rather than the family's, which groups several modules and says less about
-    // which folder a reader wants.
+    // The folders carry the module paths alone: the summaries the sidebar used to inline
+    // under each folder are gone, and the tree is the index it looked like.
     expect(
-      within(sidebar).getByText(
+      within(sidebar).getByRole("button", { name: "gg.files entries" }),
+    ).toBeInTheDocument();
+    expect(
+      within(sidebar).queryByText(
         "Read, write, edit and list the files of the workspace.",
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
   });
 
   it("shows the documentation view gg rendered, whole and unreflowed", async () => {
@@ -368,14 +372,15 @@ describe("GgReferenceApiTab", () => {
     expect(body.textContent).toBe(TS_READ_FILE_BODY);
   });
 
-  it("addresses an entry by the name a lookup takes, and names the operation it is", async () => {
+  it("does not badge the entry with a second spelling of its own name", async () => {
     renderAt("/gg/reference/api?fn=gg.files.readFile");
     expect(
       await screen.findByRole("heading", { name: "gg.files.readFile" }),
     ).toBeInTheDocument();
-    // gg's own name for what the call does — the one identity that is the same in all
-    // eleven arms, and the string a run's records name it by.
-    expect(screen.getByText("files.read_file")).toBeInTheDocument();
+    // No dot-notation operation chip beside the title: the heading already names the
+    // call, and the chip was a second copy of that information. (The operation id still
+    // does its real work invisibly, carrying the selection across an arm switch.)
+    expect(screen.queryByText("files.read_file")).not.toBeInTheDocument();
     // And nothing on the page names a TOOL. Tool calling is a separate surface with its
     // own vocabulary, and no name on it gates anything documented here.
     expect(screen.queryByText(/^bound by /)).toBeNull();
@@ -449,7 +454,7 @@ describe("GgReferenceApiTab", () => {
     renderAt("/gg/reference/api?fn=gg.files.readFile");
     await screen.findByRole("heading", { name: "gg.files.readFile" });
 
-    await pickArm("Rust");
+    await pickArm("rust");
 
     // The same operation, spelled the way Rust spells it — the reader is not dropped back
     // at the top of a document they did not ask to restart. The only vocabulary the two
@@ -471,7 +476,7 @@ describe("GgReferenceApiTab", () => {
     renderAt("/gg/reference/api?fn=gg.files.FileRead");
     await screen.findByRole("heading", { name: "gg.files.FileRead" });
 
-    await pickArm("Rust");
+    await pickArm("rust");
 
     // A type has no operation to carry over by, so the fold on its own name is what finds
     // it: `FileRead` and `file_read` are one declaration written by two SDKs with
@@ -485,7 +490,7 @@ describe("GgReferenceApiTab", () => {
     renderAt("/gg/reference/api?fn=gg.session.approve");
     await screen.findByRole("heading", { name: "gg.session.approve" });
 
-    await pickArm("Rust");
+    await pickArm("rust");
 
     // The Rust fixture binds no review ending. Landing the reader on something plausible
     // and wrong would be worse than saying the arm does not have it.
@@ -514,12 +519,12 @@ describe("GgReferenceApiTab", () => {
 
     // JavaScript spells the call exactly as TypeScript does, so this hop looks like a
     // no-op and is the one that used to poison the next.
-    await pickArm("JavaScript");
+    await pickArm("javascript");
     expect(
       await screen.findByRole("heading", { name: "gg.files.readFile" }),
     ).toBeInTheDocument();
 
-    await pickArm("Rust");
+    await pickArm("rust");
     expect(
       await screen.findByRole("heading", { name: "gg::files::read_file" }),
     ).toBeInTheDocument();
@@ -541,7 +546,7 @@ describe("GgReferenceApiTab", () => {
     renderAt("/gg/reference/api?fn=gg.files.readFile");
     await screen.findByRole("heading", { name: "gg.files.readFile" });
 
-    await pickArm("Rust");
+    await pickArm("rust");
     expect(screen.getByText(/Loading the Rust surface/)).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { name: "gg.files.readFile" }),
@@ -558,9 +563,9 @@ describe("GgReferenceApiTab", () => {
   it("re-reads an arm it has already fetched from memory, not from the backend", async () => {
     renderAt("/gg/reference/api");
     await screen.findByRole("heading", { name: "gg.files.readFile" });
-    await pickArm("Rust");
+    await pickArm("rust");
     await screen.findByRole("heading", { name: "gg::files::read_file" });
-    await pickArm("TypeScript");
+    await pickArm("typescript");
     await screen.findByRole("heading", { name: "gg.files.readFile" });
 
     // Two arms, two requests — the third view of an immutable document costs nothing.
@@ -582,7 +587,7 @@ describe("GgReferenceApiTab", () => {
     expect(ggReferenceApi).not.toHaveBeenCalled();
   });
 
-  it("filters the tree without reordering it, and says what it is not", async () => {
+  it("filters the tree without reordering it", async () => {
     renderAt("/gg/reference/api");
     const filter = await screen.findByRole("searchbox", {
       name: "Filter this arm's surface",
@@ -602,9 +607,6 @@ describe("GgReferenceApiTab", () => {
         name: "function gg.files.readFile",
       }),
     ).toBeInTheDocument();
-    // And the caption keeping it apart from gg's own search, which ranks its hits and
-    // returns only what a run granted.
-    expect(within(sidebar).getByText(/Hides rows here/)).toBeInTheDocument();
   });
 
   it("says an empty arm document is a broken projection, not a filter miss", async () => {

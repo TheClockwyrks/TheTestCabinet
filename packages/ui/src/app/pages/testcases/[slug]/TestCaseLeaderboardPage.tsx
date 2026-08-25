@@ -14,6 +14,7 @@ import { isGgRun } from "../../../data/runLinks";
 import { perModelBestFuel } from "../../../data/fuelRanking";
 import {
   asGrade,
+  formatPoints,
   GRADE_LEVELS,
   type GradeStatus,
   overallGradeOf,
@@ -753,12 +754,6 @@ function bestGrade(grades: readonly GradeStatus[]): GradeStatus | null {
 function mean(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   return values.reduce((sum, v) => sum + v, 0) / values.length;
-}
-
-// A points figure for display: an integer stays whole; a fractional mean shows a
-// single decimal so "14 / 20" and "14.3 / 20" both read cleanly.
-function formatPoints(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 // The best (highest) rating among `ratings`, or null when empty — the mirror of
