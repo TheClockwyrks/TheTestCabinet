@@ -167,6 +167,11 @@
   white-space: nowrap;
 }
 
+.rowLanguage {
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
 .rowProvider {
   color: t.$color-text-muted;
 }
@@ -393,4 +398,11 @@
     flex-direction: column;
     gap: t.$space-xs;
   }
+}
+
+.requestPick {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
 }

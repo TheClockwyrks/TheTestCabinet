@@ -558,6 +558,7 @@ fn main() -> Result<()> {
                 bapi::ProbeTriggerInput, bapi::ProbeTriggerResponse, bapi::ModelProbeOut,
                 bapi::ModelProbeItemOut, bapi::ModelProbesResponse, bapi::ModelProbeDetailResponse,
                 bapi::ProbeMessage, bapi::ProbeToolCall, bapi::ProbeToolFunction,
+                bapi::ProbeRequestOut,
                 bapi::ProbeProvidersResponse, bapi::ProbeProviderOut,
                 bapi::ProviderStatsResponse, bapi::ProviderStatsOut, bapi::ProviderModelStatsOut,
                 bapi::ProviderCallStatsOut, bapi::ProbeProviderStatsOut, bapi::ProbeProviderModelOut,

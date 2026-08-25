@@ -392,7 +392,7 @@ fn probe_items_fold_per_provider_and_model() {
     assert_eq!(acme.models.len(), 2);
     assert_eq!(acme.models[0].model_slug, "alpha");
     assert_eq!(acme.models[0].items, 2);
-    assert_eq!(acme.models[0].clean, 1);
+    assert_eq!(acme.models[0].passes, 1);
     assert_eq!(acme.models[0].errored, 0);
     let providerless = &probes[1];
     assert_eq!(providerless.provider, None);

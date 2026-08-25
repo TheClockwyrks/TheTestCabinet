@@ -6358,14 +6358,14 @@ impl Db {
             openrouter_slug: Set(row.openrouter_slug),
             provider: Set(row.provider),
             user_id: Set(row.user_id),
+            language: Set(row.language),
             samples: Set(row.samples),
             max_tokens: Set(row.max_tokens),
-            full_context: Set(row.full_context),
             request_json: Set(row.request_json),
             status: Set(row.status),
             error: Set(row.error),
             verdict: Set(row.verdict),
-            clean_rate: Set(row.clean_rate),
+            pass_rate: Set(row.pass_rate),
             spend: Set(row.spend),
             created_at: Set(row.created_at),
             finished_at: Set(row.finished_at),
@@ -6408,12 +6408,15 @@ impl Db {
         model_probe_item::ActiveModel {
             id: Set(row.id),
             probe_id: Set(row.probe_id),
+            language: Set(row.language),
+            scenario: Set(row.scenario),
+            prompt: Set(row.prompt),
             sample: Set(row.sample),
             provider: Set(row.provider),
             finish_reason: Set(row.finish_reason),
             native_finish_reason: Set(row.native_finish_reason),
             label: Set(row.label),
-            clean: Set(row.clean),
+            pass: Set(row.pass),
             program_text: Set(row.program_text),
             response_text: Set(row.response_text),
             reasoning_text: Set(row.reasoning_text),
@@ -6429,9 +6432,8 @@ impl Db {
         Ok(())
     }
 
-    /// One probe's calls, in matrix order (condition insertion order is not
-    /// stored, so items are ordered by creation, which the sequential runner
-    /// makes matrix order).
+    /// One probe's calls, in case order (items are ordered by creation, which
+    /// the sequential runner makes case-then-sample order).
     pub async fn list_model_probe_items(
         &self,
         probe_id: &str,
@@ -6446,7 +6448,7 @@ impl Db {
 
     /// The `/stats/providers` probe projection: every probe item's serving
     /// provider, the probed model's catalog slug (via the owning probe), its
-    /// clean flag, and whether the call errored before classification —
+    /// pass flag, and whether the call errored before classification —
     /// four columns across the whole store, folded in Rust by
     /// [`fold_probe_providers`](crate::stats::fold_probe_providers). The label
     /// travels only as its absence: `None` is the errored call, exactly the
@@ -6457,7 +6459,7 @@ impl Db {
                 .select_only()
                 .column(model_probe_item::Column::Provider)
                 .column(model_probe::Column::ModelSlug)
-                .column(model_probe_item::Column::Clean)
+                .column(model_probe_item::Column::Pass)
                 .column(model_probe_item::Column::Label)
                 .join(JoinType::InnerJoin, model_probe_item::Relation::Probe.def())
                 .into_tuple()
@@ -6465,8 +6467,8 @@ impl Db {
                 .await?;
         Ok(rows
             .into_iter()
-            .map(|(provider, model_slug, clean, label)| {
-                (provider, model_slug, clean, label.is_none())
+            .map(|(provider, model_slug, pass, label)| {
+                (provider, model_slug, pass, label.is_none())
             })
             .collect())
     }
@@ -6481,7 +6483,7 @@ impl Db {
         status: &str,
         error: Option<String>,
         verdict: Option<String>,
-        clean_rate: Option<f64>,
+        pass_rate: Option<f64>,
         spend: f64,
         finished_at: &str,
     ) -> Result<bool> {
@@ -6489,7 +6491,7 @@ impl Db {
             .col_expr(model_probe::Column::Status, Expr::value(status))
             .col_expr(model_probe::Column::Error, Expr::value(error))
             .col_expr(model_probe::Column::Verdict, Expr::value(verdict))
-            .col_expr(model_probe::Column::CleanRate, Expr::value(clean_rate))
+            .col_expr(model_probe::Column::PassRate, Expr::value(pass_rate))
             .col_expr(model_probe::Column::Spend, Expr::value(spend))
             .col_expr(model_probe::Column::FinishedAt, Expr::value(finished_at))
             .filter(model_probe::Column::Id.eq(id))

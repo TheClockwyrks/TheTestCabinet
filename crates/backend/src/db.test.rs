@@ -5774,7 +5774,7 @@ fn a_combination_key_separates_on_a_character_a_model_id_cannot_contain() {
 #[tokio::test]
 async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_label() {
     // The `/stats/providers` probe fold reads four columns: the item's serving
-    // provider, the owning probe's model slug (the join), the clean flag, and
+    // provider, the owning probe's model slug (the join), the pass flag, and
     // "errored" as the absence of a classification label. Prove the projection
     // against a store with two probes of two models, mixed providers, and one
     // errored call.
@@ -5785,29 +5785,32 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
         openrouter_slug: format!("or/{slug}"),
         provider: None,
         user_id: "u1".to_string(),
+        language: None,
         samples: 1,
         max_tokens: 100,
-        full_context: false,
-        request_json: "{}".to_string(),
+        request_json: "[]".to_string(),
         status: "complete".to_string(),
         error: None,
         verdict: None,
-        clean_rate: None,
+        pass_rate: None,
         spend: 0.0,
         created_at: "2026-08-23T00:00:00Z".to_string(),
         finished_at: None,
     };
     let item =
-        |id: &str, probe_id: &str, provider: Option<&str>, clean: bool, label: Option<&str>| {
+        |id: &str, probe_id: &str, provider: Option<&str>, pass: bool, label: Option<&str>| {
             test_cabinet_entities::model_probe_item::Model {
                 id: id.to_string(),
                 probe_id: probe_id.to_string(),
+                language: "typescript".to_string(),
+                scenario: "baseline".to_string(),
+                prompt: "write-plan".to_string(),
                 sample: 0,
                 provider: provider.map(str::to_string),
                 finish_reason: None,
                 native_finish_reason: None,
                 label: label.map(str::to_string),
-                clean,
+                pass,
                 program_text: None,
                 response_text: String::new(),
                 reasoning_text: None,
@@ -5821,10 +5824,10 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
         };
     db.insert_model_probe(probe("p1", "alpha")).await.unwrap();
     db.insert_model_probe(probe("p2", "beta")).await.unwrap();
-    db.insert_model_probe_item(item("i1", "p1", Some("acme"), true, Some("clean-program")))
+    db.insert_model_probe_item(item("i1", "p1", Some("acme"), true, Some("correct-calls")))
         .await
         .unwrap();
-    db.insert_model_probe_item(item("i2", "p1", Some("acme"), false, Some("prose+program")))
+    db.insert_model_probe_item(item("i2", "p1", Some("acme"), false, Some("missing-calls")))
         .await
         .unwrap();
     db.insert_model_probe_item(item(
@@ -5832,7 +5835,7 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
         "p2",
         Some("zenith"),
         true,
-        Some("clean-program"),
+        Some("correct-calls"),
     ))
     .await
     .unwrap();

@@ -9,9 +9,10 @@ import type {
 } from "../../client/types";
 import { useGalleryData } from "./galleryContext";
 
-// How often a running probe is re-read. A probe takes tens of seconds (a few
-// dozen completion calls), so a couple of seconds keeps the page live without
-// hammering the backend — the same cadence the kill-await poll uses.
+// How often a running probe is re-read. A probe takes tens of seconds to
+// minutes (its cases times its per-prompt samples), so a couple of seconds
+// keeps the page live without hammering the backend — the same cadence the
+// kill-await poll uses.
 export const PROBE_POLL_MS = 2000;
 
 // The async state of a model's probe history. `unavailable` covers a host with

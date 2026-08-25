@@ -145,10 +145,12 @@ export type ModelProbeStatus = "running" | "complete" | "failed";
 /** A completed probe's overall reading of the model's RaC readiness. */
 export type ModelProbeVerdict = "ready" | "not-ready";
 
-/** One responses-as-code readiness probe of a catalog model: gg's real RaC
- * turn-1 request replayed with the `submit_program` tool offered and forced,
- * each submitted program classified, and a verdict stored. Mirrors the backend
- * `ModelProbeOut` (`crates/backend/src/api/model_probes.rs`). */
+/** One responses-as-code readiness probe of a catalog model: gg's RaC turn-1
+ * request replayed per case — two scenarios over several input prompts, on one
+ * program-language arm or every arm — with the `submit_program` tool offered
+ * and forced, each submitted program checked against its case, and a verdict
+ * stored. Mirrors the backend `ModelProbeOut`
+ * (`crates/backend/src/api/model_probes.rs`). */
 export interface ModelProbe {
   id: string;
   /** The catalog slug the probe was triggered from. */
@@ -157,45 +159,51 @@ export interface ModelProbe {
   openrouterSlug: string;
   /** The pinned provider, or null for the default route. */
   provider: string | null;
-  /** Completion calls requested. */
+  /** The probed program-language arm's wire id, or null for every language. */
+  language: string | null;
+  /** Completion calls requested per input prompt. */
   samples: number;
   /** Completion-token cap per call. */
   maxTokens: number;
-  /** Whether the seeded spec views were sent whole instead of trimmed. */
-  fullContext: boolean;
   status: ModelProbeStatus;
   /** Why the probe failed, or null. */
   error: string | null;
   /** Null until the probe completes. */
   verdict: ModelProbeVerdict | null;
-  /** The probe's clean-submission rate (0..=1), or null. */
-  cleanRate: number | null;
+  /** The probe's overall case-check pass rate (0..=1), or null. */
+  passRate: number | null;
   /** Total USD spend across the probe's calls, as OpenRouter reported it. */
   spend: number;
   createdAt: string;
   finishedAt: string | null;
 }
 
-/** One completion call inside a probe: which provider served it, how it
- * finished, the classified shape of the program it submitted, and the raw
- * reply. Mirrors the backend `ModelProbeItemOut`. The known `label` values are
- * `clean-program`, `prose+program`, `program-no-gg`, `fenced`, `tool-token`,
- * `xml-pseudo-tools`, `cot-leak`, `empty`, `other`, `no-submission`,
- * `stray-tool-call`, and `no-program`; typed open so a newly classified shape
- * still renders. */
+/** One completion call inside a probe: which case it sampled, which provider
+ * served it, how it finished, whether the submitted program passed its case's
+ * check, and the raw reply. Mirrors the backend `ModelProbeItemOut`. The known
+ * `label` values are the case outcomes `correct-calls`, `missing-calls`,
+ * `docview-first`, `called-undocumented` and `no-docview`, the shape faults
+ * `fenced`, `tool-token`, `xml-pseudo-tools`, `cot-leak` and `empty`, and the
+ * dodges `no-submission`, `stray-tool-call` and `no-program`; typed open so a
+ * newly classified outcome still renders. */
 export interface ModelProbeItem {
   id: string;
+  /** The program-language arm's wire id this call probed. */
+  language: string;
+  /** The case's scenario: `baseline` or `missing-docview`. */
+  scenario: string;
+  /** The case's input prompt id. */
+  prompt: string;
+  /** The sample index within the case, from 0. */
   sample: number;
   /** The provider OpenRouter reported serving the call, or null on error. */
   provider: string | null;
   finishReason: string | null;
   nativeFinishReason: string | null;
-  /** The classified shape of the submitted program, or null when the call
-   * errored. */
+  /** The classified outcome, or null when the call errored. */
   label: string | null;
-  /** Whether the submitted program counts as clean (a bare program over the gg
-   * modules). */
-  clean: boolean;
+  /** Whether the submitted program passed its case's check. */
+  pass: boolean;
   /** The program string the reply's first `submit_program` call carried, or
    * null. */
   programText: string | null;
@@ -230,27 +238,38 @@ export interface ModelProbeMessage {
   tool_call_id?: string | null;
 }
 
+/** One case's request exactly as sent: its (language, scenario, prompt)
+ * coordinate and its message array. Mirrors the backend `ProbeRequestOut`. */
+export interface ModelProbeRequest {
+  language: string;
+  scenario: string;
+  prompt: string;
+  messages: ModelProbeMessage[];
+}
+
 /** The `GET /model-probes/{id}` response: the probe with everything the console
- * shows — the request messages exactly as sent, every call's classification,
- * the submitted programs, and the raw replies. */
+ * shows — every case's request messages exactly as sent, every call's
+ * classification, the submitted programs, and the raw replies. */
 export interface ModelProbeDetail {
   probe: ModelProbe;
   items: ModelProbeItem[];
-  /** The request's message array exactly as sent. */
-  requestMessages: ModelProbeMessage[];
+  /** The per-case requests exactly as sent. */
+  requests: ModelProbeRequest[];
 }
 
 /** The `POST /models/{slug}/probes` request body. Everything is optional: an
- * empty body probes the default route with the default sampling. */
+ * empty body probes every language arm over the default route with the default
+ * sampling. */
 export interface ModelProbeTriggerInput {
   /** Pin every call to this provider. Absent probes the default route. */
   provider?: string;
-  /** Completion calls (default 3, at most 8). */
+  /** Probe this one program-language arm by its wire id. Absent probes every
+   * arm. */
+  language?: string;
+  /** Completion calls per input prompt (default 8, 1..=128). */
   samples?: number;
   /** Completion-token cap per call (default 3500, 256..=16000). */
   maxTokens?: number;
-  /** Send the seeded spec views whole instead of trimmed (default false). */
-  fullContext?: boolean;
 }
 
 /** One provider route OpenRouter lists for a model, so a probe can pin to it. */
@@ -312,7 +331,8 @@ export interface ProviderStatsEntry {
 export interface ProbeProviderModel {
   modelSlug: string;
   items: number;
-  clean: number;
+  /** Items whose submitted program passed its case's check. */
+  passes: number;
   /** Items whose call errored (no classified label). */
   errored: number;
 }

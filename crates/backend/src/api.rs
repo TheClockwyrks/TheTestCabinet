@@ -49,7 +49,7 @@ mod tournaments;
 pub use comparisons::ComparisonInput;
 // Reused by the snapshot publisher so a published comparison is folded into the
 // public snapshot with the exact computation the internal `/comparisons` API uses.
-pub use crate::probe::{ProbeMessage, ProbeToolCall, ProbeToolFunction};
+pub use crate::probe::{ProbeMessage, ProbeRequestOut, ProbeToolCall, ProbeToolFunction};
 pub(crate) use comparisons::assemble_comparison;
 pub use coverage::{
     CoverageAxis, CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind,

@@ -2,13 +2,14 @@
 //! catalog model, read its history, and enumerate the providers it can be
 //! pinned to.
 //!
-//! The probe itself — the replayed gg turn-1 request, the classification of
-//! each submitted program, and the verdict — is [`crate::probe`]; these handlers
-//! own only the HTTP surface and the row lifecycle. Triggering requires a
-//! bearer token (the backend spends the operator's OpenRouter credit on their
-//! behalf), as does the provider enumeration (a third-party reach, like the
-//! OpenRouter form fill); the reads are open like the rest of the catalog.
-//! Probe results are console-only data and never feed the public snapshot.
+//! The probe itself — the per-language case fixtures, the two scenarios, the
+//! classification of each submitted program, and the verdict — is
+//! [`crate::probe`]; these handlers own only the HTTP surface and the row
+//! lifecycle. Triggering requires a bearer token (the backend spends the
+//! operator's OpenRouter credit on their behalf), as does the provider
+//! enumeration (a third-party reach, like the OpenRouter form fill); the reads
+//! are open like the rest of the catalog. Probe results are console-only data
+//! and never feed the public snapshot.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -26,7 +27,8 @@ use crate::probe;
 use super::AppState;
 
 /// The `POST /models/{slug}/probes` request body. Everything is optional: an
-/// empty body probes the default route with the default sampling.
+/// empty body probes every language arm over the default route with the
+/// default sampling.
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -34,16 +36,17 @@ pub struct ProbeTriggerInput {
     /// Pin every call to this provider (`provider.order` with fallbacks
     /// disabled). Absent probes the default route.
     pub provider: Option<String>,
-    /// Completion calls (default 3, at most 8).
+    /// Probe this one program-language arm, by its wire id (`typescript`,
+    /// `rust`, …). Absent probes every arm.
+    pub language: Option<String>,
+    /// Completion calls per input prompt (default 8, at most 128).
     pub samples: Option<i32>,
     /// Completion-token cap per call (default 3500).
     pub max_tokens: Option<i32>,
-    /// Send the seeded spec views whole instead of trimmed (default false).
-    pub full_context: Option<bool>,
 }
 
 /// One probe, as every probe read returns it (the detail read adds the items
-/// and the request).
+/// and the per-case requests).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -55,42 +58,50 @@ pub struct ModelProbeOut {
     pub openrouter_slug: String,
     /// The pinned provider, or null for the default route.
     pub provider: Option<String>,
+    /// The probed program-language arm's wire id, or null for every language.
+    pub language: Option<String>,
+    /// Completion calls requested per input prompt.
     pub samples: i32,
     pub max_tokens: i32,
-    pub full_context: bool,
     /// `running`, `complete`, or `failed`.
     pub status: String,
     /// Why the probe failed, or null.
     pub error: Option<String>,
     /// `ready` or `not-ready`; null until the probe completes.
     pub verdict: Option<String>,
-    /// The probe's clean-submission rate (0..=1), or null.
-    pub clean_rate: Option<f64>,
+    /// The probe's overall case-check pass rate (0..=1), or null.
+    pub pass_rate: Option<f64>,
     /// Total USD spend across the probe's calls, as OpenRouter reported it.
     pub spend: f64,
     pub created_at: String,
     pub finished_at: Option<String>,
 }
 
-/// One completion call inside a probe: which provider served it, how it
-/// finished, the classified shape of the program it submitted, and the raw
-/// reply.
+/// One completion call inside a probe: which case it sampled, which provider
+/// served it, how it finished, whether the submitted program passed its case's
+/// check, and the raw reply.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ModelProbeItemOut {
     pub id: String,
+    /// The program-language arm's wire id this call probed.
+    pub language: String,
+    /// The case's scenario: `baseline` or `missing-docview`.
+    pub scenario: String,
+    /// The case's input prompt id.
+    pub prompt: String,
+    /// The sample index within the case, from 0.
     pub sample: i32,
     /// The provider OpenRouter reported serving the call, or null on error.
     pub provider: Option<String>,
     pub finish_reason: Option<String>,
     pub native_finish_reason: Option<String>,
-    /// The classified shape of the submitted program, or null when the call
-    /// errored.
+    /// The classified outcome (`correct-calls`, `docview-first`,
+    /// `called-undocumented`, `fenced`, …), or null when the call errored.
     pub label: Option<String>,
-    /// Whether the submitted program counts as clean (a bare program over the
-    /// gg modules).
-    pub clean: bool,
+    /// Whether the submitted program passed its case's check.
+    pub pass: bool,
     /// The program string the reply's first `submit_program` call carried, or
     /// null.
     pub program_text: Option<String>,
@@ -125,19 +136,20 @@ pub struct ModelProbesResponse {
 }
 
 /// The `GET /model-probes/{id}` response: the probe with everything the console
-/// shows — the request messages exactly as sent, every call's classification,
-/// the submitted programs, and the raw replies. The request also carried the
-/// `submit_program` tool definition with `tool_choice` forced to it; that
-/// constant pair is [`probe::submit_program_tool`] rather than a response
-/// field.
+/// shows — every case's request messages exactly as sent, every call's
+/// classification, the submitted programs, and the raw replies. Each request
+/// also carried the case's `submit_program` tool definition with `tool_choice`
+/// forced to it; that pair is part of the embedded fixture rather than a
+/// response field.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ModelProbeDetailResponse {
     pub probe: ModelProbeOut,
     pub items: Vec<ModelProbeItemOut>,
-    /// The request's message array exactly as sent.
-    pub request_messages: Vec<probe::ProbeMessage>,
+    /// The per-case requests exactly as sent, one entry per probed
+    /// (language, scenario, prompt).
+    pub requests: Vec<probe::ProbeRequestOut>,
 }
 
 /// The `GET /models/{slug}/probe-providers` response.
@@ -196,7 +208,13 @@ pub async fn trigger(
         .provider
         .map(|p| p.trim().to_string())
         .filter(|p| !p.is_empty());
-    let full_context = input.full_context.unwrap_or(false);
+    let language = input
+        .language
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty());
+    // The one authority on which arms exist: the embedded fixtures. An unknown
+    // id is refused here rather than failing the probe after it was accepted.
+    let requests = probe::probe_requests(language.as_deref()).map_err(ApiError::unprocessable)?;
 
     let openrouter_slug = resolve_openrouter_slug(&state, &slug).await?;
     if state
@@ -210,22 +228,21 @@ pub async fn trigger(
         )));
     }
 
-    let request_messages = probe::build_messages(full_context);
     let row = model_probe::Model {
         id: cuid2::create_id(),
         model_slug: slug,
         openrouter_slug,
         provider,
         user_id: user.0.id.clone(),
+        language,
         samples,
         max_tokens,
-        full_context,
-        request_json: serde_json::to_string(&request_messages)
-            .map_err(|e| ApiError::internal(format!("encoding the probe request: {e}")))?,
+        request_json: serde_json::to_string(&requests)
+            .map_err(|e| ApiError::internal(format!("encoding the probe requests: {e}")))?,
         status: "running".to_string(),
         error: None,
         verdict: None,
-        clean_rate: None,
+        pass_rate: None,
         spend: 0.0,
         created_at: now()?,
         finished_at: None,
@@ -274,7 +291,7 @@ pub async fn list(
 }
 
 /// `GET /model-probes/{id}` — one probe with its items, raw replies, and the
-/// request as sent. Open read.
+/// per-case requests as sent. Open read.
 #[tracing::instrument(name = "model_probes.get", skip(state), fields(probe.id = %id), err(Debug))]
 pub async fn get(
     State(state): State<AppState>,
@@ -294,12 +311,12 @@ pub async fn get(
         .into_iter()
         .map(item_out)
         .collect();
-    let request_messages: Vec<probe::ProbeMessage> = serde_json::from_str(&row.request_json)
-        .map_err(|e| ApiError::internal(format!("decoding the stored probe request: {e}")))?;
+    let requests: Vec<probe::ProbeRequestOut> = serde_json::from_str(&row.request_json)
+        .map_err(|e| ApiError::internal(format!("decoding the stored probe requests: {e}")))?;
     Ok(Json(ModelProbeDetailResponse {
         probe: probe_out(row),
         items,
-        request_messages,
+        requests,
     }))
 }
 
@@ -364,13 +381,13 @@ fn probe_out(row: model_probe::Model) -> ModelProbeOut {
         model_slug: row.model_slug,
         openrouter_slug: row.openrouter_slug,
         provider: row.provider,
+        language: row.language,
         samples: row.samples,
         max_tokens: row.max_tokens,
-        full_context: row.full_context,
         status: row.status,
         error: row.error,
         verdict: row.verdict,
-        clean_rate: row.clean_rate,
+        pass_rate: row.pass_rate,
         spend: row.spend,
         created_at: row.created_at,
         finished_at: row.finished_at,
@@ -381,12 +398,15 @@ fn probe_out(row: model_probe::Model) -> ModelProbeOut {
 fn item_out(row: model_probe_item::Model) -> ModelProbeItemOut {
     ModelProbeItemOut {
         id: row.id,
+        language: row.language,
+        scenario: row.scenario,
+        prompt: row.prompt,
         sample: row.sample,
         provider: row.provider,
         finish_reason: row.finish_reason,
         native_finish_reason: row.native_finish_reason,
         label: row.label,
-        clean: row.clean,
+        pass: row.pass,
         program_text: row.program_text,
         response_text: row.response_text,
         reasoning_text: row.reasoning_text,

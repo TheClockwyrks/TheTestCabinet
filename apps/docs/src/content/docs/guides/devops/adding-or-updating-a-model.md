@@ -187,15 +187,19 @@ change is live at once, and the snapshot picks it up on the next publish.
 
 A model probe is a responses-as-code readiness check, run from the model's
 Probes tab. It answers whether the model can drive [gg](/gg/overview/)'s RaC
-mode at all: the backend replays gg's real RaC opening request against the
-model's OpenRouter slug — the `submit_program` tool offered and forced, as gg
-sends it — and classifies the program every reply submitted, because a model
-can hold the call shape and still fence or prose-wrap the program string and
-waste every RaC run. The verdict says whether to run the model in RaC mode or
+mode at all: the backend replays gg's RaC opening request against the model's
+OpenRouter slug — the `submit_program` tool offered and forced, as gg sends
+it — across cases that pair two scenarios with several task prompts, per
+program-language arm. A baseline case checks that the model calls the functions
+whose documentation views are open; a missing-docview case checks that it opens
+a missing function's documentation and stops rather than calling the function
+unread. A model can hold the call shape and still fail either discipline and
+waste every RaC run; the verdict says whether to run the model in RaC mode or
 keep it out.
 
 Run a probe when a new model is introduced, and again after pinning a new
-provider, since providers can serve the same model differently. The steps are in
+provider or before committing to a language arm, since providers can serve the
+same model differently. The steps are in
 the [Probe a Model](/quickstarts/devops/probe-a-model/) quickstart, and the wire
 contract is at [Model probes](/components/backend/api/#model-probes).
 

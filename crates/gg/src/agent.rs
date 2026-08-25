@@ -11669,7 +11669,10 @@ fn skill_views(
 /// language's SDK spells `requestChanges` is that language's business, and gg quoting a spelling of
 /// its own would be gg telling a model to make a call the language does not bind. The bare tool
 /// names on the tool-calling path are gg's own, in every language, because there is no language.
-fn ending_view(role: EndingRole, program_language: Option<GgProgramLanguage>) -> EndingView {
+pub(crate) fn ending_view(
+    role: EndingRole,
+    program_language: Option<GgProgramLanguage>,
+) -> EndingView {
     let language = program_language.map(crate::sandbox::language);
     let call = |operation: sandbox::OperationId, tool_name: &str| match language {
         Some(language) => crate::sandbox::spell(language, operation),

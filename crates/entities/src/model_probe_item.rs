@@ -1,10 +1,12 @@
 //! The `model_probe_item` table: one completion call inside a model probe.
 //!
-//! Each item is a single OpenRouter chat/completions call — one of the probe's
-//! samples: which provider actually served it, how it finished, the classified
-//! shape of the program the reply submitted, the submitted program itself, and
-//! the reply's own text (with any separate reasoning stream). A call the
-//! gateway refused stores the error instead of a classification.
+//! Each item is a single OpenRouter chat/completions call — one sample of one
+//! probe case: which language arm, scenario and input prompt it belongs to,
+//! which provider actually served it, how it finished, whether the submitted
+//! program passed its case's check with the label saying why, the submitted
+//! program itself, and the reply's own text (with any separate reasoning
+//! stream). A call the gateway refused stores the error instead of a
+//! classification.
 
 use sea_orm::entity::prelude::*;
 
@@ -16,7 +18,13 @@ pub struct Model {
     pub id: String,
     /// The owning probe's id.
     pub probe_id: String,
-    /// The sample index within the probe, from 0.
+    /// The program-language arm's wire id this call probed.
+    pub language: String,
+    /// The case's scenario: `baseline` or `missing-docview`.
+    pub scenario: String,
+    /// The case's input prompt id (`write-plan`, `run-tests`, …).
+    pub prompt: String,
+    /// The sample index within the case, from 0.
     pub sample: i32,
     /// The provider OpenRouter reported serving the call, or `NULL` on error.
     #[sea_orm(nullable)]
@@ -27,13 +35,13 @@ pub struct Model {
     /// The provider-native finish reason, or `NULL`.
     #[sea_orm(nullable)]
     pub native_finish_reason: Option<String>,
-    /// The classified shape of the submitted program (`clean-program`,
-    /// `fenced`, `no-submission`, …), or `NULL` on error.
+    /// The classified outcome (`correct-calls`, `docview-first`,
+    /// `called-undocumented`, `fenced`, `no-submission`, …), or `NULL` on
+    /// error.
     #[sea_orm(nullable)]
     pub label: Option<String>,
-    /// Whether the submitted program counts as clean (a bare program over the
-    /// gg modules).
-    pub clean: bool,
+    /// Whether the submitted program passed its case's check.
+    pub pass: bool,
     /// The program string the reply's first `submit_program` call carried, or
     /// `NULL` when no usable program arrived.
     #[sea_orm(column_type = "Text", nullable)]

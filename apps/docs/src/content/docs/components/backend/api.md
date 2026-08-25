@@ -807,21 +807,38 @@ first; `cancel-waiting` throws nothing away and does not need to.
 
 A model probe is a responses-as-code readiness check of one catalog model,
 answering whether the model can drive [gg](/gg/overview/)'s RaC mode before any
-run is spent on it. The backend replays gg's real RaC turn-1 request, an
-embedded fixture holding the system prompt, the Carom task, two seeded example
-programs as `submit_program` calls with their acknowledgements and results, the
-spec views (trimmed by default), and the trailing contract notice. The replay
-goes through OpenRouter chat/completions with the one `submit_program` tool
-offered and `tool_choice` forced to it — the wire shape gg sends — and is
-sampled several times with no temperature set.
+run is spent on it. The backend replays gg's RaC turn-1 request per case: two
+scenarios over several input prompts (at least three prompts across them), on
+one program-language arm or on every arm. Each case's conversation is an
+embedded per-language fixture projected out of gg's own machinery by
+`scripts/gg-probe-fixtures.sh` — the real system prompt, the real bootstrap
+program and module listing, the real documentation views, a seeded spec file
+view carrying its total-line-count heading, and the trailing contract notice —
+sent whole, never trimmed. The replay goes through OpenRouter chat/completions
+with the one `submit_program` tool offered and `tool_choice` forced to it, the
+wire shape gg sends, and each case is sampled `samples` times with no
+temperature set.
 
-Each reply's submitted `program` string is classified heuristically
-(`clean-program`, `prose+program`, `program-no-gg`, `fenced`, `tool-token`,
-`xml-pseudo-tools`, `cot-leak`, `empty`, `other`); a clean submission is a bare
-program importing from `"gg"`. A reply that submits nothing is labeled by how
-it dodged the forced call (`no-submission`, `stray-tool-call`, `no-program`).
-The verdict is on the clean rate: at least 80% clean is `ready`, anything else
-is `not-ready`, and the per-call labels say why.
+The two scenarios check different readiness properties:
+
+- `baseline` — the conversation holds an open documentation view of every
+  function the task needs. A passing program is bare code that calls them all
+  (`correct-calls`; a bare program lacking one is `missing-calls`).
+- `missing-docview` — the task needs a function whose documentation view is not
+  open, and the system prompt instructs the model to open a documentation view
+  of each function it intends to call and write the call on a later turn. A
+  passing program opens the missing view and stops (`docview-first`); calling
+  the undocumented function in the same program is `called-undocumented`, and
+  doing neither is `no-docview`.
+
+Shape faults outrank the scenario checks (`fenced`, `tool-token`,
+`xml-pseudo-tools`, `cot-leak`, `empty`), and a reply that submits nothing is
+labeled by how it dodged (`no-submission`, `stray-tool-call`, `no-program`).
+Call detection strips string literals and matches call spellings on identifier
+boundaries, so a documentation key passed as a string never reads as a call.
+The verdict is `ready` when every probed (language, scenario) group passes at
+least 80% of its scored calls, and `not-ready` otherwise; the per-call labels
+say why.
 
 Probes are append-only history: a re-run is a new dated record. They are
 console-only data and never feed the public snapshot. A probe executes inside
@@ -836,34 +853,41 @@ behalf. The request body is optional JSON, every field optional:
 
 ```jsonc
 {
-  "provider": "…",     // pin every call to this provider (provider.order, fallbacks disabled)
-  "samples": 3,        // completion calls (default 3, at most 8)
-  "maxTokens": 3500,   // completion-token cap per call
-  "fullContext": false // send the seeded spec views whole instead of trimmed
+  // Pin every call to this provider (provider.order, fallbacks disabled).
+  "provider": "…",
+  // Probe this one program-language arm; absent probes every arm.
+  "language": "typescript",
+  // Completion calls per input prompt (default 8, at most 128).
+  "samples": 8,
+  // Completion-token cap per call.
+  "maxTokens": 3500
 }
 ```
 
 Answers `202 Accepted` with the probe row already `running`; the probe executes
 in the backend and the row is read back by polling. `409` when a probe of the
-model is already running. `422` when the model has no OpenRouter slug to
-target: a probe targets a curated model's configured OpenRouter slug, falling
-back to the catalog slug itself when it reads as an OpenRouter id. `503` with
+model is already running. `422` when `language` names no gg program language,
+or when the model has no OpenRouter slug to target: a probe targets a curated
+model's configured OpenRouter slug, falling back to the catalog slug itself
+when it reads as an OpenRouter id. `503` with
 code `openrouter_key_missing` when the backend has no key configured.
 
 ### `GET /models/{slug}/probes`
 
-The model's probe history, newest first, under `probes`. Each probe carries its
-status (`running`, `complete`, or `failed`), verdict, clean rate, USD spend,
-and timestamps. An open read.
+The model's probe history, newest first, under `probes`. Each probe carries
+its language selection, status (`running`, `complete`, or `failed`), verdict,
+overall pass rate, USD spend, and timestamps. An open read.
 
 ### `GET /model-probes/{id}`
 
-One probe with its per-call items and the request messages exactly as sent
-(the constant `submit_program` tool definition and forced `tool_choice` ride
-beside them on the wire to the provider). Each item records its sample number,
-serving provider, finish reasons, classification label and clean flag, the
-submitted program, the reply's own text with any separate reasoning text, token
-counts, USD cost, duration, and the error that voided the call. An open read.
+One probe with its per-call items and the per-case requests exactly as sent
+under `requests`, one entry per probed (language, scenario, prompt) with its
+message array (the case's `submit_program` tool definition and forced
+`tool_choice` ride beside them on the wire to the provider). Each item records
+its (language, scenario, prompt, sample) coordinate, serving provider, finish
+reasons, outcome label and pass flag, the submitted program, the reply's own
+text with any separate reasoning text, token counts, USD cost, duration, and
+the error that voided the call. An open read.
 
 ### `GET /models/{slug}/probe-providers`
 
@@ -898,8 +922,8 @@ null` row is a slice recorded before the agent's first usage delta named its
 model, on a run more than one model served.
 
 Probe evidence: one entry per provider observed on
-[model-probe](#model-probes) items, per probed model: item count,
-clean-submission count, and errored calls. Probe rows are single-completion
+[model-probe](#model-probes) items, per probed model: item count, case-check
+pass count, and errored calls. Probe rows are single-completion
 replays rather than full runs, which is why they are reported beside the run
 evidence rather than folded into it.
 

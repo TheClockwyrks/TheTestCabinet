@@ -275,7 +275,8 @@ export type LogoFetchOut = { logoSvg: string };
 
 /**
  * The `POST /models/{slug}/probes` request body. Everything is optional: an
- * empty body probes the default route with the default sampling.
+ * empty body probes every language arm over the default route with the
+ * default sampling.
  */
 export type ProbeTriggerInput = {
   /**
@@ -284,17 +285,18 @@ export type ProbeTriggerInput = {
    */
   provider: string | null;
   /**
-   * Completion calls (default 3, at most 8).
+   * Probe this one program-language arm, by its wire id (`typescript`,
+   * `rust`, …). Absent probes every arm.
+   */
+  language: string | null;
+  /**
+   * Completion calls per input prompt (default 8, at most 128).
    */
   samples: number | null;
   /**
    * Completion-token cap per call (default 3500).
    */
   maxTokens: number | null;
-  /**
-   * Send the seeded spec views whole instead of trimmed (default false).
-   */
-  fullContext: boolean | null;
 };
 
 /**
@@ -304,7 +306,7 @@ export type ProbeTriggerResponse = { probe: ModelProbeOut };
 
 /**
  * One probe, as every probe read returns it (the detail read adds the items
- * and the request).
+ * and the per-case requests).
  */
 export type ModelProbeOut = {
   id: string;
@@ -320,9 +322,15 @@ export type ModelProbeOut = {
    * The pinned provider, or null for the default route.
    */
   provider: string | null;
+  /**
+   * The probed program-language arm's wire id, or null for every language.
+   */
+  language: string | null;
+  /**
+   * Completion calls requested per input prompt.
+   */
   samples: number;
   maxTokens: number;
-  fullContext: boolean;
   /**
    * `running`, `complete`, or `failed`.
    */
@@ -336,9 +344,9 @@ export type ModelProbeOut = {
    */
   verdict: string | null;
   /**
-   * The probe's clean-submission rate (0..=1), or null.
+   * The probe's overall case-check pass rate (0..=1), or null.
    */
-  cleanRate: number | null;
+  passRate: number | null;
   /**
    * Total USD spend across the probe's calls, as OpenRouter reported it.
    */
@@ -348,12 +356,27 @@ export type ModelProbeOut = {
 };
 
 /**
- * One completion call inside a probe: which provider served it, how it
- * finished, the classified shape of the program it submitted, and the raw
- * reply.
+ * One completion call inside a probe: which case it sampled, which provider
+ * served it, how it finished, whether the submitted program passed its case's
+ * check, and the raw reply.
  */
 export type ModelProbeItemOut = {
   id: string;
+  /**
+   * The program-language arm's wire id this call probed.
+   */
+  language: string;
+  /**
+   * The case's scenario: `baseline` or `missing-docview`.
+   */
+  scenario: string;
+  /**
+   * The case's input prompt id.
+   */
+  prompt: string;
+  /**
+   * The sample index within the case, from 0.
+   */
   sample: number;
   /**
    * The provider OpenRouter reported serving the call, or null on error.
@@ -362,15 +385,14 @@ export type ModelProbeItemOut = {
   finishReason: string | null;
   nativeFinishReason: string | null;
   /**
-   * The classified shape of the submitted program, or null when the call
-   * errored.
+   * The classified outcome (`correct-calls`, `docview-first`,
+   * `called-undocumented`, `fenced`, …), or null when the call errored.
    */
   label: string | null;
   /**
-   * Whether the submitted program counts as clean (a bare program over the
-   * gg modules).
+   * Whether the submitted program passed its case's check.
    */
-  clean: boolean;
+  pass: boolean;
   /**
    * The program string the reply's first `submit_program` call carried, or
    * null.
@@ -405,19 +427,20 @@ export type ModelProbesResponse = { probes: Array<ModelProbeOut> };
 
 /**
  * The `GET /model-probes/{id}` response: the probe with everything the console
- * shows — the request messages exactly as sent, every call's classification,
- * the submitted programs, and the raw replies. The request also carried the
- * `submit_program` tool definition with `tool_choice` forced to it; that
- * constant pair is [`probe::submit_program_tool`] rather than a response
- * field.
+ * shows — every case's request messages exactly as sent, every call's
+ * classification, the submitted programs, and the raw replies. Each request
+ * also carried the case's `submit_program` tool definition with `tool_choice`
+ * forced to it; that pair is part of the embedded fixture rather than a
+ * response field.
  */
 export type ModelProbeDetailResponse = {
   probe: ModelProbeOut;
   items: Array<ModelProbeItemOut>;
   /**
-   * The request's message array exactly as sent.
+   * The per-case requests exactly as sent, one entry per probed
+   * (language, scenario, prompt).
    */
-  requestMessages: Array<ProbeMessage>;
+  requests: Array<ProbeRequestOut>;
 };
 
 /**
@@ -450,6 +473,17 @@ export type ProbeToolFunction = {
    * The call's arguments as the JSON-encoded string the wire carries.
    */
   arguments: string;
+};
+
+/**
+ * One case's request as sent: which (language, scenario, prompt) it probes, and its message
+ * array. What `request_json` stores and the detail read returns, one entry per case.
+ */
+export type ProbeRequestOut = {
+  language: string;
+  scenario: string;
+  prompt: string;
+  messages: Array<ProbeMessage>;
 };
 
 /**
@@ -606,9 +640,9 @@ export type ProbeProviderModelOut = {
    */
   items: number;
   /**
-   * The calls whose reply classified clean.
+   * The calls whose submitted program passed its case's check.
    */
-  clean: number;
+  passes: number;
   /**
    * The calls that errored before classification.
    */

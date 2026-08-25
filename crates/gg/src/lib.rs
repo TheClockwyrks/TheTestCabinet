@@ -51,6 +51,7 @@ mod message_log;
 mod model;
 mod modules;
 mod persistence;
+mod probe_fixtures;
 mod programs;
 mod prompts;
 mod reference;
@@ -145,6 +146,24 @@ enum Command {
     /// this crate's build script, so a bare static `gg` in a build stage produces the whole surface
     /// with no toolchain, no network and no filesystem to speak of.
     Reference(ReferenceArgs),
+
+    /// Write the model-probe fixtures the backend replays, one JSON document per program language.
+    ///
+    /// The artifact behind `crates/backend/src/probe/fixtures/`: each arm's responses-as-code
+    /// turn-1 conversation for the probe's cases, projected out of the same machinery a real
+    /// session sends — see `crates/gg/src/probe_fixtures.rs` and `scripts/gg-probe-fixtures.sh`.
+    /// It is a subcommand for the reason `reference` is: the backend that embeds these files
+    /// cannot depend on this crate.
+    ProbeFixtures(ProbeFixturesArgs),
+}
+
+/// Arguments for projecting the probe fixtures.
+#[derive(Debug, Args)]
+struct ProbeFixturesArgs {
+    /// Directory to write one `<language>.json` per program language into. Created if it does not
+    /// exist.
+    #[arg(long, value_name = "DIR")]
+    out: PathBuf,
 }
 
 /// Arguments for projecting the reference.
@@ -183,6 +202,7 @@ pub async fn run_from_args() -> ExitCode {
         (None, Some(config)) => run_session(&config).await,
         (Some(Command::Run(args)), _) => run_session(&args.config).await,
         (Some(Command::Reference(args)), _) => project_reference(args.out.as_deref()),
+        (Some(Command::ProbeFixtures(args)), _) => project_probe_fixtures(&args.out),
         // Unreachable: clap requires `--config` when no subcommand was named, and rejects it
         // alongside one. Reported rather than unwrapped so a future change to those two settings
         // surfaces as a message instead of a panic in the run container.
@@ -330,6 +350,17 @@ fn write_json<T: serde::Serialize>(
     // has exactly one failure channel.
     let json = serde_json::to_vec(document).map_err(|err| failure(err.into()))?;
     std::fs::write(path, json).map_err(failure)
+}
+
+/// Project the [probe fixtures](probe_fixtures) into `out` as one file per program language.
+fn project_probe_fixtures(out: &std::path::Path) -> ExitCode {
+    match probe_fixtures::write_probe_fixtures(out) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("gg probe-fixtures: {err:#}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(test)]

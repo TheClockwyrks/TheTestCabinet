@@ -389,7 +389,7 @@ fn placed_views(
 /// **every** program that this arm does not catalogue, or that the runtime would not bind, is the
 /// defect [`seed_bootstrap`] refuses the run over rather than a program with a call quietly dropped
 /// from it.
-fn bootstrap_keys(docs: &DocsRuntime) -> Result<Vec<String>, String> {
+pub(crate) fn bootstrap_keys(docs: &DocsRuntime) -> Result<Vec<String>, String> {
     let functions = catalogue_functions(docs.language());
     let mut keys = Vec::new();
     for call in BOOTSTRAP_CALLS {
