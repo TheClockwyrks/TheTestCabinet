@@ -64,10 +64,14 @@ below carries the name this specification gives it.
 The game's state carries the board being played, which boards are solved, and how
 many boards are unlocked. The progression above runs off those three facts, and
 `specs/instrumentation.md` reports all three.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 `RefractState` carries the board being played, which boards are solved, and how
 many boards are unlocked. The progression above runs off those three facts, and
 `specs/instrumentation.md` reports all three.
+{{else}}
+`RefractState`, the world's game state, carries the board being played, which
+boards are solved, and how many boards are unlocked. The progression above runs
+off those three facts, and `specs/instrumentation.md` reports all three.
 {{/if}}
 
 ## The screens the campaign adds

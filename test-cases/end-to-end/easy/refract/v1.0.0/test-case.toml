@@ -8,9 +8,9 @@
 # The manifest format. Format 2 is the one that names engines: it replaces the
 # single `workspace` key with a `[workspaces]` table holding one starter directory
 # per engine, and it is the only format under which `engines` and `[[engine]]` are
-# legal. Refract is built two ways — with a runtime handed to it and with no
-# runtime at all — so a single starter directory could not stand for both and
-# format 1 is not an option here.
+# legal. Refract is built three ways — on two very different runtimes handed to
+# it and with no runtime at all — so a single starter directory could not stand
+# for all of them and format 1 is not an option here.
 format = 2
 
 # The case's stable identity: the definition-store key, recorded in every run.
@@ -95,34 +95,48 @@ variants = ["variants/base.toml"]
 # The engines a run of this case may select. An engine is the runtime the produced
 # game is built on — the frame loop and the delta time it hands the game, the
 # input actions a player drives it with, the audio bus, asset loading, and the
-# on-screen diagnostics. It is a *run dimension*, chosen per run alongside the
-# model, the harness, and the variant, and recorded on the run; it is not a
-# property of the game.
+# on-screen diagnostics; some also own rendering and a gameplay framework. It is a
+# *run dimension*, chosen per run alongside the model, the harness, and the
+# variant, and recorded on the run; it is not a property of the game.
 #
-# Refract supports two, and the game is the same under both. What differs is how
-# much of the build is handed over: `simple-2d` vendors the runtime as a package
-# and seeds the modules around it (`src/constants.ts`, `src/main.ts`, and the
-# `src/game.ts` the build writes, debug surface included), while `none` supplies no
-# runtime and no `src/` at all, so the build writes the frame loop, the input, the
-# audio, the overlay and the `window.__refract` surface itself. The POINTER the
-# board is traced with follows that split: `simple-2d` owns it and hands the build
-# positions already in logical stage units with press and release edges, while an
-# engineless build maps the page's pointer itself — which is why
-# `specs/controls.md` branches on the engine only to say where the pointer comes
-# from.
+# Refract supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
 #
-# The game the two describe is the same one, so the review checklist below is the
-# same for either and a score recorded under one engine is comparable with a score
-# recorded under the other; the specs branch only where the deliverable differs.
+#   - `none` supplies no runtime and no `src/` at all, so the build writes the
+#     frame loop, the input, the audio, the overlay and the `window.__refract`
+#     surface itself.
+#   - `simple-2d` vendors the runtime as a package and seeds the modules around it
+#     (`src/constants.ts`, `src/main.ts`, and the `src/game.ts` the build writes,
+#     debug surface included). The engine hands the game a frame loop, input
+#     actions, audio, and the overlay, and holds the game's state by value.
+#   - `structured-2d` vendors a gameplay framework the game is written inside —
+#     worlds, game modes, actors, components, and controllers — which also owns
+#     rendering and the camera. It seeds the same case-owned modules
+#     (`src/constants.ts`, `src/main.ts`), and the build writes `src/game.ts`: the
+#     game definition, the instance whose `initialize` returns the debug surface,
+#     the mode that runs the screens, and the `RefractState` game state the world
+#     holds live.
+#
+# The POINTER the board is traced with follows that split: both engines own it and
+# hand the build positions already in logical stage units with press and release
+# edges (`simple-2d` as a per-frame position and edges, `structured-2d` as the
+# ordered per-frame samples of its input system), while an engineless build maps
+# the page's pointer itself — which is why `specs/controls.md` branches on the
+# engine only to say where the pointer comes from.
+#
+# The game the three describe is the same one, so the review checklist below is
+# the same for all of them and a score recorded under one engine is comparable
+# with a score recorded under another; the specs branch only where the deliverable
+# differs.
 #
 # `none` supplies no package and therefore carries no version, so it is named in
-# the bare `engines` list; `simple-2d` carries a range and is named in an
-# `[[engine]]` table. The range is pinned because a specification is written
-# against a runtime contract: `min_version` is the 1.0.0 API the specs are written
-# against, and there is deliberately no `max_version`, so a later 1.x or 2.x from
-# the host package store is accepted as it lands. Widening or moving a range means
-# a new case version, so the pin is the statement that THIS spec set matches THIS
-# contract.
+# the bare `engines` list; `simple-2d` and `structured-2d` carry a range each and
+# are named in `[[engine]]` tables. Each range is pinned because a specification
+# is written against a runtime contract: `min_version` is the 1.0.0 API the specs
+# are written against, and there is deliberately no `max_version`, so a later 1.x
+# or 2.x from the host package store is accepted as it lands. Widening or moving a
+# range means a new case version, so the pin is the statement that THIS spec set
+# matches THIS contract.
 #
 # What this declaration deliberately does NOT do is describe an engine. An engine
 # ships its own documentation from its own package, and seeding puts it in the run
@@ -139,10 +153,14 @@ engines = ["none"]
 slug = "simple-2d"
 min_version = "1.0.0"
 
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
 # The starter project seeded into the root of every run before the specs, one per
-# engine. Both carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration
-# the `[toolchain]` commands below run against, and an `index.html` holding the
-# canvas. What differs is how much of the build is supplied with them.
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, and an `index.html`
+# holding the canvas. What differs is how much of the build is supplied with them.
 #
 #   - `none`      supplies the configuration and nothing else. There is no `src/`:
 #                 the build writes its own frame loop, canvas fit, keyboard and
@@ -159,6 +177,14 @@ min_version = "1.0.0"
 #                 writes `src/game.ts`: the state, the debug surface its
 #                 `initialize` returns beside that state, the three functions, and
 #                 the `BACKGROUND` color `src/main.ts` hands the engine.
+#   - `structured-2d` declares its own engine in `package.json` the same way, and
+#                 seeds the same two case-owned modules: `src/constants.ts`
+#                 (identical in role and in content) and `src/main.ts` (the
+#                 browser entry, standing the engine up over the page's canvas).
+#                 The build writes `src/game.ts`: the game definition with its
+#                 single level, the game instance whose `initialize` returns the
+#                 debug surface, the game mode, the `RefractState` game state, and
+#                 the `BACKGROUND` color `src/main.ts` hands the engine.
 #
 # The single variant declares no `[workspaces]` of its own, because there is no
 # second game for one to differ in. The seeded files land at the run root
@@ -166,6 +192,7 @@ min_version = "1.0.0"
 [workspaces]
 none = "workspaces/none"
 "simple-2d" = "workspaces/simple-2d"
+"structured-2d" = "workspaces/structured-2d"
 
 # How validation (and the per-run static deploy) turns a produced implementation
 # into a served site. These run verbatim from the build's repository root:
@@ -209,12 +236,15 @@ test = "npx vitest run --coverage"
 # itself and installs it on `window.__refract` once the game has initialized, so
 # the handle is what a person opening the console of such a build finds. An engine
 # run has NO global at all: the build writes the surface, its `initialize` returns
-# it beside the state as `[state, debug]`, and a caller reads it back off
-# `engine.debug`. Because the engine holds the state by value and hands every
-# reader a read-only view, that surface is written in the shape of `update` — a
-# pose takes the current state and returns the next, applied through
-# `engine.apply`, and a reading takes the state and returns what it read, called
-# with `engine.state`. One handle, two ways to reach the same operations.
+# it — beside the state as `[state, debug]` under `simple-2d`, alone under
+# `structured-2d` — and a caller reads it back off `engine.debug`. Because
+# `simple-2d` holds the state by value and hands every reader a read-only view,
+# its surface is written in the shape of `update` — a pose takes the current state
+# and returns the next, applied through `engine.apply`, and a reading takes the
+# state and returns what it read, called with `engine.state`. `structured-2d`
+# holds the world live, so its poses take only their own arguments and act on it
+# at the call, and its readings return plain data. One handle, three ways to reach
+# the same operations.
 #
 # There is deliberately no `tick_hz`. Refract mandates no fixed timestep: every
 # rate it has is per second and integrated against the delta time the frame hands
@@ -248,11 +278,11 @@ handle = "__refract"
 # `engine.slug`, which selects what the build is handed and what it must write.
 # `overview.md.hbs` (the runtime, what is implemented, where the figures come
 # from), `controls.md.hbs` (where the pointer layer sits), `state.md.hbs` (the
-# build's own shape versus the exact `RefractState` declaration),
-# `instrumentation.md.hbs` (the global versus `engine.debug`, and the clock
-# operations only an engineless build needs), `ui.md.hbs` (where cues are played)
-# and the two mode files (how the state is referred to) all branch on it. Nothing
-# branches on the variant. A spec's `dest` defaults to its `source` with a trailing
+# build's own shape versus the exact `RefractState` declaration each engine run
+# writes), `instrumentation.md.hbs` (the global versus `engine.debug`, and the
+# clock operations only an engineless build needs), `ui.md.hbs` (where cues are
+# played) and the two mode files (how the state is referred to) all branch on it.
+# Nothing branches on the variant. A spec's `dest` defaults to its `source` with a trailing
 # `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path and a plain
 # `.md` source is seeded verbatim.
 [[spec]]
@@ -274,15 +304,18 @@ source = "specs/beams.md"
 # How a player operates the game: the pointer targeting, the grab table, the drawn
 # order a beam is held in, extending, retracting, releasing, clearing, and the
 # registered key actions. It branches on the engine only to say which layer
-# delivers the pointer, because neither engine delivers one.
+# delivers the pointer: the engine on an engine run, the runtime layer the build
+# writes on an engineless one.
 [[spec]]
 source = "specs/controls.md.hbs"
 
 # The shape of the game's state. Under `simple-2d` this is the `RefractState`
 # declaration the build writes into `src/game.ts` verbatim, stated by the case
-# rather than by the seeded stub. Under `none` the build owns the shape and the
-# file lists only what the state must carry, because the rest of the specification
-# is written against those facts.
+# rather than by the seeded stub, and under `structured-2d` it is the equivalent
+# declaration in that engine's idiom, a live `RefractState` class the world holds
+# as its game state, written into `src/game.ts` verbatim as well. Under `none` the
+# build owns the shape and the file lists only what the state must carry, because
+# the rest of the specification is written against those facts.
 [[spec]]
 source = "specs/state.md.hbs"
 
@@ -369,7 +402,7 @@ description = "The look and sound of the optical bench, which this case leaves e
 # review item, worth one point (the default weight), so a category is worth the
 # number of items it holds. A category carries no prose of its own; each item
 # states in `description` the single observable requirement being checked. The
-# checklist is common to every run: there is one variant and the two engines
+# checklist is common to every run: there is one variant and the three engines
 # produce the same game, so nothing here is conditional.
 #
 # The checklist is reporter-side material — never seeded into a run, so the model
@@ -383,11 +416,12 @@ description = "The look and sound of the optical bench, which this case leaves e
 # suites do not exist yet, and a manifest naming a script that is not shipped under
 # `validation/<engine>/` does not resolve. When those suites are written — one
 # directory per engine, `validation/none/` driving the build in Chromium through
-# `window.__refract` and `validation/simple-2d/` running in process against the
-# vendored engine — the mechanical points here (the rule limits, the grab table,
-# the tier formula, the snapshot shape) are the ones to move over first, and each
-# gains a `validation` key naming its suite. Until then this list is what a
-# reviewer works down with the build in front of them, which is why every item is
+# `window.__refract`, and `validation/simple-2d/` and `validation/structured-2d/`
+# running in process against the vendored engine — the mechanical points here
+# (the rule limits, the grab table, the tier formula, the snapshot shape) are the
+# ones to move over first, and each gains a `validation` key naming its suite.
+# Until then this list is what a reviewer works down with the build in front of
+# them, which is why every item is
 # phrased as something a person can SEE happen rather than as an assertion over a
 # number they would have to read out of a console.
 [review]

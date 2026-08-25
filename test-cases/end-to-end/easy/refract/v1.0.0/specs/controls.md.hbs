@@ -13,11 +13,19 @@ This game stands on no engine, so the pointer belongs to the runtime layer you
 write. What the game reads from that layer is a pointer position in the game's
 logical units on the `STAGE_W x STAGE_H` (`1280 x 720`) stage, a press edge, and
 a release edge. How the layer produces those three is yours to decide.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 The pointer belongs to the engine, which documents it in the `engine/`
 directory at the root of this repository. What the game reads from it is a
 pointer position in the game's logical units on the `STAGE_W x STAGE_H`
 (`1280 x 720`) stage, a press edge, and a release edge.
+{{else}}
+The pointer belongs to the engine, which documents it in the `engine/`
+directory at the root of this repository. What the game reads from it is a
+pointer position in the game's logical units on the `STAGE_W x STAGE_H`
+(`1280 x 720`) stage, a press edge, and a release edge, delivered as the
+ordered samples the player controller reads from the engine each frame, so a
+sweep that crossed several nodes between two frames arrives as every position
+it visited rather than as the last one alone.
 {{/if}}
 
 The game acts on those three alone, and this file states what it does with them.

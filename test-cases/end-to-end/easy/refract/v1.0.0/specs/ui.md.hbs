@@ -136,9 +136,13 @@ read on every screen.
 {{#if (eq engine.slug "none")}}
 The audio layer is part of the runtime you write. Define and play exactly the
 five cues in `CUES`, under exactly these names, one per event:
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 Audio plays through the engine's cue bus. Define and play exactly the five cues
 in `CUES`, under exactly these names, one per event:
+{{else}}
+Audio plays through the engine's cue bus: define exactly the five cues in
+`CUES` from the game instance's `initialize` and play them from the world's
+audio inside a tick, under exactly these names, one per event:
 {{/if}}
 
 | Cue | Constant | Played when |
@@ -149,11 +153,25 @@ in `CUES`, under exactly these names, one per event:
 | `solved` | `CUES.solved` | The board becomes solved. |
 | `clear` | `CUES.clear` | Every beam is cleared. |
 
+{{#if (eq engine.slug "none")}}
 Each is a distinct short sound, so the five events are told apart by ear. Each
 is played on the frame its event happens, from `update`, and at most once on
 that frame; a frame that raises more than one of them plays each of those once.
 `clear` plays only when there was a segment to remove. The five cues are the
 same in both modes.
+{{else if (eq engine.slug "simple-2d")}}
+Each is a distinct short sound, so the five events are told apart by ear. Each
+is played on the frame its event happens, from `update`, and at most once on
+that frame; a frame that raises more than one of them plays each of those once.
+`clear` plays only when there was a segment to remove. The five cues are the
+same in both modes.
+{{else}}
+Each is a distinct short sound, so the five events are told apart by ear. Each
+is played on the frame its event happens, by the code that raised it, and at
+most once on that frame; a frame that raises more than one of them plays each
+of those once. `clear` plays only when there was a segment to remove. The five
+cues are the same in both modes.
+{{/if}}
 
 Muting and the first-interaction unlock belong to the runtime. The game binds
 the `mute` action to the runtime's mute bit and toggles it from any screen, then

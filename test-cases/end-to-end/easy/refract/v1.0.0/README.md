@@ -60,22 +60,24 @@ the collision is in the name only.)
 
 ## Engines
 
-The case supports two engines and seeds a different project for each, which is
+The case supports three engines and seeds a different project for each, which is
 what the manifest's `[workspaces]` table is for:
 
-| Engine      | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `none`      | The toolchain configuration and `index.html`, and nothing else. There is no `src/`: the build writes the runtime — the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, the overlay, and the `window.__refract` surface — and the game on top of it. The surface additionally carries the clock, as `setAutoStep` and `advance`, because nothing outside the build owns it.                                                                                                                                                                                                                            |
-| `simple-2d` | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts` — `RefractState`, the debug surface, `BACKGROUND`, and the three functions — and its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. The engine holds the state by value: `update` is handed it as `DeepReadonly<RefractState>` and returns the next state, and the surface's operations take the state the same way (a pose returns the next state, driven through `engine.apply`; a reading returns what it read). |
+| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`          | The toolchain configuration and `index.html`, and nothing else. There is no `src/`: the build writes the runtime — the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, the overlay, and the `window.__refract` surface — and the game on top of it. The surface additionally carries the clock, as `setAutoStep` and `advance`, because nothing outside the build owns it.                                                                                                                                                                                                                            |
+| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts` — `RefractState`, the debug surface, `BACKGROUND`, and the three functions — and its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. The engine holds the state by value: `update` is handed it as `DeepReadonly<RefractState>` and returns the next state, and the surface's operations take the state the same way (a pose returns the next state, driven through `engine.apply`; a reading returns what it read). |
+| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored at seed time, plus the same `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts` — the `GameDefinition` with its single level, the game instance whose `initialize` returns the debug surface, the game mode that runs the screens, the `RefractState` class the world holds live as its game state, and `BACKGROUND` — and the engine serves the surface from `engine.debug`. The world is live, so the surface's poses take only their own arguments and act on it at the call, and its readings return plain data.                                    |
 
-The pointer is the build's under **both** engines. Simple 2D owns the frame loop,
-named input actions, audio cues, and the overlay, but not the pointer, so taking
-it off the page and mapping it into logical units is part of the deliverable
-either way. `specs/controls.md` branches accordingly.
+The pointer belongs to the engine on both engine runs, handed to the build
+already in logical stage units with press and release edges (Simple 2D as a
+per-frame position and edges, Structured 2D as the ordered per-frame samples of
+its input system). An engineless build maps the page's pointer itself.
+`specs/controls.md` branches accordingly.
 
-The game both projects describe is the same one, so a score recorded under one
-engine is comparable with a score recorded under the other. The specs branch only
-where the deliverable genuinely differs.
+The game the three projects describe is the same one, so a score recorded under
+one engine is comparable with a score recorded under another. The specs branch
+only where the deliverable genuinely differs.
 
 ## The single variant
 
@@ -124,15 +126,15 @@ for every run:
 `overview.md.hbs`, `controls.md.hbs`, `state.md.hbs`, `instrumentation.md.hbs`,
 `ui.md.hbs`, `modes/campaign.md.hbs`, and `modes/cascade.md.hbs` are Handlebars
 templates rendered on the engine axis before they land; `board.md`, `beams.md`,
-and `campaign-boards.md` are plain Markdown, identical under either engine.
+and `campaign-boards.md` are plain Markdown, identical under every engine.
 Because the branching resolves at seed time, each seeded set reads as one
 self-contained game with no alternative in view.
 
-Under `simple-2d`, every figure the specification fixes is exported from the
-seeded `src/constants.ts` under the name the specs cite, so a spec never restates
-a number the project already names. Under `none` there is no seeded constants
-module, and the requirement is that each figure is named once in a module of the
-build's own.
+Under `simple-2d` and `structured-2d`, every figure the specification fixes is
+exported from the seeded `src/constants.ts` under the name the specs cite, so a
+spec never restates a number the project already names. Under `none` there is no
+seeded constants module, and the requirement is that each figure is named once in
+a module of the build's own.
 
 ## Assets and media
 
@@ -147,8 +149,9 @@ exists:
 
 - **No validators.** There is no `validation/` directory. The checklist points are
   authored from the specs, but the Vitest suites that decide them — one project
-  per engine, `validation/none/` and `validation/simple-2d/` — have not been
-  written. Until they are, no point is machine-decided, no run's media is
+  per engine, `validation/none/`, `validation/simple-2d/`, and
+  `validation/structured-2d/` — have not been written. Until they are, no point
+  is machine-decided, no run's media is
   produced by a validator, and there is nothing for `tcab capture-baselines` to
   capture against the reference builds, so there is no `validation-baseline/`
   either.

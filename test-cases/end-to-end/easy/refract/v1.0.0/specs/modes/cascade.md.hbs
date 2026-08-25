@@ -132,6 +132,8 @@ What a good board does:
 {{#if (eq engine.slug "none")}}
 All generation runs off the seeded generator state the game's state carries, which
 `specs/state.md` requires of it. It is the whole of the game's generator state.
+{{else if (eq engine.slug "simple-2d")}}
+All generation runs off `state.rngState`, the whole of the game's generator state.
 {{else}}
 All generation runs off `state.rngState`, the whole of the game's generator state.
 {{/if}}

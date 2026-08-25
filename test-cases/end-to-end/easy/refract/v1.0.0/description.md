@@ -63,7 +63,7 @@ selects. On an engine run the project also carries the runtime and the case-owne
 modules that name every figure the specification fixes and stand the engine up,
 and the run writes the game and its debug surface against them; on an engineless
 run the project carries no source at all, and the run writes the runtime as well
-as the game. Pointer handling belongs to the build under either engine. There are
+as the game, its pointer handling included. There are
 no assets and no reference mockups: the specification fixes the geometry, the
 rules, the twenty-four campaign boards and the generator's contract exactly, and
 leaves the bench's appearance to the build, drawn entirely in code.

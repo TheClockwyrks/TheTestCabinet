@@ -21,20 +21,23 @@ description = "The optical bench with both modes: the fixed twenty-four-board Ca
 # The authored correct build, one directory per supported engine, because the
 # build a reference demonstrates differs under each: `references/none` carries
 # its own runtime layer (frame loop, canvas fit, keyboard and pointer input,
-# audio, overlay, and the `window.__refract` surface), while
-# `references/simple-2d` hands all of that to the engine package resolved from
-# the repository's `packages/simple-2d` and ships the game as `src/game.ts`
-# beside the seeded entry point. The game either one implements is identical,
-# which is what makes a run on one engine comparable with a run on the other.
-# The table names every engine the case supports and nothing else. Neither
-# directory is ever seeded into a run: each is the authored answer, built with
-# the case's own `[build]` commands and held to the same four toolchain gates a
-# run is.
+# audio, overlay, and the `window.__refract` surface), `references/simple-2d`
+# hands all of that to the engine package resolved from the repository's
+# `packages/simple-2d` and ships the game as `src/game.ts` beside the seeded
+# entry point, and `references/structured-2d` writes the game inside the
+# gameplay framework resolved from `packages/structured-2d`, as the game
+# definition, instance, mode, state, and actors `src/game.ts` exports. The game
+# any of them implements is identical, which is what makes a run on one engine
+# comparable with a run on another. The table names every engine the case
+# supports and nothing else. No reference directory is ever seeded into a run:
+# each is the authored answer, built with the case's own `[build]` commands and
+# held to the same four toolchain gates a run is.
 [reference_implementation]
 none = "references/none"
 "simple-2d" = "references/simple-2d"
+"structured-2d" = "references/structured-2d"
 
-# No `[workspaces]` table either. The case's common table covers both engines and
+# No `[workspaces]` table either. The case's common table covers every engine and
 # there is nothing variant-specific to replace it with.
 
 # No `[[review.categories]]` and no `[[domain]]`. With a single variant, every

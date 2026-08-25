@@ -1,0 +1,156 @@
+// Refract — the flow: the transitions between screens, written onto the live
+// state.
+//
+// The framework's states are live objects, so every transition here MUTATES
+// the `RefractState` it is handed — the world's one instance — writing the
+// fields it changes in place and leaving the rest alone. Each transition is
+// shared by the menus in `src/controller.ts` and the debug surface in
+// `src/debug.ts`, so choosing a mode from the title and posing it through
+// `startMode` are the same code path (specs/instrumentation.md).
+//
+// The mode-specific facts live where the specs put them: Campaign's course,
+// unlocking, and select highlight follow `specs/modes/campaign.md`, and
+// Cascade's count, tier ladder, and generated boards follow
+// `specs/modes/cascade.md`. The fields belonging to the mode that is not being
+// played keep the values they carried before it was entered (specs/state.md).
+
+import { emptyBeams } from "./board";
+import { campaignBoard } from "./campaign";
+import { generateBoard, tierFor } from "./cascade";
+import { CAMPAIGN_LENGTH } from "./constants";
+import { RefractState, type BoardState, type Mode } from "./game";
+
+/**
+ * Every declared field back at its title-screen value (specs/state.md), copied
+ * off a freshly constructed state so the class's field initializers stay the
+ * single statement of those values, with `rngState` seeded by the caller.
+ * `muted` is deliberately left as it stands: muting is a player preference the
+ * runtime owns, and the inherited `phase`, `elapsed`, and `players` are the
+ * framework's rather than declared fields, so a reset never touches them.
+ */
+export function resetState(state: RefractState, seed: number): void {
+  const fresh = new RefractState();
+  state.screen = fresh.screen;
+  state.mode = fresh.mode;
+  state.menuIndex = fresh.menuIndex;
+  state.board = fresh.board;
+  state.beams = fresh.beams;
+  state.tracing = fresh.tracing;
+  state.boardIndex = fresh.boardIndex;
+  state.solvedBoards = fresh.solvedBoards;
+  state.unlockedCount = fresh.unlockedCount;
+  state.selectIndex = fresh.selectIndex;
+  state.solvedCount = fresh.solvedCount;
+  state.tier = fresh.tier;
+  state.pointer = fresh.pointer;
+  state.simTime = fresh.simTime;
+  state.rngState = seed;
+}
+
+/** Back to the title, with its first item highlighted. */
+export function toTitle(state: RefractState): void {
+  state.screen = "title";
+  state.menuIndex = 0;
+  state.tracing = null;
+}
+
+/**
+ * A board put in play: fresh, with every beam empty and no trace live,
+ * whether it is a first attempt or a replay (specs/modes/campaign.md).
+ */
+function enterBoard(state: RefractState, board: BoardState): void {
+  state.board = board;
+  state.beams = emptyBeams(board);
+  state.tracing = null;
+  state.screen = "playing";
+  state.menuIndex = 0;
+}
+
+/**
+ * A campaign board entered from the select grid, the solved screen, or a
+ * replay. The highlight follows the board most recently entered or solved, so
+ * a solve is seen landing on the grid.
+ */
+export function enterCampaignBoard(state: RefractState, index: number): void {
+  enterBoard(state, campaignBoard(index));
+  state.boardIndex = index;
+  state.selectIndex = index;
+}
+
+/** The next cascade board, generated at the current tier. */
+export function nextCascadeBoard(state: RefractState): void {
+  const { board, rngState } = generateBoard(state.rngState, state.tier);
+  enterBoard(state, board);
+  state.rngState = rngState;
+}
+
+/**
+ * Cascade's `RESTART`: back to tier 1 with the count at zero, WITHOUT
+ * reseeding — the generator carries on from the state it holds, so a restart
+ * drops the player onto boards they have not seen (specs/modes/cascade.md).
+ */
+export function restartCascade(state: RefractState): void {
+  state.solvedCount = 0;
+  state.tier = 1;
+  nextCascadeBoard(state);
+}
+
+/**
+ * A mode chosen from the title menu, and the identical pose the debug
+ * surface's `startMode` applies. Campaign opens on its select grid with the
+ * session's progress as it stands; Cascade begins a fresh sequence from
+ * tier 1 (specs/modes/cascade.md, The sequence).
+ */
+export function startMode(state: RefractState, mode: Mode): void {
+  state.mode = mode;
+  if (mode === "campaign") {
+    state.screen = "select";
+    state.menuIndex = 0;
+    state.tracing = null;
+    return;
+  }
+  restartCascade(state);
+}
+
+/**
+ * The choices the campaign's solved screen offers, in the fixed order: next
+ * board when the solved board is not the last, then replay, then back to the
+ * grid (specs/modes/campaign.md). The wording is this build's; the order and
+ * effects are the specification's, and `src/controller.ts` confirms by
+ * position in this same list.
+ */
+export function campaignSolvedItems(boardIndex: number): string[] {
+  const items = ["REPLAY", "BACK TO SELECT"];
+  if (boardIndex + 1 < CAMPAIGN_LENGTH) items.unshift("NEXT BOARD");
+  return items;
+}
+
+/**
+ * The solve transition, run on the very frame a change satisfies R9: the
+ * trace ends, the beams stay exactly as drawn, and the mode's own progression
+ * advances. In Campaign the board is recorded solved (once — a replay changes
+ * no unlock state), the next board unlocks, and the solve that leaves no
+ * board unsolved goes to `complete` instead of `solved`. In Cascade the count
+ * rises and the tier is recomputed from the ladder.
+ */
+export function onSolved(state: RefractState): void {
+  state.tracing = null;
+  state.menuIndex = 0;
+  if (state.mode === "campaign") {
+    if (!state.solvedBoards.includes(state.boardIndex)) {
+      state.solvedBoards.push(state.boardIndex);
+      state.solvedBoards.sort((a, b) => a - b);
+    }
+    state.unlockedCount = Math.max(
+      state.unlockedCount,
+      Math.min(state.boardIndex + 2, CAMPAIGN_LENGTH),
+    );
+    state.selectIndex = state.boardIndex;
+    state.screen =
+      state.solvedBoards.length === CAMPAIGN_LENGTH ? "complete" : "solved";
+    return;
+  }
+  state.solvedCount += 1;
+  state.tier = tierFor(state.solvedCount);
+  state.screen = "solved";
+}
