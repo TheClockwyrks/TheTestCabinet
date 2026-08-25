@@ -32,7 +32,7 @@ frame loop and the delta time it measures, the canvas fit, input, audio cues,
 and the debug overlay. Where this specification speaks of the runtime it means
 that layer, and it states only what Carom needs from it. How the layer is
 structured is yours to decide.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 ## The runtime
 
 The game is built on the {{engine.name}} engine, which documents itself in the
@@ -40,6 +40,17 @@ The game is built on the {{engine.name}} engine, which documents itself in the
 the delta time the game is given, input actions, audio cues, asset loading, the
 canvas fit, and the debug overlay. Read its documentation before you start. This
 specification states only what is specific to Carom.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It provides the gameplay
+framework the game is written inside — worlds built from levels, game modes,
+actors and their components, and the controllers that drive pawns — and it owns
+the frame loop and the delta time the game is given, rendering, collision
+detection, input actions, audio cues, asset loading, the canvas fit, and the
+debug overlay. Read its documentation before you start. This specification
+states only what is specific to Carom.
 {{/if}}
 
 ## The project you build in
@@ -85,7 +96,7 @@ so it needs no browser, and `@napi-rs/canvas` is installed for a test that wants
 a real 2D context. Cover the parts of the game a person cannot see at a glance:
 the collision resolution, the paddle bounce and spin, the serve, the scoring and
 match rules, and the AI.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 ### What you implement
 
 `src/game.ts`, and any new modules you add beside it under `src/`.
@@ -144,6 +155,61 @@ Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 game a counted number of frames, so it needs no browser. Cover the parts of the
 game a person cannot see at a glance: the collision resolution, the paddle bounce
 and spin, the serve, the scoring and match rules, and the AI.
+{{else}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`. The module
+does not exist yet; `src/main.ts` imports it, so the project does not type-check
+until you create it. That first `tsc` failure on a fresh checkout is expected.
+
+`src/game.ts` exports `game`, the `GameDefinition` the engine drives: the level
+registry under the names `LEVELS` fixes, the level opened first, and your game
+instance class. Behind that definition you write the whole game: the game
+mode(s) that hold the match rules, the actors that populate the field (each
+carrying its tag from `TAGS`) and the components that draw them, the controllers
+that drive the paddles, and the debug and automation surface this specification
+fixes, which your instance's `initialize` builds and returns. Split the work
+across new files under `src/` however suits you.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the field
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the field match the field
+itself.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's canvas,
+  binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the field into.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts stay
+as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, key binding, cue name, level name, actor tag, and piece of screen
+copy this specification fixes is exported from `src/constants.ts` under the name
+this specification gives it. Import it and use it. Where a spec states a value it
+also names the constant that holds it, and the constant is authoritative.
+Anything this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured over
+`src/`. A test stands the engine up over its own canvas and clock and advances the
+game a counted number of frames, so it needs no browser; `@napi-rs/canvas` is
+installed to supply the 2D context, and the engine's documentation carries a
+complete worked example. Cover the parts of the game a person cannot see at a
+glance: the collision responses, the paddle bounce and spin, the serve, the
+scoring and match rules, and the AI.
 {{/if}}
 
 ### The checks the repository passes
@@ -180,9 +246,13 @@ mode. Aim for a game a person would enjoy playing.
 {{#if (eq engine.slug "none")}}
 - Write the runtime the game stands on: the frame loop and its delta time, the
   canvas fit, input handling, audio, and the debug overlay.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 - Build on the {{engine.name}} engine, taking the frame loop, input handling,
   audio, and debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, writing the game inside its framework and
+  taking the frame loop, rendering, collision detection, input handling, audio,
+  and debug overlay from it.
 {{/if}}
 - Render real graphics on the canvas, drawn as shapes and text rather than as an
   ASCII or text-only rendering.
@@ -193,8 +263,12 @@ mode. Aim for a game a person would enjoy playing.
 {{#if (eq engine.slug "none")}}
 - Hold the game's whole state in one value, the one the frame loop advances and
   the debug surface reads.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 - Hold the game's whole state in `CaromState`.
+{{else}}
+- Hold the game's whole state in the framework objects the engine owns: the game
+  instance, the open world's game state, and its actors. Nothing lives in a
+  module-level variable or a closure outside them.
 {{/if}}
 - Replace the starter `README.md` with one explaining what the game is, how to
   install dependencies, how to run it in development, how to produce the static

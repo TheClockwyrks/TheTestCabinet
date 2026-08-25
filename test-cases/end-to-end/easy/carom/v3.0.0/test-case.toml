@@ -92,25 +92,35 @@ variants = [
 # The engines a run of this case may select. An engine is the runtime the produced
 # game is built on — the frame loop and the delta time it hands the game, the
 # input actions a player drives it with, the audio bus, asset loading, and the
-# on-screen diagnostics. It is a *run dimension*, chosen per run alongside the
-# model, the harness, and the variant, and recorded on the run; it is not a
-# property of the game.
+# on-screen diagnostics; one of them also owns rendering, collision detection,
+# and the gameplay framework the game is written inside. It is a *run dimension*,
+# chosen per run alongside the model, the harness, and the variant, and recorded
+# on the run; it is not a property of the game.
 #
-# Carom supports two, and the game is the same under both. What differs is how
-# much of the build is handed over: `simple-2d` vendors the runtime as a package
-# and seeds the modules around it (`src/constants.ts`, `src/main.ts`, and the
-# `src/game.ts` the build writes, debug surface included), while `none` supplies no
-# runtime and no `src/` at all, so the build writes the frame loop, the input,
-# the audio, the overlay and the `window.__carom` surface itself. The game they
-# describe is the same one, so the review items are the same for either and a
-# score recorded under one engine is comparable with a score recorded under the
-# other; the specs and the validators branch where the deliverable differs.
+# Carom supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build
+#                     writes the frame loop, the input, the audio, the overlay
+#                     and the `window.__carom` surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules
+#                     around it (`src/constants.ts`, `src/main.ts`, and the
+#                     `src/game.ts` the build writes, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes its
+#                     game module: the levels, the game mode(s) that hold the
+#                     match rules, the actors and the controllers that drive the
+#                     paddles, and the debug surface its instance's `initialize`
+#                     returns.
+# The game they describe is the same one, so the review items are the same for
+# every engine and a score recorded under one is comparable with a score recorded
+# under another; the specs and the validators branch where the deliverable
+# differs.
 #
 # `none` supplies no package and therefore carries no version, so it is named in
-# the bare `engines` list; `simple-2d` carries a range and is named in an
-# `[[engine]]` table. The range is pinned because a specification is written
-# against a runtime contract: `min_version` is the 1.0.0 API the specs and the
-# validators are written against, and there is deliberately no `max_version`, so a
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`, so a
 # later 1.x or 2.x from the host package store is accepted as it lands. Widening or
 # moving a range means a new case version, so the pin is the statement that THIS
 # spec set matches THIS contract.
@@ -130,37 +140,55 @@ engines = ["none"]
 slug = "simple-2d"
 min_version = "1.0.0"
 
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
 # The starter project seeded into the root of every run before the specs, one per
-# engine. Both carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration
-# the `[toolchain]` commands below run against, and an `index.html` holding the
-# canvas. What differs is how much of the build is supplied with them.
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, and an `index.html`
+# holding the canvas. What differs is how much of the build is supplied with them.
 #
-#   - `none`      supplies the configuration and nothing else. There is no `src/`:
-#                 the build writes its own frame loop, canvas fit, input, audio,
-#                 diagnostics overlay and `window.__carom` surface, and every
-#                 figure the specification fixes, from the specs alone.
-#   - `simple-2d` declares the engine in its `package.json`, which is vendored in
-#                 at seed time so the build imports it by its bare package name,
-#                 and seeds the case-owned modules around the game:
-#                 `src/constants.ts` (every figure this specification fixes,
-#                 which a validator imports; the look is NOT among them) and
-#                 `src/main.ts` (the browser entry). The build writes
-#                 `src/game.ts`: the state, the debug surface its `initialize`
-#                 returns beside that state, the three functions, and the
-#                 `BACKGROUND` color `src/main.ts` hands the engine.
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     input, audio, diagnostics overlay and `window.__carom`
+#                     surface, and every figure the specification fixes, from the
+#                     specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`: the state, the debug surface its `initialize`
+#                     returns beside that state, the three functions, and the
+#                     `BACKGROUND` color `src/main.ts` hands the engine.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules: `src/constants.ts`
+#                     (every figure this specification fixes plus the level
+#                     names, the actor tags, the action bindings and the cue
+#                     names, which a validator imports; the look is NOT among
+#                     them) and `src/main.ts` (the browser entry). The build
+#                     writes `src/game.ts`: the `GameDefinition` the engine
+#                     drives — its levels, its game mode(s), its actors and the
+#                     controllers that drive the paddles — the debug surface its
+#                     instance's `initialize` returns, and the `BACKGROUND` color
+#                     `src/main.ts` hands the engine.
 #
 # A variant may replace this whole table with one of its own, which gyre and multi
-# both do for `simple-2d`: gyre's seeded `src/constants.ts` documents the obstacle
-# centers as the base centers the live poses sway about, and multi's carries the
-# home points, the ball count, the contact distance and the fifth cue. What a
-# variant changes about the surface (gyre's `setObstacleClock` and obstacle poses,
-# multi's balls addressed by index and reported as an array) is carried by the
-# specs. The engineless project holds no game code for a variant to differ in,
-# so every variant shares it. The seeded files land at the run root
-# (`workspaces/none/package.json` seeds to `package.json`).
+# both do: under each engine that seeds one, gyre's seeded `src/constants.ts`
+# documents the obstacle centers as the base centers the live poses sway about,
+# and multi's carries the home points, the ball count, the contact distance and
+# the fifth cue. What a variant changes about the surface (gyre's
+# `setObstacleClock` and obstacle poses, multi's balls addressed by index and
+# reported as an array) is carried by the specs. The engineless project holds no
+# game code for a variant to differ in, so every variant shares it. The seeded
+# files land at the run root (`workspaces/none/package.json` seeds to
+# `package.json`).
 [workspaces]
 none = "workspaces/none"
 "simple-2d" = "workspaces/base/simple-2d"
+"structured-2d" = "workspaces/base/structured-2d"
 
 # How the validator (and the per-run Cloudflare Pages deploy) turns a produced
 # implementation into a served static site. These run verbatim from the build's
@@ -199,13 +227,17 @@ test = "npx vitest run --coverage"
 # script, which they do below. It names the ENGINELESS contract: an engineless
 # build writes the surface itself and installs it on `window.__carom`, so the
 # handle is what a person opening the console of such a build finds. An engine run
-# has no global at all — the build writes the surface, its `initialize` returns it
-# beside the state as `[state, debug]`, and a validator reads it back off
-# `engine.debug`. Because the engine holds the state by value and hands every
-# reader a read-only view, that surface is written in the shape of `update`: a
-# pose takes the current state and returns the next, which a validator applies
-# through `engine.apply`, and a reading takes the state and returns what it read,
-# which a validator calls with `engine.state`. The seeded specification documents
+# has no global at all — the build writes the surface, its `initialize` returns
+# it, and a validator reads it back off `engine.debug`. What shape the surface's
+# operations take is the engine's contract. Under `simple-2d` the engine holds the
+# state by value and hands every reader a read-only view, so the surface is
+# written in the shape of `update`: a pose takes the current state and returns the
+# next, which a validator applies through `engine.apply`, and a reading takes the
+# state and returns what it read, which a validator calls with `engine.state`.
+# Under `structured-2d` the state lives in the framework objects the engine owns,
+# so the surface's operations are methods on the live game: a pose takes only its
+# own arguments and arranges the open world through the same systems play uses,
+# and a reading takes nothing and returns plain data. The seeded specification documents
 # the surface independently as an ordinary game debug feature (see
 # specs/instrumentation.md); this entry is reporter-side and never seeded.
 #
@@ -328,11 +360,12 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 # and a bottom-edge hit are two points, not one). Each script is a vitest suite
 # under `validation/<engine>/<category>/<item id>.test.ts`. The `<engine>` level is
 # the ENGINE the suite is written against — a validator speaks one engine's
-# vocabulary, so this case, which supports two, ships one directory per engine:
+# vocabulary, so this case, which supports three, ships one directory per engine:
 # `validation/none/` drives the build in Chromium through `window.__carom`, and
-# `validation/simple-2d/` runs in process against the vendored engine. The two are
-# the same scenarios; only how they reach the build differs. The directory for the
-# run's engine is what gets staged into the built workspace at `validation/`.
+# `validation/simple-2d/` and `validation/structured-2d/` each run in process
+# against their vendored engine. The three are the same scenarios; only how they
+# reach the build differs. The directory for the run's engine is what gets staged
+# into the built workspace at `validation/`.
 #
 # A `simple-2d` suite imports the runtime and the build's own `src/game.ts`,
 # constructs it over a headless canvas with a clock it scripts, poses the scenario
@@ -341,6 +374,15 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 # `engine.state` (or the surface's `snapshot` over it), audio from the runtime's
 # `cue:played` event, and drawing from the canvas — either the pixels or a
 # recording proxy over the 2D context.
+#
+# A `structured-2d` suite imports the engine and the build's own `src/game.ts`,
+# constructs the engine over a headless canvas with a clock it scripts, poses the
+# scenario by calling the operations of the surface `engine.debug` returns — the
+# value the build's instance built in `initialize` — which arrange the live world
+# through the same systems play uses, and steps it with `engine.advance`. It
+# reads behavior back from the surface's readings and `engine.world`, audio from
+# the engine's `cue:played` event, and drawing from the canvas — either the
+# pixels or the engine's own draw-command recorder.
 #
 # THE MEDIA a point declares is produced by its own suite, from the scenario the
 # case controls. A `replay` output is a draw-command recording: the suite arms the

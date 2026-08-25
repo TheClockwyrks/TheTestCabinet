@@ -15,7 +15,7 @@ yet. Nothing here supplies a frame loop, a canvas fit, input, audio, an overlay,
 or a line of game code. `index.html` loads `/src/main.ts`, so that module is
 where your build starts: create it, and organize the rest of `src/` however suits
 you.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
 away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints it,
@@ -28,6 +28,17 @@ What is missing is the game itself: `src/game.ts`. As seeded it is a stub whose
 `CaromDebugApi` types the specification asks `src/game.ts` to declare, so the
 project does not type-check until those declarations exist. That first `tsc`
 failure on a fresh checkout is expected; declaring the types clears it.
+{{else}}
+A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
+describes it. Its dependencies are installed, so you can build and test right
+away. It is wired up end to end: Vite builds it, Vitest tests it, ESLint lints it,
+Prettier formats it, and `src/main.ts` already stands the engine up over the
+page's canvas and runs the game.
+
+What is missing is the game itself: `src/game.ts` does not exist yet.
+`src/main.ts` imports `game` and `BACKGROUND` from it, so the project does not
+type-check until the module exists. That first `tsc` failure on a fresh checkout
+is expected; creating the module clears it.
 {{/if}}
 
 {{#if (eq engine.slug "none")}}
@@ -38,7 +49,7 @@ the frame loop and the delta time it hands each update, fitting the fixed logica
 field onto the canvas, the input actions the player drives the game with, the
 audio, and the on-screen debug overlay. The specification in `specs/` states what
 Carom needs from that layer and fixes nothing else about it.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 ## The {{engine.name}} engine
 
 This build runs on the **{{engine.name}}** engine, installed as a dependency of
@@ -58,6 +69,26 @@ value: each frame it hands `update` the current state read-only and keeps what
 one rather than writing into it. Register what the game needs with the engine
 and use what it gives back. What remains yours is the game itself: its
 simulation and everything it draws.
+{{else}}
+## The {{engine.name}} engine
+
+This build runs on the **{{engine.name}}** engine, installed as a dependency of
+the project, so import it by its bare package name; there is nothing to add to
+`package.json` for it and nothing to install.
+
+The engine's own documentation is at `{{engine.docs}}`. Read all of it before you
+start. It is the authoritative description of the engine's API; the specification
+in `specs/` describes the game and does not restate the engine. The documentation
+also carries a complete worked example of unit-testing a game built on it.
+
+Build the game inside the engine's framework rather than beside it. The engine
+owns the frame loop and the delta time it hands each tick, rendering, collision
+detection, the input actions, the audio, asset loading, and the on-screen debug
+overlay. Your game is a `GameDefinition` the engine drives: the levels it opens,
+the game modes that hold the match rules, the actors and components that
+populate the field, and the controllers that drive the paddles. Register what
+the game needs with the engine and use what it gives back. What remains yours is
+the game itself: its rules, its simulation, and what its components draw.
 {{/if}}
 
 ## What to read first
@@ -84,6 +115,10 @@ genuinely need one, and run `npm install` afterward so the committed
 The project's Playwright and its headless Chromium are installed, so you can
 serve the built game and drive it in a real browser, watch a rally, check for
 console errors, or exercise `window.__carom`.
+{{else if (eq engine.slug "simple-2d")}}
+The project's Playwright and its headless Chromium are installed, so you can
+serve the built game and drive it in a real browser, watch a rally, and check for
+console errors.
 {{else}}
 The project's Playwright and its headless Chromium are installed, so you can
 serve the built game and drive it in a real browser, watch a rally, and check for

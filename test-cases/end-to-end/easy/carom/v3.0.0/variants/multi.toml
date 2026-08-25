@@ -18,14 +18,18 @@ description = "Three independent balls that collide with each other — each wit
 # `variants/base.toml` for what a reference implementation is and how it is
 # published. Under `none` the build carries its own runtime in `src/host.ts`;
 # under `simple-2d` it hands the same surfaces to the engine package resolved from
-# the repository's `packages/simple-2d`. The game either one implements is
-# identical, which is what makes the two comparable.
+# the repository's `packages/simple-2d`; under `structured-2d` it builds the same
+# game inside the framework of the engine package resolved from
+# `packages/structured-2d`. The game every one implements is identical, which is
+# what makes them comparable.
 [reference_implementation]
 none = "references/none/multi"
 "simple-2d" = "references/simple-2d/multi"
+"structured-2d" = "references/structured-2d/multi"
 
-# This variant needs a starter project of its own under `simple-2d`: the seeded
-# `src/constants.ts` there carries the home points, the ball count and the
+# This variant needs a starter project of its own under each engine that seeds
+# one: the seeded `src/constants.ts` under `simple-2d` and under `structured-2d`
+# carries the home points, the ball count and the
 # contact distance, and `CUES` names the fifth cue. The surface that addresses the
 # balls by index and reports them as an array is the multi branch of
 # `specs/instrumentation.md.hbs`, and the build writes it. The table REPLACES the case's
@@ -39,6 +43,7 @@ none = "references/none/multi"
 [workspaces]
 none = "workspaces/none"
 "simple-2d" = "workspaces/multi/simple-2d"
+"structured-2d" = "workspaces/multi/structured-2d"
 
 # The multi-specific category, worth one point per item. It applies to the whole
 # game (both Solo and Versus), and every point is about the one thing this variant

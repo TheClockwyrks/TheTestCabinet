@@ -33,7 +33,7 @@ specification is written against them:
   Parking the ball clears the trail.
 {{/if}}
 - The state of the seeded random generator, if the build draws from it.
-{{else}}
+{{else if (eq engine.slug "simple-2d")}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands
 here. The state is a value the engine holds and every frame replaces, so every
@@ -295,4 +295,46 @@ The declaration above is what the debug surface reads and poses.
   built from the one they received; `render`, the sources, and `snapshot`
   return no state. The type is what guarantees that rendering changes nothing
   and that nothing but a transition advances the game.
+{{else}}
+The game's state lives in the framework objects the engine owns: the game
+instance you write, the world that is open, that world's game mode and game
+state, and the actors in it. How Carom maps onto them is yours to design, within
+the framework's own line: a value scoped to one match lives on the game state or
+its actors, which are rebuilt with their world, and a value that must survive a
+level transition lives on the instance. Nothing lives in a module-level variable
+or a closure outside them.
+
+Two contracts are fixed over that state. The first is the debugging and
+automation surface specified for this build. Every operation that surface
+carries is a reading or a pose of the running game, so the state holds what the
+readings report, honors what the poses arrange, and returns to its title-screen
+values when the surface's `reset` is called. The second is the vocabulary
+`src/constants.ts` fixes: every level is registered under its name in `LEVELS`,
+and every paddle, ball, and obstacle actor carries its tag from `TAGS`, so the
+field's bodies can be found with `world.byTag` under the names this
+specification uses.
+
+Whatever its arrangement, the state carries the following, because the rest of
+this specification is written against them:
+
+- The simulation time the snapshot reports as `simTime`, in seconds. The
+  engine's frame clock accumulates it across every frame, whatever the screen,
+  the paused screen and the menus included, so read it back from the engine
+  rather than keeping a copy.
+- Each paddle's center `cy` and its integrated vertical velocity `vy` for the
+  frame, the velocity after the clamp to `[PADDLE_MIN_CY, PADDLE_MAX_CY]`.
+{{#if (eq variant.slug "multi")}}
+- For each ball: `x`, `y`, `vx`, `vy`, `spin`, whether it is held, its hold
+  timer, and its trail samples. On every `countdown` or `playing` frame, after
+  the balls have been advanced, each ball's `(x, y)` and the simulation time are
+  appended as a sample and every sample older than `TRAIL_TIME` is dropped.
+  Parking a ball clears its trail.
+{{else}}
+- The ball's `x`, `y`, `vx`, `vy`, and `spin`, the receiver, the hold timer,
+  and the trail samples. On every `countdown` or `playing` frame, after the
+  ball has been advanced, the ball's `(x, y)` and the simulation time are
+  appended as a sample and every sample older than `TRAIL_TIME` is dropped.
+  Parking the ball clears the trail.
+{{/if}}
+- The state of the seeded random generator, if the build draws from it.
 {{/if}}
