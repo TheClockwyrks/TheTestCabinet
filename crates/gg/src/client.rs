@@ -1246,11 +1246,11 @@ pub fn cache_breakpoints(messages: &[Message]) -> Vec<usize> {
         return Vec::new();
     };
     // The tail marker writes the prefix the **next** turn's request will read, so it must land on
-    // the newest *conversation* message. gg's trailing slots — the context-usage signal and the
-    // responses-as-code contract notice — are `system`-role messages re-rendered at the very end
-    // of every request: a prefix ending on one never recurs (the next request has new
-    // conversation ahead of it), so an entry written there is never read and the tail marker
-    // would be wasted every single turn. Walking back past trailing `system` messages is safe
+    // the newest *conversation* message. gg's trailing slot — the context-usage signal — is a
+    // `system`-role message re-rendered at the very end of every request: a prefix ending on it
+    // never recurs (the next request has new conversation ahead of it), so an entry written there
+    // is never read and the tail marker would be wasted every single turn. Walking back past
+    // trailing `system` messages is safe
     // because the only mid-thread `system` message is the system prompt itself, at index 0.
     let tail = (0..=last)
         .rev()

@@ -2203,17 +2203,10 @@ async fn views_opened_before_a_throw_survive_into_the_next_prompt() {
         );
     }
 
-    // And the error is the last thing the model reads before the trailing contract notice —
-    // which rides after **everything** on every code request (see
-    // `ContextModel::set_trailing_notice`) — carrying the error alone.
-    let last = bodies.last().expect("the window is not empty");
-    assert!(
-        last.starts_with("Reminder: take your turn with one `submit_program` call"),
-        "the contract notice rides at the very tail: {last}"
-    );
+    // And the error is the last thing the model reads, carrying the error alone.
     let error = bodies
-        .get(bodies.len() - 2)
-        .expect("the window holds more than the notice")
+        .last()
+        .expect("the window is not empty")
         .strip_prefix("Runtime error\n----\n")
         .unwrap_or_else(|| panic!("the turn ends on the runtime error: {bodies:#?}"));
     assert!(

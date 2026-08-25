@@ -941,7 +941,6 @@ impl GgRecorder {
                     PromptSlot::System => GgSessionPromptSlot::System,
                     PromptSlot::Thread => GgSessionPromptSlot::Thread,
                     PromptSlot::ContextUsage => GgSessionPromptSlot::ContextUsage,
-                    PromptSlot::TrailingNotice => GgSessionPromptSlot::TrailingNotice,
                 },
                 source: item.source,
                 retention: match item.retention {

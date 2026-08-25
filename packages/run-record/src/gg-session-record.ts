@@ -586,11 +586,7 @@ export type GgSessionToolOutcome = {
  * The window is not a flat list: every position but the thread is a *slot* that is
  * assigned rather than appended, precisely so it cannot accumulate duplicates.
  */
-export type GgSessionPromptSlot =
-  | "system"
-  | "thread"
-  | "context_usage"
-  | "trailing_notice";
+export type GgSessionPromptSlot = "system" | "thread" | "context_usage";
 
 /**
  * Whether a [prompt item](GgSessionPromptItem) is retained verbatim across a compaction

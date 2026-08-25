@@ -250,13 +250,6 @@ const COMPLETION_MISSING_TEMPLATE: &str = include_str!("../templates/completion-
 /// it, and how the agent can reclaim space itself.
 const CONTEXT_PRESSURE_TEMPLATE: &str = include_str!("../templates/context-pressure.hbs");
 
-/// The trailing **contract notice** a [responses-as-code](crate::agent) window re-states at its
-/// tail on every request — measured as the single most effective cross-model lever for keeping a
-/// tool-call-trained model on the reply contract. Rendered once per agent (it interpolates only
-/// the language) and held in a window slot, so it is one constant message that always renders
-/// last; see `ContextModel::set_trailing_notice`.
-const CONTRACT_NOTICE_TEMPLATE: &str = include_str!("../templates/contract-notice.hbs");
-
 /// The template names registered with the [engine], in the order they are registered. Each name
 /// is what [`render`] looks up. The tests iterate this list to assert every template parses.
 ///
@@ -294,7 +287,6 @@ const TEMPLATES: &[(&str, &str)] = &[
     ),
     ("completion-missing", COMPLETION_MISSING_TEMPLATE),
     ("context-pressure", CONTEXT_PRESSURE_TEMPLATE),
-    ("contract-notice", CONTRACT_NOTICE_TEMPLATE),
 ];
 
 /// The process-wide Handlebars engine, built once with every template registered.
@@ -1115,18 +1107,6 @@ pub struct MemoryNoticeEntry {
 /// Render the [linked-memory notice](crate::memories::MemoriesRuntime::notice).
 pub fn render_memory_notice(context: &MemoryNoticeContext) -> String {
     render("memory-notice", context)
-}
-
-/// Render the [trailing contract notice](CONTRACT_NOTICE_TEMPLATE) for the arm writing in
-/// `program_language` — the one or two sentences restating the responses-as-code reply contract,
-/// which ride at the very tail of every request.
-pub fn render_contract_notice(program_language: GgProgramLanguage) -> String {
-    render(
-        "contract-notice",
-        &LanguageContext {
-            language: language_view(program_language),
-        },
-    )
 }
 
 /// The empty rendering context, for the templates that interpolate nothing and exist purely so

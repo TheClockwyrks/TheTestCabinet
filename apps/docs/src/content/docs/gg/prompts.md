@@ -234,23 +234,6 @@ function whatever this run enabled, so a call to one the run withheld compiles
 and then fails when it runs, naming the call. What the documentation holds is
 what the run granted.
 
-### The trailing contract notice
-
-The reply contract is also restated at the very end of every request, as one
-constant sentence: take the turn with one `submit_program` call whose `program`
-string is one whole, bare program in this run's language, with no fences and no
-prose inside it, and text outside the call is not processed. Measured across
-models, this trailing restatement is the single most effective lever for keeping
-a tool-call-trained model on the contract, so it earns a permanent seat at the
-position models weight most.
-
-It is a [slot](/gg/context-visibility/#slots) rather than a thread item: one
-instance, rendered after everything else on every request, set once per agent
-and cleared when a [succession](/gg/fork-and-exec/) hands the window to a
-different holder. Because everything a provider's prompt cache reads sits before
-it, the notice never disturbs the append-only prompt, and the tail cache marker
-deliberately lands on the newest conversation message rather than on it.
-
 ### Modules
 
 The prompt lists one line per capability module: the path this arm spells it

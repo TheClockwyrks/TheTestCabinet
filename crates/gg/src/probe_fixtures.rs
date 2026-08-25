@@ -9,8 +9,8 @@
 //! the arm's own [`bootstrap_program`](crate::sandbox::ProgramLanguage::bootstrap_program), the
 //! module listing is [`render_search_results`](crate::agent::code::render_search_results), every
 //! documentation view is the string [`DocsRuntime::read_any`] renders, a file view's heading is
-//! [`item_heading`] with its [`ShownLines`], and the trailing notice is
-//! [`prompts::render_contract_notice`]. What this module *does* author is the probe's own material:
+//! [`item_heading`] with its [`ShownLines`]. What this module *does* author is the probe's own
+//! material:
 //! the task prompts and the small spec files each task reads.
 //!
 //! # The two scenarios, and at least three prompts
@@ -335,21 +335,10 @@ pub(crate) fn fixture_for(id: GgProgramLanguage) -> Result<ProbeFixture, String>
     let base_keys = resolved.keys;
 
     let tool = submit_program_tool(id);
-    let contract_notice = prompts::render_contract_notice(id);
 
     let cases = CASES
         .iter()
-        .map(|case| {
-            build_case(
-                id,
-                &docs,
-                &modules,
-                &base_keys,
-                &system,
-                &contract_notice,
-                case,
-            )
-        })
+        .map(|case| build_case(id, &docs, &modules, &base_keys, &system, case))
         .collect::<Result<Vec<_>, String>>()?;
 
     Ok(ProbeFixture {
@@ -357,8 +346,8 @@ pub(crate) fn fixture_for(id: GgProgramLanguage) -> Result<ProbeFixture, String>
             "gg's responses-as-code turn-1 request for the {} arm, projected by `gg \
              probe-fixtures` (regenerate with scripts/gg-probe-fixtures.sh). Nothing model-facing \
              is authored here twice: the system prompt, the opening bootstrap program, the module \
-             listing, every documentation view, the file-view headings and the trailing contract \
-             notice are the same bytes gg's own machinery produces for a real session; the task \
+             listing, every documentation view and the file-view headings are the same bytes \
+             gg's own machinery produces for a real session; the task \
              prompts and spec files are the probe's own material. The backend replays each case \
              through OpenRouter with the one `submit_program` tool offered and `tool_choice` \
              forced to it, and classifies the program each reply submitted.",
@@ -416,7 +405,6 @@ fn build_case(
     modules: &[String],
     base_keys: &[String],
     system: &str,
-    contract_notice: &str,
     case: &CaseSpec,
 ) -> Result<ProbeFixtureCase, String> {
     let arm = language(id);
@@ -549,15 +537,6 @@ fn build_case(
         &heading,
         spec_text,
     ));
-
-    // The trailing contract notice, the constant last message of every request.
-    messages.push(ProbeFixtureMessage {
-        role: "system",
-        source: "contract_notice",
-        content: Some(contract_notice.to_string()),
-        tool_calls: Vec::new(),
-        tool_call_id: None,
-    });
 
     Ok(ProbeFixtureCase {
         scenario: case.scenario,

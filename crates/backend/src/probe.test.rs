@@ -74,14 +74,8 @@ fn a_case_conversation_is_faithful_end_to_end() {
             heading.ends_with(&format!(":1-{total} of {total} lines")),
             "the heading `{heading}` covers the whole {total}-line body"
         );
-        // The request ends on the trailing contract notice.
-        let last = messages.last().unwrap();
-        assert_eq!(last.role, "system");
-        assert!(
-            last.content
-                .as_deref()
-                .is_some_and(|c| c.contains("submit_program"))
-        );
+        // The request ends on the seeded file view — nothing rides after the conversation.
+        assert_eq!(messages.last().unwrap().role, "user");
     }
 }
 

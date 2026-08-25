@@ -227,13 +227,6 @@ leave a trail of stale readings. Everything a cache can read sits before it,
 rewriting it invalidates no prefix, and it is exactly because it costs nothing
 to rewrite that it reports exact figures rather than rounded ones.
 
-A [responses-as-code](/gg/responses-as-code/overview/) window carries the
-[trailing contract notice](/gg/prompts/#the-trailing-contract-notice) as a third
-slot, rendered after the context-usage signal so it is the last message of every
-request. Unlike the signal it is constant for the life of the agent: it is set
-once, survives a compaction, and is cleared only when the window crosses to a
-different holder.
-
 The system prompt is always the first message of the prompt. It describes the
 agent, its toolset, its roster and its ending calls rather than the
 conversation, so it is the one thing a

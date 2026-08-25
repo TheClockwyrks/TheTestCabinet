@@ -1,5 +1,5 @@
 {
-  "provenance": "gg's responses-as-code turn-1 request for the Kotlin arm, projected by `gg probe-fixtures` (regenerate with scripts/gg-probe-fixtures.sh). Nothing model-facing is authored here twice: the system prompt, the opening bootstrap program, the module listing, every documentation view, the file-view headings and the trailing contract notice are the same bytes gg's own machinery produces for a real session; the task prompts and spec files are the probe's own material. The backend replays each case through OpenRouter with the one `submit_program` tool offered and `tool_choice` forced to it, and classifies the program each reply submitted.",
+  "provenance": "gg's responses-as-code turn-1 request for the Kotlin arm, projected by `gg probe-fixtures` (regenerate with scripts/gg-probe-fixtures.sh). Nothing model-facing is authored here twice: the system prompt, the opening bootstrap program, the module listing, every documentation view and the file-view headings are the same bytes gg's own machinery produces for a real session; the task prompts and spec files are the probe's own material. The backend replays each case through OpenRouter with the one `submit_program` tool offered and `tool_choice` forced to it, and classifies the program each reply submitted.",
   "language": "kotlin",
   "displayName": "Kotlin",
   "tool": {
@@ -131,11 +131,6 @@
           "role": "user",
           "source": "file_view",
           "content": "File: specs/plan-brief.md:1-20 of 20 lines\n----\n# Plan brief\n\nWrite `notes/plan.md` with exactly the following structure.\n\n## Required sections\n\n1. A top-level heading reading `# Delivery plan`.\n2. A section `## Milestones` holding a numbered list of three milestones:\n   1. `Skeleton` — the project builds and serves a blank page.\n   2. `Core loop` — the simulation advances and renders.\n   3. `Polish` — audio, menus, and the win screen.\n3. A section `## Risks` holding a bulleted list with two entries:\n   - `Scope creep in the core loop`\n   - `Untested browser input handling`\n\n## Rules\n\n- The file's content is exactly the sections above, in that order.\n- Create the `notes/` directory as part of the write if it does not exist.\n- Change nothing else in the workspace."
-        },
-        {
-          "role": "system",
-          "source": "contract_notice",
-          "content": "Reminder: take your turn with one `submit_program` call whose `program` string is one whole, bare Kotlin program — no code fences, no prose inside it. It is processed exactly as written; text outside the call is not."
         }
       ]
     },
@@ -261,11 +256,6 @@
           "role": "user",
           "source": "file_view",
           "content": "File: specs/inventory-brief.md:1-17 of 17 lines\n----\n# Inventory brief\n\nWrite `notes/inventory.md` describing the workspace root.\n\n## Required content\n\n1. A top-level heading reading `# Workspace inventory`.\n2. One Markdown list entry per entry of the workspace's top-level\n   directory, in the order the listing returns them.\n3. Each entry formatted as `- `, the entry's name, then ` (dir)` for a\n   directory or ` (file)` for a file.\n\n## Rules\n\n- List the top-level directory only; do not recurse.\n- Create the `notes/` directory as part of the write if it does not exist.\n- Change nothing else in the workspace."
-        },
-        {
-          "role": "system",
-          "source": "contract_notice",
-          "content": "Reminder: take your turn with one `submit_program` call whose `program` string is one whole, bare Kotlin program — no code fences, no prose inside it. It is processed exactly as written; text outside the call is not."
         }
       ]
     },
@@ -377,11 +367,6 @@
           "role": "user",
           "source": "file_view",
           "content": "File: specs/test-brief.md:1-15 of 15 lines\n----\n# Test brief\n\nThe project's test suite runs with `npm test` from the workspace root.\n\n## What to check\n\n1. The command exits with status 0.\n2. The summary line reports no failing tests.\n3. No test is reported as skipped.\n\n## Rules\n\n- Run the suite from the workspace root, not from a subdirectory.\n- Show yourself the command's output before drawing any conclusion\n  from it."
-        },
-        {
-          "role": "system",
-          "source": "contract_notice",
-          "content": "Reminder: take your turn with one `submit_program` call whose `program` string is one whole, bare Kotlin program — no code fences, no prose inside it. It is processed exactly as written; text outside the call is not."
         }
       ]
     },
@@ -493,11 +478,6 @@
           "role": "user",
           "source": "file_view",
           "content": "File: specs/errata.md:1-14 of 14 lines\n----\n# Errata\n\n`README.md` carries one error to correct.\n\n## The replacement\n\n- Find the exact string: `serves the build on port 8000`\n- Replace it with: `serves the build on port 5173`\n\n## Rules\n\n- Make exactly this one replacement, in `README.md` only.\n- The string occurs once; replace that one occurrence.\n- Change nothing else in the workspace."
-        },
-        {
-          "role": "system",
-          "source": "contract_notice",
-          "content": "Reminder: take your turn with one `submit_program` call whose `program` string is one whole, bare Kotlin program — no code fences, no prose inside it. It is processed exactly as written; text outside the call is not."
         }
       ]
     }

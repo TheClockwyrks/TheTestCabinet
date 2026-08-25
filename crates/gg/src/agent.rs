@@ -6526,18 +6526,6 @@ impl Agent {
         // So there is nothing here to detect and nothing to undo: whatever this instance inherited,
         // the prompt it reasons under is its own.
         context.set_system(system);
-        // The trailing contract notice, set on the same terms as the system prompt — a property of
-        // this holder, set unconditionally so a code agent that inherited a window gets its own
-        // and a tool-calling agent that inherited a code window sheds its predecessor's. It is one
-        // constant `system` message in a slot that always renders **last** (see
-        // `ContextModel::set_trailing_notice`), so it restates the reply contract at the context
-        // tail of every request without ever disturbing the append-only prompt ahead of it —
-        // measured as the single most effective cross-model lever for keeping a
-        // tool-call-trained model on the reply contract.
-        context.set_trailing_notice(
-            code.enabled
-                .then(|| prompts::render_contract_notice(code.language)),
-        );
 
         // How the rest of the window opens. A **fresh** one is seeded the way every agent's has
         // always been: the build prompt, then whatever the capabilities pre-load into it. A

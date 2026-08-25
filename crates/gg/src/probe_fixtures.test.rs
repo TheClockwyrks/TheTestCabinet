@@ -42,12 +42,9 @@ fn every_case_is_a_wellformed_turn1_conversation() {
                 "{name}: opens on the system prompt"
             );
             let last = case.messages.last().unwrap();
-            assert_eq!(last.role, "system", "{name}: ends on the contract notice");
-            assert!(
-                last.content
-                    .as_deref()
-                    .is_some_and(|c| c.contains("submit_program")),
-                "{name}: the trailing notice restates the call contract"
+            assert_eq!(
+                last.role, "user",
+                "{name}: ends on the seeded spec file view"
             );
             // Every synthesized submission is answered by its own `ok`.
             for message in &case.messages {

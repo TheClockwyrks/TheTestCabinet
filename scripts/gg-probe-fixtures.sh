@@ -7,7 +7,7 @@
 # WHAT IT WRITES. One `<language>.json` per registered program language: the responses-as-code
 # turn-1 conversation the backend's model probe replays for each of its cases — the real system
 # prompt, the real bootstrap program and module listing, the real documentation views, a seeded spec
-# file view with its total-line-count heading, and the trailing contract notice — plus the
+# file view with its total-line-count heading — plus the
 # `submit_program` tool definition and each case's pass criteria. Nothing model-facing is authored
 # twice: every byte comes out of the same machinery a real gg session sends (see
 # `crates/gg/src/probe_fixtures.rs`).

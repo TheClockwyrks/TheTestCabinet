@@ -802,10 +802,6 @@ pub enum GgSessionPromptSlot {
     Thread,
     /// The context-usage signal slot, rebuilt and re-assigned after every turn.
     ContextUsage,
-    /// The trailing contract-notice slot — the constant reminder of the
-    /// [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE) reply contract, rendered
-    /// after every other message so it is the last thing the model reads on every turn.
-    TrailingNotice,
 }
 
 /// Whether a [prompt item](GgSessionPromptItem) is retained verbatim across a compaction

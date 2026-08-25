@@ -9280,8 +9280,8 @@ mod limits_tests;
 
 /// The model-call **rejection loop** through the live session: a timed-out call and a
 /// length-capped reply recorded as error turns, kept out of the context and the run's metrics,
-/// and retried on the same turn — plus the append-only prompt invariant and the trailing
-/// contract notice, which those retries and every ordinary turn must both preserve.
+/// and retried on the same turn — plus the append-only prompt invariant, which those retries and
+/// every ordinary turn must preserve.
 ///
 /// Separate from `agent.limits.test.rs` because what these guard is the pre-turn seam — the loop
 /// between the model call and the turn that never happened — rather than the ceilings' own

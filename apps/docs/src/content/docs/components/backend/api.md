@@ -860,9 +860,9 @@ scenarios over several input prompts (at least three prompts across them), on
 one program-language arm or on every arm. Each case's conversation is an
 embedded per-language fixture projected out of gg's own machinery by
 `scripts/gg-probe-fixtures.sh` — the real system prompt, the real bootstrap
-program and module listing, the real documentation views, a seeded spec file
-view carrying its total-line-count heading, and the trailing contract notice —
-sent whole, never trimmed. The replay goes through OpenRouter chat/completions
+program and module listing, the real documentation views, and a seeded spec file
+view carrying its total-line-count heading — sent whole, never trimmed. The
+replay goes through OpenRouter chat/completions
 with the one `submit_program` tool offered and `tool_choice` forced to it, the
 wire shape gg sends, and each case is sampled `samples` times with no
 temperature set.

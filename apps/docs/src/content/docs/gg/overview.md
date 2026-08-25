@@ -174,9 +174,8 @@ gg marks up to four breakpoints per request, which is Anthropic's cap:
   (a marker at a shifting offset would describe a prefix no earlier turn ever
   wrote, and so would never be a cache hit);
 - one at the tail, which writes this turn's prefix for the next turn to read.
-  The tail walks back past the trailing slot messages — the context-usage signal
-  and the [contract notice](/gg/prompts/#the-trailing-contract-notice), both
-  re-rendered at the end of every request — because a prefix ending on one never
+  The tail walks back past the trailing slot message — the context-usage signal,
+  re-rendered at the end of every request — because a prefix ending on it never
   recurs, so a marker there writes an entry nothing ever reads.
 
 The markers go only to the Anthropic family, and every content-bearing message
