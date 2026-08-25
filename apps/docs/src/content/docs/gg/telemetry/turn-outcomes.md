@@ -62,7 +62,7 @@ named. There are nineteen types, one per distinction gg makes.
 | `transpile` | `transpile_syntax`, `transpile_compile` (the language's compiler read the whole program and rejected it), `transpile_unsupported` |
 | `program_fault` | `program_api_error` (an uncaught failed call: the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it, either a name that is not in scope or a call the host refused as `unavailable`), `program_throw` |
 | `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
-| `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending, which is answered differently) |
+| `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending, which is answered differently), `missing_completion_no_program` (a responses-as-code reply that made no `submit_program` call) |
 
 :::caution[`transpile` is empty by construction for an eval-in-guest arm]
 A [program language](/gg/languages/overview/) whose guest carries its own
@@ -167,12 +167,11 @@ and cost. That spend is deliberately absent from the run's own usage and cost â€
 a degenerate generation must not make a run look expensive â€” so the rollup is
 the one place it appears.
 
-Three things are deliberately excluded from the error counts. A tool call that
+Two things are deliberately excluded from the error counts. A tool call that
 failed inside a program that carried on is counted in `toolFailures` instead: the
 program handled it, which is the point of the typed surface, and charging it
 would make the one capability that expects failures the one that cannot survive
-them. A [healed](/gg/response-healing/) reply is excluded because healing repairs
-the message rather than the turn. Per-agent attribution is excluded because these
+them. Per-agent attribution is excluded because these
 are run-wide totals, and the per-agent breakdown lives on the stream, where every
 `turn_outcome` rides on its own agent's id.
 

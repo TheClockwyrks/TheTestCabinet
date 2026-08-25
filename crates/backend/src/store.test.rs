@@ -24,6 +24,7 @@ fn stamp_mtime(store: &DefinitionStore, slug: &str, version: &str, unix_secs: u6
 fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
     StoredManifest {
         toolchain: None,
+        engine_format: false,
         slug: slug.to_string(),
         version: version.to_string(),
         name: "Sample".to_string(),
@@ -96,6 +97,8 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 weight: 1,
                 graded: false,
                 domain: None,
+                failure_cap: None,
+                domains: vec![],
                 sub_items: vec![],
                 validation: None,
             }],
@@ -120,6 +123,8 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             weight: 2,
             graded: false,
             domain: Some("single-player".to_string()),
+            failure_cap: None,
+            domains: vec![],
             sub_items: vec![],
             // An auto-validated item so the manifest round-trip (write → read) covers
             // the reporter-side validation driver.
@@ -824,13 +829,13 @@ fn the_code_analysis_slot_is_the_generic_artifact_slot_named_code_analysis() {
     // slot, the route segment and the run tree's file stem — and the convention only
     // holds if the three cannot drift apart.
     store
-        .write_run_code_analysis("run-xyz", br#"{"analyzerVersion":2}"#)
+        .write_run_code_analysis("run-xyz", br#"{"analyzerVersion":1}"#)
         .unwrap();
     assert_eq!(
         store
             .read_run_artifact("run-xyz", CODE_ANALYSIS_ARTIFACT)
             .unwrap(),
-        br#"{"analyzerVersion":2}"#
+        br#"{"analyzerVersion":1}"#
     );
     assert_eq!(
         store.run_code_analysis_path("run-xyz"),
@@ -851,7 +856,7 @@ fn the_code_analysis_slot_is_the_generic_artifact_slot_named_code_analysis() {
 #[test]
 fn run_code_analysis_document_round_trips_and_guards_the_run_id() {
     let (_dir, store) = temp_store();
-    let bytes = br#"{"analyzerVersion":2,"summary":{},"files":[]}"#;
+    let bytes = br#"{"analyzerVersion":1,"summary":{},"files":[]}"#;
     store.write_run_code_analysis("run-xyz", bytes).unwrap();
     assert_eq!(store.read_run_code_analysis("run-xyz").unwrap(), bytes);
     // A run that was never analysed reads as not-found, not a panic: every run-tree

@@ -26,9 +26,10 @@ are an operator surface rather than a dispatch one.
   collections are bare arrays too, for the reason given there.
 - Timestamps are RFC 3339 strings.
 - Harness slugs are those defined in [Harnesses](/components/core/harnesses/).
-- Ratings are the five tiers defined in
-  [Reviews](/components/core/results/#reviews): `flawless`, `great`, `passable`,
-  `scuffed`, `broken`.
+- Ratings are the tiers defined in
+  [Reviews](/components/core/results/#ratings): a functional rating is one of
+  `flawless`, `great`, `passable`, `scuffed`, `broken`, and an aesthetic rating
+  is one of `legendary`, `amazing`, `good`, `okay`, `slop`.
 - The reads on this page are open. The mutating run endpoints require an
   `Authorization: Bearer <token>` header identifying the acting account, which
   the backend verifies against the [auth service](/components/auth/overview/). A
@@ -277,10 +278,14 @@ A representative response:
         }
       ],
       // Variant-specific reviewer checklist items, for the consoles' guided
-      // review. Empty when the variant declares none.
+      // review. Empty when the variant declares none. On an engine-format
+      // version each graded point carries its `domains` and `failureCap`.
       "reviewItems": []
     }
   ],
+  // True when the version is on the engine-supported manifest format, which
+  // makes its runs validator-rated.
+  "engineFormat": true,
   "commonReferences": [
     {
       "view": "gameplay",
@@ -411,20 +416,27 @@ notification fires, and no retry is enqueued.
 ### `POST /runs/{id}/reviews`
 
 Submit a [review](/components/core/results/#reviews) for a produced run: the
-per-domain `ratings`, the markdown `writeup`, the checklist verdicts, and an
-`editNote`. The review is attributed to the account the bearer token resolves
-to; the reviewer identity is taken from the token rather than the body. A run
-carries many reviews, one per account, and re-submitting from the same account
-updates that account's own review.
+per-domain functional `ratings`, the per-domain `aesthetics`, the markdown
+`writeup`, the checklist verdicts, and an `editNote`. Which of them a run
+accepts follows its case version. A validator-rated run takes an `aesthetics`
+entry for every effective domain and refuses `ratings`, since the functional
+rating is the validators'; its checklist verdicts are the validators' and the
+body carries none. A legacy run takes `ratings` and the checklist verdicts and
+refuses `aesthetics`. The review is attributed to the account the bearer token
+resolves to; the reviewer identity is taken from the token rather than the
+body. A run carries many reviews, one per account, and re-submitting from the
+same account updates that account's own review.
 
 A re-submission that changes the review is an edit. It requires a non-empty
 `editNote`, keeps the original `reviewedAt`, stamps `editedAt`, and records the
-prior-to-new diff as a public revision. A re-submission that changes nothing is
-a no-op.
+prior-to-new diff as a public revision, covering the functional ratings, the
+aesthetic ratings, the verdicts, and the writeup. A re-submission that changes
+nothing is a no-op.
 
-`404` if the run is unknown. `422` when the review rates no domain and records
-no checklist verdict, when the writeup is empty, or when an edit arrives without
-a note. Schema:
+`404` if the run is unknown. `422` when the review carries no rating on either
+channel and no checklist verdict, when the writeup is empty, when it rates a
+channel the run's case version does not accept or leaves a domain on the
+accepted channel unrated, or when an edit arrives without a note. Schema:
 [`backend-api/review.schema.json`](https://docs.testcabinet.ai/schema/backend-api/review.schema.json).
 
 ### `POST /runs/{id}/publish`
@@ -435,8 +447,10 @@ fails), then enqueues a per-publish `tcab-publisher` Job and answers
 on. The run flips public when that Job reports a terminal success.
 
 The gate refuses a run that can never be published, an infrastructure failure or
-a canceled run, and it refuses a completed run carrying no review. A publishable
-failure needs no review, since it has no review checklist.
+a canceled run, and it refuses a completed legacy run carrying no review. A
+completed validator-rated run is admitted with or without a review, since its
+functional rating and score are on the record. A publishable failure needs no
+review, since it has no review checklist.
 
 ```jsonc
 { "publishJobId": "clx…", "liveUrl": "/publish-jobs/clx…/live" }
@@ -496,10 +510,11 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   finish time. This is the console's produced worklist, disjoint from the
   default published listing.
 - `state=publishable` — the publish worklist: the subset of `state=unpublished`
-  the publish gate accepts right now, which is a reviewed completed run or one
-  of the publishable failure tiers. This backs the console's Unpublished tab,
-  where every listed run is meant to be selected and published, so the slice
-  holds only rows the publish endpoint will accept.
+  the publish gate accepts right now, which is a validator-rated completed run,
+  a reviewed legacy completed run, or one of the publishable failure tiers. This
+  backs the console's Unpublished tab, where every listed run is meant to be
+  selected and published, so the slice holds only rows the publish endpoint will
+  accept.
 - `state=any` — the union of the published and unpublished slices: every
   recorded run, with no lifecycle predicate at all. This is what the consoles'
   run listings draw from, so a produced, and therefore unreviewed, run sorts and
@@ -517,12 +532,14 @@ not a publishable failure, so the other selectors omit it.
 
 `fields` selects how much of each run the listing returns:
 
-- Default, `fields` omitted — the full stored run per row.
+- Default, `fields` omitted — the full stored run per row, in the shape of the
+  [detail endpoint](#get-runsid) (record, reviews, ratings, and score).
 - `fields=summary` — a lightweight `RunSummary` card per row: the run's id and
   timestamps, its [subject](/components/core/run-records/#subject) including the
   [test type](/testing/overview/), [metrics](/components/core/metrics/), the
-  `validationLoaded` signal, state, the aggregate `rating`, `score` and
-  `reviewCount`, the denormalized case name, a performance run's fuel result,
+  `validationLoaded` signal, state, the functional `rating`, the `aesthetic`
+  rating, `validatorRated`, the `score` and `reviewCount`, the denormalized
+  case name, a performance run's fuel result,
   the ranking slice of a run's code analysis, and links. That is enough to
   render a run-list row, a card, a leaderboard entry, or a metrics aggregate
   without fetching each full record; the [detail endpoint](#get-runsid) loads
@@ -587,20 +604,51 @@ The offset mode additionally accepts:
 
 ### `GET /runs/{id}`
 
-One stored run, as `{ record, reviews, published, links }`: its record with
-links populated, the array of reviews it carries with each reviewer's identity,
-whether it is published, and its links. `404` if unknown.
+One stored run, as `{ record, reviews, published, links, rating, aesthetic,
+validatorRated, score }`: its record with links populated, the array of reviews
+it carries with each reviewer's identity, whether it is published, its links,
+and the run's ratings and score. Each review carries the `ratings` or
+`aesthetics` its run's channel accepts. `404` if unknown. The same shape is
+what the default projection of [`GET /runs`](#get-runs) lists per row.
+
+- `validatorRated`: whether the run's case version is
+  [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so a
+  consumer can show the run's points and functional rating from the record
+  immediately, offer publish without a review, and ask a reviewer for
+  aesthetics only.
+- `rating`: the run's **functional** rating. On a validator-rated run the
+  validator-decided rating, present from completion and never changed by a
+  review; on a legacy run the review aggregate. Composed with the toolchain
+  gate either way. `null` while unset — a legacy run with no review.
+- `aesthetic`: the run's aggregate **aesthetic** rating, the worst any reviewer
+  gave any domain. `null` when no review has rated that channel: every legacy
+  run, and an unreviewed validator-rated one.
+- `score`: the run's points against its case version's checklist weights — the
+  same `{ earned, total, reviews, overallGrade }` the summary card carries. On
+  a validator-rated run the validator-decided score (`reviews` is `0`), present
+  from completion; on a legacy run the mean across its reviews, `null` while
+  unreviewed. `null` when the run's case version is not ingested.
+
+The four are always present (`null` rather than omitted when unset), so a
+consumer reads them without defaulting. The functional rating and the score
+come through the same seams the summary cards and the snapshot use, so a
+validator-rated run's detail and its card never disagree.
 
 ```jsonc
 {
   "record": { "…": "full RunRecord, links populated" },
   "published": false,
+  "validatorRated": true,
+  "rating": "great",
+  "aesthetic": "amazing",
+  "score": { "earned": 66, "total": 68, "reviews": 0, "overallGrade": null },
   "reviews": [
     {
       "reviewerId": "acct_7yq…",
       "reviewer": "Ada",
       "username": "ada",
-      "ratings": [{ "domain": "single-player", "rating": "great" }],
+      "ratings": [],
+      "aesthetics": [{ "domain": "single-player", "rating": "amazing" }],
       "writeup": "Plays well, but…",
       "checklist": [],
       "reviewedAt": "2026-06-21T18:00:00Z"
@@ -807,23 +855,38 @@ first; `cancel-waiting` throws nothing away and does not need to.
 
 A model probe is a responses-as-code readiness check of one catalog model,
 answering whether the model can drive [gg](/gg/overview/)'s RaC mode before any
-run is spent on it. The backend replays gg's real RaC turn-1 request, an
-embedded fixture holding the system prompt, the Carom task, two seeded example
-programs with their results, and the spec views, trimmed by default. The replay
-goes through OpenRouter chat/completions with no tools array, across a fixed
-matrix of four prompt conditions: `base` (the request exactly as gg sends it),
-`no-tools` (an explicit no-tools clause appended to the system prompt), `notice`
-(a trailing user message restating the contract), and `combo` (both). Each
-condition is sampled several times with no temperature set.
+run is spent on it. The backend replays gg's RaC turn-1 request per case: two
+scenarios over several input prompts (at least three prompts across them), on
+one program-language arm or on every arm. Each case's conversation is an
+embedded per-language fixture projected out of gg's own machinery by
+`scripts/gg-probe-fixtures.sh` — the real system prompt, the real bootstrap
+program and module listing, the real documentation views, and a seeded spec file
+view carrying its total-line-count heading — sent whole, never trimmed. The
+replay goes through OpenRouter chat/completions
+with the one `submit_program` tool offered and `tool_choice` forced to it, the
+wire shape gg sends, and each case is sampled `samples` times with no
+temperature set.
 
-Each reply is classified heuristically (`clean-program`, `prose+program`,
-`program-no-gg`, `fenced`, `tool-token`, `xml-pseudo-tools`, `cot-leak`,
-`native-tool-call`, `empty`, `other`); a clean reply is a bare program importing
-from `"gg"`. The verdict thresholds are on the per-condition clean rates. Base
-and every variation at ≥ 80% is `ready`; a variation reaching 80% where base did
-not is `ready-with-reminders`; no variation reaching 80% while tool-call syntax
-appears under the variations is `tool-call-overfit`; anything else is
-`not-ready`.
+The two scenarios check different readiness properties:
+
+- `baseline` — the conversation holds an open documentation view of every
+  function the task needs. A passing program is bare code that calls them all
+  (`correct-calls`; a bare program lacking one is `missing-calls`).
+- `missing-docview` — the task needs a function whose documentation view is not
+  open, and the system prompt instructs the model to open a documentation view
+  of each function it intends to call and write the call on a later turn. A
+  passing program opens the missing view and stops (`docview-first`); calling
+  the undocumented function in the same program is `called-undocumented`, and
+  doing neither is `no-docview`.
+
+Shape faults outrank the scenario checks (`fenced`, `tool-token`,
+`xml-pseudo-tools`, `cot-leak`, `empty`), and a reply that submits nothing is
+labeled by how it dodged (`no-submission`, `stray-tool-call`, `no-program`).
+Call detection strips string literals and matches call spellings on identifier
+boundaries, so a documentation key passed as a string never reads as a call.
+The verdict is `ready` when every probed (language, scenario) group passes at
+least 80% of its scored calls, and `not-ready` otherwise; the per-call labels
+say why.
 
 Probes are append-only history: a re-run is a new dated record. They are
 console-only data and never feed the public snapshot. A probe executes inside
@@ -838,33 +901,41 @@ behalf. The request body is optional JSON, every field optional:
 
 ```jsonc
 {
-  "provider": "…",     // pin every call to this provider (provider.order, fallbacks disabled)
-  "samples": 3,        // samples per condition (default 3, at most 8)
-  "maxTokens": 3500,   // completion-token cap per call
-  "fullContext": false // send the seeded spec views whole instead of trimmed
+  // Pin every call to this provider (provider.order, fallbacks disabled).
+  "provider": "…",
+  // Probe this one program-language arm; absent probes every arm.
+  "language": "typescript",
+  // Completion calls per input prompt (default 8, at most 128).
+  "samples": 8,
+  // Completion-token cap per call.
+  "maxTokens": 3500
 }
 ```
 
 Answers `202 Accepted` with the probe row already `running`; the probe executes
 in the backend and the row is read back by polling. `409` when a probe of the
-model is already running. `422` when the model has no OpenRouter slug to
-target: a probe targets a curated model's configured OpenRouter slug, falling
-back to the catalog slug itself when it reads as an OpenRouter id. `503` with
+model is already running. `422` when `language` names no gg program language,
+or when the model has no OpenRouter slug to target: a probe targets a curated
+model's configured OpenRouter slug, falling back to the catalog slug itself
+when it reads as an OpenRouter id. `503` with
 code `openrouter_key_missing` when the backend has no key configured.
 
 ### `GET /models/{slug}/probes`
 
-The model's probe history, newest first, under `probes`. Each probe carries its
-status (`running`, `complete`, or `failed`), verdict, base and best-variation
-clean rates, USD spend, and timestamps. An open read.
+The model's probe history, newest first, under `probes`. Each probe carries
+its language selection, status (`running`, `complete`, or `failed`), verdict,
+overall pass rate, USD spend, and timestamps. An open read.
 
 ### `GET /model-probes/{id}`
 
-One probe with its per-call items, the base request messages exactly as sent,
-the condition matrix, and the two variation texts. Each item records its
-condition, sample number, serving provider, finish reasons, classification
-label and clean flag, raw reply text with any separate reasoning text, token
-counts, USD cost, duration, and the error that voided the call. An open read.
+One probe with its per-call items and the per-case requests exactly as sent
+under `requests`, one entry per probed (language, scenario, prompt) with its
+message array (the case's `submit_program` tool definition and forced
+`tool_choice` ride beside them on the wire to the provider). Each item records
+its (language, scenario, prompt, sample) coordinate, serving provider, finish
+reasons, outcome label and pass flag, the submitted program, the reply's own
+text with any separate reasoning text, token counts, USD cost, duration, and
+the error that voided the call. An open read.
 
 ### `GET /models/{slug}/probe-providers`
 
@@ -899,10 +970,10 @@ null` row is a slice recorded before the agent's first usage delta named its
 model, on a run more than one model served.
 
 Probe evidence: one entry per provider observed on
-[model-probe](#model-probes) items, per probed model: item count, clean-reply
-count, and errored calls. Probe rows are single-completion replays rather than
-full runs, which is why they are reported beside the run evidence rather than
-folded into it.
+[model-probe](#model-probes) items, per probed model: item count, case-check
+pass count, and errored calls. Probe rows are single-completion
+replays rather than full runs, which is why they are reported beside the run
+evidence rather than folded into it.
 
 The response also reports `runsScanned` (every stored gg run with a recorded
 session summary) and

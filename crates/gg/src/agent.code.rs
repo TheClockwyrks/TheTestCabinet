@@ -3,7 +3,7 @@
 //! and telling the loop what to do next.
 //!
 //! It is a module of [`agent`](super) rather than a file of it because it is one self-contained
-//! concern — healing, execution, servicing, feedback — whose only couplings to the turn loop are the
+//! concern — execution, servicing, feedback — whose only couplings to the turn loop are the
 //! [`CodeTurn`] it is handed and the [`CodeTurnOutcome`] it hands back. Splitting it out — under
 //! the repo's `foo.<concern>.rs` convention, `agent.rs` already being the largest file in the
 //! crate — keeps `agent.rs` about the turn loop and this file about what a *program turn* is. Its
@@ -12,17 +12,18 @@
 //!
 //! # Two questions this file does not answer
 //!
-//! **What counts as a program** is [healing]'s question, and **what counts as finished** is an
-//! [ending call](crate::ending)'s. Neither is decided here, and neither has a second, quieter
-//! answer hiding in this module: there is no shape of reply this file reads as a conclusion, and no
-//! ending it invents. That is the whole of the protocol change this design carries — under the
-//! protocol this replaces, both questions were answered here, by an extractor whose silence about
-//! what it discarded cost a real session its deliverable.
+//! **What counts as a program** is the [`submit_program`](crate::completion::SUBMIT_PROGRAM_TOOL)
+//! tool call's question — the call's `program` string is the program, exactly as sent — and
+//! **what counts as finished** is an [ending call](crate::ending)'s. Neither is decided here, and
+//! neither has a second, quieter answer hiding in this module: there is no shape of reply this
+//! file reads as a conclusion, no ending it invents, and no analysis that extracts code from the
+//! model's prose.
 //!
 //! # What lives here
 //!
-//! * [`run_code_turn`] — one whole turn, from the raw reply to the [decision](CodeTurnOutcome) the
-//!   loop acts on. Every effect a code turn has on the world happens inside it.
+//! * [`run_code_turn`] — one whole turn: every program the reply submitted, run in order, down to
+//!   the [decision](CodeTurnOutcome) the loop acts on. Every effect a code turn has on the world
+//!   happens inside it.
 //! * [`run_code_program`] — the `spawn_blocking` offload plus the servicing loop, which is where
 //!   every must-survive loop behaviour (gating, scheduler routing, telemetry, session capture,
 //!   knowledge-state re-emission, context reclaim, skill pinning) is preserved for a composed call.
@@ -226,28 +227,101 @@ impl CodeTurnOutcome {
 // One code turn
 // ---------------------------------------------------------------------------
 
-/// Run one responses-as-code turn from an already-[healed](Healed) reply: run its program, and
+/// One `submit_program` call as the loop hands it to [`run_code_turn`]: the provider-assigned id
+/// whose tool result the loop already pushed, and the `program` string the call carried — or why
+/// it carried none.
+pub(super) struct SubmittedProgram {
+    /// The tool call's id — for the operator's stream alone, since the call's tool result was
+    /// already pushed by the loop and nothing here answers it.
+    pub(super) call_id: String,
+    /// The program to run, or (`Err`) the sentence the call's tool result already delivered about
+    /// why nothing will run for it.
+    pub(super) program: Result<String, String>,
+    /// What the [library](crate::programs) issued this submission when it was acknowledged. Set by
+    /// the loop at the acknowledgement, after [`submitted_program`] has read the call — a call
+    /// that carried no program is issued nothing.
+    pub(super) receipt: ProgramReceipt,
+}
+
+/// What the [program library](crate::programs) handed a submission at its acknowledgement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ProgramReceipt {
+    /// No id: the agent keeps no library, or the call carried no program to issue one to. The
+    /// acknowledgement was the fixed word, and nothing is recorded for the submission.
+    Unkept,
+    /// The id the acknowledgement carried, under which the submission's program is recorded.
+    Id(String),
+    /// The library could not mint an id. The turn is fatal before the submission runs — gg's own
+    /// defect, never charged to the model — and the sentence is the operator's.
+    Exhausted(String),
+}
+
+impl ProgramReceipt {
+    /// The id under which this submission's program is recorded, if the library issued one.
+    fn id(&self) -> Option<&str> {
+        match self {
+            Self::Id(id) => Some(id.as_str()),
+            Self::Unkept | Self::Exhausted(_) => None,
+        }
+    }
+}
+
+/// Read one `submit_program` call's `program` argument.
+///
+/// `Err` names the defect in the words the call's own tool result carries: the `program` key was
+/// absent, or its value was not a string. Nothing is repaired — a call that did not carry a
+/// program runs nothing, and the model reads exactly why.
+pub(super) fn submitted_program(call: &ToolCall) -> SubmittedProgram {
+    let program = match call.arguments.get("program") {
+        Some(serde_json::Value::String(program)) => Ok(program.clone()),
+        Some(_) => Err(format!(
+            "The `{}` call's `program` argument must be a string; nothing ran.",
+            completion::SUBMIT_PROGRAM_TOOL
+        )),
+        None => Err(format!(
+            "The `{}` call carried no `program` string; nothing ran.",
+            completion::SUBMIT_PROGRAM_TOOL
+        )),
+    };
+    SubmittedProgram {
+        call_id: call.id.clone(),
+        program,
+        receipt: ProgramReceipt::Unkept,
+    }
+}
+
+/// Run one responses-as-code turn — every program its reply submitted, in submission order — and
 /// report what the loop must do next.
 ///
-/// Every effect the turn has on the world happens inside this function — the healing, the sandbox
-/// run, the servicing of each composed call, the telemetry, the session capture. What comes back is
-/// only the decision, and the [outcome](CodeTurnOutcome::turn_outcome) the run's ceilings count.
+/// Every effect the turn has on the world happens inside this function — the sandbox runs, the
+/// servicing of each composed call, the telemetry, the session capture. What comes back is only
+/// the decision, and the [outcome](CodeTurnOutcome::turn_outcome) the run's ceilings count.
 ///
-/// The order of the steps below is the design, not an implementation detail. A **completion is read
-/// before the result is interpreted**, because by the time it gets here the question of whether the
-/// program earned its ending has already been settled: the sandbox revokes the flag `finish` set if
-/// the program then failed, so a completion that survives that far belongs to a program that ran to
-/// its end, and nothing later in this function can outrank it.
+/// # Several programs, one turn
 ///
-/// Classification and feedback are decided at the *same* match, rather than by a separate
-/// classifier the feedback then re-derives: the two decisions read the same facts, and splitting
-/// them is how they drift. `healed` is the reply already run through [healing](healing::heal) by
-/// the caller — done there, not here, because the loop records the healed program *as* the
-/// assistant message before this turn runs, and healing the same reply twice would be the kind of
-/// duplicated decision that drifts.
+/// A reply may carry several `submit_program` calls. Each runs **sequentially, in order**, against
+/// the same live window — and **all of them run** whether or not an earlier one failed: each was
+/// submitted before any ran, so skipping one would silently discard work the model committed to.
+/// Two things are folded rather than repeated:
+///
+/// * **at most one error is counted.** The run's ceilings see one outcome per model call, so a
+///   turn with one failing program of three is exactly the error a turn with three of three is;
+///   the type recorded is the **first** failure's.
+/// * the per-turn state each program hands back threads into the next, and the declarations the
+///   programs defer to the loop merge on each field's own rule — issue waits and forks
+///   accumulate, the **last** compaction stands (the rule within one program), and the **first**
+///   handoff stands.
+///
+/// A program that **ends the session** stops the sequence: the ending is the turn's outcome, and
+/// programs submitted after it are not run — said on the operator's stream, because nothing can
+/// reach a model whose session is over. A [fatal](CodeTurnOutcome::Fatal) fault stops it too: gg
+/// is broken, and every further program would fail identically.
+///
+/// A submission that carried no program (see [`submitted_program`]) runs nothing and counts as the
+/// turn's one error on the same folding rule; its tool result already told the model why.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_code_turn(
-    healed: Healed,
+    submissions: Vec<SubmittedProgram>,
     code: &CodeSetup,
     deadline: Option<Instant>,
     turn: &CodeTurn<'_>,
@@ -258,37 +332,169 @@ pub(super) async fn run_code_turn(
     knowledge: KnowledgeModules,
     subagents: Option<SubagentContext>,
 ) -> (CodeTurnOutcome, Option<CodeTurnState>) {
+    debug_assert!(
+        !submissions.is_empty(),
+        "a reply with no submission is the loop's to answer, not a code turn"
+    );
     let emitter = turn.emitter;
-    if healed.did_not_converge {
-        emitter.emit(log(
-            "warn",
-            "the response-healing pipeline did not reach a fixpoint for this reply, so every \
-             repair was discarded and the reply was compiled exactly as the model sent it.",
-        ));
-    }
-    // gg rewrote the model's message before running it, so it says so on the operator's stream —
-    // and only there: the model is never told, and no feedback this turn mentions the repair. A
-    // rewrite of a model's output is exactly the class of thing this harness exists to make visible
-    // to the operator: a study reading a live run must be able to see that the program gg compiled
-    // was not byte-for-byte the one the model sent, without waiting for the run's closing rollup.
-    if healed.rewritten() {
+    let total = submissions.len();
+    if total > 1 {
         emitter.emit(log(
             "info",
             format!(
-                "the model's reply was repaired before it was compiled ({}); the repairs are \
-                 counted on this turn's record and not disclosed to the model.",
-                healed
-                    .strategies()
-                    .into_iter()
-                    .map(HealingStrategy::id)
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                "the reply submitted {}; they run sequentially, in submission order.",
+                plural(total, "program")
             ),
         ));
     }
+    let mut state = CodeTurnState {
+        context,
+        skills,
+        docs,
+        programs,
+        knowledge,
+        subagents,
+        issue_waits: Vec::new(),
+        compact_requested: None,
+        handoff_requested: None,
+        forks_requested: Vec::new(),
+        compaction_calls: (0, 0),
+    };
+    let mut feedback_all: Vec<CodeFeedback> = Vec::new();
+    if total > 1 {
+        // The one fact a model reading several errors cannot recover from the errors themselves:
+        // which program each belongs to. The errors stay unwrapped — see [`CodeFeedback`] — so the
+        // order is stated once, up front.
+        feedback_all.push(CodeFeedback::notice(format!(
+            "This turn submitted {}; they ran in order, and any error messages below follow that \
+             order.",
+            plural(total, "program")
+        )));
+    }
+    let mut first_error: Option<TurnErrorType> = None;
+    let mut last_report = String::new();
+    for (index, submission) in submissions.into_iter().enumerate() {
+        // The library could not mint this submission an id, which is gg's defect: the session ends
+        // here, as it does on a host fault, and the program is not run. Checked before the source is
+        // read, because a submission without an id has nowhere to be recorded and a program run
+        // under no id is exactly the silent fallback the bound forbids.
+        if let ProgramReceipt::Exhausted(message) = submission.receipt {
+            return (
+                CodeTurnOutcome::Fatal {
+                    fault: crate::limits::FatalFault::HostFault,
+                    message,
+                },
+                Some(state),
+            );
+        }
+        let source = match submission.program {
+            Ok(source) => source,
+            Err(_) => {
+                // The refusal already went out as the call's own tool result; what is left is the
+                // accounting — the turn's (single, folded) error — and the operator's line.
+                emitter.emit(log(
+                    "warn",
+                    format!(
+                        "`{}` call `{}` carried no program; nothing ran for it.",
+                        completion::SUBMIT_PROGRAM_TOOL,
+                        submission.call_id
+                    ),
+                ));
+                if first_error.is_none() {
+                    first_error = Some(TurnErrorType::MissingCompletionNoProgram);
+                }
+                if last_report.is_empty() {
+                    last_report = "its submit_program call carried no program".to_string();
+                }
+                continue;
+            }
+        };
+        let (decision, one_state) = run_one_program(
+            &source,
+            submission.receipt.id(),
+            code,
+            deadline,
+            turn,
+            state,
+        )
+        .await;
+        match decision {
+            CodeTurnOutcome::Finished { ending } => {
+                let skipped = total - index - 1;
+                if skipped > 0 {
+                    emitter.emit(log(
+                        "warn",
+                        format!(
+                            "the program ended the session; {} submitted after it {} not run.",
+                            plural(skipped, "program"),
+                            if skipped == 1 { "was" } else { "were" }
+                        ),
+                    ));
+                }
+                return (CodeTurnOutcome::Finished { ending }, one_state);
+            }
+            CodeTurnOutcome::Fatal { fault, message } => {
+                return (CodeTurnOutcome::Fatal { fault, message }, one_state);
+            }
+            CodeTurnOutcome::Continue {
+                feedback,
+                error,
+                report,
+            } => {
+                feedback_all.extend(feedback);
+                if first_error.is_none() {
+                    first_error = error;
+                }
+                last_report = report;
+            }
+        }
+        state = one_state.expect("a non-fatal program hands back its per-turn state");
+    }
+    (
+        CodeTurnOutcome::Continue {
+            feedback: feedback_all,
+            error: first_error,
+            report: last_report,
+        },
+        Some(state),
+    )
+}
 
-    let (outcome, chain, mut state) = run_code_program(
-        &healed.program,
+/// Run **one** submitted program: the sandbox run, the servicing of each composed call, the
+/// telemetry, the session capture — and the decision it earns, exactly as a single-program turn
+/// always took it.
+///
+/// `carried` is the per-turn state as the previous program in this turn's sequence left it (or as
+/// the loop handed it over, for the first); the state handed back has this program's own deferred
+/// declarations merged in on the rules [`run_code_turn`] states.
+///
+/// Classification and feedback are decided at the *same* match, rather than by a separate
+/// classifier the feedback then re-derives: the two decisions read the same facts, and splitting
+/// them is how they drift.
+async fn run_one_program(
+    source: &str,
+    id: Option<&str>,
+    code: &CodeSetup,
+    deadline: Option<Instant>,
+    turn: &CodeTurn<'_>,
+    carried: CodeTurnState,
+) -> (CodeTurnOutcome, Option<CodeTurnState>) {
+    let emitter = turn.emitter;
+    let CodeTurnState {
+        context,
+        skills,
+        docs,
+        programs,
+        knowledge,
+        subagents,
+        issue_waits: carried_waits,
+        compact_requested: carried_compact,
+        handoff_requested: carried_handoff,
+        forks_requested: carried_forks,
+        compaction_calls: carried_calls,
+    } = carried;
+    let (outcome, chain, state) = run_code_program(
+        source,
         crate::sandbox::language(code.language),
         code.limits,
         deadline,
@@ -302,13 +508,35 @@ pub(super) async fn run_code_turn(
     )
     .await;
 
+    // Fold the deferred work the programs before this one declared into what this one hands back —
+    // each field on its own rule: waits and forks accumulate, the last compaction stands, the
+    // first handoff stands, and the compaction-call tallies sum.
+    let mut state = state.map(|mut fresh| {
+        let mut waits = carried_waits;
+        waits.append(&mut fresh.issue_waits);
+        fresh.issue_waits = waits;
+        fresh.compact_requested = fresh.compact_requested.take().or(carried_compact);
+        fresh.handoff_requested = carried_handoff.or(fresh.handoff_requested.take());
+        let mut forks = carried_forks;
+        forks.append(&mut fresh.forks_requested);
+        fresh.forks_requested = forks;
+        fresh.compaction_calls = (
+            carried_calls.0.saturating_add(fresh.compaction_calls.0),
+            carried_calls.1.saturating_add(fresh.compaction_calls.1),
+        );
+        fresh
+    });
+
     // Keep what ran, so a later turn can fetch it back and patch it instead of writing it again.
-    // Recorded against the source the chain actually **executed**, so a fetch returns a program
-    // rather than the lines that handed one over. A library the agent's profile did not enable
-    // ignores this.
-    if let Some(state) = state.as_mut() {
+    // Recorded once per submission, under the id its acknowledgement carried, against the source the
+    // chain actually **executed** — so a `rerun` chain keeps the submission's id and a fetch of it
+    // returns a program rather than the lines that handed one over. A submission with no id belongs
+    // to an agent whose library issues none, and is not kept.
+    if let (Some(state), Some(id)) = (state.as_mut(), id) {
         let (ok, error) = program_verdict(&outcome);
-        state.programs.record(turn.turn, &chain.source, ok, error);
+        state
+            .programs
+            .record(id, turn.turn, &chain.source, ok, error);
     }
     report_to_operator(&outcome, emitter);
     report_chain_to_operator(code.language, &chain, &outcome, emitter);
@@ -360,7 +588,6 @@ pub(super) async fn run_code_turn(
         compile_ms: outcome
             .compile
             .map(|compiling| saturating_u64(compiling.as_millis())),
-        healing: healing_record(&healed),
     });
 
     // Honour the ending before interpreting the result. An ending that is still here is one the
@@ -790,39 +1017,6 @@ fn ellipsize(text: &str, max: usize) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// The healing record, on the wire
-// ---------------------------------------------------------------------------
-
-/// The [contract record](GgResponseHealing) of what healing did to one reply.
-///
-/// A clean reply produces the default, which the wire omits entirely — so the presence of this
-/// object on an event *is* "something was unusual about this response".
-fn healing_record(healed: &Healed) -> GgResponseHealing {
-    GgResponseHealing {
-        strategies: healed.strategies().into_iter().map(wire_strategy).collect(),
-        did_not_converge: healed.did_not_converge,
-        // Only where the two texts differ. The program is what the model's history carries and what
-        // every location gg reports counts lines of, so on a rewritten reply this is the sole
-        // surviving copy of what healing started from; on a clean one it would be the same string
-        // twice.
-        original: healed.rewritten().then(|| healed.original.clone()),
-    }
-}
-
-/// One [strategy](HealingStrategy) as the contract spells it.
-///
-/// Written out rather than derived, because the two enums are deliberately separate types: one is
-/// gg's internal pipeline vocabulary and the other is a published wire value, and a `From` that made
-/// them interchangeable would let a rename on either side travel silently to the other.
-pub(super) fn wire_strategy(strategy: HealingStrategy) -> GgHealingStrategy {
-    match strategy {
-        HealingStrategy::StripFences => GgHealingStrategy::StripFences,
-        HealingStrategy::StripProse => GgHealingStrategy::StripProse,
-        HealingStrategy::DropDoubledResponse => GgHealingStrategy::DropDoubledResponse,
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Feedback
 // ---------------------------------------------------------------------------
 
@@ -1154,9 +1348,9 @@ pub(super) struct CodeTurn<'a> {
     /// The agent running the program — the spawner a delegation call is attributed to, and the id
     /// a session-record entry is tagged with.
     pub(super) spawner: &'a Agent,
-    /// This agent's **session turn** — the number the [library](crate::programs) keys this turn's
-    /// program under, and the same number the window's turn headers carry, so a model that reads
-    /// `Turn #12` and asks for `programs.get(12)` is naming the turn it saw.
+    /// This agent's **session turn** — the number the [library](crate::programs) records beside
+    /// this turn's programs for orientation, and the same number the window's turn headers carry,
+    /// so a `Turn #12` a model reads and the turn a history entry names are one number.
     pub(super) turn: u64,
     /// The workspace root and vision context every tool call is executed against.
     pub(super) tool_ctx: &'a ToolContext,
@@ -1247,9 +1441,9 @@ pub(super) struct CodeTurnState {
     pub(super) skills: SkillsRuntime,
     /// The per-agent documentation runtime behind `docs.search` / `view.openDocsView()`.
     pub(super) docs: DocsRuntime,
-    /// The per-agent [program library](crate::programs), with **this turn's program already
+    /// The per-agent [program library](crate::programs), with **this turn's programs already
     /// recorded in it** — the turn appends before it hands the state back, so the next turn's
-    /// `programs.get()` returns the program this one ran.
+    /// `programs.get` of an id this turn's acknowledgements carried returns the program that ran.
     pub(super) programs: ProgramLibrary,
     /// The code this agent has loaded by reading a code [skill](crate::skills) or
     /// [memory](crate::memories) — the modules bound at `lib.<key>` in every later program. It costs
@@ -1557,9 +1751,9 @@ pub(super) struct ProgramChain {
     /// How many programs the turn ran. `1` for the ordinary turn, which is every turn that made no
     /// hand-over.
     pub(super) programs: u32,
-    /// The source of the program that actually did the turn's work — the last one in the chain.
-    /// This is what the [library](crate::programs) records for the turn, so a later `programs.get`
-    /// returns a program that ran rather than the lines that asked for it.
+    /// The source of the program that actually did the submission's work — the last one in the
+    /// chain. This is what the [library](crate::programs) records under the submission's id, so a
+    /// later `programs.get` returns a program that ran rather than the lines that asked for it.
     pub(super) source: String,
     /// Why the last hand-over was not honoured, or `None` when none was refused (which includes
     /// every turn that never made one).
@@ -3837,9 +4031,9 @@ impl OperationApi for LoopOperationApi {
         self.programs.summaries()
     }
 
-    /// The source of one program this agent ran, or the refusal naming the turns that are held.
-    fn program_source(&mut self, turn: Option<u64>) -> Result<String, ProgramRefusal> {
-        self.programs.source(turn).map(str::to_string)
+    /// The source of one program this agent ran, or the refusal naming the ids that are held.
+    fn program_source(&mut self, id: &str) -> Result<String, ProgramRefusal> {
+        self.programs.source(id).map(str::to_string)
     }
 }
 

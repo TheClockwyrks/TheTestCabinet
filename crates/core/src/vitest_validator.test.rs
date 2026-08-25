@@ -23,6 +23,7 @@ use crate::test_case::{
 /// checklist and nothing else the runner reads.
 fn version(root: PathBuf, items: Vec<ReviewItem>) -> TestCaseVersion {
     TestCaseVersion {
+        engine_format: false,
         instrumentation: None,
         slug: "carom".to_string(),
         version: "v3.0.0".to_string(),
@@ -92,6 +93,8 @@ fn variant() -> Variant {
 /// A review item decided by the validator at `script_rel`.
 fn item(id: &str, script_rel: &str) -> ReviewItem {
     ReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
         id: id.to_string(),
         title: format!("The {id} point"),
         text: String::new(),
@@ -111,6 +114,8 @@ fn item(id: &str, script_rel: &str) -> ReviewItem {
 /// A sub-item decided by the validator at `script_rel`.
 fn sub_item(id: &str, script_rel: &str) -> SubReviewItem {
     SubReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
         id: id.to_string(),
         title: format!("The {id} sub-point"),
         description: None,

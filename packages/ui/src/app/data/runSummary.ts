@@ -1,18 +1,17 @@
-import type { RunRecord } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { StoredReview } from "../../client/types";
-import { aggregateRating } from "../../ratings";
+import type { StoredRun } from "../../client/types";
+import { aggregateAestheticRating, aggregateRating } from "../../ratings";
 
-// Build a lightweight {@link RunSummary} card from a full {@link RunRecord} plus
-// its reviews — the TypeScript mirror of the Rust `RunSummary::from_stored`
+// Build a lightweight {@link RunSummary} card from a full {@link StoredRun} — its
+// record, its reviews, and the store's word on its rating channels — the
+// TypeScript mirror of the Rust `RunSummary::from_stored`
 // (crates/backend/src/snapshot.rs). The console derives its summaries from the
 // full records it already loads (an additive step); once the summary/detail
 // split lands over the wire (U7) the backend serves these directly. The shape
 // mirrors the generated `RunSummary` exactly.
-export function toRunSummary(
-  record: RunRecord,
-  reviews: readonly StoredReview[],
-): RunSummary {
+export function toRunSummary(stored: StoredRun): RunSummary {
+  const { record } = stored;
+  const reviews = stored.reviews ?? [];
   return {
     id: record.id,
     // A console record carries no publish timestamp (it is the run record, not a
@@ -49,17 +48,28 @@ export function toRunSummary(
     metrics: record.metrics,
     validationLoaded: record.validation.loaded,
     state: record.status.state,
-    // The run's overall rating: the worst rating any reviewer gave any domain, or
-    // null when the run carries no reviews. Reuses the shared aggregate logic so
-    // the rating order matches the Rust core (`aggregate_rating`) and the rest of
-    // the UI (cards, leaderboard, badges).
-    rating: aggregateRating(reviews.map((r) => r.ratings ?? [])),
+    // The run's FUNCTIONAL rating. On a validator-rated run it is the store's
+    // validator-decided rating (present from completion, untouched by reviews);
+    // on a legacy run it is the worst rating any reviewer gave any domain, or
+    // null while unreviewed. Reuses the shared aggregate logic so the rating order
+    // matches the Rust core (`aggregate_rating`) and the rest of the UI.
+    rating: stored.validatorRated
+      ? stored.rating
+      : aggregateRating(reviews.map((r) => r.ratings ?? [])),
+    // The aggregate AESTHETIC rating — the worst any reviewer gave any domain —
+    // or null when no review rated the channel (every legacy run). Derived from
+    // the reviews rather than read off the store so a review submitted this
+    // session shows before the store's lifted column is re-read.
+    aesthetic: aggregateAestheticRating(reviews.map((r) => r.aesthetics ?? [])),
+    validatorRated: stored.validatorRated,
     reviewCount: reviews.length,
-    // Catalog-free, mirroring the Rust `from_stored`: the score's checklist
-    // weights live only in the case catalog, so it stays null here. The wire
-    // summary (enriched by the backend against the catalog) carries the real
-    // value.
-    score: null,
+    // The store's score against the case catalog (the same figure the wire
+    // summary cards carry): on a validator-rated run the validator-decided score,
+    // present from completion with `reviews` 0, so a run this console produced
+    // shows its points in the run log and ranks on the case leaderboard the
+    // moment it completes; on a legacy run the mean across reviews. Null when
+    // the host holds no catalog for the run's case version.
+    score: stored.score,
     // The correctness-and-fuel result of a performance run, lifted onto the card
     // so the fuel leaderboard and a run's percentile can rank a local, not-yet-
     // published run too (mirrors the Rust `from_stored`). Null for a non-

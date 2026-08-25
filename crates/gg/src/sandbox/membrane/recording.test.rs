@@ -41,7 +41,7 @@ use crate::sandbox::{FILES_READ_FILE, OPERATIONS};
 
 /// A membrane over a fake api, with both of its records to hand: what ran, and what was written.
 fn recording_membrane(log: &CallLog) -> (MembraneState<FakeOperationApi>, ApiLog) {
-    let api = FakeOperationApi::new(log).with_program(1, "harness.finish('done');");
+    let api = FakeOperationApi::new(log).with_program("k3p9", 1, "harness.finish('done');");
     let recorded = api.api_log();
     (membrane_from(api), recorded)
 }
@@ -160,7 +160,7 @@ fn call_everything(state: &mut MembraneState<FakeOperationApi>) {
     let _ = state.close_view("findings".to_string());
 
     let _ = state.history();
-    let _ = state.get(None);
+    let _ = state.get("k3p9".to_string());
     let _ = state.rerun("harness.finish('again');".to_string());
 
     // All three ending calls, on one standard-role membrane: two of them are refused, and that is

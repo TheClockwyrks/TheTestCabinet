@@ -1,6 +1,15 @@
-import type { RunRecord } from "@test-cabinet/run-record";
-import type { ReviewItem, VerdictStatus } from "../../../../client/types";
-import { verdictIdsForItem } from "../../../data/ratings";
+import type { DebugScriptResult, RunRecord } from "@test-cabinet/run-record";
+import type {
+  FailureCap,
+  ReviewItem,
+  VerdictStatus,
+} from "../../../../client/types";
+import type { ReviewItemSummary } from "../../../data/testCases";
+import {
+  automatedVerdicts,
+  subItemVerdictId,
+  verdictIdsForItem,
+} from "../../../data/ratings";
 
 /**
  * One auto-decided verdict from a run's debug scripts, keyed for pre-fill lookup by
@@ -130,4 +139,74 @@ export function describeAutoVerdictRestore(
     });
   }
   return changes;
+}
+
+/**
+ * One failing validated point of a **validator-rated** run, in the reviewer's
+ * vocabulary: what it is, what it capped, and which domains it capped. The rows
+ * of the Verdict tab's per-domain breakdown ("which failing items capped each
+ * domain").
+ */
+export interface ValidatorFailure {
+  /** The verdict id that failed. */
+  id: string;
+  /** The point's own title — a sub-item's, or a whole item's. */
+  title: string;
+  /** The category a sub-item sits under. Empty for a whole item. */
+  category: string;
+  /** The failure cap the point declares. */
+  cap: FailureCap;
+  /** The scoring domain ids the failure lowers to `cap`. */
+  domains: readonly string[];
+}
+
+/**
+ * The **scored** points this run's validators failed, each with the cap it
+ * imposes and the domains it imposes it on — exactly the failures
+ * `validatorDomainRatings` lowers a domain for, using the same failure
+ * semantics ({@link automatedVerdicts}), so the breakdown and the rating can never
+ * disagree. A point excluded from scoring (an erratum) never caps anything and is
+ * omitted; so is a failure of a point the case no longer declares. Ordered by the
+ * checklist's own order.
+ */
+export function validatorFailures(
+  items: readonly ReviewItemSummary[],
+  debugScripts: readonly DebugScriptResult[],
+): ValidatorFailure[] {
+  const failed = new Set(
+    automatedVerdicts(debugScripts)
+      .filter((v) => v.status === "fail")
+      .map((v) => v.id),
+  );
+  const out: ValidatorFailure[] = [];
+  for (const item of items) {
+    if (item.scored === false) continue;
+    const subItems = item.subItems ?? [];
+    if (subItems.length === 0) {
+      if (failed.has(item.id) && item.failureCap) {
+        out.push({
+          id: item.id,
+          title: item.title,
+          category: "",
+          cap: item.failureCap,
+          domains: item.domains ?? [],
+        });
+      }
+      continue;
+    }
+    for (const sub of subItems) {
+      if (sub.scored === false) continue;
+      const id = subItemVerdictId(item.id, sub.id);
+      if (failed.has(id) && sub.failureCap) {
+        out.push({
+          id,
+          title: sub.title,
+          category: item.title,
+          cap: sub.failureCap,
+          domains: sub.domains ?? [],
+        });
+      }
+    }
+  }
+  return out;
 }

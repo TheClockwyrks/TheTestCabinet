@@ -214,7 +214,7 @@ fn the_hungriest_files_the_caps_admit_still_parse() {
     assert!(facts.is_some(), "the hungriest TypeScript shape must parse");
 
     // Rust: a deref chain, one byte per level — the shape that aborted `tcab analyze` on an
-    // ordinary 17 KB file under the first generation's constants, and the one that packs the
+    // ordinary 17 KB file under the earlier calibration's constants, and the one that packs the
     // most recursion levels into the byte cap.
     //
     // Not the *hungriest* Rust shape per byte — that is a nested closure chain, at twice the

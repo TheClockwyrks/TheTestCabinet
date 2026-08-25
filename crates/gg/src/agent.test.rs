@@ -190,7 +190,6 @@ fn no_code() -> CodeSetup {
         enabled: false,
         language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::AMPLE,
-        healing: HealingConfig::SAFE_REPAIRS,
         doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
@@ -280,14 +279,24 @@ impl ModelClient for SharedMockClient {
     }
 }
 
-/// One model turn whose **whole reply** is `text` — the shape a
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) turn takes, where the reply *is* the program
-/// and there is nothing around it.
+/// One model turn that submits `text` as its program — the shape a
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) turn takes: a `submit_program` tool call
+/// whose `program` string is the program, with no assistant text beside it.
+///
+/// The call ids are minted from a process-wide counter so every scripted call is unique: the loop
+/// answers each id with a tool result, and two calls sharing an id would make the recorded
+/// conversation ambiguous about which result answers which call.
 fn code_reply(text: &str) -> ModelResponse {
+    static CALL_IDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let id = CALL_IDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     ModelResponse {
-        text: Some(text.to_string()),
-        tool_calls: Vec::new(),
-        finish_reason: FinishReason::Stop,
+        text: None,
+        tool_calls: vec![ToolCall {
+            id: format!("submit-{id}"),
+            name: crate::completion::SUBMIT_PROGRAM_TOOL.to_string(),
+            arguments: serde_json::json!({ "program": text }),
+        }],
+        finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
         provider: None,
@@ -336,6 +345,7 @@ async fn drive_root(
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -407,7 +417,7 @@ fn warn_messages(events: &[GgTelemetryEvent]) -> Vec<String> {
 }
 
 /// A capability set with responses-as-code enabled on top of the minimal defaults, optionally with
-/// the given params (for example a low `fuel` ceiling), bound to `model_id`.
+/// the given params (for example a low `timeoutSecs` ceiling), bound to `model_id`.
 ///
 /// The [language](crate::sandbox::PARAM_LANGUAGE) `params` does not name is filled in with
 /// TypeScript by [`grant_configured`](crate::tools::grant_configured), which is where every fixture's
@@ -1127,6 +1137,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1187,6 +1198,7 @@ async fn drive_times_out_at_a_passed_deadline() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1248,6 +1260,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1338,6 +1351,7 @@ async fn drive_hooked(
                 hooks,
                 ending_role,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1602,6 +1616,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1660,6 +1675,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1738,18 +1754,10 @@ fn system_prompt_names_the_modules_in_code_mode() {
     assert!(!empty.contains("`gg.shell`"), "{empty}");
 }
 
-/// **An unowned module says nothing in the system prompt.**
+/// **A held module explains itself in the system prompt.**
 ///
-/// `unowned` means the module is reachable through its *tools and nothing else*: not the pinned
-/// block (which each module withholds itself), and not the capability's own section either — the
-/// paragraphs explaining what its store is for and what its ceilings are. What documents the tools
-/// is their own schemas, which are untouched. Withholding only the block would have left an
-/// operator who set the param to cut a large module out of every request still paying for its
-/// prose on every turn.
-///
-/// Every module-backed capability an agent holds explains itself in its prompt.
-///
-/// Neither memories nor skills carries an ownership knob: what a
+/// The task list and the memories each contribute the capability's own section — the paragraphs
+/// explaining what its store is for and what its ceilings are. What a
 /// [strategy](crate::memories::MemoryStrategy) puts in the window *is* what having memories means
 /// under it, and `keyword-search` is the arm that pins nothing. The property this asserts is that
 /// a capability an agent has is a capability it is told it has.
@@ -1839,6 +1847,7 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
     ];
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &provided,
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -1891,7 +1900,7 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
 /// gets instead is one program calling `view.openFile` per spec, and the file views that program
 /// opened, arriving headed exactly as a real `view.openFile` would deliver them.
 #[tokio::test]
-async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
+async fn autoload_seeds_a_code_agent_with_a_submitted_program() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("SPEC.md"), "# The spec\n\nBuild a game.\n").unwrap();
     std::fs::create_dir_all(dir.path().join("reference")).unwrap();
@@ -1912,6 +1921,7 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
     ];
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &provided,
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -1921,35 +1931,43 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
     .await
     .expect("every provided file is readable");
 
-    // One assistant turn, and it is a program naming both files in seeding order.
-    let assistant: Vec<String> = context
+    // One assistant turn, shaped exactly as the model's own turns must be: no text, one
+    // `submit_program` call whose `program` string opens both files in seeding order.
+    let assistant: Vec<&crate::model::Message> = context
         .items()
         .iter()
         .filter(|item| item.source() == GgContextSource::Assistant)
-        .map(|item| item.message().content.clone().unwrap_or_default())
+        .map(|item| item.message())
         .collect();
+    assert_eq!(assistant.len(), 1, "one synthesized turn seeds every spec");
+    assert_eq!(assistant[0].content, None);
+    assert_eq!(assistant[0].tool_calls.len(), 1);
+    let call = &assistant[0].tool_calls[0];
+    assert_eq!(call.name, crate::completion::SUBMIT_PROGRAM_TOOL);
     assert_eq!(
-        assistant,
-        vec![
+        call.arguments.get("program").and_then(|v| v.as_str()),
+        Some(
             "import { views } from \"gg\";\n\nviews.openFile(\"SPEC.md\");\nviews.openFile(\"reference/title.png\");\n"
-                .to_string()
-        ],
+        ),
         "one program opens every spec, in order"
     );
 
-    // And it carries no tool calls at all — the invariant a code-mode transcript holds everywhere
-    // else, which the old synthesized `read_file` pair was the single exception to.
-    assert!(
-        context
-            .items()
-            .iter()
-            .filter(|item| item.source() == GgContextSource::Assistant)
-            .all(|item| item.message().tool_calls.is_empty()),
-        "a code-mode assistant turn never carries tool calls"
+    // The call is answered by the fixed acknowledgement, directly after the assistant turn, so
+    // the seeded transcript is a conversation every provider accepts.
+    let acks: Vec<&crate::model::Message> = context
+        .items()
+        .iter()
+        .map(|item| item.message())
+        .filter(|message| message.role == crate::model::Role::Tool)
+        .collect();
+    assert_eq!(acks.len(), 1);
+    assert_eq!(acks[0].tool_call_id.as_deref(), Some(call.id.as_str()));
+    assert_eq!(
+        acks[0].content.as_deref(),
+        Some(crate::completion::SUBMIT_PROGRAM_ACK)
     );
 
-    // The views arrive as headed `user` messages — what `view.openFile` pushes — not as `tool`
-    // results answering a call id that would dangle.
+    // The views arrive as headed `user` messages — what `view.openFile` pushes.
     let views: Vec<&crate::context::ContextItem> = context
         .items()
         .iter()
@@ -2025,6 +2043,7 @@ async fn autoload_seeds_a_mockup_without_its_picture_by_default() {
 
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &[
             PathBuf::from("SPEC.md"),
             PathBuf::from("reference/title.png"),
@@ -2085,6 +2104,7 @@ async fn a_text_only_model_is_never_seeded_a_picture_even_when_images_are_asked_
 
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &[PathBuf::from("reference/title.png")],
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -2123,6 +2143,7 @@ async fn a_locked_code_mode_seed_is_pinned() {
 
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &[PathBuf::from("SPEC.md")],
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -2162,6 +2183,7 @@ async fn locked_autoload_survives_compaction() {
     unlocked.push_user_prompt("build");
     autoload_specifications(
         &mut unlocked,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &provided,
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -2189,6 +2211,7 @@ async fn locked_autoload_survives_compaction() {
     locked.push_user_prompt("build");
     autoload_specifications(
         &mut locked,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &provided,
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -2276,19 +2299,19 @@ fn system_prompt_omits_image_guidance_without_read_file() {
     assert!(!prompt.contains("Reading images"), "{prompt}");
 }
 
-/// **The board-authoring section follows the agent's own capability, not the run's board.**
+/// **The system prompt never describes the board, whoever holds the capability.**
 ///
-/// The board is run-global, so its runtime is enabled for every agent in the run — but an agent
-/// whose profile has no project-management capability is offered none of the board tools, and
-/// telling it to `create_issue` names a tool it does not have. That is how an implementer ends up
-/// reaching for the board instead of doing the work it was dispatched for.
+/// The board is reachable through the board tools alone: what documents them is their own
+/// schemas, delivered with the tools, and the prompt renders no project-management section and
+/// no pinned board block for any profile. A prompt that taught the board would be a text gg
+/// would have to keep agreeing with the toolset — and for an agent without the capability it
+/// would name tools the model does not have.
 #[test]
-fn the_board_section_follows_the_agents_own_capability() {
+fn the_prompt_never_describes_the_board() {
     let library = Arc::new(SkillLibrary::empty());
 
-    // The run has a board (some other profile owns it), but this agent may not author it.
-    let mut runtimes = DisabledRuntimes::new();
-    runtimes.board = Some(BoardRuntime::new(BoardCaps::detached()));
+    // An agent that may not author the board.
+    let runtimes = DisabledRuntimes::new();
     let registry = ToolRegistry::from_run(
         &runtimes.profile,
         &skills_modules(&library).with(ModuleHandle::Board(BoardRuntime::new(
@@ -2298,14 +2321,17 @@ fn the_board_section_follows_the_agents_own_capability() {
     );
     let prompt = system_prompt(runtimes.inputs(&registry));
     assert!(
-        !prompt.contains("create_issue"),
-        "an agent with no board capability is not taught the board tools:\n{prompt}"
+        !prompt.contains("create_issue") && !prompt.contains("Project management"),
+        "an agent with no board capability reads nothing about the board:
+{prompt}"
     );
 
-    // The same run, for the profile that *does* own the board: the section is rendered.
+    // The same run, for a profile that holds the capability: still no board section — the
+    // tools are offered, and their schemas are the whole of what documents them.
     let mut authoring = DisabledRuntimes::new();
-    authoring.board = Some(BoardRuntime::new(BoardCaps::detached()));
     crate::tools::grant(&mut authoring.profile, CAPABILITY_PROJECT_MANAGEMENT);
+    let authoring_profile = authoring.profile.clone();
+    let authoring = authoring.with_profile(authoring_profile);
     let registry = ToolRegistry::from_run(
         &authoring.profile,
         &skills_modules(&library).with(ModuleHandle::Board(BoardRuntime::new(
@@ -2315,8 +2341,9 @@ fn the_board_section_follows_the_agents_own_capability() {
     );
     let prompt = system_prompt(authoring.inputs(&registry));
     assert!(
-        prompt.contains("create_issue"),
-        "the board's owner still reads the whole section:\n{prompt}"
+        !prompt.contains("create_issue") && !prompt.contains("Project management"),
+        "the capability's holder reads nothing about the board either:
+{prompt}"
     );
 }
 
@@ -2325,8 +2352,7 @@ fn the_board_section_follows_the_agents_own_capability() {
 #[test]
 fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
     let library = Arc::new(SkillLibrary::empty());
-    let mut runtimes = DisabledRuntimes::new();
-    runtimes.board = Some(BoardRuntime::new(BoardCaps::detached()));
+    let runtimes = DisabledRuntimes::new();
     let registry = ToolRegistry::from_run(
         &runtimes.profile,
         &skills_modules(&library),
@@ -2359,7 +2385,6 @@ struct DisabledRuntimes {
     skills: Option<SkillsRuntime>,
     memories: Option<MemoriesRuntime>,
     tasks: Option<TasksRuntime>,
-    board: Option<BoardRuntime>,
     /// The vision context the prompt reads to decide whether to promise images. Owned here
     /// for the same reason as the runtimes: `PromptInputs` borrows it.
     vision: VisionContext,
@@ -2389,7 +2414,6 @@ impl DisabledRuntimes {
             skills: Some(SkillsRuntime::disabled()),
             memories: Some(MemoriesRuntime::disabled()),
             tasks: Some(TasksRuntime::disabled()),
-            board: Some(BoardRuntime::disabled()),
             // Nothing declared: the optimistic default, under which the prompt promises
             // the model it can see images.
             vision: VisionContext::unknown(),
@@ -2448,7 +2472,6 @@ impl DisabledRuntimes {
             skills: self.skills.as_ref().expect("built"),
             memories: self.memories.as_ref().expect("built"),
             tasks: self.tasks.as_ref().expect("built"),
-            board: self.board.as_ref().expect("built"),
             read_policy: Some(ReadPolicy::Unlimited),
             vision: &self.vision,
             program_language: None,
@@ -2461,7 +2484,6 @@ impl DisabledRuntimes {
             set: &self.set,
             ending_role: EndingRole::Standard,
             assigned_issue: None,
-            fences_are_stripped: true,
         }
     }
 }
@@ -3068,6 +3090,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3268,6 +3291,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3438,6 +3462,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3528,6 +3553,7 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3732,6 +3758,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3794,9 +3821,8 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
 /// **The task list is always a list the agent is shown.**
 ///
 /// Every task tool is offered, every call lands in the store, every `TasksState` reaches the
-/// console — and the pinned block enters the window on every turn, because the task list has no
-/// [ownership](crate::modules::Ownership) to configure. It is what the agent steers its work by
-/// from turn to turn, so it is always carried in the prompt as its own message.
+/// console — and the pinned block enters the window on every turn. It is what the agent steers
+/// its work by from turn to turn, so it is always carried in the prompt as its own message.
 ///
 /// It is asserted from the loop rather than from the module because the claim is about *prompt
 /// assembly*: the loop refreshes every module's block in one pass rather than naming the task
@@ -3866,6 +3892,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3937,7 +3964,7 @@ fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
 
 /// With the project-management capability off (its default — it is opt-in), the run offers no
 /// board tools and emits no `BoardState`, even though the default script tries to build a board.
-/// The board calls come back as unknown tools and no Board tokens accumulate.
+/// The board calls come back as unknown tools.
 #[tokio::test]
 async fn run_without_epics_issues_capability_offers_no_board_tools_or_state() {
     let dir = TempDir::new().unwrap();
@@ -3956,20 +3983,6 @@ async fn run_without_epics_issues_capability_offers_no_board_tools_or_state() {
             .any(|e| matches!(e.kind, GgTelemetryKind::BoardState { .. })),
         "the board off must not emit any BoardState"
     );
-    // No Board-source tokens ever accumulate.
-    assert!(
-        events.iter().all(|e| match &e.kind {
-            GgTelemetryKind::ContextBreakdown { by_source, .. } =>
-                by_source
-                    .iter()
-                    .find(|b| b.source == GgContextSource::Board)
-                    .map(|b| b.tokens)
-                    .unwrap_or(0)
-                    == 0,
-            _ => true,
-        }),
-        "the board off must never account tokens to the Board source"
-    );
     // The create_epic call is withheld like any tool a run does not offer.
     assert!(
         events.iter().any(|e| matches!(
@@ -3987,9 +4000,8 @@ async fn run_without_epics_issues_capability_offers_no_board_tools_or_state() {
 }
 
 /// The offline default script builds a board end to end when the capability is enabled: an epic,
-/// two issues with a blocked-by edge, a refused cycle-inducing edge, and the pinned board
-/// accounted to the Board source. Mirrors the tasks DAG e2e but exercises the heavyweight tier
-/// through the full `run` path.
+/// two issues with a blocked-by edge, and a refused cycle-inducing edge. Mirrors the tasks DAG
+/// e2e but exercises the heavyweight tier through the full `run` path.
 #[tokio::test]
 async fn run_builds_a_board_end_to_end_when_epics_issues_enabled() {
     use crate::client::{DEFAULT_MOCK_EPIC, DEFAULT_MOCK_ISSUE_INPUT, DEFAULT_MOCK_ISSUE_RENDER};
@@ -4053,26 +4065,6 @@ async fn run_builds_a_board_end_to_end_when_epics_issues_enabled() {
     assert!(!render.in_scope.is_empty());
     assert!(!render.out_of_scope.is_empty());
     assert!(!render.completion_criteria.is_empty());
-
-    // The pinned board is accounted to the Board source in a later breakdown.
-    let last_board_tokens = events
-        .iter()
-        .rev()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
-                by_source
-                    .iter()
-                    .find(|b| b.source == GgContextSource::Board)
-                    .map(|b| b.tokens)
-                    .unwrap_or(0),
-            ),
-            _ => None,
-        })
-        .expect("a context breakdown was emitted");
-    assert!(
-        last_board_tokens > 0,
-        "the pinned board is accounted to the Board source"
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -4185,6 +4177,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -4355,6 +4348,7 @@ async fn drive_never_compacts_when_capability_off() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -4382,124 +4376,6 @@ async fn drive_never_compacts_when_capability_off() {
             GgTelemetryKind::ContextBreakdown { fullness: Some(f), .. } if *f >= 0.6
         )),
         "the window crossed the threshold, yet nothing compacted"
-    );
-}
-
-/// A [`BoardRuntime`] holding one real epic and one real issue, so the pinned board block it
-/// produces is non-empty and would be visible in any window it were attached to.
-fn seeded_board() -> BoardRuntime {
-    let board = BoardRuntime::new(BoardCaps::detached());
-    {
-        let handle = board.store();
-        let mut store = handle.lock().unwrap();
-        let epic = store
-            .create_epic("RENDER", "Rendering", "Everything that draws")
-            .unwrap();
-        store
-            .create_issue(crate::board::NewIssue {
-                title: "Draw the board",
-                description: None,
-                in_scope: "the canvas",
-                out_of_scope: "input",
-                completion_criteria: "the board renders",
-                blocked_by: &[],
-                epic_id: Some(&epic),
-                agent: ROOT_PROFILE_ID,
-                reviewers: &[],
-            })
-            .unwrap();
-    }
-    board
-}
-
-/// Drive one agent against a run-global `board` under `profile`, and report the largest `Board`
-/// token band any of its context breakdowns carried.
-async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64 {
-    let dir = TempDir::new().unwrap();
-    let ctx = ToolContext::new(dir.path());
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-board-gate".to_string()), Box::new(sink.clone()));
-    let library = Arc::new(SkillLibrary::empty());
-    let registry =
-        ToolRegistry::from_run(profile, &skills_modules(&library), &AgentFacts::default());
-    let client = MockClient::new("mock/echo", vec![finish_call("f1", "done")]);
-
-    Agent::root(ROOT_PROFILE_ID)
-        .drive(
-            &client,
-            "go",
-            &registry,
-            &ctx,
-            &emitter,
-            &mut test_modules(test_context_setup(), no_code().enabled)
-                .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
-                .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
-                .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
-                .with(ModuleHandle::Board(board)),
-            DriveSetup {
-                limits: no_limits(4),
-                compaction: no_compaction(),
-                amc: no_amc(),
-                autoload: no_autoload(),
-                persistence: no_persistence(),
-                read_policy: Some(ReadPolicy::Unlimited),
-                shell_offload: OffloadPolicy::ample(),
-                code: no_code(),
-                discovery: DiscoveryWarning::default(),
-                hooks: no_hooks(),
-                ending_role: EndingRole::Standard,
-                opening: Opening::Fresh,
-                turn_base: 0,
-                replay: None,
-            },
-            &[],
-            profile,
-            &GgCapabilitySet::default(),
-            &mut None,
-            None,
-        )
-        .await;
-
-    sink.events()
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::ContextBreakdown { by_source, .. } => by_source
-                .iter()
-                .find(|b| b.source == GgContextSource::Board)
-                .map(|b| b.tokens),
-            _ => None,
-        })
-        .max()
-        .unwrap_or(0)
-}
-
-/// The board is run-global, but the pinned board block is **per agent**. An agent whose own
-/// profile does not carry the project-management capability has no board tool, is told nothing
-/// about a board in its system prompt, and cannot act on one — so pinning the whole decomposition
-/// into its window every turn spends its context on a document it can only be distracted by, and
-/// invites an implementer to go looking for work other than the job it was dispatched to do.
-#[tokio::test]
-async fn the_board_block_is_withheld_from_an_agent_without_the_capability() {
-    let mut authoring = GgAgentConfig::root();
-    crate::tools::grant_configured(
-        &mut authoring,
-        crate::tools::configured(
-            CAPABILITY_PROJECT_MANAGEMENT,
-            json!({ PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: ROOT_PROFILE_ID }),
-        ),
-    );
-    authoring
-        .subagents
-        .push(GgSubagentRef::any(ROOT_PROFILE_ID));
-
-    assert!(
-        board_band_driving(&authoring, seeded_board()).await > 0,
-        "an agent that authors the board is shown it"
-    );
-    assert_eq!(
-        board_band_driving(&GgAgentConfig::root(), seeded_board()).await,
-        0,
-        "an agent without the capability never sees the board, however full it is"
     );
 }
 
@@ -4721,6 +4597,7 @@ async fn drive_manages_context_end_to_end() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -4918,6 +4795,7 @@ async fn drive_without_amc_offers_no_context_management() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -9374,7 +9252,7 @@ impl ModelClient for SharedClient {
 /// survives.
 #[test]
 fn the_view_heading_is_documented_for_every_code_run() {
-    let withheld = code_heading_views(false, false, false, false);
+    let withheld = code_heading_views(false, false, false);
     let heading = code_heading(GgContextSource::TextView).expect("a text view carries a heading");
     let row = withheld
         .iter()
@@ -9398,7 +9276,7 @@ fn the_view_heading_is_documented_for_every_code_run() {
     let file = code_heading(GgContextSource::FileView).expect("a file view carries a heading");
     assert!(!withheld.iter().any(|view| view.heading == file));
     assert!(
-        code_heading_views(false, false, false, true)
+        code_heading_views(false, false, true)
             .iter()
             .any(|view| view.heading == file)
     );
@@ -9426,8 +9304,8 @@ mod limits_tests;
 
 /// The model-call **rejection loop** through the live session: a timed-out call and a
 /// length-capped reply recorded as error turns, kept out of the context and the run's metrics,
-/// and retried on the same turn — plus the append-only prompt invariant and the trailing
-/// contract notice, which those retries and every ordinary turn must both preserve.
+/// and retried on the same turn — plus the append-only prompt invariant, which those retries and
+/// every ordinary turn must preserve.
 ///
 /// Separate from `agent.limits.test.rs` because what these guard is the pre-turn seam — the loop
 /// between the model call and the turn that never happened — rather than the ceilings' own
@@ -9443,15 +9321,6 @@ mod rejection_tests;
 /// exactly the terms `agent.limits.test.rs` is separate from `limits.test.rs`.
 #[path = "agent.cancel.test.rs"]
 mod cancel_tests;
-
-/// The seam between [response healing](crate::healing) and the loop: that what gg repaired is
-/// never disclosed to the model, is counted on the turn's telemetry, and — for a reply that never became a
-/// program — that nothing under `sandbox/` is entered at all.
-///
-/// Healing's own suite proves the algorithm; these prove the wiring, which is the half a pure test
-/// cannot reach.
-#[path = "agent.healing.test.rs"]
-mod healing_tests;
 
 /// The **briefs gg generates for the agents it delegates to**, and the ending each one teaches.
 ///

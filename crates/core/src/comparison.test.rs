@@ -9,6 +9,8 @@ use crate::validation::{AutoVerdict, DebugScriptResult};
 /// A binary review item worth `weight`, scored, no sub-items.
 fn item(id: &str, weight: u32) -> ReviewItem {
     ReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
         id: id.into(),
         title: id.into(),
         text: String::new(),
@@ -28,6 +30,8 @@ fn item(id: &str, weight: u32) -> ReviewItem {
 /// A name-only sub-item worth `weight`, scored.
 fn sub(id: &str, weight: u32) -> SubReviewItem {
     SubReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
         id: id.into(),
         title: id.into(),
         description: None,

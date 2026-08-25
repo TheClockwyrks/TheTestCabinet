@@ -26,6 +26,7 @@ import { AssetResultSection } from "./AssetResultSection";
 import { AdversarialReplaySection } from "./AdversarialReplaySection";
 import { PerformanceResultSection } from "./PerformanceResultSection";
 import { RunErrataCallout } from "./RunErrataCallout";
+import { ValidatorVerdict } from "./ValidatorVerdict";
 import styles from "./RunDetailPages.module.scss";
 
 // The note a run without a result stands in place of one on its default tab: it
@@ -74,7 +75,7 @@ export function RunVerdictPage() {
   const runtime = useRunsRuntime();
   return (
     <RunDetailLayout tab="verdict">
-      {({ run, review, reviews, published }) => {
+      {({ run, review, reviews, published, validatorRated }) => {
         const presentation = describeRunState(run.status.state);
 
         // A performance run is scored automatically, so nothing below this branch
@@ -163,6 +164,7 @@ export function RunVerdictPage() {
                   run={run}
                   reviews={reviews}
                   published={published}
+                  validatorRated={validatorRated}
                   onChanged={() => runtime.requestRefresh()}
                 />
               ) : (
@@ -170,6 +172,7 @@ export function RunVerdictPage() {
                   run={run}
                   review={review}
                   reviews={reviews}
+                  validatorRated={validatorRated}
                 />
               )
             }
@@ -187,10 +190,14 @@ function ReadOnlyVerdictPanel({
   run,
   review,
   reviews,
+  validatorRated,
 }: {
   run: RunRecord;
   review: ParsedWriteup | undefined;
   reviews: StoredReview[];
+  /** Whether the run is validator-rated (the store's word): its verdict is read
+   * off the record, with reviews contributing only the aesthetic channel. */
+  validatorRated: boolean;
 }) {
   const model = useReviewModel(run.subject);
   // The scoring model arrives with the case fetch, so wait for it rather than
@@ -201,7 +208,23 @@ function ReadOnlyVerdictPanel({
   }
   return (
     <Panel>
-      {review ? (
+      {validatorRated ? (
+        // A validator-rated run has a verdict the moment it completes — the
+        // validators' — whether or not anyone has reviewed it. The reviews add
+        // only the aesthetic channel and their prose.
+        <>
+          <ValidatorVerdict
+            run={run}
+            model={model}
+            aesthetics={review?.aesthetics ?? []}
+          />
+          {review?.body && (
+            <Markdown breaks className={styles.writeupBody}>
+              {review.body}
+            </Markdown>
+          )}
+        </>
+      ) : review ? (
         <PublishedVerdict review={review} model={model} />
       ) : (
         <p className={styles.empty}>
@@ -217,7 +240,12 @@ function ReadOnlyVerdictPanel({
             {reviews.length} review
             {reviews.length === 1 ? "" : "s"}
           </h2>
-          <ReviewList reviews={reviews} items={model.items} runId={run.id} />
+          <ReviewList
+            reviews={reviews}
+            items={model.items}
+            runId={run.id}
+            validatorRated={validatorRated}
+          />
         </div>
       )}
     </Panel>
@@ -232,6 +260,9 @@ function ReadOnlyVerdictPanel({
 // `showOverall` (default) leads with the overall rating + tier description + score
 // headline; the single-review page omits it (`showOverall={false}`) because its
 // own top section already carries that reviewer's name, rating, and score.
+//
+// This is the LEGACY verdict — a review that carries the functional ratings and
+// the checklist. A validator-rated run renders {@link ValidatorVerdict} instead.
 export function PublishedVerdict({
   review,
   model,

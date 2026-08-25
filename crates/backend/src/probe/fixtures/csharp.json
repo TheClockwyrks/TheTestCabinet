@@ -1,0 +1,485 @@
+{
+  "provenance": "gg's responses-as-code turn-1 request for the C# arm, projected by `gg probe-fixtures` (regenerate with scripts/gg-probe-fixtures.sh). Nothing model-facing is authored here twice: the system prompt, the opening bootstrap program, the module listing, every documentation view and the file-view headings are the same bytes gg's own machinery produces for a real session; the task prompts and spec files are the probe's own material. The backend replays each case through OpenRouter with the one `submit_program` tool offered and `tool_choice` forced to it, and classifies the program each reply submitted.",
+  "language": "csharp",
+  "displayName": "C#",
+  "tool": {
+    "name": "submit_program",
+    "description": "Run this turn's program. `program` must be one whole C# program; it is compiled and executed exactly as written.",
+    "parameters": {
+      "additionalProperties": false,
+      "properties": {
+        "program": {
+          "description": "The complete C# program to run.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "program"
+      ],
+      "type": "object"
+    }
+  },
+  "cases": [
+    {
+      "scenario": "baseline",
+      "prompt": "write-plan",
+      "expectedCalls": [
+        "Files.WriteFile"
+      ],
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one C# program: pass one whole, legal\nC# program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\nYour program is compiled by `csc` before it runs. A program it refuses\nis not executed: you get its diagnostics and submit another program.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is compiled verbatim, as a whole compilation unit: the `using`\nlines you need, then top-level statements.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `Gg.Session.Finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `Gg.Files`: Read, write, edit and list the files of the workspace. — brought into scope with `using Gg;`\n- `Gg.Shell`: Run shell commands in the workspace. — brought into scope with `using Gg;`\n- `Gg.Docs`: Search this surface's own documentation, and take a documentation view back out. — brought into scope with `using Gg;`\n- `Gg.Views`: Put a file, a computed value or an entry's documentation into the context window. — brought into scope with `using Gg;`\n- `Gg.Session`: End the session, with a summary or with a reviewer's verdict. — brought into scope with `using Gg;`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\nThe SDK declares every function, whatever this run enabled, so a call to one this\nrun withheld compiles and then fails when it runs, naming the call. What you can\nfind in the documentation is what you can call.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\nCreate the file `notes/plan.md` in the workspace. Its required content is specified in `specs/plan-brief.md`, which is already open in your context. Write the file exactly as the brief specifies."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"Gg.Docs.Search(modules: [\\\"Gg.Files\\\", \\\"Gg.Shell\\\"], limit: 100);\\n\\nstring[] functions =\\n[\\n    \\\"Gg.Docs.Search\\\",\\n    \\\"Gg.Views.OpenDocsView\\\",\\n    \\\"Gg.Views.OpenText\\\",\\n    \\\"Gg.Views.OpenFile\\\",\\n    \\\"Gg.Files.WriteFile\\\",\\n];\\nforeach (var name in functions)\\n{\\n    Gg.Views.OpenDocsView(name);\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: Gg.Files, Gg.Shell\n----\n10 matches for modules `Gg.Files`, `Gg.Shell`, showing 1-10.\n\nModules:\nGg.Files — Read, write, edit and list the files of the workspace.\nGg.Shell — Run shell commands in the workspace.\n\nFunctions:\nGg.Files.EditFile — Replace the one exact occurrence of some text in a file with something else.\nGg.Files.ListDir — List a directory, sorted by name.\nGg.Files.ReadFile — Read a file, as either a `Files.TextFile` or a `Files.ImageFile`.\nGg.Files.WriteFile — Write UTF-8 text to a file, creating parent directories and replacing what is there.\nGg.Shell.Run — Run a command with `sh -c` and hand back its merged output and exit status.\n\nTypes:\nGg.Files.DirEntry — One entry in a directory listing.\nGg.Files.FileRead — What a read returned — either a `Files.TextFile` or a `Files.ImageFile`.\nGg.Shell.ShellOutput — What a finished process reported.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.Search\n----\nSearch(string? query = null, string[]? modules = null, string? type = null, Docs.DocKind? kind = null, uint? offset = null, uint? limit = null) -> Docs.DocPage\n  query?: string? = null (passed by name) — The words to look for. Left out, the filters beside it are the whole of the search, which is how a module's whole directory is listed.\n  modules?: string[]? = null (passed by name) — The modules to look in, each by gg's own id (`\"views\"`) or by the path this arm writes it as (`\"Gg.Views\"`). Several of them are a union — an entry in any one of them is a hit, which is the only reading a list has when an entry belongs to one module. Exact and case-insensitive: a module filter is a lookup, so a name no module has matches nothing rather than failing. Left out, or empty, no module filter at all.\n  type?: string? = null (passed by name) — One type's name, which narrows to that type and to the functions taking or returning it.\n  kind?: Docs.DocKind? = null (passed by name) — Narrow to modules, to functions or to types. Left out, all three are searched.\n  offset?: uint? = null (passed by name) — How many hits to skip. Left out, the page starts at the first.\n  limit?: uint? = null (passed by name) — How many hits to return: 20 where it is left out, 100 at most, and zero refused. Compare it against `Docs.DocPage.Total` to see how much of the answer this page is.\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nFind what this agent can call, by keyword or by module, and read the briefs.\n\nMatching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so `\"foobar\"` finds `GetFoobar`. Hits are ranked by what matched: an entry whose own name carries the word comes before one that merely mentions it in a paragraph.\n\nThe filters compose with the query and with each other, and `modules` is a lookup rather than a search — naming several returns the entries of any one of them, and a `modules` filter with no query is those modules' whole directory. A call with no query and no filter at all is refused, because a search that asked for nothing and a search that found nothing are different answers.\n\nThe page comes back as a value and is opened as a view, so the next turn can read it without the program showing it to itself. The next search replaces that view: it names what is being worked from rather than keeping a record.\n\n```csharp\nvar found = Docs.Search(\"memory\", limit: 5);\nforeach (var hit in found.Hits)\n{\n    Views.OpenDocsView(hit.Key);\n}\n```\n\nReturns: one page of matches, best first, and the total behind it.\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for a call with no query and no filter beside it, and for a `limit` of zero, which is a page that could answer nothing."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.DocKind\n----\nenum DocKind { Module, Function, Type }\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nWhich of the three things a documentation entry describes.\n\nThe taxonomy is closed at three because a surface is the modules a program imports, the functions inside them and the types their signatures name, and nothing else is documented separately: a parameter is documented on the function that takes it.\n  Module — One module a program imports, whose functions live inside it.\n  Function — One callable function.\n  Type — One type a function's signature names."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.DocPage\n----\nsealed record DocPage(uint Total, uint Offset, IReadOnlyList<Docs.DocHit> Hits)\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nOne page of search results, with the total behind it.\n\n`Docs.DocPage.Total` counts what matched before paging, so a capped page and a complete answer are told apart without guessing at the page size.\n  Total: uint — How many entries matched in all, before this page was cut from them.\n  Offset: uint — The offset this page starts at, echoed back.\n  Hits: IReadOnlyList<Docs.DocHit> — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.ApiException\n----\nsealed class ApiException : Exception\n\nDefined in `Gg`, brought into scope with `using Gg;`.\n\nThe exception every gg call throws when it fails.\n\nA failure is thrown rather than returned because C# is an exception language: the common path reads as a straight line, and only the calls expected to fail are wrapped.\n\n```csharp\nvar name = \"Gg.Docs.Search\";\ntry\n{\n    Views.OpenDocsView(name);\n}\ncatch (ApiException failure) when (failure.Code == ApiErrorCode.NotFound)\n{\n    Views.OpenText(\"docs\", $\"nothing on this surface is called {name}\");\n}\n```\n\nAn unexpected one is best left to escape: gg reports which call failed, with the managed stack, and the turn is recoverable.\n  Code: ApiErrorCode — The failure class, so a catch site branches on a value rather than on prose.\n  Operation: string — The call that failed, by the key of the operation this program reached for.\n\n`open_text` for `Views.OpenText`, `open_docs_view` for `Views.OpenDocsView`."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenDocsView\n----\nOpenDocsView(string name) -> void\n  name: string — The fully-qualified name the documentation is keyed by — `\"Gg.Views.OpenText\"`, or a module's own path, `\"Gg.Views\"`. The name a program calls it by (`\"OpenText\"`) also resolves and is a fallback rather than the form to reach for: two modules are free to declare a `Close`, and only the qualified name says which one is meant. Searching the documentation is what says which names exist.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nShow the full documentation for one module, function or type in the context window.\n\nIts declaration, its description, a line per argument where it takes any, and the declarations of any types it refers to that the session has not already been shown. It is a view rather than a return value: the documentation arrives in the next prompt, under a `Documentation` heading, and is not available in the turn that asks for it. Opening an entry already open does nothing at all, neither moving it nor sending it again.\n\nThrows `ApiException`: `ApiErrorCode.NotFound` for a name nothing on this surface has."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenText\n----\nOpenText(string label, string body) -> void\n  label: string — What to file it under: the view's selector, so an empty label is refused — a view with no selector could never be replaced or attributed.\n  body: string — The text to show. Empty is allowed, and is how a program says that something it was showing is now empty.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nShow a computed value in the context window, under a label.\n\nThis is how the result of a program reaches the model that wrote it. Opening the same label again replaces what it showed, so a label names a thing rather than a moment.\n\n```csharp\nvar tests = Shell.Run(\"cargo nextest run --workspace\");\nViews.OpenText(\"tests\", tests.Output);\n```\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for an empty label, and `ApiErrorCode.LimitExceeded` naming the cap a body or label went over."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenFile\n----\nOpenFile(string path, uint? offset = null, uint? limit = null, uint? maxLineChars = null) -> Files.FileRead\n  path: string — The file to read and show, relative to the workspace or absolute.\n  offset?: uint? = null (passed by name) — The 1-based first line. Left out, the whole file is shown.\n  limit?: uint? = null (passed by name) — How many lines. Left out, the view runs to the end.\n  maxLineChars?: uint? = null (passed by name) — The width, in characters, past which each line of the view is cut, from 1 to 65,536. Left out, lines arrive whole.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nRead a file and show it in the context window.\n\nThe read's result comes back exactly as `Files.ReadFile` returns it, and the file is added to the window as its own item. The separation is the point: `Files.ReadFile` gets bytes for the program, this shows a file to the model, and a program that reads forty files to grep them still adds nothing to the window.\n\nThe key is the path and the region together, so two pages of one file are two views and coexist. Opening the same page again replaces it rather than piling up a duplicate.\n\nA text view is capped at 65,536 bytes, and a file over it is refused rather than cut: the refusal names the size, and the way in is a smaller window through `offset` and `limit`, or `maxLineChars` for a file whose lines are wider than they are useful — a minified bundle, a log. Each line of the view longer than that many characters is cut there and annotated in place as `foo (123 more chars...)`, and the cap is measured after the cut. Only the view is cut: what this call returns, and the file itself, are untouched. A picture is not subject to the cap.\n\nReturns: the read itself, so the program can work with what the model is now being shown.\n\nThrows `ApiException`: `ApiErrorCode.NotFound` for a missing path, `ApiErrorCode.InvalidArgument` for an offset past the end of the file or a width outside 1 to 65,536, and `ApiErrorCode.LimitExceeded`, naming the size, for a text view over 65,536 bytes. The read is what fails, and nothing is opened when it does."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Files.FileRead\n----\nabstract record FileRead\n\nDefined in `Gg.Files`, brought into scope with `using Gg;`.\n\nWhat a read returned — either a `Files.TextFile` or a `Files.ImageFile`.\n\nA picture is a different kind of thing from text, so it is a different case: a program that treated an image as text is caught by the type system rather than silently writing an empty string somewhere.\n  ImageFile: Files.ImageFile — A file that turned out to be a picture, described rather than decoded.\n  TextFile: Files.TextFile — A file that turned out to be text, and the window of it the read policy returned."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Files.WriteFile\n----\nWriteFile(string path, string contents) -> ulong\n  path: string — Where to write, relative to the workspace or absolute.\n  contents: string — The UTF-8 text to write. It replaces the file entirely.\n\nDefined in `Gg.Files`, brought into scope with `using Gg;`.\n\nWrite UTF-8 text to a file, creating parent directories and replacing what is there.\n\nReturns: how many bytes were written.\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for an empty path, and `ApiErrorCode.IOError` when creating the parent directories or the write itself failed."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"Gg.Views.OpenFile(\\\"specs/plan-brief.md\\\");\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/plan-brief.md:1-20 of 20 lines\n----\n# Plan brief\n\nWrite `notes/plan.md` with exactly the following structure.\n\n## Required sections\n\n1. A top-level heading reading `# Delivery plan`.\n2. A section `## Milestones` holding a numbered list of three milestones:\n   1. `Skeleton` — the project builds and serves a blank page.\n   2. `Core loop` — the simulation advances and renders.\n   3. `Polish` — audio, menus, and the win screen.\n3. A section `## Risks` holding a bulleted list with two entries:\n   - `Scope creep in the core loop`\n   - `Untested browser input handling`\n\n## Rules\n\n- The file's content is exactly the sections above, in that order.\n- Create the `notes/` directory as part of the write if it does not exist.\n- Change nothing else in the workspace."
+        }
+      ]
+    },
+    {
+      "scenario": "baseline",
+      "prompt": "inventory",
+      "expectedCalls": [
+        "Files.ListDir",
+        "Files.WriteFile"
+      ],
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one C# program: pass one whole, legal\nC# program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\nYour program is compiled by `csc` before it runs. A program it refuses\nis not executed: you get its diagnostics and submit another program.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is compiled verbatim, as a whole compilation unit: the `using`\nlines you need, then top-level statements.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `Gg.Session.Finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `Gg.Files`: Read, write, edit and list the files of the workspace. — brought into scope with `using Gg;`\n- `Gg.Shell`: Run shell commands in the workspace. — brought into scope with `using Gg;`\n- `Gg.Docs`: Search this surface's own documentation, and take a documentation view back out. — brought into scope with `using Gg;`\n- `Gg.Views`: Put a file, a computed value or an entry's documentation into the context window. — brought into scope with `using Gg;`\n- `Gg.Session`: End the session, with a summary or with a reviewer's verdict. — brought into scope with `using Gg;`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\nThe SDK declares every function, whatever this run enabled, so a call to one this\nrun withheld compiles and then fails when it runs, naming the call. What you can\nfind in the documentation is what you can call.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\nProduce an inventory of the workspace root: list the entries of the workspace's top-level directory, then write the inventory file described in `specs/inventory-brief.md`, which is already open in your context."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"Gg.Docs.Search(modules: [\\\"Gg.Files\\\", \\\"Gg.Shell\\\"], limit: 100);\\n\\nstring[] functions =\\n[\\n    \\\"Gg.Docs.Search\\\",\\n    \\\"Gg.Views.OpenDocsView\\\",\\n    \\\"Gg.Views.OpenText\\\",\\n    \\\"Gg.Views.OpenFile\\\",\\n    \\\"Gg.Files.ListDir\\\",\\n    \\\"Gg.Files.WriteFile\\\",\\n];\\nforeach (var name in functions)\\n{\\n    Gg.Views.OpenDocsView(name);\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: Gg.Files, Gg.Shell\n----\n10 matches for modules `Gg.Files`, `Gg.Shell`, showing 1-10.\n\nModules:\nGg.Files — Read, write, edit and list the files of the workspace.\nGg.Shell — Run shell commands in the workspace.\n\nFunctions:\nGg.Files.EditFile — Replace the one exact occurrence of some text in a file with something else.\nGg.Files.ListDir — List a directory, sorted by name.\nGg.Files.ReadFile — Read a file, as either a `Files.TextFile` or a `Files.ImageFile`.\nGg.Files.WriteFile — Write UTF-8 text to a file, creating parent directories and replacing what is there.\nGg.Shell.Run — Run a command with `sh -c` and hand back its merged output and exit status.\n\nTypes:\nGg.Files.DirEntry — One entry in a directory listing.\nGg.Files.FileRead — What a read returned — either a `Files.TextFile` or a `Files.ImageFile`.\nGg.Shell.ShellOutput — What a finished process reported.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.Search\n----\nSearch(string? query = null, string[]? modules = null, string? type = null, Docs.DocKind? kind = null, uint? offset = null, uint? limit = null) -> Docs.DocPage\n  query?: string? = null (passed by name) — The words to look for. Left out, the filters beside it are the whole of the search, which is how a module's whole directory is listed.\n  modules?: string[]? = null (passed by name) — The modules to look in, each by gg's own id (`\"views\"`) or by the path this arm writes it as (`\"Gg.Views\"`). Several of them are a union — an entry in any one of them is a hit, which is the only reading a list has when an entry belongs to one module. Exact and case-insensitive: a module filter is a lookup, so a name no module has matches nothing rather than failing. Left out, or empty, no module filter at all.\n  type?: string? = null (passed by name) — One type's name, which narrows to that type and to the functions taking or returning it.\n  kind?: Docs.DocKind? = null (passed by name) — Narrow to modules, to functions or to types. Left out, all three are searched.\n  offset?: uint? = null (passed by name) — How many hits to skip. Left out, the page starts at the first.\n  limit?: uint? = null (passed by name) — How many hits to return: 20 where it is left out, 100 at most, and zero refused. Compare it against `Docs.DocPage.Total` to see how much of the answer this page is.\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nFind what this agent can call, by keyword or by module, and read the briefs.\n\nMatching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so `\"foobar\"` finds `GetFoobar`. Hits are ranked by what matched: an entry whose own name carries the word comes before one that merely mentions it in a paragraph.\n\nThe filters compose with the query and with each other, and `modules` is a lookup rather than a search — naming several returns the entries of any one of them, and a `modules` filter with no query is those modules' whole directory. A call with no query and no filter at all is refused, because a search that asked for nothing and a search that found nothing are different answers.\n\nThe page comes back as a value and is opened as a view, so the next turn can read it without the program showing it to itself. The next search replaces that view: it names what is being worked from rather than keeping a record.\n\n```csharp\nvar found = Docs.Search(\"memory\", limit: 5);\nforeach (var hit in found.Hits)\n{\n    Views.OpenDocsView(hit.Key);\n}\n```\n\nReturns: one page of matches, best first, and the total behind it.\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for a call with no query and no filter beside it, and for a `limit` of zero, which is a page that could answer nothing."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.DocKind\n----\nenum DocKind { Module, Function, Type }\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nWhich of the three things a documentation entry describes.\n\nThe taxonomy is closed at three because a surface is the modules a program imports, the functions inside them and the types their signatures name, and nothing else is documented separately: a parameter is documented on the function that takes it.\n  Module — One module a program imports, whose functions live inside it.\n  Function — One callable function.\n  Type — One type a function's signature names."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.DocPage\n----\nsealed record DocPage(uint Total, uint Offset, IReadOnlyList<Docs.DocHit> Hits)\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nOne page of search results, with the total behind it.\n\n`Docs.DocPage.Total` counts what matched before paging, so a capped page and a complete answer are told apart without guessing at the page size.\n  Total: uint — How many entries matched in all, before this page was cut from them.\n  Offset: uint — The offset this page starts at, echoed back.\n  Hits: IReadOnlyList<Docs.DocHit> — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.ApiException\n----\nsealed class ApiException : Exception\n\nDefined in `Gg`, brought into scope with `using Gg;`.\n\nThe exception every gg call throws when it fails.\n\nA failure is thrown rather than returned because C# is an exception language: the common path reads as a straight line, and only the calls expected to fail are wrapped.\n\n```csharp\nvar name = \"Gg.Docs.Search\";\ntry\n{\n    Views.OpenDocsView(name);\n}\ncatch (ApiException failure) when (failure.Code == ApiErrorCode.NotFound)\n{\n    Views.OpenText(\"docs\", $\"nothing on this surface is called {name}\");\n}\n```\n\nAn unexpected one is best left to escape: gg reports which call failed, with the managed stack, and the turn is recoverable.\n  Code: ApiErrorCode — The failure class, so a catch site branches on a value rather than on prose.\n  Operation: string — The call that failed, by the key of the operation this program reached for.\n\n`open_text` for `Views.OpenText`, `open_docs_view` for `Views.OpenDocsView`."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenDocsView\n----\nOpenDocsView(string name) -> void\n  name: string — The fully-qualified name the documentation is keyed by — `\"Gg.Views.OpenText\"`, or a module's own path, `\"Gg.Views\"`. The name a program calls it by (`\"OpenText\"`) also resolves and is a fallback rather than the form to reach for: two modules are free to declare a `Close`, and only the qualified name says which one is meant. Searching the documentation is what says which names exist.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nShow the full documentation for one module, function or type in the context window.\n\nIts declaration, its description, a line per argument where it takes any, and the declarations of any types it refers to that the session has not already been shown. It is a view rather than a return value: the documentation arrives in the next prompt, under a `Documentation` heading, and is not available in the turn that asks for it. Opening an entry already open does nothing at all, neither moving it nor sending it again.\n\nThrows `ApiException`: `ApiErrorCode.NotFound` for a name nothing on this surface has."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenText\n----\nOpenText(string label, string body) -> void\n  label: string — What to file it under: the view's selector, so an empty label is refused — a view with no selector could never be replaced or attributed.\n  body: string — The text to show. Empty is allowed, and is how a program says that something it was showing is now empty.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nShow a computed value in the context window, under a label.\n\nThis is how the result of a program reaches the model that wrote it. Opening the same label again replaces what it showed, so a label names a thing rather than a moment.\n\n```csharp\nvar tests = Shell.Run(\"cargo nextest run --workspace\");\nViews.OpenText(\"tests\", tests.Output);\n```\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for an empty label, and `ApiErrorCode.LimitExceeded` naming the cap a body or label went over."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenFile\n----\nOpenFile(string path, uint? offset = null, uint? limit = null, uint? maxLineChars = null) -> Files.FileRead\n  path: string — The file to read and show, relative to the workspace or absolute.\n  offset?: uint? = null (passed by name) — The 1-based first line. Left out, the whole file is shown.\n  limit?: uint? = null (passed by name) — How many lines. Left out, the view runs to the end.\n  maxLineChars?: uint? = null (passed by name) — The width, in characters, past which each line of the view is cut, from 1 to 65,536. Left out, lines arrive whole.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nRead a file and show it in the context window.\n\nThe read's result comes back exactly as `Files.ReadFile` returns it, and the file is added to the window as its own item. The separation is the point: `Files.ReadFile` gets bytes for the program, this shows a file to the model, and a program that reads forty files to grep them still adds nothing to the window.\n\nThe key is the path and the region together, so two pages of one file are two views and coexist. Opening the same page again replaces it rather than piling up a duplicate.\n\nA text view is capped at 65,536 bytes, and a file over it is refused rather than cut: the refusal names the size, and the way in is a smaller window through `offset` and `limit`, or `maxLineChars` for a file whose lines are wider than they are useful — a minified bundle, a log. Each line of the view longer than that many characters is cut there and annotated in place as `foo (123 more chars...)`, and the cap is measured after the cut. Only the view is cut: what this call returns, and the file itself, are untouched. A picture is not subject to the cap.\n\nReturns: the read itself, so the program can work with what the model is now being shown.\n\nThrows `ApiException`: `ApiErrorCode.NotFound` for a missing path, `ApiErrorCode.InvalidArgument` for an offset past the end of the file or a width outside 1 to 65,536, and `ApiErrorCode.LimitExceeded`, naming the size, for a text view over 65,536 bytes. The read is what fails, and nothing is opened when it does."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Files.FileRead\n----\nabstract record FileRead\n\nDefined in `Gg.Files`, brought into scope with `using Gg;`.\n\nWhat a read returned — either a `Files.TextFile` or a `Files.ImageFile`.\n\nA picture is a different kind of thing from text, so it is a different case: a program that treated an image as text is caught by the type system rather than silently writing an empty string somewhere.\n  ImageFile: Files.ImageFile — A file that turned out to be a picture, described rather than decoded.\n  TextFile: Files.TextFile — A file that turned out to be text, and the window of it the read policy returned."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Files.ListDir\n----\nListDir(string? path = null) -> IReadOnlyList<Files.DirEntry>\n  path?: string? = null (passed by name) — The directory to list. Left out, the workspace root is listed.\n\nDefined in `Gg.Files`, brought into scope with `using Gg;`.\n\nList a directory, sorted by name.\n\nEach entry carries a bare `Files.DirEntry.Name`, which has to be joined with the directory that was listed. An empty directory is an empty list rather than a failure.\n\nReturns: the directory's immediate entries only — nothing here descends into a subdirectory.\n\nThrows `ApiException`: `ApiErrorCode.NotFound` for a directory that is not there, and `ApiErrorCode.InvalidArgument` for a path that is given but empty — leaving it out altogether is what lists the workspace root."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Files.DirEntry\n----\nsealed record DirEntry(string Name, Files.EntryKind Kind)\n\nDefined in `Gg.Files`, brought into scope with `using Gg;`.\n\nOne entry in a directory listing.\n  Name: string — The entry's bare name, which is not a path.\n  Kind: Files.EntryKind — Whether it is a file, a directory, or something else."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Files.WriteFile\n----\nWriteFile(string path, string contents) -> ulong\n  path: string — Where to write, relative to the workspace or absolute.\n  contents: string — The UTF-8 text to write. It replaces the file entirely.\n\nDefined in `Gg.Files`, brought into scope with `using Gg;`.\n\nWrite UTF-8 text to a file, creating parent directories and replacing what is there.\n\nReturns: how many bytes were written.\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for an empty path, and `ApiErrorCode.IOError` when creating the parent directories or the write itself failed."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"Gg.Views.OpenFile(\\\"specs/inventory-brief.md\\\");\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/inventory-brief.md:1-17 of 17 lines\n----\n# Inventory brief\n\nWrite `notes/inventory.md` describing the workspace root.\n\n## Required content\n\n1. A top-level heading reading `# Workspace inventory`.\n2. One Markdown list entry per entry of the workspace's top-level\n   directory, in the order the listing returns them.\n3. Each entry formatted as `- `, the entry's name, then ` (dir)` for a\n   directory or ` (file)` for a file.\n\n## Rules\n\n- List the top-level directory only; do not recurse.\n- Create the `notes/` directory as part of the write if it does not exist.\n- Change nothing else in the workspace."
+        }
+      ]
+    },
+    {
+      "scenario": "missing-docview",
+      "prompt": "run-tests",
+      "forbiddenCalls": [
+        "Shell.Run"
+      ],
+      "docviewCall": "Views.OpenDocsView",
+      "docviewKey": "Gg.Shell.Run",
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one C# program: pass one whole, legal\nC# program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\nYour program is compiled by `csc` before it runs. A program it refuses\nis not executed: you get its diagnostics and submit another program.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is compiled verbatim, as a whole compilation unit: the `using`\nlines you need, then top-level statements.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `Gg.Session.Finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `Gg.Files`: Read, write, edit and list the files of the workspace. — brought into scope with `using Gg;`\n- `Gg.Shell`: Run shell commands in the workspace. — brought into scope with `using Gg;`\n- `Gg.Docs`: Search this surface's own documentation, and take a documentation view back out. — brought into scope with `using Gg;`\n- `Gg.Views`: Put a file, a computed value or an entry's documentation into the context window. — brought into scope with `using Gg;`\n- `Gg.Session`: End the session, with a summary or with a reviewer's verdict. — brought into scope with `using Gg;`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\nThe SDK declares every function, whatever this run enabled, so a call to one this\nrun withheld compiles and then fails when it runs, naming the call. What you can\nfind in the documentation is what you can call.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\nRun the project's test suite and show yourself the output. `specs/test-brief.md`, already open in your context, says what the suite is and what to check for."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"Gg.Docs.Search(modules: [\\\"Gg.Files\\\", \\\"Gg.Shell\\\"], limit: 100);\\n\\nstring[] functions =\\n[\\n    \\\"Gg.Docs.Search\\\",\\n    \\\"Gg.Views.OpenDocsView\\\",\\n    \\\"Gg.Views.OpenText\\\",\\n    \\\"Gg.Views.OpenFile\\\",\\n];\\nforeach (var name in functions)\\n{\\n    Gg.Views.OpenDocsView(name);\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: Gg.Files, Gg.Shell\n----\n10 matches for modules `Gg.Files`, `Gg.Shell`, showing 1-10.\n\nModules:\nGg.Files — Read, write, edit and list the files of the workspace.\nGg.Shell — Run shell commands in the workspace.\n\nFunctions:\nGg.Files.EditFile — Replace the one exact occurrence of some text in a file with something else.\nGg.Files.ListDir — List a directory, sorted by name.\nGg.Files.ReadFile — Read a file, as either a `Files.TextFile` or a `Files.ImageFile`.\nGg.Files.WriteFile — Write UTF-8 text to a file, creating parent directories and replacing what is there.\nGg.Shell.Run — Run a command with `sh -c` and hand back its merged output and exit status.\n\nTypes:\nGg.Files.DirEntry — One entry in a directory listing.\nGg.Files.FileRead — What a read returned — either a `Files.TextFile` or a `Files.ImageFile`.\nGg.Shell.ShellOutput — What a finished process reported.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.Search\n----\nSearch(string? query = null, string[]? modules = null, string? type = null, Docs.DocKind? kind = null, uint? offset = null, uint? limit = null) -> Docs.DocPage\n  query?: string? = null (passed by name) — The words to look for. Left out, the filters beside it are the whole of the search, which is how a module's whole directory is listed.\n  modules?: string[]? = null (passed by name) — The modules to look in, each by gg's own id (`\"views\"`) or by the path this arm writes it as (`\"Gg.Views\"`). Several of them are a union — an entry in any one of them is a hit, which is the only reading a list has when an entry belongs to one module. Exact and case-insensitive: a module filter is a lookup, so a name no module has matches nothing rather than failing. Left out, or empty, no module filter at all.\n  type?: string? = null (passed by name) — One type's name, which narrows to that type and to the functions taking or returning it.\n  kind?: Docs.DocKind? = null (passed by name) — Narrow to modules, to functions or to types. Left out, all three are searched.\n  offset?: uint? = null (passed by name) — How many hits to skip. Left out, the page starts at the first.\n  limit?: uint? = null (passed by name) — How many hits to return: 20 where it is left out, 100 at most, and zero refused. Compare it against `Docs.DocPage.Total` to see how much of the answer this page is.\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nFind what this agent can call, by keyword or by module, and read the briefs.\n\nMatching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so `\"foobar\"` finds `GetFoobar`. Hits are ranked by what matched: an entry whose own name carries the word comes before one that merely mentions it in a paragraph.\n\nThe filters compose with the query and with each other, and `modules` is a lookup rather than a search — naming several returns the entries of any one of them, and a `modules` filter with no query is those modules' whole directory. A call with no query and no filter at all is refused, because a search that asked for nothing and a search that found nothing are different answers.\n\nThe page comes back as a value and is opened as a view, so the next turn can read it without the program showing it to itself. The next search replaces that view: it names what is being worked from rather than keeping a record.\n\n```csharp\nvar found = Docs.Search(\"memory\", limit: 5);\nforeach (var hit in found.Hits)\n{\n    Views.OpenDocsView(hit.Key);\n}\n```\n\nReturns: one page of matches, best first, and the total behind it.\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for a call with no query and no filter beside it, and for a `limit` of zero, which is a page that could answer nothing."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.DocKind\n----\nenum DocKind { Module, Function, Type }\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nWhich of the three things a documentation entry describes.\n\nThe taxonomy is closed at three because a surface is the modules a program imports, the functions inside them and the types their signatures name, and nothing else is documented separately: a parameter is documented on the function that takes it.\n  Module — One module a program imports, whose functions live inside it.\n  Function — One callable function.\n  Type — One type a function's signature names."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.DocPage\n----\nsealed record DocPage(uint Total, uint Offset, IReadOnlyList<Docs.DocHit> Hits)\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nOne page of search results, with the total behind it.\n\n`Docs.DocPage.Total` counts what matched before paging, so a capped page and a complete answer are told apart without guessing at the page size.\n  Total: uint — How many entries matched in all, before this page was cut from them.\n  Offset: uint — The offset this page starts at, echoed back.\n  Hits: IReadOnlyList<Docs.DocHit> — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.ApiException\n----\nsealed class ApiException : Exception\n\nDefined in `Gg`, brought into scope with `using Gg;`.\n\nThe exception every gg call throws when it fails.\n\nA failure is thrown rather than returned because C# is an exception language: the common path reads as a straight line, and only the calls expected to fail are wrapped.\n\n```csharp\nvar name = \"Gg.Docs.Search\";\ntry\n{\n    Views.OpenDocsView(name);\n}\ncatch (ApiException failure) when (failure.Code == ApiErrorCode.NotFound)\n{\n    Views.OpenText(\"docs\", $\"nothing on this surface is called {name}\");\n}\n```\n\nAn unexpected one is best left to escape: gg reports which call failed, with the managed stack, and the turn is recoverable.\n  Code: ApiErrorCode — The failure class, so a catch site branches on a value rather than on prose.\n  Operation: string — The call that failed, by the key of the operation this program reached for.\n\n`open_text` for `Views.OpenText`, `open_docs_view` for `Views.OpenDocsView`."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenDocsView\n----\nOpenDocsView(string name) -> void\n  name: string — The fully-qualified name the documentation is keyed by — `\"Gg.Views.OpenText\"`, or a module's own path, `\"Gg.Views\"`. The name a program calls it by (`\"OpenText\"`) also resolves and is a fallback rather than the form to reach for: two modules are free to declare a `Close`, and only the qualified name says which one is meant. Searching the documentation is what says which names exist.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nShow the full documentation for one module, function or type in the context window.\n\nIts declaration, its description, a line per argument where it takes any, and the declarations of any types it refers to that the session has not already been shown. It is a view rather than a return value: the documentation arrives in the next prompt, under a `Documentation` heading, and is not available in the turn that asks for it. Opening an entry already open does nothing at all, neither moving it nor sending it again.\n\nThrows `ApiException`: `ApiErrorCode.NotFound` for a name nothing on this surface has."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenText\n----\nOpenText(string label, string body) -> void\n  label: string — What to file it under: the view's selector, so an empty label is refused — a view with no selector could never be replaced or attributed.\n  body: string — The text to show. Empty is allowed, and is how a program says that something it was showing is now empty.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nShow a computed value in the context window, under a label.\n\nThis is how the result of a program reaches the model that wrote it. Opening the same label again replaces what it showed, so a label names a thing rather than a moment.\n\n```csharp\nvar tests = Shell.Run(\"cargo nextest run --workspace\");\nViews.OpenText(\"tests\", tests.Output);\n```\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for an empty label, and `ApiErrorCode.LimitExceeded` naming the cap a body or label went over."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenFile\n----\nOpenFile(string path, uint? offset = null, uint? limit = null, uint? maxLineChars = null) -> Files.FileRead\n  path: string — The file to read and show, relative to the workspace or absolute.\n  offset?: uint? = null (passed by name) — The 1-based first line. Left out, the whole file is shown.\n  limit?: uint? = null (passed by name) — How many lines. Left out, the view runs to the end.\n  maxLineChars?: uint? = null (passed by name) — The width, in characters, past which each line of the view is cut, from 1 to 65,536. Left out, lines arrive whole.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nRead a file and show it in the context window.\n\nThe read's result comes back exactly as `Files.ReadFile` returns it, and the file is added to the window as its own item. The separation is the point: `Files.ReadFile` gets bytes for the program, this shows a file to the model, and a program that reads forty files to grep them still adds nothing to the window.\n\nThe key is the path and the region together, so two pages of one file are two views and coexist. Opening the same page again replaces it rather than piling up a duplicate.\n\nA text view is capped at 65,536 bytes, and a file over it is refused rather than cut: the refusal names the size, and the way in is a smaller window through `offset` and `limit`, or `maxLineChars` for a file whose lines are wider than they are useful — a minified bundle, a log. Each line of the view longer than that many characters is cut there and annotated in place as `foo (123 more chars...)`, and the cap is measured after the cut. Only the view is cut: what this call returns, and the file itself, are untouched. A picture is not subject to the cap.\n\nReturns: the read itself, so the program can work with what the model is now being shown.\n\nThrows `ApiException`: `ApiErrorCode.NotFound` for a missing path, `ApiErrorCode.InvalidArgument` for an offset past the end of the file or a width outside 1 to 65,536, and `ApiErrorCode.LimitExceeded`, naming the size, for a text view over 65,536 bytes. The read is what fails, and nothing is opened when it does."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Files.FileRead\n----\nabstract record FileRead\n\nDefined in `Gg.Files`, brought into scope with `using Gg;`.\n\nWhat a read returned — either a `Files.TextFile` or a `Files.ImageFile`.\n\nA picture is a different kind of thing from text, so it is a different case: a program that treated an image as text is caught by the type system rather than silently writing an empty string somewhere.\n  ImageFile: Files.ImageFile — A file that turned out to be a picture, described rather than decoded.\n  TextFile: Files.TextFile — A file that turned out to be text, and the window of it the read policy returned."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"Gg.Views.OpenFile(\\\"specs/test-brief.md\\\");\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/test-brief.md:1-15 of 15 lines\n----\n# Test brief\n\nThe project's test suite runs with `npm test` from the workspace root.\n\n## What to check\n\n1. The command exits with status 0.\n2. The summary line reports no failing tests.\n3. No test is reported as skipped.\n\n## Rules\n\n- Run the suite from the workspace root, not from a subdirectory.\n- Show yourself the command's output before drawing any conclusion\n  from it."
+        }
+      ]
+    },
+    {
+      "scenario": "missing-docview",
+      "prompt": "fix-typo",
+      "forbiddenCalls": [
+        "Files.EditFile"
+      ],
+      "docviewCall": "Views.OpenDocsView",
+      "docviewKey": "Gg.Files.EditFile",
+      "messages": [
+        {
+          "role": "system",
+          "source": "system",
+          "content": "## Responses as Code\n\nEach turn, you take your turn by calling the `submit_program` tool. Its `program`\nstring is run as one C# program: pass one whole, legal\nC# program — bare code, with no code fences around it and no\nprose inside it — and it is processed exactly as written. All calls are\nsynchronous.\n\n`submit_program` is the only tool in this session, and every reply must call it.\nEach call is acknowledged with a tool result reading `ok`; what the program\nproduced arrives as separate messages after it. Text you write alongside the\ncall is recorded, but nothing reads code out of it: only the `program` string\nruns. If one reply makes several `submit_program` calls, the programs run\nsequentially, in order, every one of them.\n\nYour program is compiled by `csc` before it runs. A program it refuses\nis not executed: you get its diagnostics and submit another program.\n\n## Views\n\nViews are the only way to read data out of your code and are provided on the\nturn after they're opened. Print statements are not shown.\n\nReading images is not supported.\n\n## Language Rules\n\nYour program is compiled verbatim, as a whole compilation unit: the `using`\nlines you need, then top-level statements.\n\n## Ending your session\n\nTurns continue until you end your session.\n\nA program that fails does not end your session: the ending it called is revoked.\nFix the fault and end your session in a program that runs to completion.\n\nCall `Gg.Session.Finish` with a short summary of what you did once the work is\ncomplete.\n\n## Your modules\n\nYour program is given these modules:\n\n- `Gg.Files`: Read, write, edit and list the files of the workspace. — brought into scope with `using Gg;`\n- `Gg.Shell`: Run shell commands in the workspace. — brought into scope with `using Gg;`\n- `Gg.Docs`: Search this surface's own documentation, and take a documentation view back out. — brought into scope with `using Gg;`\n- `Gg.Views`: Put a file, a computed value or an entry's documentation into the context window. — brought into scope with `using Gg;`\n- `Gg.Session`: End the session, with a summary or with a reviewer's verdict. — brought into scope with `using Gg;`\n\nSearch the documentation to find a function, by keyword or by naming modules\nabove. Open a documentation view of each function you intend to call, and write\nthe call on a later turn.\n\nThe SDK declares every function, whatever this run enabled, so a call to one this\nrun withheld compiles and then fails when it runs, naming the call. What you can\nfind in the documentation is what you can call.\n\n## Messages you receive\n\nEvery message you receive is headed by one of the following labels, on its own\nline — a view's label is followed by `: ` and the name it was opened under; a\nfile view's by `: `, its path, `:`, the 1-based inclusive line range shown and\nthe file's total line count — followed by a `----` rule and then the content:\n\n- `Task` — the task you are working on, or a message from a parent agent\n- `Compiler error` — your last program did not compile, so none of it ran; the message is the compiler's error and nothing else. Fix it and resend the whole program\n- `Runtime error` — your last program compiled and then threw, or was stopped by a sandbox limit; the message is the error and nothing else. Whatever the program did before it threw stands, so do not repeat that work\n- `Notice` — a process notice from the harness (a mode change, or guidance)\n- `Summary` — a summary standing in for older turns the harness compacted out of the window\n- `Documentation` — documentation or a skill you asked to read, delivered on the following turn\n- `File` — a file, or a window of one, shown in your context — seeded by the run or opened by your own file-view call — headed by its path, the 1-based line range shown and the file's total line count, as `File: src/main.ts:100-250 of 400 lines` (a whole file's range runs `1-N`)\n- `View` — a value your program put into your window; the view's label follows the heading, as `View: changed-files`\n\nFor example, lines 100 to 250 of a 400-line file you opened a view of arrive\nas:\n\n```\nFile: src/main.ts:100-250 of 400 lines\n----\n...those lines of the file...\n```\n\nA program that ran is not announced: the views it opened are the result."
+        },
+        {
+          "role": "user",
+          "source": "user_prompt",
+          "content": "Task\n----\n`specs/errata.md`, already open in your context, names one exact string in `README.md` and the replacement for it. Make exactly that replacement in place."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "bootstrap-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"Gg.Docs.Search(modules: [\\\"Gg.Files\\\", \\\"Gg.Shell\\\"], limit: 100);\\n\\nstring[] functions =\\n[\\n    \\\"Gg.Docs.Search\\\",\\n    \\\"Gg.Views.OpenDocsView\\\",\\n    \\\"Gg.Views.OpenText\\\",\\n    \\\"Gg.Views.OpenFile\\\",\\n];\\nforeach (var name in functions)\\n{\\n    Gg.Views.OpenDocsView(name);\\n}\\n\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "bootstrap-program"
+        },
+        {
+          "role": "user",
+          "source": "search_results",
+          "content": "Documentation: Gg.Files, Gg.Shell\n----\n10 matches for modules `Gg.Files`, `Gg.Shell`, showing 1-10.\n\nModules:\nGg.Files — Read, write, edit and list the files of the workspace.\nGg.Shell — Run shell commands in the workspace.\n\nFunctions:\nGg.Files.EditFile — Replace the one exact occurrence of some text in a file with something else.\nGg.Files.ListDir — List a directory, sorted by name.\nGg.Files.ReadFile — Read a file, as either a `Files.TextFile` or a `Files.ImageFile`.\nGg.Files.WriteFile — Write UTF-8 text to a file, creating parent directories and replacing what is there.\nGg.Shell.Run — Run a command with `sh -c` and hand back its merged output and exit status.\n\nTypes:\nGg.Files.DirEntry — One entry in a directory listing.\nGg.Files.FileRead — What a read returned — either a `Files.TextFile` or a `Files.ImageFile`.\nGg.Shell.ShellOutput — What a finished process reported.\n"
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.Search\n----\nSearch(string? query = null, string[]? modules = null, string? type = null, Docs.DocKind? kind = null, uint? offset = null, uint? limit = null) -> Docs.DocPage\n  query?: string? = null (passed by name) — The words to look for. Left out, the filters beside it are the whole of the search, which is how a module's whole directory is listed.\n  modules?: string[]? = null (passed by name) — The modules to look in, each by gg's own id (`\"views\"`) or by the path this arm writes it as (`\"Gg.Views\"`). Several of them are a union — an entry in any one of them is a hit, which is the only reading a list has when an entry belongs to one module. Exact and case-insensitive: a module filter is a lookup, so a name no module has matches nothing rather than failing. Left out, or empty, no module filter at all.\n  type?: string? = null (passed by name) — One type's name, which narrows to that type and to the functions taking or returning it.\n  kind?: Docs.DocKind? = null (passed by name) — Narrow to modules, to functions or to types. Left out, all three are searched.\n  offset?: uint? = null (passed by name) — How many hits to skip. Left out, the page starts at the first.\n  limit?: uint? = null (passed by name) — How many hits to return: 20 where it is left out, 100 at most, and zero refused. Compare it against `Docs.DocPage.Total` to see how much of the answer this page is.\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nFind what this agent can call, by keyword or by module, and read the briefs.\n\nMatching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so `\"foobar\"` finds `GetFoobar`. Hits are ranked by what matched: an entry whose own name carries the word comes before one that merely mentions it in a paragraph.\n\nThe filters compose with the query and with each other, and `modules` is a lookup rather than a search — naming several returns the entries of any one of them, and a `modules` filter with no query is those modules' whole directory. A call with no query and no filter at all is refused, because a search that asked for nothing and a search that found nothing are different answers.\n\nThe page comes back as a value and is opened as a view, so the next turn can read it without the program showing it to itself. The next search replaces that view: it names what is being worked from rather than keeping a record.\n\n```csharp\nvar found = Docs.Search(\"memory\", limit: 5);\nforeach (var hit in found.Hits)\n{\n    Views.OpenDocsView(hit.Key);\n}\n```\n\nReturns: one page of matches, best first, and the total behind it.\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for a call with no query and no filter beside it, and for a `limit` of zero, which is a page that could answer nothing."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.DocKind\n----\nenum DocKind { Module, Function, Type }\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nWhich of the three things a documentation entry describes.\n\nThe taxonomy is closed at three because a surface is the modules a program imports, the functions inside them and the types their signatures name, and nothing else is documented separately: a parameter is documented on the function that takes it.\n  Module — One module a program imports, whose functions live inside it.\n  Function — One callable function.\n  Type — One type a function's signature names."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Docs.DocPage\n----\nsealed record DocPage(uint Total, uint Offset, IReadOnlyList<Docs.DocHit> Hits)\n\nDefined in `Gg.Docs`, brought into scope with `using Gg;`.\n\nOne page of search results, with the total behind it.\n\n`Docs.DocPage.Total` counts what matched before paging, so a capped page and a complete answer are told apart without guessing at the page size.\n  Total: uint — How many entries matched in all, before this page was cut from them.\n  Offset: uint — The offset this page starts at, echoed back.\n  Hits: IReadOnlyList<Docs.DocHit> — The page itself, best first."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.ApiException\n----\nsealed class ApiException : Exception\n\nDefined in `Gg`, brought into scope with `using Gg;`.\n\nThe exception every gg call throws when it fails.\n\nA failure is thrown rather than returned because C# is an exception language: the common path reads as a straight line, and only the calls expected to fail are wrapped.\n\n```csharp\nvar name = \"Gg.Docs.Search\";\ntry\n{\n    Views.OpenDocsView(name);\n}\ncatch (ApiException failure) when (failure.Code == ApiErrorCode.NotFound)\n{\n    Views.OpenText(\"docs\", $\"nothing on this surface is called {name}\");\n}\n```\n\nAn unexpected one is best left to escape: gg reports which call failed, with the managed stack, and the turn is recoverable.\n  Code: ApiErrorCode — The failure class, so a catch site branches on a value rather than on prose.\n  Operation: string — The call that failed, by the key of the operation this program reached for.\n\n`open_text` for `Views.OpenText`, `open_docs_view` for `Views.OpenDocsView`."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenDocsView\n----\nOpenDocsView(string name) -> void\n  name: string — The fully-qualified name the documentation is keyed by — `\"Gg.Views.OpenText\"`, or a module's own path, `\"Gg.Views\"`. The name a program calls it by (`\"OpenText\"`) also resolves and is a fallback rather than the form to reach for: two modules are free to declare a `Close`, and only the qualified name says which one is meant. Searching the documentation is what says which names exist.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nShow the full documentation for one module, function or type in the context window.\n\nIts declaration, its description, a line per argument where it takes any, and the declarations of any types it refers to that the session has not already been shown. It is a view rather than a return value: the documentation arrives in the next prompt, under a `Documentation` heading, and is not available in the turn that asks for it. Opening an entry already open does nothing at all, neither moving it nor sending it again.\n\nThrows `ApiException`: `ApiErrorCode.NotFound` for a name nothing on this surface has."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenText\n----\nOpenText(string label, string body) -> void\n  label: string — What to file it under: the view's selector, so an empty label is refused — a view with no selector could never be replaced or attributed.\n  body: string — The text to show. Empty is allowed, and is how a program says that something it was showing is now empty.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nShow a computed value in the context window, under a label.\n\nThis is how the result of a program reaches the model that wrote it. Opening the same label again replaces what it showed, so a label names a thing rather than a moment.\n\n```csharp\nvar tests = Shell.Run(\"cargo nextest run --workspace\");\nViews.OpenText(\"tests\", tests.Output);\n```\n\nThrows `ApiException`: `ApiErrorCode.InvalidArgument` for an empty label, and `ApiErrorCode.LimitExceeded` naming the cap a body or label went over."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Views.OpenFile\n----\nOpenFile(string path, uint? offset = null, uint? limit = null, uint? maxLineChars = null) -> Files.FileRead\n  path: string — The file to read and show, relative to the workspace or absolute.\n  offset?: uint? = null (passed by name) — The 1-based first line. Left out, the whole file is shown.\n  limit?: uint? = null (passed by name) — How many lines. Left out, the view runs to the end.\n  maxLineChars?: uint? = null (passed by name) — The width, in characters, past which each line of the view is cut, from 1 to 65,536. Left out, lines arrive whole.\n\nDefined in `Gg.Views`, brought into scope with `using Gg;`.\n\nRead a file and show it in the context window.\n\nThe read's result comes back exactly as `Files.ReadFile` returns it, and the file is added to the window as its own item. The separation is the point: `Files.ReadFile` gets bytes for the program, this shows a file to the model, and a program that reads forty files to grep them still adds nothing to the window.\n\nThe key is the path and the region together, so two pages of one file are two views and coexist. Opening the same page again replaces it rather than piling up a duplicate.\n\nA text view is capped at 65,536 bytes, and a file over it is refused rather than cut: the refusal names the size, and the way in is a smaller window through `offset` and `limit`, or `maxLineChars` for a file whose lines are wider than they are useful — a minified bundle, a log. Each line of the view longer than that many characters is cut there and annotated in place as `foo (123 more chars...)`, and the cap is measured after the cut. Only the view is cut: what this call returns, and the file itself, are untouched. A picture is not subject to the cap.\n\nReturns: the read itself, so the program can work with what the model is now being shown.\n\nThrows `ApiException`: `ApiErrorCode.NotFound` for a missing path, `ApiErrorCode.InvalidArgument` for an offset past the end of the file or a width outside 1 to 65,536, and `ApiErrorCode.LimitExceeded`, naming the size, for a text view over 65,536 bytes. The read is what fails, and nothing is opened when it does."
+        },
+        {
+          "role": "user",
+          "source": "docs_view",
+          "content": "Documentation: Gg.Files.FileRead\n----\nabstract record FileRead\n\nDefined in `Gg.Files`, brought into scope with `using Gg;`.\n\nWhat a read returned — either a `Files.TextFile` or a `Files.ImageFile`.\n\nA picture is a different kind of thing from text, so it is a different case: a program that treated an image as text is caught by the type system rather than silently writing an empty string somewhere.\n  ImageFile: Files.ImageFile — A file that turned out to be a picture, described rather than decoded.\n  TextFile: Files.TextFile — A file that turned out to be text, and the window of it the read policy returned."
+        },
+        {
+          "role": "assistant",
+          "source": "assistant",
+          "tool_calls": [
+            {
+              "id": "autoload-program",
+              "type": "function",
+              "function": {
+                "name": "submit_program",
+                "arguments": "{\"program\":\"Gg.Views.OpenFile(\\\"specs/errata.md\\\");\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "source": "tool_result",
+          "content": "ok",
+          "tool_call_id": "autoload-program"
+        },
+        {
+          "role": "user",
+          "source": "file_view",
+          "content": "File: specs/errata.md:1-14 of 14 lines\n----\n# Errata\n\n`README.md` carries one error to correct.\n\n## The replacement\n\n- Find the exact string: `serves the build on port 8000`\n- Replace it with: `serves the build on port 5173`\n\n## Rules\n\n- Make exactly this one replacement, in `README.md` only.\n- The string occurs once; replace that one occurrence.\n- Change nothing else in the workspace."
+        }
+      ]
+    }
+  ]
+}

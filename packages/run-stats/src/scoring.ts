@@ -14,8 +14,12 @@
 // (`crates/core/src/review.rs`); the mirrors are named per function and must be
 // kept in lockstep, since the backend and these clients score the same runs.
 
+import type { DebugScriptResult } from "@test-cabinet/run-record";
 import type {
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   ReviewVerdict,
   VerdictStatus,
@@ -52,6 +56,91 @@ export function worstRating(ratings: readonly Rating[]): Rating | null {
   }
   return worst;
 }
+
+/**
+ * Every **aesthetic** rating, ordered best to worst — the second rating channel,
+ * separate from the functional {@link Rating}. A reviewer supplies one per domain
+ * on a validator-rated run only; a legacy run never carries one. `amazing` is the
+ * normal maximum and `legendary` is exceptional and reserved. Mirrors
+ * `AestheticRating::ALL` in the Rust core.
+ */
+export const AESTHETIC_RATINGS: readonly AestheticRating[] = [
+  "legendary",
+  "amazing",
+  "good",
+  "okay",
+  "slop",
+];
+
+/** Narrowing type guard for {@link AestheticRating}. */
+export function isAestheticRating(value: string): value is AestheticRating {
+  return (AESTHETIC_RATINGS as readonly string[]).includes(value);
+}
+
+/**
+ * The worst (lowest) aesthetic rating among `ratings`, or null when empty. Like
+ * {@link worstRating}, a run's overall aesthetic rating is the worst across its
+ * domains and then across its reviews. Mirrors `AestheticRating::worst` in the
+ * Rust core.
+ */
+export function worstAestheticRating(
+  ratings: readonly AestheticRating[],
+): AestheticRating | null {
+  let worst: AestheticRating | null = null;
+  let worstRank = -1;
+  for (const rating of ratings) {
+    const rank = AESTHETIC_RATINGS.indexOf(rating);
+    if (rank > worstRank) {
+      worstRank = rank;
+      worst = rating;
+    }
+  }
+  return worst;
+}
+
+/**
+ * The aggregate overall aesthetic rating across a run's reviews: the worst
+ * (lowest) aesthetic rating any reviewer gave any domain, or null when there are
+ * none (a legacy run, or a validator-rated run nobody has reviewed yet). Each
+ * entry is one review's per-domain aesthetic ratings. Mirrors
+ * `aggregate_aesthetic` in the Rust core.
+ */
+export function aggregateAestheticRating(
+  reviews: readonly (readonly DomainAesthetic[])[],
+): AestheticRating | null {
+  return worstAestheticRating(
+    reviews.flatMap((aesthetics) => aesthetics.map((r) => r.rating)),
+  );
+}
+
+/**
+ * Every failure cap, from the most to the least severe. A review item on a
+ * validator-rated case version declares one: the highest functional rating its
+ * domains may reach while the item's validator fails. `flawless` is never a cap —
+ * a failure always costs something. Mirrors `FailureCap::ALL` in the Rust core.
+ */
+export const FAILURE_CAPS: readonly FailureCap[] = [
+  "broken",
+  "scuffed",
+  "passable",
+  "great",
+];
+
+/** Narrowing type guard for {@link FailureCap}. */
+export function isFailureCap(value: string): value is FailureCap {
+  return (FAILURE_CAPS as readonly string[]).includes(value);
+}
+
+/**
+ * The functional {@link Rating} each {@link FailureCap} bounds a domain to while
+ * its item fails. Mirrors `FailureCap::rating` in the Rust core.
+ */
+export const FAILURE_CAP_RATING: Record<FailureCap, Rating> = {
+  broken: "broken",
+  scuffed: "scuffed",
+  passable: "passable",
+  great: "great",
+};
 
 /**
  * One of the five **graded** tiers a game jam scores on (as opposed to the binary
@@ -160,6 +249,13 @@ export interface Score {
 /** A sub-item of a {@link WeightedItem} (a review item under a category). */
 export interface WeightedSubItem {
   id: string;
+  /** On a validator-rated version, the highest functional rating this point's
+   * `domains` may reach while its validator fails; absent on a legacy version.
+   * Mirrors `SubReviewItem::failure_cap` in the Rust core. */
+  failureCap?: FailureCap | null;
+  /** On a validator-rated version, the scoring domain ids a failure of this point
+   * lowers; absent/empty on a legacy version. Mirrors `SubReviewItem::domains`. */
+  domains?: readonly string[];
   /** How many points this sub-item is worth. Defaults to 1 when omitted (a
    * legacy name-only sub-item, or a categories item that left `weight` implicit);
    * the parent category's weight is the sum of its sub-items' weights. */
@@ -176,6 +272,12 @@ export interface WeightedSubItem {
 export interface WeightedItem {
   id: string;
   weight: number;
+  /** The failure cap of a whole-item point on a validator-rated version (a
+   * category carries none — its points do). Mirrors `ReviewItem::failure_cap`. */
+  failureCap?: FailureCap | null;
+  /** The domains a failure of a whole-item point lowers on a validator-rated
+   * version. Mirrors `ReviewItem::domains`. */
+  domains?: readonly string[];
   /** Whether the item is graded on the five-level scale (a game-jam category)
    * rather than pass/fail. When true it is worth `weight × 10` points and earns the
    * graded tier's points times its weight; the two scales never mix within a case. */
@@ -365,11 +467,14 @@ export function scoreChecklist(
  * therefore fractional. Mirrors `AggregateScore` in the Rust core.
  */
 export interface AggregateScore {
-  /** The mean weight earned across the run's reviews. */
+  /** The mean weight earned across the run's reviews, or the validator-decided
+   * weight earned on a validator-rated run. */
   earned: number;
   /** The total weight available — identical across the run's reviews. */
   total: number;
-  /** How many reviews the average is taken over. */
+  /** How many reviews the average is taken over. `0` for a validator-scored run
+   * ({@link validatorScore}), whose score comes from the validators rather than
+   * from any review. */
   reviews: number;
 }
 
@@ -500,4 +605,173 @@ export function isToolchainGated(
   return toolchain
     ? toolchain.typecheck.ran && !toolchain.typecheck.succeeded
     : false;
+}
+
+/**
+ * The verdicts a run's validators decided, synthesized as {@link ReviewVerdict}s
+ * — the **failure semantics** shared by {@link automatedOnlyScore} and
+ * {@link validatorDomainRatings}:
+ * - A script with decided verdicts contributes each (`pass` → `pass`, else `fail`).
+ * - A script that suffered a contract failure (`ran === false`) with no decided
+ *   verdict **fails** the point it backs.
+ * - A script recorded inconclusive (`preconditionUnmet`) is skipped entirely, as
+ *   is a clean run that emitted no verdict.
+ *
+ * The ids of the returned verdicts are exactly the auto-covered points. Mirrors
+ * `automated_verdicts` in the Rust core (crates/core/src/comparison.rs).
+ */
+export function automatedVerdicts(
+  debugScripts: readonly DebugScriptResult[],
+): ReviewVerdict[] {
+  const verdicts: ReviewVerdict[] = [];
+  for (const script of debugScripts) {
+    if (script.preconditionUnmet) continue;
+    if (script.verdicts.length === 0) {
+      if (!script.ran) {
+        const id =
+          script.subItemId != null
+            ? subItemVerdictId(script.itemId, script.subItemId)
+            : script.itemId;
+        verdicts.push({ id, status: "fail" });
+      }
+      continue;
+    }
+    for (const v of script.verdicts) {
+      verdicts.push({ id: v.id, status: v.pass ? "pass" : "fail" });
+    }
+  }
+  return verdicts;
+}
+
+/**
+ * A run's **automated-only** score: {@link scoreChecklist} restricted to the
+ * checklist points a machine actually checked, so both numerator and denominator
+ * drop the human-only points (a Carom run whose 68 automated points all pass reads
+ * 68/68, not 68/70). `items` must already be the run's **effective** checklist.
+ * Mirrors `automated_only_score` in the Rust core.
+ */
+export function automatedOnlyScore(
+  items: readonly WeightedItem[],
+  debugScripts: readonly DebugScriptResult[],
+): Score {
+  const verdicts = automatedVerdicts(debugScripts);
+  const covered = new Set(verdicts.map((v) => v.id));
+  const restricted: WeightedItem[] = [];
+  for (const item of items) {
+    if (item.graded || !item.subItems || item.subItems.length === 0) {
+      if (covered.has(item.id)) restricted.push(item);
+    } else {
+      const subItems = item.subItems.filter((sub) =>
+        covered.has(subItemVerdictId(item.id, sub.id)),
+      );
+      if (subItems.length > 0) restricted.push({ ...item, subItems });
+    }
+  }
+  return scoreChecklist(restricted, verdicts);
+}
+
+/**
+ * **The validator-decided functional rating, per domain.**
+ *
+ * On a validator-rated run every domain starts `flawless`. For each **scored**
+ * validated point that **failed** (the {@link automatedVerdicts} semantics) each of
+ * the point's declared `domains` is lowered to `min(current, FAILURE_CAP_RATING[cap])`,
+ * so a domain ends at the lowest cap among its failures. An inconclusive point, a
+ * point with no script result, and a point excluded from scoring (`scored === false`)
+ * never lower anything; a verdict naming no declared point is ignored. `items` must
+ * be the run's effective checklist and `domains` its effective domain ids, in order.
+ * Mirrors `validator_domain_ratings` in the Rust core.
+ */
+export function validatorDomainRatings(
+  domains: readonly { id: string }[],
+  items: readonly WeightedItem[],
+  debugScripts: readonly DebugScriptResult[],
+): DomainRating[] {
+  const ratings: DomainRating[] = domains.map((domain) => ({
+    domain: domain.id,
+    rating: "flawless",
+  }));
+  const lower = (domain: string, cap: FailureCap) => {
+    const entry = ratings.find((r) => r.domain === domain);
+    if (!entry) return;
+    entry.rating =
+      worstRating([entry.rating, FAILURE_CAP_RATING[cap]]) ?? entry.rating;
+  };
+  for (const verdict of automatedVerdicts(debugScripts)) {
+    if (verdict.status !== "fail") continue;
+    const point = failingPoint(items, verdict.id);
+    if (!point) continue;
+    for (const domain of point.domains) lower(domain, point.cap);
+  }
+  return ratings;
+}
+
+/**
+ * The failure cap and domains of the **scored** point `verdictId` names in `items`,
+ * or null when it names no scored point or the point declares no cap (a legacy
+ * point, which cannot lower a domain). Mirrors `failing_point` in the Rust core.
+ */
+function failingPoint(
+  items: readonly WeightedItem[],
+  verdictId: string,
+): { cap: FailureCap; domains: readonly string[] } | null {
+  for (const item of items) {
+    if (item.scored === false) continue;
+    if (!item.subItems || item.subItems.length === 0) {
+      if (item.id === verdictId) {
+        return item.failureCap
+          ? { cap: item.failureCap, domains: item.domains ?? [] }
+          : null;
+      }
+      continue;
+    }
+    for (const sub of item.subItems) {
+      if (
+        sub.scored !== false &&
+        subItemVerdictId(item.id, sub.id) === verdictId
+      ) {
+        return sub.failureCap
+          ? { cap: sub.failureCap, domains: sub.domains ?? [] }
+          : null;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * **The validator-decided functional rating of a run**: the worst across its
+ * {@link validatorDomainRatings}, composed with the toolchain gate
+ * ({@link gatedRating}). Always non-null for a validator-rated run — with zero
+ * failures it is `flawless` — since the domain set is never empty. Mirrors
+ * `validator_rating` in the Rust core.
+ */
+export function validatorRating(
+  gated: boolean,
+  domainRatings: readonly DomainRating[],
+): Rating | null {
+  return gatedRating(gated, worstRating(domainRatings.map((r) => r.rating)));
+}
+
+/**
+ * **The validator-decided score of a run**: the {@link automatedOnlyScore} over the
+ * run's effective `items` and its record's `debugScripts`, composed with the
+ * toolchain gate ({@link gatedScore}). On a validator-rated run every scored point
+ * carries a validator, so this *is* the run's score — available the moment the run
+ * completes, independent of any review (`reviews` is `0`). Mirrors
+ * `validator_score` in the Rust core.
+ */
+export function validatorScore(
+  gated: boolean,
+  items: readonly WeightedItem[],
+  debugScripts: readonly DebugScriptResult[],
+): AggregateScore {
+  const { earned, total } = automatedOnlyScore(items, debugScripts);
+  return (
+    gatedScore(gated, { earned, total, reviews: 0 }) ?? {
+      earned: 0,
+      total,
+      reviews: 0,
+    }
+  );
 }

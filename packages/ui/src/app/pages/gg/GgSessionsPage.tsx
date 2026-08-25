@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { Pagination } from "@test-cabinet/ui";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
@@ -117,13 +118,15 @@ export function GgSessionsPage() {
       />
 
       {displayed.length === 0 ? (
-        <p className={gg.totalRuns}>
-          {loading
-            ? "Loading gg sessions…"
-            : needle
+        loading ? (
+          <LoadingState size="section" label="Loading gg sessions…" />
+        ) : (
+          <p className={gg.totalRuns}>
+            {needle
               ? "No gg sessions match that search."
               : "No gg sessions have been recorded yet."}
-        </p>
+          </p>
+        )
       ) : (
         <section aria-busy={loading ? "true" : undefined}>
           <RunLog rows={table.rows} controls={table.controls} selectable />

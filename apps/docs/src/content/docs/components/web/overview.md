@@ -115,11 +115,23 @@ unmounted, since it holds nothing unreviewed or unpublished.
   showing its failure tier and recorded detail, so a real model failure can be told
   from a subscription auth-token refresh before it is released.
 - Unreviewed: completed runs no account has reviewed yet
-  ([`state=unreviewed`](/components/backend/api/#get-runs)), the queue that needs a
+  ([`state=unreviewed`](/components/backend/api/#get-runs)), including
+  validator-rated runs already publishable on their functional rating, since an
+  aesthetic review can be added to those at any time; the queue that needs a
   first pass.
 - Unpublished: runs that have cleared the publish gate but have not been released
   ([`state=publishable`](/components/backend/api/#get-runs)), which is the publish
   backlog.
+
+A run's detail page opens on its Verdict panel. On a
+[validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
+panel shows the points and the functional rating from the run record the moment
+the run completes, with a per-domain breakdown naming each failing item and the
+cap it applied, and the checklist read-only with each item's validator verdict,
+assertions, and media. The review form asks only for a per-domain aesthetic
+tier and the writeup, and Publish is offered whether or not a review exists. On
+a legacy run the panel is the guided review: the checklist takes verdicts, the
+form takes the per-domain functional rating, and Publish waits on a review.
 
 The publish backlog has a tab because a publish is asynchronous and can fail: a
 release that did not land leaves the run exactly as it was, which in the all-runs

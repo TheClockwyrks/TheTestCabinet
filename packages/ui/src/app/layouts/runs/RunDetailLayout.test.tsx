@@ -142,7 +142,7 @@ describe("RunDetailLayout tabs", () => {
   // rather than on which harness produced it.
   it("offers a Code tab on any harness's run that carries an analysis", async () => {
     renderLayout("end-to-end", "claude", {
-      analyzerVersion: 2,
+      analyzerVersion: 1,
     } as RunRecord["codeAnalysis"]);
     expect(
       await screen.findByRole("link", { name: "Code" }),

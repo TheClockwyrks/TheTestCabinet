@@ -150,11 +150,11 @@ use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS,
     CAPABILITY_SUBAGENTS, DEFAULT_SIGNAL_THRESHOLD_PERCENT, GG_WORKSPACE_SKILLS_DIR, GgAgentApi,
     GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCallFailure,
-    GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy, GgHookAgentKind,
-    GgHookEvent, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage,
-    GgResponseHealing, GgReviewer, GgRosterEntry, GgRunLimits, GgSlotBinding, GgSubagentScope,
-    GgTelemetryKind, GgUndocumentedCalls, PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR,
-    PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    GgCapabilitySet, GgContextAction, GgContextSource, GgHookAgentKind, GgHookEvent,
+    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage, GgReviewer, GgRosterEntry,
+    GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgUndocumentedCalls,
+    PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -184,7 +184,6 @@ use crate::ending::{Ending, EndingRole};
 use crate::fault::{FaultLatch, panic_message};
 use crate::fsm::{FsmPosition, FsmSpec};
 use crate::git;
-use crate::healing::{self, Healed, HealingConfig, HealingStrategy, plural};
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
     AgentLimits, CeilingLatch, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome,
@@ -199,11 +198,11 @@ use crate::model::{
 };
 use crate::modules::{
     CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
-    ModuleResolveCtx, ModuleSet, Ownership, Refresh, TransferPlan, TransferReport,
+    ModuleResolveCtx, ModuleSet, Refresh, TransferPlan, TransferReport,
 };
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
-    self, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, FixBriefContext,
+    self, AssignedIssueView, AutoloadView, CodeHeadingView, EndingView, FixBriefContext,
     MemoriesView, MergeBriefContext, ModuleView, NumberedItem, ReadFileView, ReviewBriefContext,
     ReviewChangesView, ReviewRecordView, SkillView, SpawnableAgentView, SystemContext, TasksView,
 };
@@ -218,6 +217,7 @@ use crate::subagents::{
 };
 use crate::tasks::TasksRuntime;
 use crate::telemetry::Emitter;
+use crate::telemetry::plural;
 use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, ApiData, COMPACT_TOOL, EVICT_FILE_VIEW_TOOL,
@@ -1085,7 +1085,7 @@ pub(crate) async fn run_with_seams(
     root_emitter.emit(log("info", orch.limits.armed_summary()));
     root_emitter.record_limits(recorded_limits(&orch.limits, orch.config.max_parallel));
     // ...and the [generation-loop detector](crate::loopguard), when the root agent armed one. Said
-    // on the same terms as the ceilings and the healing set below — a resolved configuration that
+    // on the same terms as the ceilings above — a resolved configuration that
     // decides how the run behaves — and said only when it is armed, because a disarmed detector has
     // no configuration to name and every knob on the declaration is inert. Arming it also changes
     // the transport (a detector can only watch a reply that arrives in pieces), so this line is also
@@ -1093,27 +1093,16 @@ pub(crate) async fn run_with_seams(
     if let Some(config) = orch.loop_guard {
         root_emitter.emit(log("info", config.armed_summary()));
     }
-    // ...and, for a code-mode run, which response-healing strategies are armed. Recorded and logged
-    // beside the ceilings because it is the same kind of fact — a resolved configuration that
-    // decides how the run behaves — and because it is the one a comparison turns on: every healing
-    // figure gg reports counts what *fired*, and the arm in which nothing fired looks exactly like
-    // the arm in which nothing could. A tool-calling run says nothing, because healing never runs
-    // there and an armed set recorded for one would be an intention with no effect.
+    // ...and, for a code-mode run, the reply protocol in force — a resolved configuration that
+    // decides how the run behaves, logged so an operator reading the stream does not have to infer
+    // it from the shape of the requests.
     if orch.code.enabled {
-        root_emitter.emit(log("info", orch.code.healing.armed_summary()));
         root_emitter.emit(log(
             "info",
-            "assistant messages: recorded as the program that ran (the healed program where \
-             healing rewrote the reply, the reply verbatim otherwise)",
+            "responses-as-code: every request requires a `submit_program` tool call; the call's \
+             `program` string is compiled exactly as sent, and assistant text beside the call is \
+             recorded verbatim and never parsed for code.",
         ));
-        root_emitter.record_healing(
-            orch.code
-                .healing
-                .armed()
-                .into_iter()
-                .map(code::wire_strategy)
-                .collect(),
-        );
         // ...and the program library's retention, when any agent keeps one. It is on the same
         // footing as the two lines above — a resolved configuration a comparison toggles — and the
         // arm without it is otherwise indistinguishable in an operator's log from the arm with it
@@ -1659,8 +1648,8 @@ struct Orchestrator {
     /// when project management is off (launch validation refuses a board without one).
     merge_agent: Option<String>,
     /// The **root agent's** code setup: whether its turns are conducted as
-    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), the per-program sandbox ceilings, and the
-    /// armed [healing] strategies. Since responses-as-code is now a **per-agent** capability, each
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) and the per-program sandbox ceilings.
+    /// Since responses-as-code is now a **per-agent** capability, each
     /// agent's own setup is resolved from its profile at run time (see
     /// [`code_setup`](Self::code_setup)); this field carries the root's, used for the run-level
     /// launch log and the sandbox warm-up decision.
@@ -1797,7 +1786,7 @@ struct Orchestrator {
     /// left the capability disarmed (the default).
     ///
     /// Held for one purpose — the launch line that names the armed configuration — on exactly the
-    /// footing [`code.healing`](CodeSetup::healing) is held on: a resolved configuration fact worth
+    /// footing the armed ceilings are held on: a resolved configuration fact worth
     /// saying out loud once, resolved here so the line and the run can never describe different
     /// settings. It is deliberately **not** how any client gets its detector: loop detection is per
     /// agent, so each agent's own client resolves its own from the
@@ -1934,8 +1923,7 @@ impl Orchestrator {
     }
 
     /// Build the orchestrator for `invocation`, loading the shared skills library and token
-    /// estimator once and resolving the run-wide ceilings, deadline, healing strategies and
-    /// subagent caps.
+    /// estimator once and resolving the run-wide ceilings, deadline and subagent caps.
     ///
     /// `warnings` collects every operator-facing diagnostic the resolution produced that gg is none
     /// the less **honouring exactly as written** — an armed ceiling that can only fire on the last
@@ -2014,7 +2002,6 @@ impl Orchestrator {
         // run-level launch log and the sandbox warm-up decision key on. Every value read here was
         // read by `validate_launch` first, through these same resolvers, and refused the run if it
         // was one gg could not honour — so the sink is discarding and nothing is reformatted here.
-        let healing = healing::resolve_healing(set.root(), report);
         // Loop detection is per agent, so every profile's declaration is read here — not just the
         // root's — and each one's advisory warning is stamped with the agent it belongs to. What
         // survives as a warning is only the one cross-knob relationship gg arms exactly as declared
@@ -2069,7 +2056,6 @@ impl Orchestrator {
                 enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
                 language: sandbox::resolve_program_language(set.root(), report),
                 limits: sandbox::resolve_sandbox_limits(set.root(), report),
-                healing,
                 doc_view_types: crate::docs::resolve_doc_view_types(set.root(), report),
             },
             issue_worktrees: Mutex::new(BTreeMap::new()),
@@ -2269,8 +2255,8 @@ impl Orchestrator {
     }
 
     /// The per-agent [code setup](CodeSetup) for `profile`: whether its turns run as
-    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), and the sandbox ceilings and [healing]
-    /// strategies its own responses-as-code config resolves to.
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), and the sandbox ceilings its own
+    /// responses-as-code config resolves to.
     fn code_setup(&self, profile: &GgAgentConfig) -> CodeSetup {
         // A discarding sink: `validate_launch` read every one of these values off this same profile,
         // through these same resolvers, before the first turn and refused the run if any could not
@@ -2280,7 +2266,6 @@ impl Orchestrator {
             enabled: profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
             language: sandbox::resolve_program_language(profile, report),
             limits: sandbox::resolve_sandbox_limits(profile, report),
-            healing: healing::resolve_healing(profile, report),
             doc_view_types: crate::docs::resolve_doc_view_types(profile, report),
         }
     }
@@ -3596,7 +3581,7 @@ async fn drive_agent(
         }
 
         // This agent's execution mode (traditional tool calling vs a code-shaped reply) and the
-        // sandbox ceilings/healing behind it come from its **own profile**, so a run can mix agents
+        // sandbox ceilings behind it come from its **own profile**, so a run can mix agents
         // that call tools with agents that write programs. Resolved here, ahead of the modules,
         // because the window it opens is armed by it.
         let code = orch.code_setup(&profile);
@@ -3616,14 +3601,20 @@ async fn drive_agent(
         // A successor's set is not built here at all: it was [transferred](crate::modules::transfer)
         // on the far side of the handoff, where the outgoing instance's stream was still live to
         // report what it carried.
+        // The program library a succession or a fork carried, handed to the loop beside the
+        // opening so the successor can adopt it once it has resolved its own retention.
+        let mut carried_programs: Option<crate::programs::ProgramLibrary> = None;
         let (mut modules, opening) = match succession.take() {
-            Some(succession) => (
-                succession.modules,
-                Opening::Carried {
-                    note: succession.note,
-                    history: succession.history,
-                },
-            ),
+            Some(succession) => {
+                carried_programs = Some(succession.programs);
+                (
+                    succession.modules,
+                    Opening::Carried {
+                        note: succession.note,
+                        history: succession.history,
+                    },
+                )
+            }
             None => {
                 // This profile's own catalogue: the module set about to be resolved is this
                 // agent's, and so is the library it reads from.
@@ -4178,6 +4169,7 @@ async fn drive_agent(
                     },
                     ending_role,
                     opening,
+                    carried_programs: carried_programs.take(),
                     turn_base: turns_taken,
                     replay: orch.replay.clone(),
                 },
@@ -4392,6 +4384,9 @@ async fn drive_agent(
             history: report.carries(ModuleKind::History),
             from_state: handoff.reason.departed_state(),
             turn_base: turns_taken,
+            // Moved, not cloned: the outgoing incarnation is over, and its library is the
+            // successor's now.
+            programs: handoff.programs,
         });
         next_client = successor_client;
         let successor = agent.succeeding(successor_id, successor_profile_id, successor_fsm);
@@ -4603,25 +4598,6 @@ fn announce_configuration(
     // whole record, and the documented contract is that `archive_state` arrives as an agent opens.
     if let Some(state) = modules.archive().state_event() {
         emitter.emit(state);
-    }
-    // Any module the agent holds but its prompt does **not** carry. Named on the operator log
-    // because it is the one capability configuration whose effect is invisible in the toolset: the
-    // tools are all there, and the model is simply never told what it is holding.
-    let unowned: Vec<&str> = modules
-        .each()
-        .into_iter()
-        .filter(|module| module.enabled() && module.ownership() == Ownership::Unowned)
-        .map(|module| module.kind().as_str())
-        .collect();
-    if !unowned.is_empty() {
-        emitter.emit(log(
-            "info",
-            format!(
-                "the {} module(s) are unowned: their tools are offered and their state is live, \
-                 but nothing about them is put in the prompt.",
-                unowned.join(", ")
-            ),
-        ));
     }
     if let Some(language) = program_language {
         emitter.emit(log(
@@ -6414,6 +6390,7 @@ impl Agent {
             hooks,
             ending_role,
             opening,
+            carried_programs,
             turn_base,
             replay,
         } = setup;
@@ -6450,6 +6427,11 @@ impl Agent {
             profile,
             &mut crate::validate::LaunchReport::Discarding,
         );
+        // What a succession moved here, or a fork cloned: adopted under **this** profile's
+        // retention and id length, and adopted into nothing when this profile keeps no library.
+        if let Some(carried) = carried_programs {
+            programs.adopt(carried);
+        }
         // **What this agent was granted on the API surface**, resolved once for the whole session
         // and handed to every reader of it: the documentation runtime below, the prompt's API
         // section, and the per-turn code scope the membrane builds its own grant from. Three
@@ -6504,13 +6486,6 @@ impl Agent {
             reviewers,
             &mut crate::validate::LaunchReport::Discarding,
         );
-        // Whether the pinned board block belongs in *this* agent's window: the run has a board and
-        // this agent's own profile carries the capability to author it. The same conjunction gates
-        // the prompt's board section (see `system_prompt`), so what an agent is told about the board
-        // and what it is shown of it agree.
-        let offers_board =
-            caps.board().offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT);
-
         // Build the source-tagged context model in place of a flat transcript, seeded with
         // the two pinned items every session opens with: the system prompt (which lists any
         // available skills' descriptions and explains the memory scratchpad and task list) and
@@ -6531,7 +6506,6 @@ impl Agent {
             skills: caps.skills(),
             memories: caps.memories(),
             tasks: caps.tasks(),
-            board: caps.board(),
             read_policy,
             vision: &tool_ctx.vision,
             program_language: code.enabled.then_some(code.language),
@@ -6551,7 +6525,6 @@ impl Agent {
             assigned_issue: project
                 .as_ref()
                 .and_then(|project| project.assigned_issue.as_deref()),
-            fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
         });
         // The prompt an agent reasons under **is** the experiment, so there is no second prompt to
         // fall back to: gg used to swap its own built-in template in for an override that would not
@@ -6569,18 +6542,6 @@ impl Agent {
         // So there is nothing here to detect and nothing to undo: whatever this instance inherited,
         // the prompt it reasons under is its own.
         context.set_system(system);
-        // The trailing contract notice, set on the same terms as the system prompt — a property of
-        // this holder, set unconditionally so a code agent that inherited a window gets its own
-        // and a tool-calling agent that inherited a code window sheds its predecessor's. It is one
-        // constant `system` message in a slot that always renders **last** (see
-        // `ContextModel::set_trailing_notice`), so it restates the reply contract at the context
-        // tail of every request without ever disturbing the append-only prompt ahead of it —
-        // measured as the single most effective cross-model lever for keeping a
-        // tool-call-trained model answering with bare programs.
-        context.set_trailing_notice(
-            code.enabled
-                .then(|| prompts::render_contract_notice(code.language)),
-        );
 
         // How the rest of the window opens. A **fresh** one is seeded the way every agent's has
         // always been: the build prompt, then whatever the capabilities pre-load into it. A
@@ -6627,16 +6588,20 @@ impl Agent {
         }
 
         // The bootstrap turn: on a code agent's fresh window, a program gg writes in this agent's
-        // language and **runs** — listing every module the agent was granted and opening the
-        // documentation of the calls discovery itself is made of — and the views its own calls
-        // placed. First of every seeding step, because the prompt names no function and this is the
-        // only thing that hands the model its way in; see `crate::bootstrap` for why it is a program
-        // that runs, what it carries, and why a failure of it is gg's rather than the model's.
+        // language and **runs** — listing the modules and opening the documentation of the
+        // functions the profile's own `openingTurn` names, of those this agent holds — and the
+        // views its own calls placed. First of every seeding step, because the prompt names no
+        // function and this is the only thing that hands the model its way in; see
+        // `crate::bootstrap` for why it is a program that runs, how the two lists are resolved, and
+        // why a failure of it is gg's rather than the model's. An entry the agent does not hold is
+        // dropped with a `warn` line each; two lists that come out empty seed nothing, on purpose.
         if !carried {
             match crate::bootstrap::seed_bootstrap(
                 context,
                 &mut docs,
+                &mut programs,
                 crate::bootstrap::BootstrapAgent {
+                    opening_turn: &profile.opening_turn,
                     capabilities: &granted_capabilities,
                     operations: &granted_operations,
                     role: ending_role,
@@ -6646,12 +6611,25 @@ impl Agent {
             )
             .await
             {
-                Ok(placed) => {
-                    if placed > 0 {
-                        emitter.emit(log(
-                            "debug",
-                            format!("opened {placed} view(s) to bootstrap discovery"),
-                        ));
+                Ok(bootstrap) => {
+                    for dropped in bootstrap.dropped() {
+                        emitter.emit(log("warn", dropped.to_string()));
+                    }
+                    match bootstrap {
+                        crate::bootstrap::Bootstrap::Seeded { placed, .. } => {
+                            emitter.emit(log(
+                                "debug",
+                                format!("opened {placed} view(s) on the opening turn"),
+                            ));
+                        }
+                        crate::bootstrap::Bootstrap::Empty { .. } => {
+                            emitter.emit(log(
+                                "debug",
+                                "this agent's opening turn is configured empty, so no opening \
+                                 program was seeded",
+                            ));
+                        }
+                        crate::bootstrap::Bootstrap::NotCodeMode => {}
                     }
                 }
                 // gg wrote the program, granted the scope it ran under and implements every call in
@@ -6731,6 +6709,7 @@ impl Agent {
             && !carried
             && let Err(detail) = autoload_specifications(
                 context,
+                &mut programs,
                 provided_files,
                 tool_ctx,
                 code.language,
@@ -6754,15 +6733,22 @@ impl Agent {
         // views, which are the thing nothing else could reconstruct, sit closest to the tail.
         if persistence.enabled() && !carried {
             let desk = persistence.restored();
-            let files = crate::persistence::restore_file_views(
+            let files = match crate::persistence::restore_file_views(
                 context,
+                &mut programs,
                 &desk.files,
                 read_policy,
                 tool_ctx,
                 code.language,
                 emitter,
             )
-            .await;
+            .await
+            {
+                Ok(files) => files,
+                // The program library could not mint an id for a restored view's synthesized
+                // submission — gg's own defect, fatal the way a host fault is.
+                Err(detail) => return setup_broke(self, emitter, &limits, turn_base, detail),
+            };
             let texts = crate::persistence::restore_text_views(context, &desk.texts);
             // Last, because documentation is the least of the three a model needs at the tail: the
             // material it was working *on* sits closest to where it resumes reading.
@@ -6984,23 +6970,9 @@ impl Agent {
             // the list is what the model steers by from turn to turn rather than a record it
             // consults, so it is worth keeping current every turn.
             for (source, block) in caps.pinned_blocks(Refresh::EveryTurn) {
-                if source == GgContextSource::Board && !offers_board {
-                    continue;
-                }
                 context.replace_source(source, Retention::Pinned, block);
             }
 
-            // Refresh the pinned epic/issue board the same way, so the window always shows the
-            // model's current decomposition (epics, issues, and what is ready vs blocked) and
-            // compaction retains it. Also rebuilt at the turn boundary, never between an assistant
-            // tool-call message and its tool results.
-            //
-            // Gated on **this agent's own** capability, not merely on the run having a board. The
-            // board is run-global, but the block is not: an agent without the capability has no
-            // board tool, is not told in its system prompt that a board exists, and cannot act on
-            // one — so pinning the whole decomposition into its window spends its context every turn
-            // on a document it can only be distracted by, and invites an implementer to go looking
-            // for work other than the job it was dispatched to do.
             // With the pinned blocks refreshed, the window for this turn is fully assembled.
             // If the compaction backstop is on and fullness has crossed its threshold, compact
             // now — at the turn boundary, before this turn's model call, never between an
@@ -7165,11 +7137,15 @@ impl Agent {
             }
 
             // The offered toolset for this turn. In responses-as-code mode the model is offered
-            // **no** native tool definitions and there is nothing here to withhold: its surface is
-            // typed API functions it calls from inside a program, which the prompt names the modules
-            // of and the membrane gates. In the ordinary tool-calling mode the whole offered set
-            // goes out every turn: the tool list is part of the prompt a provider caches, so a
-            // toolset that varied turn to turn would rewrite the cached prefix.
+            // exactly **one** native tool — `submit_program` — and the request requires a call to
+            // it (forced tool choice); its working surface is typed API functions it calls from
+            // inside the submitted program, which the prompt names the modules of and the membrane
+            // gates. In the ordinary tool-calling mode the whole offered set goes out every turn:
+            // the tool list is part of the prompt a provider caches, so a toolset that varied turn
+            // to turn would rewrite the cached prefix.
+            let submit_tool = code
+                .enabled
+                .then(|| completion::submit_program_tool(code.language));
             let tools: Vec<ToolDefinition> = if code.enabled {
                 Vec::new()
             } else {
@@ -7218,6 +7194,7 @@ impl Agent {
                     client,
                     context,
                     &tools,
+                    submit_tool.as_ref(),
                     &tool_ctx.vision.support,
                     emitter,
                 )
@@ -7439,7 +7416,7 @@ impl Agent {
             // recorded at whichever of this loop's exits the turn eventually takes — and is empty
             // on a run that left the capability disarmed, which is the default.
             let loop_aborts = response.loop_aborts;
-            // The reply's size — measured on the raw reply, before healing — threaded to every
+            // The reply's size — its raw text, exactly as sent — threaded to every
             // record_turn of this turn so the outcome event carries it; see [`ResponseSize`].
             let response_size = ResponseSize::of(&response);
             if loop_aborts.any() {
@@ -7472,57 +7449,14 @@ impl Agent {
             // contribute to the run's spend while it is still running.
             limits.spend.add(response.cost);
 
-            // Record the assistant turn (text + any tool calls) into the context.
-            //
-            // In responses-as-code mode a turn *is* a program, and the model was offered no native
-            // tool definitions at all — so a `tool_calls` it emitted anyway (a reflex some models
-            // bring from their tool-use training) is never dispatched and never answered. Keeping
-            // it would leave an assistant `tool_calls` entry with no `tool` message following it,
-            // which an OpenAI-shaped provider rejects for the whole request on every later turn. It
-            // is therefore dropped from the window and named in a `warn`, so the anomaly is
-            // measurable rather than invisible.
-            if code.enabled && !response.tool_calls.is_empty() {
-                emitter.emit(log(
-                    "warn",
-                    format!(
-                        "the model requested {} native tool call(s) ({}) on a responses-as-code \
-                         turn, which offers none; they are ignored — the turn's program is what \
-                         runs.",
-                        response.tool_calls.len(),
-                        response
-                            .tool_calls
-                            .iter()
-                            .map(|call| call.name.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                    ),
-                ));
-            }
-            // Responses-as-code heals the reply *before* the assistant message is recorded, because
-            // the recorded message is the program that ran — the healed program whenever healing
-            // rewrote the reply. Healing is done here, once, and the `Healed` is handed to
-            // `run_code_turn` so the turn does not re-heal the same reply. On the tool-calling path
-            // there is no program and no healing; the reply is recorded as sent.
-            let healed = code.enabled.then(|| {
-                healing::heal(
-                    response.text.as_deref().unwrap_or_default(),
-                    &code.healing,
-                    sandbox::language(code.language).healing(),
-                )
-            });
-            // The text the assistant turn is recorded with — always the program that actually ran.
-            // On a code turn it is the healed program whenever healing changed anything
-            // (`rewritten()`); a reply healing left alone, and every tool-calling reply, is
-            // recorded verbatim. The model only ever re-reads this text: the raw reply of a
-            // rewritten turn never enters the context. It survives for the operator instead — on
-            // the turn's `code_execution` record (`healing.original`) and on the operator's
-            // stream — and no feedback to the model mentions the repair.
-            let assistant_text = match &healed {
-                Some(healed) if healed.rewritten() => Some(healed.program.clone()),
-                _ => response.text.clone(),
-            };
-            // The assistant-message event carries the same text the context records — what ran —
-            // and is emitted only now, after healing has settled which text that is.
+            // The assistant turn is recorded exactly as the model sent it, in **both** modes: its
+            // text (on a code turn, commentary — surfaced and recorded, never parsed for code) and
+            // every tool call it made. On a code turn the program itself travels inside the
+            // `submit_program` call's arguments, so the transcript the model re-reads carries its
+            // own submissions in exactly the shape it must produce them.
+            let assistant_text = response.text.clone();
+            // The assistant-message event carries the model's own text, exactly as the context
+            // records it.
             if let Some(text) = &assistant_text {
                 emitter.emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
                 last_text = Some(text.clone());
@@ -7534,17 +7468,9 @@ impl Agent {
             // intrinsic). Captured here,
             // *before* the assistant reply is appended, so `prompt_items` is exactly the
             // window that was sent this turn (post vision-recovery, if any). The reply is
-            // built the same way `push_assistant` will record it (no native tool calls in
-            // responses-as-code mode) and pooled too, so it reappears — id unchanged — as a
-            // request pointer on the next turn.
-            let reply = Message::assistant(
-                assistant_text.clone(),
-                if code.enabled {
-                    Vec::new()
-                } else {
-                    response.tool_calls.clone()
-                },
-            );
+            // built the same way `push_assistant` will record it and pooled too, so it reappears
+            // — id unchanged — as a request pointer on the next turn.
+            let reply = Message::assistant(assistant_text.clone(), response.tool_calls.clone());
             let reply_tokens = context.estimate(&reply);
             let has_reply = reply.content.is_some() || !reply.tool_calls.is_empty();
             let request: Vec<PromptItem<'_>> = context.prompt_items().collect();
@@ -7572,14 +7498,7 @@ impl Agent {
                 recorder.record_prompt_frame(&self.id, &request);
             }
 
-            context.push_assistant(
-                assistant_text,
-                if code.enabled {
-                    Vec::new()
-                } else {
-                    response.tool_calls.clone()
-                },
-            );
+            context.push_assistant(assistant_text, response.tool_calls.clone());
 
             // A pending **self-summarization** takes this turn whole, in either execution mode: the
             // reply *is* the summary, so no tool call is dispatched and no program is run. That is
@@ -7648,12 +7567,113 @@ impl Agent {
                 continue;
             }
 
-            // Responses-as-code turn: the model was offered no native tools, so its **whole reply**
-            // is a program. Run the healed program in the wasmtime sandbox — bridging every
+            // Responses-as-code turn: the request required a `submit_program` call, and each such
+            // call's `program` string is a program to run in the wasmtime sandbox — bridging every
             // typed call to the real toolset (and, for a delegation tool, the scheduler) — and act
             // on what the turn asks for. There is no implicit ending here: a session under this
             // capability ends only when a program calls `finish`, or when a ceiling stops the run.
             if code.enabled {
+                // Answer every call the reply made, directly after the assistant message that made
+                // them: a `tool` message per id is what keeps the transcript a conversation every
+                // OpenAI-shaped provider accepts, and it must directly follow the calls — the
+                // programs run *after* these are pushed, so everything a program produces (views,
+                // errors, notices) lands beneath the acknowledgements rather than between two of
+                // them. An acknowledgement therefore carries receipt, never outcome; a call that
+                // carried no program is answered with why, and a call to a tool this mode does not
+                // offer with the redirect.
+                let turn_call_ids: Vec<String> = response
+                    .tool_calls
+                    .iter()
+                    .map(|call| call.id.clone())
+                    .collect();
+                let mut submissions: Vec<code::SubmittedProgram> = Vec::new();
+                for call in &response.tool_calls {
+                    if call.name == completion::SUBMIT_PROGRAM_TOOL {
+                        let mut submission = code::submitted_program(call);
+                        // A call that carried a program is issued its id **here**, before it runs:
+                        // the acknowledgement's body is the id, so the receipt the model reads is
+                        // the handle `programs.get` takes for the program. A call that carried
+                        // none is issued nothing and answered with why. A library that could not
+                        // mint one hands the turn a receipt the code turn ends the session on; the
+                        // transcript is still answered, because the request must stay a
+                        // conversation even on the way out.
+                        let body = match &submission.program {
+                            Ok(_) => match programs.issue_id() {
+                                Ok(id) => {
+                                    let body = completion::submit_program_ack(id.as_deref());
+                                    submission.receipt = id.map_or(
+                                        code::ProgramReceipt::Unkept,
+                                        code::ProgramReceipt::Id,
+                                    );
+                                    body
+                                }
+                                Err(exhausted) => {
+                                    submission.receipt =
+                                        code::ProgramReceipt::Exhausted(exhausted.message);
+                                    completion::SUBMIT_PROGRAM_ACK.to_string()
+                                }
+                            },
+                            Err(why) => why.clone(),
+                        };
+                        context.push_tool_result(GgContextSource::ToolOutput, &call.id, body);
+                        submissions.push(submission);
+                    } else {
+                        emitter.emit(log(
+                            "warn",
+                            format!(
+                                "the model called `{}` on a responses-as-code turn, which offers \
+                                 no such tool; the call was refused.",
+                                call.name
+                            ),
+                        ));
+                        context.push_tool_result(
+                            GgContextSource::ToolOutput,
+                            &call.id,
+                            format!(
+                                "There is no tool named `{}` in this session. Submit your \
+                                 program with `{}`.",
+                                call.name,
+                                completion::SUBMIT_PROGRAM_TOOL
+                            ),
+                        );
+                    }
+                }
+                // A reply that submitted nothing runs nothing: the turn is an error, the model is
+                // told how to take its next one, and the loop asks again. Under forced tool choice
+                // this is a provider that did not honour the requirement, not the ordinary shape
+                // of a turn.
+                if submissions.is_empty() {
+                    context.push(
+                        GgContextSource::System,
+                        Retention::Ephemeral,
+                        Message::user(format!(
+                            "Your reply made no `{tool}` call, so nothing ran. Submit your next \
+                             turn's whole program as the `program` string of one `{tool}` call.",
+                            tool = completion::SUBMIT_PROGRAM_TOOL
+                        )),
+                    );
+                    if let Some(breach) = self.record_turn(
+                        &mut agent_limits,
+                        emitter,
+                        &limits,
+                        TurnOutcome::Error(TurnErrorType::MissingCompletionNoProgram),
+                        loop_aborts,
+                        response_size,
+                    ) {
+                        return self.stop_on_limit(
+                            emitter,
+                            &limits,
+                            breach,
+                            turn + 1,
+                            total_tokens,
+                            total_cost,
+                            true,
+                            last_report.as_deref(),
+                            last_text,
+                        );
+                    }
+                    continue;
+                }
                 // The window and the skills runtime are moved **out of the module set** for the
                 // turn: a program's calls act on the live window from a blocking thread, so they
                 // travel by value and are put back the moment the turn hands them over. The set is
@@ -7665,7 +7685,8 @@ impl Agent {
                 let turn_ctx = CodeTurn {
                     spawner: self,
                     // The same session turn the window's own headers carry, so the number the model
-                    // reads on a result and the number `programs.get` takes are one number.
+                    // reads on a result and the turn a `programs.history()` entry names are one
+                    // number.
                     turn: turn as u64 + 1,
                     tool_ctx,
                     read_policy,
@@ -7696,7 +7717,7 @@ impl Agent {
                 let turn_programs =
                     std::mem::replace(&mut programs, crate::programs::ProgramLibrary::disabled());
                 let (decision, state) = run_code_turn(
-                    healed.expect("code mode heals the reply before recording the assistant turn"),
+                    submissions,
                     &code,
                     limits.deadline,
                     &turn_ctx,
@@ -7800,6 +7821,7 @@ impl Agent {
                                         context,
                                         history_id: &history_id,
                                         caps,
+                                        programs: &state.programs,
                                     },
                                     emitter,
                                     state.forks_requested,
@@ -7913,6 +7935,7 @@ impl Agent {
                                     context,
                                     history_id: &history_id,
                                     caps,
+                                    programs: &programs,
                                 },
                                 emitter,
                                 turn_forks,
@@ -8037,20 +8060,25 @@ impl Agent {
                                 final_text: None,
                                 ending: None,
                                 limit: None,
-                                handoff: Some(handoff),
+                                // The library goes with the successor: moved, since this
+                                // incarnation reads it no further.
+                                handoff: Some(handoff.carrying(std::mem::replace(
+                                    &mut programs,
+                                    crate::programs::ProgramLibrary::disabled(),
+                                ))),
                             };
                         }
                         // The turn must end on a message from gg. Usually it already does — a view
                         // the program opened, an error, a rebuilt state block — but a program that
-                        // ran cleanly and opened nothing new leaves this turn's assistant message
-                        // last, and a request whose final message is an assistant one is a request
-                        // asking the provider to *continue that message* rather than to answer it.
+                        // ran cleanly and opened nothing new leaves this turn's own submission —
+                        // the assistant message, or a `submit_program` acknowledgement — last,
+                        // which is a request that asks the provider for nothing new.
                         //
                         // Checked against the window rather than inferred from the outcome, because
                         // what lands last is not a property of the program alone: a re-opened view
                         // supersedes in place rather than appending, a compaction rewrites the
                         // window wholesale, and either can leave the turn ending where it started.
-                        if context.ends_on_assistant() {
+                        if context.ends_on_submission(&turn_call_ids) {
                             context.push(
                                 GgContextSource::System,
                                 Retention::Ephemeral,
@@ -8452,6 +8480,7 @@ impl Agent {
                         context,
                         history_id: &history_id,
                         caps,
+                        programs: &programs,
                     },
                     emitter,
                     std::mem::take(&mut declared_forks),
@@ -8566,7 +8595,12 @@ impl Agent {
                     final_text: None,
                     ending: None,
                     limit: None,
-                    handoff: Some(handoff),
+                    // A tool-calling incarnation's library is empty (it runs no programs), but it is
+                    // still the one its successor adopts, so it travels on the same terms.
+                    handoff: Some(handoff.carrying(std::mem::replace(
+                        &mut programs,
+                        crate::programs::ProgramLibrary::disabled(),
+                    ))),
                 };
             }
 
@@ -9511,16 +9545,15 @@ impl AutoloadSetup {
 }
 
 /// How a run conducts its turns when [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) is on: the
-/// run-wide mode flag, the per-program [sandbox ceilings](SandboxLimits), and which [healing]
-/// strategies are armed.
+/// run-wide mode flag and the per-program [sandbox ceilings](SandboxLimits).
 ///
-/// Resolved once on the [orchestrator](Orchestrator) and handed to every agent, because all three
-/// are properties of *how a turn is conducted*, not of one agent — and grouped into one struct
+/// Resolved once on the [orchestrator](Orchestrator) and handed to every agent, because these are
+/// properties of *how a turn is conducted*, not of one agent — and grouped into one struct
 /// because a loop that took them separately would let two of them disagree at a call site.
 #[derive(Debug, Clone, Copy)]
 struct CodeSetup {
-    /// Whether the capability is on. When off, nothing in [`crate::sandbox`] or
-    /// [`crate::healing`] is reachable at all and the loop drives ordinary tool calling.
+    /// Whether the capability is on. When off, nothing in [`crate::sandbox`] is reachable at all
+    /// and the loop drives ordinary tool calling.
     enabled: bool,
     /// The [language](GgProgramLanguage) this agent writes its programs in — which decides how a
     /// reply is prepared, which prebuilt guest evaluates it, and how the SDK the prompt describes
@@ -9533,9 +9566,6 @@ struct CodeSetup {
     /// The execution timeout and linear-memory cap one program runs under, resolved from the
     /// capability's `timeoutSecs` / `maxMemoryBytes` params with their defaults.
     limits: SandboxLimits,
-    /// The [healing] strategies armed for this run — the lever that decides which
-    /// malformations of a reply gg repairs before compiling it, and which it lets fail.
-    healing: HealingConfig,
     /// Which SDK types an [`openDocsView`](crate::docs::DocsRuntime) of a function opens beside it —
     /// its return position, that plus its arguments, or none at all.
     ///
@@ -9968,8 +9998,8 @@ struct DriveSetup {
     read_policy: Option<ReadPolicy>,
     /// How much of a command's output one `shell` call returns.
     shell_offload: OffloadPolicy,
-    /// Whether this agent answers with programs rather than tool calls, and the sandbox ceilings
-    /// and [healing] behind that.
+    /// Whether this agent answers with programs rather than tool calls, and the sandbox
+    /// ceilings behind that.
     code: CodeSetup,
     /// The run's [discovery warning latch](crate::discovery), shared by every agent.
     ///
@@ -9990,6 +10020,10 @@ struct DriveSetup {
     /// How this incarnation's window is [opened](Opening) — seeded fresh, or continued from the
     /// instance it succeeds.
     opening: Opening,
+    /// The [program library](crate::programs) a succession moved, or a fork cloned, to this
+    /// incarnation — `None` for an agent's first incarnation. Adopted after this incarnation has
+    /// resolved its own library from its own profile.
+    carried_programs: Option<crate::programs::ProgramLibrary>,
     /// How many turns this agent has already taken across its earlier incarnations, and therefore
     /// the number its next turn is the successor of.
     ///
@@ -10479,6 +10513,7 @@ pub(crate) fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate
     resolve_signal_threshold(profile, report);
     AutoloadSetup::resolve(profile, report);
     check_allowlists(profile, report);
+    check_opening_turn(profile, report);
 }
 
 /// The run-wide half of this module's [launch pass](crate::validate::validate_launch)
@@ -11001,15 +11036,14 @@ struct PromptInputs<'a> {
     memories: &'a MemoriesRuntime,
     /// The tasks capability, for its count ceiling.
     tasks: &'a TasksRuntime,
-    /// The epic/issue board capability, for its ceilings.
-    board: &'a BoardRuntime,
     /// How much of a file one `read_file` call returns, so a capped run says so up front, or `None`
     /// when the agent configures no read policy — in which case the prompt states no cap, because
     /// there is none in force.
     ///
     /// There is no `shell` counterpart: the [output policy](OffloadPolicy) states its own tail on
     /// the output it truncates, and that a program may run a command at all is what `shell`'s brief
-    /// says on the opening turn.
+    /// says — on the opening turn, where the profile lists `shell` as a fresh one does, and in a
+    /// module lookup otherwise.
     read_policy: Option<ReadPolicy>,
     /// This agent's model and the run's vision registry, so the prompt can state whether a
     /// reference image can actually be shown to it.
@@ -11065,10 +11099,6 @@ struct PromptInputs<'a> {
     /// brief describes the work, not the protocol, and the board-authoring section it would have
     /// read the protocol from is (rightly) not rendered for a profile that may not author the board.
     assigned_issue: Option<&'a str>,
-    /// Whether [healing]'s fence-stripping strategy is armed, which decides how the prompt states
-    /// the no-code-fence rule — as a contract whose breach gg silently repairs (never disclosing the
-    /// repair to the model), or as a syntax error the model will be handed.
-    fences_are_stripped: bool,
 }
 
 /// Whether `agent` was granted the call gg spells `tool` on the tool-calling surface and
@@ -11175,6 +11205,81 @@ fn check_allowlists(profile: &GgAgentConfig, report: &mut crate::validate::Launc
     }
 }
 
+/// The launch pass over a profile's [opening turn](test_cabinet_core::gg::GgOpeningTurn) — the
+/// vocabulary half of the rules the [bootstrap](crate::bootstrap) applies, on exactly the terms
+/// [`check_allowlists`] applies them to the two allowlists.
+///
+/// Three things refuse. A module id that is the namespace of no operation gg has, and a function
+/// id that is no gg operation, are entries nothing could ever honour — and, as with an allowlist,
+/// the effect of accepting one would be **silence**: a window short of a listing it was written to
+/// open on looks exactly like a window deliberately opened on less. The third is a function held by
+/// **role or placement** rather than by configuration — an ending call, or the machine transition —
+/// which no profile can promise its window will open on, since which agent holds it is decided by
+/// where the run puts the agent and not by anything in its document.
+///
+/// What does *not* refuse is an entry in the right vocabulary that this agent's grant does not
+/// reach: a module none of whose functions it may call, a function its allowlist does not name.
+/// That is the shared-document case the allowlists also allow, and the bootstrap drops it at seed
+/// time with a `warn` line naming the entry. An arm that does not catalogue a function is the same
+/// case seen from the other side, and is left to the seed as well — the launch does not know the
+/// arm every profile will run on.
+fn check_opening_turn(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    for (index, id) in profile.opening_turn.modules.iter().enumerate() {
+        if crate::sandbox::family_of_module(id).is_some() {
+            continue;
+        }
+        let hint = if crate::sandbox::operation_by_id(id).is_some() {
+            "; it is an operation id, which belongs in `openingTurn.functions`"
+        } else {
+            ""
+        };
+        report.report(crate::validate::LaunchDefect::run_level(
+            format!("openingTurn.modules[{index}]"),
+            id,
+            format!(
+                "`{id}` is not a gg module{hint}. The opening turn could list nothing for it, and a \
+                 window opened on less by accident is indistinguishable from one opened on less on \
+                 purpose."
+            ),
+        ));
+    }
+    for (index, id) in profile.opening_turn.functions.iter().enumerate() {
+        let locus = format!("openingTurn.functions[{index}]");
+        let Some(operation) = crate::sandbox::operation_by_id(id) else {
+            let hint = if crate::tools::ALL_TOOL_NAMES.contains(&id.as_str()) {
+                "; it is a tool name, and the opening turn opens the documentation of operations"
+            } else if crate::sandbox::family_of_module(id).is_some() {
+                "; it is a module id, which belongs in `openingTurn.modules`"
+            } else {
+                ""
+            };
+            report.report(crate::validate::LaunchDefect::run_level(
+                locus,
+                id,
+                format!(
+                    "`{id}` is not a gg operation{hint}. The opening turn could open nothing for it, \
+                     and a window opened on less by accident is indistinguishable from one opened \
+                     on less on purpose."
+                ),
+            ));
+            continue;
+        };
+        let held_by = match operation.binding {
+            crate::sandbox::Binding::Ending(_) => "the role an agent is dispatched in",
+            crate::sandbox::Binding::Machine => "the machine an agent is placed in",
+            crate::sandbox::Binding::Capability(_) | crate::sandbox::Binding::Always => continue,
+        };
+        report.report(crate::validate::LaunchDefect::run_level(
+            locus,
+            id,
+            format!(
+                "`{id}` is held by {held_by}, not by this profile's configuration, so an opening \
+                 turn cannot promise to open its documentation."
+            ),
+        ));
+    }
+}
+
 /// The capability modules a code program has this run, in the catalogue's own order, each with the
 /// one-line description the prompt names it by, and the functions it actually binds.
 ///
@@ -11255,10 +11360,10 @@ fn api_surface(
                 .entry(function.module)
                 .or_default()
                 .push(GgAgentApiFunction {
-                    // Module-relative rather than bare, so the method an arm hangs off the value
-                    // `current` lists reports as `OpenView.close` beside the free `close` rather
-                    // than as a second `close` a reader keyed on the name would fold into the
-                    // first.
+                    // Module-relative rather than bare, so a method an arm hangs off a returned
+                    // value reports qualified — `MemoryHit.read` beside the free `readMemory` —
+                    // rather than as a bare name a reader keyed on the name could mistake for a
+                    // second free function.
                     name: crate::sandbox::signatures::module_relative_name(&function).to_string(),
                     operation: function.operation.to_string(),
                 });
@@ -11337,11 +11442,12 @@ pub(crate) fn module_views(
 /// The **paths** of the modules this agent binds, in the prompt's own order — [`module_views`] with
 /// everything but the identifier dropped.
 ///
-/// It exists so the [bootstrap](crate::bootstrap) searches exactly the set the prompt publishes,
-/// by the name the prompt shows. The two must be one answer: the prompt tells the model these paths
-/// are where its surface is filed, and the opening turn is what fills that in — a bootstrap that
-/// derived its own list could list a module the prompt did not name, or miss one it did, and in
-/// either direction the model's first window would contradict its own instructions.
+/// It exists so the [bootstrap](crate::bootstrap) lists, of the modules the agent's own
+/// `openingTurn` names, exactly those the prompt publishes, by the name the prompt shows. The two
+/// must be one answer: the prompt tells the model these paths are where its surface is filed, and
+/// the opening turn is what fills that in — a bootstrap that decided held-ness its own way could
+/// list a module the prompt did not name, or drop one it did, and in either direction the model's
+/// first window would contradict its own instructions.
 ///
 /// A path rather than gg's module id because the path is what a *search* takes and what the model
 /// reads: the module filter accepts either, but a listing keyed by an id the model never saw would
@@ -11391,12 +11497,7 @@ fn execution_mode(code_enabled: bool) -> &'static str {
 /// model what a heading it *meets* means, not what to write to produce one. Saying the message holds
 /// a value the program put there loses nothing a reader needs, and the call that puts it there is
 /// found the way every other call is.
-pub(crate) fn code_heading_views(
-    memories: bool,
-    tasks: bool,
-    board: bool,
-    files: bool,
-) -> Vec<CodeHeadingView> {
+pub(crate) fn code_heading_views(memories: bool, tasks: bool, files: bool) -> Vec<CodeHeadingView> {
     // (source, one-line description, whether this run can produce it). The heading word itself comes
     // from `code_heading(source)`, the single source of truth both this list and the prefix share.
     let rows: &[(GgContextSource, &str, bool)] = &[
@@ -11444,11 +11545,6 @@ pub(crate) fn code_heading_views(
             tasks,
         ),
         (
-            GgContextSource::Board,
-            "the epic/issue board, as it currently stands",
-            board,
-        ),
-        (
             GgContextSource::FileView,
             "a file, or a window of one, shown in your context — seeded by the run or opened by \
              your own file-view call — headed by its path, the 1-based line range shown and the \
@@ -11474,18 +11570,6 @@ pub(crate) fn code_heading_views(
             })
         })
         .collect()
-}
-
-/// Whether the system prompt describes `module`'s capability at all: it is enabled **and**
-/// [owned](Ownership::Owned) by this agent.
-///
-/// This is the whole of what [`unowned`](Ownership::Unowned) means at the prompt — the module is
-/// reachable through the holder's tools and nothing else. The tools themselves are untouched (the
-/// registry is built from the capability, not from the ownership), its state stays live, and its
-/// telemetry is still emitted; what an unowned module costs its holder is a schema per call it may
-/// make, rather than a section of every request plus a pinned block that grows with the state.
-fn describes(module: &dyn Module) -> bool {
-    module.enabled() && module.ownership().is_owned()
 }
 
 /// The entries of `profile`'s [roster](GgAgentConfig::subagents) that carry `scope`, as the prompt
@@ -11524,7 +11608,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
         skills,
         memories,
         tasks,
-        board,
         read_policy,
         vision,
         program_language,
@@ -11537,21 +11620,15 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
         set,
         ending_role,
         assigned_issue,
-        fences_are_stripped,
     } = inputs;
     // Every section below asks only "is this the code arm?"; exactly one place — the template
     // choice, and the spellings inside it — needs to know which language, so the flag is derived
     // here rather than carried alongside the language it would have to agree with.
     let responses_as_code = program_language.is_some();
 
-    // This agent's roster, split by what each entry may be used **for**. The three lists are
-    // independent of one another and of the delegation capability: an agent with no `spawn_subagent`
-    // still names implementers and reviewers on the issues it files, which is exactly why the
-    // prompt's Subagents section is gated on the *tool* being offered rather than on the roster
-    // being non-empty.
+    // This agent's spawnable roster. The prompt's Subagents section is gated on the *tool*
+    // being offered rather than on the roster being non-empty.
     let spawnable_agents = roster(set, profile, GgSubagentScope::Subagent);
-    let issue_agents = roster(set, profile, GgSubagentScope::Implementer);
-    let reviewer_agents = roster(set, profile, GgSubagentScope::Reviewer);
     let offers_spawn = registry.offers(SPAWN_SUBAGENT_TOOL);
 
     // The read cap is only worth stating when `read_file` is actually offered and actually
@@ -11571,9 +11648,10 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
 
     // Nothing about `shell` is built here any more, and neither half of what used to be is missed.
     // That its output may be a tail travels with the truncated output itself; that a program may run
-    // a command at all is the first line of `shell`'s own brief, which the opening turn puts in the
-    // window before the model's first real turn. A prompt describes no capability its functions'
-    // briefs describe, so there is no shell view on the rendering context to fill.
+    // a command at all is the first line of `shell`'s own brief, which an opening turn listing
+    // `shell` (a fresh profile's does) puts in the window before the model's first real turn. A
+    // prompt describes no capability its functions' briefs describe, so there is no shell view on
+    // the rendering context to fill.
 
     // The message headings this run can put in front of a synthesized `user` message — only under
     // responses-as-code, where the transcript is plain text and the model needs the vocabulary named
@@ -11583,12 +11661,8 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
     // discipline every other section follows.
     let code_headings = if program_language.is_some() {
         code_heading_views(
-            describes(memories),
-            describes(tasks),
-            // Gated on this agent's own capability, exactly as the board section below is: an agent
-            // without it is never shown a `Board` block, so naming the heading would describe a
-            // message kind it cannot receive.
-            describes(board) && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
+            memories.enabled(),
+            tasks.enabled(),
             // A restored file view is a `File` message too, so a persistent agent is told the heading
             // even in the (unusual) case that it reads nothing itself.
             offers_read || autoload_specs.is_some() || persistence,
@@ -11642,13 +11716,12 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
                 .map(str::to_string),
             subagents: offers_spawn,
             spawnable_agents,
-            fences_are_stripped,
             read_file,
             skills: skill_views(skills, program_language),
             // The strategy decides what the section says: what memory *is* on this run differs
             // enough between the three (all of it in the window, an index over it, or nothing
             // until you search) that they are three paragraphs rather than one with holes.
-            memories: describes(memories).then(|| {
+            memories: memories.enabled().then(|| {
                 let caps = memories.caps();
                 let strategy = memories.strategy();
                 MemoriesView {
@@ -11670,27 +11743,9 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
                     scope: memories.scope().to_string(),
                 }
             }),
-            tasks: describes(tasks).then(|| TasksView {
+            tasks: tasks.enabled().then(|| TasksView {
                 max_tasks: tasks.max_tasks(),
             }),
-            // The board-authoring section is gated on **this agent's own** capability, not on the
-            // run having a board: the board is run-global, but describing how to file and dispatch
-            // work to an agent whose profile offers none of those tools is a prompt that names
-            // tools the model does not have — which is exactly how an implementer ends up reaching
-            // for `create_issue` instead of doing the work it was sent to do.
-            board: (describes(board) && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)).then(
-                || {
-                    let caps = board.caps();
-                    BoardView {
-                        max_epics: caps.max_epics,
-                        max_issues: caps.max_issues,
-                        max_retries: caps.max_retries,
-                        reviewers_required: crate::board::requires_reviewers(profile),
-                        issue_agents,
-                        reviewer_agents,
-                    }
-                },
-            ),
             // The issue this agent was dispatched to implement, when it was one — rendered
             // whatever its own capabilities are, since being told what it is working on has
             // nothing to do with whether it may author the board.
@@ -11758,7 +11813,10 @@ fn skill_views(
 /// language's SDK spells `requestChanges` is that language's business, and gg quoting a spelling of
 /// its own would be gg telling a model to make a call the language does not bind. The bare tool
 /// names on the tool-calling path are gg's own, in every language, because there is no language.
-fn ending_view(role: EndingRole, program_language: Option<GgProgramLanguage>) -> EndingView {
+pub(crate) fn ending_view(
+    role: EndingRole,
+    program_language: Option<GgProgramLanguage>,
+) -> EndingView {
     let language = program_language.map(crate::sandbox::language);
     let call = |operation: sandbox::OperationId, tool_name: &str| match language {
         Some(language) => crate::sandbox::spell(language, operation),
@@ -11824,6 +11882,7 @@ fn ending_view(role: EndingRole, program_language: Option<GgProgramLanguage>) ->
 /// since removed) and the agent — and the run — ends on it.
 async fn autoload_specifications(
     context: &mut ContextModel,
+    programs: &mut crate::programs::ProgramLibrary,
     provided_files: &[PathBuf],
     tool_ctx: &ToolContext,
     language: GgProgramLanguage,
@@ -11870,13 +11929,25 @@ async fn autoload_specifications(
     }
 
     if context.code_mode() {
+        // The synthesized turn takes exactly the shape the model's own turns must: a
+        // `submit_program` call carrying the program, answered by the acknowledgement the model's
+        // own would get — the id the library issued it, under which the program is kept as one of
+        // gg's opening programs (turn 0) — with the views the program opened beneath it.
+        let call_id = "autoload-program";
+        let program = open_file_program(language, seeded.iter().map(|(rel, _)| rel));
+        let id = programs.issue_id().map_err(|exhausted| exhausted.message)?;
         context.push_assistant(
-            Some(open_file_program(
-                language,
-                seeded.iter().map(|(rel, _)| rel),
-            )),
-            Vec::new(),
+            None,
+            vec![completion::synthesized_submission(call_id, &program)],
         );
+        context.push_tool_result(
+            GgContextSource::ToolOutput,
+            call_id,
+            completion::submit_program_ack(id.as_deref()),
+        );
+        if let Some(id) = &id {
+            programs.record(id, 0, &program, true, None);
+        }
         for (rel, outcome) in seeded {
             // The path is the workspace-relative one the case provided, so the view's heading
             // names the file as the model would open it itself.
@@ -12061,8 +12132,7 @@ async fn apply_pending_compaction(
 ///   [`TaskList`](GgContextSource::TaskList) block is rebuilt at the next turn boundary;
 /// - a successful
 ///   `create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`
-///   likewise re-emits the [`BoardState`](GgTelemetryKind::BoardState); the pinned
-///   [`Board`](GgContextSource::Board) block is rebuilt at the next turn boundary;
+///   likewise re-emits the [`BoardState`](GgTelemetryKind::BoardState);
 /// - a **fresh** skill read is pinned as a [`Skill`](GgContextSource::Skill)-sourced item
 ///   (retained across compaction) and the updated
 ///   [`SkillsState`](GgTelemetryKind::SkillsState) is emitted; a **repeat** read is
@@ -12221,10 +12291,11 @@ async fn complete_with_vision_recovery(
     client: &dyn ModelClient,
     context: &mut ContextModel,
     tools: &[ToolDefinition],
+    required: Option<&ToolDefinition>,
     vision: &Arc<VisionSupport>,
     emitter: &Emitter,
 ) -> Result<ModelResponse, ModelError> {
-    let err = match client.complete(&context.messages(), tools).await {
+    let err = match model_request(client, &context.messages(), tools, required).await {
         Ok(response) => return Ok(response),
         Err(err) => err,
     };
@@ -12246,7 +12317,23 @@ async fn complete_with_vision_recovery(
             ),
         ));
     }
-    client.complete(&context.messages(), tools).await
+    model_request(client, &context.messages(), tools, required).await
+}
+
+/// One model request in the shape this turn requires: the ordinary offered toolset, or — on a
+/// responses-as-code turn — the one `submit_program` tool with the reply **required** to call it
+/// ([`ModelClient::complete_requiring`]), which is the wire form of the protocol rather than a
+/// preference the model may decline.
+async fn model_request(
+    client: &dyn ModelClient,
+    messages: &[Message],
+    tools: &[ToolDefinition],
+    required: Option<&ToolDefinition>,
+) -> Result<ModelResponse, ModelError> {
+    match required {
+        Some(tool) => client.complete_requiring(messages, tool).await,
+        None => client.complete(messages, tools).await,
+    }
 }
 
 /// The line appended to a tool result whose image was [stripped](ContextModel::strip_images).
@@ -12281,9 +12368,10 @@ fn record_usage(response: &ModelResponse, emitter: &Emitter, profile_id: &str, m
 }
 
 /// The size of the reply a turn was judged on, in the two units an output ceiling is judged in:
-/// its raw text in **characters** (before any healing — the model's actual output), and its
-/// **completion tokens** as the provider billed them (output plus reasoning, which is the figure a
-/// provider's output cap is measured against).
+/// its generated **characters** — the reply's text plus, on a responses-as-code turn, the
+/// `program` string of each `submit_program` call it made, which is where such a turn's real
+/// output travels — and its **completion tokens** as the provider billed them (output plus
+/// reasoning, which is the figure a provider's output cap is measured against).
 ///
 /// Threaded into [`record_turn`](Agent::record_turn) so the turn's outcome event carries it and
 /// [`GgSessionSummary::max_response_chars`](test_cabinet_core::gg::GgSessionSummary) /
@@ -12304,14 +12392,27 @@ impl ResponseSize {
         Self::default()
     }
 
-    /// Measure `response` — the raw reply, before healing touches it.
+    /// Measure `response` — the raw reply, exactly as sent: its text, plus the `program` string
+    /// of every `submit_program` call it carried.
     fn of(response: &ModelResponse) -> Self {
+        let text = response
+            .text
+            .as_deref()
+            .map(|text| text.chars().count() as u64)
+            .unwrap_or(0);
+        let programs: u64 = response
+            .tool_calls
+            .iter()
+            .filter(|call| call.name == completion::SUBMIT_PROGRAM_TOOL)
+            .filter_map(|call| {
+                call.arguments
+                    .get("program")
+                    .and_then(|value| value.as_str())
+            })
+            .map(|program| program.chars().count() as u64)
+            .sum();
         Self {
-            chars: response
-                .text
-                .as_deref()
-                .map(|text| text.chars().count() as u64)
-                .unwrap_or(0),
+            chars: text.saturating_add(programs),
             output_tokens: response
                 .usage
                 .output

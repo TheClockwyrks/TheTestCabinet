@@ -1290,9 +1290,9 @@ fn parse_response_records_the_serving_provider() {
     assert!(parse_response(unnamed).expect("parse").provider.is_none());
 }
 
-/// The **tail** breakpoint walks back past trailing `system`-role messages — gg's trailing slots,
-/// the context-usage signal and the contract notice, both re-rendered at the end of every request.
-/// A prefix ending on one never recurs (the next request has new conversation ahead of it), so a
+/// The **tail** breakpoint walks back past trailing `system`-role messages — gg's trailing slot,
+/// the context-usage signal, re-rendered at the end of every request.
+/// A prefix ending on it never recurs (the next request has new conversation ahead of it), so a
 /// marker there writes a cache entry nothing ever reads; the tail's job is to land on the newest
 /// conversation message, whose prefix the very next turn extends and reads back.
 #[test]
@@ -1302,9 +1302,8 @@ fn cache_breakpoints_walk_the_tail_past_trailing_system_slots() {
         Message::user("build it"),
         Message::assistant(Some("on it".to_string()), vec![]),
         Message::user("carry on"),
-        // The trailing slots: the fullness signal and the contract notice.
+        // The trailing slot: the fullness signal.
         Message::system("Context usage: 82% of the window."),
-        Message::system("Reminder: your entire reply must be one bare TypeScript program."),
     ];
     let breakpoints = cache_breakpoints(&messages);
     assert_eq!(

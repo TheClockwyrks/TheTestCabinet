@@ -3,15 +3,13 @@
 
 import type { RunMetrics } from "@test-cabinet/run-record";
 import type { RunScoreOut } from "@test-cabinet/run-record/snapshot";
+import { formatPoints as formatPointValue } from "../ratings";
 
 // Add two nullable token counts, treating an unreported (null) category as zero
 // because a harness that doesn't break the split out still folds those tokens into
 // the category it does report. Null only when BOTH are unreported, so a genuinely
 // empty total stays distinguishable from a real zero.
-export function sumTokens(
-  a: number | null,
-  b: number | null,
-): number | null {
+export function sumTokens(a: number | null, b: number | null): number | null {
   return a === null && b === null ? null : (a ?? 0) + (b ?? 0);
 }
 
@@ -81,18 +79,17 @@ export function formatUsd(value: number | null): string {
 }
 
 // A run's aggregate reviewer score as "earned / total" (e.g. "12.5 / 20") — the
-// mean weight its reviews awarded over the points available. The earned figure is
-// fractional (it averages across reviews) so it carries one decimal; the total is
-// a whole point count. An em dash when the run has no reviews (null score).
+// mean weight its reviews awarded over the points available. Review items are
+// integer-weighted, so a whole earned figure shows no ".0" ("12 / 20", never
+// "12.0 / 20"); a genuinely fractional mean (it averages across reviews) keeps
+// its non-zero decimals, trimmed by the same shared rule every other points
+// figure uses (`formatPoints` in ratings.ts). The total is a whole point count.
+// An em dash when the run has no reviews (null score).
 export function formatPoints(score: RunScoreOut | null): string {
   if (score === null) {
     return "—";
   }
-  const earned = new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  }).format(score.earned);
-  return `${earned} / ${score.total}`;
+  return `${formatPointValue(score.earned)} / ${score.total}`;
 }
 
 // Scale a per-token price to a per-million-token figure for display, preserving

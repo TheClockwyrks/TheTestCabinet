@@ -9,11 +9,13 @@ uploads a published run's record, its events, and all media to a public
 is the [public projection](/components/backend/projection/), whose rows name
 these objects. This page is the authoritative contract for the bucket's layout.
 
-A run's row carries every headline figure a listing needs — outcome, rating and
-aggregate score — so ranking and paging the published set costs no document
-fetch. The score is the one figure not readable from a run record alone, because
-the checklist point weights live in the case catalog rather than on the record,
-so it is computed where both are in hand and written to the row.
+A run's row carries every headline figure a listing needs — outcome, functional
+rating, aesthetic rating, whether the run is validator-rated, and score — so
+ranking and paging the published set costs no document fetch. The score and a
+validator-rated run's functional rating are the figures not readable from a run
+record alone, because the checklist point weights, domains, and failure caps
+live in the case catalog rather than on the record, so they are computed where
+both are in hand and written to the row.
 
 The bucket holds documents for published runs. A produced run that has not been
 published is private, and a run that can never be published, such as an
@@ -79,7 +81,9 @@ document carries no publication flag. Each review entry includes the reviewer's
 id and display name, and the key of their [profile
 picture](#reviewer-pictures) when they have one, so the site can attribute a
 writeup and per-domain ratings to the person who wrote them. The site computes
-the run's score and overall rating from this array. When the run captured a
+a legacy run's score and functional rating from this array, and any run's
+aesthetic rating; a validator-rated run's score and functional rating come from
+its record and case version. When the run captured a
 normalized [event
 stream](/components/core/events/) it is included as `events`. Raw harness output
 is never published.
@@ -109,6 +113,15 @@ backend's own stored copy is left intact; only this public export is rewritten.
       "writeup": "Plays well, but the AI paddle…",
       "checklist": [],
       "reviewedAt": "2026-06-21T18:00:00Z"
+    },
+    {
+      "reviewerId": "acct_3kd…",
+      "reviewer": "Bao",
+      "aesthetics": [
+        { "domain": "single-player", "rating": "amazing" }
+      ],
+      "writeup": "A validator-rated run's review rates aesthetics only.",
+      "reviewedAt": "2026-08-24T09:00:00Z"
     }
   ],
   "links": {
@@ -246,8 +259,9 @@ a moment ago. Reclaiming the space waits on a recorded supersession time.
 
 The site-facing slice of a [test case version](/testing/end-to-end/overview/):
 what the gallery shows to frame a run. It carries the name, test type,
-difficulty, tags, summary and description, the declared checks without their
-action lists, and a `references` array naming each rendered reference baseline
+difficulty, tags, summary and description, `engineFormat`, the declared checks
+without their action lists, the review items with each point's `domains` and
+`failureCap`, and a `references` array naming each rendered reference baseline
 by its snapshot-relative [`media/cases/…` key](#case-media), with a `variant` of
 `null` for a common reference or the variant slug for a variant-scoped one. The
 site resolves those keys to absolute URLs.

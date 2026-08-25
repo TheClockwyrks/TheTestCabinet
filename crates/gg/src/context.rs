@@ -454,12 +454,8 @@ pub enum PromptSlot {
     /// the order it entered.
     Thread,
     /// The [context-usage signal](ContextModel::refresh_context_usage_signal) slot, rebuilt and
-    /// re-assigned after every turn, always last but for the contract notice.
+    /// re-assigned after every turn, always last.
     ContextUsage,
-    /// The [trailing contract notice](ContextModel::set_trailing_notice) slot — the constant
-    /// restatement of the responses-as-code reply contract, rendered after everything else so it
-    /// is the last thing the model reads on every request.
-    TrailingNotice,
 }
 
 /// One item of the live window as [`prompt_items`](ContextModel::prompt_items) hands it to
@@ -779,11 +775,6 @@ pub struct ContextModel {
     /// The [context-usage signal](Self::refresh_context_usage_signal), held in a slot of its own
     /// rather than among the [`items`](Self::items) — see that method for why.
     usage_signal: Option<ContextItem>,
-    /// The [trailing contract notice](Self::set_trailing_notice), held in a slot for the same
-    /// reasons the signal is — there can only ever be one, and it must always render last —
-    /// plus one of its own: it is **constant** for the life of the agent, so a slot set once is
-    /// the whole mechanism.
-    trailing_notice: Option<ContextItem>,
     /// The session turn items are currently being pushed on, set by [`begin_turn`](Self::begin_turn).
     /// `0` until the first turn opens, which is what leaves the opening context unnumbered.
     turn: u64,
@@ -809,7 +800,6 @@ impl ContextModel {
             window_limit,
             code_mode,
             usage_signal: None,
-            trailing_notice: None,
             turn: 0,
             turn_headers: false,
         }
@@ -1105,44 +1095,6 @@ impl ContextModel {
         self.system = None;
     }
 
-    /// Set — or, with `None`, clear — the **trailing contract notice**: the constant one-or-two
-    /// sentence restatement of the [responses-as-code](crate::sandbox) reply contract, rendered
-    /// **after every other message** on every request this window produces. Measured as the single
-    /// most effective cross-model lever for keeping a tool-call-trained model answering with bare
-    /// programs, which is why it earns a permanent seat at the position models weight most.
-    ///
-    /// # It lives in a slot, not in the thread
-    ///
-    /// For the reasons the [context-usage signal](Self::refresh_context_usage_signal) does — there
-    /// can only ever be one, and everything a provider's prompt cache reads sits *before* it, so
-    /// the prompt stays append-only: each turn's new conversation is inserted ahead of the notice,
-    /// which re-renders at the new tail. Unlike the signal it never changes and never empties on
-    /// its own: it is set once per agent (a property of the **holder**, like the system prompt, so
-    /// a succession to a different execution mode clears it — see
-    /// [`HistoryModule::adopt`](crate::modules::HistoryModule)) and survives a compaction, which
-    /// resets the thread and not the slots.
-    ///
-    /// The [tail cache breakpoint deliberately does not land on it](crate::client::cache_breakpoints):
-    /// a prefix ending on a trailing slot message never recurs, so the tail marker walks back to
-    /// the newest conversation message and the notice rides outside the cached prefix — costing
-    /// its own few tokens per turn and nothing else.
-    pub fn set_trailing_notice(&mut self, text: Option<String>) {
-        self.trailing_notice = text.map(|text| {
-            let message = Message::system(text);
-            let tokens = self.estimator.estimate_message(&message);
-            ContextItem {
-                source: GgContextSource::System,
-                retention: Retention::Pinned,
-                message,
-                tokens,
-                label: None,
-                region: None,
-                lines: None,
-                turn: self.turn,
-            }
-        });
-    }
-
     /// Seed the pinned [`UserPrompt`](GgContextSource::UserPrompt) (the build prompt).
     pub fn push_user_prompt(&mut self, content: impl Into<String>) {
         self.push(
@@ -1177,27 +1129,30 @@ impl ContextModel {
         self.code_mode = code_mode;
     }
 
-    /// Whether the last thing in the window is an [assistant](GgContextSource::Assistant) turn —
-    /// that is, whether gg has said nothing back since the model last spoke.
+    /// Whether the last thing in the window is this turn's own **submission** — the assistant's
+    /// message, or a `tool` result answering one of `call_ids`, the ids of the calls that turn
+    /// made.
     ///
-    /// A request in that state does not ask the provider a question; it asks it to *continue* the
-    /// assistant message it ends on. Under [responses-as-code](crate::sandbox) that is reachable
-    /// without anything having gone wrong — a program may compile, run, and put nothing new in its
-    /// own window — so the turn loop checks it and gives the model something to answer.
+    /// A request in that state does not ask the provider a question. Under
+    /// [responses-as-code](crate::sandbox) it is reachable without anything having gone wrong — a
+    /// program may compile, run, and put nothing new in its own window, leaving the assistant
+    /// message (or one of the turn's `submit_program` acknowledgements, which directly follow it)
+    /// last — so the turn loop checks it and gives the model something to answer. Anything later —
+    /// a view, an error, a rebuilt state block — is gg answering, and the predicate is false.
     ///
-    /// Read off the assembled window rather than off the item list, so the
-    /// [context-usage signal](Self::refresh_context_usage_signal) counts as the message it is —
-    /// with one deliberate exception: the [trailing contract notice](Self::set_trailing_notice)
-    /// is skipped, because it is **constant** furniture rendered after everything on every
-    /// request. It never answers the model — a window whose last real content is the assistant's
-    /// own message is in exactly the say-something-back state this predicate exists to detect,
-    /// notice or no notice, and counting the notice would make the predicate permanently false
-    /// for every agent that carries one.
-    pub fn ends_on_assistant(&self) -> bool {
-        self.slotted_window_items()
-            .filter(|(slot, _)| *slot != PromptSlot::TrailingNotice)
+    /// Read off the assembled window rather than off the item list.
+    pub fn ends_on_submission(&self, call_ids: &[String]) -> bool {
+        self.window_items()
             .last()
-            .is_some_and(|(_, item)| item.message.role == Role::Assistant)
+            .is_some_and(|item| match item.message.role {
+                Role::Assistant => true,
+                Role::Tool => item
+                    .message
+                    .tool_call_id
+                    .as_deref()
+                    .is_some_and(|id| call_ids.iter().any(|call| call == id)),
+                _ => false,
+            })
     }
 
     /// Whether this window is a [code-mode](Self::set_code_mode) one.
@@ -1350,8 +1305,7 @@ impl ContextModel {
 
     /// Every item that is part of the live window, in the order it is sent: the
     /// [system prompt](Self::set_system), which is always first, then the conversation items, then
-    /// the [context-usage signal](Self::refresh_context_usage_signal), then the
-    /// [trailing contract notice](Self::set_trailing_notice), which is always last.
+    /// the [context-usage signal](Self::refresh_context_usage_signal), which is always last.
     ///
     /// The two ends are slots rather than thread items, so their position is a property of this
     /// iterator rather than something the pushes have to maintain.
@@ -1374,11 +1328,6 @@ impl ContextModel {
                 self.usage_signal
                     .iter()
                     .map(|item| (PromptSlot::ContextUsage, item)),
-            )
-            .chain(
-                self.trailing_notice
-                    .iter()
-                    .map(|item| (PromptSlot::TrailingNotice, item)),
             )
     }
 
@@ -2485,7 +2434,6 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
         }
         GgContextSource::Memory => Some("Memories"),
         GgContextSource::TaskList => Some("Tasks"),
-        GgContextSource::Board => Some("Board"),
         GgContextSource::History => Some("Summary"),
         GgContextSource::System => Some("Notice"),
         GgContextSource::Assistant => None,
@@ -2582,8 +2530,8 @@ fn apply_code_heading(
 ///
 /// [`TextView`](GgContextSource::TextView) is `Text Views` rather than the console's operator-facing
 /// "Agent views": the model is the agent, so naming the band after it reads as somebody else's, and
-/// `text` is already the word the model meets in `view.openText` and in a `view.current()` entry's
-/// `kind`. The two audiences are allowed to differ here — this table already says `Your Messages`
+/// `text` is already the word the model meets in `view.openText`. The two audiences are allowed to
+/// differ here — this table already says `Your Messages`
 /// where the console says `Assistant`.
 fn source_label(source: GgContextSource) -> &'static str {
     match source {
@@ -2603,7 +2551,6 @@ fn source_label(source: GgContextSource) -> &'static str {
         GgContextSource::Skill => "Skills",
         GgContextSource::Memory => "Memories",
         GgContextSource::TaskList => "Tasks",
-        GgContextSource::Board => "Board",
         GgContextSource::History => "History",
     }
 }

@@ -476,9 +476,9 @@ fn every_name_a_model_is_shown_opens_on_every_arm() {
 
 /// **A type view lists the member functions a value of it offers, and lists only the bound ones.**
 ///
-/// A member function is the second way to reach an operation — `view.close()` on the `OpenView` a
-/// listing handed back — and the view of the type the call produced is the one place a model walking
-/// its own return value would ever meet it. Rendering the members and dropping the member functions
+/// A member function is the second way to reach an operation — `wait()` on the `IssueCreated`
+/// that `createIssue` handed back — and the view of the type the call produced is the one place a
+/// model walking its own return value would ever meet it. Rendering the members and dropping the member functions
 /// leaves the affordance discoverable only by someone who already knew to search for its name, which
 /// is the reader it least needs to help.
 ///

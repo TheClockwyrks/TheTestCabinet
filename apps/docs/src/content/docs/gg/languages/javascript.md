@@ -65,8 +65,8 @@ so everything but the compiler is held equal by the seam's own gate:
   constant;
 - the signature catalogue carries the same declarations, entry for entry,
   including the type annotations;
-- the healing dialect, the camelCase binding convention, the import line and
-  every program gg synthesizes are shared.
+- the camelCase binding convention, the import line and every program gg
+  synthesizes are shared.
 
 What this arm owns is its id, its display name, its own catalogue file, and its
 own segment of the shared prompt templates.

@@ -293,9 +293,8 @@ fn declared_call(resolve: &wit_parser::Resolve, id: &str) -> Option<Call> {
         .iter()
         .find_map(|(operation, function)| (*operation == id).then(|| (*function).to_string()))
         .unwrap_or_else(|| key.replace('_', "-"));
-    // The operation's own family first, then anywhere: three operations gg files under `files` are
-    // declared on `helpers`, which is the interface for the convenience wrappers built on a tool
-    // without being one.
+    // The operation's own family first, then anywhere, so an operation stays resolvable even if
+    // its function were declared on a different interface than the family gg files it under.
     let function = interface_function(resolve, namespace, &name).or_else(|| {
         resolve
             .interfaces

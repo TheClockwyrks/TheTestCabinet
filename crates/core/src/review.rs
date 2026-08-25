@@ -11,6 +11,17 @@
 //! The rating tiers here are mirrored as a TypeScript union in
 //! `packages/ui/src/ratings.ts`; keep the two in lockstep.
 //!
+//! A run carries up to **two rating channels**. The **functional rating** is the
+//! [`Rating`] scale (Flawless → Broken). On a **legacy** case version it is the
+//! reviewers' aggregate ([`aggregate_rating`]); on a
+//! [validator-rated](crate::test_case::TestCaseVersion::validator_rated) version
+//! it is decided entirely by the validators — every failing point lowers the
+//! domains it declares to its [`FailureCap`], and the run's rating is the lowest
+//! cap among its failures (see [`validator_domain_ratings`]). The **aesthetic
+//! rating** is the separate [`AestheticRating`] scale (Legendary → Slop) a
+//! reviewer supplies per domain on a validator-rated run only; a legacy run has
+//! none.
+//!
 //! Most case types declare one or more scoring [`crate::test_case::Domain`]s; the
 //! reviewer rates each independently and the run's **overall** rating is the
 //! worst across them (see [`Writeup::overall_rating`]). Each review item carries
@@ -104,6 +115,152 @@ impl Rating {
     /// mask a broken one.
     pub fn worst(ratings: impl IntoIterator<Item = Rating>) -> Option<Rating> {
         ratings.into_iter().max_by_key(|rating| rating.rank())
+    }
+}
+
+/// A reviewer's **aesthetic** rating for a finished implementation — the second
+/// rating channel, separate from the functional [`Rating`].
+///
+/// On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run
+/// behaviour is decided entirely by the validators, so the reviewer rates only how
+/// the build looks, sounds, and feels. Ordered best to worst. [`Amazing`](Self::Amazing)
+/// is the normal maximum; [`Legendary`](Self::Legendary) is exceptional and reserved,
+/// and its badge carries a special look so a viewer sees at once that it is rare.
+/// A legacy run (one on a case version that is not validator-rated) never carries
+/// one. Mirrored as `AESTHETIC_RATINGS` in `packages/run-stats/src/scoring.ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum AestheticRating {
+    /// Exceptionally beautiful — reserved for the rare build that stands above
+    /// every other, not the normal top of the scale.
+    Legendary,
+    /// Beautiful and polished: the normal maximum.
+    Amazing,
+    /// Looks and feels good, with minor rough edges.
+    Good,
+    /// Serviceable but plain or uneven.
+    Okay,
+    /// Ugly, incoherent, or careless.
+    Slop,
+}
+
+impl AestheticRating {
+    /// Every aesthetic rating, ordered best to worst.
+    pub const ALL: [AestheticRating; 5] = [
+        AestheticRating::Legendary,
+        AestheticRating::Amazing,
+        AestheticRating::Good,
+        AestheticRating::Okay,
+        AestheticRating::Slop,
+    ];
+
+    /// The wire token for this rating, matching its frontmatter and serde form.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AestheticRating::Legendary => "legendary",
+            AestheticRating::Amazing => "amazing",
+            AestheticRating::Good => "good",
+            AestheticRating::Okay => "okay",
+            AestheticRating::Slop => "slop",
+        }
+    }
+
+    /// Parse an aesthetic rating from its lowercase token, accepting surrounding
+    /// whitespace and any case.
+    pub fn parse(token: &str) -> Option<AestheticRating> {
+        match token.trim().to_ascii_lowercase().as_str() {
+            "legendary" => Some(AestheticRating::Legendary),
+            "amazing" => Some(AestheticRating::Amazing),
+            "good" => Some(AestheticRating::Good),
+            "okay" => Some(AestheticRating::Okay),
+            "slop" => Some(AestheticRating::Slop),
+            _ => None,
+        }
+    }
+
+    /// This rating's rank, with `0` the best ([`AestheticRating::Legendary`]) and
+    /// larger numbers worse.
+    pub fn rank(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|rating| *rating == self)
+            .unwrap_or(0)
+    }
+
+    /// The worst (lowest) aesthetic rating among `ratings`, or `None` when empty.
+    /// Like [`Rating::worst`], a run's overall aesthetic rating is the worst across
+    /// its domains and then across its reviews.
+    pub fn worst(ratings: impl IntoIterator<Item = AestheticRating>) -> Option<AestheticRating> {
+        ratings.into_iter().max_by_key(|rating| rating.rank())
+    }
+}
+
+/// The **failure cap** a review item declares: the highest functional [`Rating`]
+/// the item's [domains](crate::test_case::SubReviewItem::domains) may reach while
+/// the item's validator fails.
+///
+/// On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) case
+/// version every graded point declares one (manifest key `failure_cap`), so the
+/// functional rating is decided by the validators alone: a domain starts
+/// `flawless` and each failing point lowers it to `min(current, cap)`, so the
+/// build gets the *lowest* cap among its failures (two failures capped at `great`
+/// and `scuffed` → `scuffed`). `flawless` is deliberately not a cap — a failure
+/// always costs something. Mirrored as `FAILURE_CAPS` / `FAILURE_CAP_RATING` in
+/// `packages/run-stats/src/scoring.ts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum FailureCap {
+    /// The item is gameplay-critical: failing it renders the build `broken`.
+    Broken,
+    /// Failing it leaves the build playable but noticeably wrong: at most `scuffed`.
+    Scuffed,
+    /// Failing it is a rough edge within tolerance: at most `passable`.
+    Passable,
+    /// Failing it is a minor issue that does not impact playability: at most `great`.
+    Great,
+}
+
+impl FailureCap {
+    /// Every cap, from the most to the least severe.
+    pub const ALL: [FailureCap; 4] = [
+        FailureCap::Broken,
+        FailureCap::Scuffed,
+        FailureCap::Passable,
+        FailureCap::Great,
+    ];
+
+    /// The wire token for this cap, matching its manifest and serde form.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FailureCap::Broken => "broken",
+            FailureCap::Scuffed => "scuffed",
+            FailureCap::Passable => "passable",
+            FailureCap::Great => "great",
+        }
+    }
+
+    /// Parse a cap from its lowercase token, accepting surrounding whitespace and
+    /// any case. `flawless` is not a cap and parses as `None`.
+    pub fn parse(token: &str) -> Option<FailureCap> {
+        match token.trim().to_ascii_lowercase().as_str() {
+            "broken" => Some(FailureCap::Broken),
+            "scuffed" => Some(FailureCap::Scuffed),
+            "passable" => Some(FailureCap::Passable),
+            "great" => Some(FailureCap::Great),
+            _ => None,
+        }
+    }
+
+    /// The functional [`Rating`] this cap bounds a domain to while its item fails.
+    pub fn rating(self) -> Rating {
+        match self {
+            FailureCap::Broken => Rating::Broken,
+            FailureCap::Scuffed => Rating::Scuffed,
+            FailureCap::Passable => Rating::Passable,
+            FailureCap::Great => Rating::Great,
+        }
     }
 }
 
@@ -258,6 +415,39 @@ pub struct DomainRating {
     pub rating: Rating,
 }
 
+/// A reviewer's [`AestheticRating`] for one of a case's scoring domains — the
+/// aesthetic counterpart of [`DomainRating`], carried by a review of a
+/// [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct DomainAesthetic {
+    /// The declared domain's stable id (see [`crate::test_case::Domain::id`]).
+    pub domain: String,
+    /// The reviewer's aesthetic rating for this domain.
+    pub rating: AestheticRating,
+}
+
+/// One per-domain aesthetic rating change between two versions of a review (see
+/// [`ReviewDiff::aesthetics`]) — the same shape as [`RatingChange`] on the
+/// aesthetic channel. A newly rated domain has `from = None`; a domain whose
+/// aesthetic rating was dropped has `to = None`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AestheticChange {
+    /// The scoring domain whose aesthetic rating changed.
+    pub domain: String,
+    /// The aesthetic rating before the edit, or `None` if the domain was newly rated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub from: Option<AestheticRating>,
+    /// The aesthetic rating after the edit, or `None` if the domain's rating was removed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub to: Option<AestheticRating>,
+}
+
 /// One per-domain rating change between two versions of a review (see
 /// [`ReviewDiff`]). A newly rated domain has `from = None`; a domain whose rating
 /// was dropped has `to = None`.
@@ -312,8 +502,8 @@ pub struct WriteupChange {
 }
 
 /// The autogenerated, structured difference between two versions of a review: which
-/// per-domain ratings changed, which checklist verdicts flipped, and whether the
-/// writeup prose changed. Computed by [`diff_reviews`] when a reviewer edits their
+/// per-domain functional and aesthetic ratings changed, which checklist verdicts
+/// flipped, and whether the writeup prose changed. Computed by [`diff_reviews`] when a reviewer edits their
 /// review and stored on the resulting [`ReviewRevision`], so the edit history can
 /// show *what* changed alongside the reviewer's note on *why*.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -324,6 +514,11 @@ pub struct ReviewDiff {
     /// any domains whose rating was removed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ratings: Vec<RatingChange>,
+    /// The per-domain **aesthetic** rating changes, in the new review's domain
+    /// order followed by any domains whose aesthetic rating was removed. Empty on
+    /// a legacy run's review, which carries no aesthetic channel.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aesthetics: Vec<AestheticChange>,
     /// The checklist verdict changes, in the new review's verdict order followed by
     /// any verdicts that were withdrawn.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -335,11 +530,15 @@ pub struct ReviewDiff {
 }
 
 impl ReviewDiff {
-    /// Whether this diff records no change at all — no rating flipped, no verdict
-    /// changed, and the writeup prose held. A re-submission with an empty diff is a
-    /// no-op edit that need not be recorded as a revision.
+    /// Whether this diff records no change at all — no rating (functional or
+    /// aesthetic) flipped, no verdict changed, and the writeup prose held. A
+    /// re-submission with an empty diff is a no-op edit that need not be recorded
+    /// as a revision.
     pub fn is_empty(&self) -> bool {
-        self.ratings.is_empty() && self.verdicts.is_empty() && self.writeup.is_none()
+        self.ratings.is_empty()
+            && self.aesthetics.is_empty()
+            && self.verdicts.is_empty()
+            && self.writeup.is_none()
     }
 }
 
@@ -360,22 +559,56 @@ pub struct ReviewRevision {
     pub diff: ReviewDiff,
 }
 
+/// One version of a review's content, as [`diff_reviews`] compares it: the
+/// per-domain functional ratings, the per-domain aesthetic ratings, the writeup
+/// prose, and the checklist verdicts. Borrowed from wherever the review is held
+/// (a parsed [`Writeup`], or the backend's stored review).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReviewContent<'a> {
+    /// The per-domain functional ratings (empty on a validator-rated run's review).
+    pub ratings: &'a [DomainRating],
+    /// The per-domain aesthetic ratings (empty on a legacy run's review).
+    pub aesthetics: &'a [DomainAesthetic],
+    /// The writeup body.
+    pub writeup: &'a str,
+    /// The checklist verdicts.
+    pub checklist: &'a [ReviewVerdict],
+}
+
+impl<'a> From<&'a Writeup> for ReviewContent<'a> {
+    fn from(writeup: &'a Writeup) -> Self {
+        ReviewContent {
+            ratings: &writeup.ratings,
+            aesthetics: &writeup.aesthetics,
+            writeup: &writeup.body,
+            checklist: &writeup.checklist,
+        }
+    }
+}
+
 /// Compute the structured [`ReviewDiff`] from one version of a review to the next.
 ///
-/// A rating or verdict present in both versions is a change only when its value
-/// (or, for a verdict, its note) differs; one present only in the new version is an
-/// addition (`from = None`) and one present only in the prior version a removal
-/// (`to = None`). The writeup is a change only when the prose differs. Changes are
-/// ordered by the *new* review (additions and edits in its order) followed by
-/// removals, so the diff reads in the order the reviewer sees their review.
-pub fn diff_reviews(
-    prior_ratings: &[DomainRating],
-    prior_writeup: &str,
-    prior_checklist: &[ReviewVerdict],
-    next_ratings: &[DomainRating],
-    next_writeup: &str,
-    next_checklist: &[ReviewVerdict],
-) -> ReviewDiff {
+/// A rating (functional or aesthetic) or verdict present in both versions is a
+/// change only when its value (or, for a verdict, its note) differs; one present
+/// only in the new version is an addition (`from = None`) and one present only in
+/// the prior version a removal (`to = None`). The writeup is a change only when the
+/// prose differs. Changes are ordered by the *new* review (additions and edits in
+/// its order) followed by removals, so the diff reads in the order the reviewer
+/// sees their review.
+pub fn diff_reviews(prior: ReviewContent<'_>, next: ReviewContent<'_>) -> ReviewDiff {
+    let ReviewContent {
+        ratings: prior_ratings,
+        aesthetics: prior_aesthetics,
+        writeup: prior_writeup,
+        checklist: prior_checklist,
+    } = prior;
+    let ReviewContent {
+        ratings: next_ratings,
+        aesthetics: next_aesthetics,
+        writeup: next_writeup,
+        checklist: next_checklist,
+    } = next;
+
     let prior_rating = |domain: &str| {
         prior_ratings
             .iter()
@@ -399,6 +632,35 @@ pub fn diff_reviews(
             ratings.push(RatingChange {
                 domain: rating.domain.clone(),
                 from: Some(rating.rating),
+                to: None,
+            });
+        }
+    }
+
+    // The aesthetic channel diffs exactly like the functional one.
+    let prior_aesthetic = |domain: &str| {
+        prior_aesthetics
+            .iter()
+            .find(|r| r.domain == domain)
+            .map(|r| r.rating)
+    };
+    let mut aesthetics = Vec::new();
+    for aesthetic in next_aesthetics {
+        let from = prior_aesthetic(&aesthetic.domain);
+        if from != Some(aesthetic.rating) {
+            aesthetics.push(AestheticChange {
+                domain: aesthetic.domain.clone(),
+                from,
+                to: Some(aesthetic.rating),
+            });
+        }
+    }
+    for aesthetic in prior_aesthetics {
+        let still_present = next_aesthetics.iter().any(|r| r.domain == aesthetic.domain);
+        if !still_present {
+            aesthetics.push(AestheticChange {
+                domain: aesthetic.domain.clone(),
+                from: Some(aesthetic.rating),
                 to: None,
             });
         }
@@ -440,20 +702,32 @@ pub fn diff_reviews(
 
     ReviewDiff {
         ratings,
+        aesthetics,
         verdicts,
         writeup,
     }
 }
 
-/// A parsed review: a per-domain [`Rating`], the writeup prose it accompanies,
-/// and the reviewer's verdicts on the case's declared checklist items.
+/// A parsed review: a per-domain [`Rating`] and/or [`AestheticRating`], the
+/// writeup prose it accompanies, and the reviewer's verdicts on the case's
+/// declared checklist items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Writeup {
-    /// The reviewer's quality rating per scoring domain, in the order they appear
-    /// in the writeup's frontmatter. A run is only ready to publish once every
-    /// declared domain has a rating here (see [`missing_ratings`]); the run's
-    /// overall rating is the worst across them ([`Self::overall_rating`]).
+    /// The reviewer's functional rating per scoring domain, in the order they
+    /// appear in the writeup's frontmatter. On a legacy run a review is only
+    /// complete once every declared domain has a rating here (see
+    /// [`missing_ratings`]); the run's overall rating is the worst across them
+    /// ([`Self::overall_rating`]). Empty on a review of a
+    /// [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run,
+    /// whose functional rating is not the reviewer's to give.
     pub ratings: Vec<DomainRating>,
+    /// The reviewer's **aesthetic** rating per scoring domain, in the order they
+    /// appear in the writeup's frontmatter (`aesthetic.<domain>` lines). On a
+    /// validator-rated run a review is only complete once every declared domain
+    /// has one (see [`missing_aesthetics`]); the run's overall aesthetic rating is
+    /// the worst across them ([`Self::overall_aesthetic`]). Empty on a legacy run's
+    /// review, which has no aesthetic channel.
+    pub aesthetics: Vec<DomainAesthetic>,
     /// The writeup body — the Markdown prose shown before the playable build,
     /// with the frontmatter stripped and surrounding whitespace trimmed.
     pub body: String,
@@ -472,6 +746,12 @@ impl Writeup {
         Rating::worst(self.ratings.iter().map(|domain| domain.rating))
     }
 
+    /// The run's overall aesthetic rating from this review: the worst across its
+    /// domain aesthetic ratings, or `None` when it records none.
+    pub fn overall_aesthetic(&self) -> Option<AestheticRating> {
+        AestheticRating::worst(self.aesthetics.iter().map(|domain| domain.rating))
+    }
+
     /// The reviewer's whole-game overall grade, from the reserved
     /// [`OVERALL_VERDICT_ID`] checklist verdict (a [game jam](crate::test_case::TestType::GameJam)
     /// review), or `None` when the review records none.
@@ -484,7 +764,8 @@ impl Writeup {
     }
 
     /// Render this review to its canonical `writeup.md` file contents: a
-    /// per-domain `rating.<domain>` frontmatter block followed by the body.
+    /// per-domain `rating.<domain>` / `aesthetic.<domain>` frontmatter block
+    /// followed by the body.
     ///
     /// Reconstructing the file from the parsed parts normalizes whatever spacing
     /// the author used, so every published writeup has identical framing.
@@ -497,6 +778,13 @@ impl Writeup {
         for domain in &self.ratings {
             frontmatter.push_str(&format!(
                 "rating.{}: {}\n",
+                domain.domain,
+                domain.rating.as_str()
+            ));
+        }
+        for domain in &self.aesthetics {
+            frontmatter.push_str(&format!(
+                "aesthetic.{}: {}\n",
                 domain.domain,
                 domain.rating.as_str()
             ));
@@ -552,6 +840,21 @@ pub fn missing_ratings(domains: &[Domain], writeup: &Writeup) -> Vec<String> {
         .collect()
 }
 
+/// The ids of declared `domains` that `writeup` does not record an **aesthetic**
+/// rating for — the aesthetic-channel counterpart of [`missing_ratings`].
+///
+/// An empty result means every declared domain has an aesthetic rating: the
+/// completeness condition for a review of a
+/// [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run, whose
+/// functional rating the validators decide and whose reviewer rates aesthetics only.
+pub fn missing_aesthetics(domains: &[Domain], writeup: &Writeup) -> Vec<String> {
+    domains
+        .iter()
+        .filter(|domain| !writeup.aesthetics.iter().any(|r| r.domain == domain.id))
+        .map(|domain| domain.id.clone())
+        .collect()
+}
+
 /// A run's numeric score: the point weight it earned over the total available.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Score {
@@ -565,21 +868,29 @@ pub struct Score {
     pub total: u32,
 }
 
-/// A run's aggregate score across all of its reviews: the mean point weight
-/// earned over the (shared) total available.
+/// A run's aggregate score: the point weight earned over the (shared) total
+/// available.
 ///
-/// A run can carry more than one review (different people judging the same
-/// build). The declared checklist — and therefore the [`Score::total`] — is the
-/// same for every review of a run's variant, so the aggregate keeps that total
-/// and averages only the weight each reviewer awarded. `earned` is therefore
-/// fractional, sitting between the harshest and most generous review.
+/// On a **legacy** run this is the mean across all of its reviews. A run can carry
+/// more than one review (different people judging the same build). The declared
+/// checklist — and therefore the [`Score::total`] — is the same for every review
+/// of a run's variant, so the aggregate keeps that total and averages only the
+/// weight each reviewer awarded. `earned` is therefore fractional, sitting between
+/// the harshest and most generous review.
+///
+/// On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run
+/// the score is decided by the validators ([`validator_score`]) and involves no
+/// review at all, so [`reviews`](Self::reviews) is `0` — a validator-scored run is
+/// scored the moment it completes, before (and whether or not) anyone reviews it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AggregateScore {
-    /// The mean weight earned across the run's reviews.
+    /// The mean weight earned across the run's reviews, or the validator-decided
+    /// weight earned on a validator-rated run.
     pub earned: f64,
     /// The total weight available — identical across the run's reviews.
     pub total: u32,
-    /// How many reviews the average is taken over.
+    /// How many reviews the average is taken over. `0` for a validator-scored run,
+    /// whose score comes from the validators rather than from any review.
     pub reviews: u32,
 }
 
@@ -619,6 +930,140 @@ pub fn aggregate_rating<'a>(
             .into_iter()
             .flat_map(|ratings| ratings.iter().map(|domain| domain.rating)),
     )
+}
+
+/// The aggregate overall **aesthetic** rating across a run's reviews: the worst
+/// (lowest) aesthetic rating any reviewer gave any domain, or `None` when there are
+/// none (a legacy run, or a validator-rated run nobody has reviewed yet). The same
+/// rule as [`aggregate_rating`], on the aesthetic channel. Mirrors
+/// `aggregateAestheticRating` in `packages/run-stats/src/scoring.ts`.
+pub fn aggregate_aesthetic<'a>(
+    reviews: impl IntoIterator<Item = &'a [DomainAesthetic]>,
+) -> Option<AestheticRating> {
+    AestheticRating::worst(
+        reviews
+            .into_iter()
+            .flat_map(|aesthetics| aesthetics.iter().map(|domain| domain.rating)),
+    )
+}
+
+/// **The validator-decided functional rating, per domain.**
+///
+/// On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run
+/// every domain starts [`Flawless`](Rating::Flawless). For each **scored**
+/// validated point that **failed** — the same failure semantics as
+/// [`crate::comparison::automated_only_score`]: a decided verdict with
+/// `pass == false`, or a script that suffered a contract failure (`ran == false`)
+/// without being recorded inconclusive — each of the point's declared
+/// [`domains`](crate::test_case::SubReviewItem::domains) is lowered to
+/// `min(current, cap.rating())`, where `cap` is the point's
+/// [`failure_cap`](crate::test_case::SubReviewItem::failure_cap). So a domain ends
+/// at the lowest cap among its failures. An inconclusive (`precondition_unmet`)
+/// point, a point with no script result at all, and a point excluded from scoring
+/// (`scored == false`, an erratum) never lower anything, and a point whose
+/// verdict id names no declared point is ignored.
+///
+/// `items` must be the run's **effective** checklist
+/// ([`TestCaseVersion::review_items_for`](crate::test_case::TestCaseVersion::review_items_for))
+/// and `domains` its effective domain set
+/// ([`domains_for`](crate::test_case::TestCaseVersion::domains_for)); the result
+/// carries one [`DomainRating`] per domain, in `domains` order. Mirrors
+/// `validatorDomainRatings` in `packages/run-stats/src/scoring.ts`.
+pub fn validator_domain_ratings(
+    domains: &[Domain],
+    items: &[ReviewItem],
+    debug_scripts: &[crate::validation::DebugScriptResult],
+) -> Vec<DomainRating> {
+    let mut ratings: Vec<DomainRating> = domains
+        .iter()
+        .map(|domain| DomainRating {
+            domain: domain.id.clone(),
+            rating: Rating::Flawless,
+        })
+        .collect();
+    let mut lower = |domain: &str, cap: FailureCap| {
+        if let Some(entry) = ratings.iter_mut().find(|r| r.domain == domain) {
+            entry.rating = Rating::worst([entry.rating, cap.rating()]).unwrap_or(entry.rating);
+        }
+    };
+    for verdict in crate::comparison::automated_verdicts(debug_scripts) {
+        if verdict.status != VerdictStatus::Fail {
+            continue;
+        }
+        let Some((cap, point_domains)) = failing_point(items, &verdict.id) else {
+            continue;
+        };
+        for domain in point_domains {
+            lower(domain, cap);
+        }
+    }
+    ratings
+}
+
+/// The failure cap and domains of the **scored** point `verdict_id` names in
+/// `items`, or `None` when it names no scored point or the point declares no cap
+/// (a legacy point, which cannot lower a domain).
+fn failing_point<'a>(
+    items: &'a [ReviewItem],
+    verdict_id: &str,
+) -> Option<(FailureCap, &'a [String])> {
+    for item in items {
+        if !item.scored {
+            continue;
+        }
+        if item.sub_items.is_empty() {
+            if item.id == verdict_id {
+                return item.failure_cap.map(|cap| (cap, item.domains.as_slice()));
+            }
+            continue;
+        }
+        for sub in &item.sub_items {
+            if sub.scored && ReviewItem::sub_item_verdict_id(&item.id, &sub.id) == verdict_id {
+                return sub.failure_cap.map(|cap| (cap, sub.domains.as_slice()));
+            }
+        }
+    }
+    None
+}
+
+/// **The validator-decided functional rating of a run**: the worst across its
+/// [per-domain validator ratings](validator_domain_ratings), composed with the
+/// toolchain gate ([`gated_rating`]). Always `Some` for a validator-rated run —
+/// with zero failures it is [`Flawless`](Rating::Flawless) — since the domain set
+/// is never empty. Mirrors `validatorRating` in `packages/run-stats/src/scoring.ts`.
+pub fn validator_rating(gated: bool, domain_ratings: &[DomainRating]) -> Option<Rating> {
+    gated_rating(
+        gated,
+        Rating::worst(domain_ratings.iter().map(|domain| domain.rating)),
+    )
+}
+
+/// **The validator-decided score of a run**: the
+/// [automated-only score](crate::comparison::automated_only_score) over the run's
+/// effective `items` and its record's `debug_scripts`, composed with the toolchain
+/// gate ([`gated_score`]). On a validator-rated run every scored point carries a
+/// validator, so this *is* the run's score — available the moment the run
+/// completes, independent of any review ([`AggregateScore::reviews`] is `0`).
+/// Mirrors `validatorScore` in `packages/run-stats/src/scoring.ts`.
+pub fn validator_score(
+    gated: bool,
+    items: &[ReviewItem],
+    debug_scripts: &[crate::validation::DebugScriptResult],
+) -> AggregateScore {
+    let Score { earned, total } = crate::comparison::automated_only_score(items, debug_scripts);
+    gated_score(
+        gated,
+        Some(AggregateScore {
+            earned,
+            total,
+            reviews: 0,
+        }),
+    )
+    .unwrap_or(AggregateScore {
+        earned: 0.0,
+        total,
+        reviews: 0,
+    })
 }
 
 /// Score a run by combining the case's declared `items` (which carry the point
@@ -780,11 +1225,12 @@ pub fn gated_overall_grade(gated: bool, reviewed: Option<VerdictStatus>) -> Opti
     reviewed
 }
 
-/// Parse a `writeup.md` file: its per-domain `rating.<domain>` frontmatter and
-/// its prose body.
+/// Parse a `writeup.md` file: its per-domain `rating.<domain>` and
+/// `aesthetic.<domain>` frontmatter and its prose body.
 ///
-/// The file must open with a `---` fenced YAML frontmatter block containing at
-/// least one `rating.<domain>` key set to one of the [`Rating`] tiers, and must
+/// The file must open with a `---` fenced YAML frontmatter block carrying at
+/// least one of a `rating.<domain>` (a [`Rating`] tier), an `aesthetic.<domain>`
+/// (an [`AestheticRating`] tier), or a `review.<id>` checklist verdict, and must
 /// have a non-empty body after the frontmatter. Anything else is an
 /// [`Error::Review`] explaining what was missing — this is what the publish gate
 /// reports.
@@ -792,13 +1238,17 @@ pub fn parse_writeup(raw: &str) -> Result<Writeup> {
     let (frontmatter, body) = split_frontmatter(raw)?;
 
     let ratings = parse_ratings(frontmatter)?;
+    let aesthetics = parse_aesthetics(frontmatter)?;
     let checklist = parse_checklist(frontmatter)?;
-    // A domain-scored case rates at least one `rating.<domain>`; a game jam rates
-    // none but records its graded categories and overall mark as `review.<id>`
-    // verdicts. A writeup carrying neither is empty of judgement and rejected.
-    if ratings.is_empty() && checklist.is_empty() {
+    // A legacy domain-scored case rates at least one `rating.<domain>`; a
+    // validator-rated run's review rates at least one `aesthetic.<domain>`; a game
+    // jam rates neither but records its graded categories and overall mark as
+    // `review.<id>` verdicts. A writeup carrying none is empty of judgement and
+    // rejected.
+    if ratings.is_empty() && aesthetics.is_empty() && checklist.is_empty() {
         return Err(Error::Review(
-            "writeup frontmatter is missing a `rating.<domain>` entry or a `review.<id>` verdict"
+            "writeup frontmatter is missing a `rating.<domain>` entry, an `aesthetic.<domain>` \
+             entry, or a `review.<id>` verdict"
                 .to_string(),
         ));
     }
@@ -812,6 +1262,7 @@ pub fn parse_writeup(raw: &str) -> Result<Writeup> {
 
     Ok(Writeup {
         ratings,
+        aesthetics,
         body: body.to_string(),
         checklist,
     })
@@ -849,6 +1300,40 @@ fn parse_ratings(frontmatter: &str) -> Result<Vec<DomainRating>> {
         });
     }
     Ok(ratings)
+}
+
+/// Parse the per-domain aesthetic ratings from a frontmatter block: every
+/// `aesthetic.<domain>` line, in order. The value must be one of the
+/// [`AestheticRating`] tiers. An empty domain id or an unrecognized tier is an
+/// [`Error::Review`] so a malformed rating is reported rather than silently dropped.
+fn parse_aesthetics(frontmatter: &str) -> Result<Vec<DomainAesthetic>> {
+    let mut aesthetics = Vec::new();
+    for line in frontmatter.lines() {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        let Some(domain) = name.trim().strip_prefix("aesthetic.") else {
+            continue;
+        };
+        let domain = domain.trim();
+        if domain.is_empty() {
+            return Err(Error::Review(
+                "writeup has an `aesthetic.` line with an empty domain id".to_string(),
+            ));
+        }
+        let rating = AestheticRating::parse(value).ok_or_else(|| {
+            Error::Review(format!(
+                "writeup `aesthetic.{domain}` must be one of legendary, amazing, good, okay, \
+                 slop (got `{}`)",
+                value.trim()
+            ))
+        })?;
+        aesthetics.push(DomainAesthetic {
+            domain: domain.to_string(),
+            rating,
+        });
+    }
+    Ok(aesthetics)
 }
 
 /// Parse the checklist verdicts from a frontmatter block: every `review.<id>`
@@ -901,7 +1386,8 @@ fn split_frontmatter(raw: &str) -> Result<(&str, &str)> {
         .or_else(|| trimmed.strip_prefix("---\r\n"))
         .ok_or_else(|| {
             Error::Review(
-                "writeup is missing its `---` frontmatter block with a `rating`".to_string(),
+                "writeup is missing its `---` frontmatter block with a `rating` or `aesthetic`"
+                    .to_string(),
             )
         })?;
 

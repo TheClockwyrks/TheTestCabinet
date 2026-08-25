@@ -128,13 +128,15 @@ pub(super) fn evaluate_closing_docviews(
     )
 }
 
-/// [`evaluate`] for an agent that keeps a program library with `source` already recorded on `turn`.
+/// [`evaluate`] for an agent that keeps a program library with `source` already recorded under `id`
+/// on `turn`.
 ///
 /// The one thing a library-holding agent cannot be driven to without it: `programs.get` and the
 /// `ProgramSummary::source` method that is a second spelling of it both answer out of a history a
 /// fresh double has none of, so a test that seeded nothing can only ever observe a `NotFound`.
 pub(super) fn evaluate_with_program(
     component: &[u8],
+    id: &str,
     turn: u64,
     source: &str,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
@@ -145,7 +147,7 @@ pub(super) fn evaluate_with_program(
         &[],
         RunEnding::None,
         true,
-        |log| FakeOperationApi::with(log, responder).with_program(turn, source),
+        |log| FakeOperationApi::with(log, responder).with_program(id, turn, source),
     )
 }
 

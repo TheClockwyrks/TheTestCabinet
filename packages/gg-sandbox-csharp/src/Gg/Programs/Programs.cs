@@ -25,6 +25,7 @@ public static partial class Programs
     public static IReadOnlyList<ProgramSummary> History()
     {
         Internal.Wire.Check(Internal.Native.History(
+            out var ids,
             out var turns,
             out var lines,
             out var chars,
@@ -34,6 +35,7 @@ public static partial class Programs
         for (var index = 0; index < turns.Length; index++)
         {
             summaries[index] = new ProgramSummary(
+                ids[index],
                 turns[index],
                 lines[index],
                 chars[index],
@@ -43,26 +45,27 @@ public static partial class Programs
         return summaries;
     }
 
-    /// <summary>Fetch the exact source of one program, as it was run.</summary>
+    /// <summary>Fetch the exact source of one program that ran, by the id its acknowledgement carried.</summary>
     /// <remarks>
-    /// As it was run is the contract that matters: where a turn's program was itself handed over by
-    /// an earlier one, what is kept is the program that executed rather than the few lines that
-    /// asked for it. So fetching, patching and re-running composes.
+    /// As it was run is the contract that matters: where a submission's program was itself handed
+    /// over by the one before it, what is kept under the submission's id is the program that executed
+    /// rather than the few lines that asked for it. So fetching, patching and re-running composes,
+    /// and a rerun keeps the id of the submission it replaced.
     /// </remarks>
-    /// <param name="turn">
-    /// The turn to fetch, as <see cref="ProgramSummary.Turn"/> reports it. Left out, the most recent
-    /// one is returned.
+    /// <param name="id">
+    /// The program's id, as its acknowledgement carried it and as <see cref="ProgramSummary.Id"/>
+    /// reports it.
     /// </param>
     /// <returns>that program's source, ready to patch and hand to <see cref="Rerun"/>.</returns>
     /// <exception cref="ApiException">
-    /// <see cref="ApiErrorCode.NotFound"/> — naming the turns that are held — for a turn that ran
-    /// no program, or one the library's retention has already dropped, and
+    /// <see cref="ApiErrorCode.NotFound"/> — naming the ids that are held — for an id this agent
+    /// was never issued, or one whose program the library's retention has already dropped, and
     /// <see cref="ApiErrorCode.Unavailable"/> when this agent keeps no program library.
     /// </exception>
     /// <ggop>programs.get</ggop>
-    public static string Get(uint? turn = null)
+    public static string Get(string id)
     {
-        Internal.Wire.Check(Internal.Native.GetProgram(Internal.Wire.Slot(turn), out var source));
+        Internal.Wire.Check(Internal.Native.GetProgram(id, out var source));
         return source;
     }
 
@@ -70,12 +73,13 @@ public static partial class Programs
     /// <remarks>
     /// <para>
     /// It is registered rather than performed. The call returns and the rest of the program still
-    /// runs; only once it has ended does gg compile and run what was handed over. Everything the
+    /// runs; only once it has ended does gg compile and run what was handed over, under this
+    /// submission's id. Everything the
     /// registering program did stands — its calls, its views — and the program that runs next sees
     /// exactly the world it left behind.
     /// </para>
     /// <code>
-    /// var previous = Programs.Get();
+    /// var previous = Programs.Get("k3p9");
     /// Programs.Rerun(previous.Replace("--release", "--debug"));
     /// </code>
     /// <para>
@@ -87,7 +91,7 @@ public static partial class Programs
     /// <param name="source">The program to run instead. Blank is refused.</param>
     /// <exception cref="ApiException">
     /// <see cref="ApiErrorCode.InvalidArgument"/> for a blank source,
-    /// <see cref="ApiErrorCode.Refused"/> for a second call in one turn, and
+    /// <see cref="ApiErrorCode.Refused"/> for a second call from the same program, and
     /// <see cref="ApiErrorCode.Unavailable"/> when this agent keeps no program library.
     /// </exception>
     /// <ggop>programs.rerun</ggop>

@@ -72,9 +72,8 @@
 //!   which the ECMAScript arms once did: beyond the names it bought, a top-level `return` ended the
 //!   program and every statement after it was dead. That is legal JavaScript, so nothing refused it
 //!   and the turn was recorded as a success — the shape a model drafting two programs and pasting
-//!   the second after the first lands in, kept as the `round2-*-two-drafts` fixtures in
-//!   `healing.test.rs`. A module has no function body to return from, so the language reports it
-//!   before anything runs.
+//!   the second after the first lands in. A module has no function body to return from, so the
+//!   language reports it before anything runs.
 //! * **A transform conditional on a construct the generated program does not contain.** An arm that
 //!   hoists a model's `import` lines only when it wrote one keeps the bytes of a program that wrote
 //!   none.
@@ -99,7 +98,7 @@
 
 use std::path::Path;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{DEFAULT_OPENING_FUNCTIONS, GgProgramLanguage};
 
 use super::compile::PrepareContext;
 use super::{CodeModule, ProgramLanguage, all_languages};
@@ -110,29 +109,28 @@ const MODULE_NAME: &str = "gg-authorship-marker";
 
 /// The modules the [opening program](ProgramLanguage::bootstrap_program) searches and the
 /// documentation keys it opens views of, resolved out of **this arm's own catalogue** exactly as
-/// [`crate::bootstrap`] resolves them.
+/// [`crate::bootstrap`] resolves them — for the [opening turn](test_cabinet_core::gg::GgOpeningTurn) a fresh profile is
+/// seeded with, held by an agent granted everything.
 ///
 /// Read rather than written down, for the two reasons everything else in gg reads a spelling: an
 /// arm files its calls under its own names, and a name typed here would be a second copy of one the
-/// catalogue already carries. What comes back is what a run's own opening turn is generated over,
-/// so what this gate prepares is the program that arm really opens a session with.
+/// catalogue already carries. What comes back is what a default profile's own opening turn is
+/// generated over on this arm, so what this gate prepares is the program that arm really opens a
+/// session with.
 fn subject(language: &'static dyn ProgramLanguage) -> (Vec<String>, Vec<String>) {
     let functions = crate::sandbox::catalogue_functions(language);
     let mut modules: Vec<String> = Vec::new();
     let mut docs: Vec<String> = Vec::new();
-    for call in crate::bootstrap::BOOTSTRAP_CALLS {
+    for id in DEFAULT_OPENING_FUNCTIONS {
+        let operation = crate::sandbox::operation_by_id(id).unwrap_or_else(|| {
+            panic!("the default opening turn names `{id}`, which is no operation")
+        });
         // A fully-granted agent holds every call, so the one reason an entry is missing is that
-        // this arm's catalogue does not carry it. That is a defect for a call every agent opens;
-        // for one bought by a capability it is the arm not yet spelling the call, which the
-        // capability gate names by itself and this gate has no program to write for.
-        let Some(function) = crate::bootstrap::bootstrap_function(&functions, *call, |_| true)
+        // this arm's catalogue does not carry it — which the seed drops with a warning, and the
+        // capability gate names by itself. This gate has no program to write for it.
+        let Some(function) =
+            crate::bootstrap::bootstrap_function(&functions, operation.id, |_| true)
         else {
-            assert!(
-                !crate::bootstrap::bootstrap_required(*call),
-                "{}'s catalogue carries no call for `{call:?}`, so gg could not generate its \
-                 opening program either",
-                language.display_name()
-            );
             continue;
         };
         if !modules.iter().any(|module| module == function.object) {

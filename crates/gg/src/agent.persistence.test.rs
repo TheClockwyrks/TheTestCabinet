@@ -122,6 +122,7 @@ async fn drive_instance_in(
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -460,7 +461,6 @@ fn code_on() -> CodeSetup {
         enabled: true,
         language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::AMPLE,
-        healing: HealingConfig::SAFE_REPAIRS,
         doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }

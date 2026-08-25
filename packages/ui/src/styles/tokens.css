@@ -26,6 +26,17 @@
   --tcab-rating-scuffed: #fbbf24;
   --tcab-rating-broken: #f87171;
 
+  /* Per-tier AESTHETIC rating colors, best to worst — the second rating channel a
+     reviewer rates on a validator-rated run. Legendary is the exceptional tier:
+     its badge is a shimmering gradient between the two colors below rather than
+     a flat tint, so a viewer sees at once that it is not the normal maximum. */
+  --tcab-aesthetic-legendary: #f0abfc;
+  --tcab-aesthetic-legendary-2: #fde68a;
+  --tcab-aesthetic-amazing: #c084fc;
+  --tcab-aesthetic-good: #60a5fa;
+  --tcab-aesthetic-okay: #94a3b8;
+  --tcab-aesthetic-slop: #a16207;
+
   --tcab-font:
     ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", Menlo, Consolas,
     monospace;

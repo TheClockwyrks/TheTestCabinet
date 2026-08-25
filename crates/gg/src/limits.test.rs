@@ -603,7 +603,8 @@ fn only_error_outcomes_count_as_errors() {
                 | TurnErrorType::SandboxOutOfMemory
                 | TurnErrorType::SandboxTrap
                 | TurnErrorType::MissingCompletionNoCall
-                | TurnErrorType::MissingCompletionCompaction => true,
+                | TurnErrorType::MissingCompletionCompaction
+                | TurnErrorType::MissingCompletionNoProgram => true,
             },
         };
         assert_eq!(outcome.is_error(), expected, "{outcome:?}");
@@ -801,6 +802,7 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
         TurnErrorType::SandboxTrap,
         TurnErrorType::MissingCompletionNoCall,
         TurnErrorType::MissingCompletionCompaction,
+        TurnErrorType::MissingCompletionNoProgram,
     ];
     // The exhaustiveness guard: this match has no wildcard, so a new variant breaks the build here.
     for error in all {
@@ -823,7 +825,8 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
             | TurnErrorType::SandboxOutOfMemory
             | TurnErrorType::SandboxTrap
             | TurnErrorType::MissingCompletionNoCall
-            | TurnErrorType::MissingCompletionCompaction => {}
+            | TurnErrorType::MissingCompletionCompaction
+            | TurnErrorType::MissingCompletionNoProgram => {}
         }
     }
     assert_eq!(

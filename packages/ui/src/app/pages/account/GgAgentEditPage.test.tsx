@@ -25,6 +25,7 @@ import {
   type BackendContextValue,
 } from "../../../client/context";
 import { GgAgentEditPage } from "./GgAgentEditPage";
+import { defaultOpeningTurn } from "../runs/gg/ggConfigDraft";
 
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -53,6 +54,7 @@ const STORED_AGENT: GgSavedAgent = {
     modelId: "",
     modelSlot: "primary",
     modelSlots: [{ name: "primary", passthrough: true }],
+    openingTurn: defaultOpeningTurn(),
   },
   updatedAt: "2026-08-18T00:00:00Z",
 };

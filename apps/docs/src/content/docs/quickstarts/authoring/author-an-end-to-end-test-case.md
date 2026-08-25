@@ -55,8 +55,9 @@ test-cases/end-to-end/<difficulty>/<slug>/<version>/
    harness renders these to screenshots and seeds none of the source.
 7. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`), the required
    `changelog`, the required `[build]` commands, the common `[[spec]]`,
-   `[[reference]]`, and `[[domain]]` lists, the `[[review_item]]` checklist, and
-   any opt-in `[[check]]`. At least one `[[domain]]` is required. A spec's `dest`
+   `[[reference]]`, and `[[domain]]` lists, the review checklist with each
+   point's `domains` and `failure_cap`, and any opt-in `[[check]]`. At least one
+   `[[domain]]` is required. A spec's `dest`
    defaults to its `source` with a trailing `.hbs` removed.
 8. Write the `variants` list of paths to standalone TOML files under `variants/`.
    It is a root key, so it must precede the first table header, and the first

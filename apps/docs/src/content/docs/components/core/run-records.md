@@ -143,7 +143,9 @@ per-run media under `/runs/<id>/asset/<file>`.
 The run's terminal state, with enough detail to understand a failure. One of:
 
 - `completed`: the harness exited cleanly and the run produced a usable,
-  evaluable implementation. Reviewed and scored on the reviewer checklist.
+  evaluable implementation. Scored on the reviewer checklist: by its validators
+  on a [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run,
+  by its reviewers on a legacy run.
 - `catastrophic`: the harness exited cleanly, meaning the model claimed
   completion, but the output did not build or load, so there was no playable
   build and nothing to evaluate. A publishable model failure with no review
@@ -245,7 +247,8 @@ artifacts:
   `replay.json.gz` under the same convention.
 - `writeup.md`: a local [review](/components/core/results/#reviews) of the run,
   when one has been written. This is the operator's own review, used by the solo
-  [`tcab publish`](/components/core/results/#combined-review-and-publish) path.
+  [`tcab publish`](/components/core/results/#combined-review-and-publish) path,
+  which publishes a validator-rated run without one.
   A produced run can accumulate further reviews from other accounts, which are
   held on the backend rather than beside the run on disk.
 

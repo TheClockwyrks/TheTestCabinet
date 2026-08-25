@@ -29,10 +29,7 @@
 //! # What is gathered
 //!
 //! Fenced blocks in `apps/docs/src/content/docs/gg/`, recursively, whose info string opens with a
-//! tag in [`ARMS`]. That table is the one place a spelling is written down, and
-//! [`every_tag_is_one_its_arm_would_heal`] holds each entry to the arm's own
-//! [healing dialect](crate::healing::Dialect::program_fence_tags), so a tag here cannot name a
-//! block gg itself would not read as that language's program.
+//! tag in [`ARMS`]. That table is the one place a spelling is written down.
 //!
 //! The tree is `gg/` alone rather than all of `apps/docs`. A TypeScript block on the web console's
 //! page is TypeScript about a React app, and compiling it against gg's SDK would report a defect

@@ -87,7 +87,7 @@ function ingest(stored: StoredRun, into: ProducedRuns): void {
   if (reviews.length > 0) into.reviews[stored.id] = reviews;
   const framed = frameReviews(reviews);
   if (framed !== null) into.writeups[stored.id] = framed;
-  into.summaries.push(toRunSummary(stored.record, reviews));
+  into.summaries.push(toRunSummary(stored));
 }
 
 async function fetchProducedRuns(worker: WorkerClient): Promise<ProducedRuns> {
@@ -178,6 +178,11 @@ async function toVariantSummary(
       weight: item.weight,
       graded: item.graded ?? false,
       domain: item.domain ?? null,
+      // A validator-rated version's per-point failure cap and domains — what the
+      // validator-decided functional rating is computed from. Absent/empty on a
+      // legacy version.
+      failureCap: item.failureCap ?? null,
+      domains: item.domains ?? [],
       // Whether this point counts toward the score. `false` only when the
       // version's errata (`excludeFromScore`) retired it — carried through so the
       // reviewer UIs can flag it "not scored". Dropping it here left the console
@@ -190,6 +195,8 @@ async function toVariantSummary(
         weight: sub.weight,
         reference: sub.reference ?? null,
         proof: sub.proof ?? null,
+        failureCap: sub.failureCap ?? null,
+        domains: sub.domains ?? [],
         // Same as the whole-item `scored` above: preserved so an erratum that
         // excludes one sub-item of a category still surfaces as "not scored".
         scored: sub.scored,
@@ -203,6 +210,9 @@ async function toVariantSummary(
       name: d.name,
       description: d.description,
     })),
+    // Validator-rated iff the version is on the engine manifest format and is
+    // not a game jam — the same rule as the Rust `TestCaseVersion::validator_rated`.
+    validatorRated: info.engineFormat && info.testType !== "game-jam",
     // The reference-implementation build URLs the backend records for this
     // variant, one per engine, or empty when it declares none. Drives whether the
     // case-detail Reference tab appears for the selected variant, and what its
@@ -737,6 +747,11 @@ export function useLiveGallery(
       const toDetail = (stored: StoredRun): RunDetail => ({
         record: stored.record,
         reviews: stored.reviews ?? [],
+        // The store's word on the two rating channels and which way the
+        // functional one was decided (see `StoredRun`).
+        validatorRated: stored.validatorRated,
+        rating: stored.rating,
+        aesthetic: stored.aesthetic,
         // The store's own publish flag, not the produced worklist: a run this
         // console did not produce (or one produced before the worklist loaded)
         // must still read as published so the review surfaces don't offer to

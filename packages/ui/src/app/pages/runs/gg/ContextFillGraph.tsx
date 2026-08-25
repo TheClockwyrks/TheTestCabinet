@@ -57,7 +57,6 @@ export const CONTEXT_SOURCES: readonly GgContextSource[] = [
   "skill",
   "memory",
   "task_list",
-  "board",
   "history",
 ] as const;
 
@@ -91,7 +90,6 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
   skill: "Skills",
   memory: "Memories",
   task_list: "Task list",
-  board: "Board",
   history: "History",
 };
 
@@ -116,7 +114,8 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
 // under one extra constraint: they are a **pair** — both are a responses-as-code program's
 // failure — so they had to read as related hues without collapsing into each other.
 //
-// The obvious failure slots were already spent: `board` is a red and `tool_output` an orange. The
+// The obvious failure slots were already spent: `board` (a red, since retired when the
+// board went tools-only) and `tool_output` an orange. The
 // warm arc will still take one more band, but it will not take two. Sweeping every in-gamut
 // colour from crimson through brown, the only *pairs* that clear the floors together sit ~70°
 // apart in hue (an amber-brown against a rose) and clear them by almost nothing — ΔE 15.5 in
@@ -128,7 +127,7 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
 // ran and blew up — which is exactly the relation they have. What they clear:
 //
 // - `compiler_error` #765a72 — nearest band in normal vision `text_view` at ΔE 20, then its own
-//   sibling at 20; nearest under simulation `board` at ΔE 10.2 (protan) and `runtime_error` at
+//   sibling at 20; nearest under simulation the since-retired `board` red at ΔE 10.2 (protan) and `runtime_error` at
 //   10.2 (tritan). Contrast 6.0:1 on the light surface, 3.2:1 on the dark one.
 // - `runtime_error` #ba04b5 — nearest band in normal vision `skill` at ΔE 20 (the pale lavender
 //   this saturated magenta sits far below in lightness and far above in chroma), then its own
@@ -150,7 +149,7 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
 // - `docs_view` #5c8c00 — nearest band in normal vision `assistant` at ΔE 18.5 (a bright lime
 //   against a dark moss: they share a hue and differ in lightness, which is exactly the relation
 //   `compiler_error` and `runtime_error` have), then `history` at 21.5; nearest under simulation
-//   `text_view` at ΔE 8.1 (tritan) and `board` at 8.2 (deutan). Contrast 4.8:1 on the dark console
+//   `text_view` at ΔE 8.1 (tritan) and the since-retired `board` red at 8.2 (deutan). Contrast 4.8:1 on the dark console
 //   surface, 4.0:1 on white.
 //
 // It is the third green in the palette, which is a real cost and was the alternative's one
@@ -165,7 +164,7 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
 // one connected region, fourteen points of it, all in that crimson. There is no second option to
 // weigh this one against, and the palette is therefore full at fifteen.
 //
-// - `search_results` #bc0848 — nearest band in normal vision `board` at ΔE 15.2 (a red the eye
+// - `search_results` #bc0848 — nearest band in normal vision the since-retired `board` red at ΔE 15.2 (a red the eye
 //   separates by lightness and by how far into magenta this one sits), then `compiler_error` at 16.5
 //   and `runtime_error` at 17.1; nearest under simulation `compiler_error` at ΔE 8.0 (deutan) and
 //   `runtime_error` at 8.1 (tritan). Contrast 3.01:1 on the dark console surface, 6.43:1 on white.
@@ -196,7 +195,6 @@ export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
   skill: "#c77dff",
   memory: "#ff6b9d",
   task_list: "#b5e48c",
-  board: "#ef5350",
   history: "#9aa5b1",
 };
 
@@ -224,7 +222,6 @@ const SOURCE_CAPABILITIES: Partial<Record<GgContextSource, readonly string[]>> =
     skill: ["skills"],
     memory: ["memories"],
     task_list: ["tasks"],
-    board: ["project-management"],
   };
 
 // How much room to leave above the tallest plotted stack, so the fill has somewhere

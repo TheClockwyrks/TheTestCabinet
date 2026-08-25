@@ -17,8 +17,6 @@ case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-template).
   sections plus the code-protocol framing, with one gated segment per [program
   language](/gg/languages/overview/).
 - `tasks.hbs` — the pinned [task list](/gg/tasks/) block.
-- `board.hbs` — the pinned [project management](/gg/project-management/) board
-  block.
 - `memories.hbs` — the pinned [memories](/gg/memories/) block.
 - `memory-index.hbs` — the pinned index the `markdown` memory strategy keeps.
 - `memory-notice.hbs` — the message a holder of a linked memory instance is
@@ -100,9 +98,9 @@ package inventory.
 A capability that is off contributes no prompt text at all, which is what makes
 two configurations cleanly comparable. A capability that is on contributes
 its instructions and, where it has one, its state: the pinned blocks and the
-skills catalog. For the two capabilities that carry an
-[`ownership`](/gg/modules/#ownership) param, an unowned module contributes
-neither half and is reachable through its tools alone.
+skills catalog. The [board](/gg/project-management/) and the
+[thread archive](/gg/agent-managed-context/) contribute neither half: each is
+reachable through its tools alone.
 
 Each system template is therefore one `{{#if}}` section per capability over a
 rendering context that carries both whether each capability is on and how it is
@@ -187,15 +185,23 @@ segment and no other arm's.
 
 ## The code arm
 
-The opening section states the reply contract: the model's whole reply is one
-legal program in this run's language and nothing else, run as that program every
-turn. It also states that the session has no tools and no tool-calling protocol:
-tool-call syntax of any kind — native tool-call tokens, XML invoke blocks, JSON
-function-call objects — is an error nothing dispatches, and the reply is one bare
-program with no prose around it and no code fences. Tool-call-trained models
-reach for that syntax by reflex, and the runtime really does dispatch none of it:
-a code turn offers no tool definitions, and a native tool call emitted anyway is
-dropped from the window with a warning.
+The opening section states the reply contract: the model takes every turn with
+a `submit_program` call whose `program` string is one whole, legal program in
+this run's language, as bare code with no fences around it and no prose inside
+it, processed exactly as written. It states that `submit_program` is the only
+tool in the session and that every reply must call it, that each call is
+acknowledged with a tool result carrying the id the program library assigned
+that program (a receipt that `gg.programs.get` takes and a rerun keeps) or,
+for an agent that keeps no library, the fixed `ok`, with what the program
+produced arriving as separate messages after it, that text written beside the
+call is recorded but nothing reads code out of it, and that a reply carrying
+several calls runs every program sequentially, in submission order.
+
+The runtime holds every one of those statements. The request offers exactly the
+one tool and requires a call to it through forced tool choice; a call to any
+other tool name is answered with a tool result redirecting to `submit_program`;
+and a reply that submits no program is an error turn, answered with how to take
+the next one.
 
 Three rules follow it, stated for every arm, because none of them is visible in
 a signature and each costs a turn to discover by trying it:
@@ -230,22 +236,6 @@ function whatever this run enabled, so a call to one the run withheld compiles
 and then fails when it runs, naming the call. What the documentation holds is
 what the run granted.
 
-### The trailing contract notice
-
-The reply contract is also restated at the very end of every request, as one
-constant `Notice`-style sentence: the reply is one bare program in this run's
-language, with no prose, no fences and no tool calls. Measured across models,
-this trailing restatement is the single most effective lever for keeping a
-tool-call-trained model on the contract, so it earns a permanent seat at the
-position models weight most.
-
-It is a [slot](/gg/context-visibility/#slots) rather than a thread item: one
-instance, rendered after everything else on every request, set once per agent
-and cleared when a [succession](/gg/fork-and-exec/) hands the window to a
-different holder. Because everything a provider's prompt cache reads sits before
-it, the notice never disturbs the append-only prompt, and the tail cache marker
-deliberately lands on the newest conversation message rather than on it.
-
 ### Modules
 
 The prompt lists one line per capability module: the path this arm spells it
@@ -265,11 +255,11 @@ is what makes a signature readable before it is relied on.
 
 Because the calls that do the discovering are themselves functions, every code
 agent's session opens with a program gg wrote in that agent's own language and
-ran. It lists the agent's filesystem and shell modules and opens the
-documentation of the two discovery calls, so the window opens on the functions
-an agent reaches for first, one line each, beside the source of a program that
-provably ran. Every other module is reached through the prompt's own list, at
-the cost of one search. See [the opening
+ran. It lists the modules and opens the documentation of the functions named by
+the agent's `openingTurn` configuration, so the window opens on whatever the
+operator decided the agent reaches for first, beside the source of a program
+that provably ran. Every other module is reached through the prompt's own list,
+at the cost of one search. See [the opening
 turn](/gg/responses-as-code/views/#the-opening-turn).
 
 ### Function names
@@ -292,7 +282,7 @@ rendered, for every language.
 The code arm lists the message headings a run can produce, each message it
 receives being headed by a label on its own line followed by a `----` rule. A
 heading whose capability is off is not described, which covers `Memories`,
-`Tasks`, `Board` and `File`. The rest are ungated: `Task` for the brief or a
+`Tasks` and `File`. The rest are ungated: `Task` for the brief or a
 parent's message, `Compiler error` and `Runtime error` for the two ways a
 program fails, `Notice` for a process fact from the harness, `Summary` for the
 recap a [compaction](/gg/compaction/) restarts the thread from, `Documentation`
@@ -330,7 +320,7 @@ summary claims.
 
 ## The pinned blocks
 
-The task list, board and memories are each pushed into the window as a pinned
+The task list and the memories are each pushed into the window as a pinned
 block that is rebuilt whenever the model changes it. Those blocks are state
 only, being a heading and the current items:
 
@@ -349,12 +339,12 @@ The derived parts of a block, meaning whether an item is ready or blocked by
 specific incomplete items, are computed in Rust by the store that owns the DAG.
 The template lays the result out.
 
-Which of the three an agent gets is decided by its [modules](/gg/modules/): a
+Which of the two an agent gets is decided by its [modules](/gg/modules/): a
 block belongs to a module, and a module the agent does not hold contributes
-neither a block nor the section that would have described it. An
-[unowned](/gg/modules/#ownership) board contributes neither half, which is what
-lets an agent be dispatched an issue from a board it is never shown. A holder of
-the task list or the memory block is shown it.
+neither a block nor the section that would have described it. The
+[board](/gg/modules/#what-reaches-the-prompt) contributes neither half, which
+is what lets an agent be dispatched an issue from a board it is never shown. A
+holder of the task list or the memory block is shown it.
 
 ### Linked-memory notices
 

@@ -21,7 +21,13 @@ import type {
   RunState,
   TestType,
 } from "./index";
-import type { Rating, Review, VerdictStatus } from "./review";
+import type {
+  AestheticRating,
+  FailureCap,
+  Rating,
+  Review,
+  VerdictStatus,
+} from "./review";
 
 /**
  * The top-level snapshot pointer (`index.json`): where the runs index, per-run
@@ -127,14 +133,36 @@ export type RunSummary = {
   validationLoaded: boolean;
   state: RunState;
   /**
-   * The run's overall rating: the worst rating any reviewer gave any domain.
-   * `None` when the run carries no reviews yet (an unrated console run); the
-   * snapshot only contains reviewed runs, so it is always `Some` there.
+   * The run's **functional** rating. On a legacy run the worst rating any
+   * reviewer gave any domain, `None` while the run carries no reviews (an
+   * unrated console run). On a [validator-rated](Self::validator_rated) run the
+   * validator-decided rating — each failing scored point caps its domains at its
+   * declared failure cap, the run gets the worst domain, composed with the
+   * toolchain gate — which is `Some` from the moment the run completes, with or
+   * without a review. A published run always has one.
    */
   rating: Rating | null;
   /**
-   * How many reviews the run carries. The site averages their scores; the
-   * aggregate sits between the harshest and most generous review.
+   * The run's aggregate **aesthetic** rating: the worst aesthetic rating any
+   * reviewer gave any domain, or `None` when no review has rated the aesthetic
+   * channel — a validator-rated run nobody has reviewed yet, and every legacy
+   * run (its reviews carry no aesthetic ratings, so it never shows the badge).
+   */
+  aesthetic?: AestheticRating | null;
+  /**
+   * Whether the run is **validator-rated**: its case version is on the engine
+   * manifest format and not a game jam, so [`rating`](Self::rating) and
+   * [`score`](Self::score) are decided by the validators (present without any
+   * review, and never changed by one), its reviewers supply only the
+   * [`aesthetic`](Self::aesthetic) channel, and it publishes with zero reviews.
+   * `false` for every legacy run, whose card reads exactly as it always has.
+   * Lifted here so every consumer can branch on it without a catalog.
+   */
+  validatorRated: boolean;
+  /**
+   * How many reviews the run carries. The site averages their scores on a
+   * legacy run; the aggregate sits between the harshest and most generous
+   * review. On a validator-rated run it counts the aesthetic reviews.
    */
   reviewCount: number;
   /**
@@ -481,6 +509,18 @@ export type CaseReviewItemOut = {
    * pass/fail point. Empty for an item graded as a whole.
    */
   subItems: Array<CaseSubReviewItemOut>;
+  /**
+   * On a validator-rated version, a whole-item point's **failure cap**: the
+   * highest functional rating its `domains` may reach while its validator
+   * fails. Absent on a legacy version and on a sub-divided item (whose caps sit
+   * on its sub-items).
+   */
+  failureCap?: FailureCap;
+  /**
+   * On a validator-rated version, the scoring domains (by id) a failure of this
+   * whole-item point lowers. Empty on a legacy version and on a sub-divided item.
+   */
+  domains: Array<string>;
 };
 
 /**
@@ -510,6 +550,17 @@ export type CaseSubReviewItemOut = {
    * Optional proof id paired with this point as the submitted media.
    */
   proof: string | null;
+  /**
+   * On a validator-rated version, this point's **failure cap**: the highest
+   * functional rating its `domains` may reach while its validator fails. Absent
+   * on a legacy version.
+   */
+  failureCap?: FailureCap;
+  /**
+   * On a validator-rated version, the scoring domains (by id) a failure of this
+   * point lowers. Empty on a legacy version.
+   */
+  domains: Array<string>;
 };
 
 /**
@@ -711,6 +762,14 @@ export type CaseMetadata = {
    * case's type and treats every case as end-to-end.
    */
   testType: TestType;
+  /**
+   * Whether the version is on the **engine manifest format**, which (with the
+   * test type) makes it **validator-rated**: its runs' functional rating and
+   * score are decided by the validators — each review item's `failureCap` and
+   * `domains` below — and reviewers rate only the aesthetic channel. `false` on
+   * every legacy version, whose runs the site scores exactly as before.
+   */
+  engineFormat: boolean;
   /**
    * The asset shape an asset-generation case produces, so the gallery can
    * partition asset cases across its 2D (sprite/paint), 3D (voxel/mesh/skinned),

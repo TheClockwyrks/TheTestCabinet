@@ -615,6 +615,24 @@
         "domain": {
           "type": ["string", "null"]
         },
+        "domains": {
+          "description": "On a validator-rated version, the scoring domains (by id) a failure of this\nwhole-item point lowers. Empty on a legacy version and on a sub-divided item.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "failureCap": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/FailureCap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "On a validator-rated version, a whole-item point's **failure cap**: the\nhighest functional rating its `domains` may reach while its validator fails.\nAbsent on a legacy version and on a sub-divided item (whose caps sit on its\nsub-items)."
+        },
         "graded": {
           "default": false,
           "description": "Whether the item is graded on the five-level scale (a game-jam category)\nrather than pass/fail. False for every other test type. The reviewer UI keys\nits editor control (emoji grade scale vs. pass/fail) off this flag.",
@@ -659,7 +677,7 @@
           "type": "integer"
         }
       },
-      "required": ["id", "title", "text", "weight", "subItems"],
+      "required": ["id", "title", "text", "weight", "subItems", "domains"],
       "type": "object"
     },
     "ReviewOutputOut": {
@@ -843,6 +861,24 @@
           "description": "Optional prose for this point (categories grammar); absent for a legacy\nname-only sub-item.",
           "type": ["string", "null"]
         },
+        "domains": {
+          "description": "On a validator-rated version, the scoring domains (by id) a failure of this\npoint lowers. Empty on a legacy version.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "failureCap": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/FailureCap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "On a validator-rated version, this point's **failure cap**: the highest\nfunctional rating its `domains` may reach while its validator fails. Absent on\na legacy version."
+        },
         "id": {
           "type": "string"
         },
@@ -875,7 +911,7 @@
           "type": "integer"
         }
       },
-      "required": ["id", "title", "weight"],
+      "required": ["id", "title", "weight", "domains"],
       "type": "object"
     },
     "ToolOut": {
@@ -1203,6 +1239,10 @@
       },
       "type": "array"
     },
+    "engineFormat": {
+      "description": "Whether the version is on the **engine manifest format**, which (with the\ntest type) makes it **validator-rated**: a run's functional rating and score\nare decided by its validators — every review point declares its `failureCap`\nand `domains` — and a reviewer rates only the aesthetic channel. `false` on\nevery legacy version, whose runs are reviewed exactly as before.",
+      "type": "boolean"
+    },
     "engines": {
       "description": "The engines a run of this version may select. Never empty — a version that\ndeclares none supports the engineless run.",
       "items": {
@@ -1423,6 +1463,7 @@
     "changelog",
     "maxRuntimeSeconds",
     "testType",
+    "engineFormat",
     "engines",
     "assetKind",
     "promptTemplate",

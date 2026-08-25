@@ -3,6 +3,8 @@ import { Link } from "react-router";
 import type { GgSavedAgent } from "@test-cabinet/run-record/gg";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -26,14 +28,17 @@ export function GgAgentsPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const { confirm } = useConfirm();
+
   const deleteAgent = useCallback(
     async (agent: GgSavedAgent) => {
       if (!backend?.deleteGgAgent || !token) return;
       if (
-        !window.confirm(
-          `Delete the gg agent “${agent.name}”? Configurations that imported it ` +
-            `keep their own copy and stop following this one. This cannot be undone.`,
-        )
+        !(await confirm({
+          title: "Delete gg agent",
+          message: `Delete “${agent.name}”? Configurations that imported it keep their own copy and stop following this one. This cannot be undone.`,
+          confirmLabel: "Delete",
+        }))
       ) {
         return;
       }
@@ -48,7 +53,7 @@ export function GgAgentsPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload],
+    [backend, token, reload, confirm],
   );
 
   const renderAgent = (agent: GgSavedAgent) => {
@@ -115,7 +120,7 @@ export function GgAgentsPage() {
           Sign in to save your own gg agents — they are saved to your account.
         </p>
       ) : loading ? (
-        <p className={styles.empty}>Loading agents…</p>
+        <LoadingState size="section" label="Loading agents…" />
       ) : agents.length === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.empty}>

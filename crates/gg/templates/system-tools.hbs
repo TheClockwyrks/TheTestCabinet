@@ -113,44 +113,6 @@ Choose the agent whose purpose best fits the work. You may only spawn the
 agents listed above.
 {{/if}}
 
-{{#if board}}
-## Project management
-
-You have access to a shared project board that you and other agents may use.
-This board is shared across the entire run.
-
-Use epics to group related issues. Epics are used exclusively for organizational
-purposes and can be created using `create_epic`. Issues represent units of work
-to be completed and are created using `create_issue`, which returns the ID of
-the created issue. All issues are handled in isolated worktrees.
-
-Issues may have dependencies configured. Submitting an issue will cause an agent
-to be dispatched to handle the issue once all dependencies have been completed
-(or immediately, if it has no dependencies). Each issue is worked in its own
-isolated copy of the workspace, which is merged back once the issue is accepted.
-
-You may assign an issue to any of the following agents:
-
-{{#each board.issueAgents}}
-- `{{name}}`{{#if description}}: {{description}}{{/if}}
-{{/each}}
-
-Use `wait_for_issue` to suspend until the issue you specify has been
-completed and merged into the main worktree.
-
-{{#if board.reviewerAgents}}
-{{#if board.reviewersRequired}}
-Every issue must name one or more `reviewers`.
-{{else}}
-An issue may name one or more `reviewers`.
-{{/if}}You may name any of the following agents as a reviewer:
-
-{{#each board.reviewerAgents}}
-- `{{name}}`{{#if description}}: {{description}}{{/if}}
-{{/each}}
-{{/if}}
-{{/if}}
-
 {{#if assignedIssue}}
 ## Your assigned issue
 

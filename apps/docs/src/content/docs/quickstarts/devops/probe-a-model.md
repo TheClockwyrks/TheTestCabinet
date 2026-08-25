@@ -5,10 +5,21 @@ title: Probe a Model
 ## Overview
 
 A model probe checks whether a catalog model can drive [gg](/gg/overview/)'s
-responses-as-code mode. The backend replays gg's real RaC opening request
-through OpenRouter under four prompt conditions, classifies the shape of every
-reply, and reduces the results to a verdict. The probe is triggered from the
-model's Probes tab, and each run is a new dated record beside the earlier ones.
+responses-as-code mode. The backend replays gg's RaC opening request through
+OpenRouter — the one `submit_program` tool offered and `tool_choice` forced to
+it, exactly as gg shapes the request — across the probe's cases, checks the
+program each reply submitted against its case, and reduces the results to a
+verdict. The cases pair two scenarios with several task prompts, per
+program-language arm:
+
+- Baseline: the conversation holds an open documentation view of every function
+  the task needs, and a ready model writes a bare program calling them.
+- Missing docview: the task needs a function whose documentation view is not
+  open, and a ready model opens that view and stops instead of calling the
+  function in the same program.
+
+The probe is triggered from the model's Probes tab, and each run is a new dated
+record beside the earlier ones.
 
 ## Prerequisites
 
@@ -21,30 +32,30 @@ model's Probes tab, and each run is a new dated record beside the earlier ones.
 
 1. Sign in and open the model in the Models section.
 2. Open the Probes tab.
-3. Optionally pick a provider to pin the probe to, and adjust the samples per
-   condition. Left alone, the probe uses the model's default OpenRouter route
-   with three samples per condition.
-4. Click Run probe. The probe appears in the history as running and completes in
-   place.
+3. Optionally pick a provider to pin the probe to, pick one program-language
+   arm or leave it on all languages, and adjust the sample count. Left alone,
+   the probe uses the model's default OpenRouter route with eight calls per
+   task prompt across every arm.
+4. Click Run probe. The probe appears in the history as running and completes
+   in place.
 
 ## Read the verdict
 
-- `ready`: the model answers with a clean program under every condition. Run it
-  in RaC mode as-is.
-- `ready-with-reminders`: the model behaves once the contract is restated.
-  Enable cross-model prompt reminders for it.
-- `tool-call-overfit`: the model emits tool-call syntax even when the contract
-  is restated. It is not worth running in RaC mode.
-- `not-ready`: the model misses the clean-rate threshold for reasons that are
-  not tool-shaped. The raw replies say what they are.
+- `ready`: every probed (language, scenario) group passed at least 80% of its
+  calls — bare programs making the documented calls, and docview-before-call
+  discipline where the documentation was missing. Run the model in RaC mode.
+- `not-ready`: at least one group fell short. The per-call labels say why — a
+  program missing the needed calls, a call to a function whose documentation
+  was never opened, a fenced or empty program string, or a reply that dodged
+  the forced call — and the raw replies carry the evidence.
 
-Expanding a probe shows the per-condition results, each call's classification
-and raw reply, and the request as sent.
+Expanding a probe shows each call's outcome by scenario and prompt, its
+submitted program and raw reply, and every case's request as sent.
 
 ## Next steps
 
-- Re-run the probe per provider and over time: providers serve the same model
-  differently, and the history keeps every verdict.
+- Re-run the probe per provider and per language arm: providers serve the same
+  model differently, and the history keeps every verdict.
 - [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)
   covers the catalog entry a probe targets.
 - [Model probes](/components/backend/api/#model-probes) is the wire contract.

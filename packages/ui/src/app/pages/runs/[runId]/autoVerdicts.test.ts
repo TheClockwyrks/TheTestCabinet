@@ -5,6 +5,7 @@ import {
   autoVerdictMap,
   describeAutoVerdictRestore,
   overriddenAutoVerdictIds,
+  validatorFailures,
   type VerdictDraft,
 } from "./autoVerdicts";
 
@@ -203,5 +204,87 @@ describe("describeAutoVerdictRestore", () => {
     ).toEqual([
       { id: "retired", title: "retired", category: "", from: "", to: "fail" },
     ]);
+  });
+});
+
+describe("validatorFailures", () => {
+  // A validator-rated checklist: a whole item and a category, each point with its
+  // cap and domains. The erratum-excluded point must never cap anything.
+  const rated = [
+    {
+      id: "boot",
+      title: "Game boots",
+      text: "",
+      weight: 1,
+      failureCap: "broken" as const,
+      domains: ["single-player"],
+    },
+    {
+      id: "controls",
+      title: "Controls work",
+      text: "",
+      weight: 2,
+      subItems: [
+        {
+          id: "kb",
+          title: "Keyboard",
+          failureCap: "scuffed" as const,
+          domains: ["single-player"],
+        },
+        {
+          id: "mouse",
+          title: "Mouse",
+          failureCap: "great" as const,
+          domains: ["versus"],
+          scored: false,
+        },
+      ],
+    },
+  ];
+
+  it("lists each failing scored point with its cap and domains, in checklist order", () => {
+    const record = run([
+      { id: "boot", pass: false },
+      { id: "controls.kb", pass: false },
+      { id: "controls.mouse", pass: false },
+    ]);
+    const failures = validatorFailures(
+      rated,
+      record.validation.debugScripts ?? [],
+    );
+    expect(failures).toEqual([
+      {
+        id: "boot",
+        title: "Game boots",
+        category: "",
+        cap: "broken",
+        domains: ["single-player"],
+      },
+      {
+        id: "controls.kb",
+        title: "Keyboard",
+        category: "Controls work",
+        cap: "scuffed",
+        domains: ["single-player"],
+      },
+      // `controls.mouse` failed too, but it is excluded from scoring.
+    ]);
+  });
+
+  it("skips passing points and points with no cap", () => {
+    const record = run([
+      { id: "boot", pass: true },
+      { id: "controls.kb", pass: true },
+    ]);
+    expect(
+      validatorFailures(rated, record.validation.debugScripts ?? []),
+    ).toEqual([]);
+    // A legacy item (no cap) can fail without capping anything.
+    expect(
+      validatorFailures(
+        [{ id: "boot", title: "Game boots", text: "", weight: 1 }],
+        run([{ id: "boot", pass: false }]).validation.debugScripts ?? [],
+      ),
+    ).toEqual([]);
   });
 });

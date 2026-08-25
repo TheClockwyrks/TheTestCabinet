@@ -128,7 +128,6 @@ fn gg_record(id: &str) -> RunRecord {
         program_language: None,
         code_executions: 0,
         compile_ms: 0,
-        healing: Default::default(),
         errors: Default::default(),
         tool_calls: 0,
         provider_stats: Vec::new(),
@@ -166,7 +165,7 @@ fn gg_record(id: &str) -> RunRecord {
 async fn a_gg_runs_session_summary_round_trips_through_get_run() {
     let db = Db::connect_in_memory().await.unwrap();
     let pushed = gg_record("gg1");
-    db.push(&pushed, &links(), None).await.unwrap();
+    db.push(&pushed, &links(), None, None).await.unwrap();
 
     let stored = db
         .get_run("gg1")
@@ -210,6 +209,7 @@ fn review_by(account: &str, rating: Rating) -> StoredReview {
             domain: "gameplay".to_string(),
             rating,
         }],
+        aesthetics: vec![],
         writeup: "Plays well.".to_string(),
         checklist: vec![ReviewVerdict {
             id: "ball-spin".to_string(),
@@ -232,7 +232,7 @@ fn links() -> RunLinks {
 /// Push, review (account `u1`), and publish a run at `published_at` — the common
 /// "now public" setup for these tests.
 async fn push_review_publish(db: &Db, id: &str, published_at: &str) {
-    db.push(&record(id), &links(), None).await.unwrap();
+    db.push(&record(id), &links(), None, None).await.unwrap();
     db.add_review(id, &review(), None).await.unwrap();
     db.publish(id, published_at).await.unwrap();
 }
@@ -240,7 +240,7 @@ async fn push_review_publish(db: &Db, id: &str, published_at: &str) {
 #[tokio::test]
 async fn a_pushed_run_is_unpublished_with_no_reviews_and_absent_from_the_public_list() {
     let db = Db::connect_in_memory().await.unwrap();
-    let outcome = db.push(&record("r1"), &links(), None).await.unwrap();
+    let outcome = db.push(&record("r1"), &links(), None, None).await.unwrap();
     assert!(outcome.newly_pushed);
 
     let stored = db.get_run("r1").await.unwrap().unwrap();
@@ -266,8 +266,12 @@ async fn a_record_that_no_longer_deserializes_is_skipped_not_fatal() {
     // gained their required `interp` field). Such a row must not blank an entire
     // worklist; it is skipped, and its still-valid siblings return normally.
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("good"), &links(), None).await.unwrap();
-    db.push(&record("legacy"), &links(), None).await.unwrap();
+    db.push(&record("good"), &links(), None, None)
+        .await
+        .unwrap();
+    db.push(&record("legacy"), &links(), None, None)
+        .await
+        .unwrap();
 
     // Corrupt `legacy`'s stored blob so it can no longer be parsed as a RunRecord,
     // standing in for a row written under an older, incompatible schema.
@@ -296,7 +300,7 @@ async fn a_record_that_no_longer_deserializes_is_skipped_not_fatal() {
 #[tokio::test]
 async fn publish_is_refused_until_a_run_has_a_review() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
 
     let err = db.publish("r1", "2026-06-17T21:40:00Z").await.unwrap_err();
     assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
@@ -315,7 +319,7 @@ async fn publish_is_refused_until_a_run_has_a_review() {
 #[tokio::test]
 async fn add_review_is_per_account_upsert_and_a_run_can_carry_many() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
 
     // Two distinct accounts → two reviews.
     db.add_review("r1", &review_by("u1", Rating::Great), None)
@@ -356,7 +360,7 @@ async fn add_review_is_per_account_upsert_and_a_run_can_carry_many() {
 #[tokio::test]
 async fn editing_a_review_without_a_note_is_rejected() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     db.add_review("r1", &review_by("u1", Rating::Great), None)
         .await
         .unwrap();
@@ -393,7 +397,7 @@ async fn list_reviews_by_user_orders_by_reviewed_at_and_paginates() {
     }
 
     for id in ["r1", "r2", "r3"] {
-        db.push(&record(id), &links(), None).await.unwrap();
+        db.push(&record(id), &links(), None, None).await.unwrap();
     }
     // u1 reviews all three, at increasing times; u2 reviews only r1 (so the filter
     // by reviewer is exercised, and r1's two reviews don't inflate u1's page).
@@ -438,14 +442,14 @@ async fn add_review_for_an_unknown_run_is_not_found() {
 async fn push_stores_events_json_and_get_run_returns_it() {
     let db = Db::connect_in_memory().await.unwrap();
     let events = r#"[{"timestamp":"2026-06-17T20:41:00Z","type":"agent","message":"hi"}]"#;
-    db.push(&record("r1"), &links(), Some(events))
+    db.push(&record("r1"), &links(), Some(events), None)
         .await
         .unwrap();
     let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.events_json.as_deref(), Some(events));
 
     // A run pushed without an event log stores NULL and reads back as None.
-    db.push(&record("r2"), &links(), None).await.unwrap();
+    db.push(&record("r2"), &links(), None, None).await.unwrap();
     assert_eq!(db.get_run("r2").await.unwrap().unwrap().events_json, None);
 }
 
@@ -470,7 +474,9 @@ async fn list_published_orders_newest_first_paginates_and_excludes_pending() {
     push_review_publish(&db, "r2", "2026-06-17T11:00:00Z").await;
     push_review_publish(&db, "r3", "2026-06-17T12:00:00Z").await;
     // A pending (pushed-only) run must never appear in the public list.
-    db.push(&record("pending"), &links(), None).await.unwrap();
+    db.push(&record("pending"), &links(), None, None)
+        .await
+        .unwrap();
 
     let (page, next) = db.list_published(2, None).await.unwrap();
     assert_eq!(page.len(), 2);
@@ -490,7 +496,7 @@ async fn publish_marks_snapshot_dirty_but_pushing_a_pending_run_does_not() {
     assert!(!db.snapshot_state().await.unwrap().dirty);
 
     // Pushing and reviewing a pending run touches nothing public.
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     db.add_review("r1", &review(), None).await.unwrap();
     assert!(!db.snapshot_state().await.unwrap().dirty);
 
@@ -524,7 +530,7 @@ async fn every_run_mutation_moves_updated_at() {
     // pre-mutation document forever, silently.
     let db = Db::connect_in_memory().await.unwrap();
 
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     let pushed = stamp(&lifted(&db, "r1").await.updated_at);
 
     db.add_review("r1", &review(), None).await.unwrap();
@@ -544,7 +550,7 @@ async fn every_run_mutation_moves_updated_at() {
 
     // A re-push rewrites the record blob without changing when the run finished,
     // so it too must move the stamp.
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     let repushed = stamp(&lifted(&db, "r1").await.updated_at);
     assert!(
         published < repushed,
@@ -553,7 +559,7 @@ async fn every_run_mutation_moves_updated_at() {
 
     // The stamp is the row's own, not the store's: mutating one run leaves every
     // other run's stamp exactly where it was.
-    db.push(&record("r2"), &links(), None).await.unwrap();
+    db.push(&record("r2"), &links(), None, None).await.unwrap();
     let other = lifted(&db, "r2").await.updated_at;
     db.add_review("r1", &review_by("u2", Rating::Broken), None)
         .await
@@ -572,7 +578,7 @@ async fn the_updated_at_migration_seeds_existing_rows_from_finished_at() {
     use test_cabinet_migration::MigratorTrait;
 
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     let conn = db.connection();
 
     // How many migrations to roll back to reach — and re-run — the one under test.
@@ -609,8 +615,8 @@ async fn the_startup_backfills_move_updated_at_on_the_rows_they_rewrite() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut named = gg_record("gg1");
     named.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
-    db.push(&named, &links(), None).await.unwrap();
-    db.push(&record_with_metrics("r1"), &links(), None)
+    db.push(&named, &links(), None, None).await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None, None)
         .await
         .unwrap();
 
@@ -642,7 +648,9 @@ async fn all_published_returns_only_published_runs_newest_first() {
     let db = Db::connect_in_memory().await.unwrap();
     push_review_publish(&db, "r1", "2026-06-17T10:00:00Z").await;
     push_review_publish(&db, "r2", "2026-06-17T11:00:00Z").await;
-    db.push(&record("pending"), &links(), None).await.unwrap();
+    db.push(&record("pending"), &links(), None, None)
+        .await
+        .unwrap();
 
     let all = db.all_published().await.unwrap();
     assert_eq!(all.len(), 2);
@@ -653,10 +661,10 @@ async fn all_published_returns_only_published_runs_newest_first() {
 #[tokio::test]
 async fn delete_run_removes_an_unpublished_run_and_cascades_its_reviews() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     db.add_review("r1", &review(), None).await.unwrap();
     // A second pending run is left untouched, to prove the delete is scoped.
-    db.push(&record("r2"), &links(), None).await.unwrap();
+    db.push(&record("r2"), &links(), None, None).await.unwrap();
 
     db.delete_run("r1").await.unwrap();
 
@@ -675,7 +683,7 @@ async fn delete_run_also_removes_its_run_and_publish_queue_rows() {
     // A run produced by a job (the job carries the produced run's id in
     // `record_id`, a plain column with no foreign key back to `run`), with a
     // publish job enqueued against it by `run_id` (likewise no foreign key).
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
         .await
         .unwrap();
@@ -693,7 +701,7 @@ async fn delete_run_also_removes_its_run_and_publish_queue_rows() {
 
     // A second run and its queue rows are left untouched, to prove the delete is
     // scoped to the deleted run.
-    db.push(&record("r2"), &links(), None).await.unwrap();
+    db.push(&record("r2"), &links(), None, None).await.unwrap();
     db.enqueue_job(new_job("j2", "2026-06-23T00:10:00Z"))
         .await
         .unwrap();
@@ -1621,7 +1629,9 @@ async fn publish_refuses_an_infrastructure_failure_even_with_a_review() {
     // even if someone attached a review.
     let mut rec = record("i1");
     rec.status.state = RunState::Infrastructure;
-    db.push(&rec, &RunLinks::default(), None).await.unwrap();
+    db.push(&rec, &RunLinks::default(), None, None)
+        .await
+        .unwrap();
     db.add_review("i1", &review(), None).await.unwrap();
 
     let err = db
@@ -1641,7 +1651,9 @@ async fn publish_refuses_a_canceled_run_even_with_a_review() {
     // run says nothing about the model — it can never be published, review or not.
     let mut rec = record("k1");
     rec.status.state = RunState::Canceled;
-    db.push(&rec, &RunLinks::default(), None).await.unwrap();
+    db.push(&rec, &RunLinks::default(), None, None)
+        .await
+        .unwrap();
     db.add_review("k1", &review(), None).await.unwrap();
 
     let err = db
@@ -1668,7 +1680,9 @@ async fn publish_allows_a_failure_tier_without_any_review() {
     ] {
         let mut rec = record(id);
         rec.status.state = state;
-        db.push(&rec, &RunLinks::default(), None).await.unwrap();
+        db.push(&rec, &RunLinks::default(), None, None)
+            .await
+            .unwrap();
 
         let outcome = db.publish(id, "2026-06-23T00:00:00Z").await.unwrap();
         assert!(
@@ -1692,7 +1706,9 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     ] {
         let mut rec = record(id);
         rec.status.state = state;
-        db.push(&rec, &RunLinks::default(), None).await.unwrap();
+        db.push(&rec, &RunLinks::default(), None, None)
+            .await
+            .unwrap();
     }
 
     let (review, _) = db.list_for_review(50, None).await.unwrap();
@@ -1808,7 +1824,7 @@ async fn ensure_publishable_mirrors_the_publish_gate() {
     let db = Db::connect_in_memory().await.unwrap();
 
     // A completed run with no review is refused, exactly like `publish`.
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     let err = db.ensure_publishable("r1").await.unwrap_err();
     assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
 
@@ -1823,7 +1839,9 @@ async fn ensure_publishable_mirrors_the_publish_gate() {
     // An infrastructure failure is refused even with a review.
     let mut infra = record("infra");
     infra.status.state = RunState::Infrastructure;
-    db.push(&infra, &RunLinks::default(), None).await.unwrap();
+    db.push(&infra, &RunLinks::default(), None, None)
+        .await
+        .unwrap();
     db.add_review("infra", &review(), None).await.unwrap();
     let err = db.ensure_publishable("infra").await.unwrap_err();
     assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
@@ -1831,13 +1849,17 @@ async fn ensure_publishable_mirrors_the_publish_gate() {
     // A publishable failure tier passes with no review at all.
     let mut cat = record("cat");
     cat.status.state = RunState::Catastrophic;
-    db.push(&cat, &RunLinks::default(), None).await.unwrap();
+    db.push(&cat, &RunLinks::default(), None, None)
+        .await
+        .unwrap();
     db.ensure_publishable("cat").await.unwrap();
 
     // A harness error is likewise a publishable failure — no review required.
     let mut harness = record("harness");
     harness.status.state = RunState::HarnessError;
-    db.push(&harness, &RunLinks::default(), None).await.unwrap();
+    db.push(&harness, &RunLinks::default(), None, None)
+        .await
+        .unwrap();
     db.ensure_publishable("harness").await.unwrap();
 
     // An unknown run is not found.
@@ -1849,7 +1871,7 @@ async fn ensure_publishable_mirrors_the_publish_gate() {
 async fn complete_publish_job_attaches_links_flips_published_and_marks_the_job() {
     let db = Db::connect_in_memory().await.unwrap();
     // A reviewed but not-yet-published run, pushed with no links.
-    db.push(&record("r1"), &RunLinks::default(), None)
+    db.push(&record("r1"), &RunLinks::default(), None, None)
         .await
         .unwrap();
     db.add_review("r1", &review(), None).await.unwrap();
@@ -2146,15 +2168,15 @@ async fn referenced_cases_returns_distinct_pairs_including_pending_runs() {
 
     // Two pending runs of pong@v1.0.0 (should collapse to one pair), one run of a
     // different case, and one of a different version of pong.
-    db.push(&record("r1"), &links(), None).await.unwrap();
-    db.push(&record("r2"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
+    db.push(&record("r2"), &links(), None, None).await.unwrap();
     let mut other = record("r3");
     other.subject.test_case_slug = "carom".to_string();
     other.subject.test_case_version = "v2.0.0".to_string();
-    db.push(&other, &links(), None).await.unwrap();
+    db.push(&other, &links(), None, None).await.unwrap();
     let mut pong_v2 = record("r4");
     pong_v2.subject.test_case_version = "v1.1.0".to_string();
-    db.push(&pong_v2, &links(), None).await.unwrap();
+    db.push(&pong_v2, &links(), None, None).await.unwrap();
 
     let refs = db.referenced_cases().await.unwrap();
     // Pending runs count — a definition a pushed-but-unpublished run needs must be
@@ -2326,6 +2348,7 @@ async fn backfill_alias_families_corrects_legacy_rows() {
         ),
         &links(),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -2397,6 +2420,7 @@ async fn distinct_run_models_returns_pairs() {
         &run_with_model("r1", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z),
         &links(),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -2404,12 +2428,14 @@ async fn distinct_run_models_returns_pairs() {
         &run_with_model("r2", "anthropic/claude-opus-4.8", HarnessSlug::Kilo, z),
         &links(),
         None,
+        None,
     )
     .await
     .unwrap();
     db.push(
         &run_with_model("r3", "gpt-5.5", HarnessSlug::Codex, z),
         &links(),
+        None,
         None,
     )
     .await
@@ -2449,10 +2475,10 @@ async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
         comparable: Some(0.0),
         actual: Some(0.0),
     };
-    db.push(&kilo, &links(), None).await.unwrap();
+    db.push(&kilo, &links(), None, None).await.unwrap();
     // A provider-native Codex run whose id happens to contain a colon is left alone.
     let codex = run_with_model("codex-run", "gpt-5.5:preview", HarnessSlug::Codex, tokens);
-    db.push(&codex, &links(), None).await.unwrap();
+    db.push(&codex, &links(), None, None).await.unwrap();
 
     let mut base_prices = HashMap::new();
     base_prices.insert(
@@ -2523,7 +2549,7 @@ async fn lifted(db: &Db, id: &str) -> run::Model {
 #[tokio::test]
 async fn push_lifts_the_record_sort_columns_and_starts_unrated() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record_with_metrics("r1"), &links(), None)
+    db.push(&record_with_metrics("r1"), &links(), None, None)
         .await
         .unwrap();
 
@@ -2545,7 +2571,7 @@ async fn push_lifts_the_gg_configuration_name_only_for_a_gg_run() {
 
     let mut named = gg_record("named");
     named.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
-    db.push(&named, &links(), None).await.unwrap();
+    db.push(&named, &links(), None, None).await.unwrap();
     assert_eq!(
         lifted(&db, "named").await.gg_preset.as_deref(),
         Some("planning-A")
@@ -2560,7 +2586,9 @@ async fn push_lifts_the_gg_configuration_name_only_for_a_gg_run() {
         .as_mut()
         .unwrap()
         .preset = None;
-    db.push(&hand_assembled, &links(), None).await.unwrap();
+    db.push(&hand_assembled, &links(), None, None)
+        .await
+        .unwrap();
     assert_eq!(lifted(&db, "hand").await.gg_preset, None);
 
     // The lift is gated on the HARNESS, not the capability set alone: a non-gg run
@@ -2568,7 +2596,7 @@ async fn push_lifts_the_gg_configuration_name_only_for_a_gg_run() {
     let mut impostor = gg_record("impostor");
     impostor.subject.harness_slug = HarnessSlug::Claude;
     impostor.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
-    db.push(&impostor, &links(), None).await.unwrap();
+    db.push(&impostor, &links(), None, None).await.unwrap();
     assert_eq!(lifted(&db, "impostor").await.gg_preset, None);
 }
 
@@ -2577,10 +2605,10 @@ async fn repush_refreshes_the_lifted_gg_configuration_name() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut r = gg_record("r1");
     r.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
-    db.push(&r, &links(), None).await.unwrap();
+    db.push(&r, &links(), None, None).await.unwrap();
 
     r.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-B".to_string());
-    db.push(&r, &links(), None).await.unwrap();
+    db.push(&r, &links(), None, None).await.unwrap();
     assert_eq!(
         lifted(&db, "r1").await.gg_preset.as_deref(),
         Some("planning-B")
@@ -2590,7 +2618,7 @@ async fn repush_refreshes_the_lifted_gg_configuration_name() {
 #[tokio::test]
 async fn add_review_maintains_the_lifted_rating_and_count() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record_with_metrics("r1"), &links(), None)
+    db.push(&record_with_metrics("r1"), &links(), None, None)
         .await
         .unwrap();
 
@@ -2612,7 +2640,7 @@ async fn add_review_maintains_the_lifted_rating_and_count() {
 
     // Re-pushing the run refreshes the record-derived columns but preserves the
     // review-derived aggregate (a re-push carries no reviews).
-    db.push(&record_with_metrics("r1"), &links(), None)
+    db.push(&record_with_metrics("r1"), &links(), None, None)
         .await
         .unwrap();
     let row = lifted(&db, "r1").await;
@@ -2624,7 +2652,7 @@ async fn add_review_maintains_the_lifted_rating_and_count() {
 #[tokio::test]
 async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record_with_metrics("r1"), &links(), None)
+    db.push(&record_with_metrics("r1"), &links(), None, None)
         .await
         .unwrap();
     db.add_review("r1", &review_by("u1", Rating::Great), None)
@@ -2634,7 +2662,7 @@ async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
         .await
         .unwrap();
     // A second run with no reviews, to prove the null-rating path is backfilled too.
-    db.push(&record_with_metrics("r2"), &links(), None)
+    db.push(&record_with_metrics("r2"), &links(), None, None)
         .await
         .unwrap();
 
@@ -2701,7 +2729,7 @@ async fn seed_ident(
         comparable: Some(1.0),
         actual: Some(1.0),
     };
-    db.push(&r, &links(), None).await.unwrap();
+    db.push(&r, &links(), None, None).await.unwrap();
 }
 
 /// Push an unpublished gg run with the given model and configuration name (`None`
@@ -2713,7 +2741,7 @@ async fn seed_gg_ident(db: &Db, id: &str, model: &str, preset: Option<&str>) {
     r.subject.model_id = model.to_string();
     r.subject.variant = "base".to_string();
     r.subject.gg_capability_set.as_mut().unwrap().preset = preset.map(str::to_string);
-    db.push(&r, &links(), None).await.unwrap();
+    db.push(&r, &links(), None, None).await.unwrap();
 }
 
 /// Push an unpublished `pong`/`m`/claude/`base` run varying only the sort metrics:
@@ -2735,7 +2763,7 @@ async fn seed_metric(db: &Db, id: &str, tokens: u64, cost: Option<f64>, rating: 
         comparable: cost,
         actual: cost,
     };
-    db.push(&r, &links(), None).await.unwrap();
+    db.push(&r, &links(), None, None).await.unwrap();
     if let Some(rating) = rating {
         db.add_review(id, &review_by("u1", rating), None)
             .await
@@ -2836,7 +2864,7 @@ async fn seed_version(db: &Db, id: &str, test_case: &str, version: &str) {
     let mut r = record(id);
     r.subject.test_case_slug = test_case.to_string();
     r.subject.test_case_version = version.to_string();
-    db.push(&r, &links(), None).await.unwrap();
+    db.push(&r, &links(), None, None).await.unwrap();
 }
 
 #[test]
@@ -3053,7 +3081,7 @@ async fn seed_engine(db: &Db, id: &str, engine: &str) {
     let mut r = record(id);
     r.subject.test_case_slug = "pong".to_string();
     r.subject.engine_slug = engine.to_string();
-    db.push(&r, &links(), None).await.unwrap();
+    db.push(&r, &links(), None, None).await.unwrap();
 }
 
 #[tokio::test]
@@ -3200,7 +3228,7 @@ async fn list_summaries_failures_slice_covers_the_publishable_failure_tiers() {
     ] {
         let mut r = record(id);
         r.status.state = state;
-        db.push(&r, &links(), None).await.unwrap();
+        db.push(&r, &links(), None, None).await.unwrap();
     }
 
     let filter = SummaryFilter {
@@ -3239,12 +3267,26 @@ async fn publishable_slice_matches_the_publish_gate() {
     for (id, state, reviewed) in seeded {
         let mut r = record(id);
         r.status.state = state;
-        db.push(&r, &links(), None).await.unwrap();
+        db.push(&r, &links(), None, None).await.unwrap();
         if reviewed {
             db.add_review(id, &review_by("u1", Rating::Great), None)
                 .await
                 .unwrap();
         }
+    }
+    // The third arm of the rule: a validator-rated completed run needs no review
+    // (its functional rating and score stand on their own), while a validator-rated
+    // run in a never-publishable state is still refused by the first half.
+    let manifest = validator_manifest();
+    let mut validator_seeded = vec![];
+    for (id, state) in [
+        ("validated-unreviewed", RunState::Completed),
+        ("validated-canceled", RunState::Canceled),
+    ] {
+        let mut r = validator_record(id, &[("serve", true)]);
+        r.status.state = state;
+        db.push(&r, &links(), None, Some(&manifest)).await.unwrap();
+        validator_seeded.push(id);
     }
 
     let filter = SummaryFilter {
@@ -3255,7 +3297,11 @@ async fn publishable_slice_matches_the_publish_gate() {
     listed.sort();
 
     let mut accepted_by_the_gate = Vec::new();
-    for (id, _, _) in seeded {
+    for id in seeded
+        .iter()
+        .map(|(id, _, _)| *id)
+        .chain(validator_seeded.iter().copied())
+    {
         if db.ensure_publishable(id).await.is_ok() {
             accepted_by_the_gate.push(id.to_string());
         }
@@ -3263,7 +3309,17 @@ async fn publishable_slice_matches_the_publish_gate() {
     accepted_by_the_gate.sort();
 
     assert_eq!(listed, accepted_by_the_gate);
-    assert_eq!(listed, ["cat", "done-reviewed", "harness", "hung", "slow"]);
+    assert_eq!(
+        listed,
+        [
+            "cat",
+            "done-reviewed",
+            "harness",
+            "hung",
+            "slow",
+            "validated-unreviewed"
+        ]
+    );
 }
 
 /// Publishing a run retires it from the worklist — the slice is what is *still*
@@ -3272,7 +3328,7 @@ async fn publishable_slice_matches_the_publish_gate() {
 async fn publishable_slice_drops_a_run_once_it_is_published() {
     let db = Db::connect_in_memory().await.unwrap();
     for id in ["kept", "released"] {
-        db.push(&record(id), &links(), None).await.unwrap();
+        db.push(&record(id), &links(), None, None).await.unwrap();
         db.add_review(id, &review_by("u1", Rating::Great), None)
             .await
             .unwrap();
@@ -3312,7 +3368,7 @@ async fn list_summaries_any_slice_covers_every_recorded_run() {
     ] {
         let mut r = record(id);
         r.status.state = state;
-        db.push(&r, &links(), None).await.unwrap();
+        db.push(&r, &links(), None, None).await.unwrap();
     }
 
     let filter = SummaryFilter {
@@ -3338,7 +3394,7 @@ async fn list_summaries_any_slice_covers_every_recorded_run() {
     // It composes with the equality filters the same way every other slice does.
     let mut r = gg_record("session");
     r.status.state = RunState::Completed;
-    db.push(&r, &links(), None).await.unwrap();
+    db.push(&r, &links(), None, None).await.unwrap();
     let filter = SummaryFilter {
         state: SummaryState::Any,
         harness: Some(HarnessSlug::Gg.as_str().to_string()),
@@ -3798,7 +3854,7 @@ async fn list_summaries_any_slice_covers_every_terminal_state() {
     ] {
         let mut r = record(id);
         r.status.state = state;
-        db.push(&r, &links(), None).await.unwrap();
+        db.push(&r, &links(), None, None).await.unwrap();
     }
 
     let filter = SummaryFilter {
@@ -4245,7 +4301,7 @@ async fn backfill_migrates_each_legacy_plan_exactly_once() {
 async fn coverage_counts_completed_runs_and_in_flight_jobs_per_cell() {
     let db = Db::connect_in_memory().await.unwrap();
     // A completed run and a queued job for the same cell.
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
         .await
         .unwrap();
@@ -4344,6 +4400,7 @@ async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
         ),
         &links(),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -4397,7 +4454,7 @@ async fn coverage_counts_provider_routed_runs_by_their_launched_model_id() {
 #[tokio::test]
 async fn unreviewed_lists_completed_runs_with_no_review_and_drops_them_once_reviewed() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
 
     let (unreviewed, _) = db.list_unreviewed(50, None).await.unwrap();
     assert_eq!(unreviewed.len(), 1, "a fresh completed run is unreviewed");
@@ -4421,8 +4478,8 @@ async fn unreviewed_excludes_the_auto_graded_performance_type() {
     let mut perf = record("perf");
     perf.subject.test_type = test_cabinet_core::TestType::Performance;
     perf.subject.test_case_slug = "lattice".to_string();
-    db.push(&perf, &links(), None).await.unwrap();
-    db.push(&record("e2e"), &links(), None).await.unwrap();
+    db.push(&perf, &links(), None, None).await.unwrap();
+    db.push(&record("e2e"), &links(), None, None).await.unwrap();
 
     let (cursor, _) = db.list_unreviewed(50, None).await.unwrap();
     let cursor_ids: Vec<&str> = cursor.iter().map(|r| r.record.id.as_str()).collect();
@@ -4495,6 +4552,7 @@ async fn game_jam_prior_readmes_matches_jam_and_model_across_harnesses_oldest_fi
         ),
         &links(),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -4507,6 +4565,7 @@ async fn game_jam_prior_readmes_matches_jam_and_model_across_harnesses_oldest_fi
             "2026-01-01T00:00:00Z",
         ),
         &links(),
+        None,
         None,
     )
     .await
@@ -4523,6 +4582,7 @@ async fn game_jam_prior_readmes_matches_jam_and_model_across_harnesses_oldest_fi
         ),
         &links(),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -4536,7 +4596,7 @@ async fn game_jam_prior_readmes_matches_jam_and_model_across_harnesses_oldest_fi
         "2026-01-20T00:00:00Z",
     );
     no_readme.game_jam_readme = None;
-    db.push(&no_readme, &links(), None).await.unwrap();
+    db.push(&no_readme, &links(), None, None).await.unwrap();
 
     let entries = db
         .game_jam_prior_readmes("comfort-zone", "sonnet")
@@ -4677,10 +4737,12 @@ fn auto_validated_record(id: &str) -> RunRecord {
 #[tokio::test]
 async fn the_comparison_publish_gate_waives_review_only_for_an_auto_validated_run() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&auto_validated_record("auto"), &links(), None)
+    db.push(&auto_validated_record("auto"), &links(), None, None)
         .await
         .unwrap();
-    db.push(&record("bare"), &links(), None).await.unwrap();
+    db.push(&record("bare"), &links(), None, None)
+        .await
+        .unwrap();
 
     // The normal publish gate still requires a human review — even for the
     // auto-validated run.
@@ -4720,10 +4782,10 @@ fn record_with_code_analysis(id: &str) -> RunRecord {
 #[tokio::test]
 async fn push_lifts_the_code_analyzer_version_and_leaves_it_null_without_an_analysis() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record_with_code_analysis("analysed"), &links(), None)
+    db.push(&record_with_code_analysis("analysed"), &links(), None, None)
         .await
         .unwrap();
-    db.push(&record_with_metrics("unanalysed"), &links(), None)
+    db.push(&record_with_metrics("unanalysed"), &links(), None, None)
         .await
         .unwrap();
 
@@ -4738,16 +4800,20 @@ async fn push_lifts_the_code_analyzer_version_and_leaves_it_null_without_an_anal
 
 #[tokio::test]
 async fn the_lifted_analyzer_version_describes_the_stored_result_not_the_server() {
-    // A backend redeployed with a newer analyzer must not restamp an older run's figures
-    // with a generation that did not compute them — the column would then say the corpus
-    // is homogeneous when it is not, which is the exact failure it exists to prevent.
+    // A backend whose binary carries one analyzer generation must not restamp a stored
+    // run's figures with a generation that did not compute them — the column would then
+    // say the corpus is homogeneous when it is not, which is the exact failure it exists
+    // to prevent. So the lift reads the record's own stamp, never the server's constant.
     let db = Db::connect_in_memory().await.unwrap();
-    let mut record = record_with_code_analysis("older");
-    record.code_analysis.as_mut().unwrap().analyzer_version = 1;
-    db.push(&record, &links(), None).await.unwrap();
+    let other_generation = test_cabinet_core::CODE_ANALYZER_VERSION + 1;
+    let mut record = record_with_code_analysis("other");
+    record.code_analysis.as_mut().unwrap().analyzer_version = other_generation;
+    db.push(&record, &links(), None, None).await.unwrap();
 
-    assert_eq!(lifted(&db, "older").await.code_analyzer_version, Some(1));
-    assert_ne!(test_cabinet_core::CODE_ANALYZER_VERSION, 1);
+    assert_eq!(
+        lifted(&db, "other").await.code_analyzer_version,
+        Some(other_generation as i32)
+    );
 }
 
 #[tokio::test]
@@ -4757,12 +4823,12 @@ async fn a_code_analysis_changes_no_other_column_on_the_run_row() {
     // with and without one must produce byte-identical rows apart from
     // `code_analyzer_version` and the record blob that carries it.
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record_with_metrics("without"), &links(), None)
+    db.push(&record_with_metrics("without"), &links(), None, None)
         .await
         .unwrap();
     let mut with = record_with_code_analysis("with");
     with.subject = record_with_metrics("with").subject;
-    db.push(&with, &links(), None).await.unwrap();
+    db.push(&with, &links(), None, None).await.unwrap();
 
     let without = lifted(&db, "without").await;
     let with = lifted(&db, "with").await;
@@ -4780,10 +4846,10 @@ async fn a_code_analysis_changes_no_other_column_on_the_run_row() {
 #[tokio::test]
 async fn backfill_code_analyzer_version_lifts_the_column_but_analyses_nothing() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record_with_code_analysis("analysed"), &links(), None)
+    db.push(&record_with_code_analysis("analysed"), &links(), None, None)
         .await
         .unwrap();
-    db.push(&record_with_metrics("unanalysed"), &links(), None)
+    db.push(&record_with_metrics("unanalysed"), &links(), None, None)
         .await
         .unwrap();
 
@@ -4849,8 +4915,8 @@ fn sample_cell() -> CellKey {
 #[tokio::test]
 async fn unreviewed_cell_counts_are_per_account_and_ignore_another_reviewers_pass() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None).await.unwrap();
-    db.push(&record("r2"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
+    db.push(&record("r2"), &links(), None, None).await.unwrap();
     let slugs = vec!["pong".to_string()];
 
     // Nobody has reviewed: both runs are outstanding for either account.
@@ -5085,10 +5151,10 @@ async fn gg_configs_round_trip_their_agent_sources() {
 #[tokio::test]
 async fn unreviewed_cell_counts_can_exclude_a_run_whose_build_never_loaded() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record_loaded("loaded", true), &links(), None)
+    db.push(&record_loaded("loaded", true), &links(), None, None)
         .await
         .unwrap();
-    db.push(&record_loaded("dead", false), &links(), None)
+    db.push(&record_loaded("dead", false), &links(), None, None)
         .await
         .unwrap();
     let slugs = vec!["pong".to_string()];
@@ -5119,7 +5185,7 @@ async fn unreviewed_cell_counts_skip_the_automatically_graded_types() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut auto = record("perf");
     auto.subject.test_type = TestType::Performance;
-    db.push(&auto, &links(), None).await.unwrap();
+    db.push(&auto, &links(), None, None).await.unwrap();
 
     // No reviewer can ever clear a performance run, so counting it would hold a
     // buffer slot that never frees — exactly why `list_unreviewed` drops it too.
@@ -5134,7 +5200,7 @@ async fn unreviewed_cell_counts_skip_the_automatically_graded_types() {
 #[tokio::test]
 async fn cell_run_ratings_read_only_the_requesting_accounts_review() {
     let db = Db::connect_in_memory().await.unwrap();
-    db.push(&record("r1"), &links(), None).await.unwrap();
+    db.push(&record("r1"), &links(), None, None).await.unwrap();
     // Two reviewers disagree. The lifted `run.rating` is the worse of the two, and
     // is exactly what a gate must not read.
     db.add_review("r1", &review_by("u1", Rating::Great), None)
@@ -5170,8 +5236,8 @@ async fn cell_run_ratings_hold_only_completed_runs() {
     let db = Db::connect_in_memory().await.unwrap();
     let mut failed = record("boom");
     failed.status.state = RunState::HarnessError;
-    db.push(&failed, &links(), None).await.unwrap();
-    db.push(&record("ok"), &links(), None).await.unwrap();
+    db.push(&failed, &links(), None, None).await.unwrap();
+    db.push(&record("ok"), &links(), None, None).await.unwrap();
 
     let runs = db.cell_run_ratings(&sample_cell(), "u1").await.unwrap();
     // An infrastructure failure retries; it is never evidence, and never a wall.
@@ -5775,7 +5841,7 @@ fn a_combination_key_separates_on_a_character_a_model_id_cannot_contain() {
 #[tokio::test]
 async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_label() {
     // The `/stats/providers` probe fold reads four columns: the item's serving
-    // provider, the owning probe's model slug (the join), the clean flag, and
+    // provider, the owning probe's model slug (the join), the pass flag, and
     // "errored" as the absence of a classification label. Prove the projection
     // against a store with two probes of two models, mixed providers, and one
     // errored call.
@@ -5786,31 +5852,33 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
         openrouter_slug: format!("or/{slug}"),
         provider: None,
         user_id: "u1".to_string(),
+        language: None,
         samples: 1,
         max_tokens: 100,
-        full_context: false,
-        request_json: "{}".to_string(),
+        request_json: "[]".to_string(),
         status: "complete".to_string(),
         error: None,
         verdict: None,
-        base_clean_rate: None,
-        best_variation_clean_rate: None,
+        pass_rate: None,
         spend: 0.0,
         created_at: "2026-08-23T00:00:00Z".to_string(),
         finished_at: None,
     };
     let item =
-        |id: &str, probe_id: &str, provider: Option<&str>, clean: bool, label: Option<&str>| {
+        |id: &str, probe_id: &str, provider: Option<&str>, pass: bool, label: Option<&str>| {
             test_cabinet_entities::model_probe_item::Model {
                 id: id.to_string(),
                 probe_id: probe_id.to_string(),
-                condition: "base".to_string(),
+                language: "typescript".to_string(),
+                scenario: "baseline".to_string(),
+                prompt: "write-plan".to_string(),
                 sample: 0,
                 provider: provider.map(str::to_string),
                 finish_reason: None,
                 native_finish_reason: None,
                 label: label.map(str::to_string),
-                clean,
+                pass,
+                program_text: None,
                 response_text: String::new(),
                 reasoning_text: None,
                 prompt_tokens: None,
@@ -5823,10 +5891,10 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
         };
     db.insert_model_probe(probe("p1", "alpha")).await.unwrap();
     db.insert_model_probe(probe("p2", "beta")).await.unwrap();
-    db.insert_model_probe_item(item("i1", "p1", Some("acme"), true, Some("clean-program")))
+    db.insert_model_probe_item(item("i1", "p1", Some("acme"), true, Some("correct-calls")))
         .await
         .unwrap();
-    db.insert_model_probe_item(item("i2", "p1", Some("acme"), false, Some("prose+program")))
+    db.insert_model_probe_item(item("i2", "p1", Some("acme"), false, Some("missing-calls")))
         .await
         .unwrap();
     db.insert_model_probe_item(item(
@@ -5834,7 +5902,7 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
         "p2",
         Some("zenith"),
         true,
-        Some("clean-program"),
+        Some("correct-calls"),
     ))
     .await
     .unwrap();
@@ -5853,4 +5921,458 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
             (Some("zenith".to_string()), "beta".to_string(), true, false),
         ],
     );
+}
+
+// --- The two rating channels ----------------------------------------------------
+//
+// A run of a case version on the engine manifest format is **validator-rated**: its
+// functional rating is decided by the validators (each failing scored point capping
+// its domains at its declared failure cap) and written at push time, its reviews
+// supply only the aesthetic channel, and it publishes with zero reviews. A legacy
+// run keeps behaving exactly as it always has.
+
+/// A `pong@v1.0.0` manifest on the engine format whose base variant scores two
+/// validated points: `serve` (gameplay-critical, cap `broken`, single-player only)
+/// and `hud` (cosmetic, cap `great`, both domains). Two domains: `single-player`
+/// (common) and `versus` (the base variant's own).
+fn validator_manifest() -> crate::store::StoredManifest {
+    use crate::store::{
+        StoredDomain, StoredManifest, StoredReviewItem, StoredReviewValidation, StoredVariant,
+    };
+    use test_cabinet_core::review::FailureCap;
+    let point = |id: &str, cap: FailureCap, domains: &[&str]| StoredReviewItem {
+        id: id.to_string(),
+        title: id.to_string(),
+        text: format!("The build satisfies {id}."),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: false,
+        domain: None,
+        sub_items: vec![],
+        validation: Some(StoredReviewValidation {
+            script: format!("gameplay/{id}"),
+            per_engine: true,
+            outputs: vec![],
+        }),
+        failure_cap: Some(cap),
+        domains: domains.iter().map(|d| d.to_string()).collect(),
+    };
+    let domain = |id: &str| StoredDomain {
+        id: id.to_string(),
+        name: id.to_string(),
+        description: format!("The {id} mode."),
+    };
+    StoredManifest {
+        toolchain: None,
+        engine_format: true,
+        slug: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        name: "Carom".to_string(),
+        difficulty: "easy".to_string(),
+        tags: vec![],
+        summary: None,
+        description: None,
+        changelog: "Introduced.".to_string(),
+        max_runtime_seconds: 1800,
+        test_type: test_cabinet_core::TestType::EndToEnd,
+        engines: vec![test_cabinet_core::EngineSupport::unbounded("simple-2d")],
+        experimental: false,
+        build: None,
+        canvas: None,
+        tool: None,
+        output: None,
+        contract: None,
+        sandbox: None,
+        cases: Vec::new(),
+        simulation: None,
+        r#match: None,
+        replay: None,
+        asset_kind: test_cabinet_core::AssetKind::Sprite,
+        sheet: None,
+        voxel: None,
+        model: None,
+        ui: None,
+        material: None,
+        particle: None,
+        audio: None,
+        prompt_template: "build it".to_string(),
+        common_specs: vec![],
+        workspace: Default::default(),
+        init: None,
+        assets: vec![],
+        packages: vec![],
+        variants: vec![StoredVariant {
+            slug: "base".to_string(),
+            name: "Base".to_string(),
+            description: None,
+            specs: vec![],
+            workspace: None,
+            references: vec![],
+            proofs: vec![],
+            review_items: vec![],
+            domains: vec![domain("versus")],
+            voxel: None,
+        }],
+        common_references: vec![],
+        common_proofs: vec![],
+        checks: vec![],
+        common_review_items: vec![
+            point("serve", FailureCap::Broken, &["single-player"]),
+            point("hud", FailureCap::Great, &["single-player", "versus"]),
+        ],
+        domains: vec![domain("single-player")],
+        instrumentation: None,
+        errata: Vec::new(),
+    }
+}
+
+/// [`record`] with one decided validator verdict per `(point, pass)` pair.
+fn validator_record(id: &str, verdicts: &[(&str, bool)]) -> RunRecord {
+    use test_cabinet_core::validation::{AutoVerdict, DebugScriptResult};
+    let mut record = record(id);
+    record.validation.debug_scripts = verdicts
+        .iter()
+        .map(|(point, pass)| DebugScriptResult {
+            item_id: point.to_string(),
+            sub_item_id: None,
+            title: point.to_string(),
+            category_title: point.to_string(),
+            script: format!("gameplay/{point}"),
+            gates: true,
+            ran: true,
+            precondition_unmet: false,
+            detail: None,
+            verdicts: vec![AutoVerdict {
+                id: point.to_string(),
+                pass: *pass,
+                assertions: vec![],
+            }],
+            outputs: vec![],
+        })
+        .collect();
+    record
+}
+
+/// A review from `account` rating both domains `rating` on the aesthetic scale and
+/// nothing else — the only shape a validator-rated run accepts.
+fn aesthetic_review(
+    account: &str,
+    rating: test_cabinet_core::review::AestheticRating,
+) -> StoredReview {
+    use test_cabinet_core::review::DomainAesthetic;
+    StoredReview {
+        reviewer: reviewer(account),
+        ratings: vec![],
+        aesthetics: ["single-player", "versus"]
+            .into_iter()
+            .map(|domain| DomainAesthetic {
+                domain: domain.to_string(),
+                rating,
+            })
+            .collect(),
+        writeup: "Looks lovely.".to_string(),
+        checklist: vec![],
+        reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+        edited_at: None,
+        revisions: Vec::new(),
+    }
+}
+
+#[test]
+fn functional_rating_takes_the_lowest_cap_among_failing_points() {
+    let manifest = validator_manifest();
+    // No failure: every domain is flawless.
+    assert_eq!(
+        functional_rating(Some(&manifest), &validator_record("r", &[]), &[]),
+        Some(Rating::Flawless)
+    );
+    // The cosmetic point fails: both domains capped at great.
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[("serve", true), ("hud", false)]),
+            &[]
+        ),
+        Some(Rating::Great)
+    );
+    // Both fail: single-player is capped at broken (the lowest cap wins), and the
+    // run's rating is its worst domain.
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[("serve", false), ("hud", false)]),
+            &[]
+        ),
+        Some(Rating::Broken)
+    );
+    // Reviews never move a validator-rated run's functional rating.
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[]),
+            &[review_by("u1", Rating::Scuffed)]
+        ),
+        Some(Rating::Flawless)
+    );
+    // A legacy version (or no manifest at all) is the review aggregate.
+    let mut legacy = validator_manifest();
+    legacy.engine_format = false;
+    assert_eq!(
+        functional_rating(
+            Some(&legacy),
+            &record("r"),
+            &[review_by("u1", Rating::Scuffed)]
+        ),
+        Some(Rating::Scuffed)
+    );
+    assert_eq!(functional_rating(None, &record("r"), &[]), None);
+}
+
+#[tokio::test]
+async fn a_validator_rated_run_is_rated_at_push_from_its_validators() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+
+    db.push(
+        &validator_record("r1", &[("serve", true), ("hud", false)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert!(stored.validator_rated);
+    assert_eq!(
+        stored.rating,
+        Some(Rating::Great),
+        "written before any review"
+    );
+    assert_eq!(
+        stored.aesthetic, None,
+        "nobody has rated the aesthetic channel"
+    );
+    assert!(stored.reviews.is_empty());
+
+    // The summary card reads the lifted rating without a catalog.
+    let card = crate::snapshot::RunSummary::from_stored(&stored);
+    assert_eq!(card.rating, Some(Rating::Great));
+    assert!(card.validator_rated);
+    assert_eq!(card.aesthetic, None);
+}
+
+#[tokio::test]
+async fn a_re_push_recomputes_a_validator_rated_runs_rating_but_keeps_its_aesthetic() {
+    use test_cabinet_core::review::AestheticRating;
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+
+    db.push(
+        &validator_record("r1", &[("serve", false)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        db.get_run("r1").await.unwrap().unwrap().rating,
+        Some(Rating::Broken)
+    );
+    db.add_review("r1", &aesthetic_review("u1", AestheticRating::Good), None)
+        .await
+        .unwrap();
+
+    // The validators now pass: the record-derived rating follows the record, the
+    // review-derived aesthetic and count are preserved.
+    db.push(
+        &validator_record("r1", &[("serve", true)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert_eq!(stored.rating, Some(Rating::Flawless));
+    assert_eq!(stored.aesthetic, Some(AestheticRating::Good));
+    assert_eq!(stored.reviews.len(), 1);
+    assert!(stored.validator_rated);
+}
+
+#[tokio::test]
+async fn a_review_of_a_validator_rated_run_supplies_only_the_aesthetic_channel() {
+    use test_cabinet_core::review::AestheticRating;
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    db.push(
+        &validator_record("r1", &[("serve", true), ("hud", true)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+
+    db.add_review(
+        "r1",
+        &aesthetic_review("u1", AestheticRating::Amazing),
+        None,
+    )
+    .await
+    .unwrap();
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert_eq!(
+        stored.rating,
+        Some(Rating::Flawless),
+        "a review never moves it"
+    );
+    assert_eq!(stored.aesthetic, Some(AestheticRating::Amazing));
+    assert_eq!(stored.reviews[0].aesthetics.len(), 2, "round-trips");
+    assert!(stored.reviews[0].ratings.is_empty());
+
+    // The run's aesthetic is the worst across its reviews, like the rating.
+    db.add_review("r1", &aesthetic_review("u2", AestheticRating::Okay), None)
+        .await
+        .unwrap();
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert_eq!(stored.aesthetic, Some(AestheticRating::Okay));
+    assert_eq!(stored.reviews.len(), 2);
+    assert_eq!(stored.rating, Some(Rating::Flawless));
+
+    // The account's recent-review subjects carry the aesthetic channel for the
+    // Profile-tab breakdown.
+    let (subjects, total) = db.recent_review_subjects("u2", 10).await.unwrap();
+    assert_eq!(total, 1);
+    assert!(subjects[0].ratings.is_empty());
+    assert_eq!(subjects[0].aesthetics[0].rating, AestheticRating::Okay);
+}
+
+#[tokio::test]
+async fn editing_a_reviews_aesthetics_records_the_change_in_its_revision() {
+    use test_cabinet_core::review::AestheticRating;
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    db.push(
+        &validator_record("r1", &[]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    db.add_review("r1", &aesthetic_review("u1", AestheticRating::Okay), None)
+        .await
+        .unwrap();
+
+    // An edit that only changes the aesthetic channel is still an edit: it needs a
+    // note and records the per-domain change.
+    let mut edited = aesthetic_review("u1", AestheticRating::Good);
+    edited.reviewed_at = "2026-06-18T09:00:00Z".to_string();
+    let err = db.add_review("r1", &edited, None).await.unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
+    db.add_review("r1", &edited, Some("Second look: the palette grew on me."))
+        .await
+        .unwrap();
+
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert_eq!(stored.aesthetic, Some(AestheticRating::Good));
+    let review = &stored.reviews[0];
+    assert_eq!(review.edited_at.as_deref(), Some("2026-06-18T09:00:00Z"));
+    assert_eq!(review.revisions.len(), 1);
+    let diff = &review.revisions[0].diff;
+    assert!(diff.ratings.is_empty());
+    assert_eq!(diff.aesthetics.len(), 2);
+    assert_eq!(diff.aesthetics[0].domain, "single-player");
+    assert_eq!(diff.aesthetics[0].from, Some(AestheticRating::Okay));
+    assert_eq!(diff.aesthetics[0].to, Some(AestheticRating::Good));
+}
+
+#[tokio::test]
+async fn a_validator_rated_completed_run_publishes_with_zero_reviews() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    db.push(
+        &validator_record("v1", &[("serve", false)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    // A legacy completed run beside it keeps the ≥1-review gate.
+    db.push(&record("l1"), &links(), None, None).await.unwrap();
+
+    db.ensure_publishable("v1").await.unwrap();
+    let outcome = db.publish("v1", "2026-06-17T21:40:00Z").await.unwrap();
+    assert!(outcome.newly_published);
+    let stored = db.get_run("v1").await.unwrap().unwrap();
+    assert!(stored.published);
+    assert_eq!(
+        stored.rating,
+        Some(Rating::Broken),
+        "published on its own rating"
+    );
+
+    let err = db.ensure_publishable("l1").await.unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
+    let err = db.publish("l1", "2026-06-17T21:40:00Z").await.unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
+}
+
+#[tokio::test]
+async fn a_legacy_run_never_carries_an_aesthetic_and_is_rated_by_its_reviews() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // The store may hold the run's case (on the legacy format) or not at all; both
+    // are legacy runs.
+    let mut legacy = validator_manifest();
+    legacy.engine_format = false;
+    db.push(&record("r1"), &links(), None, Some(&legacy))
+        .await
+        .unwrap();
+    db.push(&record("r2"), &links(), None, None).await.unwrap();
+
+    for id in ["r1", "r2"] {
+        let stored = db.get_run(id).await.unwrap().unwrap();
+        assert!(!stored.validator_rated);
+        assert_eq!(stored.rating, None, "unreviewed");
+        db.add_review(id, &review_by("u1", Rating::Passable), None)
+            .await
+            .unwrap();
+        let stored = db.get_run(id).await.unwrap().unwrap();
+        assert_eq!(stored.rating, Some(Rating::Passable));
+        assert_eq!(stored.aesthetic, None);
+        assert!(stored.reviews[0].aesthetics.is_empty());
+        let card = crate::snapshot::RunSummary::from_stored(&stored);
+        assert_eq!(card.rating, Some(Rating::Passable));
+        assert!(!card.validator_rated);
+        assert_eq!(card.aesthetic, None);
+    }
+}
+
+#[tokio::test]
+async fn a_validator_rated_run_stays_in_the_unreviewed_worklist_until_reviewed() {
+    // Decision: a validator-rated run with no review can still receive an aesthetic
+    // review, so it belongs in the reviewer worklist exactly like a legacy run.
+    use test_cabinet_core::review::AestheticRating;
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    db.push(
+        &validator_record("r1", &[]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    assert_eq!(db.list_for_review(50, None).await.unwrap().0.len(), 1);
+    db.add_review("r1", &aesthetic_review("u1", AestheticRating::Good), None)
+        .await
+        .unwrap();
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert_eq!(stored.reviews.len(), 1);
 }

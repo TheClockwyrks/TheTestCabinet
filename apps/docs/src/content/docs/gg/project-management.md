@@ -44,20 +44,12 @@ telemetry, and the console's Agents tree.
 
 ## What each agent sees
 
-The board is run-global; the view of it is per agent. The pinned board block
-holds the whole decomposition, is rebuilt at every turn boundary, and is
-retained across compaction. It is attached only to the window of an agent whose
-own profile enables the capability. The prompt's board section is gated the same
-way, so what an agent is told about the board agrees with what it is shown.
-
-This is [module ownership](/gg/modules/) doing the work. Every agent in the run
-holds the one board, and an agent without the capability holds it unowned: live
-enough to be dispatched an issue from, and absent from its prompt. An agent that
-has the capability can be put in the same position with `"ownership":
-"unowned"`. It keeps every board tool and drops both the per-turn cost of
-carrying the decomposition and the prompt section describing it, which is worth
-having on a board large enough that the block is the biggest thing in the
-window.
+The board is run-global, and no agent's prompt carries it: there is no pinned
+board block and no prompt section describing the board. Every agent in the run
+holds the one board and reaches it through the board tools alone, paying no
+context for it between calls. What separates agents is the toolset: a profile
+that enables the capability is offered the board tools; one without it is
+offered none, and is live enough only to be dispatched an issue from.
 
 Forking or transferring the board hands over the same board. Two boards would
 each keep their own per-prefix issue counter and would both hand out `AUTH-4`,
@@ -264,7 +256,6 @@ Board tools: `create_epic`, `create_issue`, `update_issue`,
 | `maxEpics` | Maximum epics on the board. |
 | `maxIssues` | Maximum issues on the board. |
 | `maxRetries` | Re-dispatches of a failed assignment before the issue is marked failed; may be 0 for one attempt only. A review round is not a retry. |
-| `ownership` | `owned` puts the board in the holder's prompt, `unowned` keeps the board tools and drops the pinned block and the prompt section. |
 | `reviewers` | The Reviewers required feature above. Optional: absent, an issue names reviewers or leaves them out as its author chooses. |
 
 An enabled project-management capability writes every param but `reviewers`. An
@@ -278,8 +269,8 @@ off the first profile with the capability switched on, and a second
 board-carrying profile that declares a *different* figure refuses the launch —
 the document would say two things and the run can only do one. Every such profile
 writing the *same* figure is the ordinary shape, and is what an editor offering
-the params per agent produces. `ownership` and `reviewers` are genuinely
-per-agent: they decide what each holder is told and what each filer must name.
+the params per agent produces. `reviewers` is genuinely per-agent: it decides
+what each filer must name.
 
 Switched off, there are no board tools, no prompt text, no context block, no
 board telemetry, and no auto-dispatch.

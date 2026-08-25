@@ -53,6 +53,7 @@
 #   local-forward   foreground-forward backend→:8787, auth→:8789, artifacts→:8790, arena→:8791, AND Grafana→:3000 to localhost (the console runs from source via `npm run -w apps/web dev`)
 #   local-grafana   foreground-forward Grafana→:3000 AND the OTLP collector→:4318/:4317 to localhost (use when you also need the OTLP ports; local-forward already exposes Grafana)
 #   local-ingest    re-ingest the catalog (force) — run after editing a test case
+#   local-import    re-import EVERY already-built service + run image into the node, no rebuild (recovery after the node lost its images)
 #   secrets         (re)create the cluster Secrets from the environment
 #   local-status    show pods, services, and volumes in the namespace
 
@@ -73,6 +74,17 @@ OVERLAY := $(REPO)/deployments/k8s/overlays/local
 # .devcontainer/tools/k8s.sh. (k3s tags the image with `-k3s1`, not the `+k3s1` of the
 # upstream release tag.)
 K3S_IMAGE ?= rancher/k3s:v1.35.6-k3s1
+
+# The kubelet setting every local node MUST carry. Every image this cluster runs is a
+# local import with NO registry behind it, and the kubelet's image garbage collector
+# does not know that: once the node's image filesystem — which under k3d is the HOST
+# disk — passes 85% full it deletes every image no running pod is using, which here is
+# exactly `tcab-driver:local` and all fifty-two run images. The next run then sits in
+# `queued` forever while its driver pod is in ImagePullBackOff, and nothing can pull it
+# back. 100 disables the collector (the kubelet documents 100 as "off"). Passed on
+# `k3d cluster create`, and written into k3s's config.yaml on a node that predates it
+# (see `cluster-kubelet`).
+KUBELET_IMAGE_GC_ARG := image-gc-high-threshold=100
 
 # Name k3d gives this cluster's kubeconfig context/cluster entry (used by the
 # `kubeconfig` target to repoint the API server for in-devcontainer access).
@@ -278,10 +290,35 @@ cluster:
 	  host_repo="$$(docker inspect "$$(hostname)" --format '{{range .Mounts}}{{if eq .Destination "$(REPO)"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"; \
 	  if [ -z "$$host_repo" ]; then host_repo='$(REPO)'; fi; \
 	  echo "Creating k3d cluster '$(CLUSTER)' on $(K3S_IMAGE) (mounting $$host_repo → /repo)…"; \
-	  k3d cluster create '$(CLUSTER)' --image '$(K3S_IMAGE)' --volume "$$host_repo:/repo@server:0" --wait; \
+	  k3d cluster create '$(CLUSTER)' --image '$(K3S_IMAGE)' --volume "$$host_repo:/repo@server:0" \
+	    --k3s-arg '--kubelet-arg=$(KUBELET_IMAGE_GC_ARG)@server:*' --wait; \
 	fi
 	@k3d kubeconfig merge '$(CLUSTER)' --kubeconfig-merge-default --kubeconfig-switch-context >/dev/null
 	@$(MAKE) -s -f '$(firstword $(MAKEFILE_LIST))' kubeconfig
+	@$(MAKE) -s -f '$(firstword $(MAKEFILE_LIST))' cluster-kubelet
+
+# Ensure an EXISTING cluster's server node runs with $(KUBELET_IMAGE_GC_ARG). A node
+# created by the `cluster` target above already carries it on its command line; one
+# created before the flag existed does not, and k3d cannot change a node's arguments
+# after the fact. k3s also reads /etc/rancher/k3s/config.yaml at start, so write the
+# kubelet argument there and restart the node once — the container's writable layer
+# keeps the file (and the PVC-backed state) across the restart. Idempotent: a node that
+# has the flag either way is left alone.
+K3D_SERVER_NODE := k3d-$(CLUSTER)-server-0
+cluster-kubelet:
+	@node='$(K3D_SERVER_NODE)'; \
+	if $(CONTAINER_TOOL) inspect "$$node" --format '{{join .Args " "}}' 2>/dev/null | grep -Fq -- '--kubelet-arg=$(KUBELET_IMAGE_GC_ARG)'; then exit 0; fi; \
+	if $(CONTAINER_TOOL) exec "$$node" grep -Fqs -- '$(KUBELET_IMAGE_GC_ARG)' /etc/rancher/k3s/config.yaml; then exit 0; fi; \
+	echo "Node $$node runs with the kubelet's image garbage collector ON; writing $(KUBELET_IMAGE_GC_ARG) into its k3s config.yaml and restarting it…"; \
+	$(CONTAINER_TOOL) exec "$$node" sh -c 'mkdir -p /etc/rancher/k3s && printf "kubelet-arg:\n  - $(KUBELET_IMAGE_GC_ARG)\n" > /etc/rancher/k3s/config.yaml'; \
+	$(CONTAINER_TOOL) stop -t 60 "$$node" >/dev/null && $(CONTAINER_TOOL) start "$$node" >/dev/null; \
+	echo "Waiting for $$node to report Ready (up to $(ROLLOUT_TIMEOUT))…"; \
+	deadline=$$(( $$(date +%s) + $$(echo '$(ROLLOUT_TIMEOUT)' | sed 's/s$$//') )); \
+	until $(KUBECTL) wait node "$$node" --for=condition=Ready --timeout=10s >/dev/null 2>&1; do \
+	  if [ "$$(date +%s)" -ge "$$deadline" ]; then echo "ERROR: $$node did not become Ready within $(ROLLOUT_TIMEOUT)." >&2; exit 1; fi; \
+	  sleep 2; \
+	done; \
+	echo "Node $$node is Ready with image garbage collection disabled."
 
 # Make the merged kubeconfig reachable from inside the devcontainer. When the
 # devcontainer drives the HOST Docker daemon, `k3d kubeconfig merge` records the
@@ -861,6 +898,17 @@ local-rebuild: images apply
 # next driver Job with no restart.
 local-reapply: sts-reconcile
 	$(KUBECTL) apply -k '$(OVERLAY)'
+
+# Re-import EVERY service + run image already built in the container runtime, with no
+# rebuild — the recovery for a node whose images are gone (a cluster created before
+# `cluster` disabled the kubelet's image garbage collector, see KUBELET_IMAGE_GC_ARG).
+# Runs `cluster` first so the node stops deleting what this puts back. A driver Job
+# already stuck in ImagePullBackOff picks its image up on the kubelet's next retry —
+# unless `cluster-kubelet` had to restart the node, which takes the backend down with
+# it and fails every in-flight run as interrupted (crates/backend/src/lib.rs reaps
+# them on a single-box restart); those must be launched again.
+local-import: cluster
+	$(call save_and_import,$(ALL_IMGS) $(RUN_IMGS))
 
 local-status:
 	$(KUBECTL) -n '$(NS)' get pods,svc,pvc

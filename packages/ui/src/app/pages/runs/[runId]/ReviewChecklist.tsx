@@ -1,10 +1,12 @@
 import type { ReactNode } from "react";
 import {
+  FAILURE_CAP_META,
   GRADE_META,
   GRADE_MAX_POINTS,
   VERDICT_META,
   isGrade,
   subItemVerdictId,
+  type FailureCap,
   type ReviewVerdict,
   type VerdictStatus,
 } from "../../../data/ratings";
@@ -79,6 +81,21 @@ export function ReviewChecklist({
 
   // Item metadata by id (title + weight + domain), for the breakdown.
   const itemsById = new Map(model.items.map((item) => [item.id, item]));
+  // On a validator-rated version every point declares the domains a failure
+  // lowers and the cap it lowers them to; the rows show both, so a reader sees
+  // what each check is worth beyond its points. Domain ids are shown by name.
+  const domainName = (id: string) =>
+    model.domains.find((d) => d.id === id)?.name ?? id;
+  const capOf = (point: {
+    failureCap?: FailureCap | null;
+    domains?: string[];
+  }) =>
+    model.validatorRated && point.failureCap
+      ? {
+          cap: point.failureCap,
+          domains: (point.domains ?? []).map(domainName),
+        }
+      : undefined;
   // The reviewer's verdict by item id.
   const verdictById = new Map((verdicts ?? []).map((v) => [v.id, v]));
 
@@ -99,6 +116,7 @@ export function ReviewChecklist({
           item={item}
           verdictById={verdictById}
           definition={definition}
+          capOf={capOf}
         />
       );
     }
@@ -110,6 +128,7 @@ export function ReviewChecklist({
         weight={item ? item.weight : undefined}
         graded={item?.graded}
         notScored={item?.scored === false}
+        cap={item ? capOf(item) : undefined}
         verdict={verdictById.get(itemId)}
         definition={definition}
       />
@@ -181,6 +200,7 @@ export function ReviewChecklist({
             description={sub.description}
             weight={sub.weight ?? 1}
             notScored={item.scored === false || sub.scored === false}
+            cap={capOf(sub)}
             verdict={verdictById.get(subItemVerdictId(item.id, sub.id))}
             definition={definition}
           />
@@ -203,6 +223,7 @@ export function ReviewChecklist({
             weight={item.weight}
             graded={item.graded}
             notScored={item.scored === false}
+            cap={capOf(item)}
             verdict={verdictById.get(item.id)}
             definition={definition}
           />
@@ -259,11 +280,17 @@ function ChecklistItemGroup({
   item,
   verdictById,
   definition,
+  capOf,
 }: {
   number: number;
   item: ReviewItemSummary;
   verdictById: Map<string, { status: VerdictStatus; note?: string }>;
   definition: boolean;
+  /** A point's failure cap + affected domain names on a validator-rated version. */
+  capOf: (point: {
+    failureCap?: FailureCap | null;
+    domains?: string[];
+  }) => CapLabel | undefined;
 }) {
   const subItems = item.subItems ?? [];
   // Sub-items are always pass/fail (a graded game-jam category has no sub-items).
@@ -311,6 +338,7 @@ function ChecklistItemGroup({
             title={`${String.fromCharCode(97 + i)}. ${sub.title}`}
             description={sub.description}
             notScored={item.scored === false || sub.scored === false}
+            cap={capOf(sub)}
             verdict={verdictById.get(subItemVerdictId(item.id, sub.id))}
             definition={definition}
           />
@@ -329,6 +357,13 @@ function ChecklistItemGroup({
 // trails the title dimmed as its point value — a flat weight for a binary item,
 // `earned / available` for a graded one; a reviewer's note stacks beneath the
 // title on its own line.
+/** What a failing point costs on a validator-rated version: the cap it imposes
+ * and the domains (by display name) it imposes it on. */
+interface CapLabel {
+  cap: FailureCap;
+  domains: string[];
+}
+
 function ChecklistRow({
   number,
   title,
@@ -336,6 +371,7 @@ function ChecklistRow({
   weight,
   graded,
   notScored,
+  cap,
   verdict,
   definition,
 }: {
@@ -344,6 +380,10 @@ function ChecklistRow({
   description?: string | null;
   weight?: number;
   graded?: boolean;
+  /** On a validator-rated version, the point's failure cap and the domains a
+   * failure lowers — trailed beneath the title so the rubric reads what each
+   * check is worth beyond its points. */
+  cap?: CapLabel;
   /** Whether this point is excluded from scoring for the version (an erratum's
    * `excludeFromScore`). Still shown and still verifiable, but it does not count
    * toward the score, so the row flags it and drops its point value. */
@@ -411,8 +451,23 @@ function ChecklistRow({
             </>
           )}
         </span>
-        {description && (
-          <span className={styles.secondary}>{description}</span>
+        {description && <span className={styles.secondary}>{description}</span>}
+        {cap && (
+          <span className={styles.capLabel}>
+            <span
+              className={styles.capTier}
+              data-cap={cap.cap}
+              title={FAILURE_CAP_META[cap.cap].description}
+            >
+              caps at {FAILURE_CAP_META[cap.cap].label}
+            </span>
+            {cap.domains.length > 0 && (
+              <span className={styles.capDomains}>
+                {" "}
+                · {cap.domains.join(", ")}
+              </span>
+            )}
+          </span>
         )}
         {verdict?.note && (
           <span className={styles.verdictNote}>

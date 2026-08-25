@@ -15,8 +15,9 @@ import type { ModelSummary } from "../../../data/models";
 import { ModelProbesPage } from "./ModelProbesPage";
 
 // The Probes tab: probe history for everyone, trigger controls for a signed-in
-// operator, and the backend's error envelope surfaced when a trigger is
-// refused (409 already running / 422 no slug / 503 no key).
+// operator (with the language selector), and the backend's error envelope
+// surfaced when a trigger is refused (409 already running / 422 no slug / 503
+// no key).
 
 // The page's app chrome reads contexts (backdrop settings, topbar) that are
 // irrelevant to the probe surface under test.
@@ -56,14 +57,13 @@ const COMPLETE: ModelProbe = {
   modelSlug: "claude-x",
   openrouterSlug: "anthropic/claude-x",
   provider: "DeepInfra",
-  samples: 3,
+  language: "typescript",
+  samples: 8,
   maxTokens: 3500,
-  fullContext: false,
   status: "complete",
   error: null,
   verdict: "ready",
-  baseCleanRate: 1,
-  bestVariationCleanRate: 0.67,
+  passRate: 1,
   spend: 0.0123,
   createdAt: "2026-08-20T10:00:00Z",
   finishedAt: "2026-08-20T10:01:00Z",
@@ -73,35 +73,13 @@ const RUNNING: ModelProbe = {
   ...COMPLETE,
   id: "probe-2",
   provider: null,
+  language: null,
   status: "running",
   verdict: null,
-  baseCleanRate: null,
-  bestVariationCleanRate: null,
+  passRate: null,
   spend: 0,
   finishedAt: null,
 };
-
-const CONDITIONS = [
-  {
-    name: "base",
-    noToolsClause: false,
-    trailingNotice: false,
-    variation: false,
-  },
-  {
-    name: "no-tools",
-    noToolsClause: true,
-    trailingNotice: false,
-    variation: true,
-  },
-  {
-    name: "notice",
-    noToolsClause: false,
-    trailingNotice: true,
-    variation: true,
-  },
-  { name: "combo", noToolsClause: true, trailingNotice: true, variation: true },
-];
 
 function detailOf(probe: ModelProbe): ModelProbeDetail {
   return {
@@ -111,14 +89,18 @@ function detailOf(probe: ModelProbe): ModelProbeDetail {
         ? [
             {
               id: "item-1",
-              condition: "base",
-              sample: 1,
+              language: "typescript",
+              scenario: "baseline",
+              prompt: "write-plan",
+              sample: 0,
               provider: "DeepInfra",
-              finishReason: "stop",
-              nativeFinishReason: "stop",
-              label: "clean-program",
-              clean: true,
-              responseText: "const game = gg.spawn();",
+              finishReason: "tool_calls",
+              nativeFinishReason: "tool_calls",
+              label: "correct-calls",
+              pass: true,
+              programText:
+                'import { files } from "gg";\nfiles.writeFile("notes/plan.md", plan);',
+              responseText: "",
               reasoningText: null,
               promptTokens: 1200,
               completionTokens: 340,
@@ -127,15 +109,57 @@ function detailOf(probe: ModelProbe): ModelProbeDetail {
               error: null,
               createdAt: "2026-08-20T10:00:10Z",
             },
+            {
+              id: "item-2",
+              language: "typescript",
+              scenario: "missing-docview",
+              prompt: "run-tests",
+              sample: 0,
+              provider: "DeepInfra",
+              finishReason: "tool_calls",
+              nativeFinishReason: "tool_calls",
+              label: "docview-first",
+              pass: true,
+              programText:
+                'import { views } from "gg";\nviews.openDocsView("gg.shell.shell");',
+              responseText: "",
+              reasoningText: null,
+              promptTokens: 1100,
+              completionTokens: 120,
+              cost: 0.0021,
+              durationMs: 3200,
+              error: null,
+              createdAt: "2026-08-20T10:00:20Z",
+            },
           ]
         : [],
-    requestMessages: [
-      { role: "system", content: "You are gg's responses-as-code agent." },
-      { role: "user", content: "Build the game." },
+    requests: [
+      {
+        language: "typescript",
+        scenario: "baseline",
+        prompt: "write-plan",
+        messages: [
+          { role: "system", content: "You are gg's responses-as-code agent." },
+          { role: "user", content: "Task\n----\nCreate the file." },
+          {
+            role: "assistant",
+            tool_calls: [
+              {
+                id: "bootstrap-program",
+                type: "function",
+                function: {
+                  name: "submit_program",
+                  arguments: JSON.stringify({
+                    program: 'import { docs } from "gg";\ndocs.search({});',
+                  }),
+                },
+              },
+            ],
+          },
+          { role: "tool", tool_call_id: "bootstrap-program", content: "ok" },
+        ],
+      },
     ],
-    conditions: CONDITIONS,
-    noToolsClause: "No tools are available in this session.",
-    noticeMessage: "Reply with a single program.",
   };
 }
 
@@ -215,16 +239,19 @@ describe("ModelProbesPage", () => {
   it("renders the probe history and the newest probe's detail", async () => {
     renderPage();
 
-    // The history row: verdict badge, provider, clean rates, spend.
+    // The history row: verdict badge, language, provider, pass rate, spend.
     expect(await screen.findAllByText("Ready")).not.toHaveLength(0);
+    expect(screen.getAllByText("TypeScript").length).toBeGreaterThan(0);
     expect(screen.getAllByText("DeepInfra").length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/base 100% · best/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/pass 100%/).length).toBeGreaterThan(0);
     expect(screen.getAllByText("$0.0123").length).toBeGreaterThan(0);
 
     // The newest probe is selected by default, so its detail loads: the
-    // per-condition rollup and the classified item.
-    expect(await screen.findAllByText("clean-program")).not.toHaveLength(0);
-    expect(screen.getByText("no-tools")).toBeInTheDocument();
+    // per-scenario rollup and the classified items with their programs.
+    expect(await screen.findAllByText("correct-calls")).not.toHaveLength(0);
+    expect(screen.getAllByText("docview-first").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/missing-docview/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/files\.writeFile/)).toBeInTheDocument();
   });
 
   it("hides the trigger and shows a notice when signed out", async () => {
@@ -248,16 +275,58 @@ describe("ModelProbesPage", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /run probe/i }));
 
+    // The defaults: 8 samples per input prompt, every language (no `language`
+    // field), the default route (no `provider`).
     await waitFor(() =>
       expect(trigger).toHaveBeenCalledWith(
         "claude-x",
-        { samples: 3, maxTokens: 3500, fullContext: false },
+        { samples: 8, maxTokens: 3500 },
         "t",
       ),
     );
     // The accepted probe lands at the head of the history immediately, still
-    // running.
+    // running, marked as probing every language.
     expect(await screen.findByText("Running")).toBeInTheDocument();
+    expect(screen.getAllByText("all languages").length).toBeGreaterThan(0);
+  });
+
+  it("pins the probe to one language arm through the selector", async () => {
+    const trigger = vi.fn().mockResolvedValue(RUNNING);
+    renderPage(
+      signedInStubs({
+        listModelProbes: vi.fn().mockResolvedValue([]),
+        triggerModelProbe: trigger,
+      }),
+    );
+
+    fireEvent.change(await screen.findByLabelText("Language"), {
+      target: { value: "rust" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /run probe/i }));
+
+    await waitFor(() =>
+      expect(trigger).toHaveBeenCalledWith(
+        "claude-x",
+        { samples: 8, maxTokens: 3500, language: "rust" },
+        "t",
+      ),
+    );
+  });
+
+  it("refuses an out-of-range sample count before any request", async () => {
+    const trigger = vi.fn().mockResolvedValue(RUNNING);
+    renderPage(signedInStubs({ triggerModelProbe: trigger }));
+
+    fireEvent.change(await screen.findByLabelText("Samples per prompt"), {
+      target: { value: "129" },
+    });
+    const run = screen.getByRole("button", { name: /run probe/i });
+    expect(run).toBeDisabled();
+    expect(run).toHaveAttribute(
+      "title",
+      expect.stringMatching(/between 1 and 128/),
+    );
+    expect(trigger).not.toHaveBeenCalled();
   });
 
   it("surfaces the backend's error envelope in the alert", async () => {

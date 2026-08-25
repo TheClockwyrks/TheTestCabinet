@@ -145,7 +145,7 @@ compiled to wasm.
 build, the SDK carried in gg's binary, the signature catalogue and the Roslyn reflection that
 produces it, `csc` on the turn path with the two failures it tells apart, code modules, and
 end-to-end execution through gg's own linker, membrane and store. So is the registration this
-section used to list as outstanding — the enum variant, the registry arm, the healing dialect, this
+section used to list as outstanding — the enum variant, the registry arm, this
 arm's gated language segment of the two shared prompt templates
 (`crates/gg/templates/system-code.hbs` and `crates/gg/templates/code-nothing-shown.hbs`, which every
 language reaches its own paragraphs of through an `eq` on `language.id`), the `bootstrap_program`

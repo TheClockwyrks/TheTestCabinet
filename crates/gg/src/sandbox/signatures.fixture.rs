@@ -3,8 +3,8 @@
 //! It has no arm behind it, which is the point: the properties worth proving about the model are
 //! about the *document* — that a catalogue projects into the same
 //! [`CatalogueFunction`](super::CatalogueFunction) shape every consumer reads, and that each gate
-//! written over it can be shown catching a damaged one — and giving them a component, a checker and
-//! a healing dialect to hang off would be a great deal of apparatus for a question about JSON.
+//! written over it can be shown catching a damaged one — and giving them a component and a checker
+//! to hang off would be a great deal of apparatus for a question about JSON.
 //!
 //! # What the surface was chosen to be
 //!

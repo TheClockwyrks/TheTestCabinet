@@ -132,7 +132,7 @@ fn a_refusal_is_recorded_apart_from_the_serviced_calls() {
     assert_eq!(parts.calls.len(), 1, "one call was serviced");
     assert_eq!(parts.refusals.len(), 1, "one call was refused");
     // Filed under gg's whole [operation id](crate::sandbox::OperationId) rather than under the tool
-    // the call would have dispatched. The read-file capability buys three operations, so a roster
+    // the call would have dispatched. The read-file capability buys two operations, so a roster
     // keyed on tools could not say which of them the model reached for — and the ending refusals
     // beside it answer to no tool at all.
     assert_eq!(parts.refusals[0].name, "files.list_dir");

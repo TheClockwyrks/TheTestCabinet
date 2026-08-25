@@ -183,18 +183,13 @@ interface files {
 
     /// Write UTF-8 text to a file, creating parent directories and overwriting any
     /// existing file. Returns the number of bytes written.
-    ///
-    /// Writing is the EXPENSIVE direction of this membrane: lowering a string out of the guest
-    /// costs about 14,600 fuel per byte, against about 46 for lifting one in. A program that
-    /// rewrites twenty 64 KiB files spends roughly 24 G fuel — a tenth of the default ceiling — so
-    /// a very large rewrite belongs in several programs.
     write-file: func(path: string, contents: string) -> result<u64, api-error>;
 
     /// Replace the single exact occurrence of `old-string` with `new-string`.
     ///
     /// An occurrence that is missing is `not-found`; one that appears more than once is a
     /// `conflict` whose message carries the count. The count stays in the message rather than
-    /// becoming a field: `api-error` is shared by all 33 functions and a per-operation payload on it
+    /// becoming a field: `api-error` is shared by every function and a per-operation payload on it
     /// would be a wart on every other call — a program that needs to disambiguate should add
     /// surrounding context, not count.
     edit-file: func(path: string, old-string: string, new-string: string) -> result<_, api-error>;
@@ -886,7 +881,9 @@ interface programs {
     /// not its source: a directory that inlined sixty lines per entry would put the whole session's
     /// output back into the one place that exists to avoid re-reading it.
     record program-summary {
-        /// The turn it ran on — what `get` takes.
+        /// The id its `submit_program` acknowledgement carried — what `get` takes.
+        id: string,
+        /// The turn it ran on.
         turn: u32,
         /// How many lines of source it was.
         lines: u32,
@@ -908,19 +905,20 @@ interface programs {
     /// honest empty answer on the first turn of a session that does keep one.
     history: func() -> result<list<program-summary>, api-error>;
 
-    /// The exact source of one program, as it was RUN. `none` is the most recent one.
+    /// The exact source of one program, as it was RUN, by the id its `submit_program`
+    /// acknowledgement carried.
     ///
-    /// "As it was run" is the contract that matters: when a turn's program was itself handed to
-    /// `rerun` by an earlier one, what is kept is the program that executed, not the few lines that
-    /// asked for it. So fetching, patching and re-running composes — the patched program is what the
-    /// next fetch returns.
+    /// "As it was run" is the contract that matters: when a submission's program was itself handed
+    /// to `rerun` by the one before it, what is kept — under the submission's id — is the program
+    /// that executed, not the few lines that asked for it. So fetching, patching and re-running
+    /// composes — the patched program is what the next fetch of that id returns.
     ///
-    /// A turn that ran no program, or one the library's retention has already dropped, is
-    /// `not-found` naming the turns that are held.
-    get: func(turn: option<u32>) -> result<string, api-error>;
+    /// An id this agent was never issued, or one whose program the library's retention has already
+    /// dropped, is `not-found` naming the ids that are held and the turn each ran in.
+    get: func(id: string) -> result<string, api-error>;
 
     /// Hand gg a program to run in place of this one: your program ends, and gg runs `source` as
-    /// this turn's program.
+    /// this submission's program, under the same id.
     ///
     /// It is **registered, not performed**. The call returns and the rest of your program still
     /// runs; only when it has ended does gg compile and run what you handed over. Everything the

@@ -295,8 +295,7 @@ an unattributed message nowhere to land.
 ## Reading it
 
 A run whose root has the detector armed names its configuration once, at launch,
-beside the [ceilings](/gg/execution-limits/) and the
-[healing](/gg/response-healing/) set:
+beside the [ceilings](/gg/execution-limits/):
 
 ```text
 loop detection: armed — a reply is abandoned after 3000 consecutive words during which
@@ -378,8 +377,7 @@ happening.
   [ceiling](/gg/execution-limits/) is never announced: a model told that its
   replies are being watched for repetition behaves differently because it was
   told, which confounds the measurement.
-- It repairs nothing. [Healing](/gg/response-healing/) deletes text from a reply
-  and runs what is left; this deletes the whole reply and asks again. A
+- It repairs nothing: it deletes the whole reply and asks again. A
   half-generated loop is a reply that never reached its end, and running its
   prefix would be running something the model never finished writing.
 - It judges only a reply in flight. Reading a finished response would recover

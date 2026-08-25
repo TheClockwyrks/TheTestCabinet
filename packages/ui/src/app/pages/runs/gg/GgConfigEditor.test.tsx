@@ -254,7 +254,14 @@ describe("an agent's type", () => {
     expect(tabNames()).toEqual(["Agent", "Tools", "Slots", "Roster", "Hooks"]);
 
     fireEvent.click(typeSegment("RaC"));
-    expect(tabNames()).toEqual(["Agent", "APIs", "Slots", "Roster", "Hooks"]);
+    expect(tabNames()).toEqual([
+      "Agent",
+      "APIs",
+      "Opening Turn",
+      "Slots",
+      "Roster",
+      "Hooks",
+    ]);
 
     fireEvent.click(typeSegment("FSM"));
     expect(tabNames()).toEqual(["Agent", "States"]);
@@ -294,6 +301,28 @@ describe("an agent's type", () => {
     expect(
       screen.getByText("program-library", { selector: "span" }),
     ).toBeInTheDocument();
+  });
+
+  // The library's id length opens on its authored figure like every other control —
+  // no "(default: 4)" in the label; the reset beside it is what says it has moved.
+  it("seeds the program library's id length and offers a reset once it moves", () => {
+    renderCaps(draftWith("program-library", "", {}, "rac"));
+    const row = capabilityRow("program-library");
+    const length = within(row).getByLabelText(/^Id length/) as HTMLInputElement;
+    expect(length.value).toBe("4");
+    expect(
+      within(row).queryByRole("button", { name: "Reset Id length" }),
+    ).toBeNull();
+    fireEvent.change(length, { target: { value: "8" } });
+    const reset = within(row).getByRole("button", { name: "Reset Id length" });
+    fireEvent.click(reset);
+    expect(
+      (
+        within(capabilityRow("program-library")).getByLabelText(
+          /^Id length/,
+        ) as HTMLInputElement
+      ).value,
+    ).toBe("4");
   });
 
   it("offers a machine no capabilities at all — its configuration is the machine", () => {
@@ -681,30 +710,16 @@ describe("authoring a state machine", () => {
   });
 });
 
-// Whether a module's state is carried in its holder's prompt is a per-agent, per-module
-// decision, and it is written down: gg reads the arm the configuration names and has none
-// of its own, so the picker opens on `owned` rather than on a blank row that would have to
-// mean something.
-//
-// Asked of project management rather than memories: the board and the thread archive are
-// the two capabilities that still offer the picker at all. Memories and skills dropped it
-// with gg, so a test that kept looking for it there would be asserting a control that
-// writes a key nothing reads.
+// The owned mode is gone from gg entirely: no capability reads an `ownership` param, and
+// a control that outlived the param would write a key nothing reads — a configuration
+// carrying one is refused at launch.
 describe("module ownership", () => {
-  it("is offered on a module-backed capability and opens on owned", () => {
-    renderCaps(draftWith("project-management", ""));
-    const row = capabilityRow("project-management");
-    const ownership = within(row).getByLabelText(
-      /Ownership/,
-    ) as HTMLSelectElement;
-    expect(ownership.value).toBe("owned");
-    expect(
-      within(ownership).getByRole("option", { name: /Unowned/ }),
-    ).toBeDefined();
-  });
-
-  it("is not offered on the two capabilities that no longer have one", () => {
-    for (const capId of ["memories", "skills"]) {
+  it("is not offered on any capability", () => {
+    for (const capId of [
+      "project-management",
+      "agent-managed-context",
+      "memories",
+    ]) {
       const { unmount } = renderCaps(draftWith(capId, ""));
       expect(
         within(capabilityRow(capId)).queryByLabelText(/^Ownership/),
@@ -738,44 +753,6 @@ describe("the skills capability's built-in skills", () => {
     fireEvent.click(shell);
     expect(shell.checked).toBe(false);
     expect(boxes.filter((box) => !box.checked)).toEqual([shell]);
-  });
-});
-
-// Response healing's strategies are a `toggles` control whose members each sit at their
-// own default arm — two on, `drop-doubled-response` off. A subtractive control could not
-// express arming the last one at all, so what the checkbox does is only visible by
-// rendering it and clicking.
-describe("the responses-as-code agent's healing strategies", () => {
-  function healingBoxes(): HTMLInputElement[] {
-    const group = screen.getByRole("group", { name: "Response healing" });
-    return within(group).getAllByRole("checkbox") as HTMLInputElement[];
-  }
-
-  it("opens a fresh capability with the one seeded-off repair off and every other one on", () => {
-    renderCaps(draftWith("responses-as-code", "", {}, "rac"));
-    const boxes = healingBoxes();
-    const doubled = boxes.find((box) =>
-      box.parentElement?.textContent?.includes("drop-doubled-response"),
-    )!;
-    expect(doubled.checked).toBe(false);
-    expect(boxes.filter((box) => !box.checked)).toEqual([doubled]);
-  });
-
-  it("arms the seeded-off repair without moving any of the others", () => {
-    renderCaps(draftWith("responses-as-code", "", {}, "rac"));
-    const doubled = healingBoxes().find((box) =>
-      box.parentElement?.textContent?.includes("drop-doubled-response"),
-    )!;
-    // Why this one starts the opposite way to every other member is on hover, where
-    // every member's reason lives; the checkbox itself is the readout of which way it sits.
-    expect(doubled.parentElement).toHaveAttribute(
-      "title",
-      expect.stringContaining("starts switched off"),
-    );
-    fireEvent.click(doubled);
-    expect(doubled.checked).toBe(true);
-    // And nothing else moved with it.
-    expect(healingBoxes().every((box) => box.checked)).toBe(true);
   });
 });
 
@@ -1949,5 +1926,154 @@ describe("a control that has been moved off its authored value", () => {
       (within(row).getByLabelText(/^Max retries/) as HTMLInputElement).value,
     ).toBe("0");
     expect(resetIn(row, "Max retries")).toBeNull();
+  });
+});
+
+// The opening turn — what gg puts in front of a code agent's first turn — is edited per
+// module: a switch to list the module, and a checkbox per held function to open its
+// documentation. Only what the agent holds is offered, and the two are independent.
+describe("the Opening Turn tab", () => {
+  // The draft the tab is reached from: a code agent, with the language answered and the
+  // search capability on so the `files` module has one held function.
+  function codeDraft(): GgConfigDraft {
+    const draft = draftWith("search", "", {}, "rac");
+    const agent = draft.agents[0]!;
+    agent.capabilities["responses-as-code"] = {
+      ...agent.capabilities["responses-as-code"]!,
+      enabled: true,
+      params: {
+        ...agent.capabilities["responses-as-code"]!.params,
+        language: "typescript",
+      },
+    };
+    agent.operations = ["files.search"];
+    return draft;
+  }
+
+  // One module's block, by the accessible name its group carries.
+  function moduleBlock(name: string): HTMLElement {
+    return screen.getByRole("group", { name: `${name} module` });
+  }
+  // The module's own switch: the first checkbox in its block, in the header label.
+  function moduleSwitch(name: string): HTMLInputElement {
+    return within(moduleBlock(name)).getAllByRole(
+      "checkbox",
+    )[0] as HTMLInputElement;
+  }
+  // One function's "open documentation" checkbox, by the operation id it is labelled with.
+  function functionBox(module: string, id: string): HTMLInputElement {
+    return within(moduleBlock(module)).getByRole("checkbox", {
+      name: new RegExp(`^${id.replace(".", "\\.")}\\b`),
+    }) as HTMLInputElement;
+  }
+
+  it("is a section of a code agent's form and of no other type's", () => {
+    render(<Harness initial={emptyDraft()} />);
+    const names = () =>
+      screen
+        .getAllByRole("tab")
+        .map((tab) => tab.firstElementChild?.textContent?.trim() ?? "");
+    expect(names()).not.toContain("Opening Turn");
+    fireEvent.click(typeSegment("RaC"));
+    expect(names()).toContain("Opening Turn");
+    fireEvent.click(typeSegment("FSM"));
+    expect(names()).not.toContain("Opening Turn");
+  });
+
+  it("opens on the default, listed modules on and the rest off", () => {
+    render(<Harness initial={codeDraft()} />);
+    openTab("Opening Turn");
+    // `files` is held (search is on) and listed by default; `docs` is held by every agent
+    // and not listed by default.
+    expect(moduleSwitch("Files").checked).toBe(true);
+    expect(moduleSwitch("Files")).not.toBeDisabled();
+    expect(moduleSwitch("Docs").checked).toBe(false);
+    expect(moduleSwitch("Docs")).not.toBeDisabled();
+    expect(functionBox("Files", "files.search").checked).toBe(true);
+    expect(functionBox("Docs", "docs.search").checked).toBe(true);
+    // Nothing has moved, so there is nothing to reset.
+    expect(
+      screen.queryByRole("button", { name: "Reset Opening turn" }),
+    ).toBeNull();
+  });
+
+  it("cannot list a module none of whose capabilities is enabled, and can once one is", () => {
+    render(<Harness initial={codeDraft()} />);
+    openTab("Opening Turn");
+    expect(moduleSwitch("Context")).toBeDisabled();
+    expect(
+      within(moduleBlock("Context")).getByText(
+        /No capability from this module is enabled/,
+      ),
+    ).toBeInTheDocument();
+    // No function rows either: a function the agent does not hold has no row at all.
+    expect(
+      within(moduleBlock("Context")).getAllByRole("checkbox"),
+    ).toHaveLength(1);
+
+    openTab("APIs");
+    fireEvent.click(
+      within(capabilityRow("agent-managed-context")).getAllByRole(
+        "checkbox",
+      )[0]!,
+    );
+    openTab("Opening Turn");
+    expect(moduleSwitch("Context")).not.toBeDisabled();
+    expect(functionBox("Context", "context.evict_file_view")).toBeDefined();
+    expect(
+      within(moduleBlock("Context")).queryByText(
+        /No capability from this module is enabled/,
+      ),
+    ).toBeNull();
+  });
+
+  it("opens a function's documentation independently of listing its module", () => {
+    render(<Harness initial={codeDraft()} />);
+    openTab("Opening Turn");
+    // Unlist the module; its function stays openable and stays checked.
+    fireEvent.click(moduleSwitch("Files"));
+    expect(moduleSwitch("Files").checked).toBe(false);
+    expect(functionBox("Files", "files.search").checked).toBe(true);
+    expect(functionBox("Files", "files.search")).not.toBeDisabled();
+    // And toggles on its own.
+    fireEvent.click(functionBox("Files", "files.search"));
+    expect(functionBox("Files", "files.search").checked).toBe(false);
+    expect(moduleSwitch("Files").checked).toBe(false);
+    // Both moved off the default, so the tab offers its reset — which puts both back.
+    fireEvent.click(screen.getByRole("button", { name: "Reset Opening turn" }));
+    expect(moduleSwitch("Files").checked).toBe(true);
+    expect(functionBox("Files", "files.search").checked).toBe(true);
+  });
+
+  it("says which capability offers each function, or that every agent holds it", () => {
+    render(<Harness initial={codeDraft()} />);
+    openTab("Opening Turn");
+    expect(
+      within(moduleBlock("Files")).getByText(/offered by Search/),
+    ).toBeInTheDocument();
+    expect(
+      within(moduleBlock("Docs")).getByText(/always available/),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no control at all on a read-only form", () => {
+    const draft = codeDraft();
+    render(
+      <GgConfigEditor
+        value={draft}
+        onChange={() => {}}
+        name="under test"
+        onNameChange={() => {}}
+        description=""
+        onDescriptionChange={() => {}}
+        editingAgentId={draft.agents[0]!.id}
+        onEditingAgentChange={() => {}}
+        models={[]}
+        readOnly
+      />,
+    );
+    openTab("Opening Turn");
+    expect(moduleSwitch("Files")).toBeDisabled();
+    expect(functionBox("Files", "files.search")).toBeDisabled();
   });
 });

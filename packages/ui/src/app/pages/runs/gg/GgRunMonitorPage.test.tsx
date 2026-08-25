@@ -63,7 +63,6 @@ const SOURCE_ORDER: GgContextSource[] = [
   "skill",
   "memory",
   "task_list",
-  "board",
   "history",
 ];
 function bySource(
@@ -194,8 +193,8 @@ function sessionStarted(
 //
 // A capability is named either bare (`"tasks"`, taking the capability's defaults) or as
 // `[id, params]` — the params are how a configuration says what it *asked* for
-// (`{ ownership: "unowned" }`, `{ scope: "shared" }`), which the module surfaces read as
-// the declared half of every question they answer about what it actually got.
+// (`{ scope: "shared" }`), which the module surfaces read as the declared half of every
+// question they answer about what it actually got.
 type CapabilitySpec = string | [string, Record<string, unknown>];
 function sessionStartedWith(
   profiles: ReadonlyArray<{
@@ -217,6 +216,7 @@ function sessionStartedWith(
           return { id, enabled: true, params };
         }),
         modelId: "mock/scripted-builder",
+        openingTurn: { modules: [], functions: [] },
       })),
     },
   });
@@ -224,7 +224,7 @@ function sessionStartedWith(
 
 // One row of an agent instance's module roster (`agent_modules`) — the event every
 // incarnation emits as it opens, naming the backing store it is a holder of. Everything
-// not named takes the value an ordinary private, owned, writable module has.
+// not named takes the value an ordinary private, writable module has.
 function held(
   kind: GgModuleKind,
   moduleId: string,
@@ -234,7 +234,6 @@ function held(
     kind,
     moduleId,
     enabled: true,
-    ownership: "owned",
     origin: "created",
     writable: true,
     ...overrides,
@@ -297,6 +296,7 @@ function sessionStartedGranting(
             params: {},
           })),
           modelId: "mock/scripted-builder",
+          openingTurn: { modules: [], functions: [] },
           tools,
         },
       ],
@@ -554,7 +554,7 @@ const EVENTS: HarnessEvent[] = [
     beforeTokens: 4400,
     afterTokens: 1800,
     summaryTokens: 300,
-    retained: { skills: 1, tasks: 3, memories: 1, issues: 2 },
+    retained: { skills: 1, tasks: 3, memories: 1 },
     beforeBySource: bySource({
       system: 1000,
       assistant: 2400,
@@ -598,18 +598,6 @@ const EVENTS: HarnessEvent[] = [
   }),
   // A turn that printed nothing renders no row at all.
   gg({ type: "code_execution", ok: true, toolCalls: 1 }),
-  // A turn healing rewrote. The program that ran is the assistant message; this event
-  // carries the reply as the model sent it, which is the only place the two can be read
-  // against each other.
-  gg({
-    type: "code_execution",
-    ok: true,
-    toolCalls: 1,
-    healing: {
-      strategies: ["strip-fences"],
-      original: "```ts\nviews.openText('n', '1');\n```",
-    },
-  }),
 ];
 
 // A worker whose live subscription replays a fixed event set synchronously, then
@@ -922,68 +910,6 @@ describe("GgRunMonitorPage", () => {
     // A turn that printed nothing adds no row: the program itself is already visible as
     // the assistant message that carried it.
     expect(screen.getAllByText("OUTPUT")).toHaveLength(1);
-    // A turn healing rewrote shows the reply as the model sent it, fence and all. The
-    // model reads the program that ran and never this; an operator reads both, which is
-    // what tells a defect in healing apart from a mistake by the model.
-    expect(screen.getAllByText("HEALED")).toHaveLength(1);
-    expect(
-      screen.getByText("sent as 3 lines; ran after strip-fences"),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText(/views\.openText/).length).toBeGreaterThan(0);
-  });
-
-  it("marks the assistant message of a healed turn and keeps the reply as sent beneath it", () => {
-    // Two responses-as-code turns: one healing rewrote, one it left alone. The model only
-    // ever re-reads the program that ran, so that is the text the `assistant_message`
-    // carries; the reply as sent survives on the turn's `code_execution` record alone.
-    // The operator has to be able to read both — a defect in healing and a mistake by
-    // the model look identical from either text on its own — and has to be told which
-    // agent rows were rewritten, without a clean turn wearing the same mark.
-    const healedProgram = "views.openText('n', '1');";
-    const cleanProgram = "shell.run('ls');";
-    renderMonitor([
-      sessionStarted(["shell", "filesystem"]),
-      roster("root", [held("history", "history-0")]),
-      gg({ type: "turn_started" }),
-      gg({ type: "assistant_message", text: healedProgram }),
-      gg({
-        type: "code_execution",
-        ok: true,
-        toolCalls: 1,
-        healing: {
-          strategies: ["strip-fences", "strip-prose"],
-          original: `Here it is:\n\`\`\`ts\n${healedProgram}\n\`\`\``,
-        },
-      }),
-      gg({ type: "turn_started" }),
-      gg({ type: "assistant_message", text: cleanProgram }),
-      gg({ type: "code_execution", ok: true, toolCalls: 1 }),
-    ]);
-    openTab("Instances");
-    openFile("root activity");
-    // The healed turn's agent row carries the program that ran, marked as healed and
-    // naming the repairs, so the reader knows the text below it is not what was sent.
-    const healedRow = screen
-      .getByText(healedProgram)
-      .closest("[data-event-type]") as HTMLElement;
-    expect(healedRow).toHaveAttribute("data-event-type", "agent");
-    expect(healedRow).toHaveTextContent(
-      "healed by strip-fences, strip-prose — this is the program that ran; the reply as sent is below",
-    );
-    // ...and the reply as the model sent it — prose and fence intact — is the HEALED
-    // row directly beneath, so the two texts can be read against each other.
-    expect(screen.getAllByText("HEALED")).toHaveLength(1);
-    expect(
-      screen.getByText("sent as 4 lines; ran after strip-fences, strip-prose"),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText(/Here it is:/).length).toBeGreaterThan(0);
-    // The clean turn wears no mark and adds no HEALED row: its agent row is the reply
-    // verbatim, and there is no second text to show.
-    const cleanRow = screen
-      .getByText(cleanProgram)
-      .closest("[data-event-type]") as HTMLElement;
-    expect(cleanRow).toHaveAttribute("data-event-type", "agent");
-    expect(cleanRow).not.toHaveTextContent(/healed/i);
   });
 
   it("renders an agent's activity through the shared feed, in the layout the user picked", () => {
@@ -1877,33 +1803,6 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getAllByText("review-standards").length).toBeGreaterThan(0);
     // From there the chip points back the other way.
     expect(screen.getByRole("button", { name: "agent-0" })).toBeInTheDocument();
-  });
-
-  it("says when a module is held but kept out of the prompt", () => {
-    // `unowned` is the one capability setting whose effect is invisible everywhere else:
-    // the tools are offered, the store is read and written, the telemetry arrives — the
-    // module just never reaches the model's window. So the module file states it as a
-    // sentence rather than leaving a badge to be interpreted.
-    renderMonitor([
-      sessionStartedWith([
-        {
-          slug: "root",
-          name: "Root",
-          capabilities: ["shell", ["tasks", { ownership: "unowned" }]],
-        },
-      ]),
-      roster("root", [
-        held("history", "history-0"),
-        held("tasks", "tasks-0", { ownership: "unowned" }),
-      ]),
-    ]);
-    openTab("Instances");
-    openFolder("root modules");
-    openFile("root modules tasks");
-    expect(screen.getByText("unowned")).toBeInTheDocument();
-    expect(
-      screen.getByText(/its prompt does not carry it/),
-    ).toBeInTheDocument();
   });
 
   it("links an agent's board module through to the board itself", () => {

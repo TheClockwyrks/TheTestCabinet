@@ -772,7 +772,6 @@ async fn compacts_and_retains_pinned_state_verbatim() {
     const SKILL_BODY: &str = "SKILL BODY: scaffold an index.html with a canvas and a loop.";
     const MEMORY_BODY: &str = "MEMORY BODY: the game is an arrow-key maze runner.";
     const TASK_BODY: &str = "TASK BODY: [ ] scaffold; [ ] movement.";
-    const BOARD_BODY: &str = "BOARD BODY: epic core-loop; [ ] render-loop; [ ] input-handling.";
 
     let mut ctx = model(200);
     // Pinned prefix.
@@ -793,12 +792,6 @@ async fn compacts_and_retains_pinned_state_verbatim() {
         GgContextSource::TaskList,
         Retention::Pinned,
         Message::user(TASK_BODY),
-    );
-    // The epic/issue board is pinned like the task list.
-    ctx.push(
-        GgContextSource::Board,
-        Retention::Pinned,
-        Message::user(BOARD_BODY),
     );
     // Ephemeral history (the part that gets summarized away).
     ctx.push_assistant(Some("ephemeral chatter ".repeat(10)), Vec::new());
@@ -827,7 +820,6 @@ async fn compacts_and_retains_pinned_state_verbatim() {
             skills: 1,
             tasks: 2,
             memories: 1,
-            issues: 2,
         },
     )
     .await
@@ -856,7 +848,6 @@ async fn compacts_and_retains_pinned_state_verbatim() {
             assert_eq!(retained.skills, 1);
             assert_eq!(retained.tasks, 2);
             assert_eq!(retained.memories, 1);
-            assert_eq!(retained.issues, 2);
             // The mock answered the summarization request off-script, so it is a real summary,
             // not the fallback note.
             assert_eq!(summary, MOCK_COMPACTION_SUMMARY);
@@ -900,10 +891,6 @@ async fn compacts_and_retains_pinned_state_verbatim() {
     );
     assert!(ctx.tokens_for(GgContextSource::Memory) > 0);
     assert!(ctx.tokens_for(GgContextSource::TaskList) > 0);
-    assert!(
-        ctx.tokens_for(GgContextSource::Board) > 0,
-        "the board band survives"
-    );
 
     // The pinned bodies are retained verbatim (byte-identical) in the rendered messages, and
     // no `tool`-role message dangles (the skill was re-framed to a valid standalone message).
@@ -915,10 +902,6 @@ async fn compacts_and_retains_pinned_state_verbatim() {
     );
     assert!(contents.iter().any(|c| c == MEMORY_BODY));
     assert!(contents.iter().any(|c| c == TASK_BODY));
-    assert!(
-        contents.iter().any(|c| c == BOARD_BODY),
-        "the board body survives verbatim"
-    );
     assert!(
         contents.iter().any(|c| c.contains(MOCK_COMPACTION_SUMMARY)),
         "the ephemeral history was replaced by the summary"

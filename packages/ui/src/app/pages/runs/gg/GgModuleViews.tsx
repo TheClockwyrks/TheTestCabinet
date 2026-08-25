@@ -98,20 +98,13 @@ export function GgModuleHeader({
   const others = holder ? coHolders(module, holder.agentId) : module.holders;
   return (
     <section className={panels.moduleHead} aria-label="Module">
-      {/* The identity line: what this store is, and the two things about it that
-          change how everything below it reads — whether the holder's prompt carries
-          it, and how many agents are in it. */}
+      {/* The identity line: what this store is, and the thing about it that changes
+          how everything below it reads — how many agents are in it. */}
       <div className={panels.moduleIdentity}>
         <Icon className={panels.moduleIcon} />
         <span className={panels.moduleId}>{module.id}</span>
         <span className={panels.moduleKind}>
           {moduleKindLabel(module.kind)}
-        </span>
-        <span
-          className={panels.moduleBadge}
-          data-ownership={ownership(module, holder)}
-        >
-          {ownershipLabel(module, holder)}
         </span>
         {shared && (
           <span
@@ -166,16 +159,6 @@ export function GgModuleHeader({
         {detail === "full" && <ModuleCost module={module} holder={holder} />}
       </div>
 
-      {/* The one capability setting whose effect is otherwise invisible everywhere: an
-          unowned module is held, read and written exactly as any other — it just never
-          reaches the model's window. Said as a sentence, because a badge alone has never
-          told anybody what it means. */}
-      {ownership(module, holder) === "unowned" && (
-        <p className={panels.moduleNote}>
-          Unowned — this agent holds it, but its prompt does not carry it: the
-          tools are offered and nothing is put in the window.
-        </p>
-      )}
 
       {/* The store's life on the left, everyone in it on the right — the same pairing
           the line above uses, for the same reason: they are one row's worth of facts. */}
@@ -360,10 +343,11 @@ function ModuleLifetime({ module }: { module: GgModuleInstance }) {
 
 // What the module's band costs the windows it is in, per turn.
 //
-// It is a rent, not a one-off: an owned module's block is re-sent on every request its
-// holder makes, so a shared store that three running agents each carry is being paid for
-// three times a turn. That is the figure that decides whether a capability is earning its
-// keep, and it is the reason the summed cost is stated beside the holder's own.
+// It is a rent, not a one-off: a module's block in the window is re-sent on every
+// request its holder makes, so a shared store that three running agents each carry is
+// being paid for three times a turn. That is the figure that decides whether a
+// capability is earning its keep, and it is the reason the summed cost is stated
+// beside the holder's own.
 function ModuleCost({
   module,
   holder,
@@ -387,7 +371,7 @@ function ModuleCost({
     // file of every agent is a sentence nobody reads twice.
     <p
       className={panels.moduleCost}
-      title="What this store costs the windows carrying it every turn — an owned module's block is re-sent on every request its holder makes."
+      title="What this store costs the windows carrying it every turn — a module's block in the window is re-sent on every request its holder makes."
     >
       {mine && (
         <>
@@ -702,32 +686,6 @@ export function RetainedNote({ count, what }: { count: number; what: string }) {
   );
 }
 
-// --- Ownership, read across holders ------------------------------------------
-
-// Whether the module reaches the model's window: this holder's answer where there is
-// one, and the holders' majority answer where there is not. Holders CAN disagree — a
-// module transferred into a profile that configures it differently is held owned by one
-// instance and unowned by the next — and that disagreement is itself a finding, so it is
-// stated rather than averaged away (see `ownershipLabel`).
-function ownership(
-  module: GgModuleInstance,
-  holder?: GgModuleHolder | null,
-): "owned" | "unowned" {
-  if (holder) return holder.ownership === "unowned" ? "unowned" : "owned";
-  const owned = module.holders.filter((h) => h.ownership === "owned").length;
-  return owned >= module.holders.length - owned ? "owned" : "unowned";
-}
-
-function ownershipLabel(
-  module: GgModuleInstance,
-  holder?: GgModuleHolder | null,
-): string {
-  if (holder) return holder.ownership;
-  const owned = module.holders.filter((h) => h.ownership === "owned").length;
-  if (owned === module.holders.length) return "owned";
-  if (owned === 0) return "unowned";
-  return `owned by ${owned} of ${module.holders.length}`;
-}
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);

@@ -7,9 +7,9 @@ with the full contents of every file the test case provided, its specifications
 and its reference images, injected as though the model had already read each for
 itself. The whole brief is in the window from the first turn. An agent with the
 capability off reads what it needs itself. Its opening context is the
-[build prompt](/gg/prompts/) and, in code mode, the
-[opening turn](/gg/responses-as-code/views/#the-opening-turn) every fresh window
-is seeded with.
+[build prompt](/gg/prompts/) and, in code mode, whatever its configured
+[opening turn](/gg/responses-as-code/views/#the-opening-turn) seeds the fresh
+window with.
 
 It is per agent, and a profile that does not enable it does not have it. It is
 one profile's [capability](/gg/configurations/), listed in the editor's Context
@@ -81,6 +81,13 @@ The reads run first, and the program holds one call per file that was read.
 Every one of those views is present in the same opening context, since the run
 ends on a file gg cannot read. A program listing a call whose view never arrived
 would teach the model that opening a file view sometimes does nothing.
+
+The submission is acknowledged the way the model's own are: the
+[program library](/gg/program-library/) issues it an id, the acknowledgement
+carries that id, and the program is recorded under it as one of gg's opening
+programs, on turn 0. An agent that keeps no library is answered with the fixed
+`ok`. A library that cannot mint the id ends the agent as an internal error, on
+the terms the program library sets for an exhausted mint.
 
 ## Images
 

@@ -1,7 +1,10 @@
 import type { ReviewDocument, StoredReview } from "../../client/types";
 import {
+  worstAestheticRating,
   worstGrade,
   worstRating,
+  type AestheticRating,
+  type DomainAesthetic,
   type DomainRating,
   type Rating,
   type VerdictStatus,
@@ -10,13 +13,17 @@ import {
 // Reconstruct a writeup's `---\nrating.<domain>: …\n---\n\n<body>` framing from a
 // structured review, so a live host (web/desktop) can feed the gallery the same
 // raw writeup form `parseWriteup` reads — identical to what the public snapshot
-// emits for the static site. Per-domain ratings become `rating.<domain>: <tier>`
-// lines and checklist verdicts become `review.<id>: <status> [note]` lines, both
-// of which the parser recovers.
+// emits for the static site. Per-domain functional ratings become
+// `rating.<domain>: <tier>` lines, per-domain aesthetic ratings
+// `aesthetic.<domain>: <tier>` lines, and checklist verdicts
+// `review.<id>: <status> [note]` lines, all of which the parser recovers.
 export function frameReview(review: ReviewDocument): string {
-  const ratings = (review.ratings ?? []).map(
-    (r) => `rating.${r.domain}: ${r.rating}`,
-  );
+  const ratings = [
+    ...(review.ratings ?? []).map((r) => `rating.${r.domain}: ${r.rating}`),
+    ...(review.aesthetics ?? []).map(
+      (r) => `aesthetic.${r.domain}: ${r.rating}`,
+    ),
+  ];
   const verdicts = (review.checklist ?? []).map((v) => {
     const note = (v.note ?? "").replace(/\s+/g, " ").trim();
     return `review.${v.id}: ${v.status}${note ? ` ${note}` : ""}`;
@@ -51,6 +58,23 @@ export function frameReviews(reviews: readonly StoredReview[]): string | null {
     if (worst) ratings.push({ domain, rating: worst });
   }
 
+  // The same rule on the aesthetic channel: the worst aesthetic rating any
+  // reviewer gave a domain (a validator-rated run's reviews carry these; a legacy
+  // run's carry none, so this stays empty there).
+  const aestheticsByDomain = new Map<string, AestheticRating[]>();
+  for (const review of reviews) {
+    for (const r of review.aesthetics ?? []) {
+      const list = aestheticsByDomain.get(r.domain) ?? [];
+      list.push(r.rating);
+      aestheticsByDomain.set(r.domain, list);
+    }
+  }
+  const aesthetics: DomainAesthetic[] = [];
+  for (const [domain, tiers] of aestheticsByDomain) {
+    const worst = worstAestheticRating(tiers);
+    if (worst) aesthetics.push({ domain, rating: worst });
+  }
+
   // A binary checklist item passes only when every reviewer who judged it passed
   // it; a graded item (a game jam's category, and its whole-game `overall` mark)
   // takes the worst grade any reviewer gave — the strictest reading, matching the
@@ -63,13 +87,17 @@ export function frameReviews(reviews: readonly StoredReview[]): string | null {
       statusesByItem.set(v.id, list);
     }
   }
-  const ratingLines = ratings.map((r) => `rating.${r.domain}: ${r.rating}`);
+  const ratingLines = [
+    ...ratings.map((r) => `rating.${r.domain}: ${r.rating}`),
+    ...aesthetics.map((r) => `aesthetic.${r.domain}: ${r.rating}`),
+  ];
   const verdictLines: string[] = [];
   for (const [id, statuses] of statusesByItem) {
     // `worstGrade` is null unless the statuses are graded tiers, so a binary item
     // falls through to the unchanged all-must-pass reading.
     const status =
-      worstGrade(statuses) ?? (statuses.every((s) => s === "pass") ? "pass" : "fail");
+      worstGrade(statuses) ??
+      (statuses.every((s) => s === "pass") ? "pass" : "fail");
     verdictLines.push(`review.${id}: ${status}`);
   }
 

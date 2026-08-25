@@ -3,7 +3,8 @@ title: "Responses as code"
 ---
 
 An agent in this execution mode answers a turn by writing a program over gg's
-tools. The whole reply is that program, and gg runs it in a wasmtime sandbox.
+tools, submitted as the `program` string of a required `submit_program` tool
+call, and gg runs it in a wasmtime sandbox.
 Loops, conditionals, filtering, intermediate values and a dozen composed calls
 happen inside one turn.
 
@@ -13,17 +14,23 @@ two, so an A/B of the response shape is a comparison inside a single run.
 
 ## The contract
 
-- The model's entire reply is the program. It carries no fence, no prose and no
-  Markdown, and gg runs no analysis of its own to decide whether a reply is a
-  program. The reply is healed, prepared by the configured program language, and
-  the language's compiler or parser is what accepts or refuses it. A reply that
-  fails to compile is an error turn and counts against the run's error ceilings.
+- The program is the `program` string of a `submit_program` call — bare code,
+  with no fence and no prose inside it — and every request offers exactly that
+  one tool and **requires** a call to it (forced tool choice). gg runs no
+  analysis of its own and repairs nothing: the string is prepared exactly as
+  sent by the configured program language, and the language's compiler or
+  parser is what accepts or refuses it. A submission that fails to compile is
+  an error turn and counts against the run's error ceilings. Text the model
+  writes beside the call is recorded as its assistant message and never parsed
+  for code; a reply carrying several calls runs each program sequentially, in
+  order — all of them — and counts at most one error for the turn.
 - The program is a whole program in its language, written by the model. It
   declares whatever entry point that language requires and imports gg's SDK
   itself, and the bytes that compile are the bytes the model sent.
-- A responses-as-code agent is offered no native tool definitions. The system
-  prompt names the capability modules and their one-line briefs, and names no
-  function. An agent finds a function by searching the documentation and opening
+- Beyond `submit_program`, a responses-as-code agent is offered no native tool
+  definitions. The system prompt names the capability modules and their
+  one-line briefs, and names no function. An agent finds a function by
+  searching the documentation and opening
   a documentation view of the hit, then writes the call on a later turn, since
   the view arrives in the window on the turn after the program that opened it.
   gg records every call written without such a view as an
@@ -45,8 +52,8 @@ two, so an A/B of the response shape is a comparison inside a single run.
 
 The capability id is `responses-as-code`. It is the responses-as-code agent
 type's settings panel in the [configuration](/gg/configurations/) editor, and
-the agent-type selector is its switch. Five parameters are read, and a
-profile that enables the capability writes all five:
+the agent-type selector is its switch. Four parameters are read, and a
+profile that enables the capability writes all four:
 
 | Param | Meaning |
 | --- | --- |
@@ -54,24 +61,23 @@ profile that enables the capability writes all five:
 | `timeoutSecs` | Guest-execution ceiling for one program, in seconds. A fraction is honoured. |
 | `maxMemoryBytes` | Guest linear-memory ceiling for one program, as a whole number of bytes. |
 | `docViewTypes` | Which SDK types opening a function's documentation opens beside it, as independent toggles keyed `return`, `parameters` and `errors`. `true` opens all three, `false` opens none, and an object names each of the three. |
-| `healing` | Which [response-healing](/gg/response-healing/) repairs are armed. |
 
-The five of them are what a responses-as-code arm is, so each is read off the
+The four of them are what a responses-as-code arm is, so each is read off the
 profile and none is chosen for it. Neither numeric param is clamped.
 
 An absent param refuses the launch, and so does one gg cannot honour exactly as
 written: a `timeoutSecs` that is not a positive number, a `maxMemoryBytes` that
 is not a positive whole number of bytes, a `language` outside its own
-vocabulary, and a `docViewTypes` or `healing` carrying a key gg
-does not recognise, a value that is not a boolean, or an object that leaves one
-of its keys out. The refusal names every such value in the configuration, so one
+vocabulary, and a `docViewTypes` carrying a key gg does not recognise, a value
+that is not a boolean, or an object that leaves one of its keys out. The
+refusal names every such value in the configuration, so one
 pass fixes them all.
 
 JSON has no integer type, so `5e8` and `500000000` are one `maxMemoryBytes`
 declaration. `500000000.5` names no count of bytes and is refused, since
 rounding it would run the guest at a ceiling nobody wrote.
 
-All five resolve per agent, from that agent's own profile. The language and the
+All four resolve per agent, from that agent's own profile. The language and the
 documentation-view flags land on that agent's `agent_surface`
 [event](/gg/telemetry/overview/), beside its execution mode. A root that opens
 every type a signature names and a reviewer subagent that opens none are one

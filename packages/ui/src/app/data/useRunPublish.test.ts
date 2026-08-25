@@ -8,6 +8,7 @@ function summary(fields: {
   publishedAt?: string;
   state?: RunSummary["state"];
   reviewCount?: number;
+  validatorRated?: boolean;
 }): RunSummary {
   return {
     id: "r1",
@@ -37,6 +38,8 @@ function summary(fields: {
     validationLoaded: true,
     state: fields.state ?? "completed",
     rating: null,
+    aesthetic: null,
+    validatorRated: fields.validatorRated ?? false,
     reviewCount: fields.reviewCount ?? 0,
     links: { sourceRepo: null, playableBuild: null },
   } as unknown as RunSummary;
@@ -81,6 +84,27 @@ describe("isPublishable", () => {
     // the case a plain "has a review" check would wrongly admit.
     expect(
       isPublishable(summary({ state: "infrastructure", reviewCount: 3 })),
+    ).toBe(false);
+  });
+
+  // A validator-rated run's functional rating and score are the validators' and
+  // stand on their own: it publishes with zero reviews (an aesthetic review can be
+  // added later). A failed one still follows the failure tiers above.
+  it("publishes a completed validator-rated run with no review", () => {
+    expect(
+      isPublishable(summary({ reviewCount: 0, validatorRated: true })),
+    ).toBe(true);
+  });
+
+  it("keeps the failure tiers for a validator-rated run", () => {
+    expect(
+      isPublishable(
+        summary({
+          reviewCount: 0,
+          validatorRated: true,
+          state: "infrastructure",
+        }),
+      ),
     ).toBe(false);
   });
 });

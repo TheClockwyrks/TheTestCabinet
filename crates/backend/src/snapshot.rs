@@ -778,10 +778,12 @@ impl SnapshotBuilder {
 
         RunSummary {
             case_name,
-            // The per-domain rating, or `None` for a game jam (it carries no
-            // domains — its badge is `score.overallGrade` instead). A domain-scored
-            // published run always has one.
-            rating: aggregate_rating_inner(record, &run.reviews),
+            // The functional rating: the per-domain review aggregate on a legacy
+            // run, or `None` for a game jam (it carries no domains — its badge is
+            // `score.overallGrade` instead); the validator-decided rating on a
+            // validator-rated run. A domain-scored published run always has one.
+            rating: crate::db::functional_rating(manifest, record, &run.reviews),
+            validator_rated: manifest.is_some_and(StoredManifest::validator_rated),
             score,
             document_key: Some(document_key.to_string()),
             ..RunSummary::from_stored(run)
@@ -1841,12 +1843,31 @@ pub struct RunSummary {
     pub metrics: test_cabinet_core::metrics::RunMetrics,
     pub validation_loaded: bool,
     pub state: test_cabinet_core::run_record::RunState,
-    /// The run's overall rating: the worst rating any reviewer gave any domain.
-    /// `None` when the run carries no reviews yet (an unrated console run); the
-    /// snapshot only contains reviewed runs, so it is always `Some` there.
+    /// The run's **functional** rating. On a legacy run the worst rating any
+    /// reviewer gave any domain, `None` while the run carries no reviews (an
+    /// unrated console run). On a [validator-rated](Self::validator_rated) run the
+    /// validator-decided rating — each failing scored point caps its domains at its
+    /// declared failure cap, the run gets the worst domain, composed with the
+    /// toolchain gate — which is `Some` from the moment the run completes, with or
+    /// without a review. A published run always has one.
     pub rating: Option<test_cabinet_core::review::Rating>,
-    /// How many reviews the run carries. The site averages their scores; the
-    /// aggregate sits between the harshest and most generous review.
+    /// The run's aggregate **aesthetic** rating: the worst aesthetic rating any
+    /// reviewer gave any domain, or `None` when no review has rated the aesthetic
+    /// channel — a validator-rated run nobody has reviewed yet, and every legacy
+    /// run (its reviews carry no aesthetic ratings, so it never shows the badge).
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub aesthetic: Option<test_cabinet_core::review::AestheticRating>,
+    /// Whether the run is **validator-rated**: its case version is on the engine
+    /// manifest format and not a game jam, so [`rating`](Self::rating) and
+    /// [`score`](Self::score) are decided by the validators (present without any
+    /// review, and never changed by one), its reviewers supply only the
+    /// [`aesthetic`](Self::aesthetic) channel, and it publishes with zero reviews.
+    /// `false` for every legacy run, whose card reads exactly as it always has.
+    /// Lifted here so every consumer can branch on it without a catalog.
+    pub validator_rated: bool,
+    /// How many reviews the run carries. The site averages their scores on a
+    /// legacy run; the aggregate sits between the harshest and most generous
+    /// review. On a validator-rated run it counts the aesthetic reviews.
     pub review_count: usize,
     /// The run's aggregate reviewer score: the mean earned checklist weight across
     /// its reviews. `None` when the run has no reviews (or its case's checklist
@@ -2009,9 +2030,13 @@ impl RunSummary {
     /// `GET /runs?fields=summary` listing.
     ///
     /// `rating` is the aggregate across the run's reviews, or `None` when the run
-    /// carries no reviews yet (an unrated console run). `case_name` falls back to
-    /// the test-case slug; both callers substitute the real catalog name (the
-    /// listing via `case_display_name`, the snapshot in `SnapshotBuilder::summary`).
+    /// carries no reviews yet (an unrated console run) — except on a
+    /// validator-rated run, where it is the lifted functional rating the store
+    /// wrote at push time (the validators' decision needs the case's checklist,
+    /// which only the catalog holds, so the row carries the result). `case_name`
+    /// falls back to the test-case slug; both callers substitute the real catalog
+    /// name (the listing via `case_display_name`, the snapshot in
+    /// `SnapshotBuilder::summary`).
     pub fn from_stored(run: &StoredRun) -> Self {
         let record = &run.record;
         Self {
@@ -2027,7 +2052,13 @@ impl RunSummary {
             metrics: record.metrics,
             validation_loaded: record.validation.loaded,
             state: record.status.state,
-            rating: aggregate_rating_inner(record, &run.reviews),
+            rating: if run.validator_rated {
+                run.rating
+            } else {
+                aggregate_rating_inner(record, &run.reviews)
+            },
+            aesthetic: aggregate_aesthetic_inner(&run.reviews),
+            validator_rated: run.validator_rated,
             review_count: run.reviews.len(),
             // Catalog-free: the checklist weights live only in the case catalog,
             // so a caller that holds it enriches this (see [`run_summary_score`]).
@@ -2223,9 +2254,15 @@ pub struct Review {
     pub reviewer_id: String,
     /// The reviewer's display name, shown beside their review.
     pub reviewer: String,
-    /// The reviewer's rating for each scoring domain. This review's overall
-    /// rating is the worst across them.
+    /// The reviewer's functional rating for each scoring domain. This review's
+    /// overall rating is the worst across them. Empty on a review of a
+    /// validator-rated run, whose functional rating the validators decide.
     pub ratings: Vec<test_cabinet_core::review::DomainRating>,
+    /// The reviewer's **aesthetic** rating for each scoring domain, on a review of
+    /// a validator-rated run; this review's overall aesthetic rating is the worst
+    /// across them. Empty (and omitted) on a legacy run's review.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aesthetics: Vec<test_cabinet_core::review::DomainAesthetic>,
     pub writeup: String,
     pub checklist: Vec<test_cabinet_core::review::ReviewVerdict>,
     /// RFC 3339 of when the review was **first** submitted (unchanged by later
@@ -2269,6 +2306,7 @@ fn review_out(
         reviewer_id,
         reviewer: review.reviewer.display_name.clone(),
         ratings: review.ratings.clone(),
+        aesthetics: review.aesthetics.clone(),
         writeup: review.writeup.clone(),
         checklist: review.checklist.clone(),
         reviewed_at: review.reviewed_at.clone(),
@@ -2303,6 +2341,12 @@ pub struct CaseMetadata {
     /// as the backend-connected consoles do. Without it the site cannot tell a
     /// case's type and treats every case as end-to-end.
     pub test_type: test_cabinet_core::TestType,
+    /// Whether the version is on the **engine manifest format**, which (with the
+    /// test type) makes it **validator-rated**: its runs' functional rating and
+    /// score are decided by the validators — each review item's `failureCap` and
+    /// `domains` below — and reviewers rate only the aesthetic channel. `false` on
+    /// every legacy version, whose runs the site scores exactly as before.
+    pub engine_format: bool,
     /// The asset shape an asset-generation case produces, so the gallery can
     /// partition asset cases across its 2D (sprite/paint), 3D (voxel/mesh/skinned),
     /// Particle, and Audio tabs. Defaults to `sprite` for every non-asset case
@@ -2540,6 +2584,16 @@ pub struct CaseReviewItemOut {
     /// Name-only sub-items this item is graded by, each an independently scored
     /// pass/fail point. Empty for an item graded as a whole.
     pub sub_items: Vec<CaseSubReviewItemOut>,
+    /// On a validator-rated version, a whole-item point's **failure cap**: the
+    /// highest functional rating its `domains` may reach while its validator
+    /// fails. Absent on a legacy version and on a sub-divided item (whose caps sit
+    /// on its sub-items).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub failure_cap: Option<test_cabinet_core::review::FailureCap>,
+    /// On a validator-rated version, the scoring domains (by id) a failure of this
+    /// whole-item point lowers. Empty on a legacy version and on a sub-divided item.
+    pub domains: Vec<String>,
 }
 
 /// A sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
@@ -2562,6 +2616,15 @@ pub struct CaseSubReviewItemOut {
     pub reference: Option<String>,
     /// Optional proof id paired with this point as the submitted media.
     pub proof: Option<String>,
+    /// On a validator-rated version, this point's **failure cap**: the highest
+    /// functional rating its `domains` may reach while its validator fails. Absent
+    /// on a legacy version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub failure_cap: Option<test_cabinet_core::review::FailureCap>,
+    /// On a validator-rated version, the scoring domains (by id) a failure of this
+    /// point lowers. Empty on a legacy version.
+    pub domains: Vec<String>,
 }
 
 /// A scoring domain exposed in case metadata.
@@ -2789,6 +2852,7 @@ fn case_metadata(
         version: manifest.version.clone(),
         name: manifest.name.clone(),
         test_type: manifest.test_type,
+        engine_format: manifest.engine_format,
         asset_kind: manifest.asset_kind,
         sheet: manifest.sheet.clone(),
         difficulty: manifest.difficulty.clone(),
@@ -2878,8 +2942,12 @@ fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItem
                 weight: sub.weight,
                 reference: sub.reference.clone(),
                 proof: sub.proof.clone(),
+                failure_cap: sub.failure_cap,
+                domains: sub.domains.clone(),
             })
             .collect(),
+        failure_cap: item.failure_cap,
+        domains: item.domains.clone(),
     }
 }
 
@@ -2901,10 +2969,21 @@ fn aggregate_rating_inner(
     crate::db::aggregate_review_rating(record, reviews)
 }
 
-/// The aggregate reviewer score for a run of `manifest`'s `variant`: the case's
-/// declared checklist weights scored against each of the run's `reviews`, then
-/// averaged (see [`test_cabinet_core::review::aggregate_score`]). `None` when the
-/// run carries no reviews.
+/// The aggregate aesthetic rating, or `None` when no review rated the aesthetic
+/// channel. Delegates to [`crate::db::aggregate_review_aesthetic`] — the single
+/// source of truth shared with the lifted `run.aesthetic` column.
+fn aggregate_aesthetic_inner(
+    reviews: &[crate::db::StoredReview],
+) -> Option<test_cabinet_core::review::AestheticRating> {
+    crate::db::aggregate_review_aesthetic(reviews)
+}
+
+/// The score for a run of `manifest`'s `variant`. On a **validator-rated** version
+/// the validator-decided score ([`test_cabinet_core::review::validator_score`]),
+/// always `Some` and independent of any review. Otherwise the aggregate reviewer
+/// score: the case's declared checklist weights scored against each of the run's
+/// `reviews`, then averaged (see [`test_cabinet_core::review::aggregate_score`]),
+/// `None` when the run carries no reviews.
 ///
 /// The checklist weights live only in the case catalog (the manifest), never on a
 /// run or review, so this is the single source of truth shared by the two callers
@@ -2918,6 +2997,23 @@ pub(crate) fn run_summary_score(
     reviews: &[crate::db::StoredReview],
 ) -> Option<RunScoreOut> {
     let items = review_items_for(manifest, &record.subject.variant);
+    // A validator-rated run is scored by its validators alone: every scored point
+    // carries one, so the score is known the moment the run completes and no review
+    // is consulted (`reviews` is `0`). A jam is never validator-rated, so it has no
+    // overall grade here.
+    if manifest.validator_rated() {
+        let score = test_cabinet_core::review::validator_score(
+            record.gated_broken(),
+            &items,
+            &record.validation.debug_scripts,
+        );
+        return Some(RunScoreOut {
+            earned: score.earned,
+            total: score.total,
+            reviews: score.reviews,
+            overall_grade: None,
+        });
+    }
     let scores: Vec<_> = reviews
         .iter()
         .map(|review| test_cabinet_core::review::score_checklist(&items, &review.checklist))
@@ -2991,6 +3087,36 @@ pub(crate) fn review_items_for(
     items
 }
 
+/// The effective scoring domains for a run of `variant`: the case's common domains
+/// followed by the selected variant's own (mirrors
+/// [`test_cabinet_core::test_case::TestCaseVersion::domains_for`], resolving from
+/// the stored manifest). An unrecognized variant contributes only the common
+/// domains. These are the domains a validator-rated run's functional rating is
+/// decided per ([`test_cabinet_core::review::validator_domain_ratings`]) and the
+/// ones its review must rate on the aesthetic scale.
+pub(crate) fn domains_for(
+    manifest: &StoredManifest,
+    variant: &str,
+) -> Vec<test_cabinet_core::test_case::Domain> {
+    manifest
+        .domains
+        .iter()
+        .chain(
+            manifest
+                .variants
+                .iter()
+                .find(|candidate| candidate.slug == variant)
+                .into_iter()
+                .flat_map(|candidate| candidate.domains.iter()),
+        )
+        .map(|domain| test_cabinet_core::test_case::Domain {
+            id: domain.id.clone(),
+            name: domain.name.clone(),
+            description: domain.description.clone(),
+        })
+        .collect()
+}
+
 /// Reconstruct the core [`test_cabinet_core::ReviewItem`] a stored item was
 /// ingested from — the inverse of `ingest::stored_review_item`. Scoring reads
 /// `id`, `weight`, and `sub_items` (a sub-itemed item is scored per sub-item), and
@@ -3021,9 +3147,13 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
                 // manifest's errata by `review_items_for`, never stored on the item.
                 scored: true,
                 validation: sub.validation.as_ref().map(core_review_validation),
+                failure_cap: sub.failure_cap,
+                domains: sub.domains.clone(),
             })
             .collect(),
         scored: true,
+        failure_cap: item.failure_cap,
+        domains: item.domains.clone(),
         // Reporter-side auto-validation driver, reconstructed from the stored item so
         // the round trip stays whole (present on the item when validated as a whole, or
         // on each sub-item above once sub-divided).

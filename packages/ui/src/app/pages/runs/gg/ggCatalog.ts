@@ -13,7 +13,6 @@
 import type {
   GgAgentConfig,
   GgCapabilitySet,
-  GgHealingStrategy,
   GgHookEvent,
   GgLoopDetection,
   GgModuleKind,
@@ -397,8 +396,8 @@ export interface CapSpec {
   // are independent: gg's operations table decides what a program may call and gg's tool
   // registry decides what a tool call may name, and neither is derived from the other.
   // The lists therefore do not line up entry for entry — `read-file` buys one tool and
-  // three operations (a read into a variable, a read as text, and a read straight into
-  // the window), and `docview-close` and `program-library` buy operations and no tool at
+  // two operations (a read into a variable, and a read straight into the window), and
+  // `docview-close` and `program-library` buy operations and no tool at
   // all — which is the whole reason a capability has to state both.
   operations?: ReadonlyArray<string>;
   // The capability's separately-grantable sub-features, surfaced as per-feature sliders
@@ -654,45 +653,6 @@ export const AUTOLOAD_LOCKED_OPTIONS = [
 export const AUTOLOAD_LOCKED_HINT =
   "Not locked injects the specs as ordinary file reads that compaction may summarize away and agent-managed context may evict. Locked pins them into the window verbatim across every compaction boundary and spares them from eviction.";
 
-// The response-healing strategies, in the order gg's pipeline applies them — the
-// conservative, deletion-only repairs gg makes to a model's reply before running it
-// as a program. Each is independently switchable, and switching one off is a
-// configuration worth running against its opposite in its own right ("how much worse
-// does this model do when we stop unwrapping its fences?"), which is why they are
-// toggles in the form rather than a single on/off for the lot.
-//
-// `value` is typed as the contract's `GgHealingStrategy`, so a strategy added to or
-// renamed in `crates/core/src/gg.rs` is a compile error here rather than a control
-// that writes a key gg reports as unknown.
-//
-// A configuration states all three, and gg arms none of them for it. All but one are
-// *seeded* on when the capability is switched on, because for those the repair is strictly
-// safer than not making it: the reply they delete from could not have run as sent.
-// `drop-doubled-response` is the exception, and carries its own
-// [seedOff](ParamSpec.options) flag rather than being a special case in the form.
-export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
-  value: GgHealingStrategy;
-  label: string;
-  seedOff?: boolean;
-  hint?: string;
-}> = [
-  {
-    value: "strip-fences",
-    label: "strip-fences — unwrap a Markdown code fence around the whole reply",
-  },
-  {
-    value: "strip-prose",
-    label: "strip-prose — drop explanatory text before or after the program",
-  },
-  {
-    value: "drop-doubled-response",
-    label:
-      "drop-doubled-response — halve a reply that is one program sent twice",
-    seedOff: true,
-    hint: "The one strategy a fresh capability starts switched off: the half it deletes is valid code under any other reading, so unlike every other repair here, not making it is the safer place to start. It fires only on a byte-exact doubling with nothing at all between the copies — a model that deliberately repeats a statement writes a separator, and any single character of separator makes the reply an odd number of bytes long, which the test declines on. Arm it for a model observed to concatenate its completion with itself.",
-  },
-];
-
 // --- Program language ---------------------------------------------------------------
 //
 // Which language an agent writes its programs in. Every language offers the *same*
@@ -858,11 +818,9 @@ export const LOOP_DETECTION_SPECS: ReadonlyArray<LoopDetectionSpec> = [
 //
 // Every unit of per-agent state gg keeps behind a capability is a **module** (see
 // gg/modules): memories, the task list, the board, the skills read-set and the thread
-// archive, plus the conversation window itself. Two things about a module are authored
-// here — whether its holder's *prompt* carries it (`ownership`, a param on the two
-// capabilities that still offer it; see [ownershipParam]), and which modules an FSM
-// transition hands to the next state (the transfer list on each edge). Both name the
-// same closed taxonomy, so it is spelled once.
+// archive, plus the conversation window itself. One thing about a module is authored
+// here — which modules an FSM transition hands to the next state (the transfer list on
+// each edge). The transfer list names a closed taxonomy, so it is spelled once.
 
 // The module kinds a transition may carry, in the contract's own declaration order
 // (`GgModuleKind` in `crates/core/src/gg.rs`), each with what carrying it actually
@@ -909,12 +867,8 @@ export const MODULE_KINDS: ReadonlyArray<{
 ];
 
 // Which capability backs each module kind — what lets a module's row link back to the
-// capability an operator would tune.
-//
-// Deliberately *not* the same list as `MODULE_CAPABILITIES` in `crates/gg/src/modules.rs`,
-// which is the narrower question of which capabilities carry an [ownership](ownershipParam)
-// param — two of these five. This map answers "what would I go and configure to change
-// this module?", which every kind but one has an answer to.
+// capability an operator would tune. This map answers "what would I go and configure to
+// change this module?", which every kind but one has an answer to.
 //
 // `history` is that one, and its absence is load-bearing: the window is not a capability,
 // it is the agent. Every agent has one, always.
@@ -1027,46 +981,6 @@ export function authoredImplementation(cap: CapSpec): string {
 export function requiresImplementation(cap: CapSpec): boolean {
   const options = cap.implementationOptions ?? [];
   return options.length > 0 && options.every((o) => o.value !== "");
-}
-
-// Whether a module-backed capability's state is carried in its holder's **prompt**
-// (`owned` — every turn, as a pinned block and a prompt section) or is reachable only
-// through the tools it contributes (`unowned`). Both are written: a capability that
-// declares no ownership declares nothing gg can conduct a run on.
-export const MODULE_OWNERSHIP_OPTIONS = [
-  { value: "owned", label: "Owned" },
-  { value: "unowned", label: "Unowned — tools only, not in the prompt" },
-] as const;
-
-// One module-backed capability's `ownership` control. The label is shared across the
-// two that offer it — project management and agent-managed context — so the knob reads
-// as one idea rather than two; `what` names the state at stake so the hint says what an
-// unowned arm actually costs that capability.
-//
-// The other three module-backed capabilities have no unowned arm at all, and which one
-// is missing for which reason is worth knowing before wondering where the picker went.
-// The task list is what an agent steers its work by from turn to turn, so it is always
-// owned. Skills and memories offer no such knob (`MODULE_CAPABILITIES` in
-// `crates/gg/src/modules.rs` is two entries), because on both of them it would be a way
-// of switching the capability off while pretending it was on: what a memory strategy puts
-// in the window IS what having memories means under it, and the strategy is already that
-// knob — `keyword-search` is the arm that pins nothing — while a skills catalogue the
-// agent is never shown leaves it able to read a skill only by being handed its name,
-// which is the capability disabled with extra steps rather than an arm of a study.
-//
-// Two behaviours follow and are worth stating: the pinned memory index cannot be
-// withheld, and a linked holder is always told when another holder adds, revises or
-// removes a memory.
-function ownershipParam(what: string): ParamSpec {
-  return {
-    key: "ownership",
-    label: "Ownership",
-    kind: "select",
-    required: true,
-    defaultValue: MODULE_OWNERSHIP_OPTIONS[0].value,
-    options: MODULE_OWNERSHIP_OPTIONS,
-    hint: `Whether this agent's prompt carries ${what}. Owned rebuilds it into the window on its own schedule and describes it in the system prompt, so the agent is told what it holds on every turn. Unowned removes both, and leaves the tools, the state and the telemetry unchanged: the agent reaches ${what} through its tools instead, and pays no context for it between calls.`,
-  };
 }
 
 // The workspace-relative directory a freshly enabled skills capability is written with
@@ -1327,6 +1241,10 @@ export const AUTHORED_PROGRAM_TIMEOUT_SECS = 30;
 export const AUTHORED_PROGRAM_MAX_MEMORY_BYTES = 268_435_456;
 // How many of a code agent's most recent programs the library holds.
 export const AUTHORED_PROGRAMS_KEPT = 20;
+// How long the id the library assigns each program is. Four characters of cuid2's
+// alphabet is about 1.7 million ids, and ids are per agent, so a longer value only
+// matters for an agent that runs thousands of programs in one session.
+export const AUTHORED_PROGRAM_ID_LENGTH = 4;
 
 export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   // --- Models & tools ---------------------------------------------------------
@@ -1480,15 +1398,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         options: DOC_VIEW_TYPES_OPTIONS,
         hint: DOC_VIEW_TYPES_HINT,
       },
-      {
-        key: "healing",
-        label: "Response healing",
-        kind: "toggles",
-        toggleSet: "exhaustive",
-        required: true,
-        options: HEALING_STRATEGY_OPTIONS,
-        hint: `Repairs gg makes to a reply before running it — deletion only, so a healed program is always a subsequence of what the model sent. The model is told nothing about a repair; every one of them is reported to the run's operator and counted on the run. ${EXHAUSTIVE_TOGGLES_HINT}`,
-      },
     ],
   },
   {
@@ -1523,7 +1432,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "number",
         required: true,
         defaultValue: String(AUTHORED_PROGRAMS_KEPT),
-        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get`. Older ones are dropped, and asking for one says which turns are still held. `0` keeps every program of the session — the setting for a study that reads them all back, spelled as a figure like every other.",
+        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get` by the id each was acknowledged with. Older ones are dropped, and asking for one says which ids are still held (and their turns). `0` keeps every program of the session — the setting for a study that reads them all back, spelled as a figure like every other.",
+      },
+      {
+        key: "idLength",
+        label: "Id length",
+        kind: "number",
+        required: true,
+        defaultValue: String(AUTHORED_PROGRAM_ID_LENGTH),
+        hint: "How many characters the id assigned to each program is — the body of the `submit_program` acknowledgement, and what `programs.get` takes. Ids are scoped to the one agent, and 4 characters is about 1.7 million of them, so a longer value (up to 32) only matters for an agent that runs thousands of programs in one session; shorter than 2 is refused.",
       },
     ],
     // No `tools`, for the reason `modes` gives: there are no programs in a tool-calling
@@ -1623,7 +1540,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Agent-managed context",
     group: "Context",
     purpose:
-      "The agent reclaims window space itself: evicting file views, archiving thread sections, and — under responses as code — closing the views it opened and listing what is open.",
+      "The agent reclaims window space itself: evicting file views, archiving thread sections, and — under responses as code — closing the views it opened.",
     params: [
       {
         key: "topFileViews",
@@ -1643,7 +1560,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: String(AUTHORED_SIGNAL_THRESHOLD_PERCENT),
         hint: "How full the window has to be, as a percentage, before the agent is shown the context-usage block at all. The share is of the window the agent may actually fill — the model's window less whatever an enabled Compaction holds back — which is the same figure the block then reports. Below it there is no block, since a block reporting a window that is 6% full costs tokens to ask for a reclaim worth nothing. Set 0 to show it every turn.",
       },
-      ownershipParam("what it has archived"),
     ],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
     // The view call is responses-as-code only: a tool-calling agent has no `view`
@@ -1843,9 +1759,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: String(AUTHORED_MAX_TASKS),
         hint: "How many tasks the list may hold at once.",
       },
-      // No `ownership` param: the task list is always carried in its holder's prompt. It
-      // is what the agent steers by from turn to turn, so an unowned one — reachable
-      // through the tools and absent from the prompt — is not a shape this capability has.
+      // The task list is always carried in its holder's prompt: it is what the agent
+      // steers by from turn to turn.
     ],
     tools: [
       "add_task",
@@ -1923,7 +1838,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "boolean",
         hint: "On, filing an issue requires naming one or more reviewers — from the agents this one lists with the Reviewer scope. Either way, every reviewer an issue names must approve the work before the issue is accepted and merged.",
       },
-      ownershipParam("the board"),
     ],
     tools: [
       "create_epic",
@@ -2072,23 +1986,174 @@ export const FSM_CAP: CapSpec = CAPABILITIES.find((c) => c.id === FSM_CAP_ID)!;
 export const DEFAULT_CAP_IDS = CAPABILITIES.filter((c) => c.defaultOn).map(
   (c) => c.id,
 );
-// The module kinds whose capability still offers an [ownership](ownershipParam) control,
-// derived from the catalog rather than listed a second time — so a capability that gains
-// or loses the param carries this along with it instead of leaving a reader of a module
-// surface to be told about a declaration nobody could have made.
+
+// --- The opening turn -------------------------------------------------------------
 //
-// That is what it is for: the observed side of the module surfaces compares what a profile
-// asked for against what its instances got, and a kind that cannot be asked has to be read
-// as "nothing declared" rather than as the param's old default. See `declaredModuleConfig`.
-export const OWNERSHIP_MODULE_KINDS: ReadonlySet<GgModuleKind> = new Set(
-  [...MODULE_CAPABILITY_IDS]
-    .filter(([, capability]) =>
-      CAPABILITIES.find((cap) => cap.id === capability)?.params?.some(
-        (param) => param.key === "ownership",
-      ),
+// What gg puts in front of a code agent's first turn is per-agent configuration
+// (`GgAgentConfig.openingTurn`): the modules whose brief and function list the window
+// opens with, and the functions whose full documentation it opens with. gg decides
+// neither list — it reads the configuration, drops what the agent does not hold, and
+// seeds nothing at all when both lists come out empty.
+
+/**
+ * gg's cross-arm modules, in the order gg's own operations table groups them
+ * (`crates/gg/src/sandbox/operations.rs`). The id is the namespace half of an operation id
+ * (`files` in `files.read_file`), and is what an opening turn's `modules` list names.
+ *
+ * A static table rather than something derived from the capability catalog because a module
+ * is gg's grouping, not the console's: two capabilities may sell operations of one module
+ * (`read-file` and `search` both sell `files.*`), and one capability may sell operations of
+ * two (`agent-managed-context` sells `context.*` and `views.close`). The purpose is written
+ * here in the console's voice, the same way a capability's is.
+ */
+export const GG_MODULES: ReadonlyArray<{
+  id: string;
+  name: string;
+  purpose: string;
+}> = [
+  {
+    id: "shell",
+    name: "Shell",
+    purpose: "Run shell commands in the run container.",
+  },
+  {
+    id: "files",
+    name: "Files",
+    purpose: "Read, write, edit, list and search the workspace's files.",
+  },
+  {
+    id: "skills",
+    name: "Skills",
+    purpose: "Read a skill from the agent's skills library into the window.",
+  },
+  {
+    id: "memories",
+    name: "Memories",
+    purpose: "Write, read, edit, search and delete the agent's memories.",
+  },
+  {
+    id: "tasks",
+    name: "Tasks",
+    purpose:
+      "Keep the agent's own task list: add, update, block, complete, remove.",
+  },
+  {
+    id: "board",
+    name: "Board",
+    purpose:
+      "File epics and issues on the run's project board, and wait on them.",
+  },
+  {
+    id: "context",
+    name: "Context",
+    purpose:
+      "Manage the window itself: evict file views, archive and search the thread, compact.",
+  },
+  {
+    id: "delegation",
+    name: "Delegation",
+    purpose:
+      "Put other agents to work: spawn, wait on, message, hand off to and fork them.",
+  },
+  {
+    id: "docs",
+    name: "Docs",
+    purpose: "Search this API's documentation, and close what a search opened.",
+  },
+  {
+    id: "views",
+    name: "Views",
+    purpose:
+      "Open a file, a computed text or a function's documentation as a view in the window, and close one.",
+  },
+  {
+    id: "programs",
+    name: "Programs",
+    purpose: "Look up, read and re-run the programs earlier turns executed.",
+  },
+];
+
+/**
+ * The three operations bound to every program whatever a run enables — a program must
+ * always be able to find what it holds and show its model something — so every agent holds
+ * them and no capability offers them. Mirrors `Binding::Always` in gg's operations table.
+ */
+export const ALWAYS_BOUND_OPERATIONS: ReadonlyArray<string> = [
+  "docs.search",
+  "views.open_text",
+  "views.open_docs_view",
+];
+
+/**
+ * The opening turn a fresh agent is seeded with — what `GgAgentConfig::root()` writes, and
+ * the two lists gg used to hard-code before they became configuration: the workspace and
+ * shell modules listed, and the five calls a program needs to look around with opened.
+ */
+export const DEFAULT_OPENING_TURN: {
+  modules: ReadonlyArray<string>;
+  functions: ReadonlyArray<string>;
+} = {
+  modules: ["files", "shell"],
+  functions: [
+    "docs.search",
+    "views.open_docs_view",
+    "views.open_text",
+    "views.open_file",
+    "files.search",
+  ],
+};
+
+/** One function an opening turn may open the documentation of, and who offers it. */
+export interface OpeningTurnFunction {
+  /** The operation id — `files.read_file`. */
+  id: string;
+  /** The module the id belongs to — its namespace half. */
+  module: string;
+  /**
+   * The capability that offers this operation, or `null` for one of the
+   * [always-bound three](ALWAYS_BOUND_OPERATIONS), which every agent holds unconditionally.
+   */
+  offeredBy: CapSpec | null;
+}
+
+/**
+ * Every operation an opening turn may name, grouped by module in [GG_MODULES] order and,
+ * within a module, in the order the capability catalog offers them: the always-bound three
+ * first, then each capability's operations (its feature bundles included).
+ *
+ * Derived from the catalog rather than listed a second time, so a capability that gains an
+ * operation gains a row here without a second table to keep in step. A [mode marker](isModeCapability)
+ * offers nothing: its one operation (`delegation.transition_state`) is bound by where an
+ * instance stands in its machine, not by configuration, and gg refuses an opening turn that
+ * promises it.
+ */
+export function openingTurnFunctions(): ReadonlyArray<OpeningTurnFunction> {
+  const rows: OpeningTurnFunction[] = [];
+  const seen = new Set<string>();
+  const push = (id: string, offeredBy: CapSpec | null) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    rows.push({ id, module: id.split(".")[0] ?? id, offeredBy });
+  };
+  for (const id of ALWAYS_BOUND_OPERATIONS) push(id, null);
+  for (const cap of CAPABILITIES) {
+    if (isModeCapability(cap.id)) continue;
+    for (const id of cap.operations ?? []) push(id, cap);
+    for (const feature of cap.features ?? []) {
+      for (const id of feature.operations) push(id, cap);
+    }
+  }
+  const order = new Map(GG_MODULES.map((m, i) => [m.id, i] as const));
+  // A stable sort by module, so the within-module order above is kept.
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort(
+      (a, b) =>
+        (order.get(a.row.module) ?? GG_MODULES.length) -
+          (order.get(b.row.module) ?? GG_MODULES.length) || a.i - b.i,
     )
-    .map(([kind]) => kind),
-);
+    .map(({ row }) => row);
+}
 
 // --- Run limits -----------------------------------------------------------------
 //

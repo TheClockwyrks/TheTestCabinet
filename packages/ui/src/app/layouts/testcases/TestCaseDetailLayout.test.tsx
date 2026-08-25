@@ -30,8 +30,9 @@ vi.mock("../../data/useTestCase", () => ({
 // leaking into the next.
 const host = vi.hoisted(() => ({
   canExecute: true,
-  fetchCaseVariant: (() =>
-    Promise.resolve(null)) as (ref: CaseVariantRef) => Promise<VariantSummary | null>,
+  fetchCaseVariant: (() => Promise.resolve(null)) as (
+    ref: CaseVariantRef,
+  ) => Promise<VariantSummary | null>,
 }));
 vi.mock("../../data/galleryContext", () => ({
   useGalleryData: () => ({
@@ -54,6 +55,7 @@ function variantSummary(ref: CaseVariantRef): VariantSummary {
     referenceScreenshots: [],
     reviewItems: [],
     domains: [],
+    validatorRated: false,
     referenceBuilds: {},
     referenceSheet: null,
   } as VariantSummary;

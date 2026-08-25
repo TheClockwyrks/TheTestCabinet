@@ -535,17 +535,16 @@ fn a_locked_specification_is_never_superseded_out_of_its_band() {
 //
 // There is no cap on how MANY views may be open — of any kind, pictures included. What these assert
 // is the property that survives the cap's removal and matters more without it: a retired copy of an
-// image view does not keep its bytes, so what the run uploads per request is what `view.current()`
-// says is open, and re-opening one screenshot for twenty turns does not leave twenty pictures
-// resident.
+// image view does not keep its bytes, so what the run uploads per request is only what is actually
+// open, and re-opening one screenshot for twenty turns does not leave twenty pictures resident.
 
 /// **A superseded copy stops carrying its picture.**
 ///
 /// Re-opening across turns retags the older copy to `History` in place — its *text* stays in the
 /// window to protect a provider's cached prefix — but the picture is taken out. A picture is
 /// re-uploaded whole on every subsequent request for as long as it is resident, so leaving it would
-/// have an agent that refreshed one mockup four times paying for four uploads a turn while
-/// `view.current()` listed a single view.
+/// have an agent that refreshed one mockup four times paying for four uploads a turn while only a
+/// single view is open.
 #[test]
 fn a_superseded_image_view_stops_carrying_its_picture() {
     let mut ctx = code_model();
@@ -817,7 +816,7 @@ fn closing_a_file_view_by_path_closes_every_page_of_it() {
 }
 
 // ---------------------------------------------------------------------------
-// Reporting: `view.current()` and persistence
+// Reporting and persistence
 // ---------------------------------------------------------------------------
 
 #[test]

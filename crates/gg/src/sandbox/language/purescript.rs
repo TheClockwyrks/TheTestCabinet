@@ -9,8 +9,8 @@
 //!   tells apart;
 //! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own
 //!   module header for the names it offers and the types each of them writes;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, and the nesting-and-primes lexer;
+//! * [`mask`] — the byte-level code mask [`modules`] reads, so a name written into a string or
+//!   a comment is never taken for a declaration;
 //! * `packages/gg-sandbox-purescript/src/Gg/**` — the hand-written SDK, compiled **into** the library
 //!   tree below, so the surface a model is shown and the surface its program is compiled against are
 //!   one artifact;
@@ -125,8 +125,8 @@ pub(super) mod compile;
 #[path = "purescript.modules.rs"]
 mod modules;
 
-#[path = "purescript.healing.rs"]
-pub(super) mod healing;
+#[path = "purescript.mask.rs"]
+pub(super) mod mask;
 
 /// This arm's catalogue, reflected out of the SDK's own doc comments by
 /// `packages/gg-sandbox-purescript/signatures.sh` with `purs compile --codegen docs`.
@@ -308,10 +308,6 @@ impl ProgramLanguage for PureScript {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::PURESCRIPT_DIALECT
     }
 
     /// [`void (Gg.Views.openFile "src/Main.purs" {})`](self::open_file_statement) — the call, its

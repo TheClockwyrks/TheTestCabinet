@@ -162,6 +162,24 @@ pub(super) fn evaluate_closing_docviews(
     evaluate_granting(component, &granted, &[], RunEnding::None, false, responder)
 }
 
+/// [`evaluate_as`] for an agent that keeps a program library with `source` already recorded under
+/// `id` on `turn`.
+///
+/// The one thing a library-holding agent cannot be driven to without it: `programs.get` and the
+/// `ProgramSummary.source` member that is a second spelling of it both answer out of a history a
+/// fresh double has none of, so a test that seeded nothing can only ever observe a `NOT_FOUND`.
+pub(super) fn evaluate_with_program(
+    component: &[u8],
+    id: &str,
+    turn: u64,
+    source: &str,
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    evaluate_seeding(component, &[], &[], RunEnding::None, true, |log| {
+        FakeOperationApi::with(log, responder).with_program(id, turn, source)
+    })
+}
+
 /// What all of the above are: one evaluation, with everything the scope carries stated.
 fn evaluate_granting(
     component: &[u8],
@@ -171,9 +189,23 @@ fn evaluate_granting(
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
+    evaluate_seeding(component, operations, modules, ending, library, |log| {
+        FakeOperationApi::with(log, responder)
+    })
+}
+
+/// [`evaluate_granting`], with the double built by the caller so that it can be seeded first.
+fn evaluate_seeding(
+    component: &[u8],
+    operations: &[crate::sandbox::operations::OperationId],
+    modules: &[CodeModule],
+    ending: RunEnding,
+    library: bool,
+    api: impl FnOnce(&CallLog) -> FakeOperationApi,
+) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
-    let api = FakeOperationApi::with(&log, responder);
+    let api = api(&log);
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Kotlin program is a component");

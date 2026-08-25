@@ -5,6 +5,8 @@ import type {
   ModelProbeDetail,
   ModelProbeItem,
   ModelProbeProvider,
+  ModelProbeRequest,
+  ModelProbeToolCall,
   ModelProbeTriggerInput,
   ModelProbeVerdict,
 } from "../../../../client/types";
@@ -19,21 +21,33 @@ import {
 } from "../../../data/useModelProbes";
 import { formatCompact, formatTimestamp } from "../../../format";
 import { ModelDetailLayout } from "../../../layouts/models/ModelDetailLayout";
+import { PROGRAM_LANGUAGE_NAMES } from "../../gg/programLanguages";
 import styles from "./ModelProbesPage.module.scss";
 
 // The sampling defaults the backend applies to an empty trigger body — seeded
 // into the form so every control shows the value that will actually run, with a
 // reset control appearing beside the label once it has been moved.
-const DEFAULT_SAMPLES = 3;
+const DEFAULT_SAMPLES = 8;
+const MAX_SAMPLES = 128;
 const DEFAULT_MAX_TOKENS = 3500;
 
+// A probe's language selection as a row shows it: the arm's reader-facing name,
+// or the every-arm reading for null.
+function languageLabel(language: string | null): string {
+  if (language === null) return "all languages";
+  return (
+    (PROGRAM_LANGUAGE_NAMES as Record<string, string>)[language] ?? language
+  );
+}
+
 // The Probes tab (`/models/:modelId/probes`): responses-as-code readiness
-// probes of the model — the backend replays gg's real RaC turn-1 request over a
-// fixed prompt-condition matrix via OpenRouter, classifies each reply, and
-// stores a verdict. The tab is one page: trigger controls (signed-in only) at
-// the top, the probe history below, and the selected probe's full detail — the
-// per-condition rollup, every call's classification and raw reply, and the
-// request as sent.
+// probes of the model — the backend replays gg's RaC turn-1 request per case
+// (two scenarios over several input prompts, per language arm or across every
+// arm) via OpenRouter with the `submit_program` tool offered and forced, checks
+// each submitted program against its case, and stores a verdict. The tab is one
+// page: trigger controls (signed-in only) at the top, the probe history below,
+// and the selected probe's full detail — the per-scenario rollup, every call's
+// outcome with its submitted program and raw reply, and the requests as sent.
 export function ModelProbesPage() {
   return (
     <ModelDetailLayout tab="probes">
@@ -163,9 +177,10 @@ function ProbeTriggerForm({
   // the default route only rather than blocking the form.
   const [providers, setProviders] = useState<ModelProbeProvider[]>([]);
   const [provider, setProvider] = useState("");
+  // "" is the every-arm default; a wire id pins the probe to one arm.
+  const [language, setLanguage] = useState("");
   const [samples, setSamples] = useState(String(DEFAULT_SAMPLES));
   const [maxTokens, setMaxTokens] = useState(String(DEFAULT_MAX_TOKENS));
-  const [fullContext, setFullContext] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -186,7 +201,7 @@ function ProbeTriggerForm({
 
   const samplesNum = Number.parseInt(samples, 10);
   const samplesOk =
-    Number.isInteger(samplesNum) && samplesNum >= 1 && samplesNum <= 8;
+    Number.isInteger(samplesNum) && samplesNum >= 1 && samplesNum <= MAX_SAMPLES;
   const maxTokensNum = Number.parseInt(maxTokens, 10);
   const maxTokensOk =
     Number.isInteger(maxTokensNum) &&
@@ -198,9 +213,9 @@ function ProbeTriggerForm({
     const input: ModelProbeTriggerInput = {
       samples: samplesNum,
       maxTokens: maxTokensNum,
-      fullContext,
     };
     if (provider) input.provider = provider;
+    if (language) input.language = language;
     setBusy(true);
     setError(null);
     actions
@@ -242,7 +257,28 @@ function ProbeTriggerForm({
           )}
         </Field>
         <Field
-          label="Samples"
+          label="Language"
+          modified={language !== ""}
+          onReset={() => setLanguage("")}
+        >
+          {(id) => (
+            <select
+              id={id}
+              className={styles.select}
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+            >
+              <option value="">All languages</option>
+              {Object.entries(PROGRAM_LANGUAGE_NAMES).map(([wireId, name]) => (
+                <option key={wireId} value={wireId}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <Field
+          label="Samples per prompt"
           modified={samples !== String(DEFAULT_SAMPLES)}
           onReset={() => setSamples(String(DEFAULT_SAMPLES))}
         >
@@ -252,7 +288,7 @@ function ProbeTriggerForm({
               className={styles.number}
               type="number"
               min={1}
-              max={8}
+              max={MAX_SAMPLES}
               value={samples}
               onChange={(e) => setSamples(e.target.value)}
             />
@@ -276,21 +312,6 @@ function ProbeTriggerForm({
             />
           )}
         </Field>
-        <Field
-          label="Full context"
-          modified={fullContext}
-          onReset={() => setFullContext(false)}
-        >
-          {(id) => (
-            <input
-              id={id}
-              className={styles.checkbox}
-              type="checkbox"
-              checked={fullContext}
-              onChange={(e) => setFullContext(e.target.checked)}
-            />
-          )}
-        </Field>
         <button
           type="button"
           className={styles.run}
@@ -299,9 +320,9 @@ function ProbeTriggerForm({
           title={
             samplesOk
               ? maxTokensOk
-                ? "Replay gg's RaC turn-1 request across the condition matrix and classify each reply"
+                ? "Replay gg's RaC turn-1 cases and check each submitted program"
                 : "Max tokens must be between 256 and 16000"
-              : "Samples must be between 1 and 8"
+              : `Samples must be between 1 and ${MAX_SAMPLES}`
           }
         >
           {busy ? "Starting…" : "Run probe"}
@@ -314,32 +335,24 @@ function ProbeTriggerForm({
 
 // ---- History -----------------------------------------------------------------
 
-const VERDICT_META: Record<
-  ModelProbeVerdict,
-  { label: string; title: string }
-> = {
+// Total over whatever verdict string the store holds, so a history row never
+// fails to render on a verdict this build does not name.
+const VERDICT_META: Record<string, { label: string; title: string }> = {
   ready: {
     label: "Ready",
-    title: "Clean bare programs without prompt variations",
-  },
-  "ready-with-reminders": {
-    label: "Ready with reminders",
-    title: "Clean only with a no-tools clause or trailing notice added",
-  },
-  "tool-call-overfit": {
-    label: "Tool-call overfit",
-    title: "Keeps reaching for tool calls instead of writing the program",
+    title:
+      "Every probed scenario passed at least 80% of its calls — correct calls under open docviews, and docview-before-call discipline",
   },
   "not-ready": {
     label: "Not ready",
-    title: "No condition produced a usable share of clean programs",
+    title: "At least one probed scenario fell short; the labels say why",
   },
 };
 
 // A probe's verdict as a color-coded chip, following the `RatingBadge`
 // pattern (one element, tone selected by data attribute).
 function VerdictBadge({ verdict }: { verdict: ModelProbeVerdict }) {
-  const meta = VERDICT_META[verdict];
+  const meta = VERDICT_META[verdict] ?? { label: verdict, title: "" };
   return (
     <span className={styles.verdict} data-verdict={verdict} title={meta.title}>
       {meta.label}
@@ -347,7 +360,7 @@ function VerdictBadge({ verdict }: { verdict: ModelProbeVerdict }) {
   );
 }
 
-// A clean rate (0..=1) as a whole percentage, or an em dash when unknown.
+// A pass rate (0..=1) as a whole percentage, or an em dash when unknown.
 function formatRate(rate: number | null): string {
   return rate === null ? "—" : `${Math.round(rate * 100)}%`;
 }
@@ -389,6 +402,9 @@ function ProbeHistory({
             <span className={styles.rowWhen}>
               {formatTimestamp(probe.createdAt)}
             </span>
+            <span className={styles.rowLanguage}>
+              {languageLabel(probe.language)}
+            </span>
             <span className={styles.rowProvider}>
               {probe.provider ?? "default route"}
             </span>
@@ -412,8 +428,7 @@ function ProbeHistory({
               )}
             </span>
             <span className={styles.rowRates}>
-              base {formatRate(probe.baseCleanRate)} · best{" "}
-              {formatRate(probe.bestVariationCleanRate)}
+              pass {formatRate(probe.passRate)}
             </span>
             <span className={styles.rowSpend}>{formatSpend(probe.spend)}</span>
           </button>
@@ -425,7 +440,7 @@ function ProbeHistory({
 
 // ---- Detail ------------------------------------------------------------------
 
-type DetailView = "results" | "request";
+type DetailView = "results" | "requests";
 
 function ProbeDetail({ detail }: { detail: ModelProbeDetail }) {
   const [view, setView] = useState<DetailView>("results");
@@ -443,16 +458,15 @@ function ProbeDetail({ detail }: { detail: ModelProbeDetail }) {
           <span className={styles.failed}>Failed</span>
         )}
         <span className={styles.summaryFact}>
-          base {formatRate(probe.baseCleanRate)} · best variation{" "}
-          {formatRate(probe.bestVariationCleanRate)}
+          pass {formatRate(probe.passRate)}
         </span>
         <span className={styles.summaryFact}>{formatSpend(probe.spend)}</span>
       </div>
       <p className={styles.configLine}>
         {probe.openrouterSlug} via {probe.provider ?? "the default route"} ·{" "}
-        {probe.samples} sample{probe.samples === 1 ? "" : "s"} per condition ·{" "}
-        {probe.maxTokens} max tokens · {probe.fullContext ? "full" : "trimmed"}{" "}
-        context
+        {languageLabel(probe.language)} · {probe.samples} call
+        {probe.samples === 1 ? "" : "s"} per prompt · {probe.maxTokens} max
+        tokens
       </p>
       {probe.error && (
         <p className={styles.notice} role="alert">
@@ -463,7 +477,7 @@ function ProbeDetail({ detail }: { detail: ModelProbeDetail }) {
       <SegmentedControl<DetailView>
         options={[
           { value: "results", label: "Results" },
-          { value: "request", label: "Request" },
+          { value: "requests", label: "Requests" },
         ]}
         value={view}
         onChange={setView}
@@ -473,7 +487,7 @@ function ProbeDetail({ detail }: { detail: ModelProbeDetail }) {
       {view === "results" ? (
         <ProbeResults detail={detail} />
       ) : (
-        <ProbeRequest detail={detail} />
+        <ProbeRequests requests={detail.requests} />
       )}
     </div>
   );
@@ -485,66 +499,83 @@ function distinct(values: (string | null)[]): string {
   return seen.length === 0 ? "—" : seen.join(", ");
 }
 
-function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
-  // Items grouped per matrix condition, in the matrix's own order — computed
-  // client-side, since the wire carries the flat item list only.
-  const rollup = useMemo(
-    () =>
-      detail.conditions.map((condition) => {
-        const items = detail.items.filter(
-          (item) => item.condition === condition.name,
-        );
-        return {
-          condition,
-          items,
-          clean: items.filter((item) => item.clean).length,
-        };
-      }),
-    [detail],
-  );
-  const ordered = useMemo(
-    () => rollup.flatMap((group) => group.items),
-    [rollup],
-  );
+// One (language, scenario) group's rollup row.
+interface ScenarioGroup {
+  language: string;
+  scenario: string;
+  items: ModelProbeItem[];
+}
 
+// The items grouped by (language, scenario), in first-seen order — the axis the
+// verdict is decided on, so the rollup shows exactly what `ready` requires.
+function groupItems(items: ModelProbeItem[]): ScenarioGroup[] {
+  const groups: ScenarioGroup[] = [];
+  for (const item of items) {
+    const found = groups.find(
+      (g) => g.language === item.language && g.scenario === item.scenario,
+    );
+    if (found) {
+      found.items.push(item);
+    } else {
+      groups.push({
+        language: item.language,
+        scenario: item.scenario,
+        items: [item],
+      });
+    }
+  }
+  return groups;
+}
+
+function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
+  const { items } = detail;
+  const groups = useMemo(() => groupItems(items), [items]);
   return (
     <>
       <div className={styles.tableWrap}>
         <table className={styles.rollup}>
           <thead>
             <tr>
-              <th>Condition</th>
-              <th>Clean</th>
+              <th>Language</th>
+              <th>Scenario</th>
+              <th>Pass</th>
               <th>Labels</th>
               <th>Providers</th>
-              <th>Finish reasons</th>
             </tr>
           </thead>
           <tbody>
-            {rollup.map(({ condition, items, clean }) => (
-              <tr key={condition.name}>
-                <td className={styles.conditionCell}>
-                  {condition.name}
-                  {condition.variation && (
-                    <span
-                      className={styles.variationTag}
-                      title="Counts as a variation in the verdict"
-                    >
-                      variation
-                    </span>
-                  )}
-                </td>
-                <td>{items.length === 0 ? "—" : `${clean}/${items.length}`}</td>
-                <td>{distinct(items.map((item) => item.label))}</td>
-                <td>{distinct(items.map((item) => item.provider))}</td>
-                <td>{distinct(items.map((item) => item.finishReason))}</td>
+            {groups.length === 0 ? (
+              <tr>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
+                <td>—</td>
               </tr>
-            ))}
+            ) : (
+              groups.map((group) => {
+                const scored = group.items.filter((i) => i.label !== null);
+                const passed = scored.filter((i) => i.pass).length;
+                return (
+                  <tr key={`${group.language}/${group.scenario}`}>
+                    <td>{languageLabel(group.language)}</td>
+                    <td>{group.scenario}</td>
+                    <td>
+                      {scored.length === 0 ? "—" : `${passed}/${scored.length}`}
+                    </td>
+                    <td>{distinct(group.items.map((item) => item.label))}</td>
+                    <td>
+                      {distinct(group.items.map((item) => item.provider))}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>
 
-      {ordered.length === 0 ? (
+      {items.length === 0 ? (
         <p className={styles.empty}>
           {detail.probe.status === "running"
             ? "No calls recorded yet."
@@ -552,7 +583,7 @@ function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
         </p>
       ) : (
         <ul className={styles.items}>
-          {ordered.map((item) => (
+          {items.map((item) => (
             <ProbeItemRow key={item.id} item={item} />
           ))}
         </ul>
@@ -561,19 +592,21 @@ function ProbeResults({ detail }: { detail: ModelProbeDetail }) {
   );
 }
 
-// One call, collapsed to its classification line; expanding reveals the raw
-// reply (and reasoning stream) verbatim.
+// One call, collapsed to its outcome line; expanding reveals the submitted
+// program, the reply text beside the call, and any reasoning stream, all
+// verbatim.
 function ProbeItemRow({ item }: { item: ModelProbeItem }) {
   return (
     <li>
       <details className={styles.item}>
         <summary className={styles.itemSummary}>
           <StatusGlyph
-            status={item.error ? "none" : item.clean ? "pass" : "fail"}
-            label={item.error ? "Errored" : item.clean ? "Clean" : "Not clean"}
+            status={item.error ? "none" : item.pass ? "pass" : "fail"}
+            label={item.error ? "Errored" : item.pass ? "Passed" : "Failed"}
           />
           <span className={styles.itemCondition}>
-            {item.condition} #{item.sample}
+            {languageLabel(item.language)} · {item.scenario} · {item.prompt} #
+            {item.sample}
           </span>
           <span className={styles.itemLabel}>
             {item.label ?? (item.error ? "error" : "—")}
@@ -603,51 +636,93 @@ function ProbeItemRow({ item }: { item: ModelProbeItem }) {
               <pre className={styles.raw}>{item.reasoningText}</pre>
             </>
           )}
-          <h3 className={styles.rawTitle}>Response</h3>
+          <h3 className={styles.rawTitle}>Program</h3>
           <pre className={styles.raw}>
-            {item.responseText === "" ? "(empty)" : item.responseText}
+            {item.programText ?? "(no program submitted)"}
           </pre>
+          {item.responseText !== "" && (
+            <>
+              <h3 className={styles.rawTitle}>Reply text</h3>
+              <pre className={styles.raw}>{item.responseText}</pre>
+            </>
+          )}
         </div>
       </details>
     </li>
   );
 }
 
-// What was sent: the base condition's message array verbatim, then the
-// additions the variation conditions layer on top of it.
-function ProbeRequest({ detail }: { detail: ModelProbeDetail }) {
-  const withClause = detail.conditions
-    .filter((condition) => condition.noToolsClause)
-    .map((condition) => condition.name);
-  const withNotice = detail.conditions
-    .filter((condition) => condition.trailingNotice)
-    .map((condition) => condition.name);
+// What was sent: one message array per probed case, picked by its
+// (language, scenario, prompt) coordinate. An assistant message's
+// submit_program calls render their program strings, decoded from the wire's
+// JSON-encoded arguments; the constant tools/tool_choice pair rides on every
+// request and is stated in the closing note.
+function ProbeRequests({ requests }: { requests: ModelProbeRequest[] }) {
+  const [picked, setPicked] = useState(0);
+  const request = requests[Math.min(picked, requests.length - 1)];
+  if (!request) {
+    return <p className={styles.empty}>The probe stored no requests.</p>;
+  }
   return (
     <div className={styles.request}>
-      {detail.requestMessages.map((message, index) => (
+      <label className={styles.requestPick}>
+        Case{" "}
+        <select
+          className={styles.select}
+          value={String(Math.min(picked, requests.length - 1))}
+          onChange={(e) => setPicked(Number.parseInt(e.target.value, 10))}
+        >
+          {requests.map((r, index) => (
+            <option
+              key={`${r.language}/${r.scenario}/${r.prompt}`}
+              value={String(index)}
+            >
+              {languageLabel(r.language)} · {r.scenario} · {r.prompt}
+            </option>
+          ))}
+        </select>
+      </label>
+      {request.messages.map((message, index) => (
         <div key={index}>
           <h3 className={styles.rawTitle}>{message.role}</h3>
-          <pre className={styles.raw}>{message.content}</pre>
+          {message.content != null && (
+            <pre className={styles.raw}>{message.content}</pre>
+          )}
+          {(message.tool_calls ?? []).map((call) => (
+            <div key={call.id}>
+              <h3 className={styles.rawTitle}>
+                {call.function.name}{" "}
+                <span className={styles.rawNote}>call {call.id}</span>
+              </h3>
+              <pre className={styles.raw}>{callProgram(call)}</pre>
+            </div>
+          ))}
         </div>
       ))}
-      <div>
-        <h3 className={styles.rawTitle}>
-          No-tools clause{" "}
-          <span className={styles.rawNote}>
-            appended to the system prompt by {withClause.join(", ") || "—"}
-          </span>
-        </h3>
-        <pre className={styles.raw}>{detail.noToolsClause}</pre>
-      </div>
-      <div>
-        <h3 className={styles.rawTitle}>
-          Trailing notice{" "}
-          <span className={styles.rawNote}>
-            appended as a user message by {withNotice.join(", ") || "—"}
-          </span>
-        </h3>
-        <pre className={styles.raw}>{detail.noticeMessage}</pre>
-      </div>
+      <p className={styles.rawNote}>
+        Each request also offers the submit_program tool — its one string
+        parameter is the program to run — and forces tool_choice to it, exactly
+        as gg sends it.
+      </p>
     </div>
   );
+}
+
+// A call's program string, decoded from the wire's JSON-encoded arguments;
+// falls back to the raw arguments when they do not decode.
+function callProgram(call: ModelProbeToolCall): string {
+  try {
+    const parsed: unknown = JSON.parse(call.function.arguments);
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      "program" in parsed &&
+      typeof (parsed as { program: unknown }).program === "string"
+    ) {
+      return (parsed as { program: string }).program;
+    }
+  } catch {
+    /* fall through to the raw arguments */
+  }
+  return call.function.arguments;
 }

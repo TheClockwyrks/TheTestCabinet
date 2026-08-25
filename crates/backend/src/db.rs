@@ -29,7 +29,10 @@ use test_cabinet_core::comparison::ComparisonConfig;
 use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::reference_lock::ReferenceBuildEntry;
-use test_cabinet_core::review::{DomainRating, Rating, ReviewDiff, ReviewRevision, ReviewVerdict};
+use test_cabinet_core::review::{
+    AestheticRating, DomainAesthetic, DomainRating, Rating, ReviewDiff, ReviewRevision,
+    ReviewVerdict,
+};
 use test_cabinet_core::run_record::{
     HarnessFamily, HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord,
 };
@@ -46,7 +49,7 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::coverage::gate::{Gate, GateOutcome, GateThreshold, RungRun};
 use crate::error::{BackendError, Result};
-use crate::store::CaseNames;
+use crate::store::{CaseNames, StoredManifest};
 
 /// The non-terminal job states — a run the queue still owns, from enqueue through
 /// execution. A job in one of these is "in flight": it appears in the active-run
@@ -128,9 +131,25 @@ pub struct StoredRun {
     /// The full run record, links populated.
     pub record: RunRecord,
     /// The run's reviews, oldest first. Empty while the run is still pending
-    /// review; one per reviewing account once reviewed. The run's overall rating
-    /// is the worst across them and its score the average.
+    /// review; one per reviewing account once reviewed. On a legacy run the run's
+    /// functional rating is the worst across them and its score the average; on a
+    /// validator-rated run they supply only the aesthetic channel.
     pub reviews: Vec<StoredReview>,
+    /// The lifted `run.rating` column: the run's **functional** rating. On a
+    /// validator-rated run the validator-decided rating written at push time —
+    /// the only place a catalog-free reader can get it from, since deciding it
+    /// needs the case's checklist; on a legacy run the review aggregate the store
+    /// maintains on review-add (`None` while unreviewed).
+    #[serde(default)]
+    pub rating: Option<Rating>,
+    /// The lifted `run.aesthetic` column: the run's aggregate **aesthetic** rating,
+    /// maintained on review-add; `None` until a review rates the aesthetic channel.
+    #[serde(default)]
+    pub aesthetic: Option<AestheticRating>,
+    /// The lifted `run.validator_rated` flag: whether the run's case version is
+    /// validator-rated, decided at push time from the definition store.
+    #[serde(default)]
+    pub validator_rated: bool,
     /// The resolved links.
     pub links: RunLinks,
     /// Whether the run is published (and thus eligible for the public snapshot).
@@ -177,9 +196,16 @@ pub struct StoredTournament {
 pub struct StoredReview {
     /// The account that wrote the review.
     pub reviewer: Reviewer,
-    /// The reviewer's per-domain ratings. This review's overall rating is the
-    /// worst across them; the run's is the worst across all its reviews.
+    /// The reviewer's per-domain functional ratings. This review's overall rating
+    /// is the worst across them; the run's is the worst across all its reviews.
+    /// Empty on a review of a validator-rated run, whose functional rating is not
+    /// the reviewer's to give.
     pub ratings: Vec<DomainRating>,
+    /// The reviewer's per-domain **aesthetic** ratings, on a review of a
+    /// validator-rated run. Stored as a JSON array in the `review.aesthetics`
+    /// column. Empty on a legacy run's review.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aesthetics: Vec<DomainAesthetic>,
     /// The markdown writeup body.
     pub writeup: String,
     /// The reviewer's verdicts on the case's declared checklist items. Stored as
@@ -209,8 +235,12 @@ pub struct RecentReviewSubject {
     /// The reviewed run's raw model id.
     pub model_id: String,
     /// This review's per-domain ratings; empty for a review that rated no domain (a
-    /// game jam), or one whose stored ratings JSON no longer parsed.
+    /// game jam or a validator-rated run), or one whose stored ratings JSON no
+    /// longer parsed.
     pub ratings: Vec<DomainRating>,
+    /// This review's per-domain aesthetic ratings; empty for a legacy run's review,
+    /// or one whose stored aesthetics JSON no longer parsed.
+    pub aesthetics: Vec<DomainAesthetic>,
 }
 
 /// The reviewing account a [`StoredReview`] is attributed to, denormalized from
@@ -365,11 +395,20 @@ impl Db {
     /// the published flag and `published_at`. Marks the snapshot dirty only when
     /// the run is already published (an unpublished run is not in the snapshot, so
     /// re-pushing it changes nothing public).
+    ///
+    /// `manifest` is the run's case version as the definition store holds it (or
+    /// `None` when the store does not have it). It decides whether the run is
+    /// **validator-rated**: for such a run the functional `rating` is decided by
+    /// the validators from the record's `debug_scripts` and written here, at push
+    /// time, so it is visible the moment the run completes and no review ever
+    /// changes it (a re-push recomputes it, like every other record-derived
+    /// column). A legacy run's `rating` stays review-maintained exactly as before.
     pub async fn push(
         &self,
         record: &RunRecord,
         links: &RunLinks,
         events_json: Option<&str>,
+        manifest: Option<&StoredManifest>,
     ) -> Result<PushOutcome> {
         // The stored record always carries the resolved links, so the snapshot's
         // record blob and its `links` sibling never disagree.
@@ -388,11 +427,41 @@ impl Db {
         let existing_published_at = existing.and_then(|model| model.published_at);
 
         // The record-derived sort columns (test type, run time, tokens, cost) are
-        // refreshed on every (re-)push; the review-derived columns (rating /
-        // review_count) are NOT touched here — they are maintained by `add_review`,
-        // and a re-push must preserve an already-reviewed run's aggregate. A brand-
-        // new push writes the zero-review defaults (no rating, count 0).
+        // refreshed on every (re-)push; the review-derived columns (aesthetic /
+        // review_count, and on a legacy run rating) are NOT touched here — they are
+        // maintained by `add_review`, and a re-push must preserve an already-reviewed
+        // run's aggregate. A brand-new push writes the zero-review defaults (no
+        // aesthetic, count 0). On a validator-rated run `rating` is record-derived
+        // — the validators decide it — so it is written (and re-written) here.
         let lifted = lifted_run_metrics(&record);
+        let validator_rated = manifest.is_some_and(StoredManifest::validator_rated);
+        let rating = validator_rated
+            .then(|| lifted_rating(manifest, &record, &[]))
+            .flatten();
+        let mut refreshed_columns = vec![
+            run::Column::StartedAt,
+            run::Column::FinishedAt,
+            run::Column::TestCaseSlug,
+            run::Column::TestCaseVersion,
+            run::Column::Variant,
+            run::Column::EngineSlug,
+            run::Column::HarnessSlug,
+            run::Column::HarnessVersion,
+            run::Column::ModelId,
+            run::Column::GgPreset,
+            run::Column::TestType,
+            run::Column::RunState,
+            run::Column::RunTimeSeconds,
+            run::Column::TotalTokens,
+            run::Column::CostComparable,
+            run::Column::CodeAnalyzerVersion,
+            run::Column::Loaded,
+            run::Column::RecordJson,
+            run::Column::EventsJson,
+        ];
+        if validator_rated {
+            refreshed_columns.extend([run::Column::Rating, run::Column::ValidatorRated]);
+        }
 
         run::Entity::insert(run::ActiveModel {
             id: Set(record.id.clone()),
@@ -413,7 +482,9 @@ impl Db {
             total_tokens: Set(lifted.total_tokens),
             cost_comparable: Set(lifted.cost_comparable),
             code_analyzer_version: Set(lifted.code_analyzer_version),
-            rating: Set(None),
+            rating: Set(rating),
+            aesthetic: Set(None),
+            validator_rated: Set(validator_rated),
             review_count: Set(0),
             loaded: Set(record.validation.loaded),
             published: Set(was_published),
@@ -429,30 +500,12 @@ impl Db {
         .on_conflict(
             // Re-push updates the record and its lifted record-derived columns but
             // never the publish state (`Published`/`PublishedAt`, changed only by
-            // `publish`) nor the review-derived `Rating`/`ReviewCount` (maintained
-            // by `add_review`).
+            // `publish`) nor the review-derived `Aesthetic`/`ReviewCount` (maintained
+            // by `add_review`). `Rating` is review-derived on a legacy run (left
+            // alone) and record-derived on a validator-rated one (rewritten, with the
+            // flag that says so).
             OnConflict::column(run::Column::Id)
-                .update_columns([
-                    run::Column::StartedAt,
-                    run::Column::FinishedAt,
-                    run::Column::TestCaseSlug,
-                    run::Column::TestCaseVersion,
-                    run::Column::Variant,
-                    run::Column::EngineSlug,
-                    run::Column::HarnessSlug,
-                    run::Column::HarnessVersion,
-                    run::Column::ModelId,
-                    run::Column::GgPreset,
-                    run::Column::TestType,
-                    run::Column::RunState,
-                    run::Column::RunTimeSeconds,
-                    run::Column::TotalTokens,
-                    run::Column::CostComparable,
-                    run::Column::CodeAnalyzerVersion,
-                    run::Column::Loaded,
-                    run::Column::RecordJson,
-                    run::Column::EventsJson,
-                ])
+                .update_columns(refreshed_columns)
                 .to_owned(),
         )
         .exec(&txn)
@@ -509,6 +562,7 @@ impl Db {
         edit_note: Option<&str>,
     ) -> Result<bool> {
         let ratings_json = serde_json::to_string(&review.ratings)?;
+        let aesthetics_json = serde_json::to_string(&review.aesthetics)?;
         let checklist_json = serde_json::to_string(&review.checklist)?;
 
         let txn = self.conn().begin().await?;
@@ -533,14 +587,22 @@ impl Db {
         let (id, reviewed_at, edited_at) = match &existing {
             Some(prior) => {
                 let prior_ratings: Vec<DomainRating> = serde_json::from_str(&prior.ratings)?;
+                let prior_aesthetics: Vec<DomainAesthetic> =
+                    serde_json::from_str(&prior.aesthetics)?;
                 let prior_checklist: Vec<ReviewVerdict> = serde_json::from_str(&prior.checklist)?;
                 let diff = test_cabinet_core::review::diff_reviews(
-                    &prior_ratings,
-                    &prior.writeup,
-                    &prior_checklist,
-                    &review.ratings,
-                    &review.writeup,
-                    &review.checklist,
+                    test_cabinet_core::review::ReviewContent {
+                        ratings: &prior_ratings,
+                        aesthetics: &prior_aesthetics,
+                        writeup: &prior.writeup,
+                        checklist: &prior_checklist,
+                    },
+                    test_cabinet_core::review::ReviewContent {
+                        ratings: &review.ratings,
+                        aesthetics: &review.aesthetics,
+                        writeup: &review.writeup,
+                        checklist: &review.checklist,
+                    },
                 );
                 if diff.is_empty() {
                     // Nothing changed: keep the existing timestamps and record no
@@ -583,6 +645,7 @@ impl Db {
             reviewer_username: Set(review.reviewer.username.clone()),
             reviewer_display_name: Set(review.reviewer.display_name.clone()),
             ratings: Set(ratings_json),
+            aesthetics: Set(aesthetics_json),
             writeup: Set(review.writeup.clone()),
             checklist: Set(checklist_json),
             reviewed_at: Set(reviewed_at),
@@ -596,6 +659,7 @@ impl Db {
                     review::Column::ReviewerUsername,
                     review::Column::ReviewerDisplayName,
                     review::Column::Ratings,
+                    review::Column::Aesthetics,
                     review::Column::Writeup,
                     review::Column::Checklist,
                     review::Column::EditedAt,
@@ -605,9 +669,9 @@ impl Db {
         .exec(&txn)
         .await?;
 
-        // Recompute the lifted rating / review_count from the run's full review set
-        // (including the review just written) so the console's sort columns stay in
-        // step with the reviews table.
+        // Recompute the lifted aesthetic / review_count (and, on a legacy run, the
+        // rating) from the run's full review set (including the review just written)
+        // so the console's sort columns stay in step with the reviews table.
         let reviews = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
             .all(&txn)
@@ -615,23 +679,30 @@ impl Db {
             .into_iter()
             .map(stored_review)
             .collect::<Result<Vec<_>>>()?;
-        // The gate is a fact about the run record, not about the reviews, so the
-        // record is read back here to compose it with the freshly-recomputed
-        // aggregate. A record that will not deserialize cannot gate: a storage
-        // problem must not silently mark a run broken.
-        let gate_record = serde_json::from_str::<RunRecord>(&run.record_json).ok();
-        let rating = match &gate_record {
-            Some(record) => lifted_rating(record, &reviews),
-            None => test_cabinet_core::review::aggregate_rating(
-                reviews.iter().map(|review| review.ratings.as_slice()),
-            )
-            .map(|rating| rating.as_str().to_string()),
+        // On a validator-rated run the functional rating is the validators' decision,
+        // written at push time: a review never moves it. On a legacy run it is the
+        // review aggregate. The gate is a fact about the run record, not about the
+        // reviews, so the record is read back here to compose it with the
+        // freshly-recomputed aggregate. A record that will not deserialize cannot
+        // gate: a storage problem must not silently mark a run broken.
+        let rating = if run.validator_rated {
+            run.rating.clone()
+        } else {
+            match serde_json::from_str::<RunRecord>(&run.record_json).ok() {
+                Some(record) => lifted_rating(None, &record, &reviews),
+                None => test_cabinet_core::review::aggregate_rating(
+                    reviews.iter().map(|review| review.ratings.as_slice()),
+                )
+                .map(|rating| rating.as_str().to_string()),
+            }
         };
+        let aesthetic = lifted_aesthetic(&reviews);
         let review_count = reviews.len() as i64;
 
         let published = run.published;
         let mut active = run.into_active_model();
         active.rating = Set(rating);
+        active.aesthetic = Set(aesthetic);
         active.review_count = Set(review_count);
         active.update(&txn).await?;
 
@@ -665,10 +736,10 @@ impl Db {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
 
-        // The gate (infrastructure → refuse; completed needs ≥1 review;
-        // catastrophic/timed-out waived) is shared with
-        // [`Db::ensure_publishable`], the publish-queue's at-enqueue check.
-        gate_publishable(&txn, run_id, &run.run_state, false).await?;
+        // The gate (infrastructure → refuse; a legacy completed run needs ≥1 review;
+        // a validator-rated one and the catastrophic/timed-out tiers are waived) is
+        // shared with [`Db::ensure_publishable`], the publish-queue's at-enqueue check.
+        gate_publishable(&txn, run_id, &run.run_state, run.validator_rated, false).await?;
 
         let newly_published = !run.published;
         // Preserve the first publish's timestamp on re-publish.
@@ -1074,13 +1145,14 @@ impl Db {
             .count(&self.conn())
             .await? as usize;
 
-        // Select only the three columns the charts need, joined to the review's run for
+        // Select only the four columns the charts need, joined to the review's run for
         // its subject. Column order here is the tuple order below.
-        let rows: Vec<(String, String, String)> = review::Entity::find()
+        let rows: Vec<(String, String, String, String)> = review::Entity::find()
             .select_only()
             .column(run::Column::TestCaseSlug)
             .column(run::Column::ModelId)
             .column(review::Column::Ratings)
+            .column(review::Column::Aesthetics)
             .filter(review::Column::ReviewerUserId.eq(user_id))
             .join(JoinType::InnerJoin, review::Relation::Run.def())
             .order_by_desc(review::Column::ReviewedAt)
@@ -1093,10 +1165,11 @@ impl Db {
         let subjects = rows
             .into_iter()
             .map(
-                |(test_case_slug, model_id, ratings_json)| RecentReviewSubject {
+                |(test_case_slug, model_id, ratings_json, aesthetics_json)| RecentReviewSubject {
                     test_case_slug,
                     model_id,
                     ratings: serde_json::from_str(&ratings_json).unwrap_or_default(),
+                    aesthetics: serde_json::from_str(&aesthetics_json).unwrap_or_default(),
                 },
             )
             .collect();
@@ -1387,6 +1460,9 @@ impl Db {
             out.push(StoredRun {
                 record,
                 reviews: review_map.remove(&run.id).unwrap_or_default(),
+                rating: run.rating.as_deref().and_then(Rating::parse),
+                aesthetic: run.aesthetic.as_deref().and_then(AestheticRating::parse),
+                validator_rated: run.validator_rated,
                 links: RunLinks {
                     source_repo: link.as_ref().and_then(|l| l.source_repo.clone()),
                     playable_build: link.and_then(|l| l.playable_build.clone()),
@@ -1592,15 +1668,19 @@ async fn touch_run<C: ConnectionTrait>(conn: &C, run_id: &str) -> Result<()> {
 /// Publishability is decided by the run's terminal state. Infrastructure failures
 /// are the Test Cabinet's fault, not a model result, and canceled runs were stopped
 /// by an operator rather than reaching an outcome; neither is ever publishable.
-/// Completed runs publish through the review gate (≥1 review). The publishable
-/// failure tiers — catastrophic, timed-out, and harness-error —
-/// are real model signal: publishable, but with no review checklist to complete, so the
-/// review-count requirement is waived for them (they publish through the separate
-/// publish-failures path).
+/// Legacy completed runs publish through the review gate (≥1 review). A
+/// **validator-rated** completed run needs none: its functional rating and score
+/// are decided by its validators and stand on their own, so a blatantly broken
+/// build reaches the gallery without costing a reviewer's time (an aesthetic review
+/// can still be added later). The publishable failure tiers — catastrophic,
+/// timed-out, and harness-error — are real model signal: publishable, but with no
+/// review checklist to complete, so the review-count requirement is waived for them
+/// (they publish through the separate publish-failures path).
 async fn gate_publishable<C: ConnectionTrait>(
     conn: &C,
     run_id: &str,
     run_state: &str,
+    validator_rated: bool,
     allow_auto_validated: bool,
 ) -> Result<()> {
     if never_publishable_states().contains(&run_state) {
@@ -1614,7 +1694,7 @@ async fn gate_publishable<C: ConnectionTrait>(
         )));
     }
     let is_publishable_failure = publishable_failure_states().contains(&run_state);
-    if !is_publishable_failure {
+    if !is_publishable_failure && !validator_rated {
         let review_count = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
             .count(conn)
@@ -1699,6 +1779,7 @@ fn stored_review_with_revisions(
     revisions: Vec<ReviewRevision>,
 ) -> Result<StoredReview> {
     let ratings: Vec<DomainRating> = serde_json::from_str(&model.ratings)?;
+    let aesthetics: Vec<DomainAesthetic> = serde_json::from_str(&model.aesthetics)?;
     let checklist: Vec<ReviewVerdict> = serde_json::from_str(&model.checklist)?;
     Ok(StoredReview {
         reviewer: Reviewer {
@@ -1707,6 +1788,7 @@ fn stored_review_with_revisions(
             display_name: model.reviewer_display_name,
         },
         ratings,
+        aesthetics,
         writeup: model.writeup,
         checklist,
         reviewed_at: model.reviewed_at,
@@ -1807,10 +1889,11 @@ fn lifted_gg_preset(record: &RunRecord) -> Option<String> {
         .and_then(|set| set.preset.clone())
 }
 
-/// The run's aggregate rating — the worst rating any reviewer gave any domain —
-/// or `None` when the run carries no reviews. The single source of truth for the
-/// lifted `run.rating` column and the snapshot's summary cards; wraps the core
-/// [`aggregate_rating`](test_cabinet_core::review::aggregate_rating).
+/// A **legacy** run's functional rating: the aggregate review rating — the worst
+/// rating any reviewer gave any domain — or `None` when the run carries no reviews.
+/// Wraps the core [`aggregate_rating`](test_cabinet_core::review::aggregate_rating);
+/// [`functional_rating`] is the seam that picks between this and the
+/// validator-decided rating.
 ///
 /// The record is taken as well as the reviews because a run can be rated `broken`
 /// *without* any reviewer saying so: a case's gating `typecheck` that ran and failed
@@ -1828,6 +1911,54 @@ pub(crate) fn aggregate_review_rating(
             reviews.iter().map(|review| review.ratings.as_slice()),
         ),
     )
+}
+
+/// The run's aggregate **aesthetic** rating — the worst aesthetic rating any
+/// reviewer gave any domain — or `None` when no review rated the aesthetic channel
+/// (a legacy run, or a validator-rated run nobody has reviewed yet). The single
+/// source of truth for the lifted `run.aesthetic` column and the summary cards;
+/// wraps the core [`aggregate_aesthetic`](test_cabinet_core::review::aggregate_aesthetic).
+/// No gate composes over it: the toolchain gate is a functional verdict.
+pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<AestheticRating> {
+    test_cabinet_core::review::aggregate_aesthetic(
+        reviews.iter().map(|review| review.aesthetics.as_slice()),
+    )
+}
+
+/// **The run's functional rating** — the single seam every consumer derives it
+/// through: the lifted `run.rating` column (at push and on review-add) and the
+/// summary cards (the console listing and the snapshot).
+///
+/// `manifest` is the run's case version as the store holds it (`None` when the
+/// store does not have it). On a [validator-rated](StoredManifest::validator_rated)
+/// version the rating is decided by the validators alone
+/// ([`validator_rating`](test_cabinet_core::review::validator_rating) over the
+/// record's `debug_scripts`, each failing scored point capping its declared
+/// domains at its failure cap) and `reviews` are not consulted — it is `Some` from
+/// the moment the run completes. Otherwise it is the legacy review aggregate
+/// ([`aggregate_review_rating`]), `None` while the run has no reviews. Both are
+/// composed with the toolchain gate.
+pub(crate) fn functional_rating(
+    manifest: Option<&StoredManifest>,
+    record: &RunRecord,
+    reviews: &[StoredReview],
+) -> Option<Rating> {
+    match manifest.filter(|manifest| manifest.validator_rated()) {
+        Some(manifest) => {
+            let variant = record.subject.variant.as_str();
+            let items = crate::snapshot::review_items_for(manifest, variant);
+            let domains = crate::snapshot::domains_for(manifest, variant);
+            test_cabinet_core::review::validator_rating(
+                record.gated_broken(),
+                &test_cabinet_core::review::validator_domain_ratings(
+                    &domains,
+                    &items,
+                    &record.validation.debug_scripts,
+                ),
+            )
+        }
+        None => aggregate_review_rating(record, reviews),
+    }
 }
 
 /// Reviewer coverage plans and the run/job counts the coverage matrix is built
@@ -4074,10 +4205,20 @@ fn gate_from_row(row: &ladder::Model) -> Result<Gate> {
     })
 }
 
-/// The lifted `run.rating` column value: the aggregate rating as its lowercase
-/// wire token, or `None` when the run carries no reviews.
-fn lifted_rating(record: &RunRecord, reviews: &[StoredReview]) -> Option<String> {
-    aggregate_review_rating(record, reviews).map(|rating| rating.as_str().to_string())
+/// The lifted `run.rating` column value: the [functional rating](functional_rating)
+/// as its lowercase wire token, or `None` when a legacy run carries no reviews.
+fn lifted_rating(
+    manifest: Option<&StoredManifest>,
+    record: &RunRecord,
+    reviews: &[StoredReview],
+) -> Option<String> {
+    functional_rating(manifest, record, reviews).map(|rating| rating.as_str().to_string())
+}
+
+/// The lifted `run.aesthetic` column value: the aggregate aesthetic rating as its
+/// lowercase wire token, or `None` when no review rated the aesthetic channel.
+fn lifted_aesthetic(reviews: &[StoredReview]) -> Option<String> {
+    aggregate_review_aesthetic(reviews).map(|rating| rating.as_str().to_string())
 }
 
 /// The test types graded automatically, which therefore never await a human
@@ -4262,19 +4403,22 @@ fn state_slice(state: SummaryState) -> Select<run::Entity> {
         }
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
         // Mirrors `gate_publishable` as a query: not already public, never one of the
-        // states that can never be published, and either a publishable failure tier
-        // (no review required) or a run someone has reviewed. The exclusion is
-        // `never_publishable_states` rather than a written-out state for the reason
-        // that helper exists: a review is enough to satisfy the second half of the
-        // rule, so any state naming itself unpublishable has to be refused by the
-        // first half or a reviewed one would be listed and then refused by the gate.
-        // Kept in step with the gate by `publishable_slice_matches_the_publish_gate`.
+        // states that can never be published, and one of: a publishable failure tier
+        // (no review required), a validator-rated run (its functional rating and
+        // score stand on their own, so no review is required either), or a run
+        // someone has reviewed. The exclusion is `never_publishable_states` rather
+        // than a written-out state for the reason that helper exists: a review is
+        // enough to satisfy the second half of the rule, so any state naming itself
+        // unpublishable has to be refused by the first half or a reviewed one would
+        // be listed and then refused by the gate. Kept in step with the gate by
+        // `publishable_slice_matches_the_publish_gate`.
         SummaryState::Publishable => query
             .filter(run::Column::Published.eq(false))
             .filter(run::Column::RunState.is_not_in(never_publishable_states()))
             .filter(
                 Condition::any()
                     .add(run::Column::RunState.is_in(publishable_failure_states()))
+                    .add(run::Column::ValidatorRated.eq(true))
                     .add(run::Column::ReviewCount.gt(0)),
             ),
         SummaryState::Unreviewed => query
@@ -5190,7 +5334,14 @@ impl Db {
             .ok_or_else(|| {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
-        gate_publishable(&self.conn(), run_id, &run.run_state, false).await
+        gate_publishable(
+            &self.conn(),
+            run_id,
+            &run.run_state,
+            run.validator_rated,
+            false,
+        )
+        .await
     }
 
     /// Gate a run for publishing **as a comparison arm run**: the same checks as
@@ -5205,7 +5356,14 @@ impl Db {
             .ok_or_else(|| {
                 crate::error::BackendError::NotFound(format!("run `{run_id}` not found"))
             })?;
-        gate_publishable(&self.conn(), run_id, &run.run_state, true).await
+        gate_publishable(
+            &self.conn(),
+            run_id,
+            &run.run_state,
+            run.validator_rated,
+            true,
+        )
+        .await
     }
 
     /// The publish job already releasing `run_id` — one that is `queued`, or
@@ -5844,7 +6002,10 @@ impl Db {
             };
             let lifted = lifted_run_metrics(&record);
             let reviews = review_map.get(&row.id).map(Vec::as_slice).unwrap_or(&[]);
-            let rating = lifted_rating(&record, reviews);
+            // Rows this backfill fills predate validator-rated versions, so the
+            // legacy review aggregate is the right rating for every one of them.
+            let rating = lifted_rating(None, &record, reviews);
+            let aesthetic = lifted_aesthetic(reviews);
             let review_count = reviews.len() as i64;
 
             let id = row.id.clone();
@@ -5855,6 +6016,7 @@ impl Db {
             active.cost_comparable = Set(lifted.cost_comparable);
             active.code_analyzer_version = Set(lifted.code_analyzer_version);
             active.rating = Set(rating);
+            active.aesthetic = Set(aesthetic);
             active.review_count = Set(review_count);
             active.gg_preset = Set(lifted.gg_preset);
             active.update(&self.conn()).await?;
@@ -6358,15 +6520,14 @@ impl Db {
             openrouter_slug: Set(row.openrouter_slug),
             provider: Set(row.provider),
             user_id: Set(row.user_id),
+            language: Set(row.language),
             samples: Set(row.samples),
             max_tokens: Set(row.max_tokens),
-            full_context: Set(row.full_context),
             request_json: Set(row.request_json),
             status: Set(row.status),
             error: Set(row.error),
             verdict: Set(row.verdict),
-            base_clean_rate: Set(row.base_clean_rate),
-            best_variation_clean_rate: Set(row.best_variation_clean_rate),
+            pass_rate: Set(row.pass_rate),
             spend: Set(row.spend),
             created_at: Set(row.created_at),
             finished_at: Set(row.finished_at),
@@ -6409,13 +6570,16 @@ impl Db {
         model_probe_item::ActiveModel {
             id: Set(row.id),
             probe_id: Set(row.probe_id),
-            condition: Set(row.condition),
+            language: Set(row.language),
+            scenario: Set(row.scenario),
+            prompt: Set(row.prompt),
             sample: Set(row.sample),
             provider: Set(row.provider),
             finish_reason: Set(row.finish_reason),
             native_finish_reason: Set(row.native_finish_reason),
             label: Set(row.label),
-            clean: Set(row.clean),
+            pass: Set(row.pass),
+            program_text: Set(row.program_text),
             response_text: Set(row.response_text),
             reasoning_text: Set(row.reasoning_text),
             prompt_tokens: Set(row.prompt_tokens),
@@ -6430,9 +6594,8 @@ impl Db {
         Ok(())
     }
 
-    /// One probe's calls, in matrix order (condition insertion order is not
-    /// stored, so items are ordered by creation, which the sequential runner
-    /// makes matrix order).
+    /// One probe's calls, in case order (items are ordered by creation, which
+    /// the sequential runner makes case-then-sample order).
     pub async fn list_model_probe_items(
         &self,
         probe_id: &str,
@@ -6447,7 +6610,7 @@ impl Db {
 
     /// The `/stats/providers` probe projection: every probe item's serving
     /// provider, the probed model's catalog slug (via the owning probe), its
-    /// clean flag, and whether the call errored before classification —
+    /// pass flag, and whether the call errored before classification —
     /// four columns across the whole store, folded in Rust by
     /// [`fold_probe_providers`](crate::stats::fold_probe_providers). The label
     /// travels only as its absence: `None` is the errored call, exactly the
@@ -6458,7 +6621,7 @@ impl Db {
                 .select_only()
                 .column(model_probe_item::Column::Provider)
                 .column(model_probe::Column::ModelSlug)
-                .column(model_probe_item::Column::Clean)
+                .column(model_probe_item::Column::Pass)
                 .column(model_probe_item::Column::Label)
                 .join(JoinType::InnerJoin, model_probe_item::Relation::Probe.def())
                 .into_tuple()
@@ -6466,14 +6629,14 @@ impl Db {
                 .await?;
         Ok(rows
             .into_iter()
-            .map(|(provider, model_slug, clean, label)| {
-                (provider, model_slug, clean, label.is_none())
+            .map(|(provider, model_slug, pass, label)| {
+                (provider, model_slug, pass, label.is_none())
             })
             .collect())
     }
 
     /// Finish a probe: stamp its terminal status (`complete`/`failed`), the
-    /// verdict and clean rates when it completed, the failure message when it did
+    /// verdict and clean rate when it completed, the failure message when it did
     /// not, and the summed spend. Returns whether a row matched.
     #[allow(clippy::too_many_arguments)]
     pub async fn finish_model_probe(
@@ -6482,8 +6645,7 @@ impl Db {
         status: &str,
         error: Option<String>,
         verdict: Option<String>,
-        base_clean_rate: Option<f64>,
-        best_variation_clean_rate: Option<f64>,
+        pass_rate: Option<f64>,
         spend: f64,
         finished_at: &str,
     ) -> Result<bool> {
@@ -6491,14 +6653,7 @@ impl Db {
             .col_expr(model_probe::Column::Status, Expr::value(status))
             .col_expr(model_probe::Column::Error, Expr::value(error))
             .col_expr(model_probe::Column::Verdict, Expr::value(verdict))
-            .col_expr(
-                model_probe::Column::BaseCleanRate,
-                Expr::value(base_clean_rate),
-            )
-            .col_expr(
-                model_probe::Column::BestVariationCleanRate,
-                Expr::value(best_variation_clean_rate),
-            )
+            .col_expr(model_probe::Column::PassRate, Expr::value(pass_rate))
             .col_expr(model_probe::Column::Spend, Expr::value(spend))
             .col_expr(model_probe::Column::FinishedAt, Expr::value(finished_at))
             .filter(model_probe::Column::Id.eq(id))

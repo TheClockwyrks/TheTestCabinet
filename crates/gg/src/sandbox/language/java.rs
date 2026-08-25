@@ -8,9 +8,6 @@
 //! * [`source`] — what gg does to a model's Java before javac sees it (**nothing**), the one
 //!   convention that costs, and the code-module wrapper, which is a module author's file rather than
 //!   a model's reply;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, and the text-block lexer — two of whose
-//!   answers are this arm's alone;
 //! * `packages/gg-sandbox-java/src/gg/` — the SDK, and every word of prose a model reads about it;
 //! * the **signature catalogue** — reflected out of that SDK's own Javadoc by `javadoc` and a
 //!   doclet of gg's own, and generated into this build's `OUT_DIR` rather than committed anywhere
@@ -88,9 +85,6 @@ pub(super) mod compile;
 
 #[path = "java.source.rs"]
 pub(super) mod source;
-
-#[path = "java.healing.rs"]
-pub(super) mod healing;
 
 /// This arm's catalogue, reflected out of the SDK's own Javadoc by
 /// `packages/gg-sandbox-java/signatures.sh` with `javadoc` and a doclet of gg's own.
@@ -245,10 +239,6 @@ impl ProgramLanguage for Java {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::JAVA_DIALECT
     }
 
     /// [`gg.views.Views.openFile("src/Main.java");`](self::open_file_statement), with the window as
@@ -545,7 +535,7 @@ fn listed(names: &[&str]) -> String {
     }
 }
 
-/// The opening turn: **one** search naming every module the agent holds, then a `List.of(…)` of the
+/// The opening turn: **one** search naming every module gg handed it, then a `List.of(…)` of the
 /// names to open as documentation views with an enhanced `for` over it — in the `main` of a class gg
 /// declares, because this program is **executed** as the session's first turn.
 ///

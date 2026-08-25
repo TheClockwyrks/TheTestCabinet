@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ProgressBar, SegmentedControl } from "@test-cabinet/ui";
+import { ProgressBar, SegmentedControl, Spinner } from "@test-cabinet/ui";
 import { EventFeed } from "../../../components/EventFeed";
 import { RawOutputLog } from "../../../components/RawOutputLog";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
@@ -38,7 +38,7 @@ function RunEventsBody({ runId }: { runId: string }) {
       progress && progress.total ? progress.received / progress.total : null;
     return (
       <div className={styles.loading}>
-        <p className={styles.notice}>Loading events…</p>
+        <Spinner variant="flap" label="Loading events…" />
         <ProgressBar value={value} ariaLabel="Loading recorded events" />
         {progress && progress.received > 0 && (
           <p className={styles.progressDetail}>

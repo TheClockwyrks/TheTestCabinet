@@ -7,17 +7,20 @@ import type { GgSubagentScope } from "@test-cabinet/run-record/gg";
 import { SegmentedControl } from "@test-cabinet/ui";
 import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
+import { ResetControl } from "../../../components/ResetControl";
 import { familyOf } from "../../../data/families";
 import {
   AGENT_MODES,
   AGENT_MODE_HINT,
   CAP_GROUPS,
   FSM_CAP,
+  GG_MODULES,
   LOOP_DETECTION_HINT,
   LOOP_DETECTION_SPECS,
   RESPONSES_AS_CODE_CAP,
   SUBAGENT_SCOPES,
   capabilitiesForMode,
+  openingTurnFunctions,
   type CapGroup,
   type CapSpec,
   type GgAgentMode,
@@ -38,9 +41,13 @@ import {
   blankModelSlot,
   capabilityDraftFor,
   armLoopDetection,
+  defaultOpeningTurn,
   isValidAgentSlug,
   loopDetectionError,
   loopDetectionWarning,
+  moduleHeld,
+  openingTurnIsDefault,
+  operationHeld,
   referencedModelSlots,
   setFeatureBundle,
   withCapabilityGrants,
@@ -70,6 +77,7 @@ type AgentTab =
   | "agent"
   | "tools"
   | "apis"
+  | "opening"
   | "slots"
   | "roster"
   | "hooks"
@@ -83,7 +91,9 @@ type AgentTab =
  * tools, no APIs, nobody to spawn, no lifecycle of its own to hook and — running no model
  * — nothing a model slot could fill; it has states, which no other type has. Tools and
  * RaC are the same capabilities offered two ways, so each gets the tab named for the
- * shape it actually meets them in.
+ * shape it actually meets them in. The opening turn is a code agent's alone: gg seeds it
+ * as a program run before the model's first, and a tool-calling agent writes no program
+ * for one to be seeded in front of.
  *
  * Absent rather than disabled: an empty section for a value gg would never read invites
  * configuring a run that does not exist.
@@ -92,7 +102,7 @@ function tabsForMode(mode: GgAgentMode): ReadonlyArray<AgentTab> {
   if (mode === "fsm") return ["agent", "states"];
   return [
     "agent",
-    mode === "rac" ? "apis" : "tools",
+    ...(mode === "rac" ? (["apis", "opening"] as const) : (["tools"] as const)),
     "slots",
     "roster",
     "hooks",
@@ -103,6 +113,7 @@ const AGENT_TAB_LABELS: Record<AgentTab, string> = {
   agent: "Agent",
   tools: "Tools",
   apis: "APIs",
+  opening: "Opening Turn",
   slots: "Slots",
   roster: "Roster",
   hooks: "Hooks",
@@ -233,6 +244,25 @@ export function GgAgentEditor({
     bundle: { tools: ReadonlyArray<string>; operations: ReadonlyArray<string> },
     on: boolean,
   ) => onPatch(setFeatureBundle(agent, bundle, on));
+  // The opening turn's two lists, each edited one entry at a time. An entry is appended
+  // rather than re-sorted, because order is meaningful — the functions are opened in the
+  // listed order — and removed by name. Nothing here asks whether the entry is held: the
+  // draft keeps whatever was listed, and only the held entries are written
+  // ([heldOpeningTurn]), which is what lets a capability be switched off and on again
+  // without the operator re-listing what it sells.
+  const setOpeningEntry = (
+    list: "modules" | "functions",
+    id: string,
+    on: boolean,
+  ) => {
+    const current = agent.openingTurn[list];
+    const next = on
+      ? current.includes(id)
+        ? current
+        : [...current, id]
+      : current.filter((entry) => entry !== id);
+    onPatch({ openingTurn: { ...agent.openingTurn, [list]: next } });
+  };
   // Loop detection's switch and its knobs, written separately: the knobs survive the
   // switch going off, so an operator who tunes the detector and then disarms it finds
   // their settings still there when they arm it again.
@@ -856,6 +886,107 @@ export function GgAgentEditor({
             );
           })}
         </>
+      )}
+
+      {/* Opening turn — what gg puts in front of a code agent's first turn. Per module
+          rather than per capability, because the lists gg reads are written in gg's own
+          grouping (a module and its functions), and two capabilities may sell one module's
+          functions. A module none of whose functions this agent holds is shown but cannot
+          be listed: gg would drop it at seed time, and a switch that promised otherwise
+          would be a control for a value the run never reads. */}
+      {activeTab === "opening" && (
+        <section className={gg.rosterWidget}>
+          <p className={runExec.sectionLabel}>
+            Opening turn
+            <HelpTip text="Before this agent's first turn, gg writes and runs one program of its own: a documentation search naming every listed module, which leaves the module's brief and function list in the window, and then a documentation view opened per listed function, which puts its full signature there. Listing a module and opening a function's documentation are independent — a function's documentation can be opened without its module being listed, and a listed module opens no function on its own. Leaving both lists empty seeds no program at all." />
+            {/* One reset for the tab as a whole: the two lists are one setting, seeded to
+                the same default a fresh agent gets, and the control shows itself exactly
+                while they have moved off it. Sat beside the section label rather than in a
+                wrapping label, so it labels nothing but itself. */}
+            {!readOnly && !openingTurnIsDefault(agent.openingTurn) && (
+              <ResetControl
+                label="Opening turn"
+                onReset={() => onPatch({ openingTurn: defaultOpeningTurn() })}
+              />
+            )}
+          </p>
+          <p className={`${runExec.muted} ${gg.backdropNote}`}>
+            What this agent&rsquo;s window opens with. Listing a module puts its
+            brief and the list of its functions in the window; opening a
+            function&rsquo;s documentation puts its full signature there. The
+            two are independent, and only what this agent holds can be listed or
+            opened — the rest is dropped when the agent is saved.
+          </p>
+          <div className={gg.capList}>
+            {GG_MODULES.map((module) => {
+              const held = moduleHeld(agent, module.id);
+              const listed = agent.openingTurn.modules.includes(module.id);
+              // The rows: every function of this module the agent holds, in catalog
+              // order. A function it does not hold has no row at all rather than a
+              // disabled one — the capability that would sell it is a tab away, and a
+              // greyed checkbox says less than its absence does.
+              const functions = openingTurnFunctions().filter(
+                (fn) => fn.module === module.id && operationHeld(agent, fn.id),
+              );
+              return (
+                <div
+                  key={module.id}
+                  className={`${gg.capRow}${listed && held ? "" : ` ${gg.capOff}`}`}
+                  role="group"
+                  aria-label={`${module.name} module`}
+                >
+                  <label className={gg.capHeader}>
+                    <Switch
+                      checked={listed}
+                      disabled={readOnly || !held}
+                      onChange={(next) =>
+                        setOpeningEntry("modules", module.id, next)
+                      }
+                    />
+                    <span className={gg.capName}>{module.name}</span>
+                    <span className={gg.capId}>{module.id}</span>
+                    <span className={gg.capId}>List module</span>
+                  </label>
+                  <p className={gg.capPurpose}>{module.purpose}</p>
+                  {!held ? (
+                    <p className={gg.capPurpose}>
+                      No capability from this module is enabled, so it cannot be
+                      listed.
+                    </p>
+                  ) : (
+                    <div className={gg.capBody}>
+                      {functions.map((fn) => (
+                        <label key={fn.id} className={gg.featureLabel}>
+                          <input
+                            type="checkbox"
+                            checked={agent.openingTurn.functions.includes(
+                              fn.id,
+                            )}
+                            disabled={readOnly}
+                            onChange={(e) =>
+                              setOpeningEntry(
+                                "functions",
+                                fn.id,
+                                e.target.checked,
+                              )
+                            }
+                          />
+                          <span className={gg.featureName}>{fn.id}</span>
+                          <span className={gg.capId}>
+                            Open documentation ·{" "}
+                            {fn.offeredBy
+                              ? `offered by ${fn.offeredBy.name}`
+                              : "always available"}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       {/* Slots — the launch-time model parameters this agent's own bindings defer to.

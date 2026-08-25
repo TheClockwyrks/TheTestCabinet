@@ -174,9 +174,8 @@ gg marks up to four breakpoints per request, which is Anthropic's cap:
   (a marker at a shifting offset would describe a prefix no earlier turn ever
   wrote, and so would never be a cache hit);
 - one at the tail, which writes this turn's prefix for the next turn to read.
-  The tail walks back past the trailing slot messages — the context-usage signal
-  and the [contract notice](/gg/prompts/#the-trailing-contract-notice), both
-  re-rendered at the end of every request — because a prefix ending on one never
+  The tail walks back past the trailing slot message — the context-usage signal,
+  re-rendered at the end of every request — because a prefix ending on it never
   recurs, so a marker there writes an entry nothing ever reads.
 
 The markers go only to the Anthropic family, and every content-bearing message
@@ -299,9 +298,6 @@ the console is [Configurations](/gg/configurations/).
 - [Languages](/gg/languages/overview/) — which language a program is written in,
   treated as an axis: the rules an agent-facing surface obeys in any language,
   what a language supplies to be registered, and what adding another one costs.
-- [Response healing](/gg/response-healing/) — the repairs gg makes to a reply
-  before running it as a program, counted on the run and shown to the operator
-  but never disclosed to the model.
 - [Program library](/gg/program-library/) — keep every program an agent runs, so
   it can fetch one back, patch it, and hand it over to be run again.
 - Close documentation (`docview-close`) — let an agent take a [documentation

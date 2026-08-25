@@ -48,16 +48,15 @@ fn breakdown(fullness: f64) -> GgTelemetryKind {
     }
 }
 
-/// A `CodeExecution` event carrying `healing` — one code-shaped turn of a language that compiles
-/// nothing, which is what TypeScript's type-strip is. The summary reads the healing record, the
-/// compile figure and the event's existence, so every other field is the shape a turn that ran would
-/// really carry.
-fn code_turn(healing: GgResponseHealing) -> GgTelemetryKind {
-    code_turn_compiling(healing, None)
+/// A `CodeExecution` event — one program of a language that compiles nothing, which is what
+/// TypeScript's type-strip is. The summary reads the compile figure and the event's existence, so
+/// every other field is the shape a program that ran would really carry.
+fn code_turn() -> GgTelemetryKind {
+    code_turn_compiling(None)
 }
 
-/// The same turn, from a language whose prepare step invoked a compiler and reported what it cost.
-fn code_turn_compiling(healing: GgResponseHealing, compile_ms: Option<u64>) -> GgTelemetryKind {
+/// The same program, from a language whose prepare step invoked a compiler and reported what it cost.
+fn code_turn_compiling(compile_ms: Option<u64>) -> GgTelemetryKind {
     GgTelemetryKind::CodeExecution {
         ok: true,
         tool_calls: 0,
@@ -70,15 +69,6 @@ fn code_turn_compiling(healing: GgResponseHealing, compile_ms: Option<u64>) -> G
         logs_suppressed: 0,
         compile_wait_ms: None,
         compile_ms,
-        healing,
-    }
-}
-
-/// A healing record for a response that was repaired by `strategies` and then ran.
-fn healed(strategies: &[GgHealingStrategy]) -> GgResponseHealing {
-    GgResponseHealing {
-        strategies: strategies.to_vec(),
-        ..GgResponseHealing::default()
     }
 }
 
@@ -175,9 +165,7 @@ fn empty_tracker_finalizes_to_a_zeroed_summary() {
     assert!(summary.slot_costs.is_empty());
     // The effective toolset is empty until the binary records it off the assembled registry.
     assert!(summary.effective_tools.is_empty());
-    // Nothing was healed because nothing was ever sent to heal.
     assert_eq!(summary.code_executions, 0);
-    assert_eq!(summary.healing, GgHealingSummary::default());
     // Nothing errored because no turn was ever recorded — and a zeroed rollup with a zero
     // denominator is the honest answer, not "an error rate of nothing".
     assert_eq!(summary.errors, GgErrorSummary::default());
@@ -267,7 +255,6 @@ fn counts_compactions_and_context_overflow() {
                 skills: 0,
                 tasks: 0,
                 memories: 0,
-                issues: 0,
             },
             before_by_source: Vec::new(),
             after_by_source: Vec::new(),
@@ -465,70 +452,10 @@ fn observing_the_terminal_events_is_a_no_op() {
     assert!(summary.slot_costs.is_empty());
 }
 
-/// The healing rollup is folded from the very events `code_executions` counts, so a mixed run —
-/// clean turns, repaired turns, a turn repaired twice by one strategy, and one the pipeline could
-/// not converge on — totals every counter exactly, and the denominator counts *turns* rather than
-/// only the ones that needed something.
+/// A tool-calling run executes no programs, so its `codeExecutions` denominator and its compile
+/// figure are both zero even over a busy stream.
 #[test]
-fn the_healing_rollup_folds_every_code_execution() {
-    let tracker = SessionSummaryTracker::new();
-
-    // A clean program: nothing to repair, so it contributes only to the denominator.
-    tracker.observe(None, &code_turn(GgResponseHealing::default()));
-    // A fenced program padded with prose: two strategies, one heal.
-    tracker.observe(
-        None,
-        &code_turn(healed(&[
-            GgHealingStrategy::StripFences,
-            GgHealingStrategy::StripProse,
-        ])),
-    );
-    // Nested fences: the same strategy twice on one response is two applications, one heal.
-    tracker.observe(
-        None,
-        &code_turn(healed(&[
-            GgHealingStrategy::StripFences,
-            GgHealingStrategy::StripFences,
-        ])),
-    );
-    // The pipeline could not reach a fixpoint, so every repair was discarded and the response ran
-    // exactly as sent — an unusual response that was nonetheless healed of nothing.
-    tracker.observe(
-        None,
-        &code_turn(GgResponseHealing {
-            did_not_converge: true,
-            ..GgResponseHealing::default()
-        }),
-    );
-
-    let summary = tracker.finalize("completed");
-    assert_eq!(
-        summary.code_executions, 4,
-        "every code-shaped turn counts, including the two that needed nothing"
-    );
-    assert_eq!(
-        summary.healing,
-        GgHealingSummary {
-            healed: 2,
-            applications: 4,
-            strip_fences: 3,
-            strip_prose: 1,
-            drop_doubled_response: 0,
-            // Nothing recorded an armed set on this tracker: `record_healing` is a launch-time
-            // fact, and these events were folded on their own.
-            enabled: Vec::new(),
-        }
-    );
-    assert!(
-        summary.healing.applications >= summary.healing.healed,
-        "a heal is at least one application, since one reply may need several"
-    );
-}
-
-/// A tool-calling run never heals anything, because healing only exists on the responses-as-code
-/// path — so its rollup and its denominator are both zero even over a busy stream.
-#[test]
-fn a_tool_calling_run_reports_a_zeroed_healing_rollup() {
+fn a_tool_calling_run_reports_no_code_executions() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(
         None,
@@ -559,7 +486,6 @@ fn a_tool_calling_run_reports_a_zeroed_healing_rollup() {
     let summary = tracker.finalize("completed");
     assert_eq!(summary.execution_mode, "tool_calling");
     assert_eq!(summary.code_executions, 0);
-    assert_eq!(summary.healing, GgHealingSummary::default());
     assert_eq!(
         summary.compile_ms, 0,
         "a tool-calling run compiles nothing, and says so rather than saying nothing"
@@ -578,23 +504,13 @@ fn a_tool_calling_run_reports_a_zeroed_healing_rollup() {
 fn the_compile_rollup_folds_every_code_execution_that_reported_one() {
     let tracker = SessionSummaryTracker::new();
 
-    tracker.observe(
-        None,
-        &code_turn_compiling(GgResponseHealing::default(), Some(1_400)),
-    );
-    // A repaired reply compiles like any other, and its cost counts the same.
-    tracker.observe(
-        None,
-        &code_turn_compiling(healed(&[GgHealingStrategy::StripFences]), Some(1_100)),
-    );
-    // The turn the compiler rejected: it cost real seconds and is exactly the turn whose cost would
-    // otherwise vanish, because nothing else about it is non-zero.
-    tracker.observe(
-        None,
-        &code_turn_compiling(GgResponseHealing::default(), Some(3_900)),
-    );
-    // A turn that reported no figure at all — the shape every TypeScript turn has.
-    tracker.observe(None, &code_turn(GgResponseHealing::default()));
+    tracker.observe(None, &code_turn_compiling(Some(1_400)));
+    tracker.observe(None, &code_turn_compiling(Some(1_100)));
+    // The program the compiler rejected: it cost real seconds and is exactly the one whose cost
+    // would otherwise vanish, because nothing else about it is non-zero.
+    tracker.observe(None, &code_turn_compiling(Some(3_900)));
+    // A program that reported no figure at all — the shape every TypeScript program has.
+    tracker.observe(None, &code_turn());
 
     let summary = tracker.finalize("completed");
     assert_eq!(
@@ -614,8 +530,8 @@ fn the_compile_rollup_folds_every_code_execution_that_reported_one() {
 #[test]
 fn a_run_that_compiled_nothing_reports_zero_rather_than_nothing() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(None, &code_turn(GgResponseHealing::default()));
-    tracker.observe(None, &code_turn(GgResponseHealing::default()));
+    tracker.observe(None, &code_turn());
+    tracker.observe(None, &code_turn());
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.code_executions, 2);
@@ -930,7 +846,7 @@ fn a_run_that_never_armed_loop_detection_reports_no_aborts() {
 }
 
 /// A tool-calling run has an error rollup too. It is the one figure in this summary that is
-/// deliberately **mode-agnostic**: healing and `codeExecutions` are zero for such a run by
+/// deliberately **mode-agnostic**: `codeExecutions` is zero for such a run by
 /// construction, but "how often did this configuration fail a turn?" is exactly as meaningful when
 /// the turns were tool calls.
 #[test]
@@ -944,7 +860,6 @@ fn a_tool_calling_run_still_reports_its_error_rate() {
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.code_executions, 0, "nothing code-shaped ran");
-    assert_eq!(summary.healing, GgHealingSummary::default());
     assert_eq!(summary.errors.turns, 4);
     assert_eq!(summary.errors.errors, 2);
     assert_eq!(summary.errors.missing_completion, 2);
@@ -957,7 +872,7 @@ fn a_tool_calling_run_still_reports_its_error_rate() {
 fn only_the_turn_outcome_event_feeds_the_error_rollup() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(None, &breakdown(0.5));
-    tracker.observe(None, &code_turn(healed(&[GgHealingStrategy::StripFences])));
+    tracker.observe(None, &code_turn());
     tracker.observe(
         None,
         &GgTelemetryKind::AssistantMessage {

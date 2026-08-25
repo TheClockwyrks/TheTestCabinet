@@ -68,11 +68,28 @@ pub struct Model {
     /// resolved). Distinct from a genuine `0.0` (a free run).
     #[sea_orm(nullable)]
     pub cost_comparable: Option<f64>,
-    /// The run's aggregate rating — the worst rating any reviewer gave any domain
-    /// — as its lowercase wire token (`flawless`/`great`/`passable`/`scuffed`/`broken`), or
-    /// `NULL` when the run carries no reviews yet. Maintained on review-add.
+    /// The run's **functional** rating as its lowercase wire token
+    /// (`flawless`/`great`/`passable`/`scuffed`/`broken`). On a legacy run the worst
+    /// rating any reviewer gave any domain, or `NULL` while it carries no reviews,
+    /// maintained on review-add; on a [validator-rated](Self::validator_rated) run
+    /// the validator-decided rating, written at push time and untouched by reviews.
     #[sea_orm(nullable)]
     pub rating: Option<String>,
+    /// The run's aggregate **aesthetic** rating — the worst aesthetic rating any
+    /// reviewer gave any domain — as its lowercase wire token
+    /// (`legendary`/`amazing`/`good`/`okay`/`slop`), or `NULL` when no review has
+    /// rated the aesthetic channel: a validator-rated run nobody has reviewed yet,
+    /// and every legacy run (whose reviews carry no aesthetic ratings). Maintained
+    /// on review-add exactly like `rating`.
+    #[sea_orm(nullable)]
+    pub aesthetic: Option<String>,
+    /// Whether the run's case version is **validator-rated** (on the engine
+    /// manifest format and not a game jam), so `rating` is the validator-decided
+    /// functional rating written at push time rather than an aggregate of the
+    /// reviews, the score stands without a review, and the publish gate admits the
+    /// run with zero reviews. `false` for every legacy run. Written on every push
+    /// from the case version the backend resolves; never changed by a review.
+    pub validator_rated: bool,
     /// How many reviews the run carries. Maintained alongside `rating` on
     /// review-add; `0` for a pushed-but-unreviewed run.
     pub review_count: i64,

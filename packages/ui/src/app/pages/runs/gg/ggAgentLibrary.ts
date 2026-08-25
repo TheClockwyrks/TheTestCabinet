@@ -16,6 +16,7 @@ import {
 import {
   agentDraftFromConfig,
   canonicalAgentCapabilities,
+  heldOpeningTurn,
   mintAgentKey,
   draftFromCapabilitySet,
   resolveAgentReferences,
@@ -66,7 +67,21 @@ export const AGENT_OVERRIDE_FIELDS: ReadonlyArray<AgentOverrideField> = [
   { path: "loopDetection", label: "Loop detection" },
   { path: "subagents", label: "Roster" },
   { path: "hooks", label: "Hooks" },
+  // Compared and merged on its own terms rather than by the generic field loop — see
+  // [agentOverrides] — but a field of the overlay like the rest.
+  { path: "openingTurn", label: "Opening turn" },
 ];
+
+/**
+ * `turn` narrowed to what the wire-form `agent` holds — the pruning
+ * [agentConfigFromDraft] does on the way out, applied to a stored profile's lists.
+ */
+function openingTurnHeldBy(
+  agent: GgAgentConfig,
+  turn: GgAgentConfig["openingTurn"],
+): GgAgentConfig["openingTurn"] {
+  return heldOpeningTurn(agentDraftFromConfig({ ...agent, openingTurn: turn }));
+}
 
 /**
  * How a stored agent's [type](GgAgentMode) reads on screen, taken from the two
@@ -253,7 +268,12 @@ export function agentOverrides(
     out.push("model");
   }
   for (const field of AGENT_OVERRIDE_FIELDS) {
-    if (field.path === "model" || field.path === "slug") continue;
+    if (
+      field.path === "model" ||
+      field.path === "slug" ||
+      field.path === "openingTurn"
+    )
+      continue;
     const key = field.path as keyof GgAgentConfig;
     if (
       stable(comparable(field.path, basis[key])) !==
@@ -261,6 +281,19 @@ export function agentOverrides(
     ) {
       out.push(field.path);
     }
+  }
+  // The opening turn is compared as what the PROFILE could open of the saved agent's
+  // lists, not as the two lists verbatim. The wire carries only what an agent holds, so
+  // pinning one capability off on the profile prunes that capability's calls out of its
+  // written opening turn too — and read verbatim, that would pin the whole opening turn
+  // to the configuration on the back of a capability edit. The draft the profile is
+  // edited in still holds the saved agent's full lists, so this is the comparison the
+  // operator actually made: the same lists, offered to an agent holding less.
+  if (
+    stable(openingTurnHeldBy(agent, basis.openingTurn)) !==
+    stable(openingTurnHeldBy(agent, agent.openingTurn))
+  ) {
+    out.push("openingTurn");
   }
   for (const capId of capabilityIds(basis, agent)) {
     if (
@@ -333,6 +366,10 @@ export function mergeAgentConfig(
       return found ? [found] : [];
     });
   }
+  // Whichever side the lists came from, the merged profile writes only what IT holds —
+  // the capabilities it ended up with may be fewer than the saved agent's, and the wire
+  // never promises a call the agent could not open.
+  merged.openingTurn = openingTurnHeldBy(merged, merged.openingTurn);
   return merged;
 }
 

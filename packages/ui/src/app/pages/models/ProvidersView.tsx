@@ -183,9 +183,9 @@ function ProbeBlock({ entry }: { entry: ProbeProviderStats }) {
         <div className={`${styles.row} ${styles.head}`} role="row">
           <span>MODEL</span>
           <span className={styles.num}>CALLS</span>
-          <span className={styles.num}>CLEAN</span>
+          <span className={styles.num}>PASSES</span>
           <span className={styles.num}>ERRORED</span>
-          <span className={styles.num}>CLEAN RATE</span>
+          <span className={styles.num}>PASS RATE</span>
         </div>
         {entry.models.map((row) => {
           const judged = row.items - row.errored;
@@ -193,10 +193,10 @@ function ProbeBlock({ entry }: { entry: ProbeProviderStats }) {
             <div className={styles.row} role="row" key={row.modelSlug}>
               <span>{row.modelSlug}</span>
               <span className={styles.num}>{formatCompact(row.items)}</span>
-              <span className={styles.num}>{formatCompact(row.clean)}</span>
+              <span className={styles.num}>{formatCompact(row.passes)}</span>
               <span className={styles.num}>{formatCompact(row.errored)}</span>
               <span className={styles.num}>
-                {judged > 0 ? formatPercent(row.clean / judged) : "—"}
+                {judged > 0 ? formatPercent(row.passes / judged) : "—"}
               </span>
             </div>
           );

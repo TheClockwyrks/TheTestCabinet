@@ -10,7 +10,7 @@
  */
 
 import * as raw from "test-cabinet:gg/programs";
-import { U32_MAX, call, uint } from "../internal/errors.js";
+import { call } from "../internal/errors.js";
 
 /**
  * One program that already ran, as `history` lists it.
@@ -20,7 +20,10 @@ import { U32_MAX, call, uint } from "../internal/errors.js";
  * to avoid. `get` fetches the source actually wanted.
  */
 export interface ProgramSummary {
-  /** The turn it ran on, which is what `get` takes. */
+  /** The id its `submit_program` acknowledgement carried, which is what `get` takes. */
+  id: string;
+
+  /** The turn it ran on. */
   turn: number;
 
   /** How many lines of source it was. */
@@ -36,14 +39,14 @@ export interface ProgramSummary {
   error?: string;
 
   /**
-   * Fetch this program's source, with its turn already supplied.
+   * Fetch this program's source, with its id already supplied.
    *
    * `gg.programs.get` for the common case where the summary is in hand.
    *
    * @ggop programs.get
-   * @returns the exact source of the program that ran on that turn.
-   * @throws `ApiError` with `not-found` when the library has dropped that turn since the history
-   * was read.
+   * @returns the exact source of the program that ran under that id.
+   * @throws `ApiError` with `not-found` when the library has dropped that program since the
+   * history was read.
    */
   source(): string;
 }
@@ -51,8 +54,8 @@ export interface ProgramSummary {
 /**
  * List the programs this session has already run, oldest first.
  *
- * Each entry carries the turn it ran on, how big it was, and whether it ran to its end. It lists
- * shapes rather than sources, so `get` is what fetches one. The list survives a compaction, which
+ * Each entry carries its id, the turn it ran on, how big it was, and whether it ran to its end. It
+ * lists shapes rather than sources, so `get` is what fetches one. The list survives a compaction, which
  * makes it the way to find a program whose text has left the context window.
  *
  * @ggop programs.history
@@ -65,39 +68,43 @@ export function history(): ProgramSummary[] {
   // constructs a summary, and a constructible declaration would be one inviting it to.
   return call(() =>
     raw.history().map((entry) => ({
+      id: entry.id,
       turn: entry.turn,
       lines: entry.lines,
       chars: entry.chars,
       ok: entry.ok,
       ...(entry.error === undefined ? {} : { error: entry.error }),
       source(): string {
-        return get(entry.turn);
+        return get(entry.id);
       },
     })),
   );
 }
 
 /**
- * Fetch the exact source of one program that ran, as a string; the default is the most recent.
+ * Fetch the exact source of one program that ran, by the id its acknowledgement carried.
  *
  * This is the first half of fixing a program without rewriting it: get what ran, patch it with
  * ordinary string work, and hand the result to `rerun`. What comes back is the program that
- * **executed**, so a turn whose program was itself handed over by `rerun` yields the program that
- * ran rather than the few lines that asked for it, and fetch, patch and run compose turn after turn.
+ * **executed**, so an id whose program was itself handed over by `rerun` yields the program that
+ * ran rather than the few lines that asked for it, and fetch, patch and run compose turn after
+ * turn — a rerun keeps the id of the submission it replaced.
  *
  * @ggop programs.get
- * @param turn The turn whose program to fetch, as `history` reports it. Omit it for the most recent.
- * @returns the exact source of the program that ran on that turn.
+ * @param id The program's id, as its acknowledgement carried it and as `history` reports it.
+ * @returns the exact source of the program that ran under that id.
  * @throws `ApiError` with `unavailable` for an agent with no program library, and `not-found` —
- * naming the turns that are held — for a turn that ran no program or one old enough to have been
- * dropped.
+ * naming the ids that are held — for an id this agent was never issued or one whose program is old
+ * enough to have been dropped.
  */
-export function get(turn?: number): string {
-  return call(() => raw.get(uint("get", "turn", turn, U32_MAX)));
+export function get(id: string): string {
+  return call(() => raw.get(id));
 }
 
 /**
  * Hand gg a program to run in place of this one, once this one has finished.
+ *
+ * It runs under this submission's id, and is what a later `get` of that id returns.
  *
  * Nothing is undone: every call the handing-over program already made stands, and the program that
  * runs next sees the world this one left behind — so handing over before doing work that should not
@@ -110,7 +117,7 @@ export function get(turn?: number): string {
  * @ggop programs.rerun
  * @param source The program to run in place of this one. It may not be blank.
  * @throws `ApiError` with `unavailable` for an agent with no program library, `invalid-argument`
- * for a blank source, and `refused` for a second hand-over in one turn.
+ * for a blank source, and `refused` for a second hand-over from the same program.
  */
 export function rerun(source: string): void {
   call(() => raw.rerun(source));

@@ -1250,3 +1250,94 @@ $verdict-gutter: 3.5rem;
   border-radius: t.$radius-md;
   overflow: hidden;
 }
+
+// --- Validator-rated verdicts --------------------------------------------------
+
+// The functional and aesthetic badges of one run (or one domain), side by side.
+.badgePair {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+// The one-line explanation beneath a validator-rated headline: who decided what.
+.validatorNote {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// A validator-rated domain row stacks its heading (name + badges) over the list
+// of failing points that capped it, so the row grows rather than squeezing.
+.domainHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-md;
+  width: 100%;
+}
+
+.domainRow:has(.capList) {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.capList {
+  list-style: none;
+  margin: t.$space-xs 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: t.$font-sm;
+}
+
+.capRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  color: t.$color-text-muted;
+}
+
+.capPoint {
+  min-width: 0;
+}
+
+.capCategory {
+  opacity: 0.7;
+}
+
+// The cap a failing point imposed, tinted by the tier it caps at.
+.capTier {
+  white-space: nowrap;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.7rem;
+
+  &[data-cap="broken"] {
+    color: var(--tcab-rating-broken);
+  }
+  &[data-cap="scuffed"] {
+    color: var(--tcab-rating-scuffed);
+  }
+  &[data-cap="passable"] {
+    color: var(--tcab-rating-passable);
+  }
+  &[data-cap="great"] {
+    color: var(--tcab-rating-great);
+  }
+}
+
+// A checklist row's "caps at <tier> · <domains>" line on a validator-rated version.
+.capLabel {
+  display: block;
+  font-size: 0.7rem;
+  color: t.$color-text-muted;
+}
+
+.capDomains {
+  opacity: 0.8;
+}

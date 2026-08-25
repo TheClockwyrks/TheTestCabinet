@@ -91,6 +91,14 @@
   color: t.$color-text-muted;
 }
 
+// The functional badge (or a jam's grade) with the aesthetic badge beside it.
+.badges {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 // --- Reliability: the unranked failure tally below the ranked board ----------
 
 .reliabilityHeading {

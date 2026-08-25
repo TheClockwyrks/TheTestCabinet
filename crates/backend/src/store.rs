@@ -30,6 +30,7 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::review::FailureCap;
 use test_cabinet_core::test_case::{
     AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
@@ -149,6 +150,15 @@ pub struct StoredManifest {
     /// exist (see [`DefinitionStore::list_visible_cases`]).
     #[serde(default)]
     pub experimental: bool,
+    /// Whether the version is on the **engine manifest format** (the per-engine
+    /// spelling: `[workspaces]` / `engines` / `[[engine]]`), mirroring
+    /// [`test_cabinet_core::test_case::TestCaseVersion::engine_format`]. Together
+    /// with the test type this decides whether the version is
+    /// [validator-rated](Self::validator_rated). Defaulted to `false` for manifests
+    /// stored before the field existed — every one of which is on the legacy
+    /// spelling, so the default is exact rather than a guess.
+    #[serde(default)]
+    pub engine_format: bool,
     /// Build commands. `Some` for an end-to-end case, `None` for any other type
     /// (an asset-generation case has no build). Defaulted for manifests stored
     /// before it became optional; skipped when absent so an asset-generation
@@ -301,6 +311,18 @@ pub struct StoredManifest {
     /// manifests stored before the field existed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errata: Vec<StoredErratum>,
+}
+
+impl StoredManifest {
+    /// Whether a run of this version is **validator-rated**: its functional rating
+    /// is decided by the validators (each failing point capping its domains at its
+    /// declared `failure_cap`), its score stands the moment it completes, and its
+    /// reviewers rate only the aesthetic channel. True iff the version is on the
+    /// [engine format](Self::engine_format) and is not a game jam — the stored
+    /// mirror of [`test_cabinet_core::test_case::TestCaseVersion::validator_rated`].
+    pub fn validator_rated(&self) -> bool {
+        self.engine_format && self.test_type != TestType::GameJam
+    }
 }
 
 /// A known-issue erratum persisted in a [`StoredManifest`] (see
@@ -707,6 +729,17 @@ pub struct StoredReviewItem {
     /// point. Empty for an item graded as a whole.
     #[serde(default)]
     pub sub_items: Vec<StoredSubReviewItem>,
+    /// The item's **failure cap** when it is graded as a whole point on a
+    /// validator-rated version: the highest functional rating its
+    /// [`domains`](Self::domains) may reach while its validator fails. `None` on a
+    /// legacy version (which never declares one) and on a sub-divided item, whose
+    /// caps live on its sub-items. Omitted from the serialized manifest when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_cap: Option<FailureCap>,
+    /// The scoring domains (by id) a failure of this whole-item point lowers, on a
+    /// validator-rated version. Empty on a legacy version and on a sub-divided item.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
     /// The item's automated-validation driver (debug script + declared media
     /// outputs), when it opts into auto-validation. Reporter-side (never seeded); the
     /// backend serves it so the driver's validator can drive the build's debug API,
@@ -781,6 +814,16 @@ pub struct StoredSubReviewItem {
     /// defaulted for manifests stored before the field existed.
     #[serde(default)]
     pub validation: Option<StoredReviewValidation>,
+    /// This point's **failure cap** on a validator-rated version: the highest
+    /// functional rating its [`domains`](Self::domains) may reach while its
+    /// validator fails (see [`test_cabinet_core::review::FailureCap`]). `None` on
+    /// a legacy version, which never declares one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_cap: Option<FailureCap>,
+    /// The scoring domains (by id) a failure of this point lowers, on a
+    /// validator-rated version. Empty on a legacy version.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
 }
 
 /// serde default for a stored sub-item's `weight`: one point.

@@ -31,6 +31,7 @@ fn test_case(variants: &[(&str, &[&str])]) -> TestCaseVersion {
         max_runtime_seconds: 1800,
         test_type: TestType::EndToEnd,
         experimental: false,
+        engine_format: false,
         build: None,
         instrumentation: None,
         canvas: None,

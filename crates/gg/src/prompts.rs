@@ -2,7 +2,7 @@
 //! literals.
 //!
 //! Everything gg *says* to a model — the system prompt, the pinned context blocks that render
-//! the task list, the epic/issue board and the memories, the [briefs](render_review_brief) it
+//! the task list and the memories, the [briefs](render_review_brief) it
 //! dispatches agents with, and the [compaction](render_compaction_instruction),
 //! [completion](render_completion_missing) and [context-pressure](render_context_pressure) prose
 //! the loop injects between turns — lives in `crates/gg/templates/*.hbs` and is rendered here. The templates
@@ -43,8 +43,9 @@
 //! `language.displayName` and `language.checker` — and a segment is written as
 //! `{{#if (eq language.id "rust")}}…{{/if}}` against the [`eq` helper](engine) this module
 //! registers. Everything a model needs about the *surface* it is calling arrives by a different
-//! route entirely: the opening turn runs a program that lists every module the run granted, with a
-//! one-line brief each.
+//! route entirely: the opening turn runs a program that lists the modules the agent's own
+//! `openingTurn` configuration names, with a one-line brief per function, and opens the
+//! documentation of the functions it names.
 //!
 //! The rule that survives all of that unchanged: **a sentence a model reads lives in a `.hbs`
 //! file.** The context carries ids, names, numbers and flags — never prose — which is why
@@ -62,9 +63,9 @@
 //! # No repetition between the prompt and the blocks
 //!
 //! *How* to use a capability is stated **once**, in the system prompt, gated on whether that
-//! capability is enabled. The pinned blocks ([`render_tasks`], [`render_board`],
-//! [`render_memories`]) are then pure **state** — a heading and the current items — rather than
-//! re-teaching the tools on every turn they are refreshed.
+//! capability is enabled. The pinned blocks ([`render_tasks`], [`render_memories`]) are then
+//! pure **state** — a heading and the current items — rather than re-teaching the tools on every
+//! turn they are refreshed.
 //!
 //! # The prompt names no functions at all — the opening turn hands them over
 //!
@@ -77,8 +78,12 @@
 //! That is not the same as withholding the surface, and it stopped being the same the moment the
 //! template went language-agnostic. gg makes the first search **itself**: the
 //! [bootstrap](crate::bootstrap) opens every code session by running a program, in the agent's own
-//! language, that looks up each granted module whole — so a model reads every function it may call,
-//! with a one-line brief each, before its first real turn. What it still has to go and get is a
+//! language, that looks up whole the modules the agent's `openingTurn` configuration lists and
+//! opens a documentation view of each function it names — so a model reads the function list of
+//! the modules its operator chose, with a one-line brief each, and the full signature of the calls
+//! its operator chose, before its first real turn. Which modules and which functions is the
+//! profile's to say, not gg's; a fresh profile is seeded with the two modules a build starts in and
+//! the calls discovery and showing are made of. What a model still has to go and get is any other
 //! *signature*, by opening a documentation view of a name it has now seen.
 //!
 //! The one vocabulary the prompt does supply is the [capability modules](SystemContext::modules) a
@@ -98,8 +103,8 @@
 //!
 //! # The prose gg *does* author, and why it is versioned like code
 //!
-//! What this module renders is this stage's product surface: the reply contract (your whole reply is
-//! the program), the ending contract (an explicit, role-shaped call ends a session and nothing else
+//! What this module renders is this stage's product surface: the reply contract (the program is
+//! submitted as the one required tool call), the ending contract (an explicit, role-shaped call ends a session and nothing else
 //! does), and the four turn feedbacks that answer a program that ran, one that did not compile, one
 //! the sandbox stopped, and a reply that was never a program at all. Each sentence in those exists
 //! because a real model got the contract wrong without it, so treat them as behaviour: change one
@@ -177,9 +182,6 @@ const CODE_NOTHING_SHOWN_TEMPLATE: &str = include_str!("../templates/code-nothin
 /// The pinned [task list](crate::tasks) block.
 const TASKS_TEMPLATE: &str = include_str!("../templates/tasks.hbs");
 
-/// The pinned [epic/issue board](crate::board) block.
-const BOARD_TEMPLATE: &str = include_str!("../templates/board.hbs");
-
 /// The pinned [memories](crate::memories) block.
 const MEMORIES_TEMPLATE: &str = include_str!("../templates/memories.hbs");
 
@@ -248,13 +250,6 @@ const COMPLETION_MISSING_TEMPLATE: &str = include_str!("../templates/completion-
 /// it, and how the agent can reclaim space itself.
 const CONTEXT_PRESSURE_TEMPLATE: &str = include_str!("../templates/context-pressure.hbs");
 
-/// The trailing **contract notice** a [responses-as-code](crate::agent) window re-states at its
-/// tail on every request — measured as the single most effective cross-model lever for keeping a
-/// tool-call-trained model on the reply contract. Rendered once per agent (it interpolates only
-/// the language) and held in a window slot, so it is one constant message that always renders
-/// last; see `ContextModel::set_trailing_notice`.
-const CONTRACT_NOTICE_TEMPLATE: &str = include_str!("../templates/contract-notice.hbs");
-
 /// The template names registered with the [engine], in the order they are registered. Each name
 /// is what [`render`] looks up. The tests iterate this list to assert every template parses.
 ///
@@ -266,7 +261,6 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("system-code", SYSTEM_CODE_TEMPLATE),
     ("code-nothing-shown", CODE_NOTHING_SHOWN_TEMPLATE),
     ("tasks", TASKS_TEMPLATE),
-    ("board", BOARD_TEMPLATE),
     ("memories", MEMORIES_TEMPLATE),
     ("memory-index", MEMORY_INDEX_TEMPLATE),
     ("memory-notice", MEMORY_NOTICE_TEMPLATE),
@@ -293,7 +287,6 @@ const TEMPLATES: &[(&str, &str)] = &[
     ),
     ("completion-missing", COMPLETION_MISSING_TEMPLATE),
     ("context-pressure", CONTEXT_PRESSURE_TEMPLATE),
-    ("contract-notice", CONTRACT_NOTICE_TEMPLATE),
 ];
 
 /// The process-wide Handlebars engine, built once with every template registered.
@@ -494,9 +487,10 @@ pub struct SystemContext {
     /// Not the functions: those are read out of the surface rather than the prompt, by searching for
     /// one and opening its documentation, which is the whole point of the redesign. A module path is
     /// what makes that an exact lookup rather than a guessing game — and gg spends the first one on
-    /// the agent's behalf, since the [bootstrap](crate::bootstrap) looks up each of these modules
-    /// whole on the opening turn. So an agent that knows nothing else has already been shown what
-    /// every module here holds, and knows the path to ask for it by again.
+    /// the agent's behalf, since the [bootstrap](crate::bootstrap) looks up whole, on the opening
+    /// turn, whichever of these modules the profile's `openingTurn` lists. So an agent that knows
+    /// nothing else has already been shown what those modules hold, and knows the path to ask for
+    /// any module here by.
     ///
     /// Empty on the tool-calling path, where the tools are in the request and there is no module
     /// structure to name; on the code path it always carries at least the module that puts material
@@ -543,16 +537,6 @@ pub struct SystemContext {
     /// when [`subagents`](Self::subagents) is on.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub spawnable_agents: Vec<SpawnableAgentView>,
-    /// Whether [healing](crate::healing)'s fence-stripping strategy is armed this run.
-    ///
-    /// The prompt tells the model not to wrap its program in a code fence either way; what changes
-    /// is the *reason*. With stripping on, "a fence is a syntax error" is simply false — gg removes
-    /// it, without telling the model — and a model that tests the claim learns that gg's rules are
-    /// negotiable, which contaminates the instruction-following signal this capability exists to
-    /// measure. So the armed arm states the rule as the contract without dressing it up as a
-    /// compiler error, and says nothing of the repair: healing is counted for the operator, never
-    /// disclosed to the model.
-    pub fences_are_stripped: bool,
     /// How much of a file one `read_file` call returns, so a capped run says so up front — and, in
     /// either mode, whether this run's model can be shown an image.
     ///
@@ -569,13 +553,10 @@ pub struct SystemContext {
     pub memories: Option<MemoriesView>,
     /// The [task list](crate::tasks) ceiling, or `None` when the capability is off.
     pub tasks: Option<TasksView>,
-    /// The [epic/issue board](crate::board) ceilings, or `None` when **this agent** may not author
-    /// the board (it has no project-management capability of its own, or the run has no board).
-    pub board: Option<BoardView>,
     /// The [board issue](crate::board) this agent was dispatched to implement, or `None` when it
-    /// was not dispatched off the board. Independent of [`board`](Self::board): an implementer is
-    /// normally configured without the authoring capability, so this is usually the *only* board
-    /// section such an agent is shown.
+    /// was not dispatched off the board. The board itself is never described in a prompt — an
+    /// agent reaches it through the board tools alone — but being told what it is working on has
+    /// nothing to do with whether it may author the board.
     pub assigned_issue: Option<AssignedIssueView>,
     /// Whether this agent's opening context was pre-seeded with the test case's specifications and
     /// reference images, and if so whether they are locked into the window. `None` renders no
@@ -661,8 +642,9 @@ pub struct ReadFileView {
 // one call returns and the directory the whole output is kept in. The second half was trimmed from
 // both templates first, because every one of those facts travels with the truncated output itself.
 // The first half went with the ruling that a prompt describes no capability whose functions' own
-// briefs describe it: the opening turn puts `shell`'s brief in the window before the model's first
-// real turn, so a sentence here was a second copy of it. No template in `crates/gg/templates/`
+// briefs describe it: an opening turn listing `shell` — which a fresh profile's does — puts its
+// brief in the window before the model's first real turn, so a sentence here was a second copy of
+// it. No template in `crates/gg/templates/`
 // reads a `shell` variable, and a rendering context is exactly the list of what a template may
 // reference, so the struct is not kept against the day one might.
 
@@ -798,32 +780,6 @@ pub struct MemoriesView {
 pub struct TasksView {
     /// The maximum number of tasks the list may hold at once.
     pub max_tasks: usize,
-}
-
-/// The board ceilings and rosters the prompt states.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BoardView {
-    /// The maximum number of epics the board may hold at once.
-    pub max_epics: usize,
-    /// The maximum number of issues the board may hold at once.
-    pub max_issues: usize,
-    /// How many times gg re-dispatches a failed issue before marking it failed.
-    pub max_retries: usize,
-    /// Whether this agent must name one or more reviewers on every issue it files (as opposed to
-    /// naming them being optional).
-    pub reviewers_required: bool,
-    /// The agents this one may assign an issue to — its roster's
-    /// [`implementer`](test_cabinet_core::gg::GgSubagentScope::Implementer) scope.
-    ///
-    /// Listed in the project-management section rather than left to the tool schema because the two
-    /// rosters are genuinely different sets: a model told only "choose an agent" reaches for a name
-    /// it may spawn but may not assign, spends a call finding out, and learns nothing it could not
-    /// have been told up front.
-    pub issue_agents: Vec<SpawnableAgentView>,
-    /// The agents this one may name as an issue's reviewers — its roster's
-    /// [`reviewer`](test_cabinet_core::gg::GgSubagentScope::Reviewer) scope.
-    pub reviewer_agents: Vec<SpawnableAgentView>,
 }
 
 /// The [board issue](crate::board) an auto-dispatched agent was sent to implement, as its prompt
@@ -1059,66 +1015,6 @@ pub fn render_tasks(context: &TasksBlockContext) -> String {
     render("tasks", context)
 }
 
-/// The variables `board.hbs` may reference: the current [board](crate::board).
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BoardBlockContext {
-    /// The epics, in creation order.
-    pub epics: Vec<EpicItemView>,
-    /// The issues, in creation order.
-    pub issues: Vec<IssueItemView>,
-}
-
-/// One epic as the pinned block renders it.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EpicItemView {
-    /// The epic's id.
-    pub id: String,
-    /// The epic's title.
-    pub title: String,
-    /// The epic's description.
-    pub description: String,
-}
-
-/// One issue as the pinned block renders it — the line, plus the structured brief (scope and
-/// completion criteria) that makes an issue dispatchable.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IssueItemView {
-    /// The issue's id.
-    pub id: String,
-    /// The issue's title.
-    pub title: String,
-    /// The issue's overview, when it has one.
-    pub description: Option<String>,
-    /// The status word (`open`, `in progress`, `done`).
-    pub status: String,
-    /// The checkbox-style status marker.
-    pub marker: String,
-    /// The id of the epic the issue belongs to, when it is grouped under one.
-    pub epic_id: Option<String>,
-    /// Whether the issue is actionable now.
-    pub ready: bool,
-    /// The issue's incomplete blockers, pre-formatted, or `None` when it is ready or done.
-    pub blocked_by: Option<String>,
-    /// What the issue covers.
-    pub in_scope: String,
-    /// What the issue deliberately does not cover.
-    pub out_of_scope: String,
-    /// What makes the issue done.
-    pub completion_criteria: String,
-    /// The agent profile the issue is assigned to — who gg dispatches it under.
-    pub agent: String,
-    /// The issue's reviewer profiles, pre-formatted, or `None` when it was filed without any.
-    pub reviewers: Option<String>,
-}
-
-/// Render the pinned [epic/issue board](crate::board) block.
-pub fn render_board(context: &BoardBlockContext) -> String {
-    render("board", context)
-}
-
 /// The variables `memories.hbs` may reference: the in-play [memories](crate::memories).
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1211,18 +1107,6 @@ pub struct MemoryNoticeEntry {
 /// Render the [linked-memory notice](crate::memories::MemoriesRuntime::notice).
 pub fn render_memory_notice(context: &MemoryNoticeContext) -> String {
     render("memory-notice", context)
-}
-
-/// Render the [trailing contract notice](CONTRACT_NOTICE_TEMPLATE) for the arm writing in
-/// `program_language` — the one or two sentences restating the responses-as-code reply contract,
-/// which ride at the very tail of every request.
-pub fn render_contract_notice(program_language: GgProgramLanguage) -> String {
-    render(
-        "contract-notice",
-        &LanguageContext {
-            language: language_view(program_language),
-        },
-    )
 }
 
 /// The empty rendering context, for the templates that interpolate nothing and exist purely so

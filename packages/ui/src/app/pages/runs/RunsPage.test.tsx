@@ -269,7 +269,18 @@ describe("RunsPage", () => {
     renderPage(queries);
     await waitFor(() => expect(rowNames()).toHaveLength(3));
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Harness" }), {
+    // The harness facet offers the first-party gg run mode alongside the CLI
+    // catalog — gg runs record `harnessSlug: "gg"` and must be filterable.
+    const harnessSelect = screen.getByRole("combobox", { name: "Harness" });
+    expect(
+      Array.from(harnessSelect.querySelectorAll("option")).map((o) => o.value),
+    ).toContain("gg");
+    fireEvent.change(harnessSelect, { target: { value: "gg" } });
+    await waitFor(() =>
+      expect(queries.at(-1)).toMatchObject({ harness: "gg" }),
+    );
+
+    fireEvent.change(harnessSelect, {
       target: { value: "codex" },
     });
     await waitFor(() =>

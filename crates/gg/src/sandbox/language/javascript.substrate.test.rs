@@ -6,7 +6,7 @@
 //!
 //! [The arm](super::javascript) is [TypeScript](super::typescript)'s with the type check taken out,
 //! and it holds every other variable at zero *by construction*: the same guest reached through the
-//! same constant, the same catalogue, the same healing dialect, the same synthesized programs. A
+//! same constant, the same catalogue, the same synthesized programs. A
 //! sibling gate asserts each of those equalities directly
 //! ([`the_javascript_arm_differs_from_typescript_only_in_the_check`](super::tests)).
 //!

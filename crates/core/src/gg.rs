@@ -371,9 +371,7 @@ pub const MEMORY_STRATEGY_KEYWORD_SEARCH: &str = "keyword-search";
 /// Meaningful only where memories are enabled: a profile that sets it with the capability off is
 /// **refused** at launch, because the two together describe an intent gg cannot honour.
 ///
-/// See [memories](https://docs.testcabinet.ai/gg/memories/) for what each scope does, and
-/// [`MODULE_PARAM_OWNERSHIP`] for the orthogonal question of whether the bound instance is carried
-/// in the holder's prompt.
+/// See [memories](https://docs.testcabinet.ai/gg/memories/) for what each scope does.
 pub const MEMORY_PARAM_SCOPE: &str = "scope";
 
 /// The [memories](CAPABILITY_MEMORIES) capability's `maxCount` param: how many memories the set
@@ -527,67 +525,6 @@ pub const TASK_MODE_ISSUES: &str = "issues";
 /// [authoring catalog](gg_authoring_catalog) writes into a new document.
 pub const TASK_MODES: [&str; 2] = [TASK_MODE_SIMPLE, TASK_MODE_ISSUES];
 
-/// The [`params`](GgCapabilityConfig::params) key every **module-backed** capability reads to
-/// decide whether the state it keeps is [owned](GgModuleOwnership::Owned) by the agent holding
-/// it — the only behaviour gg had before modules existed — or
-/// [unowned](GgModuleOwnership::Unowned). Each of the two capabilities that read it writes it, and
-/// an enabled one that does not refuses the launch.
-///
-/// A module-backed capability is one whose state gg keeps for the agent rather than one that is
-/// a pure function of a call — see [`GgModuleKind`] for the closed list of modules. Exactly **two**
-/// of them read this param: [`project-management`](CAPABILITY_PROJECT_MANAGEMENT) and
-/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT).
-///
-/// The others have no ownership to configure, and every absence is load-bearing.
-/// [`tasks`](CAPABILITY_TASKS): the task list is what an agent steers its work by from turn to turn,
-/// so it is always carried in its holder's prompt as its own message.
-/// [`memories`](CAPABILITY_MEMORIES) and [`skills`](CAPABILITY_SKILLS): for both of them the knob
-/// would be a way of switching the capability off while pretending it was on — what a
-/// [memory strategy](MEMORY_STRATEGY_SCRATCHPAD) pins *is* what having memories means under it, and
-/// the strategy is already that knob.
-///
-/// So an `ownership` key on any capability but those two is a **launch failure**: it is a key on a
-/// capability that has none, which is a configuration asking for something gg cannot do. An
-/// unrecognized value is refused on the same terms, in line with how every unrecognized capability
-/// *value* is treated.
-///
-/// See the [module model](https://docs.testcabinet.ai/gg/modules/) for what ownership changes.
-pub const MODULE_PARAM_OWNERSHIP: &str = "ownership";
-
-/// Whether the state a module-backed capability keeps is carried in its holder's **prompt**, or
-/// is reachable only through the tools it contributes.
-///
-/// This is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and it is the one knob that separates
-/// "the agent is told what it holds, every turn" from "the agent may look it up". It exists
-/// because a module is no longer necessarily *about* the agent holding it: once a memory instance
-/// can be shared between agents, or a task list handed from one FSM state to the next, an agent
-/// can be given a working store it should be able to act on without paying for it in every
-/// request it makes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GgModuleOwnership {
-    /// The holder's prompt carries the module: its system-prompt section is rendered, and the
-    /// pinned block it keeps (the memory index, the task list, the board) is refreshed into the
-    /// window on that module's own schedule. What a new document is authored with, and what a
-    /// [task list](GgModuleKind) always is.
-    Owned,
-    /// The module is reachable through the holder's **tools and nothing else**: no system-prompt
-    /// section, no pinned block, and no per-turn notice. Its state is still live — the tools read
-    /// and write it, and it is still transferred, shared and reported as
-    /// [telemetry](GgTelemetryKind) exactly as an owned one is — it simply costs the holder no
-    /// context until it asks.
-    Unowned,
-}
-
-impl GgModuleOwnership {
-    /// Whether this is [`Owned`](Self::Owned) — the question every prompt-assembly site asks, since
-    /// what ownership decides is whether the holder's prompt carries the module at all.
-    pub fn is_owned(self) -> bool {
-        matches!(self, GgModuleOwnership::Owned)
-    }
-}
-
 /// The closed set of **modules** an agent instance holds: one unit of per-agent capability state
 /// that gg can clone, share between agents, and hand from one agent instance to the next.
 ///
@@ -738,9 +675,6 @@ pub struct GgAgentModule {
     /// occupies its row, so a capability switched off is legible rather than absent — the same
     /// reason it still occupies its slot in gg's own module set.
     pub enabled: bool,
-    /// Whether this holder's prompt carries the module ([`owned`](GgModuleOwnership::Owned)) or it
-    /// is reachable through its tools alone ([`unowned`](GgModuleOwnership::Unowned)).
-    pub ownership: GgModuleOwnership,
     /// How this holder came by it.
     pub origin: GgModuleOrigin,
     /// The [scope](GgMemoryScope) this holder binds under, for the one kind that has one
@@ -892,15 +826,15 @@ pub struct GgAgentApi {
 pub struct GgAgentApiFunction {
     /// The name a program calls it by, **relative to its module**, in this arm's own spelling:
     /// a free function is its bare name — `readFile`, `openDocsView`, `finish` — and a method
-    /// carries the receiver it hangs off, in the arm's own separator — `OpenView.close` on
-    /// TypeScript, `OpenView#close` on Java, `open_view::close` on C++. Joining the module's
+    /// carries the receiver it hangs off, in the arm's own separator — `IssueCreated.wait` on
+    /// TypeScript, `IssueCreated#await` on Java, `issue_created::wait` on C++. Joining the module's
     /// [`path`](GgAgentApi::path) onto it with the arm's separator gives the catalogue's
-    /// fully-qualified name (`gg.views.OpenView.close`), which is the key a documentation view
+    /// fully-qualified name (`gg.board.IssueCreated.wait`), which is the key a documentation view
     /// opens by.
     ///
-    /// Module-relative rather than bare so that two rows of one module never share a name: an
-    /// arm that binds `close` as a free function **and** as a method on the value `current` lists
-    /// reports `close` and `OpenView.close`, not `close` twice.
+    /// Module-relative rather than bare so that two rows of one module never share a name: a
+    /// method reported bare could collide with a free function beside it, so the memory read an
+    /// arm hangs off a search hit reports as `MemoryHit.read`, never as a second bare `read`.
     pub name: String,
     /// gg's own identity for what this call does — `files.read_file`, `views.open_docs_view`,
     /// `session.finish` — which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it
@@ -1031,8 +965,7 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// param: how many individual files the context-usage signal's breakdown names, most expensive
 /// first.
 ///
-/// An enabled capability writes it, alongside its [`ownership`](MODULE_PARAM_OWNERSHIP), and an
-/// absent one refuses the launch. How many reads a window holds at once differs enormously between
+/// An enabled capability writes it, and an absent one refuses the launch. How many reads a window holds at once differs enormously between
 /// an agent that opens two specifications and one crawling a codebase, so the figure is the
 /// profile's to state rather than gg's to guess.
 pub const PARAM_TOP_FILE_VIEWS: &str = "topFileViews";
@@ -1351,39 +1284,35 @@ pub const CAPABILITY_FORK: &str = "fork";
 /// pattern The Test Cabinet's [Foray](https://docs.testcabinet.ai/testing/adversarial/foray/architecture/)
 /// engine uses) rather than dispatching one discrete tool call at a time.
 ///
-/// When enabled, an agent's turn no longer offers the model native tool calls. The model's
-/// **whole reply is the program** — with no code fence, no extraction and no language tag — in which
+/// When enabled, an agent's turn offers the model exactly **one** native tool — `submit_program`,
+/// which takes a single `program` string — and the request **requires** a call to it (forced tool
+/// choice). The string passed to the tool **is** the program — no extraction, no repair, no
+/// language tag — in which
 /// each of the run's [tools](CAPABILITY_SHELL) is a **typed function** (`readFile(path, { limit })`,
 /// not a generic call by name), executed in a wasmtime **component** sandbox. Which
 /// [language](GgProgramLanguage) that program is written in is the capability's `language` param: a
 /// configuration knob a cross-language study slices its arms on, and a **required** one — an
 /// enabled capability that names no language refuses the launch rather than picking one. gg
-/// [heals](GgResponseHealing) the reply, prepares it for that language's guest, and runs it — bridging each
+/// prepares the submitted program for that language's guest and runs it — bridging each
 /// tool call the program makes to the real
 /// [`ToolRegistry`](https://docs.testcabinet.ai/gg/overview/) (so the tool runs in the container and
 /// its result flows back **into the program**) — and feeds the program's result (plus any error or
 /// fuel exhaustion) back into the context as the turn's outcome. The tool calls the program made
 /// still stream as ordinary [`ToolCall`](GgTelemetryKind::ToolCall)/[`ToolResult`](GgTelemetryKind::ToolResult)
-/// telemetry, and the turn itself is streamed as a [`CodeExecution`](GgTelemetryKind::CodeExecution)
+/// telemetry, and each submitted program is streamed as a [`CodeExecution`](GgTelemetryKind::CodeExecution)
 /// event. A program that calls a delegation tool still goes through the subagent
 /// [scheduler](CAPABILITY_SUBAGENTS).
 ///
 /// The session ends **only** when a program calls `finish(summary)` — a real function on the
 /// sandbox's model-facing surface rather than a rule about text — whose summary becomes the run's
-/// final text. Saying the work is done therefore ends nothing: a reply that is prose compiles (or
-/// fails to) like any other, and the run goes on until a program calls the ending function.
+/// final text. Saying the work is done therefore ends nothing: a submitted string that is prose
+/// fails to compile like any other, and the run goes on until a program calls the ending function.
 ///
-/// Responses are **healed** before they run: a conservative, deletion-only text repair that unwraps
-/// a fence the model added, drops explanatory prose from around the program, and halves a reply that
-/// arrived as one completion concatenated with a byte-identical copy of itself. What counts as a
-/// fence tag, or as a line of prose, belongs to the program language; the repairs themselves do not.
-/// Every application is [counted on the run](GgHealingSummary) and reported on the operator's
-/// stream, and none of it is disclosed to the model — a repaired reply is simply the reply that ran,
-/// and the one the model's own history carries — so the figures two configurations are compared on
-/// measure the model's compliance rather than its response to being corrected; each
-/// [strategy](GgHealingStrategy) is independently toggleable through the capability's `healing`
-/// param — the first two on unless turned off, and
-/// [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) off unless a run arms it.
+/// There is **no repair pass**: the submitted string is compiled exactly as sent. Text the model
+/// writes beside the tool call is recorded and surfaced as the assistant's message and is never
+/// parsed for code. A reply that carries **several** `submit_program` calls runs each program
+/// sequentially, in order, all of them regardless of whether an earlier one failed — and however
+/// many of them fail, at most **one** error is counted against the turn.
 ///
 /// Every tool the run offers is bound into the program's surface: there is no class of call a
 /// program is denied, so the toolset a program sees is exactly the toolset a JSON tool-calling
@@ -1435,15 +1364,6 @@ pub const PARAM_MAX_MEMORY_BYTES: &str = "maxMemoryBytes";
 /// non-boolean toggle, and a key naming none of the three.
 pub const PARAM_DOC_VIEW_TYPES: &str = "docViewTypes";
 
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param: which
-/// [response-healing](GgHealingStrategy) repairs are armed for this agent.
-///
-/// An enabled capability writes it. `true` arms every strategy and `false` arms none; an object
-/// names each of them, and one that leaves a strategy out is refused along with an absent param, a
-/// non-boolean toggle, and a key naming no strategy. Reading `{"stripFences": false}` as a run
-/// with `strip-fences` armed would measure the arm its author was switching off.
-pub const PARAM_HEALING: &str = "healing";
-
 /// The stable id of the **program library** capability: gg keeps the source of every program a
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent has run, and hands the agent a `programs`
 /// object to reach back for one, patch it, and hand it back to be run.
@@ -1458,15 +1378,16 @@ pub const PARAM_HEALING: &str = "healing";
 /// and latency for text the model has already written once.
 ///
 /// The library makes the fix proportional to the mistake. gg records the source of every program it
-/// runs, keyed by the turn it ran on, and a program can fetch one back:
+/// runs under an id of its own — the bare string the `submit_program` acknowledgement carries, minted
+/// before the program runs — and a program can fetch one back:
 ///
 /// ```ts
-/// const source = programs.get();                            // the previous turn's program
+/// const source = programs.get("k3p9");                      // the program that id was issued to
 /// programs.rerun(source.replace("cosnt x", "const x"));      // gg runs the patched one
 /// ```
 ///
 /// Three functions, on a `programs` object bound only when this capability is on: `history()` lists
-/// the programs held (turn, size, whether each ran to its end), `get(turn?)` returns one's exact
+/// the programs held (id, turn, size, whether each ran to its end), `get(id)` returns one's exact
 /// source, and `rerun(source)` hands gg a program to run **in place of the one that called it**.
 ///
 /// # What `rerun` does, and what it does not
@@ -1474,22 +1395,23 @@ pub const PARAM_HEALING: &str = "healing";
 /// It is **registered, not performed**, exactly as [`compact`](CAPABILITY_AGENT_MANAGED_CONTEXT) and
 /// an [exec](CAPABILITY_EXEC) are: the call validates the source and returns, the calling program
 /// carries on to its end, and gg then compiles and runs what it was handed as the
-/// same turn's program. Nothing is undone — every call the registering program made stands — and the
+/// same submission's program. Nothing is undone — every call the registering program made stands — and the
 /// program that runs next sees exactly the world it left behind. The first registration stands and a
 /// second is refused; a program that then fails loses the registration along with everything else it
-/// decided, on the same rule that revokes an ending. The chain is bounded, and a turn that reaches
-/// the bound is told so.
+/// decided, on the same rule that revokes an ending. The chain is bounded, and a submission that
+/// reaches the bound is told so.
 ///
-/// The source gg keeps for a turn is the program that **executed**, so fetch-patch-rerun composes:
-/// the patched program is what the next turn's `get()` returns, not the two lines that asked for it.
+/// The source gg keeps for a submission is the program that **executed**, under the submission's
+/// id, so fetch-patch-rerun composes: the patched program is what the next `get` of that id returns,
+/// not the two lines that asked for it.
 /// The library also outlives the context window — it is gg's own state, not a message — so a
 /// [compacted](CAPABILITY_COMPACTION) agent can still reach the program it wrote forty turns ago.
 ///
 /// # What it is bounded by
 ///
 /// Its [`keep`](PARAM_KEEP) param is how many of the most recent programs are retained. It bounds
-/// memory, not the model: a `get` of a turn the retention has dropped is `not-found` naming the
-/// turns that are held.
+/// memory, not the model: a `get` of an id the retention has dropped is `not-found` naming the ids
+/// that are held. Its [`idLength`](PARAM_ID_LENGTH) param is how long those ids are.
 ///
 /// gg includes it **so its effectiveness can be measured empirically** — toggled against the same
 /// runs without it, it answers "does making a retry proportional to the mistake pay for itself?"
@@ -1502,6 +1424,14 @@ pub const CAPABILITY_PROGRAM_LIBRARY: &str = "program-library";
 ///
 /// An enabled capability writes it, and an absent one refuses the launch.
 pub const PARAM_KEEP: &str = "keep";
+
+/// The [program-library](CAPABILITY_PROGRAM_LIBRARY) capability's `idLength` param: how many
+/// characters long the cuid2 id assigned to each of the agent's programs is, from 2 to 32. A longer
+/// id costs the model more tokens on every fetch and buys more room before a collision re-rolls.
+///
+/// An enabled capability writes it; an absent one, one gg cannot read as a count, and one outside
+/// the range each refuse the launch.
+pub const PARAM_ID_LENGTH: &str = "idLength";
 
 /// The stable id of the **documentation-view close** capability: whether a
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent may take a documentation view back out of
@@ -1730,7 +1660,6 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
                     PARAM_SIGNAL_THRESHOLD_PERCENT,
                     json!(DEFAULT_SIGNAL_THRESHOLD_PERCENT),
                 ),
-                (MODULE_PARAM_OWNERSHIP, json!(GgModuleOwnership::Owned)),
             ]),
         ),
         entry(
@@ -1743,7 +1672,6 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
                 (PARAM_MAX_EPICS, json!(50)),
                 (PARAM_MAX_ISSUES, json!(2_000)),
                 (PARAM_MAX_RETRIES, json!(1)),
-                (MODULE_PARAM_OWNERSHIP, json!(GgModuleOwnership::Owned)),
             ]),
         ),
         entry(
@@ -1772,20 +1700,12 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
                     PARAM_DOC_VIEW_TYPES,
                     json!({ "return": true, "parameters": false, "errors": true }),
                 ),
-                (
-                    PARAM_HEALING,
-                    json!({
-                        "strip-fences": true,
-                        "strip-prose": true,
-                        "drop-doubled-response": false,
-                    }),
-                ),
             ]),
         ),
         entry(
             CAPABILITY_PROGRAM_LIBRARY,
             None,
-            params([(PARAM_KEEP, json!(20))]),
+            params([(PARAM_KEEP, json!(20)), (PARAM_ID_LENGTH, json!(4))]),
         ),
         entry(CAPABILITY_DOCVIEW_CLOSE, None, none()),
     ]
@@ -2556,6 +2476,73 @@ impl fmt::Display for GgDispatchError<'_> {
     }
 }
 
+/// **What a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens holding** — the
+/// two lists gg's synthesized opening turn is generated from, per agent.
+///
+/// A code agent's first turn is a program gg writes in the agent's own language and runs before the
+/// model has said a word: it searches the documentation of the modules named here, together, in one
+/// listing keyed by their paths, and opens a documentation view of each function named here, in the
+/// order written. The prompt names no function, so this is the only thing that hands a model its way
+/// into its own surface; the lists are **configuration** rather than gg's choice because what a
+/// window should open on is an operator's decision about the agent, and a study that varies it is a
+/// study gg has no business deciding the answer to.
+///
+/// Both vocabularies are gg's cross-arm ones: [`modules`](Self::modules) names a module by its id
+/// (the namespace half of an operation id — `files`, `shell`, `views`, …) and
+/// [`functions`](Self::functions) names an operation (`files.read_file`), never an arm's own
+/// spelling of either. The two lists are **independent**: a function's documentation is opened
+/// whether or not its module is listed, and a module is listed whether or not any of its functions
+/// is opened.
+///
+/// An entry gg has no vocabulary for refuses the launch, on the terms an
+/// [allowlist](GgAgentConfig::operations) entry does; so does a function held by role or by
+/// placement (an ending call, `delegation.transition_state`), which no configuration can promise.
+/// An entry in the right vocabulary that *this* agent does not hold — a module none of whose
+/// functions it may call, a function it was not granted — is dropped at seed time with a warning,
+/// which is what lets one shared document describe agents with different grants. Duplicates are
+/// opened once. Two lists that come out empty seed no program at all, which is a valid choice
+/// rather than a defect.
+///
+/// **Required** on every agent, and always written: a document without it does not read. The
+/// authored default a fresh profile is seeded with is [`GgAgentConfig::root`]'s —
+/// [`DEFAULT_OPENING_MODULES`] and [`DEFAULT_OPENING_FUNCTIONS`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgOpeningTurn {
+    /// The gg module ids whose whole function list the opening program searches for, together, in
+    /// one directory listing keyed by the modules in this order: `files`, `shell`, `board`, ….
+    pub modules: Vec<String>,
+    /// The operation ids whose documentation view the opening program opens, in this order:
+    /// `docs.search`, `views.open_file`, ….
+    pub functions: Vec<String>,
+}
+
+impl GgOpeningTurn {
+    /// The opening turn a fresh profile is **seeded** with — [`DEFAULT_OPENING_MODULES`] and
+    /// [`DEFAULT_OPENING_FUNCTIONS`] — which is what [`GgAgentConfig::root`] writes.
+    ///
+    /// An authored document, not a runtime default: gg reads the field as written and never
+    /// substitutes this for an absent one.
+    pub fn seeded() -> Self {
+        Self {
+            modules: DEFAULT_OPENING_MODULES
+                .iter()
+                .map(|id| id.to_string())
+                .collect(),
+            functions: DEFAULT_OPENING_FUNCTIONS
+                .iter()
+                .map(|id| id.to_string())
+                .collect(),
+        }
+    }
+
+    /// Whether both lists are empty — an agent whose window opens on the build prompt alone.
+    pub fn is_empty(&self) -> bool {
+        self.modules.is_empty() && self.functions.is_empty()
+    }
+}
+
 /// A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that
 /// makes gg's capabilities configurable independently for each agent in a run.
 ///
@@ -2693,6 +2680,17 @@ pub struct GgAgentConfig {
     /// a spelling gg accepts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub operations: Vec<String>,
+    /// What this agent's window **opens holding** under
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE): the modules gg's synthesized opening
+    /// turn lists and the functions whose documentation it opens — see [`GgOpeningTurn`] for the
+    /// vocabulary and the held/drop/refuse rules. Read only for an agent that writes programs;
+    /// carried, and still required, on a tool-calling one, so that the one switch between the two
+    /// modes stays a one-line edit.
+    ///
+    /// **Required and always written.** There is no default gg substitutes for an absent key: the
+    /// lists an agent opens on are part of the agent's record, and a document that omits them does
+    /// not read. [`GgAgentConfig::root`] seeds a fresh profile with [`GgOpeningTurn::seeded`].
+    pub opening_turn: GgOpeningTurn,
     /// Operator-authored instructions inserted into this agent's system prompt. `None`
     /// (or empty) leaves the stock prompt. This is the field an operator edits normally;
     /// [`system_prompt_template`](Self::system_prompt_template) is the escape hatch for
@@ -2782,6 +2780,7 @@ impl GgAgentConfig {
             model_slots: Vec::new(),
             tools: DEFAULT_TOOLS.iter().map(|name| name.to_string()).collect(),
             operations: DEFAULT_OPERATIONS.iter().map(|id| id.to_string()).collect(),
+            opening_turn: GgOpeningTurn::seeded(),
             custom_instructions: None,
             system_prompt_template: None,
             prompt_cache_ttl: GgPromptCacheTtl::default(),
@@ -3389,6 +3388,36 @@ const DEFAULT_OPERATIONS: &[&str] = &[
     // The read-file capability's second row: a program opens a file straight into its own window
     // rather than into a variable, and that channel is bought by the same capability the read is.
     "views.open_file",
+];
+
+/// The **modules** a fresh profile's [opening turn](GgOpeningTurn::modules) lists: the two an agent
+/// that builds anything reaches for first. Every module the agent holds is named in its prompt, one
+/// line each, and a module path is an exact lookup into the surface — so a module the agent turns
+/// out to need costs it one search, while a module it never touches costs it nothing. Listing all
+/// of them up front would spend a directory apiece on the ones a run never reaches for, on every
+/// request of that run.
+///
+/// The authored default and nothing more: gg reads an agent's own list, never this one.
+pub const DEFAULT_OPENING_MODULES: &[&str] = &["files", "shell"];
+
+/// The **functions** a fresh profile's [opening turn](GgOpeningTurn::functions) opens the
+/// documentation of: the calls discovery and showing are made of, and nothing else.
+///
+/// First, both halves of the loop the prompt describes, in the order it describes them — a model
+/// searches for what it needs and then opens a documentation view of what it found — so the
+/// transcript's first turn reads as the loop rather than as two unrelated calls. Then every other
+/// function that puts something in the agent's own window (the text view every run has, and the
+/// file view an agent holding `read-file` has), and the workspace search, so the call that greps a
+/// workspace is read before it is written.
+///
+/// Held to gg's operations table by the same test the allowlist defaults are. The authored default
+/// and nothing more: gg reads an agent's own list, never this one.
+pub const DEFAULT_OPENING_FUNCTIONS: &[&str] = &[
+    "docs.search",
+    "views.open_docs_view",
+    "views.open_text",
+    "views.open_file",
+    "files.search",
 ];
 
 /// The configuration of a single capability within a [`GgCapabilitySet`].
@@ -4749,6 +4778,11 @@ pub enum GgTurnErrorType {
     /// session is nowhere near ending, and gg answers it by restating the compaction rather than by
     /// explaining how to finish — and it is answered differently, so it is recorded differently.
     MissingCompletionCompaction,
+    /// A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) turn made no `submit_program` call, so
+    /// the reply carried no program to run — the code-mode counterpart of
+    /// [`MissingCompletionNoCall`](Self::MissingCompletionNoCall), reached only when a provider
+    /// answers a request that required the call with a reply that does not make it.
+    MissingCompletionNoProgram,
 }
 
 impl GgTurnErrorType {
@@ -4756,7 +4790,7 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
@@ -4776,6 +4810,7 @@ impl GgTurnErrorType {
         Self::SandboxTrap,
         Self::MissingCompletionNoCall,
         Self::MissingCompletionCompaction,
+        Self::MissingCompletionNoProgram,
     ];
 
     /// The [base kind](GgTurnErrorKind) this type falls under.
@@ -4803,9 +4838,9 @@ impl GgTurnErrorType {
             Self::SandboxTimeout | Self::SandboxOutOfMemory | Self::SandboxTrap => {
                 GgTurnErrorKind::SandboxLimit
             }
-            Self::MissingCompletionNoCall | Self::MissingCompletionCompaction => {
-                GgTurnErrorKind::MissingCompletion
-            }
+            Self::MissingCompletionNoCall
+            | Self::MissingCompletionCompaction
+            | Self::MissingCompletionNoProgram => GgTurnErrorKind::MissingCompletion,
         }
     }
 
@@ -4836,6 +4871,7 @@ impl GgTurnErrorType {
             Self::SandboxTrap => "sandbox_trap",
             Self::MissingCompletionNoCall => "missing_completion_no_call",
             Self::MissingCompletionCompaction => "missing_completion_compaction",
+            Self::MissingCompletionNoProgram => "missing_completion_no_program",
         }
     }
 
@@ -4865,6 +4901,7 @@ impl GgTurnErrorType {
             Self::SandboxTrap => "sandbox trap",
             Self::MissingCompletionNoCall => "no work declared",
             Self::MissingCompletionCompaction => "compaction ignored",
+            Self::MissingCompletionNoProgram => "no program submitted",
         }
     }
 }
@@ -5094,12 +5131,13 @@ pub enum GgContextSource {
     Assistant,
     /// The output of a tool the agent called, fed back as a tool result.
     ///
-    /// **Tool calling only.** A
-    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) program has no tool
-    /// results: a call's value returns into the program, and the only thing that reaches the model
-    /// is a [view](Self::FileView) it opened. What gg has to say back to a code-mode agent is
-    /// therefore never tool output — it is a [compiler](Self::CompilerError) or
-    /// [runtime](Self::RuntimeError) error, or a [notice](Self::System).
+    /// On the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) surface this
+    /// band carries only the terse tool results answering the turn's `submit_program` calls (and
+    /// the refusal answering a call to a tool the mode does not offer): a **program's** calls have
+    /// no tool results — a call's value returns into the program, and the only thing a program
+    /// shows the model is a [view](Self::FileView) it opened. What gg has to say back about a
+    /// program is a [compiler](Self::CompilerError) or [runtime](Self::RuntimeError) error, or a
+    /// [notice](Self::System).
     ToolOutput,
     /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) program that failed
     /// to compile, carrying the compiler's error and nothing else.
@@ -5161,10 +5199,6 @@ pub enum GgContextSource {
     /// The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — retained across
     /// a compaction boundary.
     TaskList,
-    /// The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/)
-    /// — the heavyweight work-decomposition counterpart to the task list, retained across
-    /// a compaction boundary.
-    Board,
     /// Prior-turn thread material not attributable to a more specific source — the
     /// catch-all history bucket, and what compaction summarizes.
     History,
@@ -5174,7 +5208,7 @@ impl GgContextSource {
     /// Every source, in a stable order. A [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown)
     /// reports one entry per source in this order (zero when a source contributed
     /// nothing), so the console's stacked graph keeps stable bands across turns.
-    pub const ALL: [GgContextSource; 15] = [
+    pub const ALL: [GgContextSource; 14] = [
         GgContextSource::System,
         GgContextSource::UserPrompt,
         GgContextSource::Assistant,
@@ -5188,7 +5222,6 @@ impl GgContextSource {
         GgContextSource::Skill,
         GgContextSource::Memory,
         GgContextSource::TaskList,
-        GgContextSource::Board,
         GgContextSource::History,
     ];
 }
@@ -5625,12 +5658,9 @@ pub struct GgMemoryPeak {
 /// not summarized away).
 ///
 /// Each figure is a **count of retained items**, not a token figure: how many read
-/// [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many
-/// in-play [memories](GgContextSource::Memory), and how many
-/// [issues](https://docs.testcabinet.ai/gg/project-management/) on the
-/// [board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by
-/// the summary. The epic/issue board is retained across the boundary just like the task list,
-/// so its issue count is reported here as part of the retention proof.
+/// [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how many
+/// in-play [memories](GgContextSource::Memory) remained pinned after the ephemeral history was
+/// replaced by the summary.
 ///
 /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -5643,8 +5673,6 @@ pub struct GgRetainedState {
     pub tasks: u64,
     /// The number of in-play memories carried across the boundary verbatim.
     pub memories: u64,
-    /// The number of issues on the retained epic/issue board.
-    pub issues: u64,
 }
 
 /// The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)
@@ -5833,49 +5861,6 @@ pub struct GgReviewer {
     pub profile: String,
 }
 
-/// One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,
-/// independently toggleable repair gg may apply to a model's response before running it.
-///
-/// The wire values are the strategy ids, spelled exactly as the
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are
-/// (`{"healing": {"strip-fences": false}}`), because the id is one thing: a config key, a metric
-/// name, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly
-/// that reason.
-///
-/// Every application is counted on the run record and reported on the operator's stream, and none
-/// of it is disclosed to the model: the model's history carries the healed program as its own reply,
-/// so the count answers the question a run of this shape asks — how often the model broke the
-/// contract — unperturbed by any correction.
-///
-/// Two of the three are armed unless a configuration turns them off, because for those, repairing
-/// is strictly safer than not: the reply they delete from could not have run as sent. The exception
-/// is [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration
-/// arms it — see its own documentation for why that asymmetry exists.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GgHealingStrategy {
-    /// A Markdown code fence wrapping the program was removed — tagged or not, closed properly,
-    /// closed with prose glued onto the closing line (which CommonMark does not accept as a close,
-    /// so the prose would otherwise be swallowed into the program), or never closed at all. The
-    /// count that answers "how often did this model still wrap its program in a fence after being
-    /// told not to?".
-    StripFences,
-    /// Explanatory lines were removed from before and/or after the program body.
-    StripProse,
-    /// The whole reply was one completion concatenated with a byte-identical copy of itself, and the
-    /// trailing copy was deleted. The shape a provider produces when it emits (or a proxy records)
-    /// the same completion twice: the reply's text is exactly `X + X`, with no fence, no blank line
-    /// and no declaration to separate the halves.
-    ///
-    /// It is the one strategy that is **off unless a configuration arms it**: the half it deletes
-    /// is valid code under any reading other than "the transport duplicated this", so unlike the
-    /// other repairs here, applying it to a model that genuinely meant to do the work twice changes
-    /// behaviour rather than restoring it. An operator arms it for the models observed to exhibit
-    /// the defect.
-    DropDoubledResponse,
-}
-
 /// The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the
 /// axis a cross-language study compares its arms on.
 ///
@@ -5894,8 +5879,7 @@ pub enum GgHealingStrategy {
 /// (`{"language": "typescript"}`), because the id is one thing: a config key, a telemetry value,
 /// and the stem of the language's committed guest artifacts. Lower-case rather than this module's
 /// usual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is
-/// not a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the
-/// module default on the same grounds.
+/// not a spelling anybody would put in a configuration file.
 ///
 /// No language is the default. An agent with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
 /// switched on names one of these, and a launch that omits it is refused. The enum carries no
@@ -6247,118 +6231,6 @@ impl std::fmt::Display for GgProgramLanguage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.id())
     }
-}
-
-/// What gg had to do to a model's response before it could run it — the healing record of one
-/// code-shaped turn.
-///
-/// Healing is textual and conservative: it only ever **deletes**, so a healed program is always a
-/// subsequence of the response the model sent. The model is told nothing about a repair; this
-/// record and the run's operator stream are where every repair is disclosed.
-///
-/// A response that needed nothing carries the default and is omitted from the wire entirely, so
-/// the presence of this object *is* "something was unusual about this response".
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgResponseHealing {
-    /// Each strategy application, in the order applied — a strategy may appear more than once (two
-    /// nested fences are two applications), which is what makes this a count rather than a flag.
-    /// Empty for a clean response.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub strategies: Vec<GgHealingStrategy>,
-    /// Whether the healing pipeline failed to reach a fixpoint, so every repair was discarded and
-    /// the response ran exactly as sent.
-    ///
-    /// Carried so that the one response pathological enough to defeat the pipeline is
-    /// distinguishable from a clean one, which is otherwise byte-identical on the wire.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub did_not_converge: bool,
-    /// The reply **as the model sent it**, carried whenever healing rewrote it into something else.
-    ///
-    /// The program that ran is what the model's own history carries and what every reported line
-    /// number counts lines of, so this is the only surviving copy of the text healing started from
-    /// — and reading the two against each other is what tells a defect in healing apart from a
-    /// mistake by the model. It is for the run's operator; no model is ever shown it.
-    ///
-    /// Absent for a clean response, where the reply and the program are the same string.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub original: Option<String>,
-}
-
-impl GgResponseHealing {
-    /// Whether this response needed nothing at all — the `skip_serializing_if` predicate on
-    /// [`CodeExecution`](GgTelemetryKind::CodeExecution), so a clean turn's event carries no
-    /// `healing` key.
-    ///
-    /// Written against [`Default`] rather than field by field so a fact added later cannot be
-    /// forgotten here and quietly report an unusual response as an ordinary one.
-    pub fn is_clean(&self) -> bool {
-        *self == Self::default()
-    }
-}
-
-/// The run's [response-healing](GgResponseHealing) rollup: how much of what the models sent had to
-/// be repaired before it could run, and which repairs did the work.
-///
-/// The denominator for every rate here is [`code_executions`](GgSessionSummary::code_executions),
-/// which is one per code-shaped turn — the same event these counters are folded from, so numerator
-/// and denominator can never come from different mechanisms and drift. Every counter is `0`, and
-/// [`enabled`](Self::enabled) empty, for a tool-calling run, because healing never runs there.
-///
-/// Read the per-strategy counts as **what gg's pipeline did**, not as what the model wrote: the
-/// pipeline applies its strategies in a fixed order to a fixpoint, so which strategy gets the
-/// credit for a response that several could have repaired is a property of that order.
-///
-/// # What this rollup deliberately does not count
-///
-/// A reply that defeated the pipeline entirely — one whose repairs never reached a fixpoint, so
-/// every repair was discarded and the reply was compiled exactly as sent — contributes only to the
-/// denominator here, exactly as a clean reply does. That fact lives on the turn's own
-/// [`GgResponseHealing::did_not_converge`] rather than being totted up per run, because it is a
-/// diagnosis of one pathological response rather than a rate a study slices on. It is stated here,
-/// and on the docs page, so the gap is known rather than inferred from a rollup that looks
-/// complete.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct GgHealingSummary {
-    /// Responses that had to be repaired for the program to run.
-    pub healed: u64,
-    /// Total strategy applications; at least [`healed`](Self::healed), since one response may need
-    /// several repairs.
-    pub applications: u64,
-    /// Applications of [`strip-fences`](GgHealingStrategy::StripFences) — the count that answers
-    /// "how often did this model still wrap its program in a code fence after being told not to?".
-    pub strip_fences: u64,
-    /// Applications of [`strip-prose`](GgHealingStrategy::StripProse).
-    pub strip_prose: u64,
-    /// Applications of [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) — how often
-    /// a reply arrived as a byte-exact doubling of itself.
-    ///
-    /// Zero for every run that did not **arm** the strategy, which is the default; read it together
-    /// with [`enabled`](Self::enabled) rather than as "this model never doubled a reply".
-    pub drop_doubled_response: u64,
-    /// The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg
-    /// applies them — the resolved configuration, recorded rather than left to be re-derived from
-    /// the capability set.
-    ///
-    /// This is what makes the configuration legible from the telemetry alone. Every counter above
-    /// is a measurement of what fired, and a run in which nothing fired is byte-identical whether
-    /// its strategies were all armed or all disabled — so without this field a run with healing off
-    /// and a run with healing on are indistinguishable in the data, and comparing the two means
-    /// going back to the invocation files that produced them.
-    ///
-    /// Empty means every strategy was disabled **for a responses-as-code run**, and means nothing
-    /// at all for a tool-calling one, where healing never runs;
-    /// [`execution_mode`](GgSessionSummary::execution_mode) is what tells those two apart.
-    ///
-    /// Serialized **always, empty list and all** — deliberately no `skip_serializing_if`. The empty
-    /// list is the one value this field exists to publish, so a key that vanished exactly when it
-    /// meant "every strategy was off" would leave the healing-off arm byte-identical on the wire to
-    /// a build with no such field, reopening one level down the very hole described above.
-    pub enabled: Vec<GgHealingStrategy>,
 }
 
 /// The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.
@@ -6793,15 +6665,13 @@ pub struct GgSessionSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub program_language: Option<GgProgramLanguage>,
-    /// How many **code-shaped turns** the run took — one per
+    /// How many **programs** the run executed — one per
     /// [`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the
     /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool
     /// calling), so a non-zero count is the proof the code path actually ran.
     ///
-    /// This counts turns, not executions: a turn whose reply did not compile at all emits its event
-    /// like any other and is counted here, which is exactly what makes this the denominator for
-    /// every rate in the run's [healing rollup](Self::healing). Numerator and denominator are folded
-    /// from the same event, so they cannot come from different mechanisms and drift.
+    /// A submitted program that did not compile at all emits its event like any other and is
+    /// counted here, and a turn that submitted several programs contributes one count per program.
     pub code_executions: u64,
     /// How many milliseconds the run spent **compiling**, in total — its programs, the code halves
     /// of the skills and memories they brought into use, and the on-use scripts those queued.
@@ -6819,17 +6689,12 @@ pub struct GgSessionSummary {
     /// against a turn of arm B, and it is the only place that question is answerable — the per-turn
     /// time is on the events, but a query works on the run document.
     pub compile_ms: u64,
-    /// What gg had to do to the models' responses before it could run them — the run's
-    /// [response-healing](GgHealingSummary) rollup, folded from the same
-    /// [`CodeExecution`](GgTelemetryKind::CodeExecution) events
-    /// [`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run.
-    pub healing: GgHealingSummary,
     /// How many of the run's turns failed, how badly they clustered, and how — the run's
     /// [error rollup](GgErrorSummary), folded from the
     /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events every agent emitted.
     ///
-    /// Unlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a
-    /// tool-calling turn fails too, just in fewer ways.
+    /// Meaningful in **both** execution modes: a tool-calling turn fails too, just in fewer
+    /// ways.
     pub errors: GgErrorSummary,
     /// Every **dispatched tool call** the run made, in either execution mode — one per
     /// [`ToolResult`](GgTelemetryKind::ToolResult) event, failed or not. This is the population
@@ -7465,9 +7330,7 @@ pub enum GgTelemetryKind {
     /// successful mutation
     /// (`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`)
     /// — and whenever gg itself moves an issue (a dispatch, a completion, an acceptance) —
-    /// so the console can render the live board. The whole board is also a pinned
-    /// [`Board`](GgContextSource::Board)-sourced context item, so the model sees its
-    /// decomposition each turn. A run with the capability off emits none.
+    /// so the console can render the live board. A run with the capability off emits none.
     ///
     /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
     BoardState {
@@ -7649,14 +7512,13 @@ pub enum GgTelemetryKind {
         cwd: String,
     },
     /// The [modules](GgModuleKind) one agent instance holds, as it opens: what each is, which
-    /// backing store it is a holder of, whose it is, and whether the agent's prompt carries it.
+    /// backing store it is a holder of, and whose it is.
     ///
     /// Emitted **once per incarnation, for every instance** — the root, every subagent, every
     /// successor — immediately after that instance's [`AgentSpawned`](Self::AgentSpawned) (and its
     /// [`FsmState`](Self::FsmState), when it stands in a machine). It is the only event that
     /// reports a module an agent holds but has not yet *touched* — a read-only inherited memory
-    /// holder that never writes emits no [`MemoryState`](Self::MemoryState) of its own — and the
-    /// only one that reports [ownership](GgModuleOwnership) as data rather than as a log line.
+    /// holder that never writes emits no [`MemoryState`](Self::MemoryState) of its own.
     ///
     /// A roster does not change within an incarnation: every operation that changes what an agent
     /// holds (an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork`) mints a new agent id, and
@@ -7983,14 +7845,12 @@ pub enum GgTelemetryKind {
     /// before it could run it, what the program then did, and whether it ended the run.
     ///
     /// Emitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)
-    /// once per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's
-    /// own [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a
-    /// program at all** — prose, or an empty reply — which is prepared for the guest like anything
-    /// else and is reported the same way a program that did not compile is: `ok: false` and an
-    /// [`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per
-    /// code-shaped turn is the invariant, and it is what makes
-    /// [`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's
-    /// [healing rollup](GgHealingSummary).
+    /// once per **submitted program**, on the agent that emitted the reply, so it rides on that
+    /// agent's own [`agent_id`](GgTelemetryEvent::agent_id) — a turn that submitted several
+    /// programs emits one event per program, in submission order. That includes a submitted string
+    /// that was **not a program at all** — prose, or empty — which is prepared for the guest like
+    /// anything else and is reported the same way a program that did not compile is: `ok: false`
+    /// and an [`error`](Self::CodeExecution::error) carrying the compiler's diagnostic.
     ///
     /// The individual tool calls the program made still stream as ordinary
     /// [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the
@@ -8045,7 +7905,7 @@ pub enum GgTelemetryKind {
         ///
         /// Defaulted and omitted from the wire when nothing was recorded, so the presence of this
         /// object *is* "this turn called something it had not looked up".
-        // Omitted when empty and not an `Option`, so — like `healing` below — it declares its own
+        // Omitted when empty and not an `Option`, so it declares its own
         // optionality: the enum's `optional_fields` only reaches `Option<T>`, and a consumer
         // promised an object the wire does not always carry would read `undefined.calls`.
         #[serde(default, skip_serializing_if = "GgUndocumentedCalls::is_empty")]
@@ -8093,10 +7953,10 @@ pub enum GgTelemetryKind {
         ///
         /// Absent (an empty list) for a turn that logged nothing and for a reply that was not a
         /// program at all.
-        // Omitted from the wire when the program printed nothing, which is most turns — so, like
-        // `healing` below, it has to declare its own optionality: the enum's `optional_fields` only
-        // reaches `Option<T>`, and a consumer promised an array the record does not carry would
-        // read `undefined.length`.
+        // Omitted from the wire when the program printed nothing, which is most turns — so it
+        // has to declare its own optionality: the enum's `optional_fields` only reaches
+        // `Option<T>`, and a consumer promised an array the record does not carry would read
+        // `undefined.length`.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         logs: Vec<String>,
@@ -8144,16 +8004,6 @@ pub enum GgTelemetryKind {
         /// compared on what compiling cost them, which is the first thing such a study asks.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         compile_ms: Option<u64>,
-        /// What gg had to do to this reply before running it, and whether it was a program at all.
-        /// Defaulted and omitted from the wire for a clean response, so the presence of this
-        /// object *is* "something was unusual about this response".
-        // The enum's `optional_fields` only reaches `Option<T>` fields, so this — the one
-        // omitted field here that is not an `Option` — must declare its own optionality or the
-        // TypeScript binding would promise consumers an object the wire does not always carry.
-        // `optional = nullable` keeps the rendered type as-is and only adds the `?`.
-        #[serde(default, skip_serializing_if = "GgResponseHealing::is_clean")]
-        #[cfg_attr(feature = "contract", ts(optional = nullable))]
-        healing: GgResponseHealing,
     },
     /// How one agent turn ended, as gg judged it — the event that makes a run's **error rate**
     /// observable.
@@ -8233,7 +8083,9 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "is_zero_u64")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         loop_abort_chars: u64,
-        /// The reply's length in characters — the model's raw text, before any healing. Carried on
+        /// The reply's length in characters — the model's raw text plus, on a
+        /// responses-as-code turn, the `program` string of each `submit_program` call it made.
+        /// Carried on
         /// every outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum
         /// over the turns that **worked** (a progressed or finished outcome): the figure a later
         /// output ceiling would have to accommodate. `0` — and omitted — for a turn whose reply

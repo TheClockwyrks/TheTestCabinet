@@ -77,12 +77,12 @@ fn run_with(
 }
 
 /// Run `program` with the [program library](crate::programs) bound and already holding `held`
-/// (turn, source) — the one scope variation that is not a tool and not a role.
-fn run_with_library(program: &str, held: &[(u64, &str)]) -> SandboxOutcome {
+/// (id, turn, source) — the one scope variation that is not a tool and not a role.
+fn run_with_library(program: &str, held: &[(&str, u64, &str)]) -> SandboxOutcome {
     let log = CallLog::default();
     let mut api = FakeOperationApi::new(&log);
-    for (turn, source) in held {
-        api = api.with_program(*turn, source);
+    for (id, turn, source) in held {
+        api = api.with_program(id, *turn, source);
     }
     let (outcome, _api) = run_program(
         typescript(),
@@ -1172,32 +1172,36 @@ fn the_program_library_is_bound_only_when_the_run_keeps_one() {
     // `history` describes the shape of what is held, and never its source.
     let outcome = run_with_library(
         "import * as gg from \"gg\";\nconsole.log(JSON.stringify(gg.programs.history()));",
-        &[(3, "const x = 1;\nconsole.log(x);")],
+        &[("k3p9", 3, "const x = 1;\nconsole.log(x);")],
     );
     assert_eq!(
         logged_json(&outcome),
-        json!([{ "turn": 3, "lines": 2, "chars": 28, "ok": true }]),
+        json!([{ "id": "k3p9", "turn": 3, "lines": 2, "chars": 28, "ok": true }]),
         "a summary carries no source; `get` is how you reach for one"
     );
 
-    // `get` returns the source verbatim, and takes a turn.
+    // `get` returns the source verbatim, and takes the id.
     let outcome = run_with_library(
-        "import * as gg from \"gg\";\nconsole.log(gg.programs.get());",
-        &[(1, "first"), (2, "second")],
+        "import * as gg from \"gg\";\nconsole.log(gg.programs.get(\"bbbb\"));",
+        &[("aaaa", 1, "first"), ("bbbb", 2, "second")],
     );
     assert_eq!(logs(&outcome), ["second"]);
     let outcome = run_with_library(
-        "import * as gg from \"gg\";\nconsole.log(gg.programs.get(1));",
-        &[(1, "first"), (2, "second")],
+        "import * as gg from \"gg\";\nconsole.log(gg.programs.history()[0].source());",
+        &[("aaaa", 1, "first"), ("bbbb", 2, "second")],
     );
-    assert_eq!(logs(&outcome), ["first"]);
+    assert_eq!(
+        logs(&outcome),
+        ["first"],
+        "a summary's `source()` fetches by its own id"
+    );
 
-    // A turn the library does not hold is a catchable `ApiError`, named after the call the model
+    // An id the library does not hold is a catchable `ApiError`, named after the call the model
     // made rather than after a gg tool that does not exist.
     let outcome = run_with_library(
-        "import * as gg from \"gg\";\ntry { gg.programs.get(99); }\n\
+        "import * as gg from \"gg\";\ntry { gg.programs.get(\"zzzz\"); }\n\
          catch (e) { console.log(JSON.stringify({ isApiError: e instanceof gg.core.ApiError, operation: (e as gg.core.ApiError).operation, code: (e as gg.core.ApiError).code })); }",
-        &[(1, "first")],
+        &[("aaaa", 1, "first")],
     );
     assert_eq!(
         logged_json(&outcome),

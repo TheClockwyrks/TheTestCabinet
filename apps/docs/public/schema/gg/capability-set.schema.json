@@ -51,6 +51,10 @@
           "description": "The profile's **display name**: what the console, the run log and a roster's prose call\nthis agent. `\"Root\"` ([`ROOT_AGENT`]) for the first profile of a default set.\n\nFree-form and mutable, and **not** unique: two profiles may carry one name. Nothing\nresolves a reference by reading it, which is what makes renaming a profile free.",
           "type": "string"
         },
+        "openingTurn": {
+          "$ref": "#/$defs/GgOpeningTurn",
+          "description": "What this agent's window **opens holding** under\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE): the modules gg's synthesized opening\nturn lists and the functions whose documentation it opens — see [`GgOpeningTurn`] for the\nvocabulary and the held/drop/refuse rules. Read only for an agent that writes programs;\ncarried, and still required, on a tool-calling one, so that the one switch between the two\nmodes stays a one-line edit.\n\n**Required and always written.** There is no default gg substitutes for an absent key: the\nlists an agent opens on are part of the agent's record, and a document that omits them does\nnot read. [`GgAgentConfig::root`] seeds a fresh profile with [`GgOpeningTurn::seeded`]."
+        },
         "operations": {
           "description": "The **operation ids** — `files.read_file`, `memories.update_memory` — that this agent's\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) programs may call. Meaningful for an agent\nthat writes programs; inert for a tool-calling one, whose surface is\n[`tools`](Self::tools).\n\nThe allowlist semantics, the launch-time validation and the editor's seeding are exactly\n[`tools`](Self::tools)'. What differs is the vocabulary, and the two are **scoped**: the API\nsurface is strictly the larger of the two — every tool has an operation behind it, and\noperations exist that no tool does — but a name is granted on precisely the surface it\nbelongs to. A tool name here, or an operation id there, refuses the launch rather than being\na spelling gg accepts.",
           "items": {
@@ -85,7 +89,7 @@
           "type": "array"
         }
       },
-      "required": ["slug", "name"],
+      "required": ["slug", "name", "openingTurn"],
       "type": "object"
     },
     "GgCapabilityConfig": {
@@ -339,6 +343,28 @@
       "required": ["name"],
       "type": "object"
     },
+    "GgOpeningTurn": {
+      "additionalProperties": false,
+      "description": "**What a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens holding** — the\ntwo lists gg's synthesized opening turn is generated from, per agent.\n\nA code agent's first turn is a program gg writes in the agent's own language and runs before the\nmodel has said a word: it searches the documentation of the modules named here, together, in one\nlisting keyed by their paths, and opens a documentation view of each function named here, in the\norder written. The prompt names no function, so this is the only thing that hands a model its way\ninto its own surface; the lists are **configuration** rather than gg's choice because what a\nwindow should open on is an operator's decision about the agent, and a study that varies it is a\nstudy gg has no business deciding the answer to.\n\nBoth vocabularies are gg's cross-arm ones: [`modules`](Self::modules) names a module by its id\n(the namespace half of an operation id — `files`, `shell`, `views`, …) and\n[`functions`](Self::functions) names an operation (`files.read_file`), never an arm's own\nspelling of either. The two lists are **independent**: a function's documentation is opened\nwhether or not its module is listed, and a module is listed whether or not any of its functions\nis opened.\n\nAn entry gg has no vocabulary for refuses the launch, on the terms an\n[allowlist](GgAgentConfig::operations) entry does; so does a function held by role or by\nplacement (an ending call, `delegation.transition_state`), which no configuration can promise.\nAn entry in the right vocabulary that *this* agent does not hold — a module none of whose\nfunctions it may call, a function it was not granted — is dropped at seed time with a warning,\nwhich is what lets one shared document describe agents with different grants. Duplicates are\nopened once. Two lists that come out empty seed no program at all, which is a valid choice\nrather than a defect.\n\n**Required** on every agent, and always written: a document without it does not read. The\nauthored default a fresh profile is seeded with is [`GgAgentConfig::root`]'s —\n[`DEFAULT_OPENING_MODULES`] and [`DEFAULT_OPENING_FUNCTIONS`].",
+      "properties": {
+        "functions": {
+          "description": "The operation ids whose documentation view the opening program opens, in this order:\n`docs.search`, `views.open_file`, ….",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "modules": {
+          "description": "The gg module ids whose whole function list the opening program searches for, together, in\none directory listing keyed by the modules in this order: `files`, `shell`, `board`, ….",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["modules", "functions"],
+      "type": "object"
+    },
     "GgPromptCacheTtl": {
       "description": "How long one [agent](GgAgentConfig::prompt_cache_ttl) asks the provider to keep the **stable**\nentries of its prompt cache — the opening context and the cached grid points a later turn reads,\nas opposed to the rolling tail, which is rewritten every turn and always takes the provider\ndefault.\n\nThis is a **per-agent** choice because it is a cost trade, and the trade comes out differently\nfor different agents in the same run. The extended lifetime is billed at a higher write premium\n(on Anthropic, 2× the base input rate against the standard lifetime's 1.25×), so it pays for\nitself only when it turns cache *misses* into hits:\n\n- An agent whose turns are long or far apart — one that runs builds and test suites, or one that\n  delegates and then sits idle while its subagents work — routinely comes back to its own\n  context more than five minutes later, and under the standard lifetime re-sends that whole\n  prefix at full price. [`Extended`](Self::Extended) is what stops that.\n- An agent that runs quickly, or is spawned once and never resumed, never reaches the standard\n  lifetime's expiry in the first place. Buying it an hour is pure premium on entries that would\n  have been read (or discarded) within the five minutes it already had.\n\n[`Standard`](Self::Standard) is therefore the default: it is the arrangement that cannot cost a\nconfiguration money it was not already spending, and an operator opts individual profiles into\nthe extended lifetime where the run's shape justifies it.",
       "oneOf": [
@@ -548,6 +574,16 @@
           ],
           "modelId": "",
           "name": "Root",
+          "openingTurn": {
+            "functions": [
+              "docs.search",
+              "views.open_docs_view",
+              "views.open_text",
+              "views.open_file",
+              "files.search"
+            ],
+            "modules": ["files", "shell"]
+          },
           "operations": [
             "shell.shell",
             "files.read_file",

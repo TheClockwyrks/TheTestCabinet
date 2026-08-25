@@ -139,6 +139,7 @@ function testCaseDetail(slug: string): TestCaseDetail {
         referenceScreenshots: [],
         reviewItems: [],
         domains: [],
+        validatorRated: false,
         referenceBuilds: {},
       },
     ],
@@ -195,6 +196,8 @@ function runSummary(id: string, slug: string): RunSummary {
     },
     state: "completed",
     rating: "great",
+    aesthetic: null,
+    validatorRated: false,
     caseName: "Carom",
   } as unknown as RunSummary;
 }
@@ -205,6 +208,7 @@ function review(): StoredReview {
     reviewer: "A Reviewer",
     username: "reviewer",
     ratings: [{ domain: "approach", rating: "great" }],
+    aesthetics: [],
     checklist: [],
     writeup: "Solid.",
     reviewedAt: "2026-08-02T00:00:00Z",
@@ -240,6 +244,9 @@ function runDetail(id: string): RunDetail {
     },
     reviews: [review()],
     published: true,
+    validatorRated: false,
+    rating: "great",
+    aesthetic: null,
   } as unknown as RunDetail;
 }
 

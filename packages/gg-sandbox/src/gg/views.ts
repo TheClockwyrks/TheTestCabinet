@@ -168,6 +168,6 @@ function docsName(target: Function | string): string {
  * view's name, and `unavailable` for an agent whose run did not buy `agent-managed-context`.
  */
 export function close(selector: string): number {
-  // A `u32`, so already a `number` — the `bigint` conversion `current` makes is not needed here.
+  // A `u32`, so already a `number` — no `bigint` conversion is needed here.
   return call(() => raw.closeView(selector));
 }

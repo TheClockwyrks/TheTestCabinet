@@ -202,7 +202,8 @@ public final class Read {
         List<Programs.ProgramSummary> out = new ArrayList<>(value.size());
         for (int index = 0; index < value.size(); index++) {
             Value program = value.at(index);
-            out.add(new Programs.ProgramSummary(program.get("turn").integer(),
+            out.add(new Programs.ProgramSummary(program.get("id").text(),
+                    program.get("turn").integer(),
                     program.get("lines").integer(), program.get("chars").integer(),
                     program.get("ok").flag(), optionalText(program.get("error"))));
         }

@@ -50,10 +50,15 @@
 //! - `minOffenders > windowWords` — armed exactly as declared, provably inert.
 //! - An allowlist entry naming a real gg tool or operation that *this* agent's capabilities do not
 //!   offer. It grants nothing, it is not a typo, and it is the legitimate shared-document case.
+//! - An `openingTurn` entry naming a real gg module or operation that *this* agent does not hold —
+//!   the same shared-document case, dropped at seed time with a line naming it. What **refuses**
+//!   there is a module id or operation id gg has no vocabulary for, and a function held by role or
+//!   placement (an ending call, the machine transition), which no document can promise a window
+//!   will open on (`check_opening_turn` in [`crate::agent`]). Two lists that come out empty are a
+//!   configuration, not a defect: the agent is seeded no opening program at all.
 //! - A `params` key known to the capability but unused by the arm its `implementation` selected —
 //!   the deliberate "one shared params block per sweep" case.
-//! - The `info` lines reporting what *is* in force: the armed ceilings, the healing set, the loop
-//!   detector.
+//! - The `info` lines reporting what *is* in force: the armed ceilings, the loop detector.
 //!
 //! # The resolver contract
 //!
@@ -114,14 +119,14 @@ use test_cabinet_core::gg::{
     CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE,
     COMPACTION_PARAM_MODEL, COMPACTION_PARAM_MODEL_SLOT, COMPACTION_STRATEGY_MEMORY,
     FSM_PARAM_STATES, GG_CAPABILITY_CATALOG, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
-    GgSubagentScope, MEMORY_PARAM_SCOPE, MODULE_PARAM_OWNERSHIP, PARAM_BUILT_INS,
-    PARAM_DOC_VIEW_TYPES, PARAM_HEALING, PARAM_KEEP, PARAM_LANGUAGE, PARAM_LINE_CAP,
-    PARAM_MAX_CHARS, PARAM_MAX_COUNT, PARAM_MAX_DEPTH, PARAM_MAX_EPICS, PARAM_MAX_ISSUES,
-    PARAM_MAX_LEN_DESCRIPTION, PARAM_MAX_LEN_INDEX, PARAM_MAX_LEN_PER_MEMORY, PARAM_MAX_LINES,
-    PARAM_MAX_MEMORY_BYTES, PARAM_MAX_RESULTS, PARAM_MAX_RETRIES, PARAM_MAX_TASKS,
-    PARAM_MAX_TOTAL_LEN, PARAM_MODE, PARAM_REVIEWERS, PARAM_SIGNAL_THRESHOLD_PERCENT,
-    PARAM_SKILLS_DIR, PARAM_SUMMARY_HEADROOM, PARAM_TIMEOUT_SECS, PARAM_TOP_FILE_VIEWS,
-    PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, READ_MODES, SHELL_OUTPUT_MODES,
+    GgSubagentScope, MEMORY_PARAM_SCOPE, PARAM_BUILT_INS, PARAM_DOC_VIEW_TYPES, PARAM_ID_LENGTH,
+    PARAM_KEEP, PARAM_LANGUAGE, PARAM_LINE_CAP, PARAM_MAX_CHARS, PARAM_MAX_COUNT, PARAM_MAX_DEPTH,
+    PARAM_MAX_EPICS, PARAM_MAX_ISSUES, PARAM_MAX_LEN_DESCRIPTION, PARAM_MAX_LEN_INDEX,
+    PARAM_MAX_LEN_PER_MEMORY, PARAM_MAX_LINES, PARAM_MAX_MEMORY_BYTES, PARAM_MAX_RESULTS,
+    PARAM_MAX_RETRIES, PARAM_MAX_TASKS, PARAM_MAX_TOTAL_LEN, PARAM_MODE, PARAM_REVIEWERS,
+    PARAM_SIGNAL_THRESHOLD_PERCENT, PARAM_SKILLS_DIR, PARAM_SUMMARY_HEADROOM, PARAM_TIMEOUT_SECS,
+    PARAM_TOP_FILE_VIEWS, PARAM_WINDOW_LIMIT, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, READ_MODES,
+    SHELL_OUTPUT_MODES,
 };
 
 use crate::config::GgInvocation;
@@ -683,10 +688,9 @@ pub enum Requirement {
 ///   same argument makes a key **required whichever arm is selected**: a sweep that varies the arm
 ///   over one params block is judged the same way on every launch in it. See the memories
 ///   documentation.
-/// - **A key known to *another* capability is still unknown here.** [`ownership`](MODULE_PARAM_OWNERSHIP)
-///   is offered by the two module-backed capabilities that have an ownership to configure and by no
-///   others, so an `ownership` on `memories`, `skills` or `tasks` is a refusal rather than a key
-///   read by nothing.
+/// - **A key known to *another* capability is still unknown here.** [`scope`](MEMORY_PARAM_SCOPE)
+///   is offered by the memories capability and by no other, so a `scope` on `skills` or `tasks`
+///   is a refusal rather than a key read by nothing.
 /// - **Requirement is a property of the capability being on**, not of the key existing. A
 ///   [disabled](GgCapabilityConfig::enabled) capability configures nothing, so nothing is required
 ///   of it; see [`check_params`].
@@ -823,12 +827,6 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
                 PARAM_SIGNAL_THRESHOLD_PERCENT,
                 Requirement::DefaultWhenAbsent,
             ),
-            (
-                MODULE_PARAM_OWNERSHIP,
-                Requirement::Required(
-                    "whether the state it keeps is carried in this agent's prompt",
-                ),
-            ),
         ],
     ),
     (
@@ -850,10 +848,6 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
             (
                 PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
                 Requirement::Required("which profile resolves a conflicting merge"),
-            ),
-            (
-                MODULE_PARAM_OWNERSHIP,
-                Requirement::Required("whether the board is carried in this agent's prompt"),
             ),
         ],
     ),
@@ -892,18 +886,20 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
                 PARAM_DOC_VIEW_TYPES,
                 Requirement::Required("which of a function's types open beside its documentation"),
             ),
-            (
-                PARAM_HEALING,
-                Requirement::Required("which response-healing repairs are armed"),
-            ),
         ],
     ),
     (
         CAPABILITY_PROGRAM_LIBRARY,
-        &[(
-            PARAM_KEEP,
-            Requirement::Required("how many of the session's programs the library retains"),
-        )],
+        &[
+            (
+                PARAM_KEEP,
+                Requirement::Required("how many of the session's programs the library retains"),
+            ),
+            (
+                PARAM_ID_LENGTH,
+                Requirement::Required("how many characters long each program's id is"),
+            ),
+        ],
     ),
     (CAPABILITY_DOCVIEW_CLOSE, &[]),
 ];
@@ -1163,7 +1159,6 @@ fn check_set(set: &GgCapabilitySet, report: &mut LaunchReport) {
         // itself will use. Their defects arrive unattributed (a resolver is handed a params object,
         // not a profile), so the walk stamps this profile's id on them.
         report.for_agent(&agent.slug, |report| {
-            crate::modules::check_ownership(agent, report);
             crate::memories::check_launch(agent, report);
             crate::compaction::check_launch(agent, report);
             crate::tasks::check_launch(agent, report);
@@ -1172,7 +1167,6 @@ fn check_set(set: &GgCapabilitySet, report: &mut LaunchReport) {
             crate::tools::check_launch(agent, report);
             crate::sandbox::check_launch(agent, report);
             crate::docs::check_launch(agent, report);
-            crate::healing::check_launch(agent, report);
             crate::skills::builtin::check_launch(agent, report);
             crate::prompts::check_launch(agent, report);
             crate::agent::check_launch(agent, report);

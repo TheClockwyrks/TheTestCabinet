@@ -72,6 +72,27 @@
   --rating-color: var(--tcab-rating-broken);
 }
 
+// The aesthetic scale's rows, colored by the `--tcab-aesthetic-*` tokens the
+// AestheticBadge uses (Legendary takes its primary shimmer color).
+.defRow[data-aesthetic] {
+  border-left-color: var(--rating-color);
+}
+.defRow[data-aesthetic="legendary"] {
+  --rating-color: var(--tcab-aesthetic-legendary);
+}
+.defRow[data-aesthetic="amazing"] {
+  --rating-color: var(--tcab-aesthetic-amazing);
+}
+.defRow[data-aesthetic="good"] {
+  --rating-color: var(--tcab-aesthetic-good);
+}
+.defRow[data-aesthetic="okay"] {
+  --rating-color: var(--tcab-aesthetic-okay);
+}
+.defRow[data-aesthetic="slop"] {
+  --rating-color: var(--tcab-aesthetic-slop);
+}
+
 .defTerm {
   color: t.$color-text;
   font-weight: 600;

@@ -15,6 +15,26 @@ export {
   RATING_META,
   isRating,
   worstRating,
+  type AestheticRating,
+  AESTHETIC_RATINGS,
+  AESTHETIC_META,
+  isAestheticRating,
+  worstAestheticRating,
+  aggregateAestheticRating,
+  type DomainAesthetic,
+  type FailureCap,
+  FAILURE_CAPS,
+  FAILURE_CAP_META,
+  FAILURE_CAP_RATING,
+  isFailureCap,
+  automatedVerdicts,
+  automatedOnlyScore,
+  validatorDomainRatings,
+  validatorRating,
+  validatorScore,
+  isToolchainGated,
+  gatedRating,
+  gatedScore,
   type DomainRating,
   type VerdictStatus,
   VERDICT_META,
@@ -44,9 +64,11 @@ export {
 } from "@test-cabinet/ui";
 
 import {
+  isAestheticRating,
   isGrade,
   isRating,
   isVerdictStatus,
+  type DomainAesthetic,
   type DomainRating,
   type GradeStatus,
   type ReviewVerdict,
@@ -63,10 +85,15 @@ export function asGrade(status: string | null | undefined): GradeStatus | null {
   return status && isGrade(status) ? status : null;
 }
 
-/** A writeup split into its per-domain ratings, its checklist verdicts, and its prose body. */
+/** A writeup split into its per-domain ratings (both channels), its checklist
+ * verdicts, and its prose body. */
 export interface ParsedWriteup {
-  /** The per-domain ratings from the frontmatter, in order. Empty when none was authored. */
+  /** The per-domain FUNCTIONAL ratings from the frontmatter, in order. Empty when
+   * none was authored — always, on a validator-rated run's review. */
   ratings: DomainRating[];
+  /** The per-domain AESTHETIC ratings (`aesthetic.<domain>:` lines), in order.
+   * Empty on a legacy run's review, which has no aesthetic channel. */
+  aesthetics: DomainAesthetic[];
   /** The reviewer's checklist verdicts, in frontmatter order. Empty when none. */
   checklist: ReviewVerdict[];
   /** The Markdown body with the frontmatter stripped. */
@@ -74,7 +101,8 @@ export interface ParsedWriteup {
 }
 
 // Mirrors the parser in the Rust core: an opening `---` fence, one or more
-// `rating.<domain>` keys, and a closing `---` line, with the body following.
+// `rating.<domain>` / `aesthetic.<domain>` / `review.<id>` keys, and a closing
+// `---` line, with the body following.
 // Lenient by design — a malformed writeup simply yields no ratings here; the
 // publish gate is what actually refuses to release a run without valid ones.
 const FRONTMATTER = /^\s*---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
@@ -84,12 +112,34 @@ export function parseWriteup(raw: string): ParsedWriteup {
   const withoutBom = raw.replace(/^﻿/, "");
   const match = FRONTMATTER.exec(withoutBom);
   if (!match) {
-    return { ratings: [], checklist: [], body: raw.trim() };
+    return { ratings: [], aesthetics: [], checklist: [], body: raw.trim() };
   }
   const [, frontmatter, body] = match;
   const ratings = readRatings(frontmatter ?? "");
+  const aesthetics = readAesthetics(frontmatter ?? "");
   const checklist = readChecklist(frontmatter ?? "");
-  return { ratings, checklist, body: (body ?? "").trim() };
+  return { ratings, aesthetics, checklist, body: (body ?? "").trim() };
+}
+
+// Mirrors the Rust parser: each `aesthetic.<domain>: <tier>` line, in order — the
+// aesthetic channel's counterpart of `readRatings`. An unknown tier is skipped.
+function readAesthetics(frontmatter: string): DomainAesthetic[] {
+  const aesthetics: DomainAesthetic[] = [];
+  for (const line of frontmatter.split(/\r?\n/)) {
+    const separator = line.indexOf(":");
+    if (separator === -1) continue;
+    const key = line.slice(0, separator).trim();
+    if (!key.startsWith("aesthetic.")) continue;
+    const domain = key.slice("aesthetic.".length).trim();
+    if (!domain) continue;
+    const value = line
+      .slice(separator + 1)
+      .trim()
+      .toLowerCase();
+    if (!isAestheticRating(value)) continue;
+    aesthetics.push({ domain, rating: value });
+  }
+  return aesthetics;
 }
 
 // Mirrors the Rust parser: each `rating.<domain>: <tier>` line, in order. A line

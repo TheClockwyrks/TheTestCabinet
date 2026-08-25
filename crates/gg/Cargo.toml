@@ -83,6 +83,7 @@ gg-artifact-csharp = { path = "../gg-sandbox-artifacts/csharp" }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
+cuid2 = { workspace = true }
 # gg's model-facing prose (the system prompt, the pinned context blocks, the compaction
 # instructions) is authored as Handlebars templates under `templates/` and embedded at compile
 # time; see `src/prompts.rs`. Same engine, and the same strict-mode/no-escape configuration,

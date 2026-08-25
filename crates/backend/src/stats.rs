@@ -187,8 +187,8 @@ pub struct ProbeProviderModelOut {
     pub model_slug: String,
     /// Completion calls on this (provider, model).
     pub items: u64,
-    /// The calls whose reply classified clean.
-    pub clean: u64,
+    /// The calls whose submitted program passed its case's check.
+    pub passes: u64,
     /// The calls that errored before classification.
     pub errored: u64,
 }
@@ -269,8 +269,8 @@ pub struct ToolCallingAccuracyOut {
 }
 
 /// One probe item's projection: the provider that served it, the probed
-/// model's catalog slug, whether the reply was clean, and whether the call
-/// errored before classification.
+/// model's catalog slug, whether the submitted program passed its case's
+/// check, and whether the call errored before classification.
 pub type ProbeItemRow = (Option<String>, String, bool, bool);
 
 /// Fold the run corpus into the providers response's run-evidence half, with
@@ -388,27 +388,27 @@ fn model_row_order(row: &ProviderModelStatsOut) -> (bool, std::cmp::Reverse<u64>
 /// Fold the probe-item projection into the providers response's probe half.
 pub fn fold_probe_providers(rows: &[ProbeItemRow]) -> Vec<ProbeProviderStatsOut> {
     let mut cells: BTreeMap<(Option<String>, String), (u64, u64, u64)> = BTreeMap::new();
-    for (provider, model_slug, clean, errored) in rows {
-        let (items, cleans, errs) = cells
+    for (provider, model_slug, pass, errored) in rows {
+        let (items, passes, errs) = cells
             .entry((provider.clone(), model_slug.clone()))
             .or_default();
         *items += 1;
-        if *clean {
-            *cleans += 1;
+        if *pass {
+            *passes += 1;
         }
         if *errored {
             *errs += 1;
         }
     }
     let mut providers: BTreeMap<Option<String>, Vec<ProbeProviderModelOut>> = BTreeMap::new();
-    for ((provider, model_slug), (items, clean, errored)) in cells {
+    for ((provider, model_slug), (items, passes, errored)) in cells {
         providers
             .entry(provider)
             .or_default()
             .push(ProbeProviderModelOut {
                 model_slug,
                 items,
-                clean,
+                passes,
                 errored,
             });
     }

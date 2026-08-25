@@ -77,7 +77,7 @@ module GG
       # The fully-qualified name a documentation view of this method is opened by.
       #
       # A module function is reached through the module (`GG::Files.read_file`) and a member through
-      # a value (`GG::Views::OpenView#close`), which is the separator Ruby and YARD both use for the
+      # a value (`GG::Memories::MemoryHit#read`), which is the separator Ruby and YARD both use for the
       # two.
       #
       # @return [String] the name

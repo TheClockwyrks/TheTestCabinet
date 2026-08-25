@@ -11,6 +11,7 @@
 // reaches both.
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { LoadingState } from "../../../components/LoadingState";
 import { drawFrame, prepareRecording, type ReplayResources } from "./drawFrame";
 import { fetchRecording, type Recording } from "./format";
 import {
@@ -262,7 +263,7 @@ export function ReplayPlayer({ url, label }: { url: string; label: string }) {
     );
   }
   if (loading || recording === null || resources === null) {
-    return <p className={styles.error}>Loading the replay…</p>;
+    return <LoadingState size="section" label="Loading the replay…" />;
   }
   if (recording.frames.length === 0) {
     return <p className={styles.error}>This replay recorded no frames.</p>;

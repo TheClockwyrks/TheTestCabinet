@@ -5,8 +5,7 @@
 //!
 //! A trait with exactly one implementation is not an abstraction; it is one implementation wearing a
 //! trait, and nothing distinguishes the two until a second one arrives. Every property the
-//! [seam](super) claims — that the healing skeleton asks a dialect rather than knowing TypeScript's
-//! answers, that the source gg writes on a model's behalf is written in that model's own language,
+//! [seam](super) claims — that the source gg writes on a model's behalf is written in that model's own language,
 //! that one language's embedded artifacts cannot reach another's consumer, that the
 //! [capability gate](super::agreement) can be made to reject a surface at all —
 //! is unfalsifiable while TypeScript is the only thing that implements it. The fixture is what
@@ -45,7 +44,7 @@
 //! * **Its syntax is line-oriented**: `#` starts a comment, `use x` imports, `def f` declares, and
 //!   `??` is not a token. Nothing evaluates it — no component is ever compiled from
 //!   [`guest_component`](ProgramLanguage::guest_component) — because everything under test here
-//!   happens strictly *before* a guest: preparing, healing, prompting, cataloguing.
+//!   happens strictly *before* a guest: preparing, prompting, cataloguing.
 //! * **It has no wire id.** [`id`](ProgramLanguage::id) panics, on purpose: a
 //!   [`GgProgramLanguage`](test_cabinet_core::gg::GgProgramLanguage) is a value an operator
 //!   configures, a run records and a study slices by, and a fixture that could be named in a config
@@ -70,7 +69,6 @@ use std::sync::OnceLock;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use crate::healing::{CodeMask, Dialect};
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
@@ -301,10 +299,6 @@ impl ProgramLanguage for FixtureLanguage {
 
     fn catalogue(&self) -> &'static SignatureCatalogue {
         self.catalogue
-    }
-
-    fn healing(&self) -> &'static dyn Dialect {
-        &FIXTURE_DIALECT
     }
 
     /// `csv-tools` → `csv_tools` — this language's own convention, and deliberately not
@@ -807,75 +801,6 @@ fn leak(json: String) -> &'static SignatureCatalogue {
     Box::leak(Box::new(
         SignatureCatalogue::parse(&json).expect("the fixture catalogue is well-formed"),
     ))
-}
-
-// ---------------------------------------------------------------------------------------------
-// The healing dialect
-// ---------------------------------------------------------------------------------------------
-
-/// The fixture's [dialect](Dialect): the same questions, different answers.
-///
-/// Every method here disagrees with TypeScript's on some input the tests exercise — a different
-/// fence tag, a different shape of code, a different comment marker — which is what turns "the
-/// skeleton asks the dialect" from a claim into an observation.
-pub(crate) static FIXTURE_DIALECT: FixtureDialect = FixtureDialect;
-
-/// The fixture language's lexical rules.
-pub(crate) struct FixtureDialect;
-
-impl Dialect for FixtureDialect {
-    /// Not `ts`. A reply carrying one fenced block of each language's is the crispest evidence that
-    /// the tag list is read from the dialect and not from a constant in the skeleton.
-    fn program_fence_tags(&self) -> &'static [&'static str] {
-        &["fixture", "fx"]
-    }
-
-    fn looks_like_code(&self, line: &str) -> bool {
-        let trimmed = line.trim();
-        trimmed.starts_with("def ")
-            || trimmed.starts_with('#')
-            || is_use(trimmed)
-            || trimmed.contains(" = ")
-    }
-
-    fn is_prose_line(&self, line: &str) -> bool {
-        let trimmed = line.trim();
-        trimmed.ends_with('.') && trimmed.contains(' ') && !trimmed.contains('=')
-    }
-
-    /// Everything is code except a `#` comment's run to the end of its line. The fixture language
-    /// has no string literals, which is itself a difference worth having: a dialect is allowed to
-    /// answer a question its language does not raise.
-    fn code_mask(&self, src: &str) -> Option<CodeMask> {
-        let mut flags = Vec::with_capacity(src.len());
-        let mut in_comment = false;
-        for byte in src.bytes() {
-            match byte {
-                b'#' => in_comment = true,
-                b'\n' => in_comment = false,
-                _ => {}
-            }
-            flags.push(!in_comment && byte != b'#');
-        }
-        Some(CodeMask::from_flags(flags))
-    }
-
-    /// Replies in this language that the delete-only invariant is re-asserted over.
-    ///
-    /// One per repair the dialect can drive, plus the shapes where it must decline: a fenced
-    /// program under each of its two tags, the first of them with prose around it; a bare program
-    /// pasted out twice with a blank line between the copies; a bare program carrying a `use` line
-    /// and a comment; a reply that is nothing but prose; and the empty reply.
-    fn fixtures(&self) -> &'static [&'static str] {
-        &[
-            "Here is the program.\n\n```fixture\ndef main\n  total = 1 + 2\n```\n\nThat should do it.",
-            "```fx\nuse tools\ntotal = 1 + 2\n```",
-            "def main\n  total = 1 + 2\n\ndef main\n  total = 1 + 2",
-            "use tools\ndef main\n  x = 1 # a comment\n",
-            "I have finished the task. Everything works.",
-            "",
-        ]
-    }
 }
 
 // ---------------------------------------------------------------------------------------------

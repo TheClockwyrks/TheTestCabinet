@@ -609,32 +609,22 @@ pub(super) enum Mask {
     Hole,
 }
 
-/// What one pass of this arm's lexer found: what every byte is, and whether it ever lost its place.
+/// What one pass of this arm's lexer found: what every byte is.
 ///
-/// Two readers, one scan. [`wrap_module`] and its helpers take the best reading whatever happened,
-/// because their errors are safe in the accepting direction — an unlisted export is a call the model
-/// was not told about and the compiler still resolves. [Healing](super::healing) takes a mask **only
-/// when the scan ended cleanly**, because a caller that consults one is asking which bytes of a
-/// reply are really code, and a reading already known to be wrong is the worst possible basis for
-/// that answer. Two lexers would have been two chances to disagree about what a raw string is.
+/// Always the scan's best reading, even where the source did not lex cleanly: its readers —
+/// [`wrap_module`] and its helpers — have their errors safe in the accepting direction, since an
+/// unlisted export is a call the model was not told about and the compiler still resolves.
 pub(super) struct Scan {
     /// What every byte is.
     pub(super) mask: Vec<Mask>,
-    /// Whether every literal and comment the scan opened was closed. Four states end it uncleanly:
-    /// an unterminated block comment, a literal still open at the end of the source, and a `"…"` or
-    /// `'…'` still open at a newline — which C# forbids outside a verbatim or raw string.
-    pub(super) clean: bool,
 }
 
-/// Classify every byte of a C# source, discarding whether the reading held together.
-///
-/// The reader for everything that is not [healing](super::healing) — see [`Scan`] for why the two
-/// want different answers to the same pass.
+/// Classify every byte of a C# source.
 pub(super) fn mask(source: &str) -> Vec<Mask> {
     scan(source).mask
 }
 
-/// Classify every byte of a C# source, and say whether the reading held together.
+/// Classify every byte of a C# source.
 ///
 /// Handles what a model or a skill author actually writes: `//` and `/* */`, `'c'`, `"…"` with
 /// backslash escapes, `@"…"` with doubled quotes, `"""…"""` raw strings of any quote count, and `$`
@@ -679,7 +669,6 @@ pub(super) fn scan(source: &str) -> Scan {
     // literal's text.
     let mut holes: Vec<usize> = Vec::new();
     let mut index = 0usize;
-    let mut clean = true;
 
     while index < bytes.len() {
         let in_text = open.last().is_some() && holes.last() == Some(&0);
@@ -688,12 +677,10 @@ pub(super) fn scan(source: &str) -> Scan {
             // A `"…"` or a `'…'` may not span a line in C#, so a newline reached inside one is a
             // literal the author left open. It ends here rather than swallowing the rest of the
             // file: the compiler will report it, and masking everything below would make the
-            // module reader answer about the whole source. It is still not a clean reading, which
-            // is what makes healing decline.
+            // module reader answer about the whole source.
             if bytes[index] == b'\n' && !literal.verbatim && !literal.raw() {
                 open.pop();
                 holes.pop();
-                clean = false;
                 continue;
             }
             let run = quote_run(bytes, index);
@@ -779,7 +766,7 @@ pub(super) fn scan(source: &str) -> Scan {
                 }
                 // A block comment does **not** nest in C#, so it ends at the first `*/` — and one
                 // the author never closed swallowed the rest of the source.
-                clean &= closed;
+                let _ = closed;
             }
             b'\'' => {
                 out[index] = Mask::Text;
@@ -799,7 +786,7 @@ pub(super) fn scan(source: &str) -> Scan {
                     index += 1;
                     closed = true;
                 }
-                clean &= closed;
+                let _ = closed;
             }
             b'"' | b'@' | b'$' => {
                 let (prefix, verbatim, interpolated) = literal_prefix(bytes, index);
@@ -842,12 +829,7 @@ pub(super) fn scan(source: &str) -> Scan {
             }
         }
     }
-    // A literal still open at the end of the source is one the author never closed — a verbatim or
-    // raw string most often, since an ordinary one has already ended at its own newline.
-    Scan {
-        mask: out,
-        clean: clean && open.is_empty(),
-    }
+    Scan { mask: out }
 }
 
 /// How many `"` there are in a row at `index`.

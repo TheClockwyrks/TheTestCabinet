@@ -20,7 +20,6 @@ fn code_on() -> CodeSetup {
         enabled: true,
         language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::AMPLE,
-        healing: HealingConfig::SAFE_REPAIRS,
         doc_view_types: crate::docs::DocViewTypes::RETURN_AND_ERRORS,
     }
 }
@@ -464,13 +463,12 @@ async fn timeouts_end_the_run_only_through_the_error_ceilings() {
     );
 }
 
-/// (item 3) gg's prompts are **append-only**, and (item 5) the contract notice rides at the very
-/// tail of every one of them, exactly once. Driven across turns that open, re-open (supersede)
+/// (item 3) gg's prompts are **append-only**. Driven across turns that open, re-open (supersede)
 /// and text-view their way through the window — the shapes that retag items in place — each
 /// request's conversation must be a strict prefix-extension of the one before it, with the
-/// trailing slots (the notice) re-rendered after the new tail.
+/// trailing slot (the context-usage signal, when it renders) re-rendered after the new tail.
 #[tokio::test]
-async fn every_request_extends_the_previous_one_and_ends_on_the_contract_notice() {
+async fn every_request_extends_the_previous_one() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("a.ts"), "the first file").unwrap();
     std::fs::write(dir.path().join("b.ts"), "the second file").unwrap();
@@ -495,26 +493,6 @@ async fn every_request_extends_the_previous_one_and_ends_on_the_contract_notice(
     .await;
     assert_eq!(outcome, SessionOutcome::Ran);
     assert!(requests.len() >= 3, "three model calls were made");
-
-    for (turn, messages) in requests.iter().enumerate() {
-        // The notice: exactly one instance, and it is the last message of every request.
-        let notices: Vec<usize> = messages
-            .iter()
-            .enumerate()
-            .filter(|(_, message)| {
-                message
-                    .content
-                    .as_deref()
-                    .is_some_and(|content| content.starts_with("Reminder: your entire reply"))
-            })
-            .map(|(index, _)| index)
-            .collect();
-        assert_eq!(
-            notices,
-            vec![messages.len() - 1],
-            "request {turn} carries the contract notice exactly once, at the tail"
-        );
-    }
 
     // The append-only invariant: with the trailing slots stripped, every request's message list
     // extends the previous one — nothing is ever inserted or edited before the tail. (The one

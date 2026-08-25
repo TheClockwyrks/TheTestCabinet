@@ -1,15 +1,19 @@
 //! The `model_probe` table: one responses-as-code readiness probe of a catalog
 //! model.
 //!
-//! A probe replays gg's real RaC turn-1 request against a model through
-//! OpenRouter (no tools array) across a fixed matrix of prompt conditions and
-//! reduces the classified replies to a verdict on whether the model can drive
-//! RaC at all. This row records what was launched — the catalog slug it was
+//! A probe replays gg's RaC turn-1 request against a model through OpenRouter —
+//! the one `submit_program` tool offered, `tool_choice` forced to it — across
+//! the probe's cases: two scenarios (`baseline`, with the needed functions'
+//! documentation views open, and `missing-docview`, with a needed function's
+//! view withheld) over several input prompts, sampled `samples` times per
+//! prompt, on one program-language arm or on every arm. Each submitted program
+//! is classified against its case's expectations and the results reduce to a
+//! verdict. This row records what was launched — the catalog slug it was
 //! triggered from, the OpenRouter slug actually sent, an optional pinned
-//! provider, the sampling parameters, and the base request as sent — and the
-//! outcome: status, verdict, clean rates, and total spend. The per-call replies
-//! live in the sibling `model_probe_item` table. Probes are append-only history;
-//! re-running one adds a new row.
+//! provider, the language selection, the sampling parameters, and the requests
+//! as sent — and the outcome: status, verdict, pass rate, and total spend. The
+//! per-call replies live in the sibling `model_probe_item` table. Probes are
+//! append-only history; re-running one adds a new row.
 
 use sea_orm::entity::prelude::*;
 
@@ -31,14 +35,16 @@ pub struct Model {
     /// The triggering account's id (from the auth service, via the verified
     /// bearer token).
     pub user_id: String,
-    /// Samples requested per condition.
+    /// The probed program-language arm's wire id, or `NULL` for every language.
+    #[sea_orm(nullable)]
+    pub language: Option<String>,
+    /// Completion calls requested per input prompt.
     pub samples: i32,
     /// The completion-token cap each call was sent with.
     pub max_tokens: i32,
-    /// Whether the seeded spec views were sent whole rather than trimmed.
-    pub full_context: bool,
-    /// The base condition's message array exactly as sent (JSON), so the console
-    /// can show what the model received even after the baked fixture changes.
+    /// The per-case request message arrays exactly as sent (JSON), so the
+    /// console can show what the model received even after the baked fixtures
+    /// change.
     #[sea_orm(column_type = "Text")]
     pub request_json: String,
     /// `running`, `complete`, or `failed`.
@@ -46,17 +52,14 @@ pub struct Model {
     /// Why the probe failed, or `NULL`.
     #[sea_orm(column_type = "Text", nullable)]
     pub error: Option<String>,
-    /// The reduced verdict (`ready`, `ready-with-reminders`, `tool-call-overfit`,
-    /// `not-ready`), or `NULL` until the probe completes.
+    /// The reduced verdict (`ready` or `not-ready`), or `NULL` until the probe
+    /// completes.
     #[sea_orm(nullable)]
     pub verdict: Option<String>,
-    /// The base condition's clean-reply rate (0..=1), or `NULL` until complete.
+    /// The probe's overall pass rate (0..=1) across the scored calls, or `NULL`
+    /// until complete.
     #[sea_orm(nullable)]
-    pub base_clean_rate: Option<f64>,
-    /// The best variation condition's clean-reply rate (0..=1), or `NULL` until
-    /// complete.
-    #[sea_orm(nullable)]
-    pub best_variation_clean_rate: Option<f64>,
+    pub pass_rate: Option<f64>,
     /// Total USD spend across the probe's completions, as OpenRouter reported it.
     pub spend: f64,
     /// RFC 3339 of when the probe was triggered.

@@ -28,8 +28,8 @@ function problems(text: string): string[] {
 
 describe("the lexer", () => {
   it("keeps a dotted field name in one token", () => {
-    expect(tokenize("summary.healing.healed").map((t) => t.text)).toEqual([
-      "summary.healing.healed",
+    expect(tokenize("summary.errors.turns").map((t) => t.text)).toEqual([
+      "summary.errors.turns",
       "",
     ]);
   });

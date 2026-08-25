@@ -18,7 +18,7 @@ import type {
 import type { HarnessEvent } from "../../../../client/types";
 import { programStatusOf, reduceGgEvents } from "./useGgRunState";
 import type { GgAgentSurface } from "./useGgRunState";
-import { ProgramsView } from "./ProgramsView";
+import { ProgramsView, submittedPrograms } from "./ProgramsView";
 import { fileLabel, filesFor } from "./ggAgentEntries";
 
 const TS = "2026-08-23T00:00:00Z";
@@ -40,19 +40,24 @@ function gg(kind: GgTelemetryKind): HarnessEvent {
 // execution, and the outcome — in the order gg emits them.
 function codeTurn(
   n: number,
-  program: string,
+  program: string | string[],
   execution: { ok: boolean; error?: string; logs?: string[] } | null,
   failure?: { kind: GgTurnErrorKind; type: GgTurnErrorType },
 ): HarnessEvent[] {
   const id = `m_reply${n}`;
+  const programs = Array.isArray(program) ? program : [program];
   return [
     gg({ type: "turn_started" } as GgTelemetryKind),
     gg({
       type: "context_message",
       id,
       role: "assistant",
-      content: program,
-      toolCalls: [],
+      content: "",
+      toolCalls: programs.map((source, i) => ({
+        id: `call_${n}_${i}`,
+        name: "submit_program",
+        args: { program: source },
+      })),
       images: [],
       tokens: 12,
     } as GgTelemetryKind),
@@ -243,6 +248,166 @@ describe("programs file", () => {
     expect(within(rows[2]!).getByText("Error: boom")).toBeInTheDocument();
     // A clean row carries no error section.
     expect(within(rows[0]!).queryByText(/error/i)).toBeNull();
+  });
+
+  it("reads a turn's programs from its submit_program calls, never its text", () => {
+    const { messagePool } = reduceGgEvents(codeTurn(1, "ok()", { ok: true }));
+    expect(submittedPrograms(messagePool.get("m_reply1"))).toEqual([
+      { callId: "call_1_0", program: "ok()", id: null },
+    ]);
+    // A reply whose text is not a program and whose calls are something else.
+    expect(
+      submittedPrograms({
+        id: "m",
+        role: "assistant",
+        content: "let me think",
+        toolCalls: [
+          { id: "c1", name: "read_file", args: { path: "a" } },
+          { id: "c2", name: "submit_program", args: {} },
+        ],
+        images: [],
+      }),
+    ).toEqual([{ callId: "c2", program: null, id: null }]);
+  });
+
+  // The acknowledgement a call gets is the id the program library assigned the program
+  // — the handle `programs.get` takes — or the bare `ok` under an agent with no library.
+  // The id is read off the pooled `tool` message answering the call, and shown beside
+  // the program so a later fetch can be read back to what it fetched. An agent with a
+  // library is acknowledged with an id on every program-carrying call, so once any ack
+  // differs from `ok` the library is proven and even a literal `ok` ack is an id (a
+  // real cuid2 at the 2-character length).
+  it("reads each program's id from its acknowledgement and shows it", () => {
+    const ack = (callId: string, body: string): HarnessEvent =>
+      gg({
+        type: "context_message",
+        id: `m_ack_${callId}`,
+        role: "tool",
+        content: body,
+        toolCalls: [],
+        toolCallId: callId,
+        images: [],
+        tokens: 1,
+      } as GgTelemetryKind);
+    const state = reduceGgEvents([
+      ...codeTurn(1, ["first();", "second();"], { ok: true }),
+      ack("call_1_0", "k3p9"),
+      ack("call_1_1", "ok"),
+    ]);
+    expect(submittedPrograms(state.messagePool.get("m_reply1"))).toEqual([
+      { callId: "call_1_0", program: "first();", id: null },
+      { callId: "call_1_1", program: "second();", id: null },
+    ]);
+    expect(
+      submittedPrograms(state.messagePool.get("m_reply1"), state.messagePool),
+    ).toEqual([
+      { callId: "call_1_0", program: "first();", id: "k3p9" },
+      { callId: "call_1_1", program: "second();", id: "ok" },
+    ]);
+    // An agent whose every acknowledgement reads `ok` keeps no library: none of its
+    // programs has an id.
+    const libraryless = reduceGgEvents([
+      ...codeTurn(1, ["first();", "second();"], { ok: true }),
+      ack("call_1_0", "ok"),
+      ack("call_1_1", "ok"),
+    ]);
+    expect(
+      submittedPrograms(
+        libraryless.messagePool.get("m_reply1"),
+        libraryless.messagePool,
+      ),
+    ).toEqual([
+      { callId: "call_1_0", program: "first();", id: null },
+      { callId: "call_1_1", program: "second();", id: null },
+    ]);
+    // A call that carried no program is refused, never issued an id — whatever the
+    // acknowledgement says.
+    expect(
+      submittedPrograms(
+        {
+          id: "m",
+          role: "assistant",
+          content: "",
+          toolCalls: [{ id: "c2", name: "submit_program", args: {} }],
+          images: [],
+        },
+        new Map([
+          [
+            "m_ack_c2",
+            {
+              id: "m_ack_c2",
+              role: "tool",
+              content: "The call carried no program.",
+              toolCalls: [],
+              toolCallId: "c2",
+              images: [],
+            },
+          ],
+        ]),
+      ),
+    ).toEqual([{ callId: "c2", program: null, id: null }]);
+
+    render(
+      <ProgramsView
+        programs={state.programs}
+        pool={state.messagePool}
+        live={false}
+      />,
+    );
+    const row = screen.getByRole("group");
+    expect(within(row).getByText("k3p9")).toBeInTheDocument();
+    expect(within(row).getByText(/^Program 1 of 2/)).toBeInTheDocument();
+    // The `ok` beside a proven library is an id, and shows as one.
+    expect(within(row).getByText("ok")).toBeInTheDocument();
+  });
+
+  it("shows every program a reply submitted, in order", () => {
+    const state = reduceGgEvents([
+      ...codeTurn(1, ["first();", "second();", "third();"], { ok: true }),
+    ]);
+    render(
+      <ProgramsView
+        programs={state.programs}
+        pool={state.messagePool}
+        live={false}
+      />,
+    );
+    const row = screen.getByRole("group");
+    expect(within(row).getByText("first(); · 3 programs")).toBeInTheDocument();
+    expect(within(row).getByText("Program 1 of 3")).toBeInTheDocument();
+    expect(within(row).getByText("Program 2 of 3")).toBeInTheDocument();
+    expect(within(row).getByText("Program 3 of 3")).toBeInTheDocument();
+    expect(within(row).getByText("first();")).toBeInTheDocument();
+    expect(within(row).getByText("second();")).toBeInTheDocument();
+    expect(within(row).getByText("third();")).toBeInTheDocument();
+  });
+
+  it("says so when the reply made no submit_program call", () => {
+    const turn = codeTurn(1, "unused", null, {
+      kind: "model_api",
+      type: "model_parse",
+    });
+    // Strip the call: a reply that was text alone.
+    const stripped = turn.map((e) =>
+      e.type === "gg" && e.event.type === "context_message"
+        ? {
+            ...e,
+            event: { ...e.event, content: "not a program", toolCalls: [] },
+          }
+        : e,
+    ) as HarnessEvent[];
+    const state = reduceGgEvents(stripped);
+    render(
+      <ProgramsView
+        programs={state.programs}
+        pool={state.messagePool}
+        live={false}
+      />,
+    );
+    expect(
+      screen.getByText("No program — the reply made no submit_program call."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("not a program")).toBeNull();
   });
 
   it("shows a waiting state while live and an empty state when not", () => {

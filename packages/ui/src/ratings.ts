@@ -16,7 +16,11 @@
 // the UI.
 
 import type {
+  AestheticChange,
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   RatingChange,
   ReviewDiff,
@@ -32,7 +36,11 @@ import {
 } from "@test-cabinet/run-stats/scoring";
 
 export type {
+  AestheticChange,
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   RatingChange,
   ReviewDiff,
@@ -79,6 +87,70 @@ export const RATING_META: Record<Rating, RatingMeta> = {
     label: "Broken",
     description:
       "Doesn't follow the spec or has bugs severe enough to render the game unplayable.",
+  },
+};
+
+/**
+ * Display metadata for the five **aesthetic** tiers, best to worst — the second
+ * rating channel, which a reviewer rates per domain on a validator-rated run
+ * (the functional {@link RATING_META} channel is decided by the validators
+ * there). Amazing is the normal maximum; Legendary is exceptional and reserved,
+ * which is why its badge shimmers.
+ */
+export const AESTHETIC_META: Record<AestheticRating, RatingMeta> = {
+  legendary: {
+    label: "Legendary",
+    description:
+      "Exceptionally beautiful — reserved for a build whose look and feel stand above anything the case has seen. Amazing is the normal maximum.",
+  },
+  amazing: {
+    label: "Amazing",
+    description:
+      "Looks and feels polished throughout: cohesive art, motion, and sound with nothing that jars. The normal maximum.",
+  },
+  good: {
+    label: "Good",
+    description:
+      "Pleasant and coherent, with a few rough or plain spots that don't spoil the whole.",
+  },
+  okay: {
+    label: "Okay",
+    description:
+      "Functional presentation with little polish: placeholder-grade art or motion, inconsistent styling, or an unfinished feel.",
+  },
+  slop: {
+    label: "Slop",
+    description:
+      "Careless or ugly presentation — clashing, broken, or missing visuals and feel that actively detract from playing.",
+  },
+};
+
+/**
+ * Display metadata for a **failure cap** — the highest functional rating a review
+ * item's domains may reach while that item's validator fails, declared per item
+ * on a validator-rated case version. The label is the capped tier's own label
+ * (a cap of `scuffed` reads "Scuffed"); the description says what the cap means.
+ */
+export const FAILURE_CAP_META: Record<FailureCap, RatingMeta> = {
+  broken: {
+    label: RATING_META.broken.label,
+    description:
+      "Gameplay-critical: while this check fails, the affected domains rate no better than Broken.",
+  },
+  scuffed: {
+    label: RATING_META.scuffed.label,
+    description:
+      "A rule noticeably wrong: while this check fails, the affected domains rate no better than Scuffed.",
+  },
+  passable: {
+    label: RATING_META.passable.label,
+    description:
+      "A tolerance or edge case: while this check fails, the affected domains rate no better than Passable.",
+  },
+  great: {
+    label: RATING_META.great.label,
+    description:
+      "A cosmetic detail: while this check fails, the affected domains rate no better than Great.",
   },
 };
 

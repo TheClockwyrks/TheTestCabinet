@@ -1,14 +1,21 @@
 import { useMemo, type ReactNode } from "react";
 import type { TestType } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import {
+  AestheticBadge,
+  GradeBadge,
+  RatingBadge,
+  canonicalModelId,
+} from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
 import {
   asGrade,
+  type AestheticRating,
   type GradeStatus,
   overallGradeOf,
   type Rating,
   RATINGS,
+  worstAestheticRating,
   worstRating,
 } from "../data/ratings";
 import { isGgRun } from "../data/runLinks";
@@ -67,6 +74,9 @@ export interface EnrichedRun {
    * name was carried on the card) — which shows its model instead. */
   configName: string | null;
   rating: Rating | null;
+  /** The run's aggregate aesthetic rating, shown beside the functional one. Null
+   * until a reviewer rates the channel — always, for a legacy run. */
+  aesthetic: AestheticRating | null;
   /** A game-jam run's whole-game overall grade, shown as its badge in place of a
    * domain rating (a jam has none). Null for every non-jam run. */
   grade: GradeStatus | null;
@@ -552,6 +562,7 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
           ) : (
             <span className={styles.noRating}>&mdash;</span>
           )}
+          {row.aesthetic && <AestheticBadge rating={row.aesthetic} />}
         </span>
       );
     },
@@ -608,7 +619,10 @@ export function sortRuns(
  *
  * A local, unpublished writeup still wins the rating (an in-progress edit must
  * show before it is published); absent one, the summary's own aggregate rating
- * (`summary.rating`) stands in.
+ * (`summary.rating`) stands in. On a validator-rated run the functional rating is
+ * the validators' and comes from the summary even when a local writeup exists —
+ * the writeup supplies only the aesthetic, which likewise wins over the
+ * summary's aggregate.
  *
  * A row reads as unpublished when the console's produced worklist claims it OR the
  * card itself carries no publish timestamp — the listings draw produced runs from
@@ -639,9 +653,16 @@ export function useEnrichedRuns(
           configName: isGgRun(summary.subject.harnessSlug)
             ? (summary.subject.ggPreset ?? null)
             : null,
-          rating:
-            worstRating(review?.ratings.map((r) => r.rating) ?? []) ??
-            summary.rating,
+          rating: summary.validatorRated
+            ? summary.rating
+            : (worstRating(review?.ratings.map((r) => r.rating) ?? []) ??
+              summary.rating),
+          aesthetic:
+            worstAestheticRating(
+              review?.aesthetics.map((r) => r.rating) ?? [],
+            ) ??
+            summary.aesthetic ??
+            null,
           // A jam's overall grade: a local, in-progress review wins (it must show
           // before it is published, mirroring the rating); absent one, the
           // summary card's aggregate `score.overallGrade` stands in.

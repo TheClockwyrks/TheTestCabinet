@@ -255,6 +255,24 @@
         "domain": {
           "type": ["string", "null"]
         },
+        "domains": {
+          "description": "On a validator-rated version, the scoring domains (by id) a failure of this\nwhole-item point lowers. Empty on a legacy version and on a sub-divided item.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "failureCap": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/FailureCap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "On a validator-rated version, a whole-item point's **failure cap**: the\nhighest functional rating its `domains` may reach while its validator\nfails. Absent on a legacy version and on a sub-divided item (whose caps sit\non its sub-items)."
+        },
         "frames": {
           "items": {
             "format": "uint32",
@@ -309,7 +327,8 @@
         "frames",
         "weight",
         "graded",
-        "subItems"
+        "subItems",
+        "domains"
       ],
       "type": "object"
     },
@@ -339,6 +358,24 @@
           "description": "Optional prose for this point (categories grammar); `null` for a legacy\nname-only sub-item.",
           "type": ["string", "null"]
         },
+        "domains": {
+          "description": "On a validator-rated version, the scoring domains (by id) a failure of this\npoint lowers. Empty on a legacy version.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "failureCap": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/FailureCap"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "On a validator-rated version, this point's **failure cap**: the highest\nfunctional rating its `domains` may reach while its validator fails. Absent\non a legacy version."
+        },
         "id": {
           "type": "string"
         },
@@ -360,7 +397,7 @@
           "type": "integer"
         }
       },
-      "required": ["id", "title", "weight"],
+      "required": ["id", "title", "weight", "domains"],
       "type": "object"
     },
     "CaseValidationBaselineOut": {
@@ -569,6 +606,10 @@
       },
       "type": "array"
     },
+    "engineFormat": {
+      "description": "Whether the version is on the **engine manifest format**, which (with the\ntest type) makes it **validator-rated**: its runs' functional rating and\nscore are decided by the validators — each review item's `failureCap` and\n`domains` below — and reviewers rate only the aesthetic channel. `false` on\nevery legacy version, whose runs the site scores exactly as before.",
+      "type": "boolean"
+    },
     "errata": {
       "default": [],
       "description": "Known-issue errata recorded for this version after it shipped, so the static\ngallery can show the case's Errata tab and flag known issues to reviewers.\nAlways emitted (possibly empty); the static gallery treats it as optional so a\nsnapshot written before this field existed still loads.",
@@ -649,6 +690,7 @@
     "version",
     "name",
     "testType",
+    "engineFormat",
     "assetKind",
     "difficulty",
     "tags",

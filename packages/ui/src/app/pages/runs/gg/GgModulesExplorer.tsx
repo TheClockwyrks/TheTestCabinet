@@ -474,7 +474,7 @@ function KindOverview({
                 : "—"
             }
             sub={perTurnSub}
-            title="What this kind costs the windows carrying it, every turn — an owned module's block is re-sent on every request its holder makes, so a store three running agents hold is paid for three times a turn."
+            title="What this kind costs the windows carrying it, every turn — a module's block in the window is re-sent on every request its holder makes, so a store three running agents hold is paid for three times a turn."
           />
           {reportsContents && (
             <ModuleStat
@@ -637,14 +637,6 @@ function HoldersSection({ module }: { module: GgModuleInstance }) {
               {holderOrigin(module, holder)}
             </span>
             <span className={panels.modHolderAccess}>
-              <span
-                className={panels.moduleBadge}
-                data-ownership={
-                  holder.ownership === "unowned" ? "unowned" : undefined
-                }
-              >
-                {holder.ownership}
-              </span>
               <span className={panels.moduleBadge}>
                 {holder.writable ? "read/write" : "read-only"}
               </span>
@@ -721,10 +713,11 @@ function LifetimeSection({ module }: { module: GgModuleInstance }) {
 
 // What the store costs the windows it is in, per holder and summed.
 //
-// It is a *rent*, not a one-off: an owned module's block is re-sent on every request its
-// holder makes, so this is the figure that decides whether a capability is earning its
-// keep — and it belongs on the module rather than on any one agent, because the answer for
-// a shared store is the sum over its holders, which no per-agent view can state.
+// It is a *rent*, not a one-off: a module's block in the window is re-sent on every
+// request its holder makes, so this is the figure that decides whether a capability is
+// earning its keep — and it belongs on the module rather than on any one agent, because
+// the answer for a shared store is the sum over its holders, which no per-agent view
+// can state.
 function CostSection({ module }: { module: GgModuleInstance }) {
   // The archive is out of the window by definition — that is what it is *for* — so it has
   // no rent at all, and a "0 tokens" row would read as "free" rather than "not

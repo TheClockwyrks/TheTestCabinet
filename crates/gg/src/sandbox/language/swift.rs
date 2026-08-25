@@ -7,8 +7,7 @@
 //!   adapter, what they cost, what they share, and the two failures they tell apart;
 //! * [`source`] — the one word gg writes, which is not a wrapper around a program but the `public`
 //!   a **code module**'s own declarations need to cross a module boundary;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of, whose lexer is also what reads a code module's top level;
+//! * [`mask`] — the byte-level code mask and identifier lexing [`source`] reads;
 //! * `packages/gg-sandbox-swift/` — the SDK a program calls, the shell it is compiled beside, the
 //!   curated library set, and the build that cuts them;
 //! * `swift.guest.tar.gz`, `swift.libraries.tar.gz`, `swift.adapter.wasm` and
@@ -152,8 +151,8 @@ pub(super) mod compile;
 #[path = "swift.source.rs"]
 pub(super) mod source;
 
-#[path = "swift.healing.rs"]
-pub(super) mod healing;
+#[path = "swift.mask.rs"]
+pub(super) mod mask;
 
 /// This arm's catalogue, reflected out of the SDK's own documentation comments by
 /// `packages/gg-sandbox-swift/signatures.sh` — `swiftc -emit-symbol-graph`, which is DocC's own
@@ -293,10 +292,6 @@ impl ProgramLanguage for Swift {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::SWIFT_DIALECT
     }
 
     /// [`try gg.views.openFile("src/main.swift")`](self::open_file_statement) — with the window as

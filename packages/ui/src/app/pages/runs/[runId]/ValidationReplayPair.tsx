@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { Spinner } from "@test-cabinet/ui";
 import type { ValidationMedia } from "../../../data/galleryContext";
 import {
   ReplayCanvas,
@@ -134,7 +135,7 @@ function ReplayPane({
     return <p className={exec.mediaMissing}>{side.error}</p>;
   }
   if (side.loading) {
-    return <p className={exec.mediaMissing}>Loading the replay…</p>;
+    return <Spinner variant="flap" label="Loading the replay…" />;
   }
   const { recording, resources } = side;
   // The two arrive together — the recording is not published until its images are

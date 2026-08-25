@@ -829,8 +829,8 @@ const FAILURE_NAMES = (() => {
  * operation.
  *
  * **The first backticked name is the answer, and one entry is the whole of it.** The section is
- * written failure-first — "`NotFound`, naming the turns that are held, for a turn that ran no
- * program" — so the name it opens with is the failure it declares. A section naming several codes is
+ * written failure-first — "`NotFound`, naming the ids that are held, for an id this agent was
+ * never issued" — so the name it opens with is the failure it declares. A section naming several codes is
  * naming several *arms of one type*, so the resolved list is the same one entry whichever arm it
  * opened with; the sentence carrying all of them goes on saying so, untouched, in the detail
  * {@link documented} folds. A section opening with a name no catalogued type declares is refused

@@ -109,7 +109,7 @@ const STATS: ProviderStats = {
   probes: [
     {
       provider: "DeepInfra",
-      models: [{ modelSlug: "claude-x", items: 12, clean: 9, errored: 2 }],
+      models: [{ modelSlug: "claude-x", items: 12, passes: 9, errored: 2 }],
     },
   ],
 };

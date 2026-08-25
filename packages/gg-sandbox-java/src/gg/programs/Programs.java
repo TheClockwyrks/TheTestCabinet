@@ -16,7 +16,7 @@ import java.util.Optional;
  * what ran, patch it with ordinary string work, hand it back.
  *
  * <pre>{@code
- * Programs.rerun(Programs.get().replace("Views.opentext", "Views.openText"));
+ * Programs.rerun(Programs.get("k3p9").replace("Views.opentext", "Views.openText"));
  * }</pre>
  *
  * @ggmodule programs
@@ -41,51 +41,42 @@ public final class Programs {
     }
 
     /**
-     * The exact source of one program this session ran, as a string; with no turn, the most recent.
+     * Fetch the exact source of one program that ran, by the id its acknowledgement carried.
      *
-     * <p>The first half of fixing a program without rewriting it: get what ran, patch it with
+     * <p>The source comes back as a string. The first half of fixing a program without rewriting it: get what ran, patch it with
      * ordinary string work, hand the result to {@link #rerun}. What comes back is the program that
-     * executed — so where a turn's program was itself handed over by {@link #rerun}, this is the
-     * program that ran rather than the few lines that asked for it, and fetch-patch-run composes
-     * turn after turn.
+     * executed — so where a submission's program was itself handed over by {@link #rerun}, this is
+     * the program that ran rather than the few lines that asked for it, and fetch-patch-run
+     * composes turn after turn. A rerun keeps the id of the submission it replaced.
      *
-     * @return the source of the last program this session ran
-     * @throws ApiError {@link ApiErrorCode#NOT_FOUND}, naming the turns that are held, when
-     *     nothing has run yet.
+     * @param id The program's id, as its acknowledgement carried it and as {@link #history}
+     *     reports it.
+     * @return the source of the program that ran under that id
+     * @throws ApiError {@link ApiErrorCode#NOT_FOUND}, naming the ids that are held, for an id this
+     *     agent was never issued or one whose program is old enough that the library has dropped
+     *     it.
      * @ggop programs.get
      */
-    public static String get() {
-        return Coding.call("programs.get", Value.none()).text();
-    }
-
-    /**
-     * The program that ran on one particular turn, rather than the most recent one.
-     *
-     * @param turn The turn whose program to fetch, as {@link #history} reports it.
-     * @return the source of the program that ran on that turn
-     * @throws ApiError {@link ApiErrorCode#NOT_FOUND}, naming the turns that are held, for a turn
-     *     that ran no program or one old enough that the library has dropped it.
-     * @ggop programs.get
-     */
-    public static String get(int turn) {
-        return Coding.call("programs.get", Value.of(turn)).text();
+    public static String get(String id) {
+        return Coding.call("programs.get", Value.of(id)).text();
     }
 
     /**
      * Hand gg a program to run in place of this one.
      *
-     * <p>This program finishes, then gg compiles and runs {@code source} as the turn's program.
+     * <p>This program finishes, then gg compiles and runs {@code source} as this submission's
+     * program, under the same id.
      * Nothing is undone: every call already made stands, and the program that runs next sees the
      * world this one left behind — so a hand-over belongs before work that should not happen twice.
      *
      * <p>The first call stands, because a silently replaced program is a change nobody can see. A
      * program that then fails cancels its hand-over along with everything else it decided, and the
-     * turn is an ordinary error turn instead. Chains are bounded: one hand-over per turn, and the
-     * program handed over does the work.
+     * turn is an ordinary error turn instead. Chains are bounded: a submission runs at most four
+     * programs, this one plus three handed over, and the program handed over does the work.
      *
      * @param source The program to run in place of this one, as Java statements. It may not be
      *     blank.
-     * @throws ApiError {@link ApiErrorCode#REFUSED} for a second hand-over in one turn, and
+     * @throws ApiError {@link ApiErrorCode#REFUSED} for a second hand-over from the same program, and
      *     {@link ApiErrorCode#INVALID_ARGUMENT} for a blank source.
      * @ggop programs.rerun
      */
@@ -104,24 +95,26 @@ public final class Programs {
      * would put the whole session back in the context window, which is the one thing the library
      * exists to avoid.
      *
-     * @param turn The turn it ran on — what {@link Programs#get(int)} takes.
+     * @param id The id its {@code submit_program} acknowledgement carried — what
+     *     {@link Programs#get(String)} takes.
+     * @param turn The turn it ran on.
      * @param lines How many lines of source it was.
      * @param chars How many characters of source it was.
      * @param ok Whether it ran to its end, with no uncaught failure and no ceiling stopping it.
      * @param error The error it ended with, where it did not run to its end.
      */
-    public record ProgramSummary(int turn, int lines, int chars, boolean ok,
+    public record ProgramSummary(String id, int turn, int lines, int chars, boolean ok,
             Optional<String> error) {
 
         /**
-         * Fetch this program's source, which is {@link Programs#get(int)} on the turn it ran.
+         * Fetch this program's source, which is {@link Programs#get(String)} on its id.
          *
-         * @return the source of the program that ran on this turn
+         * @return the source of the program that ran under this id
          * @throws ApiError {@link ApiErrorCode#NOT_FOUND} when the library has dropped it.
          * @ggalias programs.get
          */
         public String source() {
-            return Programs.get(turn);
+            return Programs.get(id);
         }
     }
 }

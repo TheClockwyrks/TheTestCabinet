@@ -551,7 +551,7 @@ var history = Programs.History();
 Console.WriteLine(history.Count);
 try
 {
-    Console.WriteLine(Programs.Get(2));
+    Console.WriteLine(Programs.Get("zzzz"));
 }
 catch (ApiException failure)
 {
@@ -566,8 +566,8 @@ Session.RequestChanges("widen the test", "name the file");
         true,
         canned_outcome,
     );
-    // A session that has run nothing has an empty history — never a failure — and a turn it never
-    // kept a program for is a `NotFound` the program catches in C#'s own idiom.
+    // A session that has run nothing has an empty history — never a failure — and an id it never
+    // issued a program under is a `NotFound` the program catches in C#'s own idiom.
     assert_eq!(logs(&outcome), ["0", "NotFound"]);
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
     assert!(
@@ -604,7 +604,7 @@ Session.RequestChanges("widen the test", "name the file");
 /// **Every member method reaches the operation it says it is an alias of, carrying the field its own
 /// receiver holds.**
 ///
-/// The five methods this SDK declares — `IssueCreated.Wait`, `MemoryHit.Read`, `OpenView.Close`,
+/// The four methods this SDK declares — `IssueCreated.Wait`, `MemoryHit.Read`,
 /// `SubagentHandle.Send` and `ProgramSummary.Source` — are one expression-bodied line each: they
 /// take a component off the record they hang off and call the static method beside it with it. That
 /// one line is the thing no other gate can see. The catalogue records which operation each is an
@@ -618,9 +618,9 @@ Session.RequestChanges("widen the test", "name the file");
 /// filled in.
 #[test]
 fn a_member_method_reaches_the_operation_it_is_an_alias_of() {
-    // Four of the five hang off a value a gg OPERATION produced, so the alias's own crossing lands in the
-    // log beside the crossing that made its receiver. `Views.Close` is the exception — a view is not
-    // a tool — and it is checked by what it answers instead.
+    // Three of the four hang off a value a gg OPERATION produced, so the alias's own crossing
+    // lands in the log beside the crossing that made its receiver. `Views.Close` is no alias — a
+    // view is not a tool — and it is checked by what it answers instead.
     let (outcome, log) = evaluate(
         &prepare(
             r####"
@@ -683,7 +683,7 @@ Console.WriteLine($"{Views.Close("summary")}");
         Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
     );
 
-    // The fifth hangs off the program library, which is bought by a capability rather than by a
+    // The fourth hangs off the program library, which is bought by a capability rather than by a
     // tool, and answers out of a history a fresh double has none of — so it needs one seeded.
     let (outcome, _log) = evaluate_with_program(
         &prepare(
@@ -695,6 +695,7 @@ var summary = Programs.History()[0];
 Console.WriteLine($"{summary.Turn} {summary.Source()}");
 "####,
         ),
+        "p3",
         3,
         "Console.WriteLine(\"the program that ran\");",
         canned_outcome,

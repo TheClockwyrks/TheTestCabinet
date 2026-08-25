@@ -237,15 +237,7 @@ the modules it calls into, since a model reads it as an example of its own
 output. A file view is one call with an optional trailing options object carrying
 `offset` and `limit`; a set of documentation views is a `const` array of names
 with a `for…of` over it; the bootstrap program is one import, one search naming
-every granted module at once, and a `for…of` opening a documentation view
-apiece. Paths and names are rendered through JSON so a quote or a backslash
-cannot produce a program that will not parse.
-
-## Healing dialect
-
-Response healing reads a reply lexically, never with a parser, because it runs on
-text that is not yet known to be a program. This arm's dialect answers which
-fence tags mark the program, which lines are code, which are prose, and which
-bytes are string or comment text. The JavaScript spellings of the fence tags are
-recognised alongside the TypeScript ones, and the JavaScript arm reads its
-replies with this same dialect.
+the configured modules at once when there are any, and a `for…of` opening a
+documentation view apiece when there are any. Paths and names are rendered
+through JSON so a quote or a backslash cannot produce a program that will not
+parse.

@@ -609,6 +609,7 @@ fn version_response(
         changelog: manifest.changelog.clone(),
         max_runtime_seconds: manifest.max_runtime_seconds,
         test_type: manifest.test_type,
+        engine_format: manifest.engine_format,
         engines: manifest
             .engines
             .iter()
@@ -779,9 +780,13 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
                 reference: sub.reference.clone(),
                 proof: sub.proof.clone(),
                 validation: sub.validation.as_ref().map(review_validation_out),
+                failure_cap: sub.failure_cap,
+                domains: sub.domains.clone(),
             })
             .collect(),
         validation: item.validation.as_ref().map(review_validation_out),
+        failure_cap: item.failure_cap,
+        domains: item.domains.clone(),
     }
 }
 
@@ -1100,6 +1105,12 @@ pub struct VersionResponse {
     changelog: String,
     max_runtime_seconds: u64,
     test_type: TestType,
+    /// Whether the version is on the **engine manifest format**, which (with the
+    /// test type) makes it **validator-rated**: a run's functional rating and score
+    /// are decided by its validators — every review point declares its `failureCap`
+    /// and `domains` — and a reviewer rates only the aesthetic channel. `false` on
+    /// every legacy version, whose runs are reviewed exactly as before.
+    engine_format: bool,
     /// The engines a run of this version may select. Never empty — a version that
     /// declares none supports the engineless run.
     engines: Vec<EngineOut>,
@@ -1418,6 +1429,16 @@ struct ReviewItemOut {
     /// and run it against the build's debug API. Absent for a human-judged item.
     #[serde(skip_serializing_if = "Option::is_none")]
     validation: Option<ReviewValidationOut>,
+    /// On a validator-rated version, a whole-item point's **failure cap**: the
+    /// highest functional rating its `domains` may reach while its validator fails.
+    /// Absent on a legacy version and on a sub-divided item (whose caps sit on its
+    /// sub-items).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    failure_cap: Option<test_cabinet_core::review::FailureCap>,
+    /// On a validator-rated version, the scoring domains (by id) a failure of this
+    /// whole-item point lowers. Empty on a legacy version and on a sub-divided item.
+    domains: Vec<String>,
 }
 
 /// The `[instrumentation]` handle in the §1.2 wire shape.
@@ -1483,6 +1504,15 @@ struct SubReviewItemOut {
     /// Absent for a human-judged sub-item.
     #[serde(skip_serializing_if = "Option::is_none")]
     validation: Option<ReviewValidationOut>,
+    /// On a validator-rated version, this point's **failure cap**: the highest
+    /// functional rating its `domains` may reach while its validator fails. Absent on
+    /// a legacy version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    failure_cap: Option<test_cabinet_core::review::FailureCap>,
+    /// On a validator-rated version, the scoring domains (by id) a failure of this
+    /// point lowers. Empty on a legacy version.
+    domains: Vec<String>,
 }
 
 #[derive(Serialize)]

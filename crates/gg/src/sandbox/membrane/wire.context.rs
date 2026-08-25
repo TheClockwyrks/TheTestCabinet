@@ -256,8 +256,8 @@ pub(super) fn get<A: OperationApi>(
     op: &str,
     arguments: &[Value],
 ) -> Answer {
-    let turn = argument(arguments, op, 0)?.optional_integer("the turn")?;
-    Ok(text(ProgramsHost::get(state, turn)?))
+    let id = argument(arguments, op, 0)?.text("the program id")?;
+    Ok(text(ProgramsHost::get(state, id)?))
 }
 
 /// `programs.rerun` — run a stored program again.
@@ -274,6 +274,7 @@ pub(super) fn rerun<A: OperationApi>(
 /// One `program-summary`.
 fn program_summary(summary: ProgramSummary) -> Value {
     record([
+        ("id", text(summary.id)),
         ("turn", integer(summary.turn)),
         ("lines", integer(summary.lines)),
         ("chars", integer(summary.chars)),

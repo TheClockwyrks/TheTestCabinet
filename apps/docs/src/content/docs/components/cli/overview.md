@@ -63,15 +63,21 @@ These listings accept `--json`.
 - `review <run-id> [--writeup writeup.md]` submits a
   [review](/components/core/results/#reviews) for a produced run, attributed to
   the logged-in account, from a writeup the reviewer authored locally. It
-  defaults to `writeup.md` in the working directory. A run may carry several
+  defaults to `writeup.md` in the working directory. The writeup carries
+  `aesthetic.<domain>` ratings for a validator-rated run and `rating.<domain>`
+  ratings with checklist verdicts for a legacy run. A run may carry several
   reviews, one per account.
 - `publish <run-id>...` does self-review and publish in one step: it submits the
   operator's own review from a `<run-id>.md` writeup in the working directory,
   enqueues the publish, and prints the release's live progress until it
-  finishes. Publishing a run requires at least one review, which the self-review
-  satisfies. Every run's writeup is gated before anything is submitted, so a
-  batch is never left half-published. `--dry-run` prints the plan instead. Where
-  different people review, use `review` and have an operator publish.
+  finishes. Publishing a legacy run requires at least one review, which the
+  self-review satisfies. A validator-rated run with no writeup is published
+  without a self-review, and the command says so; whether a writeup-less run is
+  validator-rated is decided by asking the backend for the run's case version, so
+  a run that lacks a writeup while the backend cannot be reached is refused with
+  that reason. Every run's writeup is gated before anything is submitted, so a
+  batch is never left half-published. `--dry-run` prints the plan instead.
+  Where different people review, use `review` and have an operator publish.
 
 ### Reference implementations and baselines
 

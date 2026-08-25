@@ -23,7 +23,7 @@ use test_cabinet_core::gg::{
 
 use crate::model::{Message, Role};
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Refresh,
     detached_ids,
 };
 
@@ -197,17 +197,13 @@ impl ArchiveStore {
 /// longer see is still the thread it worked) or deliberately not (a fresh state that starts clean),
 /// and that decision has to be expressible.
 ///
-/// Unlike the other capability modules it contributes **nothing** to the prompt — no pinned block,
-/// no system-prompt section of its own — so its [ownership](crate::modules::Ownership) is recorded
-/// for uniformity and changes nothing about how it behaves. What the model is told about archival
-/// belongs to the agent-managed-context prose, which is about the tools, not about the store.
+/// It contributes **nothing** to the prompt — no pinned block, and no system-prompt section of
+/// its own. What the model is told about archival belongs to the agent-managed-context prose,
+/// which is about the tools, not about the store.
 #[derive(Debug)]
 pub struct ArchiveRuntime {
     /// Whether the agent-managed-context capability is enabled for this agent.
     enabled: bool,
-    /// Whether this module is carried in its holder's prompt. Recorded for uniformity; the
-    /// archive pins nothing either way.
-    ownership: Ownership,
     /// The shared, mutable store — the same handle `search_archive` reads and the loop's
     /// `archive_thread` reclaim fills.
     store: Arc<Mutex<ArchiveStore>>,
@@ -232,7 +228,6 @@ impl ArchiveRuntime {
     pub fn new_in(ids: &ModuleIds) -> Self {
         Self {
             enabled: true,
-            ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(ArchiveStore::new())),
             id: ids.next(ModuleKind::Archive),
             ids: Arc::clone(ids),
@@ -261,14 +256,6 @@ impl ArchiveRuntime {
         }
     }
 
-    /// This runtime with its [ownership](Ownership) set — the builder
-    /// [`ModuleSet::resolve`](crate::modules::ModuleSet::resolve) applies the capability's
-    /// `ownership` param through.
-    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
-        self.ownership = ownership;
-        self
-    }
-
     /// Whether agent-managed context is on for this agent, and so whether the archive tools are
     /// offered and the loop's reclaim has anywhere to put what it removes.
     pub fn offers_archive(&self) -> bool {
@@ -294,7 +281,6 @@ impl ArchiveRuntime {
     pub fn forked(&self) -> Self {
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             store: Arc::new(Mutex::new(
                 self.store.lock().expect("archive store lock").clone(),
             )),
@@ -313,7 +299,6 @@ impl ArchiveRuntime {
     pub fn shared(&self) -> Self {
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             store: Arc::clone(&self.store),
             id: Arc::clone(&self.id),
             ids: Arc::clone(&self.ids),
@@ -369,10 +354,6 @@ impl Module for ArchiveRuntime {
         self.enabled
     }
 
-    fn ownership(&self) -> Ownership {
-        self.ownership
-    }
-
     fn context_source(&self) -> Option<GgContextSource> {
         None
     }
@@ -418,13 +399,6 @@ impl Module for ArchiveRuntime {
             return Err(AdoptError::Disabled);
         }
         self.enabled = true;
-        // Re-resolved for the adopting profile against a discarding sink: the launch pass read
-        // this same `ownership` and refused the run if it could not honour it.
-        self.ownership = crate::modules::resolve_ownership(
-            profile,
-            test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT,
-            &mut crate::validate::LaunchReport::Discarding,
-        );
         self.ids = Arc::clone(ctx.ids);
         self.origin = GgModuleOrigin::Transferred;
         Ok(())

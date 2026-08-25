@@ -112,8 +112,8 @@ compilers put on their classpath, so a program type-checks against the same
 bytes TeaVM translates. A jar on the classpath is packaging and puts no name in a
 program's scope: a program reaches a name in full, `gg.files.Files.readFile(…)`,
 or under the `import` line the catalogue states for that module. Types are nested
-in the module that produces them, `Files.FileRead` and `Views.OpenView`, so the
-same short name may belong to two modules.
+in the module that produces them, `Files.FileRead` and `Memories.MemoryHit`, so
+the same short name may belong to two modules.
 
 The SDK reaches gg through one imported function, `test-cabinet:gg/wire`'s
 `call`, below a typed and namespaced surface. `gg.internal` carries that
@@ -243,14 +243,6 @@ shared body states that a program is compiled before it runs, that one the
 compiler refuses is not executed, and that a call the run withheld compiles and
 fails when it runs. The library set TeaVM can translate is carried by a compile
 failure rather than by the prompt.
-
-## Healing dialect
-
-The healing dialect reads a `#` line as prose and deletes it, because Java has
-no `#` token at all, and treats a backtick as prose punctuation rather than
-code. A leading `*` is not read as code, because it opens a Javadoc
-continuation line and a model's bullet list alike. Its program fence tags are
-`java` and `jav`. No predicate parses.
 
 ## Code modules
 

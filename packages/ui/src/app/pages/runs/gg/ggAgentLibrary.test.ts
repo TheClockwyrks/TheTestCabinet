@@ -35,6 +35,7 @@ import { DEFAULT_CAP_IDS } from "./ggCatalog";
 import {
   blankAgentDraft,
   capabilitySetFromDraft,
+  defaultOpeningTurn,
   draftFromCapabilitySet,
   draftSaveError,
   emptyDraft,
@@ -354,6 +355,45 @@ describe("overrides", () => {
     expect(draftAgentOverrides(narrowed, agentId)).toEqual(["tools"]);
   });
 
+  // The wire carries only what an agent holds of its opening turn, so pinning a capability
+  // off prunes that capability's calls out of the profile's written lists. That is a
+  // consequence of the capability edit, not an edit of the opening turn — and it must not
+  // read as one, or every capability pin would drag the opening turn along with it.
+  it("is not raised on the opening turn by pinning a capability off", () => {
+    const saved = savedReviewer();
+    const { draft, agentId } = importSavedAgent(emptyDraft(), saved);
+    const imported = draft.agents.find((a) => a.id === agentId)!;
+    const edited = patchAgent(draft, agentId, {
+      capabilities: {
+        ...imported.capabilities,
+        shell: { ...imported.capabilities.shell!, enabled: false },
+      },
+      operations: imported.operations.filter((op) => op !== "shell.shell"),
+    });
+    expect(draftAgentOverrides(edited, agentId)).toEqual([
+      "capabilities.shell",
+    ]);
+  });
+
+  it("is raised by editing the opening turn itself", () => {
+    const saved = savedReviewer();
+    const { draft, agentId } = importSavedAgent(emptyDraft(), saved);
+    const imported = draft.agents.find((a) => a.id === agentId)!;
+    const unlisted = patchAgent(draft, agentId, {
+      openingTurn: { ...imported.openingTurn, modules: [] },
+    });
+    expect(draftAgentOverrides(unlisted, agentId)).toEqual(["openingTurn"]);
+    // Order is meaningful — the functions are opened in the listed order — so the same
+    // functions in another order are a different opening turn.
+    const reordered = patchAgent(draft, agentId, {
+      openingTurn: {
+        ...imported.openingTurn,
+        functions: [...imported.openingTurn.functions].reverse(),
+      },
+    });
+    expect(draftAgentOverrides(reordered, agentId)).toEqual(["openingTurn"]);
+  });
+
   // The slug is a field of the overlay like any other — it has to be, because a
   // configuration that renamed an imported profile to clear a collision must keep that
   // name while following the saved agent in everything else.
@@ -423,6 +463,7 @@ describe("merging", () => {
       name: "reviewer",
       capabilities: [],
       modelId: "",
+      openingTurn: defaultOpeningTurn(),
       customInstructions: "from the library",
       systemPromptTemplate: "pinned here",
     };
@@ -432,6 +473,7 @@ describe("merging", () => {
       name: "reviewer",
       capabilities: [],
       modelId: "",
+      openingTurn: defaultOpeningTurn(),
       customInstructions: "stale copy",
       systemPromptTemplate: "pinned here",
     };
@@ -447,6 +489,7 @@ describe("merging", () => {
       name: "reviewer",
       capabilities: [],
       modelId: "",
+      openingTurn: defaultOpeningTurn(),
       subagents: [
         { agentId: "a-library", description: "itself", scopes: ["subagent"] },
       ],
@@ -457,6 +500,7 @@ describe("merging", () => {
       name: "Second opinion",
       capabilities: [],
       modelId: "",
+      openingTurn: defaultOpeningTurn(),
     };
     // Pinned, the configuration's slug wins — that is what an override *is*.
     const pinned = mergeAgentConfig(base, stored, ["slug"]);

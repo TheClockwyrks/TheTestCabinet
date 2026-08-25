@@ -130,7 +130,13 @@ const nameOf: ModelNameLookup = (id) => NAMES[id] ?? null;
 // Two of its profiles are called the same thing, which is legal and which is why the spend
 // is accounted per slug.
 function profile(slug: string, name: string, modelId: string): GgAgentConfig {
-  return { slug, name, modelId, capabilities: [] };
+  return {
+    slug,
+    name,
+    modelId,
+    capabilities: [],
+    openingTurn: { modules: [], functions: [] },
+  };
 }
 
 const SET: GgCapabilitySet = {

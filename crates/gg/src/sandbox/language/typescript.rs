@@ -8,8 +8,6 @@
 //!
 //! * [`compile`] — the `tsc` invocation that does both halves, the declaration surface it compiles
 //!   against, and the shared toolchain directory it materialises into;
-//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
-//!   questions of: the fence tags, the two predicates, and the mask;
 //! * the **signature catalogue** — every signature a documentation search ranks and a documentation
 //!   view answers with, which is every signature a model ever reads, since the prompt renders none;
 //!   reflected out of the guest's SDK by `packages/gg-sandbox/signatures.sh` and generated into this
@@ -61,9 +59,6 @@ use crate::sandbox::operations::{DOCS_SEARCH, OperationId, VIEWS_OPEN_DOCS_VIEW,
 
 #[path = "typescript.compile.rs"]
 mod compile;
-
-#[path = "typescript.healing.rs"]
-pub(super) mod healing;
 
 /// **The TypeScript arm's execution substrate**, driven end to end through its real compile and its
 /// real guest, and held to [gate G8](super::g8).
@@ -229,10 +224,6 @@ impl ProgramLanguage for TypeScript {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::TYPESCRIPT_DIALECT
     }
 
     /// [An `import` and one call](self::open_file_statement), with the call's name resolved from
@@ -440,8 +431,8 @@ pub(super) fn open_docs_views_statement(language: &dyn ProgramLanguage, names: &
     )
 }
 
-/// The opening turn: the import, **one** search naming every granted module at once, then a `for…of`
-/// over the documentation keys, each iteration opening one view.
+/// The opening turn: the import, **one** search naming every module gg handed it at once, then a
+/// `for…of` over the documentation keys, each iteration opening one view.
 ///
 /// ```text
 /// import { docs, views } from "gg";

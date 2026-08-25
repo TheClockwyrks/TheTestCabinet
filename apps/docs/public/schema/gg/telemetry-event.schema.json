@@ -30,7 +30,7 @@
       "description": "One function bound in a [`GgAgentApi`] — what a\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call.\n\nThe load-bearing field is [`operation`](Self::operation): every model-facing call a program makes\nis recorded under gg's own identity for it as an\n[`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair, so joining a\nbound function to how many times this agent actually called it is a join on that one string. No\ngg tool name appears here, and none is needed: the API surface and the tool vocabulary are two\nindependent surfaces over one core, and a function no tool backs — a view call, an ending call, a\nprogram-library call — is counted exactly as a function one does.\n\nTwo rows may name one operation. An arm may offer a second way in — the method it hangs off the\ntype the call operates on, beside the free function every arm has — and both spellings are the\nsame operation, so both carry the same figure. That is the truth about the run: gg counts what\nwas done, not which of an arm's synonyms did it.",
       "properties": {
         "name": {
-          "description": "The name a program calls it by, **relative to its module**, in this arm's own spelling:\na free function is its bare name — `readFile`, `openDocsView`, `finish` — and a method\ncarries the receiver it hangs off, in the arm's own separator — `OpenView.close` on\nTypeScript, `OpenView#close` on Java, `open_view::close` on C++. Joining the module's\n[`path`](GgAgentApi::path) onto it with the arm's separator gives the catalogue's\nfully-qualified name (`gg.views.OpenView.close`), which is the key a documentation view\nopens by.\n\nModule-relative rather than bare so that two rows of one module never share a name: an\narm that binds `close` as a free function **and** as a method on the value `current` lists\nreports `close` and `OpenView.close`, not `close` twice.",
+          "description": "The name a program calls it by, **relative to its module**, in this arm's own spelling:\na free function is its bare name — `readFile`, `openDocsView`, `finish` — and a method\ncarries the receiver it hangs off, in the arm's own separator — `IssueCreated.wait` on\nTypeScript, `IssueCreated#await` on Java, `issue_created::wait` on C++. Joining the module's\n[`path`](GgAgentApi::path) onto it with the arm's separator gives the catalogue's\nfully-qualified name (`gg.board.IssueCreated.wait`), which is the key a documentation view\nopens by.\n\nModule-relative rather than bare so that two rows of one module never share a name: a\nmethod reported bare could collide with a free function beside it, so the memory read an\narm hangs off a search hit reports as `MemoryHit.read`, never as a second bare `read`.",
           "type": "string"
         },
         "operation": {
@@ -60,10 +60,6 @@
           "$ref": "#/$defs/GgModuleOrigin",
           "description": "How this holder came by it."
         },
-        "ownership": {
-          "$ref": "#/$defs/GgModuleOwnership",
-          "description": "Whether this holder's prompt carries the module ([`owned`](GgModuleOwnership::Owned)) or it\nis reachable through its tools alone ([`unowned`](GgModuleOwnership::Unowned))."
-        },
         "scope": {
           "anyOf": [
             {
@@ -80,14 +76,7 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "kind",
-        "moduleId",
-        "enabled",
-        "ownership",
-        "origin",
-        "writable"
-      ],
+      "required": ["kind", "moduleId", "enabled", "origin", "writable"],
       "type": "object"
     },
     "GgAgentStatus": {
@@ -357,7 +346,7 @@
         },
         {
           "const": "tool_output",
-          "description": "The output of a tool the agent called, fed back as a tool result.\n\n**Tool calling only.** A\n[responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) program has no tool\nresults: a call's value returns into the program, and the only thing that reaches the model\nis a [view](Self::FileView) it opened. What gg has to say back to a code-mode agent is\ntherefore never tool output — it is a [compiler](Self::CompilerError) or\n[runtime](Self::RuntimeError) error, or a [notice](Self::System).",
+          "description": "The output of a tool the agent called, fed back as a tool result.\n\nOn the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) surface this\nband carries only the terse tool results answering the turn's `submit_program` calls (and\nthe refusal answering a call to a tool the mode does not offer): a **program's** calls have\nno tool results — a call's value returns into the program, and the only thing a program\nshows the model is a [view](Self::FileView) it opened. What gg has to say back about a\nprogram is a [compiler](Self::CompilerError) or [runtime](Self::RuntimeError) error, or a\n[notice](Self::System).",
           "type": "string"
         },
         {
@@ -403,11 +392,6 @@
         {
           "const": "task_list",
           "description": "The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — retained across\na compaction boundary.",
-          "type": "string"
-        },
-        {
-          "const": "board",
-          "description": "The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/)\n— the heavyweight work-decomposition counterpart to the task list, retained across\na compaction boundary.",
           "type": "string"
         },
         {
@@ -536,26 +520,6 @@
         "loopAbortChars"
       ],
       "type": "object"
-    },
-    "GgHealingStrategy": {
-      "description": "One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,\nindependently toggleable repair gg may apply to a model's response before running it.\n\nThe wire values are the strategy ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are\n(`{\"healing\": {\"strip-fences\": false}}`), because the id is one thing: a config key, a metric\nname, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly\nthat reason.\n\nEvery application is counted on the run record and reported on the operator's stream, and none\nof it is disclosed to the model: the model's history carries the healed program as its own reply,\nso the count answers the question a run of this shape asks — how often the model broke the\ncontract — unperturbed by any correction.\n\nTwo of the three are armed unless a configuration turns them off, because for those, repairing\nis strictly safer than not: the reply they delete from could not have run as sent. The exception\nis [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration\narms it — see its own documentation for why that asymmetry exists.",
-      "oneOf": [
-        {
-          "const": "strip-fences",
-          "description": "A Markdown code fence wrapping the program was removed — tagged or not, closed properly,\nclosed with prose glued onto the closing line (which CommonMark does not accept as a close,\nso the prose would otherwise be swallowed into the program), or never closed at all. The\ncount that answers \"how often did this model still wrap its program in a fence after being\ntold not to?\".",
-          "type": "string"
-        },
-        {
-          "const": "strip-prose",
-          "description": "Explanatory lines were removed from before and/or after the program body.",
-          "type": "string"
-        },
-        {
-          "const": "drop-doubled-response",
-          "description": "The whole reply was one completion concatenated with a byte-identical copy of itself, and the\ntrailing copy was deleted. The shape a provider produces when it emits (or a proxy records)\nthe same completion twice: the reply's text is exactly `X + X`, with no fence, no blank line\nand no declaration to separate the halves.\n\nIt is the one strategy that is **off unless a configuration arms it**: the half it deletes\nis valid code under any reading other than \"the transport duplicated this\", so unlike the\nother repairs here, applying it to a model that genuinely meant to do the work twice changes\nbehaviour rather than restoring it. An operator arms it for the models observed to exhibit\nthe defect.",
-          "type": "string"
-        }
-      ]
     },
     "GgIssueReviewPhase": {
       "description": "The phase of an [issue review](https://docs.testcabinet.ai/gg/project-management/) an\n[`IssueReview`](GgTelemetryKind::IssueReview) event reports — the\nrequested → (changes_requested)* → approved lifecycle that gates an\n[issue](GgBoardIssue)'s acceptance.\n\nA review is [requested](Self::Requested) when the issue's assigned agent marks it complete (gg\nruns the issue's [reviewers](GgBoardIssue::reviewer_ids) against the diff rather than accepting\nimmediately). A reviewer then either [requests changes](Self::ChangesRequested) — carrying the\nactionable items the issue's own assigned agent is re-invoked to address, after which the work is\nre-reviewed — or [approves](Self::Approved). Once **every** reviewer approves, the issue is\nfinally accepted (marked done) and its worktree merged. Because there is **no cycle limit**, a\nsingle issue may emit many [`ChangesRequested`](Self::ChangesRequested) phases before an\n[`Approved`](Self::Approved) (or none, on a clean first pass).",
@@ -928,23 +892,8 @@
         }
       ]
     },
-    "GgModuleOwnership": {
-      "description": "Whether the state a module-backed capability keeps is carried in its holder's **prompt**, or\nis reachable only through the tools it contributes.\n\nThis is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and it is the one knob that separates\n\"the agent is told what it holds, every turn\" from \"the agent may look it up\". It exists\nbecause a module is no longer necessarily *about* the agent holding it: once a memory instance\ncan be shared between agents, or a task list handed from one FSM state to the next, an agent\ncan be given a working store it should be able to act on without paying for it in every\nrequest it makes.",
-      "oneOf": [
-        {
-          "const": "owned",
-          "description": "The holder's prompt carries the module: its system-prompt section is rendered, and the\npinned block it keeps (the memory index, the task list, the board) is refreshed into the\nwindow on that module's own schedule. What a new document is authored with, and what a\n[task list](GgModuleKind) always is.",
-          "type": "string"
-        },
-        {
-          "const": "unowned",
-          "description": "The module is reachable through the holder's **tools and nothing else**: no system-prompt\nsection, no pinned block, and no per-turn notice. Its state is still live — the tools read\nand write it, and it is still transferred, shared and reported as\n[telemetry](GgTelemetryKind) exactly as an owned one is — it simply costs the holder no\ncontext until it asks.",
-          "type": "string"
-        }
-      ]
-    },
     "GgProgramLanguage": {
-      "description": "The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the\naxis a cross-language study compares its arms on.\n\nEach language ships a hand-written, idiomatic SDK that binds the same typed WIT surface, so what\ndiffers between two arms of a study is the *spelling* of a call, never which calls exist. Which\nlanguage an agent writes in is therefore a configuration knob like every other lever the harness\nmeasures, rather than a property of gg.\n\nA language usually brings its own guest component, and one that does not says so in its own\ndocumentation: [`JavaScript`](Self::JavaScript) is evaluated by\n[`TypeScript`](Self::TypeScript)'s, because the two arms are one syntax and differ only in\nwhether the program is checked before it runs.\n\nThe wire values are the language ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param is written\n(`{\"language\": \"typescript\"}`), because the id is one thing: a config key, a telemetry value,\nand the stem of the language's committed guest artifacts. Lower-case rather than this module's\nusual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is\nnot a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the\nmodule default on the same grounds.\n\nNo language is the default. An agent with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nswitched on names one of these, and a launch that omits it is refused. The enum carries no\n`Default` for that reason: a fallback would record a run under a language nobody chose, on the\nvery axis a study slices its arms by.",
+      "description": "The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the\naxis a cross-language study compares its arms on.\n\nEach language ships a hand-written, idiomatic SDK that binds the same typed WIT surface, so what\ndiffers between two arms of a study is the *spelling* of a call, never which calls exist. Which\nlanguage an agent writes in is therefore a configuration knob like every other lever the harness\nmeasures, rather than a property of gg.\n\nA language usually brings its own guest component, and one that does not says so in its own\ndocumentation: [`JavaScript`](Self::JavaScript) is evaluated by\n[`TypeScript`](Self::TypeScript)'s, because the two arms are one syntax and differ only in\nwhether the program is checked before it runs.\n\nThe wire values are the language ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param is written\n(`{\"language\": \"typescript\"}`), because the id is one thing: a config key, a telemetry value,\nand the stem of the language's committed guest artifacts. Lower-case rather than this module's\nusual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is\nnot a spelling anybody would put in a configuration file.\n\nNo language is the default. An agent with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nswitched on names one of these, and a launch that omits it is refused. The enum carries no\n`Default` for that reason: a fallback would record a run under a language nobody chose, on the\nvery axis a study slices its arms by.",
       "oneOf": [
         {
           "const": "typescript",
@@ -1109,36 +1058,9 @@
       "required": ["count", "tokens"],
       "type": "object"
     },
-    "GgResponseHealing": {
-      "description": "What gg had to do to a model's response before it could run it — the healing record of one\ncode-shaped turn.\n\nHealing is textual and conservative: it only ever **deletes**, so a healed program is always a\nsubsequence of the response the model sent. The model is told nothing about a repair; this\nrecord and the run's operator stream are where every repair is disclosed.\n\nA response that needed nothing carries the default and is omitted from the wire entirely, so\nthe presence of this object *is* \"something was unusual about this response\".",
-      "properties": {
-        "didNotConverge": {
-          "description": "Whether the healing pipeline failed to reach a fixpoint, so every repair was discarded and\nthe response ran exactly as sent.\n\nCarried so that the one response pathological enough to defeat the pipeline is\ndistinguishable from a clean one, which is otherwise byte-identical on the wire.",
-          "type": "boolean"
-        },
-        "original": {
-          "description": "The reply **as the model sent it**, carried whenever healing rewrote it into something else.\n\nThe program that ran is what the model's own history carries and what every reported line\nnumber counts lines of, so this is the only surviving copy of the text healing started from\n— and reading the two against each other is what tells a defect in healing apart from a\nmistake by the model. It is for the run's operator; no model is ever shown it.\n\nAbsent for a clean response, where the reply and the program are the same string.",
-          "type": ["string", "null"]
-        },
-        "strategies": {
-          "description": "Each strategy application, in the order applied — a strategy may appear more than once (two\nnested fences are two applications), which is what makes this a count rather than a flag.\nEmpty for a clean response.",
-          "items": {
-            "$ref": "#/$defs/GgHealingStrategy"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
     "GgRetainedState": {
-      "description": "The pinned state a [compaction] carried across the boundary verbatim — the counts\nthat *survived* summarization — reported on a\n[`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the\nretention contract held (the read skills, the task list, and the in-play memories are\nnot summarized away).\n\nEach figure is a **count of retained items**, not a token figure: how many read\n[skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many\nin-play [memories](GgContextSource::Memory), and how many\n[issues](https://docs.testcabinet.ai/gg/project-management/) on the\n[board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by\nthe summary. The epic/issue board is retained across the boundary just like the task list,\nso its issue count is reported here as part of the retention proof.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "description": "The pinned state a [compaction] carried across the boundary verbatim — the counts\nthat *survived* summarization — reported on a\n[`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the\nretention contract held (the read skills, the task list, and the in-play memories are\nnot summarized away).\n\nEach figure is a **count of retained items**, not a token figure: how many read\n[skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how many\nin-play [memories](GgContextSource::Memory) remained pinned after the ephemeral history was\nreplaced by the summary.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
-        "issues": {
-          "description": "The number of issues on the retained epic/issue board.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
         "memories": {
           "description": "The number of in-play memories carried across the boundary verbatim.",
           "format": "uint64",
@@ -1158,7 +1080,7 @@
           "type": "integer"
         }
       },
-      "required": ["skills", "tasks", "memories", "issues"],
+      "required": ["skills", "tasks", "memories"],
       "type": "object"
     },
     "GgReviewer": {
@@ -1410,6 +1332,11 @@
         {
           "const": "missing_completion_compaction",
           "description": "A turn replied with no tool call while a [compaction](GgTelemetryKind::Compaction) was\npending: the model was told to compact its window and answered with prose instead. A\ndifferent failure from [`MissingCompletionNoCall`](Self::MissingCompletionNoCall) — the\nsession is nowhere near ending, and gg answers it by restating the compaction rather than by\nexplaining how to finish — and it is answered differently, so it is recorded differently.",
+          "type": "string"
+        },
+        {
+          "const": "missing_completion_no_program",
+          "description": "A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) turn made no `submit_program` call, so\nthe reply carried no program to run — the code-mode counterpart of\n[`MissingCompletionNoCall`](Self::MissingCompletionNoCall), reached only when a provider\nanswers a request that required the call with a reply that does not make it.",
           "type": "string"
         }
       ]
@@ -2025,7 +1952,7 @@
       "type": "object"
     },
     {
-      "description": "The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/) — the\nheavyweight work-decomposition counterpart to the [task list](Self::TasksState), whose\nissues form a blocked-by DAG retained across a [compaction] boundary verbatim.\n\nEmitted once at session start (an empty board) when the\n[project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is enabled, and again after every\nsuccessful mutation\n(`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`)\n— and whenever gg itself moves an issue (a dispatch, a completion, an acceptance) —\nso the console can render the live board. The whole board is also a pinned\n[`Board`](GgContextSource::Board)-sourced context item, so the model sees its\ndecomposition each turn. A run with the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "description": "The model's [epic/issue board](https://docs.testcabinet.ai/gg/project-management/) — the\nheavyweight work-decomposition counterpart to the [task list](Self::TasksState), whose\nissues form a blocked-by DAG retained across a [compaction] boundary verbatim.\n\nEmitted once at session start (an empty board) when the\n[project-management](CAPABILITY_PROJECT_MANAGEMENT) capability is enabled, and again after every\nsuccessful mutation\n(`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`remove_epic`/`remove_issue`)\n— and whenever gg itself moves an issue (a dispatch, a completion, an acceptance) —\nso the console can render the live board. A run with the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
         "epics": {
           "description": "The epics, in the order the model created them.",
@@ -2238,7 +2165,7 @@
       "type": "object"
     },
     {
-      "description": "The [modules](GgModuleKind) one agent instance holds, as it opens: what each is, which\nbacking store it is a holder of, whose it is, and whether the agent's prompt carries it.\n\nEmitted **once per incarnation, for every instance** — the root, every subagent, every\nsuccessor — immediately after that instance's [`AgentSpawned`](Self::AgentSpawned) (and its\n[`FsmState`](Self::FsmState), when it stands in a machine). It is the only event that\nreports a module an agent holds but has not yet *touched* — a read-only inherited memory\nholder that never writes emits no [`MemoryState`](Self::MemoryState) of its own — and the\nonly one that reports [ownership](GgModuleOwnership) as data rather than as a log line.\n\nA roster does not change within an incarnation: every operation that changes what an agent\nholds (an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork`) mints a new agent id, and\nthe new instance emits its own. So it is emitted once and never re-emitted, and it carries\ndeliberately **no holder count** — a point-in-time count is stale the moment a sibling\nspawns, while a consumer holding every instance's roster already knows the exact holder set,\nincluding which of those holders are still running.",
+      "description": "The [modules](GgModuleKind) one agent instance holds, as it opens: what each is, which\nbacking store it is a holder of, and whose it is.\n\nEmitted **once per incarnation, for every instance** — the root, every subagent, every\nsuccessor — immediately after that instance's [`AgentSpawned`](Self::AgentSpawned) (and its\n[`FsmState`](Self::FsmState), when it stands in a machine). It is the only event that\nreports a module an agent holds but has not yet *touched* — a read-only inherited memory\nholder that never writes emits no [`MemoryState`](Self::MemoryState) of its own.\n\nA roster does not change within an incarnation: every operation that changes what an agent\nholds (an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork`) mints a new agent id, and\nthe new instance emits its own. So it is emitted once and never re-emitted, and it carries\ndeliberately **no holder count** — a point-in-time count is stale the moment a sibling\nspawns, while a consumer holding every instance's roster already knows the exact holder set,\nincluding which of those holders are still running.",
       "properties": {
         "modules": {
           "description": "One entry per [kind](GgModuleKind::ALL), in kind order — including the kinds this\ninstance's profile has switched off, so a capability left off is legible rather than\nabsent.",
@@ -2496,7 +2423,7 @@
       "type": "object"
     },
     {
-      "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/programs/) **turn** — the\nevent that makes a code-shaped turn observable: what gg had to do to the model's reply\nbefore it could run it, what the program then did, and whether it ended the run.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's\nown [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a\nprogram at all** — prose, or an empty reply — which is prepared for the guest like anything\nelse and is reported the same way a program that did not compile is: `ok: false` and an\n[`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per\ncode-shaped turn is the invariant, and it is what makes\n[`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's\n[healing rollup](GgHealingSummary).\n\nThe individual tool calls the program made still stream as ordinary\n[`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the\nprogram composed them — this event carries the *turn* itself: whether the program returned\nnormally, how many tool calls it composed, how long its own execution took, and, when it did\nnot return normally, the fault. A run with the capability off emits none.",
+      "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/programs/) **turn** — the\nevent that makes a code-shaped turn observable: what gg had to do to the model's reply\nbefore it could run it, what the program then did, and whether it ended the run.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per **submitted program**, on the agent that emitted the reply, so it rides on that\nagent's own [`agent_id`](GgTelemetryEvent::agent_id) — a turn that submitted several\nprograms emits one event per program, in submission order. That includes a submitted string\nthat was **not a program at all** — prose, or empty — which is prepared for the guest like\nanything else and is reported the same way a program that did not compile is: `ok: false`\nand an [`error`](Self::CodeExecution::error) carrying the compiler's diagnostic.\n\nThe individual tool calls the program made still stream as ordinary\n[`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the\nprogram composed them — this event carries the *turn* itself: whether the program returned\nnormally, how many tool calls it composed, how long its own execution took, and, when it did\nnot return normally, the fault. A run with the capability off emits none.",
       "properties": {
         "apiCalls": {
           "description": "How many **model-facing API calls** the program made — one per\n[`ApiCall`](Self::ApiCall)/[`ApiResult`](Self::ApiResult) pair the turn produced. Every\ncall a program makes is one of these; it is the complete count.\n\nIt legitimately **exceeds** [`tool_calls`](Self::CodeExecution::tool_calls), and by two\nthings: the calls that dispatch nothing (a view, an ending, a program-library call), and\nthe calls the sandbox refused before dispatch (a spent wall-clock budget, an operation\nthis agent was not granted) — the model made those, so the API layer counts\nthem even though nothing ran. The two figures answer different questions and are not\nmeant to agree.\n\nOmitted when zero: a program that made no calls at all.",
@@ -2529,10 +2456,6 @@
         "finished": {
           "description": "The summary the program ended the **run** with, when it called `finish` — the one\nfunction on the sandbox's model-facing surface that is not a tool, and the only thing\nthat ends a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) session.\n\nPresent on exactly the turn that finished, absent on every other, so `finished != null`\nis both \"did this turn end the run?\" and \"with what?\" — and, over a run, the proof that\nthe session ended because the model said so rather than because a ceiling stopped it. It\nis carried even when the program then threw or trapped: the completion is recorded\nbefore either can exist and nothing retracts it. The same text is the session's final\ntext (a subagent's return value to its spawner).",
           "type": ["string", "null"]
-        },
-        "healing": {
-          "$ref": "#/$defs/GgResponseHealing",
-          "description": "What gg had to do to this reply before running it, and whether it was a program at all.\nDefaulted and omitted from the wire for a clean response, so the presence of this\nobject *is* \"something was unusual about this response\"."
         },
         "logs": {
           "description": "Everything the program wrote with `console.*`, in order, subject to the sandbox's\ncapture caps (200 lines, 16 KiB, 2 KiB per line — the tail is what is kept).\n\n**This is the only place a program's output is recorded.** `console.*` is not a channel\ninto the model's own context window — what a program shows *itself* is a\n[view](GgContextSource::TextView), which arrives as its own attributable context message\n— so a log line goes to whoever is watching the run and nowhere else. Carrying the lines\non the turn's own event is what keeps that true: without them, a program's diagnostic\noutput would exist only for the instant it crossed the sandbox membrane, and an operator\nreading a finished run, a replay, or an analysis over a thousand runs could not see what\nany program printed.\n\nAbsent (an empty list) for a turn that logged nothing and for a reply that was not a\nprogram at all.",
@@ -2623,7 +2546,7 @@
           "description": "How the turn ended. [`Error`](GgTurnOutcome::Error) is the only outcome the error\nceilings count."
         },
         "responseChars": {
-          "description": "The reply's length in characters — the model's raw text, before any healing. Carried on\nevery outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum\nover the turns that **worked** (a progressed or finished outcome): the figure a later\noutput ceiling would have to accommodate. `0` — and omitted — for a turn whose reply\ncarried no text at all.",
+          "description": "The reply's length in characters — the model's raw text plus, on a\nresponses-as-code turn, the `program` string of each `submit_program` call it made.\nCarried on\nevery outcome so [`GgSessionSummary::max_response_chars`] can be folded as a maximum\nover the turns that **worked** (a progressed or finished outcome): the figure a later\noutput ceiling would have to accommodate. `0` — and omitted — for a turn whose reply\ncarried no text at all.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"

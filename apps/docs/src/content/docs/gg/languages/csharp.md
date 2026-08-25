@@ -240,17 +240,3 @@ as an alias of the module function it repeats. There is no logging function. The
 guest puts `Console.Out` on gg's feedback channel before it runs the program's
 entry point, so `Console.WriteLine` reaches the run's operator from the first
 line.
-
-## Healing dialect
-
-The arm reads a fenced block tagged `csharp`, `c#` or `cs` as the program. `#`
-is not treated as code punctuation, so a Markdown heading above a fenced program
-stays deletable. A line whose `#` is followed by one of thirteen preprocessor
-directive words spelled lower-case is read as code, and statement keywords are
-matched case-sensitively.
-
-One lexer serves both healing and the module reader, classifying every byte as
-code, text or the inside of an interpolation hole. It reads raw string fences of
-any quote count, verbatim strings that escape a quote by doubling it, and holes
-containing further strings. Healing takes a mask only when the scan ended
-cleanly, and the module reader takes the best reading whatever happened.

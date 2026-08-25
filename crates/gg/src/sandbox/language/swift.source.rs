@@ -54,10 +54,10 @@
 //! An `import` is a file-scoped declaration in Swift, so a module that calls gg's surface writes
 //! `import gg` exactly as a program does, and gg puts no line above the author's first.
 
-use crate::healing::CodeMask;
+use super::super::mask::CodeMask;
 use crate::sandbox::{ModuleExport, ModuleExportKind};
 
-use super::healing::{code_mask, declaration_keyword, identifier};
+use super::mask::{code_mask, declaration_keyword, identifier};
 
 /// The file a code module is compiled from, given its binding key — `module_csvTools.swift`.
 ///
@@ -214,7 +214,7 @@ impl Item {
 /// Every top-level declaration `source` makes, in order — or `None` when the source did not lex.
 ///
 /// "Top level" is read as *brace depth zero in code context*, which is what the seam's own lexer
-/// already answers: [`code_mask`] is the same reading response healing makes of a reply, so a
+/// already answers: [`code_mask`] is the one byte-level reading this arm keeps, so a
 /// module and a program are read by one lexer rather than two.
 fn declarations(source: &str) -> Option<Vec<Item>> {
     let mask = code_mask(source)?;

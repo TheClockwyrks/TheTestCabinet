@@ -42,12 +42,14 @@ and Cloudflare release, so the heavy case is the one to budget for.
 
 ## Review gate
 
-A completed run normally needs at least one human
+A completed legacy run needs at least one human
 [review](/components/core/results/#reviews) before it can be published;
 `gate_publishable` (`crates/backend/src/db.rs`) rejects a zero-review completed
-run. The publishable failure states (catastrophic, timed out, harness error) are
-admitted through the same gate with no review, since they have no checklist to
-complete.
+legacy run. A completed
+[validator-rated](/testing/end-to-end/evaluation/#rating-channels) run and the
+publishable failure states (catastrophic, timed out, harness error) are
+admitted through the same gate with no review: the former carries its
+validators' rating and score, and the latter have no checklist to complete.
 
 A comparison run is scored from its [automated
 validators](/comparisons/experiments/#automated-only-scoring) and is designed to

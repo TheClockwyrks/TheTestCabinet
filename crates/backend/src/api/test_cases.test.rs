@@ -22,6 +22,7 @@ fn manifest() -> StoredManifest {
     };
     StoredManifest {
         toolchain: None,
+        engine_format: false,
         slug: "carom".to_string(),
         version: "v1.0.1".to_string(),
         name: "Carom".to_string(),
@@ -316,6 +317,8 @@ fn a_graded_review_item_carries_its_graded_flag_to_the_wire() {
         weight: 1,
         graded: true,
         domain: None,
+        failure_cap: None,
+        domains: vec![],
         sub_items: vec![],
         validation: None,
     }];
@@ -527,7 +530,7 @@ async fn the_code_analysis_route_negotiates_exactly_as_the_replay_route_does() {
     // convention if the second artifact cannot quietly grow its own handler. The Code tab
     // is a browser and gets the stored bytes verbatim; a gzip-unaware client gets them
     // decoded.
-    let stored = gzipped(br#"{"analyzerVersion":2}"#);
+    let stored = gzipped(br#"{"analyzerVersion":1}"#);
     let browser = run_artifact_response(
         &accept_encoding(Some("gzip, deflate, br")),
         crate::store::CODE_ANALYSIS_ARTIFACT,
@@ -549,7 +552,7 @@ async fn the_code_analysis_route_negotiates_exactly_as_the_replay_route_does() {
     let (status, headers, body) = read_response(cli).await;
     assert_eq!(status, StatusCode::OK);
     assert!(!headers.contains_key(header::CONTENT_ENCODING));
-    assert_eq!(body, br#"{"analyzerVersion":2}"#);
+    assert_eq!(body, br#"{"analyzerVersion":1}"#);
 }
 
 #[test]
@@ -693,4 +696,77 @@ fn an_unknown_engine_is_refused_rather_than_rendered_engineless() {
     .expect_err("an unknown engine slug is a client error");
 
     assert_eq!(error.status, StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn a_version_response_carries_the_engine_format_and_each_points_cap_and_domains() {
+    use crate::store::StoredSubReviewItem;
+    use test_cabinet_core::review::FailureCap;
+    let mut manifest = manifest();
+    manifest.engine_format = true;
+    manifest.common_review_items = vec![
+        StoredReviewItem {
+            id: "serve".to_string(),
+            title: "Serve".to_string(),
+            text: "The ball serves.".to_string(),
+            reference: None,
+            proof: None,
+            sequences: vec![],
+            frames: vec![],
+            weight: 1,
+            graded: false,
+            domain: None,
+            sub_items: vec![],
+            validation: None,
+            failure_cap: Some(FailureCap::Broken),
+            domains: vec!["single-player".to_string()],
+        },
+        StoredReviewItem {
+            id: "hud".to_string(),
+            title: "HUD".to_string(),
+            text: "The HUD reports state.".to_string(),
+            reference: None,
+            proof: None,
+            sequences: vec![],
+            frames: vec![],
+            weight: 2,
+            graded: false,
+            domain: None,
+            sub_items: vec![StoredSubReviewItem {
+                id: "score".to_string(),
+                title: "Score".to_string(),
+                description: None,
+                weight: 1,
+                reference: None,
+                proof: None,
+                validation: None,
+                failure_cap: Some(FailureCap::Great),
+                domains: vec!["single-player".to_string(), "versus".to_string()],
+            }],
+            validation: None,
+            failure_cap: None,
+            domains: vec![],
+        },
+    ];
+
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+    let json = serde_json::to_value(&response).unwrap();
+    assert_eq!(json["engineFormat"], true);
+    let items = json["commonReviewItems"].as_array().unwrap();
+    assert_eq!(items[0]["failureCap"], "broken");
+    assert_eq!(items[0]["domains"], serde_json::json!(["single-player"]));
+    // A sub-divided item carries them per sub-item and none of its own.
+    assert!(items[1].get("failureCap").is_none());
+    assert_eq!(items[1]["domains"], serde_json::json!([]));
+    assert_eq!(items[1]["subItems"][0]["failureCap"], "great");
+    assert_eq!(
+        items[1]["subItems"][0]["domains"],
+        serde_json::json!(["single-player", "versus"])
+    );
+
+    // A legacy version says so and carries neither key on its items.
+    let legacy =
+        version_response(&self::manifest(), &HashMap::new(), &HashMap::new(), None).unwrap();
+    let json = serde_json::to_value(&legacy).unwrap();
+    assert_eq!(json["engineFormat"], false);
 }

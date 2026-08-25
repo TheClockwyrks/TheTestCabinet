@@ -295,22 +295,18 @@ fn the_params_table_covers_the_capability_catalogue_exactly() {
     }
 }
 
-/// [`ownership`](MODULE_PARAM_OWNERSHIP) is the case the table exists to get right: it is a real gg
-/// param, offered by the two module-backed capabilities that have an ownership to configure and by
-/// no others. On any other capability it is a key read by nothing, which is exactly the shape of
-/// defect that used to be silent.
+/// `ownership` is not a key gg reads any more, on any capability: the owned mode is gone, so a
+/// configuration still carrying the key is refused rather than silently running without it.
 #[test]
-fn ownership_is_known_only_to_the_capabilities_that_configure_one() {
-    let offers = |id: &str| {
-        params_for(id)
-            .unwrap()
-            .iter()
-            .any(|(key, _)| *key == MODULE_PARAM_OWNERSHIP)
-    };
-    assert!(offers(CAPABILITY_PROJECT_MANAGEMENT));
-    assert!(offers(CAPABILITY_AGENT_MANAGED_CONTEXT));
-    for id in [CAPABILITY_MEMORIES, CAPABILITY_SKILLS, CAPABILITY_TASKS] {
-        assert!(!offers(id), "`{id}` does not read an `ownership`");
+fn ownership_is_known_to_no_capability_at_all() {
+    for id in GG_CAPABILITY_CATALOG {
+        assert!(
+            !params_for(id)
+                .unwrap()
+                .iter()
+                .any(|(key, _)| *key == "ownership"),
+            "`{id}` does not read an `ownership`"
+        );
     }
 }
 
@@ -389,17 +385,16 @@ fn a_params_key_the_capability_does_not_read_is_refused() {
     );
 }
 
-/// A key that is a real gg param **on another capability** is still unknown here. `ownership` on
-/// `memories` reads as though it configured something and configures nothing at all.
+/// A key that is a real gg param **on another capability** is still unknown here. `scope` on
+/// `tasks` reads as though it configured something and configures nothing at all.
 #[test]
 fn a_params_key_belonging_to_another_capability_is_refused() {
     let mut set = minimal();
     put(
         &mut set,
-        GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)
-            .with_param(MODULE_PARAM_OWNERSHIP, "owned"),
+        GgCapabilityConfig::enabled(CAPABILITY_TASKS).with_param(MEMORY_PARAM_SCOPE, "isolated"),
     );
-    assert!(refusal_text(&set).contains(MODULE_PARAM_OWNERSHIP));
+    assert!(refusal_text(&set).contains(MEMORY_PARAM_SCOPE));
 }
 
 /// **The deliberate exception.** A key known to the capability but unused by the arm its
@@ -509,7 +504,7 @@ fn a_signal_threshold_nobody_wrote_is_the_default_rather_than_a_refusal() {
     put(
         &mut set,
         GgCapabilityConfig {
-            params: json!({ PARAM_TOP_FILE_VIEWS: 5, MODULE_PARAM_OWNERSHIP: "owned" }),
+            params: json!({ PARAM_TOP_FILE_VIEWS: 5 }),
             ..GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
         },
     );
@@ -1144,7 +1139,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
             root,
             // A profile whose every *value* is individually spelled on a key gg knows, and not one
             // of which gg can honour: an arm it does not offer, a limit that is not a count, a
-            // scope that names no instance, an ownership that names neither.
+            // scope that names no instance, a breakdown length that is not a count.
             GgAgentConfig {
                 slug: "resolvers".to_string(),
                 name: "resolvers".to_string(),
@@ -1163,7 +1158,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                             .with_param(COMPACTION_PARAM_MODEL_SLOT, "summarizer")
                     },
                     GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
-                        .with_param(MODULE_PARAM_OWNERSHIP, "communal"),
+                        .with_param(PARAM_TOP_FILE_VIEWS, "lots"),
                 ],
                 ..GgAgentConfig::root()
             },
@@ -1286,7 +1281,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                         .with_param(PARAM_MAX_MEMORY_BYTES, "lots")
                         .with_param(PARAM_DOC_VIEW_TYPES, json!({ "returns": true }))
                         .with_param("assistantMessages", "response-healing")
-                        .with_param(PARAM_HEALING, json!({ "stripFences": false })),
+                        .with_param("healing", json!({ "stripFences": false })),
                     GgCapabilityConfig {
                         implementation: Some("default_cap".to_string()),
                         ..GgCapabilityConfig::enabled(CAPABILITY_READ_FILE)
@@ -1326,8 +1321,7 @@ fn every_class_of_defect_appears_in_one_refusal() {
                         .with_param(PARAM_LANGUAGE, "python")
                         .with_param(PARAM_TIMEOUT_SECS, 0.5)
                         .with_param(PARAM_MAX_MEMORY_BYTES, 5e8)
-                        .with_param(PARAM_DOC_VIEW_TYPES, json!({ "parameters": true }))
-                        .with_param(PARAM_HEALING, json!({ "strip-fences": false })),
+                        .with_param(PARAM_DOC_VIEW_TYPES, json!({ "parameters": true })),
                     GgCapabilityConfig {
                         implementation: Some(READ_MODE_DEFAULT_CAP.to_string()),
                         ..GgCapabilityConfig::enabled(CAPABILITY_READ_FILE)
@@ -1455,8 +1449,8 @@ fn every_class_of_defect_appears_in_one_refusal() {
         "1.5",
         // a model slot the launch never bound
         COMPACTION_PARAM_MODEL_SLOT,
-        // an ownership that names neither `owned` nor `unowned`
-        MODULE_PARAM_OWNERSHIP,
+        // a breakdown length that is not a count
+        PARAM_TOP_FILE_VIEWS,
         // a configuration that contradicts itself
         COMPACTION_STRATEGY_MEMORY,
         // a turn ceiling nothing could run under
@@ -1505,8 +1499,8 @@ fn every_class_of_defect_appears_in_one_refusal() {
         "returns",
         // the removed assistant-message lever, whose key is no longer one gg reads
         "assistantMessages",
-        // a healing key that arms nothing
-        "stripFences",
+        // the removed response-healing param, whose key is no longer one gg reads
+        "healing",
         // a read mode that would have granted uncapped reads
         "default_cap",
         // a line cap that would return nothing
@@ -1599,8 +1593,7 @@ fn the_corrected_configuration_launches() {
                         ..GgCapabilityConfig::enabled(CAPABILITY_COMPACTION)
                             .with_param(PARAM_SUMMARY_HEADROOM, 0.5)
                     },
-                    GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
-                        .with_param(MODULE_PARAM_OWNERSHIP, "unowned"),
+                    GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
                 ],
                 ..GgAgentConfig::root()
             },
@@ -1835,7 +1828,6 @@ fn a_board_ceiling_that_diverges_from_the_board_owners_is_refused() {
             .with_param(PARAM_MAX_ISSUES, 2_000)
             .with_param(PARAM_MAX_RETRIES, retries)
             .with_param(PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, ROOT_PROFILE_ID)
-            .with_param(MODULE_PARAM_OWNERSHIP, "owned")
     };
     let set = |implementer_retries: u64| GgCapabilitySet {
         agents: vec![

@@ -17,11 +17,8 @@
 //! `update_issue` to revise an issue's fields or status, `set_issue_blocked_by` to declare the
 //! DAG edges, and `remove_epic`/`remove_issue` to drop one. There is deliberately **no**
 //! "complete issue" move (see [below](#completion-is-the-agents-own-and-acceptance-is-ggs)).
-//! The whole board is pushed into each agent's context window as a single
-//! [`Board`](test_cabinet_core::gg::GgContextSource::Board)-sourced,
-//! [`Pinned`](crate::context::Retention::Pinned) item, so the
-//! [context accounting](crate::context) attributes it to the board and
-//! [compaction](crate::compaction) carries the decomposition across the boundary verbatim.
+//! The board is reachable through the board tools alone: nothing of it is ever put into an
+//! agent's context window, so working it costs an agent no context between calls.
 //!
 //! # Identifiers are gg's, and they nest
 //!
@@ -92,9 +89,9 @@
 //!   shared (`Arc<Mutex>`) across the whole run — one board, held by the orchestrator and handed
 //!   to every agent's [board tools](crate::tools).
 //! - [`BoardRuntime`] — the run's live view: whether the capability is on, the shared store,
-//!   and the derivations the loop needs (the caps the system prompt states, the
+//!   and the derivations the loop needs (the caps, the
 //!   [`BoardState`](test_cabinet_core::gg::GgTelemetryKind::BoardState) telemetry, and the
-//!   pinned context block).
+//!   dispatch briefs).
 //!
 //! The capability is **switchable**: when it is off the run builds a
 //! [`disabled`](BoardRuntime::disabled) runtime, so there are no board tools, no prompt
@@ -113,10 +110,10 @@ use test_cabinet_core::gg::{
 use crate::dag::{self, DagNode};
 use crate::model::Message;
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Refresh,
     detached_ids,
 };
-use crate::prompts::{self, BoardBlockContext, EpicItemView, IssueBriefContext, IssueItemView};
+use crate::prompts::{self, IssueBriefContext};
 use crate::sandbox::{
     BOARD_CREATE_EPIC, BOARD_CREATE_ISSUE, BOARD_REMOVE_EPIC, BOARD_REMOVE_ISSUE,
     BOARD_SET_ISSUE_BLOCKED_BY, BOARD_UPDATE_ISSUE, OperationId,
@@ -135,8 +132,8 @@ pub const MAX_PREFIX_LEN: usize = 6;
 /// than colliding with it.
 pub const UNGROUPED_PREFIX: &str = "ISSUE";
 
-/// The board **operations** that mutate it — the ones whose success re-pumps the auto-dispatch queue
-/// and refreshes the pinned board block.
+/// The board **operations** that mutate it — the ones whose success re-pumps the auto-dispatch
+/// queue and re-emits the board's state telemetry.
 ///
 /// `board.wait_for_issue` is absent because it changes nothing about the board: it suspends the
 /// agent that called it. This is the responses-as-code surface's list and
@@ -547,28 +544,6 @@ impl IssueStatus {
             IssueStatus::InReview => GgIssueStatus::InReview,
             IssueStatus::Done => GgIssueStatus::Done,
             IssueStatus::Failed => GgIssueStatus::Failed,
-        }
-    }
-
-    /// A human-readable word for the status, for the rendered context block.
-    fn word(self) -> &'static str {
-        match self {
-            IssueStatus::Open => "open",
-            IssueStatus::InProgress => "in progress",
-            IssueStatus::InReview => "in review",
-            IssueStatus::Done => "done",
-            IssueStatus::Failed => "failed",
-        }
-    }
-
-    /// The checkbox-style marker for the status, for the rendered context block.
-    fn marker(self) -> &'static str {
-        match self {
-            IssueStatus::Open => "[ ]",
-            IssueStatus::InProgress => "[~]",
-            IssueStatus::InReview => "[?]",
-            IssueStatus::Done => "[x]",
-            IssueStatus::Failed => "[!]",
         }
     }
 }
@@ -1467,16 +1442,6 @@ impl BoardStore {
                 .all(|blocker| self.issue_status_of(blocker) == Some(IssueStatus::Done))
     }
 
-    /// The ids of an issue's blockers that are not yet done — what is holding it up.
-    fn incomplete_blockers<'a>(&self, issue: &'a Issue) -> Vec<&'a str> {
-        issue
-            .blocked_by
-            .iter()
-            .filter(|blocker| self.issue_status_of(blocker) != Some(IssueStatus::Done))
-            .map(String::as_str)
-            .collect()
-    }
-
     /// The [`BoardState`](GgTelemetryKind::BoardState) telemetry for the current board, attributed
     /// to the [module instance](crate::modules::Module::instance_id) `module_id` — which every
     /// holder in the run reports identically, the board being run-global by construction.
@@ -1516,33 +1481,6 @@ impl BoardStore {
         }
     }
 
-    /// The pinned context block rendering the whole board — its epics, then each issue's
-    /// status, title, epic grouping, ready/blocked state, and structured scope sections — or
-    /// `None` when the board is empty.
-    fn context_block(&self) -> Option<Message> {
-        if self.epics.is_empty() && self.issues.is_empty() {
-            return None;
-        }
-        let epics = self
-            .epics
-            .iter()
-            .map(|epic| EpicItemView {
-                id: epic.id.clone(),
-                title: epic.title.clone(),
-                description: epic.description.clone(),
-            })
-            .collect();
-        let issues = self
-            .issues
-            .iter()
-            .map(|issue| self.issue_view(issue))
-            .collect();
-        Some(Message::user(prompts::render_board(&BoardBlockContext {
-            epics,
-            issues,
-        })))
-    }
-
     /// The dispatch **brief** for the issue with id `id` — its title, optional overview, and the
     /// three structured sections that bound the assigned agent's work (in-scope, out-of-scope,
     /// completion criteria) — or `None` when no issue of that id exists. The
@@ -1558,44 +1496,6 @@ impl BoardStore {
             out_of_scope: issue.out_of_scope.clone(),
             completion_criteria: issue.completion_criteria.clone(),
         }))
-    }
-
-    /// One issue as the pinned [context block](Self::context_block) renders it: its line (status,
-    /// epic grouping, ready/blocked state) plus the structured brief. The DAG derivations are done
-    /// here, in the store that owns the graph; the template only lays the result out.
-    fn issue_view(&self, issue: &Issue) -> IssueItemView {
-        let open = !issue.status.is_terminal();
-        let ready = open && self.is_ready(issue);
-        IssueItemView {
-            id: issue.id.clone(),
-            title: issue.title.clone(),
-            description: issue.description.clone(),
-            status: issue.status.word().to_string(),
-            marker: issue.status.marker().to_string(),
-            epic_id: issue.epic_id.clone(),
-            ready,
-            blocked_by: (open && !ready).then(|| {
-                self.incomplete_blockers(issue)
-                    .iter()
-                    .map(|id| format!("`{id}`"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            }),
-            in_scope: issue.in_scope.clone(),
-            out_of_scope: issue.out_of_scope.clone(),
-            completion_criteria: issue.completion_criteria.clone(),
-            agent: issue.agent.clone(),
-            // Ids, not display names: the block is what an agent revising or waiting on this
-            // issue reads, and every call it might make next names a profile by its id.
-            reviewers: (!issue.reviewers.is_empty()).then(|| {
-                issue
-                    .reviewers
-                    .iter()
-                    .map(|agent_id| format!("`{agent_id}`"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            }),
-        }
     }
 
     /// The [profile id](Issue::agent) the issue with id `id` is assigned to, if it exists.
@@ -1683,25 +1583,20 @@ fn clean_optional(value: Option<&str>) -> Option<String> {
 /// [`BoardStore`].
 ///
 /// Constructed [enabled](Self::new) with caps or [disabled](Self::disabled) (a configuration's
-/// arm). It hands the [`store`](Self::store) to the board tools, produces the system-prompt
-/// [caps](Self::caps) the [system prompt](crate::prompts::SystemContext::board) states, the
-/// [`BoardState`](GgTelemetryKind::BoardState)
-/// [telemetry](Self::state_event), and the pinned [context block](Self::context_block) the loop
-/// keeps in the window.
+/// arm). It hands the [`store`](Self::store) to the board tools and produces the
+/// [caps](Self::caps), the [`BoardState`](GgTelemetryKind::BoardState)
+/// [telemetry](Self::state_event), and the [dispatch briefs](Self::issue_brief).
 ///
 /// It is the one [module](crate::modules::Module) that is **run-global by construction**: the board
 /// is the run's single work queue, and every agent's handle on it is a [share](Self::shared) of the
 /// one the orchestrator built. Forking it would fork the per-prefix issue counter and hand out
-/// `ABC-4` twice, so [`Module::fork`] deliberately shares as well. What *is* per agent is
-/// [ownership](Ownership): a profile without the authoring capability holds the board unowned, so
-/// it is not shown a decomposition it has no tool to act on. It is deliberately not `Clone`; see
-/// [the module model](crate::modules).
+/// `ABC-4` twice, so [`Module::fork`] deliberately shares as well. It contributes nothing to any
+/// holder's prompt — every agent reaches it through the board tools alone. It is deliberately not
+/// `Clone`; see [the module model](crate::modules).
 #[derive(Debug)]
 pub struct BoardRuntime {
     /// Whether the epics-and-issues capability is enabled for this run.
     enabled: bool,
-    /// Whether this holder's prompt carries the board.
-    ownership: Ownership,
     /// The shared, mutable store — the same handle the tools mutate.
     store: Arc<Mutex<BoardStore>>,
     /// The [identity](crate::modules::ModuleIdMint) of that store. There is exactly one per run,
@@ -1728,7 +1623,6 @@ impl BoardRuntime {
     pub fn new_in(caps: BoardCaps, ids: &ModuleIds) -> Self {
         Self {
             enabled: true,
-            ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(BoardStore::new(caps))),
             id: ids.next(ModuleKind::Board),
             ids: Arc::clone(ids),
@@ -1749,18 +1643,11 @@ impl BoardRuntime {
         }
     }
 
-    /// This runtime with its [ownership](Ownership) set.
-    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
-        self.ownership = ownership;
-        self
-    }
-
     /// A **linked** handle onto the same board — the only way an agent ever gets one, since the
     /// board is the run's single work queue.
     pub fn shared(&self) -> Self {
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             store: Arc::clone(&self.store),
             id: Arc::clone(&self.id),
             ids: Arc::clone(&self.ids),
@@ -1784,9 +1671,9 @@ impl BoardRuntime {
         self.store.lock().expect("board store lock").caps()
     }
 
-    /// The number of issues on the board — reported as the issues figure of a
-    /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary's retention proof.
-    /// Zero when the capability is off (the store is empty).
+    /// The number of issues on the board. (A read surface for the tests and console-facing
+    /// derivations.) Zero when the capability is off (the store is empty).
+    #[allow(dead_code)]
     pub fn issue_count(&self) -> usize {
         self.store.lock().expect("board store lock").issue_count()
     }
@@ -1811,16 +1698,6 @@ impl BoardRuntime {
                 .expect("board store lock")
                 .state_event(&self.id),
         )
-    }
-
-    /// The pinned context block rendering the current board, or `None` when the capability is
-    /// off or the board is empty. The loop keeps this as the single
-    /// [`Board`](test_cabinet_core::gg::GgContextSource::Board)-sourced item in the window.
-    pub fn context_block(&self) -> Option<Message> {
-        if !self.enabled {
-            return None;
-        }
-        self.store.lock().expect("board store lock").context_block()
     }
 
     /// The [dispatch brief](BoardStore::issue_brief) for the issue with id `id` — the brief gg
@@ -2045,23 +1922,17 @@ impl Module for BoardRuntime {
         self.enabled
     }
 
-    fn ownership(&self) -> Ownership {
-        self.ownership
-    }
-
     fn context_source(&self) -> Option<GgContextSource> {
-        Some(GgContextSource::Board)
+        // The board never contributes to a window: it is reachable through its tools alone.
+        None
     }
 
     fn refresh(&self) -> Refresh {
-        Refresh::EveryTurn
+        Refresh::Never
     }
 
     fn context_block(&self) -> Option<Message> {
-        if self.ownership != Ownership::Owned {
-            return None;
-        }
-        BoardRuntime::context_block(self)
+        None
     }
 
     fn state_events(&self) -> Vec<GgTelemetryKind> {
@@ -2076,7 +1947,9 @@ impl Module for BoardRuntime {
     }
 
     fn retained(&self) -> u64 {
-        self.issue_count() as u64
+        // The board is never pinned in a window, so it retains nothing across a compaction
+        // boundary — the retention proof counts what crossed the boundary in the window.
+        0
     }
 
     /// A **share**, not a copy. Two boards would each keep their own per-prefix issue counter and
@@ -2096,13 +1969,13 @@ impl Module for BoardRuntime {
         true
     }
 
-    /// Re-resolve the caps and the ownership from the receiving profile.
+    /// Re-resolve the caps from the receiving profile.
     ///
     /// A profile whose project-management capability is **absent or off** does **not** refuse the
-    /// board: it holds the same run-global queue [unowned](Ownership::Unowned), exactly as it would
-    /// have been handed one at its own construction, and re-resolves no ceiling from a capability
-    /// that configures none. Refusing would leave an agent that is working an issue unable to see
-    /// the board its issue is on.
+    /// board: it holds the same run-global queue, exactly as it would have been handed one at its
+    /// own construction, and re-resolves no ceiling from a capability that configures none.
+    /// Refusing would leave an agent that is working an issue unable to reach the board its issue
+    /// is on.
     fn adopt(
         &mut self,
         profile: &GgAgentConfig,
@@ -2119,13 +1992,6 @@ impl Module for BoardRuntime {
                 &mut crate::validate::LaunchReport::Discarding,
             );
             self.store.lock().expect("board store lock").set_caps(caps);
-            self.ownership = crate::modules::resolve_ownership(
-                profile,
-                CAPABILITY_PROJECT_MANAGEMENT,
-                &mut crate::validate::LaunchReport::Discarding,
-            );
-        } else {
-            self.ownership = Ownership::Unowned;
         }
         Ok(())
     }

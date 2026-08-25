@@ -186,8 +186,7 @@ impl TurnOutcome {
     /// the loop's internal vocabulary and the contract's is a **published** wire value read by the
     /// console, the query language and every stored run. A conversion that made them
     /// interchangeable would let a rename on either side travel silently to the other; this way,
-    /// adding an outcome here is a decision to publish it there. The same reasoning — and the same
-    /// shape — as `wire_strategy` on the healing side.
+    /// adding an outcome here is a decision to publish it there.
     ///
     /// [`Fatal`](Self::Fatal)'s [fault](FatalFault) is deliberately dropped: the contract's
     /// `fatal` says the session ended on gg's own machinery, which is the fact a study slices on,
@@ -359,6 +358,9 @@ pub enum TurnErrorType {
     MissingCompletionNoCall,
     /// A turn replied with no call while a compaction was pending.
     MissingCompletionCompaction,
+    /// A responses-as-code turn made no `submit_program` call, so the reply carried no program to
+    /// run.
+    MissingCompletionNoProgram,
 }
 
 impl TurnErrorType {
@@ -386,9 +388,9 @@ impl TurnErrorType {
             Self::SandboxTimeout | Self::SandboxOutOfMemory | Self::SandboxTrap => {
                 TurnErrorKind::SandboxLimit
             }
-            Self::MissingCompletionNoCall | Self::MissingCompletionCompaction => {
-                TurnErrorKind::MissingCompletion
-            }
+            Self::MissingCompletionNoCall
+            | Self::MissingCompletionCompaction
+            | Self::MissingCompletionNoProgram => TurnErrorKind::MissingCompletion,
         }
     }
 
@@ -415,6 +417,7 @@ impl TurnErrorType {
             Self::SandboxTrap => GgTurnErrorType::SandboxTrap,
             Self::MissingCompletionNoCall => GgTurnErrorType::MissingCompletionNoCall,
             Self::MissingCompletionCompaction => GgTurnErrorType::MissingCompletionCompaction,
+            Self::MissingCompletionNoProgram => GgTurnErrorType::MissingCompletionNoProgram,
         }
     }
 

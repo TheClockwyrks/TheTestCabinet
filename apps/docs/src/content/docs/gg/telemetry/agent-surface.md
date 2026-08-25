@@ -107,10 +107,10 @@ projection of one array.
 
 Each function is named **relative to its module**, the way the arm spells it:
 a free function is its bare name (`readFile`), and a method carries the receiver
-it hangs off (`OpenView.close` on TypeScript, `OpenView#close` on Java,
-`open_view::close` on C++), so two rows in one module never share a name and a
+it hangs off (`IssueCreated.wait` on TypeScript, `IssueCreated#await` on Java,
+`issue_created::wait` on C++), so two rows in one module never share a name and a
 reader spelling the call back joins the module's path onto it
-(`gg.views.OpenView.close`). Each function also names the operation it serves
+(`gg.board.IssueCreated.wait`). Each function also names the operation it serves
 (`files.read_file`, `views.open_docs_view`, `session.finish`), and that field is
 load-bearing: every
 call a program makes is recorded as an `api_call` under exactly that id, so it is

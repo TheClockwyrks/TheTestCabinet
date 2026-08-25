@@ -116,12 +116,16 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 domain: "gameplay".to_string(),
                 rating: Rating::Great,
             }],
+            aesthetics: vec![],
             writeup: "Plays well.".to_string(),
             checklist: vec![],
             reviewed_at: "2026-06-17T22:00:00Z".to_string(),
             edited_at: None,
             revisions: Vec::new(),
         }],
+        rating: None,
+        aesthetic: None,
+        validator_rated: false,
         links: RunLinks {
             source_repo: Some("https://github.com/x/y".to_string()),
             playable_build: Some("https://abc.pages.dev".to_string()),
@@ -156,6 +160,7 @@ fn asset_run(id: &str, published_at: &str) -> StoredRun {
 fn manifest() -> StoredManifest {
     StoredManifest {
         toolchain: None,
+        engine_format: false,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         name: "Carom".to_string(),
@@ -2132,7 +2137,7 @@ async fn a_run_s_code_analysis_publishes_as_a_summary_on_the_card_and_a_keyed_do
     let run = analysed_run(
         &store,
         "r1",
-        serde_json::json!({ "analyzerVersion": 2, "files": [{ "path": "src/main.ts" }] }),
+        serde_json::json!({ "analyzerVersion": 1, "files": [{ "path": "src/main.ts" }] }),
     );
     let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
         .build(now())
@@ -2147,7 +2152,7 @@ async fn a_run_s_code_analysis_publishes_as_a_summary_on_the_card_and_a_keyed_do
         .expect("the runs index");
     let index: serde_json::Value = serde_json::from_slice(&runs_index.bytes).unwrap();
     let card = &index["runs"][0]["code"];
-    assert_eq!(card["analyzerVersion"], 2);
+    assert_eq!(card["analyzerVersion"], 1);
     assert_eq!(card["authoredBasis"], "allFiles");
     assert_eq!(card["treeBasis"], "preValidation");
     assert_eq!(card["truncated"], false);
@@ -2196,7 +2201,7 @@ async fn the_published_code_analysis_document_is_scrubbed() {
         &store,
         "r1",
         serde_json::json!({
-            "analyzerVersion": 2,
+            "analyzerVersion": 1,
             "files": [{ "path": "src/keys/sk-ant-api03-notreal-value.ts" }],
         }),
     );
@@ -2229,7 +2234,7 @@ async fn two_snapshot_refreshes_upload_the_code_analysis_object_once() {
     // The second build is handed exactly what the first uploaded, which is what the
     // publisher does (it lists the `media/` prefix before building).
     let (_tmp, store) = empty_store();
-    let run = analysed_run(&store, "r1", serde_json::json!({ "analyzerVersion": 2 }));
+    let run = analysed_run(&store, "r1", serde_json::json!({ "analyzerVersion": 1 }));
 
     let first = SnapshotBuilder::new(vec![run.clone()], vec![manifest()], store.clone())
         .build(now())
@@ -2514,4 +2519,216 @@ async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_co
             object.key
         );
     }
+}
+
+// --- Validator-rated runs in the snapshot ---------------------------------------
+
+/// [`manifest`] moved onto the engine format, scoring two validated points: `serve`
+/// (cap `broken`) and `hud` (cap `great`), both on the `gameplay` domain — so the
+/// version is validator-rated and its runs are scored by their validators alone.
+fn validator_manifest() -> StoredManifest {
+    use crate::store::{StoredReviewItem, StoredReviewValidation};
+    use test_cabinet_core::review::FailureCap;
+    let point = |id: &str, cap: FailureCap| StoredReviewItem {
+        id: id.to_string(),
+        title: id.to_string(),
+        text: format!("The build satisfies {id}."),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: false,
+        domain: None,
+        sub_items: vec![],
+        validation: Some(StoredReviewValidation {
+            script: format!("gameplay/{id}"),
+            per_engine: true,
+            outputs: vec![],
+        }),
+        failure_cap: Some(cap),
+        domains: vec!["gameplay".to_string()],
+    };
+    let mut manifest = manifest();
+    manifest.engine_format = true;
+    manifest.common_review_items = vec![
+        point("serve", FailureCap::Broken),
+        point("hud", FailureCap::Great),
+    ];
+    manifest
+}
+
+/// [`stored_run`] with one decided validator verdict per `(point, pass)` pair and
+/// no reviews at all — a validator-rated run the moment it completed.
+fn validator_run(id: &str, published_at: &str, verdicts: &[(&str, bool)]) -> StoredRun {
+    use test_cabinet_core::validation::AutoVerdict;
+    let mut run = stored_run(id, published_at);
+    run.reviews.clear();
+    run.validator_rated = true;
+    run.record.validation.debug_scripts = verdicts
+        .iter()
+        .map(|(point, pass)| DebugScriptResult {
+            item_id: point.to_string(),
+            sub_item_id: None,
+            title: point.to_string(),
+            category_title: point.to_string(),
+            script: format!("gameplay/{point}"),
+            gates: true,
+            ran: true,
+            precondition_unmet: false,
+            detail: None,
+            verdicts: vec![AutoVerdict {
+                id: point.to_string(),
+                pass: *pass,
+                assertions: vec![],
+            }],
+            outputs: vec![],
+        })
+        .collect();
+    run
+}
+
+#[test]
+fn run_summary_score_is_the_validator_score_on_a_validator_rated_version() {
+    let manifest = validator_manifest();
+    let run = validator_run(
+        "r1",
+        "2026-06-17T21:40:00Z",
+        &[("serve", true), ("hud", false)],
+    );
+
+    // Scored with no review at all: one of two points earned, `reviews` is zero.
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 0);
+    assert_eq!(score.overall_grade, None);
+
+    // The same run on the legacy format has no score until someone reviews it.
+    let mut legacy = validator_manifest();
+    legacy.engine_format = false;
+    assert!(run_summary_score(&legacy, &run.record, &run.reviews).is_none());
+
+    // The effective domains resolve from the stored manifest like the items do.
+    let domains = domains_for(&manifest, "base");
+    assert_eq!(domains.len(), 1);
+    assert_eq!(domains[0].id, "gameplay");
+}
+
+#[tokio::test]
+async fn a_validator_rated_run_is_summarized_by_its_validators_and_its_aesthetic_review() {
+    use test_cabinet_core::review::{AestheticRating, DomainAesthetic};
+    let (_tmp, store) = empty_store();
+    // `r1` is unreviewed; `r2` carries one aesthetic review.
+    let unreviewed = validator_run(
+        "r1",
+        "2026-06-17T21:40:00Z",
+        &[("serve", true), ("hud", false)],
+    );
+    let mut reviewed = validator_run("r2", "2026-06-17T21:41:00Z", &[("serve", false)]);
+    reviewed.reviews.push(StoredReview {
+        reviewer: crate::db::Reviewer {
+            user_id: "u1".to_string(),
+            username: "ada".to_string(),
+            display_name: "Ada L.".to_string(),
+        },
+        ratings: vec![],
+        aesthetics: vec![DomainAesthetic {
+            domain: "gameplay".to_string(),
+            rating: AestheticRating::Legendary,
+        }],
+        writeup: "Breathtaking, even broken.".to_string(),
+        checklist: vec![],
+        reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+        edited_at: None,
+        revisions: Vec::new(),
+    });
+    let snapshot = SnapshotBuilder::new(
+        vec![unreviewed, reviewed],
+        vec![validator_manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+
+    let index = runs_index(&snapshot);
+    let by_id = |id: &str| {
+        index["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|run| run["id"] == id)
+            .cloned()
+            .unwrap()
+    };
+    let r1 = by_id("r1");
+    assert_eq!(r1["validatorRated"], true);
+    assert_eq!(
+        r1["rating"], "great",
+        "decided by the failing cosmetic point"
+    );
+    assert_eq!(r1["aesthetic"], serde_json::Value::Null);
+    assert_eq!(r1["reviewCount"], 0);
+    assert_eq!(r1["score"]["earned"], 1.0);
+    assert_eq!(r1["score"]["total"], 2);
+    assert_eq!(r1["score"]["reviews"], 0);
+
+    let r2 = by_id("r2");
+    assert_eq!(r2["rating"], "broken", "the review does not move it");
+    assert_eq!(r2["aesthetic"], "legendary");
+    assert_eq!(r2["reviewCount"], 1);
+
+    // The run document carries the review's aesthetic channel, and the case
+    // document says the version is on the engine format with each point's cap.
+    let document = run_document_json(&snapshot, "r2");
+    assert_eq!(
+        document["reviews"][0]["aesthetics"][0]["domain"],
+        "gameplay"
+    );
+    assert_eq!(
+        document["reviews"][0]["aesthetics"][0]["rating"],
+        "legendary"
+    );
+    assert!(
+        document["reviews"][0]
+            .get("ratings")
+            .is_some_and(|r| r.as_array().unwrap().is_empty())
+    );
+    let case_obj = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key.ends_with("/cases/pong/v1.0.0.json"))
+        .expect("case document");
+    let case: serde_json::Value = serde_json::from_slice(&case_obj.bytes).unwrap();
+    assert_eq!(case["engineFormat"], true);
+    assert_eq!(case["commonReviewItems"][0]["failureCap"], "broken");
+    assert_eq!(case["commonReviewItems"][0]["domains"][0], "gameplay");
+    assert_eq!(case["commonReviewItems"][1]["failureCap"], "great");
+}
+
+#[tokio::test]
+async fn a_legacy_run_summary_omits_the_aesthetic_channel() {
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+    let summary = runs_index(&snapshot)["runs"][0].clone();
+    assert_eq!(summary["validatorRated"], false);
+    assert_eq!(summary["aesthetic"], serde_json::Value::Null);
+    assert_eq!(summary["rating"], "great");
+    let document = run_document_json(&snapshot, "r1");
+    assert!(document["reviews"][0].get("aesthetics").is_none());
+    let case_obj = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key.ends_with("/cases/pong/v1.0.0.json"))
+        .expect("case document");
+    let case: serde_json::Value = serde_json::from_slice(&case_obj.bytes).unwrap();
+    assert_eq!(case["engineFormat"], false);
 }

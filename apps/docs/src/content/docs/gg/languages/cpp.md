@@ -215,17 +215,12 @@ carry the include lines the calls they make need and a whole `int main`. A file
 view is written `gg::views::open_file("src/main.cpp");`, with a window as a
 designated initialiser.
 
-## Healing dialect
+## Byte-level scan
 
-`crates/gg/src/sandbox/language/cpp.healing.rs` answers
-[response healing](/gg/response-healing/)'s lexical questions with the lexer the
-arm reads a reply with. `#` opens both a preprocessor directive and a Markdown
-heading, and case tells them apart: a `#` followed by one of the fourteen
-directive words spelled lower-case is code, while `# Include the manifest` is
-prose and stays deletable. A raw string's fence is chosen by its author, so
-`R"gg(…)gg"` is read rather than looked for. A `'` immediately after an
-alphanumeric is a digit separator. Block comments do not nest.
-
-One scan answers both readers. Healing is handed a code mask only when the scan
-ended cleanly. The reader asking whether a reply defines `main` takes the mask
-whatever happened, because its errors are safe in the accepting direction.
+`crates/gg/src/sandbox/language/cpp.mask.rs` is the arm's one lexer over raw
+source: `//` and non-nesting `/* */` comments, `"…"` and `'…'` with escapes, raw
+strings whose author-chosen delimiter is read rather than looked for, and the
+digit-separator rule — a `'` straight after an alphanumeric is `1'000'000`, not
+a character literal. The reader asking whether a reply defines `main` takes the
+scan's best reading whatever happened, because its errors are safe in the
+accepting direction.

@@ -9,10 +9,12 @@ the spelled-out mechanics work. A reviewer then runs the final build and judges
 the qualities automation cannot.
 
 Each run earns a numeric score, the checklist points it earned out of the points
-available, and a quality rating for each of the case's scoring domains. A run's
-overall rating is the worst of those domain ratings, so a flawless mode cannot
-mask a broken one. Each test case has a per-variant leaderboard ranking the
-harness and model pairings that have scored runs of it.
+available, and a functional rating for each of the case's scoring domains, both
+decided by the case's validators on current case versions. A reviewer adds an
+aesthetic rating per domain. A run's overall rating on either channel is the
+worst of its domain ratings, so a flawless mode cannot mask a broken one. Each
+test case has a per-variant leaderboard ranking the harness and model pairings
+that have scored runs of it.
 
 Test cases are deliberately large. They answer how well a model handles a large,
 complex task and takes it to completion autonomously, rather than how well it

@@ -3,6 +3,8 @@ import { Link } from "react-router";
 import type { GgConfig } from "@test-cabinet/run-record/gg";
 import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
@@ -32,14 +34,17 @@ export function GgConfigsPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const { confirm } = useConfirm();
+
   const deleteConfig = useCallback(
     async (config: GgConfig) => {
       if (!backend?.deleteGgConfig || !token) return;
       if (
-        !window.confirm(
-          `Delete the gg configuration “${config.name}”? Runs already launched ` +
-            `from it keep their own recorded capability set. This cannot be undone.`,
-        )
+        !(await confirm({
+          title: "Delete gg configuration",
+          message: `Delete “${config.name}”? Runs already launched from it keep their own recorded capability set. This cannot be undone.`,
+          confirmLabel: "Delete",
+        }))
       ) {
         return;
       }
@@ -54,7 +59,7 @@ export function GgConfigsPage() {
         setBusy(false);
       }
     },
-    [backend, token, reload],
+    [backend, token, reload, confirm],
   );
 
   const renderSaved = (config: GgConfig) => {
@@ -135,7 +140,7 @@ export function GgConfigsPage() {
           your account.
         </p>
       ) : loading ? (
-        <p className={styles.empty}>Loading configurations…</p>
+        <LoadingState size="section" label="Loading configurations…" />
       ) : saved.length === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.empty}>

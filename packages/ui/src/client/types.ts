@@ -17,9 +17,15 @@ import type {
 export type { AssetKind };
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import type { HarnessEvent } from "@test-cabinet/run-record/event";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  RunScoreOut,
+  RunSummary,
+} from "@test-cabinet/run-record/snapshot";
+import type {
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   ReviewRevision,
   ReviewVerdict,
@@ -27,7 +33,10 @@ import type {
 } from "../ratings";
 
 export type {
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   ReviewRevision,
   ReviewVerdict,
@@ -143,15 +152,13 @@ export interface ModelListing {
 export type ModelProbeStatus = "running" | "complete" | "failed";
 
 /** A completed probe's overall reading of the model's RaC readiness. */
-export type ModelProbeVerdict =
-  | "ready"
-  | "ready-with-reminders"
-  | "tool-call-overfit"
-  | "not-ready";
+export type ModelProbeVerdict = "ready" | "not-ready";
 
-/** One responses-as-code readiness probe of a catalog model: gg's real RaC
- * turn-1 request replayed over a fixed prompt-condition matrix, each reply
- * classified, and a verdict stored. Mirrors the backend `ModelProbeOut`
+/** One responses-as-code readiness probe of a catalog model: gg's RaC turn-1
+ * request replayed per case — two scenarios over several input prompts, on one
+ * program-language arm or every arm — with the `submit_program` tool offered
+ * and forced, each submitted program checked against its case, and a verdict
+ * stored. Mirrors the backend `ModelProbeOut`
  * (`crates/backend/src/api/model_probes.rs`). */
 export interface ModelProbe {
   id: string;
@@ -161,47 +168,55 @@ export interface ModelProbe {
   openrouterSlug: string;
   /** The pinned provider, or null for the default route. */
   provider: string | null;
-  /** Samples per condition. */
+  /** The probed program-language arm's wire id, or null for every language. */
+  language: string | null;
+  /** Completion calls requested per input prompt. */
   samples: number;
   /** Completion-token cap per call. */
   maxTokens: number;
-  /** Whether the seeded spec views were sent whole instead of trimmed. */
-  fullContext: boolean;
   status: ModelProbeStatus;
   /** Why the probe failed, or null. */
   error: string | null;
   /** Null until the probe completes. */
   verdict: ModelProbeVerdict | null;
-  /** The base condition's clean-reply rate (0..=1), or null. */
-  baseCleanRate: number | null;
-  /** The best variation condition's clean-reply rate (0..=1), or null. */
-  bestVariationCleanRate: number | null;
+  /** The probe's overall case-check pass rate (0..=1), or null. */
+  passRate: number | null;
   /** Total USD spend across the probe's calls, as OpenRouter reported it. */
   spend: number;
   createdAt: string;
   finishedAt: string | null;
 }
 
-/** One completion call inside a probe: which provider served it, how it
- * finished, its classification, and the model's raw reply. Mirrors the backend
- * `ModelProbeItemOut`. The known `label` values are `clean-program`,
- * `prose+program`, `program-no-gg`, `fenced`, `tool-token`, `xml-pseudo-tools`,
- * `cot-leak`, `native-tool-call`, `empty`, and `other`; typed open so a newly
- * classified shape still renders. */
+/** One completion call inside a probe: which case it sampled, which provider
+ * served it, how it finished, whether the submitted program passed its case's
+ * check, and the raw reply. Mirrors the backend `ModelProbeItemOut`. The known
+ * `label` values are the case outcomes `correct-calls`, `missing-calls`,
+ * `docview-first`, `called-undocumented` and `no-docview`, the shape faults
+ * `fenced`, `tool-token`, `xml-pseudo-tools`, `cot-leak` and `empty`, and the
+ * dodges `no-submission`, `stray-tool-call` and `no-program`; typed open so a
+ * newly classified outcome still renders. */
 export interface ModelProbeItem {
   id: string;
-  /** The prompt condition (`base`, `no-tools`, `notice`, `combo`). */
-  condition: string;
+  /** The program-language arm's wire id this call probed. */
+  language: string;
+  /** The case's scenario: `baseline` or `missing-docview`. */
+  scenario: string;
+  /** The case's input prompt id. */
+  prompt: string;
+  /** The sample index within the case, from 0. */
   sample: number;
   /** The provider OpenRouter reported serving the call, or null on error. */
   provider: string | null;
   finishReason: string | null;
   nativeFinishReason: string | null;
-  /** The classified reply shape, or null when the call errored. */
+  /** The classified outcome, or null when the call errored. */
   label: string | null;
-  /** Whether the reply counts as clean (a bare program over the gg modules). */
-  clean: boolean;
-  /** The model's raw reply content, verbatim. */
+  /** Whether the submitted program passed its case's check. */
+  pass: boolean;
+  /** The program string the reply's first `submit_program` call carried, or
+   * null. */
+  programText: string | null;
+  /** The reply's text content beside the call, verbatim. */
   responseText: string;
   /** The reply's separate reasoning stream, or null. */
   reasoningText: string | null;
@@ -215,51 +230,55 @@ export interface ModelProbeItem {
   createdAt: string;
 }
 
-/** One message of the probe's base request, exactly as sent. */
-export interface ModelProbeMessage {
-  role: string;
-  content: string;
+/** One tool call on a probe request message, in the chat/completions wire
+ * shape. */
+export interface ModelProbeToolCall {
+  id: string;
+  type: string;
+  function: { name: string; arguments: string };
 }
 
-/** One condition of the probe matrix, so the console can say what each item's
- * request added on top of the base request. */
-export interface ModelProbeCondition {
-  name: string;
-  /** Whether the condition appends the no-tools clause to the system prompt. */
-  noToolsClause: boolean;
-  /** Whether the condition appends the trailing user notice. */
-  trailingNotice: boolean;
-  /** Whether the condition counts as a variation in the verdict. */
-  variation: boolean;
+/** One message of the probe's request, exactly as sent — the chat/completions
+ * wire shape, which is why `tool_calls` and `tool_call_id` stay snake_case. */
+export interface ModelProbeMessage {
+  role: string;
+  content?: string | null;
+  tool_calls?: ModelProbeToolCall[] | null;
+  tool_call_id?: string | null;
+}
+
+/** One case's request exactly as sent: its (language, scenario, prompt)
+ * coordinate and its message array. Mirrors the backend `ProbeRequestOut`. */
+export interface ModelProbeRequest {
+  language: string;
+  scenario: string;
+  prompt: string;
+  messages: ModelProbeMessage[];
 }
 
 /** The `GET /model-probes/{id}` response: the probe with everything the console
- * shows — what was sent (the base request plus each condition's additions),
- * every call's classification, and the raw replies. */
+ * shows — every case's request messages exactly as sent, every call's
+ * classification, the submitted programs, and the raw replies. */
 export interface ModelProbeDetail {
   probe: ModelProbe;
   items: ModelProbeItem[];
-  /** The base condition's message array exactly as sent. */
-  requestMessages: ModelProbeMessage[];
-  /** The matrix the items' `condition` names refer to. */
-  conditions: ModelProbeCondition[];
-  /** The clause the `no-tools`/`combo` conditions appended to the system prompt. */
-  noToolsClause: string;
-  /** The trailing user message the `notice`/`combo` conditions appended. */
-  noticeMessage: string;
+  /** The per-case requests exactly as sent. */
+  requests: ModelProbeRequest[];
 }
 
 /** The `POST /models/{slug}/probes` request body. Everything is optional: an
- * empty body probes the default route with the default sampling. */
+ * empty body probes every language arm over the default route with the default
+ * sampling. */
 export interface ModelProbeTriggerInput {
   /** Pin every call to this provider. Absent probes the default route. */
   provider?: string;
-  /** Samples per condition (default 3, at most 8). */
+  /** Probe this one program-language arm by its wire id. Absent probes every
+   * arm. */
+  language?: string;
+  /** Completion calls per input prompt (default 8, 1..=128). */
   samples?: number;
   /** Completion-token cap per call (default 3500, 256..=16000). */
   maxTokens?: number;
-  /** Send the seeded spec views whole instead of trimmed (default false). */
-  fullContext?: boolean;
 }
 
 /** One provider route OpenRouter lists for a model, so a probe can pin to it. */
@@ -321,7 +340,8 @@ export interface ProviderStatsEntry {
 export interface ProbeProviderModel {
   modelSlug: string;
   items: number;
-  clean: number;
+  /** Items whose submitted program passed its case's check. */
+  passes: number;
   /** Items whose call errored (no classified label). */
   errored: number;
 }
@@ -566,6 +586,12 @@ export interface VersionInfo {
   // The case's test type. Drives type-specific UI affordances — notably the
   // run-launch orchestrator selector, which is offered only for "end-to-end".
   testType: TestType;
+  // Whether the version is on the ENGINE manifest format, which (with the test
+  // type — a game jam is never) makes it VALIDATOR-RATED: a run's functional
+  // rating and score are decided by its validators (every review item declares a
+  // `failureCap` and `domains`), and a reviewer rates only the aesthetic channel.
+  // False on every legacy version, whose runs are reviewed exactly as before.
+  engineFormat: boolean;
   // The engine slugs a run of this version may select, in the order the case
   // declares them. Never empty: a version that declares no engine supports the
   // engineless run. This is the compatibility gate a run is held to, so the
@@ -707,6 +733,13 @@ export interface ReviewItem {
   // Optional scoring domain (by id) this item belongs to, or null/undefined for a
   // general item that belongs to no single domain.
   domain?: string | null;
+  // On a validator-rated version, the FAILURE CAP of a whole-item point: the highest
+  // functional rating its `domains` may reach while its validator fails. Absent on
+  // a legacy version and on a category (whose points carry their own).
+  failureCap?: FailureCap | null;
+  // On a validator-rated version, the scoring domains (by id) a failure of this
+  // whole-item point lowers. Empty on a legacy version and on a category.
+  domains?: string[];
   // Whether this item contributes to the run's score. Set false on the effective
   // checklist only when an erratum's `excludeFromScore` links this item's verdict id
   // (the item is still checked and shown). Absent/true otherwise. See
@@ -738,6 +771,13 @@ export interface ReviewSubItem {
   // puts the pairing on the item rather than the category). Null when unpaired.
   reference?: string | null;
   proof?: string | null;
+  // On a validator-rated version, this point's FAILURE CAP: the highest functional
+  // rating its `domains` may reach while its validator fails. Absent on a legacy
+  // version.
+  failureCap?: FailureCap | null;
+  // On a validator-rated version, the scoring domains (by id) a failure of this
+  // point lowers. Empty on a legacy version.
+  domains?: string[];
   // Whether this sub-item contributes to the run's score. Set false on the effective
   // checklist only when an erratum's `excludeFromScore` links its composite verdict
   // id (or excludes the whole category). Absent/true otherwise.
@@ -753,9 +793,15 @@ export interface Domain {
 }
 
 export interface ReviewDocument {
-  // The reviewer's rating for each of the case's scoring domains. The run's
-  // overall rating is the worst across them.
+  // The reviewer's FUNCTIONAL rating for each of the case's scoring domains, on a
+  // legacy run's review. The run's overall rating is the worst across them. Empty
+  // on a validator-rated run's review, whose functional rating is not the
+  // reviewer's to give.
   ratings: DomainRating[];
+  // The reviewer's AESTHETIC rating for each scoring domain, on a validator-rated
+  // run's review (the run's aesthetic rating is the worst across them, then across
+  // reviews). Empty/absent on a legacy run's review, which has no aesthetic channel.
+  aesthetics?: DomainAesthetic[];
   writeup: string;
   checklist: ReviewVerdict[];
 }
@@ -803,6 +849,26 @@ export interface StoredRun {
   // Whether the run has cleared the publish gate (a published run is publicly
   // visible). Worker-produced runs default to false until published.
   published: boolean;
+  // The run's FUNCTIONAL rating as the store decides it: on a validator-rated run
+  // the validator-decided rating (present from completion, never changed by a
+  // review); on a legacy run the review aggregate (null while unreviewed). Composed
+  // with the toolchain gate either way.
+  rating: Rating | null;
+  // The run's aggregate AESTHETIC rating — the worst any reviewer gave any domain —
+  // or null when no review has rated the aesthetic channel (every legacy run, and
+  // an unreviewed validator-rated one).
+  aesthetic: AestheticRating | null;
+  // Whether the run is VALIDATOR-RATED (its case version is on the engine manifest
+  // format and is not a game jam): its points and functional rating come from the
+  // record immediately, it publishes with zero reviews, and a reviewer rates only
+  // the aesthetic channel.
+  validatorRated: boolean;
+  // The run's score against its case version's checklist weights, as the backend
+  // computes it (the same figure the summary cards carry): the validator-decided
+  // score on a validator-rated run (present from completion, `reviews` 0), the
+  // mean across reviews on a legacy run (null while unreviewed). Null when the
+  // host holds no catalog for the run's case version (the static site).
+  score: RunScoreOut | null;
 }
 
 // --- Accounts & auth ---

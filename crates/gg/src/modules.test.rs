@@ -1,9 +1,9 @@
-//! The [module model](super): ownership, the two copy semantics, and transfer.
+//! The [module model](super): the two copy semantics, and transfer.
 //!
-//! Every assertion here is about a rule the loop *relies* on but cannot state: that an unowned
-//! module contributes nothing to the prompt while staying live, that a fork and its original
-//! diverge, that two shared handles are one store, and that a module handed to a different profile
-//! is re-resolved against the profile receiving it rather than the one that produced it.
+//! Every assertion here is about a rule the loop *relies* on but cannot state: that the board
+//! contributes nothing to the prompt while staying live, that a fork and its original diverge,
+//! that two shared handles are one store, and that a module handed to a different profile is
+//! re-resolved against the profile receiving it rather than the one that produced it.
 
 use std::sync::Arc;
 
@@ -144,16 +144,18 @@ fn add_task(runtime: &TasksRuntime, id: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Ownership
+// What reaches the prompt
 // ---------------------------------------------------------------------------
 
-/// **An owned module contributes its pinned block; an unowned one contributes nothing.**
+/// **The board contributes no pinned block, ever.** It is reachable through its tools alone —
+/// holding exactly the same contents, on the same schedule as every other uniform pass — so the
+/// only every-turn block is the task list's.
 ///
-/// This is the whole of what ownership changes about the prompt, and it is asserted through the
-/// same call prompt assembly makes — not through each runtime's own renderer — because the point of
-/// the model is that the loop no longer names memories, tasks and the board one at a time.
+/// Asserted through the same call prompt assembly makes — not through each runtime's own renderer
+/// — because the point of the model is that the loop no longer names memories, tasks and the board
+/// one at a time.
 #[test]
-fn an_unowned_module_contributes_no_pinned_block() {
+fn the_board_contributes_no_pinned_block() {
     let tasks = TasksRuntime::new(10);
     add_task(&tasks, "t1");
     let board = BoardRuntime::new(board_caps());
@@ -164,212 +166,53 @@ fn an_unowned_module_contributes_no_pinned_block() {
         .create_epic("api", "the API", "the API epic")
         .expect("the epic is within the caps");
 
-    let owned = CapabilityModules::inert()
+    let modules = CapabilityModules::inert()
         .with(ModuleHandle::Tasks(tasks.shared()))
         .with(ModuleHandle::Board(board.shared()));
-    let blocks = owned.pinned_blocks(Refresh::EveryTurn);
+    let blocks = modules.pinned_blocks(Refresh::EveryTurn);
     assert_eq!(
         blocks.len(),
-        2,
-        "the task list and the board are both refreshed every turn"
+        1,
+        "only the task list is refreshed every turn"
     );
-    assert!(
-        blocks.iter().all(|(source, block)| block.is_some()
-            && matches!(source, GgContextSource::TaskList | GgContextSource::Board)),
-        "an owned module with contents renders a block on its own band"
-    );
-
-    // The board is unowned; the task list cannot be, so it goes on showing its block beside it.
-    let unowned = CapabilityModules::inert()
-        .with(ModuleHandle::Tasks(tasks.shared()))
-        .with(ModuleHandle::Board(
-            board.shared().with_ownership(Ownership::Unowned),
-        ));
-    let blocks = unowned.pinned_blocks(Refresh::EveryTurn);
     assert!(
         blocks
             .iter()
-            .all(|(source, block)| (*source == GgContextSource::Board) == block.is_none()),
-        "an unowned board shows nothing, holding exactly the same contents, and the task list \
-         still shows its own"
+            .all(|(source, block)| block.is_some() && *source == GgContextSource::TaskList),
+        "the task list renders a block on its own band, and the board renders nothing"
+    );
+    assert!(
+        modules.board().context_block().is_none(),
+        "a board with contents still shows nothing"
     );
 }
 
-/// **The task list has no ownership to configure.** It is what an agent steers its work by from
-/// turn to turn, so it is always carried in its holder's prompt as its own message.
-///
-/// A configuration that names `ownership` on `tasks` resolves an owned list all the same — and is a
-/// **launch refusal**, because the key configures nothing there: the
-/// [params table](crate::validate) offers `ownership` on the two capabilities that have one and
-/// nowhere else.
+/// **`ownership` is not a key gg reads, on any capability.** The owned mode — rebuilding a
+/// module's state into the window on a schedule and describing it in the system prompt — is gone,
+/// so a configuration still carrying the key is refused rather than silently running without it.
 #[test]
-fn a_task_list_is_owned_whatever_the_profile_declares() {
-    let skills = SkillsRuntime::disabled();
-    let board = BoardRuntime::new(board_caps());
-    let (registry, inherited, ids) = plain();
-    let profile = profile_with(vec![(CAPABILITY_TASKS, json!({ "ownership": "unowned" }))]);
-
-    let modules =
-        CapabilityModules::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
-    assert_eq!(modules.tasks().ownership(), Ownership::Owned);
-    let mut report = LaunchReport::collecting();
-    check_ownership(&profile, &mut report);
-    assert!(
-        report.is_empty(),
-        "the `tasks` capability has no ownership for this check to read"
-    );
-
-    let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal("mock/echo");
-    set.agents[0] = profile;
-    assert!(
-        crate::validate::refusal(&set)
-            .expect_err("a key on a capability that has no ownership is refused")
-            .contains("ownership")
-    );
-}
-
-/// A profile without the board-authoring capability holds the run-global board **unowned**, not
-/// disabled — it is still on the same queue (an implementer's issue is on it), it is simply not
-/// shown a decomposition it has no tool to act on.
-#[test]
-fn a_profile_without_the_board_capability_holds_it_unowned() {
-    let skills = SkillsRuntime::disabled();
-    let board = BoardRuntime::new(board_caps());
-    let (registry, inherited, ids) = plain();
-    let modules = CapabilityModules::resolve(
-        &GgAgentConfig::root(),
-        &ctx(&skills, &board, &registry, &inherited, &ids),
-    );
-
-    assert!(
-        modules.board().offers_board(),
-        "the board is the run's, and every agent holds it"
-    );
-    assert_eq!(modules.board().ownership(), Ownership::Unowned);
-
-    let authoring = profile_with(vec![(CAPABILITY_PROJECT_MANAGEMENT, json!({}))]);
-    let modules = CapabilityModules::resolve(
-        &authoring,
-        &ctx(&skills, &board, &registry, &inherited, &ids),
-    );
-    assert_eq!(modules.board().ownership(), Ownership::Owned);
-}
-
-/// The `ownership` param is read off each module-backed capability, and a recognized value is
-/// honoured on both of them.
-#[test]
-fn the_ownership_param_resolves() {
-    for (capability, written, resolved) in [
-        (CAPABILITY_PROJECT_MANAGEMENT, "unowned", Ownership::Unowned),
-        (CAPABILITY_PROJECT_MANAGEMENT, "owned", Ownership::Owned),
+fn an_ownership_key_is_refused_on_every_capability() {
+    for (capability, params) in [
+        (CAPABILITY_TASKS, json!({ "ownership": "unowned" })),
+        (
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ "ownership": "owned" }),
+        ),
         (
             CAPABILITY_AGENT_MANAGED_CONTEXT,
-            "unowned",
-            Ownership::Unowned,
+            json!({ "ownership": "unowned" }),
         ),
-        (CAPABILITY_AGENT_MANAGED_CONTEXT, "owned", Ownership::Owned),
     ] {
-        let profile = profile_with(vec![(capability, json!({ "ownership": written }))]);
-        assert_eq!(
-            resolve_ownership(&profile, capability, &mut LaunchReport::Discarding),
-            resolved,
-            "{capability}.{written}"
+        let profile = profile_with(vec![(capability, params)]);
+        let mut set = test_cabinet_core::gg::GgCapabilitySet::minimal("mock/echo");
+        set.agents[0] = profile;
+        assert!(
+            crate::validate::refusal(&set)
+                .expect_err("a key gg does not read is refused")
+                .contains("ownership"),
+            "{capability}"
         );
     }
-}
-
-/// **An enabled capability that writes no `ownership` refuses the launch**, at the param's own
-/// locus. It is the knob that decides whether the agent is told what it holds every turn or has to
-/// look it up, and gg picks neither value: a board resolved to `owned` because nobody wrote a word
-/// is an agent paying for a decomposition in every request it makes, under a document that never
-/// asked for one.
-#[test]
-fn an_enabled_capability_short_of_its_ownership_is_refused() {
-    for capability in [
-        CAPABILITY_PROJECT_MANAGEMENT,
-        CAPABILITY_AGENT_MANAGED_CONTEXT,
-    ] {
-        for absent in [json!({}), json!({ "ownership": null })] {
-            let profile = GgAgentConfig {
-                capabilities: vec![GgCapabilityConfig {
-                    id: capability.to_string(),
-                    enabled: true,
-                    implementation: None,
-                    params: absent.clone(),
-                }],
-                ..GgAgentConfig::root()
-            };
-            let mut report = LaunchReport::collecting();
-            assert_eq!(
-                resolve_ownership(&profile, capability, &mut report),
-                Ownership::Owned,
-                "the resolver stays total"
-            );
-            let defects = report.into_defects();
-            assert_eq!(defects.len(), 1, "{capability} {absent} -> {defects:?}");
-            assert_eq!(defects[0].locus, format!("{capability}.params.ownership"));
-        }
-    }
-}
-
-/// …and a capability the profile does not declare, or has switched **off**, is owed none: it
-/// configures no module, so there is no ownership for it to be short of.
-#[test]
-fn a_capability_that_is_absent_or_off_is_owed_no_ownership() {
-    let mut report = LaunchReport::collecting();
-    resolve_ownership(
-        &profile_with(Vec::new()),
-        CAPABILITY_PROJECT_MANAGEMENT,
-        &mut report,
-    );
-    let mut off = profile_with(vec![(CAPABILITY_AGENT_MANAGED_CONTEXT, json!({}))]);
-    off.capabilities[0].enabled = false;
-    off.capabilities[0].params = json!({});
-    resolve_ownership(&off, CAPABILITY_AGENT_MANAGED_CONTEXT, &mut report);
-    assert!(report.is_empty());
-}
-
-/// An `ownership` gg cannot read is **refused**. It is the knob that decides whether an agent is
-/// told what it holds every turn or has to look it up, so a typo resolved to `owned` would put a
-/// board in every request of an agent whose configuration says it should cost nothing.
-#[test]
-fn an_unreadable_ownership_is_refused() {
-    for value in [json!(7), json!("Unowned"), json!("none")] {
-        let profile = profile_with(vec![(
-            CAPABILITY_AGENT_MANAGED_CONTEXT,
-            json!({ "ownership": value }),
-        )]);
-        let mut report = LaunchReport::collecting();
-        assert_eq!(
-            resolve_ownership(&profile, CAPABILITY_AGENT_MANAGED_CONTEXT, &mut report),
-            Ownership::Owned,
-            "the resolver stays total"
-        );
-        let defects = report.into_defects();
-        assert_eq!(defects.len(), 1, "{value} -> {defects:?}");
-        assert_eq!(defects[0].locus, "agent-managed-context.params.ownership");
-        assert_eq!(defects[0].known, ["owned", "unowned"]);
-    }
-}
-
-/// The check reads a **disabled** capability too. A disabled capability still records the
-/// configuration the arm would have used, and a typo skipped because a switch happened to be off is
-/// a typo that surfaces on the launch where it is flipped — by which point nobody is looking at the
-/// document that has it.
-#[test]
-fn a_disabled_capabilitys_ownership_is_checked_too() {
-    let mut profile = profile_with(vec![(
-        CAPABILITY_PROJECT_MANAGEMENT,
-        json!({ "ownership": "shared" }),
-    )]);
-    for capability in &mut profile.capabilities {
-        capability.enabled = false;
-    }
-    let mut report = LaunchReport::collecting();
-    check_ownership(&profile, &mut report);
-    let defects = report.into_defects();
-    assert_eq!(defects.len(), 1, "{defects:?}");
-    assert_eq!(defects[0].found, "shared");
 }
 
 // ---------------------------------------------------------------------------
@@ -571,11 +414,6 @@ fn adopting_re_resolves_the_caps_from_the_receiving_profile() {
 
     assert_eq!(tasks.max_tasks(), 40);
     assert_eq!(tasks.mode(), TaskMode::Issues);
-    assert_eq!(
-        Module::ownership(&tasks),
-        Ownership::Owned,
-        "a transferred list is carried in its new holder's prompt like any other"
-    );
     assert_eq!(tasks.count(), 1, "and the contents came with it");
 }
 
@@ -1336,10 +1174,7 @@ fn a_roster_reports_every_kind_with_ids_only_where_there_is_a_store() {
     let (registry, inherited, ids) = plain();
     let profile = profile_with(vec![
         (CAPABILITY_MEMORIES, json!({})),
-        (
-            CAPABILITY_PROJECT_MANAGEMENT,
-            json!({ "ownership": "unowned" }),
-        ),
+        (CAPABILITY_PROJECT_MANAGEMENT, json!({})),
     ]);
 
     let set = ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
@@ -1353,8 +1188,6 @@ fn a_roster_reports_every_kind_with_ids_only_where_there_is_a_store() {
     let memories = &roster[1];
     assert_eq!(memories.kind, ModuleKind::Memories);
     assert!(memories.enabled);
-    // Memories have no ownership knob any more, so the roster reports the only value there is.
-    assert_eq!(memories.ownership, Ownership::Owned);
     assert_eq!(memories.scope, Some(MemoryScope::Isolated));
     assert!(memories.writable);
     assert_eq!(memories.module_id, set.caps().memories().instance_id());

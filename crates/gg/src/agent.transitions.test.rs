@@ -33,6 +33,7 @@ use test_cabinet_core::gg::{
 
 use super::super::transitions::{HandoffReason, check_launch, fork_note, succession_note};
 use super::{ScriptedFactory, invocation};
+use crate::programs::ProgramLibrary;
 
 /// The module kinds a transition's per-module list reports with `disposition`, as the wire spells
 /// them.
@@ -259,6 +260,7 @@ fn an_exec_note_states_the_inheritance_and_carries_the_predecessors_message() {
             from: "before".to_string(),
         },
         fsm: None,
+        programs: ProgramLibrary::disabled(),
     };
     let report = TransferReport {
         modules: vec![

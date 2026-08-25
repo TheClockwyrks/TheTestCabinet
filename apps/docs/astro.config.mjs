@@ -216,6 +216,7 @@ export default defineConfig({
               collapsed: true,
               items: [
                 "guides/authoring/writing-case-specifications",
+                "guides/authoring/writing-debug-apis-and-validators",
                 "guides/authoring/authoring-an-end-to-end-test-case",
                 "guides/authoring/authoring-a-full-stack-test-case",
                 "guides/authoring/authoring-an-asset-generation-test-case",
@@ -781,7 +782,6 @@ export default defineConfig({
                 "gg/hooks",
                 // A property of responses as code: the counted, disclosed
                 // repairs gg makes to a reply before running it as a program.
-                "gg/response-healing",
                 // Likewise: what gg keeps of the programs it has already run.
                 "gg/program-library",
                 "gg/result-aggregation",

@@ -84,6 +84,11 @@ read on every screen. Beyond that:
 
 Each update reads input first, then advances the screen the input left it on.
 
+On `countdown` the paddles are as live as they are on `playing`: the movement
+actions move the human-controlled paddles at `PADDLE_SPEED` and the AI moves its
+own, while only the ball waits. Paddles that are frozen, or held to the center,
+until the ball is served are a violation of this table.
+
 ## Starting a match
 
 `SOLO` and `VERSUS` on the title, `RESTART` on the pause menu, and `PLAY AGAIN`

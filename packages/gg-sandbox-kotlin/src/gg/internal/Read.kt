@@ -197,6 +197,7 @@ internal object Read {
     fun programSummaries(value: Value): List<ProgramSummary> =
         ggEach(value) {
             ProgramSummary(
+                id = it.get("id").text(),
                 turn = it.get("turn").integer(),
                 lines = it.get("lines").integer(),
                 chars = it.get("chars").integer(),

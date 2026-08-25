@@ -26,12 +26,10 @@ implementation untouched.
 | A `lib` access form | How a program reaches one export of a loaded module, stated in the documentation view of that export. A path by default; an arm that reaches a module by string supplies its own. The arm states the line a program writes to reach the module itself on the same terms, alongside the line that reaches gg's SDK. |
 | A guest component | The prebuilt `.wasm` that evaluates prepared source, or nothing for an arm that compiles the program itself into a component. |
 | A signature catalogue | Every module, signature, argument, type and type member the model reads, reflected out of the arm's own SDK by the language's own documentation tool. |
-| A healing dialect | Which fence tags mean "this block is the program", which lines are certainly code and which certainly prose, and which bytes of a source are code rather than string or comment. |
 | A prompt segment | The arm's gated segment of `system-code.hbs` and of `code-nothing-shown.hbs`, keyed by the arm's id. |
 | A file-view statement | The one statement that opens a view of a path, whole or windowed, terminated the way this language terminates a statement. |
 | A documentation-view program | A whole program that opens one documentation view per name, which is the on-use script of every built-in family skill. |
 | A bootstrap program | A whole program that lists the named modules in one search and opens the documentation of each named key, which gg runs to seed a fresh window. |
-| Healing fixtures | Replies the arm's own dialect must survive, so the delete-only invariant is re-earned per language. |
 
 ### Program preparation
 
@@ -62,8 +60,9 @@ instead. See [prompts](/gg/prompts/).
 ### The bootstrap program
 
 The program gg runs to seed a fresh window is the arm's own, generated from the
-module list and the documentation keys gg hands it. It is one program by the
-arm's own rules, meaning one module, one `main` or one translation unit where
+module list and the documentation keys gg hands it, either of which may be
+empty, in which case the program carries no search or no opens. It is one
+program by the arm's own rules, meaning one module, one `main` or one translation unit where
 the language wants one. It is the model's first example of its own output, so it
 is written the way that arm's users write, down to how it handles a failed call.
 
@@ -231,8 +230,6 @@ below.
     the two-paragraph and character ceilings. The bootstrap gate prepares and
     runs the arm's bootstrap program and requires the views it promised. The
     spelling gates refuse a segment that names a catalogued function of any arm.
-    The healing invariant re-earns delete-only over the new dialect's fixtures
-    and over the shared corpus.
 
 Every step is either a new file the arm owns or a one-line registration the
 compiler refuses to let anyone skip.

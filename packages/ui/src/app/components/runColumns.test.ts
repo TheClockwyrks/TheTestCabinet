@@ -47,6 +47,7 @@ function run(
     modelName,
     configName,
     rating,
+    aesthetic: null,
     grade: null,
   };
 }

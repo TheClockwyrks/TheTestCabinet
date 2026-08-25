@@ -7,7 +7,12 @@ import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { DownloadIcon } from "../../components/DownloadIcon";
 import { ExternalLinkIcon } from "../../components/ExternalLinkIcon";
-import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import {
+  AestheticBadge,
+  GradeBadge,
+  RatingBadge,
+  canonicalModelId,
+} from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
@@ -18,6 +23,7 @@ import {
   overallGradeOf,
   type ParsedWriteup,
   parseWriteup,
+  worstAestheticRating,
   worstRating,
 } from "../../data/ratings";
 import { frameReviews } from "../../data/frameReview";
@@ -53,14 +59,16 @@ interface RunDetailLayoutProps {
    * The tab body, given the resolved run, its framed review (if any), the raw
    * per-reviewer breakdown fetched with the record — so the Verdict/review/editor
    * tabs read reviews from here rather than the console's global reviews map —
-   * and whether the run is already published (the review editor offers no Publish
-   * action once it is).
+   * whether the run is already published (the review editor offers no Publish
+   * action once it is), and whether it is validator-rated (its verdict is read off
+   * the record and reviews rate only the aesthetic channel).
    */
   children: (ctx: {
     run: RunRecord;
     review: ParsedWriteup | undefined;
     reviews: StoredReview[];
     published: boolean;
+    validatorRated: boolean;
   }) => ReactNode;
 }
 
@@ -204,13 +212,29 @@ export function RunDetailLayout({
   // run (matches) — has no reviewer verdict; the two share the auto-scored
   // Results tab and skip every review affordance.
   const isResultsScored = isPerformance || isAdversarial;
-  // The headline badge shows the run's overall rating — the worst across its
-  // per-domain ratings. A results-scored run has no reviewer rating to show, so
-  // it shows no badge.
-  const overallRating =
-    review && !isResultsScored
-      ? worstRating(review.ratings.map((r) => r.rating))
-      : null;
+  // Whether the run is validator-rated — the store's word, lifted with the detail.
+  const validatorRated = detail?.validatorRated ?? false;
+  // The headline badge shows the run's overall FUNCTIONAL rating. On a legacy run
+  // that is the worst across the review's per-domain ratings; on a validator-rated
+  // run it is the store's validator-decided rating, present from completion and
+  // never the reviewer's to give — so a local writeup cannot displace it. A
+  // results-scored run has no reviewer rating to show, so it shows no badge.
+  const overallRating = isResultsScored
+    ? null
+    : validatorRated
+      ? (detail?.rating ?? null)
+      : review
+        ? worstRating(review.ratings.map((r) => r.rating))
+        : null;
+  // The AESTHETIC badge beside it: the worst aesthetic rating any reviewer gave
+  // any domain (a local writeup's aesthetics win, as an in-progress edit must show
+  // before it is published), or nothing while no review has rated the channel —
+  // which is every legacy run, whose reviews carry none.
+  const overallAesthetic = isResultsScored
+    ? null
+    : (worstAestheticRating(review?.aesthetics.map((r) => r.rating) ?? []) ??
+      detail?.aesthetic ??
+      null);
   // A game jam declares no scoring domains, so it has no rating to be worst
   // across: the reviewer's whole-game overall grade is its headline badge
   // instead. It rides the aggregate review's checklist under the reserved
@@ -299,6 +323,7 @@ export function RunDetailLayout({
             ) : (
               overallGrade && <GradeBadge status={overallGrade} />
             )}
+            {overallAesthetic && <AestheticBadge rating={overallAesthetic} />}
             {isLocal && <UnpublishedTag />}
           </h2>
           <span className={styles.harness}>{subject.harnessSlug}</span>
@@ -456,7 +481,13 @@ export function RunDetailLayout({
         </div>
       </div>
 
-      {children({ run, review, reviews, published: detail?.published ?? false })}
+      {children({
+        run,
+        review,
+        reviews,
+        published: detail?.published ?? false,
+        validatorRated,
+      })}
     </PageLayout>
   );
 }

@@ -123,12 +123,14 @@ const CAPABILITY_SET: GgCapabilitySet = {
       name: "Root",
       capabilities: [{ id: "shell", enabled: true, params: {} }],
       modelId: "vendor/big",
+      openingTurn: { modules: [], functions: [] },
     },
     {
       slug: "reviewer",
       name: "Reviewer",
       capabilities: [{ id: "shell", enabled: true, params: {} }],
       modelId: "vendor/small",
+      openingTurn: { modules: [], functions: [] },
     },
   ],
 };
@@ -472,18 +474,26 @@ function renderSharedName(): HTMLElement {
   ];
   const set: GgCapabilitySet = {
     agents: [
-      { slug: "root", name: "Root", capabilities: [], modelId: "vendor/big" },
+      {
+        slug: "root",
+        name: "Root",
+        capabilities: [],
+        modelId: "vendor/big",
+        openingTurn: { modules: [], functions: [] },
+      },
       {
         slug: "reviewer",
         name: "Reviewer",
         capabilities: [],
         modelId: "vendor/small",
+        openingTurn: { modules: [], functions: [] },
       },
       {
         slug: "reviewer-2",
         name: "Reviewer",
         capabilities: [],
         modelId: "vendor/tiny",
+        openingTurn: { modules: [], functions: [] },
       },
     ],
   };

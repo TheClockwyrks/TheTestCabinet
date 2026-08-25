@@ -659,11 +659,6 @@
           "const": "context_usage",
           "description": "The context-usage signal slot, rebuilt and re-assigned after every turn.",
           "type": "string"
-        },
-        {
-          "const": "trailing_notice",
-          "description": "The trailing contract-notice slot — the constant reminder of the\n[responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE) reply contract, rendered\nafter every other message so it is the last thing the model reads on every turn.",
-          "type": "string"
         }
       ]
     },

@@ -19,15 +19,13 @@
 //! # Folded figures and recorded facts
 //!
 //! Almost every figure is **folded** from the stream by [`observe`](SessionSummaryTracker::observe),
-//! which is what keeps numerator and denominator on one mechanism: the run's
-//! [healing rollup](GgHealingSummary) and the
-//! [`code_executions`](GgSessionSummary::code_executions) it is a rate over are folded from the very
-//! same [`CodeExecution`](GgTelemetryKind::CodeExecution) event, so the two can never come from
-//! different places and drift. The run's [error rollup](GgErrorSummary) is folded on exactly the
-//! same terms from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event — one per turn of every
-//! agent — so its errors and the turns they are a rate over are counted by the same statement. The
-//! run's [discovery rollup](GgUndocumentedCalls) rides on the `CodeExecution` event beside the
-//! healing one, for the same reason and to the same effect.
+//! which is what keeps numerator and denominator on one mechanism: the run's [error
+//! rollup](GgErrorSummary) is folded from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event
+//! — one per turn of every agent — so its errors and the turns they are a rate over are counted by
+//! the same statement. The run's [discovery rollup](GgUndocumentedCalls) rides on the
+//! [`CodeExecution`](GgTelemetryKind::CodeExecution) event
+//! [`code_executions`](GgSessionSummary::code_executions) is counted from, for the same reason and
+//! to the same effect.
 //!
 //! Four figures cannot be folded and are **recorded** instead, each by its own `record_*` method
 //! that the binary calls once. Three of them —
@@ -44,10 +42,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
-    GgCallFailure, GgErrorSummary, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase,
-    GgIssueStatus, GgLimitBreach, GgProgramLanguage, GgProviderStat, GgRejectedResponses,
-    GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost, GgTelemetryKind, GgTurnErrorKind,
-    GgTurnErrorType, GgTurnOutcome, GgUndocumentedCalls,
+    GgCallFailure, GgErrorSummary, GgIssueReviewPhase, GgIssueStatus, GgLimitBreach,
+    GgProgramLanguage, GgProviderStat, GgRejectedResponses, GgRunLimits, GgSessionSummary,
+    GgSlotCost, GgTelemetryKind, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
+    GgUndocumentedCalls,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -93,30 +91,19 @@ struct SummaryState {
     code_executions: u64,
     /// The milliseconds those same [`CodeExecution`](GgTelemetryKind::CodeExecution) events
     /// reported spending in their language's compiler, summed — so
-    /// [`code_executions`](Self::code_executions) is the exact denominator for the per-turn compile
-    /// cost, by the same construction the healing rates use. A turn whose language compiles nothing
-    /// carries no figure and adds nothing.
+    /// [`code_executions`](Self::code_executions) is the exact denominator for the per-program
+    /// compile cost. A program whose language compiles nothing carries no figure and adds nothing.
     compile_ms: u64,
-    /// The run's [response-healing](GgHealingSummary) rollup, folded from the healing record on
-    /// each of those same [`CodeExecution`](GgTelemetryKind::CodeExecution) events — so
-    /// [`code_executions`](Self::code_executions) is the exact denominator for every rate over it,
-    /// by construction rather than by convention.
-    ///
-    /// The contract type doubles as the accumulator: it is [`Default`] and every field is a `u64`
-    /// counter, so there is nothing to convert at [finalize](SessionSummaryTracker::finalize) time
-    /// and no second shape that could disagree with the one the run records.
-    healing: GgHealingSummary,
     /// The run's [error rollup](GgErrorSummary), folded from the
     /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event every agent emits once per turn — so the
     /// numerator (errors) and the denominator ([`turns`](GgErrorSummary::turns)) come off the same
-    /// statement, exactly as the [healing rollup](Self::healing) does, and neither can drift from
-    /// the number of model calls the run made.
+    /// statement, and neither can drift from the number of model calls the run made.
     ///
     /// Run-wide across the root and every subagent, because that is the stream this one tracker
     /// observes. The per-agent breakdown is not lost: each event rides on its own agent's id, so a
     /// reader of the stream can split what this rollup totals.
     ///
-    /// Like [`healing`](Self::healing), the contract type doubles as the accumulator — it is
+    /// The contract type doubles as the accumulator — it is
     /// [`Default`] and every field is a `u64` counter — so there is nothing to convert at
     /// [finalize](SessionSummaryTracker::finalize) time and no second shape that could disagree
     /// with the one the run records.
@@ -137,7 +124,7 @@ struct SummaryState {
     /// [`code_executions`](Self::code_executions) is counted from, so the finding and the turns it
     /// is a rate over come off one statement.
     ///
-    /// Like [`healing`](Self::healing) and [`errors`](Self::errors), the contract type doubles as
+    /// Like [`errors`](Self::errors), the contract type doubles as
     /// the accumulator: it is [`Default`], it merges into itself, and there is no second shape here
     /// that could disagree with the one the run records.
     ///
@@ -201,13 +188,6 @@ struct SummaryState {
     /// delegation channel while the run carried on. Folding the event would publish that child's
     /// ceiling as the run's outcome.
     limit_hit: Option<GgLimitBreach>,
-    /// The [response-healing](crate::healing) strategies that were **armed** for the run — a fourth
-    /// resolved-configuration fact no event carries, recorded once via
-    /// [`record_healing`](SessionSummaryTracker::record_healing).
-    ///
-    /// Empty until set, which is exactly what a tool-calling run reports: healing never runs there,
-    /// so there is no armed set to record.
-    healing_enabled: Vec<GgHealingStrategy>,
 }
 
 /// The accumulator behind one `(provider, model)` slice of the
@@ -305,42 +285,11 @@ impl SummaryState {
             GgTurnOutcome::Fatal => {}
         }
     }
-    /// Fold one code-shaped turn's [healing record](GgResponseHealing) into the run's rollup.
-    ///
-    /// Split out of [`observe`](SessionSummaryTracker::observe) because it is the one arm with real
-    /// arithmetic in it, and because the definitions it encodes are worth stating in one place:
-    ///
-    /// * every entry in [`strategies`](GgResponseHealing::strategies) is one **application**, and a
-    ///   strategy that fired twice on one response is two — which is why the record carries a list
-    ///   rather than a set;
-    /// * a response is **healed** exactly when at least one repair was applied to it, since every
-    ///   healed reply then runs.
-    ///
-    /// The per-strategy `match` is exhaustive on purpose: a strategy added to the contract is a
-    /// compile error here rather than an application silently missing from every run's rollup.
-    fn fold_healing(&mut self, healing: &GgResponseHealing) {
-        let rollup = &mut self.healing;
-        for strategy in &healing.strategies {
-            rollup.applications += 1;
-            let count = match strategy {
-                GgHealingStrategy::StripFences => &mut rollup.strip_fences,
-                GgHealingStrategy::StripProse => &mut rollup.strip_prose,
-                GgHealingStrategy::DropDoubledResponse => &mut rollup.drop_doubled_response,
-            };
-            *count += 1;
-        }
-        // A clean response — nothing repaired — is the overwhelmingly common shape, and the one that
-        // contributes only to the denominator.
-        if !healing.strategies.is_empty() {
-            rollup.healed += 1;
-        }
-    }
-
     /// Fold one turn's [outcome](GgTelemetryKind::TurnOutcome) into the run's
     /// [error rollup](GgErrorSummary).
     ///
-    /// Split out beside [`fold_healing`](Self::fold_healing) for the same reason — it is arithmetic
-    /// with definitions in it — and those definitions are:
+    /// Split out of [`observe`](SessionSummaryTracker::observe) because it is arithmetic
+    /// with definitions in it, and those definitions are:
     ///
     /// * **every** recorded turn advances [`turns`](GgErrorSummary::turns), whatever its outcome,
     ///   including the one that finished the session and the one that ended it fatally. That is what
@@ -523,24 +472,6 @@ impl SessionSummaryTracker {
         state.limits = limits;
     }
 
-    /// Record the [response-healing](crate::healing) strategies that were **armed** for this run,
-    /// in the order gg applies them.
-    ///
-    /// A fourth configuration fact no event carries, recorded once beside
-    /// [`record_limits`](Self::record_limits) and only for a
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) run, because a
-    /// tool-calling run never heals anything and an armed set recorded for one would be an
-    /// intention that had no effect.
-    ///
-    /// It exists because every other figure in the [healing rollup](GgHealingSummary) is a
-    /// measurement of what *fired*, and a configuration in which nothing fired is
-    /// byte-identical to the arm in which nothing could: without this, a study slicing on
-    /// "healing on vs healing off" cannot tell its own arms apart from the telemetry.
-    pub fn record_healing(&self, enabled: Vec<GgHealingStrategy>) {
-        let mut state = self.inner.lock().expect("summary tracker lock");
-        state.healing_enabled = enabled;
-    }
-
     /// Record the [ceiling](GgRunLimits) that stopped the **run**, or `None` for a run that ended on
     /// its own terms.
     ///
@@ -603,24 +534,22 @@ impl SessionSummaryTracker {
                 }
                 GgIssueReviewPhase::Approved => state.review_cycles += 1,
             },
-            // One event per code-shaped *turn*, including a turn whose reply did not compile — so
-            // this count is the exact denominator for the healing rates folded alongside it, and
-            // the two are incremented by the same statement.
+            // One event per submitted *program*, including one whose source did not compile — so
+            // this count is the denominator every per-program rate is read against, and the two
+            // are incremented by the same statement.
             GgTelemetryKind::CodeExecution {
-                healing,
                 compile_ms,
                 undocumented_calls,
                 ..
             } => {
                 state.code_executions += 1;
-                state.fold_healing(healing);
-                // A plain merge rather than arithmetic of its own: the per-turn record and the
+                // A plain merge rather than arithmetic of its own: the per-program record and the
                 // run rollup are one type with one invariant, so there is nothing here to get
                 // wrong that the type does not already hold.
                 state.undocumented.merge(undocumented_calls);
-                // Folded from the same statement as the count it is read against, for the reason
-                // the healing rates are: a compile-cost-per-turn assembled from two mechanisms is a
-                // ratio whose halves can drift.
+                // Folded from the same statement as the count it is read against: a
+                // compile-cost-per-program assembled from two mechanisms is a ratio whose halves
+                // can drift.
                 state.compile_ms = state.compile_ms.saturating_add(compile_ms.unwrap_or(0));
             }
             // One event per *turn* of every agent, code-shaped or not — the mode-agnostic judgement
@@ -774,10 +703,6 @@ impl SessionSummaryTracker {
             program_language: state.program_language,
             code_executions: state.code_executions,
             compile_ms: state.compile_ms,
-            healing: GgHealingSummary {
-                enabled: state.healing_enabled.clone(),
-                ..state.healing.clone()
-            },
             errors: state.errors.clone(),
             tool_calls: state.tool_calls,
             rejected_responses: state.rejected.clone(),

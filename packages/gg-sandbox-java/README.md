@@ -18,7 +18,7 @@ One **package per capability module**, and in each of them one class that *is* t
 `gg.files.Files`, `gg.views.Views`, `gg.board.Board`. Java has no free functions, so an
 operation every other arm spells as one is a `static` method here — `Files.readFile(path)`
 — and the types a module hands back are nested in it, so `Files.FileRead` and
-`Views.OpenView` are names a program can write without either module having to give up a
+`Memories.MemoryHit` are names a program can write without either module having to give up a
 short one. `gg` itself is the thirteenth module: the exception and the types every other
 module's signatures name.
 

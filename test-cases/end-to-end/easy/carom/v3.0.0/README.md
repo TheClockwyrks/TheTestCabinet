@@ -101,9 +101,10 @@ no game code for a variant to differ in, so every variant shares
 The checklist is common to every variant apart from the points where the variants
 genuinely disagree, which each variant then states for itself. `base` and `gyre`
 carry the single served ball's points — its direction, its speed, its angle, the
-length of the pre-serve countdown, and the scoring, match-end and deuce rules that
-freeze the field on a point. `multi` carries its own versions of the same, worded
-for a launch drawn over the full circle, a hold that belongs to a ball, and a point
+draw of its vertical sign, the length of the pre-serve countdown, and the
+scoring, match-end and deuce rules that freeze the field on a point. `multi`
+carries its own versions of the same, worded for a launch drawn over the full
+circle, a hold that belongs to a ball, and a point
 that takes one ball out of play while the rest of the game runs on; `gyre` adds its
 three obstacle-motion points, and `multi` its six multi-ball ones and its fifth
 cue.

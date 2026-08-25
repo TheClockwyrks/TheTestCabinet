@@ -37,7 +37,7 @@
 //!
 //! **Inline spans** — text between single backticks — are taken when they read as a *call*: a path
 //! of two or more `::`-separated identifiers followed by `(`. That admits `files::list()`,
-//! `programs::get(turn)` and `Brief::Prompt("…")`, and passes over `unwrap()` (no path),
+//! `programs::get(id)` and `Brief::Prompt("…")`, and passes over `unwrap()` (no path),
 //! `#[derive(…)]`, `Result<(), Failure>`, `<object>::<function>(args...)` and
 //! `<key>::<name>(args…)` (segments that are not identifiers), and `std::thread::spawn` (no
 //! call). The one thing that rule *would* wrongly admit is a rendered `{{api.….signature}}`, which
@@ -61,8 +61,8 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::compile::compile_program;
 use crate::prompts::{
-    AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
-    ModuleView, ReadFileView, SkillView, SpawnableAgentView, SystemContext, TasksView,
+    AssignedIssueView, AutoloadView, CodeHeadingView, EndingView, MemoriesView, ModuleView,
+    ReadFileView, SkillView, SpawnableAgentView, SystemContext, TasksView,
     render_code_nothing_shown_for, render_system,
 };
 use crate::sandbox::{
@@ -88,9 +88,9 @@ const PREAMBLE: &str = "\
     let body = \"what the program computed\";
     let name = \"physics\";
     let options = files::ReadOptions::default();
-    let turn: Option<u32> = None;
+    let id = \"k3p9\";
     let source = String::from(\"fn main() {}\");
-    let _ = (path, label, body, name, &options, turn, &source);
+    let _ = (path, label, body, name, &options, id, &source);
 ";
 
 /// **The lines a model copying one of these examples would have written above it**, taken from the
@@ -239,7 +239,6 @@ fn everything_on() -> SystemContext {
             description: "a file you opened a view of".to_string(),
         }],
         custom_instructions: None,
-        fences_are_stripped: true,
         read_file: ReadFileView {
             offered: true,
             line_cap: Some(250),
@@ -268,14 +267,6 @@ fn everything_on() -> SystemContext {
         tasks: Some(TasksView { max_tasks: 100 }),
         subagents: true,
         spawnable_agents: vec![agent("helper")],
-        board: Some(BoardView {
-            max_epics: 50,
-            max_issues: 2000,
-            max_retries: 1,
-            reviewers_required: true,
-            issue_agents: vec![agent("builder")],
-            reviewer_agents: vec![agent("critic")],
-        }),
         assigned_issue: Some(AssignedIssueView {
             id: "feat-1".to_string(),
         }),

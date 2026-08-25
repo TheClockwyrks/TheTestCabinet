@@ -7,9 +7,8 @@
 //!   guest evaluates, the two failures it tells apart, and what it costs;
 //! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own top
 //!   level to say what its namespace offers;
-//! * [`healing`] — the [dialect](crate::healing::Dialect): the fence tags and the two predicates
-//!   response healing asks its lexical questions of, beside the five-string-shape lexer it never
-//!   asks for and [`modules`] reads;
+//! * [`mask`] — the byte-level code mask [`modules`] reads, so a name written into a string or
+//!   a heredoc is never taken for a declaration;
 //! * [`COMPONENT`] — the guest, built by
 //!   `packages/gg-sandbox-ruby/build.sh`, carrying Opal's runtime pre-initialised into it and gg's
 //!   hand-written Ruby SDK, the agent's own code and the declared library set registered in its
@@ -115,8 +114,8 @@ pub(super) mod compile;
 #[path = "ruby.modules.rs"]
 mod modules;
 
-#[path = "ruby.healing.rs"]
-pub(super) mod healing;
+#[path = "ruby.mask.rs"]
+pub(super) mod mask;
 
 /// The one line a program writes to reach gg's surface, and the line every module of this arm's
 /// catalogue states.
@@ -275,10 +274,6 @@ impl ProgramLanguage for Ruby {
             );
             catalogue
         })
-    }
-
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &healing::RUBY_DIALECT
     }
 
     /// [`GG::Views.open_file("src/main.rb")`](self::open_file_statement), with the window as keyword

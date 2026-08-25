@@ -76,7 +76,6 @@ function held(
     kind,
     moduleId,
     enabled: true,
-    ownership: "owned",
     origin: "created",
     writable: true,
     ...overrides,
@@ -96,6 +95,7 @@ function profile(
     name,
     modelId: "vendor/small",
     capabilities: capabilities.map((id) => ({ id, enabled: true, params: {} })),
+    openingTurn: { modules: [], functions: [] },
   };
 }
 

@@ -1,6 +1,6 @@
 import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import { GradeBadge, RatingBadge } from "@test-cabinet/ui";
+import { AestheticBadge, GradeBadge, RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import {
   AnchoredScopeControls,
@@ -13,12 +13,16 @@ import { useFindModel } from "../../../data/useModels";
 import { isGgRun } from "../../../data/runLinks";
 import { perModelBestFuel } from "../../../data/fuelRanking";
 import {
+  AESTHETIC_RATINGS,
+  type AestheticRating,
   asGrade,
+  formatPoints,
   GRADE_LEVELS,
   type GradeStatus,
   overallGradeOf,
   RATINGS,
   scoreChecklist,
+  worstAestheticRating,
   worstGrade,
   worstRating,
   type ParsedWriteup,
@@ -71,10 +75,16 @@ interface Entry {
   averageScore: number;
   /** Min points earned across the model's runs. */
   lowestScore: number;
-  /** Best overall rating across the model's runs (null when unrated). */
+  /** Best overall functional rating across the model's runs (null when unrated). */
   bestRating: Rating | null;
-  /** Worst overall rating across the model's runs (null when unrated). */
+  /** Worst overall functional rating across the model's runs (null when unrated). */
   worstRating: Rating | null;
+  /** Best overall aesthetic rating across the model's runs, shown beside the
+   * functional badge; null when no run of the pair carries one (every legacy
+   * run, and a validator-rated run nobody has reviewed). */
+  bestAesthetic: AestheticRating | null;
+  /** Worst overall aesthetic rating across the model's runs; null as above. */
+  worstAesthetic: AestheticRating | null;
   /** Best whole-game overall grade across the model's runs, for a game jam
    * (which carries a grade in place of a domain rating); null for a non-jam. */
   bestGrade: GradeStatus | null;
@@ -119,13 +129,17 @@ function scoreCell(value: number, total: number): ReactNode {
 
 // The board's rating cell adapts to the case: a game jam carries a whole-game
 // overall grade in place of a domain rating, so its badge is the grade; every
-// other case shows its rating. An entry never carries both.
+// other case shows its functional rating. An entry never carries both. The
+// aesthetic badge sits beside the functional one wherever a run's rating shows,
+// so a Legendary / Amazing pair is visible on the board; it is omitted when no
+// run of the pair carries an aesthetic rating (a legacy case never does).
 function ratingCell(
   rating: Rating | null,
   grade: GradeStatus | null,
+  aesthetic: AestheticRating | null,
 ): ReactNode {
   return (
-    <span>
+    <span className={styles.badges}>
       {grade ? (
         <GradeBadge status={grade} />
       ) : rating ? (
@@ -133,6 +147,7 @@ function ratingCell(
       ) : (
         <span className={styles.none}>—</span>
       )}
+      {aesthetic && <AestheticBadge rating={aesthetic} />}
     </span>
   );
 }
@@ -193,7 +208,7 @@ const METRIC_COLUMNS: readonly LeaderboardColumn[] = [
     defaultVisible: true,
     width: "7rem",
     numeric: false,
-    render: (e) => ratingCell(e.bestRating, e.bestGrade),
+    render: (e) => ratingCell(e.bestRating, e.bestGrade, e.bestAesthetic),
   },
   {
     id: "worstRating",
@@ -202,7 +217,7 @@ const METRIC_COLUMNS: readonly LeaderboardColumn[] = [
     defaultVisible: false,
     width: "7rem",
     numeric: false,
-    render: (e) => ratingCell(e.worstRating, e.worstGrade),
+    render: (e) => ratingCell(e.worstRating, e.worstGrade, e.worstAesthetic),
   },
   {
     id: "averageCost",
@@ -315,6 +330,7 @@ function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
       total: number;
       earned: number[];
       ratings: Rating[];
+      aesthetics: AestheticRating[];
       grades: GradeStatus[];
       costs: number[];
       tokens: number[];
@@ -356,7 +372,13 @@ function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
       // run is scored from its preview writeup. Null drops the run off the board.
       const scored = resolveRunScore(run, variant, findReview, localWriteups);
       if (!scored) continue;
-      const { earned, total, rating: overall, grade: overallGrade } = scored;
+      const {
+        earned,
+        total,
+        rating: overall,
+        grade: overallGrade,
+        aesthetic,
+      } = scored;
       const harnessSlug = run.subject.harnessSlug;
       // Canonicalized (harness-aware) so an `openrouter/`-prefixed or `:free`-tagged
       // run and its base form fold into one model, not two rows.
@@ -383,6 +405,7 @@ function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
           total,
           earned: [],
           ratings: [],
+          aesthetics: [],
           grades: [],
           costs: [],
           tokens: [],
@@ -393,6 +416,7 @@ function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
       acc.total = total;
       acc.earned.push(earned);
       if (overall) acc.ratings.push(overall);
+      if (aesthetic) acc.aesthetics.push(aesthetic);
       if (overallGrade) acc.grades.push(overallGrade);
       if (cost !== null) acc.costs.push(cost);
       if (tokens !== null) acc.tokens.push(tokens);
@@ -415,6 +439,8 @@ function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
         lowestScore: Math.min(...acc.earned),
         bestRating: bestRating(acc.ratings),
         worstRating: worstRating(acc.ratings),
+        bestAesthetic: bestAestheticRating(acc.aesthetics),
+        worstAesthetic: worstAestheticRating(acc.aesthetics),
         bestGrade: bestGrade(acc.grades),
         worstGrade: worstGrade(acc.grades),
         averageCost: mean(acc.costs),
@@ -667,17 +693,25 @@ function PerformanceLeaderboard({ ctx }: { ctx: DetailTabContext }) {
 }
 
 // Resolve one run's board contribution — the points it earned, the points
-// available, and its overall rating — from whichever source this host populated.
+// available, its overall functional rating, and its overall aesthetic rating —
+// from whichever source this host populated.
 //
 // A published run reaches the leaderboard as a summary card the backend (console)
 // or snapshot builder (static site) already enriched with its aggregate `score`
 // (mean earned weight over the shared total) and `rating`; since the summary/detail
 // split, the console no longer loads a published run's full record eagerly, so its
 // per-review checklist is not on hand to re-derive these — the enriched fields are.
-// A console's own produced (local, not-yet-published) run carries no enriched score,
-// so it falls back to the locally-previewed writeup that only such runs have and
-// scores it against the variant's checklist. Returns null when the run has no
-// resolvable review, so it drops off the board.
+// A console's own produced (local, not-yet-published) run carries the store's
+// score too (`toRunSummary` lifts it), so a validator-rated run this console
+// produced ranks the moment it completes, reviewed or not: its points and
+// functional rating are the validators' and never depend on a review. A produced
+// legacy run without one falls back to the locally-previewed writeup that only
+// such runs have and scores it against the variant's checklist. Returns null when
+// the run has neither, so it drops off the board.
+//
+// The aesthetic rating rides along from the summary (the aggregate across the
+// run's reviews) or, on the writeup fallback, from the writeup's own aesthetics;
+// it never decides whether a run ranks.
 export function resolveRunScore(
   run: RunSummary,
   variant: VariantSummary,
@@ -691,6 +725,7 @@ export function resolveRunScore(
   total: number;
   rating: Rating | null;
   grade: GradeStatus | null;
+  aesthetic: AestheticRating | null;
 } | null {
   if (run.score) {
     return {
@@ -700,6 +735,7 @@ export function resolveRunScore(
       // A jam's summary carries its whole-game overall grade here; a non-jam's is
       // absent/null.
       grade: asGrade(run.score.overallGrade),
+      aesthetic: run.aesthetic ?? null,
     };
   }
   const review = findReview(run.id, localWriteups);
@@ -718,7 +754,7 @@ export function resolveRunScore(
       variant.reviewItems,
       review.checklist,
     );
-    return { earned, total, rating: null, grade };
+    return { earned, total, rating: null, grade, aesthetic: null };
   }
   if (review.ratings.length === 0) return null;
   const { earned, total } = scoreChecklist(
@@ -730,7 +766,25 @@ export function resolveRunScore(
     total,
     rating: worstRating(review.ratings.map((r) => r.rating)),
     grade: null,
+    aesthetic: worstAestheticRating(review.aesthetics.map((r) => r.rating)),
   };
+}
+
+// The best (highest) aesthetic rating among `ratings`, or null when empty — the
+// mirror of `worstAestheticRating`, used for the Best Rating column.
+function bestAestheticRating(
+  ratings: readonly AestheticRating[],
+): AestheticRating | null {
+  let best: AestheticRating | null = null;
+  let bestRank = AESTHETIC_RATINGS.length;
+  for (const rating of ratings) {
+    const rank = AESTHETIC_RATINGS.indexOf(rating);
+    if (rank < bestRank) {
+      bestRank = rank;
+      best = rating;
+    }
+  }
+  return best;
 }
 
 // The best (highest-point) graded tier among `grades`, or null when empty — the
@@ -753,12 +807,6 @@ function bestGrade(grades: readonly GradeStatus[]): GradeStatus | null {
 function mean(values: readonly number[]): number | null {
   if (values.length === 0) return null;
   return values.reduce((sum, v) => sum + v, 0) / values.length;
-}
-
-// A points figure for display: an integer stays whole; a fractional mean shows a
-// single decimal so "14 / 20" and "14.3 / 20" both read cleanly.
-function formatPoints(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 // The best (highest) rating among `ratings`, or null when empty — the mirror of

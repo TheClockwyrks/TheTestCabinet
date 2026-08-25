@@ -27,6 +27,7 @@ impl BackendClient for StubBackend {
     }
     async fn resolve_version(&self, slug: &str, version: &str) -> Result<TestCaseVersion> {
         Ok(TestCaseVersion {
+            engine_format: false,
             toolchain: None,
             // The debug-API handle plus a common item with an auto-validation driver
             // exercise the reporter-side validation path through materialization: the
@@ -109,6 +110,8 @@ impl BackendClient for StubBackend {
             common_proofs: vec![],
             checks: vec![],
             common_review_items: vec![ReviewItem {
+                failure_cap: None,
+                domains: Vec::new(),
                 id: "ball-spin".to_string(),
                 title: "Ball spin".to_string(),
                 text: "The ball spins.".to_string(),
@@ -585,6 +588,118 @@ async fn read_run_parses_a_single_stored_run() {
     );
     assert_eq!(run.reviews[0].writeup, "Janky.");
     assert!(run.links.source_repo.is_none());
+}
+
+/// Serve one `201 Created` on a fresh local port and hand back the base URL plus
+/// a receiver that yields the request's body once it arrives — for proving what
+/// a client call puts on the wire, not just what it parses off it.
+async fn capture_once() -> (String, tokio::sync::oneshot::Receiver<String>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.expect("accept");
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 4096];
+        // Read until the headers announce a body length that has fully arrived.
+        loop {
+            let n = socket.read(&mut buf).await.unwrap_or(0);
+            if n == 0 {
+                break;
+            }
+            raw.extend_from_slice(&buf[..n]);
+            let text = String::from_utf8_lossy(&raw);
+            if let Some((head, body)) = text.split_once("\r\n\r\n") {
+                let length = head
+                    .lines()
+                    .find_map(|line| {
+                        line.split_once(':').and_then(|(name, value)| {
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().ok())
+                                .flatten()
+                        })
+                    })
+                    .unwrap_or(0);
+                if body.len() >= length {
+                    break;
+                }
+            }
+        }
+        let text = String::from_utf8_lossy(&raw).into_owned();
+        let body = text
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body.to_string())
+            .unwrap_or_default();
+        let _ = tx.send(body);
+        let response = "HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n";
+        let _ = socket.write_all(response.as_bytes()).await;
+        let _ = socket.flush().await;
+    });
+    (format!("http://{addr}"), rx)
+}
+
+#[tokio::test]
+async fn submit_review_posts_the_writeups_aesthetics_beside_its_ratings_and_checklist() {
+    // The writeup file's `aesthetic.<domain>` lines are the only review channel a
+    // validator-rated run accepts, so the wire body has to carry them — a review
+    // that posts `ratings: []` alone is refused by the backend as empty.
+    use crate::review::{AestheticRating, DomainAesthetic, Writeup};
+    let (base, body) = capture_once().await;
+    let writeup = Writeup {
+        ratings: vec![],
+        aesthetics: vec![DomainAesthetic {
+            domain: "single-player".to_string(),
+            rating: AestheticRating::Amazing,
+        }],
+        body: "Gorgeous.".to_string(),
+        checklist: vec![],
+    };
+
+    HttpBackendClient::new(base)
+        .submit_review("run-42", &writeup)
+        .await
+        .expect("submit review");
+
+    let posted: serde_json::Value =
+        serde_json::from_str(&body.await.expect("request body")).expect("json body");
+    assert_eq!(
+        posted,
+        serde_json::json!({
+            "ratings": [],
+            "aesthetics": [{ "domain": "single-player", "rating": "amazing" }],
+            "writeup": "Gorgeous.",
+            "checklist": [],
+        })
+    );
+}
+
+#[tokio::test]
+async fn submit_review_omits_aesthetics_from_a_legacy_writeup() {
+    // A legacy writeup (functional ratings only) posts exactly what it always did.
+    use crate::review::{DomainRating, Rating, Writeup};
+    let (base, body) = capture_once().await;
+    let writeup = Writeup {
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Great,
+        }],
+        aesthetics: vec![],
+        body: "Solid.".to_string(),
+        checklist: vec![],
+    };
+
+    HttpBackendClient::new(base)
+        .submit_review("run-42", &writeup)
+        .await
+        .expect("submit review");
+
+    let posted: serde_json::Value =
+        serde_json::from_str(&body.await.expect("request body")).expect("json body");
+    assert!(posted.get("aesthetics").is_none());
+    assert_eq!(posted["ratings"][0]["rating"], "great");
 }
 
 #[tokio::test]

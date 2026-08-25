@@ -95,8 +95,8 @@ def alias(id: str) -> Callable[[F], F]:
     """Declare that the method below is a second way to reach the gg operation `id`.
 
     A convenience method on the value an operation's result carries — `hit.read()` for the memory a
-    search matched, `view.close()` for a view `current` listed — which calls the module-level
-    function and adds nothing to what this arm can do. It inherits the operation's gate for the same
+    search matched, `issue.wait()` for the issue `create_issue` handed back — which calls the
+    module-level function and adds nothing to what this arm can do. It inherits the operation's gate for the same
     reason: the call it makes is the gated one, so an agent without the capability meets the same
     refusal by either spelling.
 

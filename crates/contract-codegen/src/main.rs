@@ -151,10 +151,14 @@ const TOURNAMENT_DEFS: &[&str] = &[
 /// reference them here rather than each carrying a copy.
 const REVIEW_DEFS: &[&str] = &[
     "Rating",
+    "AestheticRating",
+    "FailureCap",
     "VerdictStatus",
     "ReviewVerdict",
     "DomainRating",
+    "DomainAesthetic",
     "RatingChange",
+    "AestheticChange",
     "VerdictChange",
     "WriteupChange",
     "ReviewDiff",
@@ -333,8 +337,10 @@ fn main() -> Result<()> {
         TsModule {
             file: "review.ts",
             decls: ts_decls![&cfg;
-                rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating,
-                rv::RatingChange, rv::VerdictChange, rv::WriteupChange, rv::ReviewDiff,
+                rv::Rating, rv::AestheticRating, rv::FailureCap, rv::VerdictStatus,
+                rv::ReviewVerdict, rv::DomainRating, rv::DomainAesthetic,
+                rv::RatingChange, rv::AestheticChange, rv::VerdictChange, rv::WriteupChange,
+                rv::ReviewDiff,
                 rv::ReviewRevision, snap::Review,
             ],
         },
@@ -359,11 +365,11 @@ fn main() -> Result<()> {
         TsModule {
             file: GG_MODULE,
             decls: ts_decls![&cfg;
-                gg::GgAgentConfig, gg::GgSubagentRef, gg::GgSubagentScope,
+                gg::GgAgentConfig, gg::GgOpeningTurn, gg::GgSubagentRef, gg::GgSubagentScope,
                 gg::GgPromptCacheTtl, gg::GgLoopDetection, gg::GgModelSlot,
                 gg::GgConfigSlot, gg::GgSlotTarget,
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
-                gg::GgModuleKind, gg::GgModuleOwnership, gg::GgModuleOrigin,
+                gg::GgModuleKind, gg::GgModuleOrigin,
                 gg::GgAgentModule, gg::GgModuleDisposition, gg::GgTransitionModule,
                 gg::GgAgentApi, gg::GgAgentApiFunction,
                 gg::GgArchiveEntry,
@@ -383,8 +389,7 @@ fn main() -> Result<()> {
                 gg::GgHookOutcomeKind,
                 gg::GgTurnOutcome, gg::GgTurnErrorKind, gg::GgTurnErrorType,
                 gg::GgCallFailure,
-                gg::GgHealingStrategy, gg::GgProgramLanguage,
-                gg::GgResponseHealing, gg::GgHealingSummary,
+                gg::GgProgramLanguage,
                 gg::GgErrorSummary, gg::GgUndocumentedCalls,
                 gg::GgRejectedResponses,
                 gg::GgSlotCost, gg::GgProviderStat, gg::GgSessionSummary,
@@ -558,8 +563,9 @@ fn main() -> Result<()> {
                 bapi::LogoFetchOut,
                 bapi::ProbeTriggerInput, bapi::ProbeTriggerResponse, bapi::ModelProbeOut,
                 bapi::ModelProbeItemOut, bapi::ModelProbesResponse, bapi::ModelProbeDetailResponse,
-                bapi::ProbeConditionOut, bapi::ProbeMessage, bapi::ProbeProvidersResponse,
-                bapi::ProbeProviderOut,
+                bapi::ProbeMessage, bapi::ProbeToolCall, bapi::ProbeToolFunction,
+                bapi::ProbeRequestOut,
+                bapi::ProbeProvidersResponse, bapi::ProbeProviderOut,
                 bapi::ProviderStatsResponse, bapi::ProviderStatsOut, bapi::ProviderModelStatsOut,
                 bapi::ProviderCallStatsOut, bapi::ProbeProviderStatsOut, bapi::ProbeProviderModelOut,
                 bapi::ModelAccuracyResponse, bapi::ModelAccuracyOut, bapi::RacAccuracyOut,
@@ -686,6 +692,7 @@ fn main() -> Result<()> {
             root: Some("GgCapabilitySet"),
             owns: &[
                 "GgAgentConfig",
+                "GgOpeningTurn",
                 "GgSubagentRef",
                 "GgSubagentScope",
                 "GgPromptCacheTtl",
@@ -715,12 +722,7 @@ fn main() -> Result<()> {
         SchemaDoc {
             rel_path: "gg/session-summary.schema.json",
             root: Some("GgSessionSummary"),
-            owns: &[
-                "GgSlotCost",
-                "GgHealingSummary",
-                "GgLimitBreach",
-                "GgLimitKind",
-            ],
+            owns: &["GgSlotCost", "GgLimitBreach", "GgLimitKind"],
             schema: root_schema::<gg::GgSessionSummary>(),
         },
         SchemaDoc {
@@ -747,13 +749,12 @@ fn main() -> Result<()> {
                 "GgContextAction",
                 "GgAgentTransitionKind",
                 // The module model's vocabulary. These are *also* the documented shape of a
-                // capability's `ownership`/`scope` params and of an FSM transition's transfer
+                // capability's `scope` param and of an FSM transition's transfer
                 // list — but a params key is free-form JSON in the schema, so the telemetry
                 // event is the one schema root that genuinely references them (through
                 // `AgentModules` and the reshaped `AgentTransition`), which makes this
                 // document their canonical home.
                 "GgModuleKind",
-                "GgModuleOwnership",
                 "GgModuleOrigin",
                 "GgMemoryScope",
                 "GgAgentModule",
@@ -766,13 +767,6 @@ fn main() -> Result<()> {
                 "GgArchiveEntry",
                 "GgIssueReviewPhase",
                 "GgReviewer",
-                // The per-turn healing record and its vocabulary ride on the
-                // `CodeExecution` event and appear nowhere else in the contract, so this
-                // document is their canonical home. The run-level rollup
-                // (`GgHealingSummary`) is the session summary's, and is referenced from
-                // there.
-                "GgResponseHealing",
-                "GgHealingStrategy",
                 // The program language an instance's surface reports. It is also the
                 // session summary's, but a telemetry reader must be able to resolve the
                 // reference without loading a second document.

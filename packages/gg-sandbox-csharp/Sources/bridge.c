@@ -1213,8 +1213,8 @@ static MonoBoolean gg_close_view(MonoString *selector, uint32_t *closed) {
 // programs
 // ---------------------------------------------------------------------------------------------
 
-static MonoBoolean gg_history(MonoArray **turns, MonoArray **lines, MonoArray **chars,
-                              MonoArray **ok_flags, MonoArray **errors) {
+static MonoBoolean gg_history(MonoArray **ids, MonoArray **turns, MonoArray **lines,
+                              MonoArray **chars, MonoArray **ok_flags, MonoArray **errors) {
   test_cabinet_gg_programs_list_program_summary_t history;
   test_cabinet_gg_programs_api_error_t failure;
   const bool ok = test_cabinet_gg_programs_history(&history, &failure);
@@ -1222,12 +1222,14 @@ static MonoBoolean gg_history(MonoArray **turns, MonoArray **lines, MonoArray **
     park(&failure);
     return 0;
   }
+  *ids = string_array(history.len);
   *turns = uint_array(history.len);
   *lines = uint_array(history.len);
   *chars = uint_array(history.len);
   *ok_flags = bool_array(history.len);
   *errors = string_array(history.len);
   for (size_t index = 0; index < history.len; index++) {
+    mono_array_setref(*ids, index, lower(&history.ptr[index].id));
     uint_array_set(*turns, index, history.ptr[index].turn);
     uint_array_set(*lines, index, history.ptr[index].lines);
     uint_array_set(*chars, index, history.ptr[index].chars);
@@ -1238,12 +1240,13 @@ static MonoBoolean gg_history(MonoArray **turns, MonoArray **lines, MonoArray **
   return 1;
 }
 
-static MonoBoolean gg_get_program(int32_t turn, MonoString **source) {
-  uint32_t turn_storage = 0;
+static MonoBoolean gg_get_program(MonoString *id, MonoString **source) {
+  char *utf8 = lift(id);
+  sandbox_string_t owned = borrow(utf8);
   sandbox_string_t result;
   test_cabinet_gg_programs_api_error_t failure;
-  const bool ok =
-      test_cabinet_gg_programs_get(maybe_u32(turn, &turn_storage), &result, &failure);
+  const bool ok = test_cabinet_gg_programs_get(&owned, &result, &failure);
+  if (utf8 != NULL) mono_free(utf8);
   if (!ok) {
     park(&failure);
     return 0;

@@ -208,15 +208,15 @@ Source gg synthesizes for this arm is written in the same idiom, under the same
 import line: `import gg` and then `try gg.views.openFile("src/main.swift")`,
 with a window passed as the call's own `offset:` and `limit:` arguments.
 
-## Healing dialect
+## Code mask
 
-The arm's healing dialect reads Swift lexically rather than parsing it, and
-declines rather than guessing. A `"` string ends at its line's end while a `"""`
-string may carry a newline. A raw string's `#` fence is counted rather than
-looked for, and inside one neither a quote nor a backslash escapes.
-Interpolation is a parenthesis count, so `"total: \(rows["n"])"` is one string
-whose spliced contents are code. Block comments nest. Swift has no character
-literal, so an apostrophe in a line of prose is ordinary punctuation.
+The arm keeps one byte-level lexer, `swift.mask.rs`, shared by the
+[code-module scan](#code-modules): which bytes of a source are code, plus the
+identifier and declaration-keyword readers built on the same discipline. A `"`
+string ends at its line's end while a `"""` string may carry a newline, a raw
+string's `#` fence is counted rather than looked for, `\(…)` interpolations are
+code down to their matching parenthesis, and block comments nest. A source that
+does not lex cleanly declines the mask, and its readers decline with it.
 
 ## The idiomatic Swift surface
 

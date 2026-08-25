@@ -203,10 +203,12 @@ Headers are attached only for an agent that actually has `archive_thread`.
 Without archival they would be a per-result tax on the window buying the model
 nothing.
 
-Under responses as code hardly anything carries one, because a program's calls
-return into the program and the turn leaves no tool results behind. Everything
-gg puts in such a window is a headed `user` message: a `File: <path>:<lines>`,
-a `View: <label>` or a `Documentation: <name>` view the program opened, or one
+Under responses as code the only tool results a turn leaves are its
+`submit_program` acknowledgements, which carry the header like any other tool
+result; a program's calls return into the program and leave nothing else to
+head. Everything else gg puts in such a window is a headed `user` message: a
+`File: <path>:<lines> of <N> lines`, a `View: <label>` or a
+`Documentation: <name>` view the program opened, or one
 of gg's own messages, each named by its selector rather than by a turn number. The exception
 is a window carried over from a tool-calling agent by an
 [`exec` or an FSM transition](/gg/fork-and-exec/), whose tool results keep the
@@ -255,12 +257,6 @@ a [`fork`](/gg/fork-and-exec/) gets an independent copy, and an `exec` or an
 whole. An entry's ordinal is carried rather than restarted across either, so a
 search result quoting an entry is unambiguous about which thread it came from.
 
-This capability is one of the two that read an
-[`ownership`](/gg/modules/#ownership) param, the other being
-[project management](/gg/project-management/). The archive is by definition out
-of the window, so `"ownership": "unowned"` has no pinned block to withhold. It
-is recorded, carried across a transfer, and otherwise changes nothing.
-
 ## Features
 
 Two sliders sit in the capability's Features box, and each is per agent.
@@ -276,14 +272,13 @@ Two sliders sit in the capability's Features box, and each is per agent.
 | --- | --- |
 | `topFileViews` | Files named under Top File Views, largest first. |
 | `signalThresholdPercent` | How full the window must be, `0` to `100`, before the block is rendered. |
-| `ownership` | `owned` or `unowned`, on the terms above. |
 
-All three are set per agent. An enabled capability writes `topFileViews` and
-`ownership`; how many reads a window holds at once differs enormously between an
-agent that opens two specs and one crawling a codebase, so `topFileViews` is a
-figure the profile states. An absent one, and any of the three carrying a value
-gg cannot honour exactly as written, refuse the launch alongside every other such
-value in the capability set.
+Both are set per agent. An enabled capability writes `topFileViews`; how many
+reads a window holds at once differs enormously between an agent that opens two
+specs and one crawling a codebase, so it is a figure the profile states. An
+absent one, and either param carrying a value gg cannot honour exactly as
+written, refuse the launch alongside every other such value in the capability
+set.
 
 `signalThresholdPercent` is the one param in gg an absence names a figure for: a
 document that leaves it out runs at 75. It is written into every new

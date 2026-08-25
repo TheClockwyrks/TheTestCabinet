@@ -166,12 +166,17 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/).
   point under a named category; the top-level `[[review_item]]` arrays are the
   alternative. Each point is one observable behavior, stated in the spec exactly
   or by explicit bounds, and carries a `validation` script for every engine the
-  case supports under `validation/<engine>/`. A point may pair an expected
-  `reference` view with a submitted `proof`. Checklist entries are reporter-side
-  and stay out of the seeded set.
-- `[[domain]]` entries are the scoring domains a reviewer rates: the build's
-  visuals, polish, and feel. The run's overall rating is the worst across the
-  effective set.
+  case supports under `validation/<engine>/`. A case on the engine format is
+  [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so each
+  point also declares the `domains` its failure lowers and a `failure_cap`, the
+  best functional rating those domains keep while it fails: `broken` for a
+  gameplay-critical requirement, otherwise `scuffed`, `passable`, or `great`.
+  A point may pair an expected `reference` view with a submitted `proof`.
+  Checklist entries are reporter-side and stay out of the seeded set.
+- `[[domain]]` entries are the scoring domains. The validators rate each on the
+  functional scale through the failure caps, and a reviewer rates each on the
+  aesthetic scale: the build's visuals, polish, and feel. The run's overall
+  rating on each channel is the worst across the effective set.
 
 ### 7. Write the non-seeded docs
 
@@ -213,6 +218,8 @@ an edited case before running it. See
   editorial rules and the revision checklist for the seeded set.
 - [Instrumentation](/testing/end-to-end/instrumentation/) covers the debug API,
   deterministic core, and overlay your case must mandate.
+- [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/)
+  gives the design rules for that API and the validators that drive it.
 - [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/)
   adds more modes.
 - [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/)

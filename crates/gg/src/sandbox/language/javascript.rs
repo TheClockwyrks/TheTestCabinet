@@ -24,9 +24,8 @@
 //!
 //! Four things are equal by construction rather than by care. The **guest** is one artifact reached
 //! through one constant; the **catalogue** is the same declarations reflected under a second id, so a
-//! model here reads `readFile(path: string): FileRead` exactly as a model there does; the **healing
-//! dialect** is [TypeScript's](super::typescript::healing), because healing is a lexical reading of a
-//! reply and the two arms are one syntax; and every **program gg synthesizes** is
+//! model here reads `readFile(path: string): FileRead` exactly as a model there does; and every
+//! **program gg synthesizes** is
 //! [TypeScript's](super::typescript), for the same reason.
 //!
 //! # The prompt is one file, and both arms render it
@@ -183,13 +182,6 @@ impl ProgramLanguage for JavaScript {
             );
             catalogue
         })
-    }
-
-    /// The shared ECMAScript dialect: see
-    /// [its module documentation](super::typescript::healing) for why one dialect reads both arms'
-    /// replies.
-    fn healing(&self) -> &'static dyn crate::healing::Dialect {
-        &typescript::healing::TYPESCRIPT_DIALECT
     }
 
     /// [An `import` and one call](super::typescript::open_file_statement), spelled from this

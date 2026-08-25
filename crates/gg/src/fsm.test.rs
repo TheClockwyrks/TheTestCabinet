@@ -315,7 +315,7 @@ fn a_transfer_of_the_runs_board_is_accepted_from_any_state() {
         ]),
         &["explorer", "builder"],
     );
-    // Only the *other* state authors the board; the outgoing one holds it unowned.
+    // Only the *other* state authors the board; the outgoing one cannot author it.
     let builder = set
         .agents
         .iter_mut()

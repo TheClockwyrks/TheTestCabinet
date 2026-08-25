@@ -6,9 +6,11 @@ An end-to-end run is scored in two stages: an automated validation pass and a
 review written by a person who plays the build. Validation catches gross
 failures cheaply and, through the [instrumentation](#instrumentation) a case
 requires, drives the build into the states each checklist item needs and decides
-its verdict, synthesizing the evidence as it goes. The review is where
-subjective judgement is made: the quality rating per scoring domain, covering
-the build's visuals, polish, and feel.
+its verdict, synthesizing the evidence as it goes. On a
+[validator-rated](#rating-channels) case version the validators also decide the
+run's functional rating and its score, so both stand the moment the run
+completes. The review is where subjective judgement is made: the aesthetic
+rating per scoring domain, covering the build's visuals, polish, and feel.
 
 The mechanism behind each stage lives under Core:
 [Validation](/components/core/validation/) for the automated pass and
@@ -71,28 +73,110 @@ expose the contract the case declares, or whose API is non-conformant, fails
 every checklist point its broken instrumentation hid. An implementation that
 cannot expose the mandated contract has not met the spec. See
 [load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing).
-Instrumentation decides the checklist; the domain ratings below stay human.
+Instrumentation decides the checklist and, through the failure caps below, the
+functional rating; the aesthetic rating stays human.
+
+## Rating channels
+
+A run carries up to two ratings, each a five-tier scale over the run's
+effective domain set, meaning the case's common
+[`[[domain]]`](/testing/end-to-end/manifests/)s plus any the run's variant
+declares. A domain's rating on either channel is one tier, and the run's overall
+rating on a channel is the worst across its domains, so a flawless mode cannot
+mask a broken one.
+
+- The functional rating says how faithfully the build implements the spec. Its
+  tiers, best to worst, are `flawless`, `great`, `passable`, `scuffed`, and
+  `broken`.
+- The aesthetic rating says how the build looks, sounds, and feels to play. Its
+  tiers, best to worst, are `legendary`, `amazing`, `good`, `okay`, and `slop`.
+  `amazing` is the normal maximum, a build with nothing to fault; `legendary` is
+  reserved for a build that is exceptionally beautiful, and the site marks its
+  badge distinctly.
+
+Which channel a person supplies depends on the case version. A case version is
+validator-rated when it is on the engine-supported manifest format (the
+`[workspaces]` / `engines` / `[[engine]]` spelling of its
+[starter project](/testing/end-to-end/manifests/#the-starter-project)) and is
+not a game jam. A run is validator-rated when its case version is. On a
+validator-rated run the validators decide the functional rating and reviewers
+supply only the aesthetic rating. On a legacy run, one whose case version spells
+its starter project as a single `workspace`, the reviewer's rating is the
+functional rating and the run has no aesthetic rating. Legacy runs, which
+include every run recorded before the engine format existed, keep behaving
+exactly as they always have; the [legacy review](#legacy-review) section below
+is their contract.
+
+## The validator-decided functional rating
+
+On a validator-rated version every graded point declares a
+[`failure_cap`](/testing/end-to-end/manifests/#the-categories-grammar-format--2)
+and the [`domains`](/testing/end-to-end/manifests/#the-categories-grammar-format--2)
+it affects, and carries a validation script. The failure cap is the highest
+functional rating the point's domains may reach while the point fails: `broken`
+for a gameplay-critical requirement, otherwise `scuffed`, `passable`, or
+`great`. A cap is never `flawless`, because a failure always costs something.
+
+The rating is derived from the run record alone:
+
+- Every effective domain starts at `flawless`.
+- Each scored point whose validator failed lowers each of the point's `domains`
+  to the lower of its current tier and the point's cap. A point fails when its
+  validator decided `fail`, or could not run against the build for a reason
+  other than an unmet precondition. A point whose validator decided nothing
+  because its precondition could not be met, or that has no validator result on
+  the record at all, lowers nothing.
+- A point an [erratum](/testing/end-to-end/manifests/#errata) excludes from
+  scoring lowers nothing, however it verdicted.
+- The domain's rating is the lowest cap among its failing points, so two
+  failures capped at `great` and `scuffed` leave the domain `scuffed`. A domain
+  no failing point names stays `flawless`; a failure in the versus controls
+  lowers only the versus domain.
+- The run's overall functional rating is the worst across its domains, and the
+  [toolchain gate](/components/core/validation/#the-toolchain-gate) applies on
+  top of it: a build whose typecheck failed is `broken` whatever its validators
+  decided.
+
+The score is derived the same way, from the validator verdicts and the item
+weights, and needs no review. Both are shown on the run the moment it completes,
+with a per-domain breakdown naming each failing point and its cap, and a
+validator-rated run may be published with no review at all. A blatantly broken
+build reaches the gallery with its functional rating and score and costs no
+reviewer time.
 
 ## Review
 
-The evaluation proper is the [review](/components/core/results/#reviews): a
-person plays the finished build and writes it up. A review carries three things.
+The [review](/components/core/results/#reviews) is a person playing the finished
+build and writing it up. On a validator-rated run it carries two things.
 
 - A short writeup the site shows before the playable build.
-- A rating per scoring domain, one hand-assigned tier for each
-  [`[[domain]]`](/testing/end-to-end/manifests/) in the run's effective domain
-  set: the case's common domains plus any the run's variant declares. This is
-  the reviewer's own judgement of the build's visuals, polish, and feel. The five
-  tiers, in descending order of fidelity to the spec, are flawless, great,
-  passable, scuffed, and broken. The run's overall rating is the worst across
-  that set, so a flawless mode cannot mask a broken one.
-- A checklist of binary verdicts, pass or fail with an optional note, one per
-  verdict id the case version declares for the run's variant. An item graded as
-  a whole carries one verdict; an item broken into
-  [sub-items](/testing/end-to-end/manifests/#sub-items) carries one per
-  sub-item. Every verdict must be recorded, and the writeup and every domain
-  rating supplied, before a review can be submitted, so a reviewer cannot
-  silently skip a requirement the author called out.
+- An aesthetic rating per effective domain, chosen on the
+  `legendary`-to-`slop` scale. Every effective domain must be rated before the
+  review can be submitted. The run's overall aesthetic rating is the worst
+  across the domains within a review, then the worst across its reviews.
+
+The checklist on a validator-rated run is machine-decided. The reviewer sees
+each point's validator verdict, assertions, and media read-only; a review
+carries no checklist verdicts of its own and no override exists. A review on a
+validator-rated run carries no functional rating either, since the functional
+rating is not the reviewer's to give.
+
+A review can be added at any time, before or after publish, so a run published
+on its functional rating alone gains an aesthetic rating when someone plays it.
+For how a reviewer chooses an aesthetic tier, see
+[Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).
+
+### Legacy review
+
+On a legacy run the review carries three things: the writeup, a functional
+rating per effective domain on the `flawless`-to-`broken` scale, and a checklist
+of binary verdicts, pass or fail with an optional note, one per verdict id the
+case version declares for the run's variant. An item graded as a whole carries
+one verdict; an item broken into
+[sub-items](/testing/end-to-end/manifests/#sub-items) carries one per sub-item.
+Every verdict must be recorded, and the writeup and every domain rating
+supplied, before a review can be submitted, so a reviewer cannot silently skip a
+requirement the author called out.
 
 Every checklist point arrives pre-filled with the verdict the case's validator
 decided, marked as machine-set and shown in a distinguishable color. The
@@ -103,9 +187,10 @@ that clearly does the right thing despite broken instrumentation.
 ## Scoring
 
 A run's score is earned points over available points, like an academic test. The
-score and the overall rating are shown together on the run, and each test case's
-[leaderboard](/components/site/overview/#leaderboard) ranks the harness and
-model pairs that have scored runs of the selected variant by average score.
+score and the overall functional rating are shown together on the run, and each
+test case's [leaderboard](/components/site/overview/#leaderboard) ranks the
+harness and model pairs that have scored runs of the selected variant by average
+score.
 
 - An item graded as a whole is worth its declared `weight`: a `pass` earns all
   of it and a `fail` earns none.
@@ -119,7 +204,13 @@ model pairs that have scored runs of the selected variant by average score.
   scoring counts toward neither side of the ratio. It is still checked, driven,
   and shown.
 
-Publishing refuses a completed run with no review, so every published end-to-end
+On a validator-rated run the verdicts are the validators', so the score is fixed
+on completion and is the same however many reviews the run carries, including
+none. On a legacy run each review's verdicts produce that review's score and the
+run's score is the average across its reviews.
+
+Publishing a validator-rated completed run needs no review; publishing a legacy
+completed run refuses one with no review, so every published legacy
 implementation is both scored and framed by a human assessment. For how a
-reviewer arrives at the per-domain ratings and works the checklist, see
+reviewer arrives at the ratings and works the checklist, see
 [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { GgProgramLanguage } from "@test-cabinet/run-record/gg";
 import { NavLink } from "react-router";
+import { LoadingState } from "../../../components/LoadingState";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
 import {
@@ -16,9 +17,8 @@ import { useArmSelection } from "./referenceSelection";
 import styles from "./GgReference.module.scss";
 import exec from "../../runs/RunExec.module.scss";
 
-// The Reference surface: the header, the sentence saying where the documents came from,
-// the tab bar, the three states that are not a document, and whichever tab's body is
-// asked for.
+// The Reference surface: the header, the tab bar, the three states that are not a
+// document, and whichever tab's body is asked for.
 //
 // **One component for both tabs, deliberately.** The tabs are two views of one surface,
 // and the index — the families and the tools — is what both are read against, so the
@@ -100,32 +100,6 @@ export function GgReferencePage({ tab }: GgReferencePageProps) {
         comment={<>// what gg actually offers a model</>}
       />
 
-      {/* Where the documents come from, said once. It matters because the page looks
-          like documentation and is not: nothing on it was written for this page. */}
-      <p className={styles.intro}>
-        Every description, schema and documentation view below is projected by
-        gg itself, from its own tool definitions and its own SDKs — this is the
-        text a model is given, verbatim, not a summary of it. It is served by
-        the backend this console is pointed at, so it describes that
-        deployment&apos;s gg rather than whatever version the console was built
-        from.
-        {data && (
-          <>
-            {" "}
-            Projected from gg{" "}
-            <span className={styles.version}>{data.ggVersion}</span>, whose{" "}
-            <span className={styles.version}>{data.tools.length}</span> tools go
-            on the wire the same way in every language, and whose{" "}
-            <span className={styles.version}>{data.languages.length}</span> SDK
-            arms each spell the same capabilities their own way — pick one on
-            the API tab.
-          </>
-        )}{" "}
-        It is the whole pool of what gg <em>can</em> offer, not what any one run
-        did: what a particular agent was actually handed is recorded on that
-        run.
-      </p>
-
       <nav className={styles.tabs} aria-label="Reference">
         <NavLink
           to={routes.ggReferenceTools()}
@@ -145,42 +119,44 @@ export function GgReferencePage({ tab }: GgReferencePageProps) {
         </NavLink>
       </nav>
 
-      {error ? (
-        // The backend's own message, not a paraphrase: a deployment whose reference
-        // documents are missing answers with the two things that fix it, and this is
-        // where whoever can fix it will read them.
-        <p className={`${exec.notice} ${exec.error}`}>{error}</p>
-      ) : loading ? (
-        <p className={styles.empty}>Loading gg&apos;s reference…</p>
-      ) : data ? (
-        // Each tab's body takes the loaded index, so neither has to handle "no document
-        // yet": the states above are this component's, once, for both.
-        tab === "tools" ? (
-          <GgReferenceToolsTab reference={data} />
+      <div className={styles.body}>
+        {error ? (
+          // The backend's own message, not a paraphrase: a deployment whose reference
+          // documents are missing answers with the two things that fix it, and this is
+          // where whoever can fix it will read them.
+          <p className={`${exec.notice} ${exec.error}`}>{error}</p>
+        ) : loading ? (
+          <LoadingState label="Loading gg's reference…" size="section" />
+        ) : data ? (
+          // Each tab's body takes the loaded index, so neither has to handle "no document
+          // yet": the states above are this component's, once, for both.
+          tab === "tools" ? (
+            <GgReferenceToolsTab reference={data} />
+          ) : (
+            <GgReferenceApiTab
+              index={data}
+              languages={data.languages}
+              language={arm}
+              requestedLanguage={requestedArm}
+              onSelectLanguage={(next) => {
+                setRemembered(next);
+                selectArm(next);
+              }}
+              arm={armDocument.data}
+              loading={armDocument.loading}
+              error={armDocument.error}
+            />
+          )
         ) : (
-          <GgReferenceApiTab
-            index={data}
-            languages={data.languages}
-            language={arm}
-            requestedLanguage={requestedArm}
-            onSelectLanguage={(next) => {
-              setRemembered(next);
-              selectArm(next);
-            }}
-            arm={armDocument.data}
-            loading={armDocument.loading}
-            error={armDocument.error}
-          />
-        )
-      ) : (
-        // Not a failure: a host with no backend behind it (the read-only static site)
-        // has nothing to ask, and a fetch that never happened must not read as one that
-        // went wrong.
-        <p className={styles.empty}>
-          No backend to read the reference from — this surface needs a console
-          pointed at a deployment.
-        </p>
-      )}
+          // Not a failure: a host with no backend behind it (the read-only static site)
+          // has nothing to ask, and a fetch that never happened must not read as one that
+          // went wrong.
+          <p className={styles.empty}>
+            No backend to read the reference from — this surface needs a console
+            pointed at a deployment.
+          </p>
+        )}
+      </div>
     </PageLayout>
   );
 }

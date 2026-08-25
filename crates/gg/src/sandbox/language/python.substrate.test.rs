@@ -2019,7 +2019,7 @@ print(gg.views.close("summary"))
     // The fifth hangs off the program library, which is bound from a capability rather than from a
     // tool, so it needs a store that grants one and a library with something in it.
     let log = CallLog::default();
-    let api = FakeOperationApi::new(&log).with_program(3, "print('the program that ran')");
+    let api = FakeOperationApi::new(&log).with_program("p3", 3, "print('the program that ran')");
     // The component before the store, as everywhere in this file; see [`run_as`] for why.
     let component = component();
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
@@ -2049,7 +2049,7 @@ print(gg.views.close("summary"))
 import gg
 
 summary = gg.programs.history()[0]
-print(summary.turn, repr(summary.source()))
+print(summary.id, summary.turn, repr(summary.source()))
 "#,
             &[],
             &[],
@@ -2058,7 +2058,7 @@ print(summary.turn, repr(summary.source()))
         )
         .expect("the program runs");
     let (outcome, _api) = reclaim(store, Ok(()), None, None);
-    assert_eq!(logs(&outcome), ["3 \"print('the program that ran')\""]);
+    assert_eq!(logs(&outcome), ["p3 3 \"print('the program that ran')\""]);
 }
 
 /// The three module families that are **not** gg tools, driven end to end: views, documentation and
@@ -2169,7 +2169,7 @@ print(type(page).__name__, page.first_line, page.last_line)
     // The program library: bound from the capability rather than from a tool, so the whole object is
     // there or it is not a name at all.
     let log = CallLog::default();
-    let api = FakeOperationApi::new(&log).with_program(3, "print('the program that ran')");
+    let api = FakeOperationApi::new(&log).with_program("p3", 3, "print('the program that ran')");
     // The component before the store, as everywhere in this file; see [`run_as`] for why.
     let component = component();
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
@@ -2199,9 +2199,13 @@ print(type(page).__name__, page.first_line, page.last_line)
 import gg
 
 ran = gg.programs.history()
-print(len(ran), ran[0].turn, ran[0].ok, ran[0].error)
-source = gg.programs.get(3)
+print(len(ran), ran[0].id, ran[0].turn, ran[0].ok, ran[0].error)
+source = gg.programs.get("p3")
 print(repr(source))
+try:
+    gg.programs.get("p4")
+except gg.ApiError as error:
+    print(error.code.name, "p3" in str(error))
 gg.programs.rerun(source.replace("ran", "walked"))
 "#,
             &[],
@@ -2213,7 +2217,11 @@ gg.programs.rerun(source.replace("ran", "walked"))
     let (outcome, _api) = reclaim(store, Ok(()), None, None);
     assert_eq!(
         logs(&outcome),
-        ["1 3 True None", "\"print('the program that ran')\""]
+        [
+            "1 p3 3 True None",
+            "\"print('the program that ran')\"",
+            "NOT_FOUND True"
+        ]
     );
     assert_eq!(
         outcome.rerun.as_deref(),

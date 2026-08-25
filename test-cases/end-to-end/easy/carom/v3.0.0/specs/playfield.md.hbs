@@ -37,6 +37,10 @@ it.
 - A paddle's `vy` after integration is its actual vertical velocity for the
   frame, which is what the spin mechanic reads at contact. A paddle pinned against
   a bound therefore carries `vy = 0` while the action is held into the bound.
+- A paddle is movable on every `countdown` frame as on every `playing` frame:
+  the pre-serve hold locks the ball, not the paddles. Movement actions held while
+  the countdown runs move the paddle at `PADDLE_SPEED` exactly as they do in a
+  rally, and the AI paddle runs its rule through the countdown too.
 
 ## Obstacles
 {{#if (eq variant.slug "gyre")}}
