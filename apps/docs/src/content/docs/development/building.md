@@ -105,6 +105,28 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   [web console](/components/web/overview/) that enqueues runs at the backend.
 - `apps/docs`: `@test-cabinet/docs`. This Astro Starlight documentation site.
 
+### Reference implementations
+
+A [reference implementation](/guides/devops/publishing-a-reference-implementation/)
+under a case version's `references/` is its own npm project rather than a member
+of the workspace, so it is installed from its own directory. An engine-backed one
+resolves its engine from `packages/simple-2d` or `packages/structured-2d` through
+a relative `file:` dependency that npm installs as a symlink, so the reference
+builds and tests against the engine's current source.
+
+That symlink points at the package directory, and what the reference imports is
+the package's `dist/`, so the root workspace must be installed and built first:
+
+```sh
+npm ci && npm run build:packages   # at the repository root
+npm ci                             # in the reference's own directory
+```
+
+A reference installed over an unbuilt engine installs cleanly and fails at
+`npm run typecheck` instead, reporting
+`TS2307: Cannot find module '@test-cabinet/<slug>'` ahead of the property errors
+that the failed resolution produces.
+
 ## Building Rust
 
 ```sh
@@ -389,3 +411,13 @@ orchestration logic lives in `test-cabinet-core`, which is what makes batch runs
 and unattended sweeps possible. During development the shell loads the Vite dev
 server for `apps/desktop`; a release build loads the static assets that app's
 build produces.
+
+`crates/desktop/tauri.conf.json` bundles `test-cases/` as a resource so the app
+can stage an offline checkout, and it names the directory rather than a set of
+files. Every path beneath it therefore has to resolve for the shell to compile,
+including the untracked `node_modules/` of any reference implementation installed
+there. A reference installed against an engine dependency that has since moved
+keeps a symlink to the old location, and `cargo build -p test-cabinet-desktop`
+fails with `resource path ... doesn't exist` naming that symlink. Running
+`npm install` in the reference's own directory relinks it against the current
+dependency and clears the failure.
