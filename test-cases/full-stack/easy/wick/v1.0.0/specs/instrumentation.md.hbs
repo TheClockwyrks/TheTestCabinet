@@ -1,0 +1,530 @@
+# Wick — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Wick carries a small debugging and automation surface, `window.__wick`, so the
+game can be driven and inspected from code without holding a key or waiting on
+real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__wick` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it
+is present and exactly as specified here.
+
+Each operation is a read or a pose of the game's state. A pose arranges the
+night, and the game's own systems run from there exactly as they do in play: an
+enemy spawned through the surface is scaled and driven as one the director
+spawned, an offer granted through it passes the same candidate rules the
+overlay applies, and experience added through it levels the lamplighter exactly
+as a gem does.
+
+The surface is inert during normal play, doing nothing until something calls
+it.
+{{else}}
+Wick carries a small debugging and automation surface so the game can be driven
+and inspected from code without holding a key or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from
+`engine.debug`, and it is reached that way alone: nothing is installed on the
+page. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a reading or a pose of `WickState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a
+writable one. A pose takes the current state, as `DeepReadonly<WickState>`, and
+returns the next `WickState`; a reading takes the state the same way and
+returns what it read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.start(s))`, and a reading against the engine's
+current state, as `debug.snapshot(engine.state)`. A pose arranges the night,
+and the game's own systems run from there exactly as they do in play: an enemy
+spawned through the surface is scaled and driven as one the director spawned,
+and an offer granted through it passes the same candidate rules the overlay
+applies. Where the surface's implementation lives under `src/` is yours to
+decide; `src/game.ts` declares and exports its type, `WickDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls
+it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the simulation being deterministic. A run advances on a
+fixed tick of `TICK_HZ` (`60`) ticks per second, each worth `TICK_DT` (`1/60`)
+seconds: every frame's delta time accumulates, whole ticks are consumed, and
+the remainder waits for the next frame, so an interval of game time reaches the
+same state however it was divided into frames. Only the `playing` screen ticks.
+Every rate in this specification is per second and every duration is in
+seconds, and each tick applies exactly `TICK_DT` of them. Two more properties
+make the game driveable from code:
+
+- Render-free core. Game state advances from ticks and input alone,
+  independent of the canvas, of the frame loop that measured the delta time,
+  and of wall-clock time. The dependency runs one way: the simulation reads
+  nothing from the renderer, and every hit, kill, drop, and level-up is decided
+  from the state alone.
+- Seeded randomness. The game holds one pseudo-random generator, seeded by
+  `reset` and keeping its whole state in `rngState`, and every random draw
+  comes from it: a spawn's angle and type, an offer draw, a puddle's landing
+  point, a strike's target, a swarm's direction, a chest's fallback item, and
+  the bread and draft draws. The order in which the systems draw from it is
+  yours.
+
+Given the same seed, the same sequence of calls, and the same number of ticks,
+the game reaches the same `run` and `rngState` every time. `simTime` and
+`muted` stand outside that: `simTime` accumulates the delta time of every
+update whatever the screen, and `muted` mirrors the runtime.
+
+Audio belongs to the ticks and the frames. A pose changes the state alone and
+sounds nothing; the cues a scenario hears come from the ticks run afterwards.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard and the overlay belong to the runtime layer beneath the game, and
+the surface carries no operation for the menu actions or for the overlay. That
+layer delivers the actions the game registers from the key bindings this
+specification fixes, and it draws and toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `step` below. Movement is the other exception: `setInput`
+stands in for the held movement keys, so a scenario walks the lamplighter
+without a key event.
+{{else}}
+The clock, the keyboard, and the overlay belong to the {{engine.name}} engine,
+which documents them in the `engine/` directory at the root of this repository,
+and the surface carries no operation for any of them. The engine advances the
+game frame by frame and can take it off real time, so a scenario pairs a clock
+that supplies its own deltas with `engine.advance`, and a `ConstantClock` of
+`1000 / TICK_HZ` milliseconds steps exactly one tick per frame. It drives the
+actions the game registers, so a scenario walks the lamplighter by dispatching
+key events at the engine's event target, or places it with `setPlayer` below.
+It draws and toggles the debug overlay.
+
+The two looping cues are reconciled by `update` on every frame from the state
+it is handed, through the engine's `looping`, `loop`, and `stop`, so a run
+started through `start` sounds exactly as one started from the menu.
+{{/if}}
+
+What the overlay shows is Wick's, under Diagnostics below.
+
+## The operations
+
+The surface carries `version` (`WICK_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings, booleans, and plain
+objects. `x` and `y` are world units, on the plane whose origin is where the
+run began, and every duration is in seconds.
+{{#if (eq engine.slug "none")}}
+{{else}}
+
+Each operation's first parameter is the current state,
+`DeepReadonly<WickState>`. A pose returns the next `WickState`, built from the
+one it was handed, which it leaves as it was; a reading returns what it read.
+The headings below name the parameters that follow the state.
+{{/if}}
+
+No operation decides an outcome. Hits, kills, gems, experience, level-ups, and
+evolutions come from stepping the real systems after a pose, and an operation
+whose precondition does not hold leaves the state exactly as it was, so a
+scenario reads the outcome of any pose from `snapshot`.
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop feeding the wall clock's delta time into the tick accumulator, so
+the run advances only when `step` says so. `setAutoStep(true)` returns it to
+running itself, which is how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent tick left.
+
+### `step(ticks)`
+
+Runs `ticks` whole simulation ticks, immediately and in order, each the full
+tick followed by a render. `ticks` defaults to `1`. It runs on `playing`, and a
+tick that opens an overlay or ends the run is the last one the call runs; the
+ticks not run are not carried over. On any other screen the call changes
+nothing, since nothing ticks there.
+
+Stepping while the game is still stepping automatically adds to what the wall
+clock is already doing, so a scenario that must be reproducible calls
+`setAutoStep(false)` first.
+
+{{/if}}
+{{#if (eq engine.slug "none")}}
+### `reset(options)`
+{{else}}
+### `reset(state, options)`
+{{/if}}
+
+Restores every declared field of the game's state to its title-screen value:
+the title screen with its first item highlighted, the idle run `specs/state.md`
+gives, the tick accumulator and `simTime` at `0`. `options.seed` seeds
+`rngState`, defaulting to `DEFAULT_SEED` (`1`). `muted` stays as it is.
+{{#if (eq engine.slug "none")}}
+Any looping cue stops.
+{{else}}
+The next `update` stops any looping cue, since the state it restores holds no
+run.
+{{/if}}
+
+{{#if (eq engine.slug "none")}}
+### `snapshot()`
+
+A pure read of the state, returned as the plain object under Snapshot shape
+below. It changes nothing.
+
+### `start()`
+{{else}}
+### `snapshot(state)`
+
+A pure reading of `state`, returned as the plain object under Snapshot shape
+below. It returns no state, because it poses nothing.
+
+### `start(state)`
+{{/if}}
+
+Poses exactly what `LIGHT THE LAMP` does, from any screen: a fresh run, which
+is the idle run of `specs/state.md` with Taper at level `1` and cooldown `0` in
+the first weapon slot, `screen` at `playing`, `menuIndex` at `0`, and
+`autoSpawn` `true`. `rngState` and `simTime` stay as they are, so a run from a
+known seed is a `reset` followed by this.
+
+{{#if (eq engine.slug "none")}}
+### `setAutoSpawn(enabled)`
+{{else}}
+### `setAutoSpawn(state, enabled)`
+{{/if}}
+
+Turns the spawn director on or off: the window spawns and the scripted events
+together. Turning it off removes nothing already alive, and turning it on
+resumes the director where its timer and its fired events stand. It applies on
+`playing` and `paused`.
+
+{{#if (eq engine.slug "none")}}
+### `spawnEnemy(type, x, y)`
+{{else}}
+### `spawnEnemy(state, type, x, y)`
+{{/if}}
+
+Spawns one enemy of `type`, an `EnemyId`, centered at world `(x, y)` through
+the real spawn path: its `maxHp` is scaled by the run clock exactly as the
+director's spawns are, it takes the next id, and a drifting enemy's heading is
+the unit vector from `(x, y)` toward the lamplighter's center. It applies on
+`playing`, and the enemy appears in the next snapshot.
+
+{{#if (eq engine.slug "none")}}
+### `clearEnemies()`
+{{else}}
+### `clearEnemies(state)`
+{{/if}}
+
+Removes every enemy alive, elites and the Dark included. Nothing drops, nothing
+counts as a kill, and every other field stays as it was. It applies on
+`playing`.
+
+{{#if (eq engine.slug "none")}}
+### `spawnPickup(kind, x, y)`
+{{else}}
+### `spawnPickup(state, kind, x, y)`
+{{/if}}
+
+Places one item at world `(x, y)` with the next id. `kind` is a `GemTier`, which
+places a gem of that tier, unattracted, or a `PickupKind`, which places that
+pickup. It applies on `playing`.
+
+{{#if (eq engine.slug "none")}}
+### `grant(id)`
+{{else}}
+### `grant(state, id)`
+{{/if}}
+
+Applies exactly what accepting the offer `id` would apply, through the accept
+path, outside any overlay: a weapon or passive not held joins the first free
+slot of its kind at level `1`, a held one gains one level with every effect a
+level brings, and `LAMP_OIL_ID` (`"lamp-oil"`) heals `LAMP_OIL_HEAL` (`30`),
+capped at `maxHp`, whatever the candidate pool holds. An `id` that is not a
+legal candidate at the moment of the call leaves the state as it was: the slot
+kind is full, the item is at its maximum level, the id is an evolved weapon, or
+the id is a base weapon whose evolution is held. It applies on `playing`.
+
+{{#if (eq engine.slug "none")}}
+### `setOffers(ids)`
+{{else}}
+### `setOffers(state, ids)`
+{{/if}}
+
+Sets what the next level-up overlay presents, in the order given, in place of
+the random draw. The list is checked against the candidate pool at the moment
+that overlay opens, and it is accepted when it holds `1` to `OFFER_COUNT`
+(`3`) distinct ids, each a candidate of the pool at that moment, or holds
+`LAMP_OIL_ID` alone while the pool is empty; the overlay then presents exactly
+that list. Any other list is discarded whole and the overlay draws at random.
+One overlay consumes it, and a later overlay draws at random again. It applies
+on `playing`.
+
+{{#if (eq engine.slug "none")}}
+### `addXp(amount)`
+{{else}}
+### `addXp(state, amount)`
+{{/if}}
+
+Adds `amount` experience, as it stands and with no multiplier, through the
+real gain path: every level-up the total earns queues, overflow carries, and
+the level-up overlay opens on the spot exactly as it does for a gem. It applies
+on `playing`.
+
+{{#if (eq engine.slug "none")}}
+### `choose(index)`
+{{else}}
+### `choose(state, index)`
+{{/if}}
+
+On `levelup`, accepts the offer at `index`, counted from `0` down the list,
+exactly as moving the highlight there and pressing `confirm` would: the item is
+applied, and either the next queued overlay opens with a fresh pool or play
+resumes. An `index` outside the offers leaves the state as it was.
+
+{{#if (eq engine.slug "none")}}
+### `setPlayer(patch)`
+{{else}}
+### `setPlayer(state, patch)`
+{{/if}}
+
+Applies `patch`, an object of any of `x`, `y`, `hp`, and `facing`, directly to
+the lamplighter as a precondition, leaving every field the patch omits as it
+was. `hp` is capped at `maxHp`, and `facing` is `"left"` or `"right"`. It
+applies on `playing`.
+
+{{#if (eq engine.slug "none")}}
+### `setTime(seconds)`
+{{else}}
+### `setTime(state, seconds)`
+{{/if}}
+
+Sets the run clock: `tick` becomes `round(seconds × TICK_HZ)`. Everything the
+clock derives follows from the next tick on: the spawn window, the health
+scaling of later spawns, and the scripted events, so every event whose time is
+at or before the new clock is marked fired without spawning anything, and an
+event whose time is after it fires when the clock reaches it. When the window
+changes, `spawnTimer` becomes `0` as on any window change. It applies on
+`playing`.
+
+{{#if (eq engine.slug "none")}}
+### `setInput(held)`
+
+Holds movement actions from code. `held` is an object of any of `up`, `down`,
+`left`, and `right`, each a boolean; an action the object names is held or
+released as given, an action it omits is released, and the values persist until
+the next call. While any action is held this way the movement the game reads on
+`playing` comes from here in place of the keyboard, so the lamplighter walks
+exactly as it does under held keys, the facing included. `setInput({})`
+releases every action and hands movement back to the keyboard.
+
+### `pause()`, `resume()`
+{{else}}
+### `pause(state)`, `resume(state)`
+{{/if}}
+
+`pause` poses the pause action on `playing`, moving to `paused`. `resume`
+poses it on `paused`, returning to `playing`. On any other screen each leaves
+the state as it was.
+
+{{#if (eq engine.slug "none")}}
+### `openChest()`
+{{else}}
+### `openChest(state)`
+{{/if}}
+
+On `playing`, poses collecting a chest: the chest overlay opens with the same
+result collecting one produces, an evolution of the first eligible weapon in
+slot order, a level for a random held item below its maximum, or the heal, and
+`chestResult` reports which.
+
+{{#if (eq engine.slug "none")}}
+### `closeOverlay()`
+{{else}}
+### `closeOverlay(state)`
+{{/if}}
+
+Poses `confirm` on an overlay. On `levelup` it accepts the highlighted offer,
+exactly as `choose(menuIndex)` does; on `chest` it closes the overlay and play
+resumes. On any other screen it leaves the state as it was.
+
+{{#if (eq engine.slug "none")}}
+A typical scenario calls `reset` with a seed and `start`, `setAutoStep(false)`,
+`setAutoSpawn(false)` to keep the director out of the way, `spawnEnemy` and
+`grant` to pose the encounter wanted, `setInput` to walk, then `step` through
+it, reading positions, health, and kills from `snapshot()` as it goes.
+{{else}}
+A typical scenario applies `reset` with a seed and `start` through
+`engine.apply`, applies `setAutoSpawn(false)` to keep the director out of the
+way, `spawnEnemy` and `grant` to pose the encounter wanted, then steps the
+engine's own clock through it, reading positions, health, and kills from
+`debug.snapshot(engine.state)` as it goes.
+
+## `WickDebugApi`
+
+`src/game.ts` declares and exports the surface's type exactly as it stands
+here, so a caller written against it drives any build the same way.
+`WickSnapshot` is the type of the object under Snapshot shape below, declared
+by the build to match that shape field for field.
+
+```ts
+export interface WickDebugApi {
+  readonly version: number;
+  reset(
+    state: DeepReadonly<WickState>,
+    options?: { readonly seed?: number },
+  ): WickState;
+  snapshot(state: DeepReadonly<WickState>): WickSnapshot;
+  start(state: DeepReadonly<WickState>): WickState;
+  setAutoSpawn(state: DeepReadonly<WickState>, enabled: boolean): WickState;
+  spawnEnemy(
+    state: DeepReadonly<WickState>,
+    type: EnemyId,
+    x: number,
+    y: number,
+  ): WickState;
+  clearEnemies(state: DeepReadonly<WickState>): WickState;
+  spawnPickup(
+    state: DeepReadonly<WickState>,
+    kind: GemTier | PickupKind,
+    x: number,
+    y: number,
+  ): WickState;
+  grant(state: DeepReadonly<WickState>, id: OfferId): WickState;
+  setOffers(
+    state: DeepReadonly<WickState>,
+    ids: readonly OfferId[],
+  ): WickState;
+  addXp(state: DeepReadonly<WickState>, amount: number): WickState;
+  choose(state: DeepReadonly<WickState>, index: number): WickState;
+  setPlayer(
+    state: DeepReadonly<WickState>,
+    patch: {
+      readonly x?: number;
+      readonly y?: number;
+      readonly hp?: number;
+      readonly facing?: Facing;
+    },
+  ): WickState;
+  setTime(state: DeepReadonly<WickState>, seconds: number): WickState;
+  pause(state: DeepReadonly<WickState>): WickState;
+  resume(state: DeepReadonly<WickState>): WickState;
+  openChest(state: DeepReadonly<WickState>): WickState;
+  closeOverlay(state: DeepReadonly<WickState>): WickState;
+}
+```
+{{/if}}
+
+## Snapshot shape
+
+`snapshot` returns:
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "playing" | "levelup"
+        | "chest" | "paused" | "fallen" | "dawn",
+  menuIndex: <number>,
+  run: {
+    tick: <number>,
+    time: <number>,                // tick / TICK_HZ, seconds
+    level: <number>,
+    xp: <number>,
+    xpToNext: <number>,            // XP_BASE + XP_STEP * (level - 1)
+    kills: <number>,
+    player: { x, y, facing: "left" | "right", hp },
+    maxHp: <number>,
+    armor: <number>,
+    moveSpeed: <number>,           // units per second
+    pickupRadius: <number>,
+    weapons: [{ id, level, cooldown }],
+    passives: [{ id, level }],
+    enemies: [
+      { id, type, x, y, hp, maxHp, heading: { x, y }, age, contactCooldown },
+    ],
+    projectiles: [
+      { id, weapon, x, y, vx, vy, ax, ay, radius, ttl, pierce,
+        hits: [{ enemy, cooldown }] },
+    ],
+    zones: [
+      { id, weapon, kind, x, y, radius, width?, height?, ttl,
+        hits: [{ enemy, cooldown }] },
+    ],
+    gems: [{ id, tier, x, y, attracted }],
+    pickups: [{ id, kind, x, y }],
+    offers: [<string>],            // the open level-up overlay's offers
+    nextOffers: [<string>] | null, // what setOffers queued
+    pendingLevelUps: <number>,
+    chestResult: { kind: "evolve", weapon }
+      | { kind: "level", item, level }
+      | { kind: "heal" }
+      | null,
+    spawnTimer: <number>,
+    spawnWindow: <number>,         // floor(time / SPAWN_WINDOW)
+    autoSpawn: <boolean>,
+    firedEvents: [<number>],       // run-clock seconds, ascending
+    aliveCommons: <number>,
+    nextId: <number>,
+  },
+  muted: <boolean>,
+  accumulator: <number>,           // frame time waiting for the next tick
+  simTime: <number>,               // accumulated simulation time, in seconds
+  rngState: <number>,
+}
+```
+
+The shape is fixed, and every field is present whatever the screen. `run`
+reports the idle run of `specs/state.md` on `title` and `howto`, and the run
+that just ended on `fallen` and `dawn`. `zones[].ttl` is `null` for a zone that
+never expires, and `width` and `height` appear on a slash alone. Every other
+field, `accumulator` included, is read straight off the game's state, so what
+the snapshot reports is what the game holds. Eight are derived rather than
+stored:
+
+| Field | Derived from |
+| --- | --- |
+| `time` | `tick / TICK_HZ` |
+| `xpToNext` | `XP_BASE` (`5`) `+ XP_STEP` (`10`) `× (level − 1)` |
+| `maxHp` | `BASE_MAX_HP` (`100`) `+ TALLOW_HP_PER_LEVEL` (`15`) `×` the Tallow level held |
+| `armor` | `BRASS_ARMOR_PER_LEVEL` (`1`) `×` the Brass level held |
+| `moveSpeed` | `MOVE_SPEED` (`180`) `× (1 + BELLOWS_SPEED_PER_LEVEL` (`0.1`) `×` the Bellows level held`)` |
+| `pickupRadius` | `PICKUP_RADIUS` (`48`) `× (1 + LURE_PICKUP_PER_LEVEL` (`0.25`) `×` the Lure level held`)` |
+| `spawnWindow` | `min(19, floor(time / SPAWN_WINDOW))`, with `SPAWN_WINDOW` (`30`) |
+| `aliveCommons` | how many of `enemies` have `rank` `common` in `ENEMIES` and are not `gnat`, the count `specs/enemies.md` holds against the cap |
+
+A passive not held counts as level `0` in every formula above. Two fields need
+the game to keep them honest every frame:
+
+- `muted` mirrors the runtime's mute bit, refreshed in every update, since the
+  runtime owns muting and this is the game's readable copy of it.
+- `simTime` accumulates the delta time of every update, whatever the screen.
+
+## Diagnostics
+
+The runtime's debug overlay shows the values the game registers with it as
+diagnostic sources. Register at least the current `screen`, the run clock, the
+level with `xp` over `xpToNext`, `hp` over `maxHp`, the kill count, the
+lamplighter's position and facing, the enemy count with the spawn window
+index, the projectile and zone counts, the gem count, the held weapons with
+their levels and cooldowns, the held passives with their levels, `autoSpawn`,
+and `pendingLevelUps`, the same facts the snapshot reports. Keep each one short
+enough to read on a line, and keep every source a pure read, so watching the
+overlay leaves the game as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
+`Backquote`), and it reads the game without changing it.
+{{else}}
+Registering those values is the whole of Wick's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the
+read, as `DeepReadonly<WickState>`, and reads off that argument: a source that
+closed over the state `initialize` built would report the title screen forever,
+because every frame leaves a new value behind. Drawing the panel, toggling it,
+and keeping it read-only are the engine's.
+{{/if}}
