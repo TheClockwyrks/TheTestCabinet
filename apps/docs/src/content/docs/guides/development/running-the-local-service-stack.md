@@ -102,6 +102,16 @@ repository. It finishes once every service is rolled out.
 With no harness key in the environment or `.env`, the bring-up stops before
 applying and names the variables it accepts.
 
+Every image the cluster runs is a local import with no registry behind it, so
+the node's kubelet must keep them: the cluster is created with image garbage
+collection disabled (`image-gc-high-threshold=100`), and `cluster` applies the
+same setting to a cluster that already exists, restarting its node once; the
+backend reports any run in flight at that restart as interrupted, and it must
+be launched again. The kubelet's default otherwise deletes every image no
+running pod uses whenever the node's filesystem (the host disk, under k3d)
+passes 85% full, and the next run then waits in `queued` while its driver pod
+sits in `ImagePullBackOff` on the driver image.
+
 Check what came up:
 
 ```sh
@@ -180,6 +190,7 @@ make -C deployments/local local-rebuild   # service code or manifest change
 make -C deployments/local run-images      # tooling baked into a run image changed
 make -C deployments/local local-reapply   # manifest-only change: re-apply, no rebuild
 make -C deployments/local local-ingest    # a test case was edited: force re-ingest
+make -C deployments/local local-import    # the node lost its images: re-import, no rebuild
 make -C deployments/local secrets         # a key was rotated: re-create the Secrets
 make -C deployments/local local-down      # delete the cluster and everything in it
 ```
@@ -195,6 +206,12 @@ and holds itself unready until an ingest rewrites the store (see
 [the backend's test case definitions](/components/backend/overview/#test-case-definitions)).
 The ingest is the incremental one, so a store the rebuild left readable costs
 nothing.
+
+`local-import` saves the service and run images already built in the container
+runtime and imports them into the node again. It is the recovery for a node
+whose images were deleted (a cluster created before image garbage collection was
+disabled, for example). A driver Job stuck in `ImagePullBackOff` proceeds on its
+own once the image is back, unless the node had to restart for the setting above.
 
 Driver Jobs are created fresh per run, so a rebuilt `tcab-driver` image or a
 rotated key takes effect on the next run with no restart. A re-ingest is required
