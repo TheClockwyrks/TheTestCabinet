@@ -46,10 +46,10 @@ interface CueSpec {
 | Field | Unit | Default | Meaning |
 | --- | --- | --- | --- |
 | `wave` | — | `"sine"` | The oscillator waveform. |
-| `freq` | hertz | required | The starting frequency. |
-| `freqTo` | hertz | `freq` | The frequency swept to linearly across the duration. |
-| `gain` | `0`–`1` | `0.2` | The peak gain the envelope decays from. |
-| `durationMs` | milliseconds | required | How long the cue sounds. |
+| `freq` | hertz | required | The starting frequency. A loop holds it. |
+| `freqTo` | hertz | `freq` | The frequency swept to linearly across the duration. A loop ignores it. |
+| `gain` | `0`–`1` | `0.2` | The peak gain the envelope decays from. A loop holds it. |
+| `durationMs` | milliseconds | required | How long the cue sounds. A loop ignores it. |
 
 `durationMs` is milliseconds, and the delta time an update receives is seconds.
 
@@ -58,6 +58,9 @@ interface CueSpec {
 ```ts
 readonly audio: {
   play(cue: string): void;
+  loop(cue: string): void;
+  stop(cue: string): void;
+  looping(cue: string): boolean;
   setMuted(muted: boolean): void;
   muted(): boolean;
 };
@@ -66,11 +69,29 @@ readonly audio: {
 | Member | Behavior |
 | --- | --- |
 | `play` | Emits `cue:played` and, when audible, sounds the cue. Returns immediately. |
-| `setMuted` | Sets the mute bit. A muted cue still emits its event. |
+| `loop` | Starts the cue looping if it is not already: emits `cue:looped` once and, when audible, sounds the cue continuously until stopped. Does nothing for a cue already looping. |
+| `stop` | Stops the cue's loop if it is looping and emits `cue:stopped`. Does nothing for a cue that is not looping. |
+| `looping` | Whether the cue is looping. `false` for an undeclared cue. |
+| `setMuted` | Sets the mute bit. A muted cue still emits its event, and every running loop follows the bit live. |
 | `muted` | The mute bit. |
 
 Playback belongs to `update`, so what a frame sounds is decided by the same
 function that advanced the simulation.
+
+## Looping
+
+A file-backed cue loops its decoded buffer seamlessly. A synthesized cue holds
+its `wave` at `freq` at its `gain` until stopped, with no sweep and no decay. A
+cue is either looping or not; `loop` and `stop` each act once per transition
+and emit once per transition.
+
+Mute is live: `setMuted(true)` silences every running loop and `setMuted(false)`
+restores each one's gain, without stopping or restarting it. A loop started
+before the unlock is looping from that call, with its event emitted, and begins
+to sound when the gesture opens the context.
+
+Redeclaring a looping cue, through `define` or `load` under the same name,
+stops the loop and emits `cue:stopped`. `engine.destroy()` stops every loop.
 
 ## `AudioState`
 
@@ -98,19 +119,23 @@ broadcaster](/engines/simple-2d/apis/game/), subscribed with
 
 ```ts
 "cue:played": { cue: string; t: number; gain: number };
+"cue:looped": { cue: string; t: number; gain: number };
+"cue:stopped": { cue: string; t: number };
 "audio:unlocked": Record<string, never>;
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `cue` | The name that was played. |
-| `t` | The frame loop's simulated time in milliseconds when it played. |
-| `gain` | The gain it played at. |
+| `cue` | The name that was played, started looping, or stopped. |
+| `t` | The frame loop's simulated time in milliseconds at that moment. |
+| `gain` | The gain it played or started looping at. |
 
-A play on a muted bus reports `gain: 0`. A play on an unmuted bus reports the
-spec's `gain` for a synthesized cue and `1` for a file-backed cue.
+A play or a loop on a muted bus reports `gain: 0`. On an unmuted bus it reports
+the spec's `gain` for a synthesized cue and `1` for a file-backed cue.
+`cue:looped` is emitted once per loop, when it starts, and `cue:stopped` once,
+when it ends.
 
-Handlers run synchronously at the moment of the play, so a subscriber sees the
+Handlers run synchronously at the moment of the call, so a subscriber sees the
 frame a cue belongs to. Subscribing before
 [`engine.initialize`](/engines/simple-2d/apis/engine/) captures the cues a game
 plays from its own initialization onward.
@@ -119,11 +144,12 @@ plays from its own initialization onward.
 
 | Condition | Result |
 | --- | --- |
-| `play` names a cue that was never declared | Throws, naming the cue |
+| `play`, `loop`, or `stop` names a cue that was never declared | Throws, naming the cue |
+| `looping` names a cue that was never declared | Returns `false` |
 | `load` is given a path the asset loader refuses | Rejects with the `resolve` error, and the cue stays undeclared |
 | `load` cannot fetch or decode the audio | Rejects with the cause, and the cue stays undeclared |
-| No audio context is available | `play` emits `cue:played` and nothing sounds |
-| The audio graph throws during synthesis | The event is emitted and the frame continues |
+| No audio context is available | `play` and `loop` emit their events and nothing sounds |
+| The audio graph throws during synthesis or a loop | The event is emitted and the frame continues |
 
 ## Exports
 

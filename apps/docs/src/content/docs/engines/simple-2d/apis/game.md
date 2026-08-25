@@ -152,6 +152,9 @@ interface UpdateApi {
   };
   readonly audio: {
     play(cue: string): void;
+    loop(cue: string): void;
+    stop(cue: string): void;
+    looping(cue: string): boolean;
     setMuted(muted: boolean): void;
     muted(): boolean;
   };
@@ -196,6 +199,8 @@ interface EngineEventMap {
   "asset:loaded": { path: string; url: string };
   "asset:failed": { path: string; url: string; reason: string };
   "cue:played": { cue: string; t: number; gain: number };
+  "cue:looped": { cue: string; t: number; gain: number };
+  "cue:stopped": { cue: string; t: number };
   "audio:unlocked": Record<string, never>;
 }
 ```

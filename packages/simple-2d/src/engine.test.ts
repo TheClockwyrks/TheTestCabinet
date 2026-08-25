@@ -1256,6 +1256,26 @@ describe("destroy", () => {
     expect(cues).toBe(1);
   });
 
+  it("stops every loop, so a cue cannot outlive the engine that started it", async () => {
+    let audio: UpdateApi["audio"] | null = null;
+    const game = testGame({
+      initialize: (api) =>
+        api.audio.define("hum", { freq: 110, durationMs: 10 }),
+      update: (_state, api) => {
+        audio = api.audio;
+        api.audio.loop("hum");
+      },
+    });
+    const { engine } = build({ game });
+    await engine.initialize();
+    await engine.advance(1);
+    expect(audio!.looping("hum")).toBe(true);
+
+    engine.destroy();
+
+    expect(audio!.looping("hum")).toBe(false);
+  });
+
   it("runs and advances nothing once destroyed, rather than failing a teardown race", async () => {
     const { engine } = build();
     await engine.initialize();

@@ -251,6 +251,8 @@ interface EngineEventMap {
   "asset:loaded": { path: string; url: string };
   "asset:failed": { path: string; url: string; reason: string };
   "cue:played": { cue: string; t: number; gain: number };
+  "cue:looped": { cue: string; t: number; gain: number };
+  "cue:stopped": { cue: string; t: number };
   "audio:unlocked": Record<string, never>;
   "world:opening": { from: string | null; to: string };
   "world:closed": { level: string };
@@ -287,6 +289,8 @@ interface EngineEventMap {
 | `asset:loaded` | A loader's value arrives. |
 | `asset:failed` | A loader refuses the path, or the fetch, the status, or the decode fails. |
 | `cue:played` | `world.audio.play` runs, on a muted bus as well as an audible one. |
+| `cue:looped` | `world.audio.loop` starts a cue looping, on a muted bus as well as an audible one. |
+| `cue:stopped` | `world.audio.stop` ends a running loop, or a redeclaration replaces a looping cue. |
 | `audio:unlocked` | The engine opens the audio context, on the first pointer or key event it sees. |
 | `world:opening` | A transition begins, carrying the outgoing level name and the incoming one. |
 | `world:closed` | The outgoing world's game mode has ended play. |

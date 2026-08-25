@@ -61,6 +61,25 @@ function update(state: DeepReadonly<Match>, api: UpdateApi, dt: number): Match {
 Play a name that was defined or loaded. Playing any other name throws, so the
 run itself is what catches a typo.
 
+## Looping a cue
+
+`api.audio.loop` starts a cue sounding continuously and `api.audio.stop` ends
+it. Both act only on a transition, so drive a loop from the state on every frame
+rather than tracking whether it was started.
+
+```ts
+function update(state: DeepReadonly<Ship>, api: UpdateApi, dt: number): Ship {
+  const thrusting = api.input.value("thrust") > 0;
+  if (thrusting) api.audio.loop("engine");
+  else api.audio.stop("engine");
+  return step(state, thrusting, dt);
+}
+```
+
+A synthesized cue loops as a held tone at its `freq` and `gain`, and a
+file-backed cue loops its clip seamlessly, which is how a produced music bed is
+played. `api.audio.looping("engine")` reports whether the loop is running.
+
 ## Muting
 
 Every touch layout carries a `mute` action. Register it like any other action
@@ -71,7 +90,9 @@ if (api.input.pressed("mute")) api.audio.setMuted(!api.audio.muted());
 ```
 
 A muted cue still plays in every sense but audibility: the call succeeds and the
-`cue:played` event still fires, at a gain of zero.
+`cue:played` event still fires, at a gain of zero. A running loop follows the
+mute bit live, silenced by `setMuted(true)` and restored by `setMuted(false)`
+without restarting.
 
 ## Loading assets
 

@@ -215,7 +215,9 @@ an audio file under the asset root, which is how a clip produced by the
 [asset-generation](/testing/asset-generation/manifests/overview/) tools is
 played. A cue name carries one source, and declaring a name that already exists
 replaces what it plays. Both kinds emit `cue:played`, and a play on a muted bus
-reports that event with `gain: 0`.
+reports that event with `gain: 0`. Either kind is looped by name through
+`world.audio.loop` and ended through `world.audio.stop`, which emit
+`cue:looped` and `cue:stopped` once each.
 
 `world.audio.setMuted` sets the mute bit and `world.audio.muted()` reports it.
 The engine opens the audio context on the first pointer or key event it sees

@@ -4,11 +4,14 @@ import type { EngineEventMap } from "./contract";
 
 type Spy = ReturnType<typeof vi.fn>;
 type CuePlayed = EngineEventMap["cue:played"];
+type CueLooped = EngineEventMap["cue:looped"];
+type CueStopped = EngineEventMap["cue:stopped"];
 
 interface FakeOscillator {
   type: string;
   frequency: { setValueAtTime: Spy; linearRampToValueAtTime: Spy };
   connect: Spy;
+  disconnect: Spy;
   start: Spy;
   stop: Spy;
 }
@@ -16,12 +19,16 @@ interface FakeOscillator {
 interface FakeGain {
   gain: { setValueAtTime: Spy; exponentialRampToValueAtTime: Spy };
   connect: Spy;
+  disconnect: Spy;
 }
 
 interface FakeSource {
   buffer: AudioBuffer | null;
+  loop: boolean;
   connect: Spy;
+  disconnect: Spy;
   start: Spy;
+  stop: Spy;
 }
 
 /**
@@ -47,6 +54,7 @@ function fakeContext() {
           linearRampToValueAtTime: vi.fn(),
         },
         connect: vi.fn(),
+        disconnect: vi.fn(),
         start: vi.fn(),
         stop: vi.fn(),
       };
@@ -60,6 +68,7 @@ function fakeContext() {
           exponentialRampToValueAtTime: vi.fn(),
         },
         connect: vi.fn(),
+        disconnect: vi.fn(),
       };
       gains.push(node);
       return node;
@@ -67,8 +76,11 @@ function fakeContext() {
     createBufferSource: vi.fn(() => {
       const source: FakeSource = {
         buffer: null,
+        loop: false,
         connect: vi.fn(),
+        disconnect: vi.fn(),
         start: vi.fn(),
+        stop: vi.fn(),
       };
       sources.push(source);
       return source;
@@ -125,6 +137,20 @@ function cues(events: Recorded[]): CuePlayed[] {
   return events
     .filter((e) => e.event === "cue:played")
     .map((e) => e.payload as CuePlayed);
+}
+
+/** The `cue:looped` payloads among the recorded events, in the order they arrived. */
+function looped(events: Recorded[]): CueLooped[] {
+  return events
+    .filter((e) => e.event === "cue:looped")
+    .map((e) => e.payload as CueLooped);
+}
+
+/** The `cue:stopped` payloads among the recorded events, in the order they arrived. */
+function stopped(events: Recorded[]): CueStopped[] {
+  return events
+    .filter((e) => e.event === "cue:stopped")
+    .map((e) => e.payload as CueStopped);
 }
 
 /** How many `audio:unlocked` events were published. */
@@ -631,5 +657,452 @@ describe("AudioBus memory", () => {
     }
 
     expect(retained(bus)).toBe(0);
+  });
+});
+
+describe("AudioBus loops", () => {
+  it("holds a synthesized cue's wave, frequency and gain, with no sweep, no decay and no stop", () => {
+    const { bus, events, fake } = busWithFake();
+    bus.unlock();
+    bus.define("hum", {
+      wave: "sawtooth",
+      freq: 110,
+      freqTo: 880,
+      gain: 0.3,
+      durationMs: 50,
+    });
+
+    bus.loop("hum");
+
+    const osc = fake.oscillators[0];
+    const amp = fake.gains[0];
+    const now = fake.ctx.currentTime;
+    expect(osc?.type).toBe("sawtooth");
+    expect(osc?.frequency.setValueAtTime).toHaveBeenCalledWith(110, now);
+    expect(osc?.frequency.linearRampToValueAtTime).not.toHaveBeenCalled();
+    expect(amp?.gain.setValueAtTime).toHaveBeenCalledWith(0.3, now);
+    expect(amp?.gain.exponentialRampToValueAtTime).not.toHaveBeenCalled();
+    expect(osc?.connect).toHaveBeenCalledWith(amp);
+    expect(amp?.connect).toHaveBeenCalledWith(fake.ctx.destination);
+    expect(osc?.start).toHaveBeenCalledTimes(1);
+    expect(osc?.stop).not.toHaveBeenCalled();
+    expect(bus.looping("hum")).toBe(true);
+    expect(looped(events)).toEqual([{ cue: "hum", t: 0, gain: 0.3 }]);
+  });
+
+  it("loops a file-backed cue's buffer seamlessly, through its own gain node", async () => {
+    const buffer = fakeBuffer();
+    const { bus, events, fake } = busWithFake({
+      loadAudio: () => Promise.resolve(buffer),
+    });
+    await bus.load("theme", "audio/theme.ogg");
+    bus.unlock();
+
+    bus.loop("theme");
+
+    const source = fake.sources[0];
+    const amp = fake.gains[0];
+    expect(source?.buffer).toBe(buffer);
+    expect(source?.loop).toBe(true);
+    expect(source?.connect).toHaveBeenCalledWith(amp);
+    expect(amp?.gain.setValueAtTime).toHaveBeenCalledWith(
+      1,
+      fake.ctx.currentTime,
+    );
+    expect(amp?.connect).toHaveBeenCalledWith(fake.ctx.destination);
+    expect(source?.start).toHaveBeenCalledTimes(1);
+    expect(looped(events)).toEqual([{ cue: "theme", t: 0, gain: 1 }]);
+  });
+
+  it("does nothing, and announces nothing, for a cue that is already looping", () => {
+    const { bus, events, fake } = busWithFake();
+    bus.unlock();
+    bus.define("hum", BEEP);
+
+    bus.loop("hum");
+    bus.loop("hum");
+    bus.loop("hum");
+
+    expect(fake.oscillators).toHaveLength(1);
+    expect(looped(events)).toHaveLength(1);
+  });
+
+  it("stops a loop once, tearing the graph down and announcing the stop", () => {
+    const { bus, events, fake } = busWithFake({ now: () => 250 });
+    bus.unlock();
+    bus.define("hum", BEEP);
+    bus.loop("hum");
+
+    bus.stop("hum");
+    bus.stop("hum");
+
+    const osc = fake.oscillators[0];
+    expect(osc?.stop).toHaveBeenCalledTimes(1);
+    expect(osc?.disconnect).toHaveBeenCalledTimes(1);
+    expect(fake.gains[0]?.disconnect).toHaveBeenCalledTimes(1);
+    expect(bus.looping("hum")).toBe(false);
+    expect(stopped(events)).toEqual([{ cue: "hum", t: 250 }]);
+  });
+
+  it("starts a fresh graph when a stopped cue is looped again", () => {
+    const { bus, events, fake } = busWithFake();
+    bus.unlock();
+    bus.define("hum", BEEP);
+
+    bus.loop("hum");
+    bus.stop("hum");
+    bus.loop("hum");
+
+    expect(fake.oscillators).toHaveLength(2);
+    expect(fake.oscillators[1]?.start).toHaveBeenCalledTimes(1);
+    expect(events.map((e) => e.event)).toEqual([
+      "audio:unlocked",
+      "cue:looped",
+      "cue:stopped",
+      "cue:looped",
+    ]);
+  });
+
+  it("throws on an undeclared cue for loop and stop, and reads false for looping", () => {
+    const { bus, events } = busWithFake();
+    bus.define("hum", BEEP);
+
+    expect(() => bus.loop("hmm")).toThrow(/unknown audio cue "hmm"/);
+    expect(() => bus.stop("hmm")).toThrow(/unknown audio cue "hmm"/);
+    expect(bus.looping("hmm")).toBe(false);
+    expect(events).toEqual([]);
+  });
+
+  it("reads true from inside its own announcement", () => {
+    let seen: boolean | null = null;
+    const bus = new AudioBus({
+      audioContext: () => null,
+      emit: (event) => {
+        if (event === "cue:looped") seen = bus.looping("hum");
+      },
+    });
+    bus.define("hum", BEEP);
+
+    bus.loop("hum");
+
+    expect(seen).toBe(true);
+  });
+
+  it("stamps the loop and the stop with the frame clock", () => {
+    let frameTime = 0;
+    const { bus, events } = busWithFake({ now: () => frameTime });
+    bus.define("hum", BEEP);
+
+    frameTime = 16;
+    bus.loop("hum");
+    frameTime = 96;
+    bus.stop("hum");
+
+    expect(looped(events)[0]?.t).toBe(16);
+    expect(stopped(events)[0]?.t).toBe(96);
+  });
+});
+
+describe("AudioBus loops and mute", () => {
+  it("drops every running loop to gain zero when muted, and restores it when unmuted, without restarting", async () => {
+    const { bus, fake } = busWithFake({
+      loadAudio: () => Promise.resolve(fakeBuffer()),
+    });
+    bus.define("hum", { ...BEEP, gain: 0.4 });
+    await bus.load("theme", "audio/theme.ogg");
+    bus.unlock();
+    bus.loop("hum");
+    bus.loop("theme");
+    const [humAmp, themeAmp] = fake.gains;
+
+    bus.setMuted(true);
+    expect(humAmp?.gain.setValueAtTime).toHaveBeenLastCalledWith(
+      0,
+      fake.ctx.currentTime,
+    );
+    expect(themeAmp?.gain.setValueAtTime).toHaveBeenLastCalledWith(
+      0,
+      fake.ctx.currentTime,
+    );
+
+    bus.setMuted(false);
+    expect(humAmp?.gain.setValueAtTime).toHaveBeenLastCalledWith(
+      0.4,
+      fake.ctx.currentTime,
+    );
+    expect(themeAmp?.gain.setValueAtTime).toHaveBeenLastCalledWith(
+      1,
+      fake.ctx.currentTime,
+    );
+
+    // The loop itself was never touched: one source each, still running.
+    expect(fake.oscillators).toHaveLength(1);
+    expect(fake.sources).toHaveLength(1);
+    expect(fake.oscillators[0]?.stop).not.toHaveBeenCalled();
+    expect(fake.sources[0]?.stop).not.toHaveBeenCalled();
+    expect(bus.looping("hum")).toBe(true);
+    expect(bus.looping("theme")).toBe(true);
+  });
+
+  it("announces a loop started while muted at gain zero, builds it silent, and restores it on unmute", () => {
+    const { bus, events, fake } = busWithFake();
+    bus.unlock();
+    bus.define("hum", { ...BEEP, gain: 0.4 });
+
+    bus.setMuted(true);
+    bus.loop("hum");
+
+    expect(looped(events)).toEqual([{ cue: "hum", t: 0, gain: 0 }]);
+    expect(fake.oscillators).toHaveLength(1);
+    expect(fake.gains[0]?.gain.setValueAtTime).toHaveBeenLastCalledWith(
+      0,
+      fake.ctx.currentTime,
+    );
+
+    bus.setMuted(false);
+    expect(fake.gains[0]?.gain.setValueAtTime).toHaveBeenLastCalledWith(
+      0.4,
+      fake.ctx.currentTime,
+    );
+  });
+
+  it("announces no loop or stop for a mute transition", () => {
+    const { bus, events } = busWithFake();
+    bus.unlock();
+    bus.define("hum", BEEP);
+    bus.loop("hum");
+
+    bus.setMuted(true);
+    bus.setMuted(false);
+    bus.setMuted(true);
+
+    expect(looped(events)).toHaveLength(1);
+    expect(stopped(events)).toHaveLength(0);
+  });
+});
+
+describe("AudioBus loops and the unlock", () => {
+  it("remembers a loop requested before the unlock and starts it when the context opens", () => {
+    const { bus, events, fake } = busWithFake();
+    bus.define("hum", { ...BEEP, gain: 0.3 });
+
+    bus.loop("hum");
+    expect(bus.looping("hum")).toBe(true);
+    expect(looped(events)).toEqual([{ cue: "hum", t: 0, gain: 0.3 }]);
+    expect(fake.oscillators).toHaveLength(0);
+
+    bus.unlock();
+    expect(fake.oscillators).toHaveLength(1);
+    expect(fake.oscillators[0]?.start).toHaveBeenCalledTimes(1);
+    expect(fake.gains[0]?.gain.setValueAtTime).toHaveBeenCalledWith(
+      0.3,
+      fake.ctx.currentTime,
+    );
+    // The loop was announced when the game asked for it; the unlock repeats nothing.
+    expect(looped(events)).toHaveLength(1);
+  });
+
+  it("starts a remembered loop at the mute state current at the unlock", () => {
+    const { bus, fake } = busWithFake();
+    bus.define("hum", { ...BEEP, gain: 0.3 });
+    bus.loop("hum");
+
+    bus.setMuted(true);
+    bus.unlock();
+
+    expect(fake.gains[0]?.gain.setValueAtTime).toHaveBeenCalledWith(
+      0,
+      fake.ctx.currentTime,
+    );
+  });
+
+  it("stops a loop that never got a context, and still announces the stop", () => {
+    const { bus, events, fake } = busWithFake();
+    bus.define("hum", BEEP);
+    bus.loop("hum");
+
+    bus.stop("hum");
+    bus.unlock();
+
+    expect(bus.looping("hum")).toBe(false);
+    expect(stopped(events)).toHaveLength(1);
+    expect(fake.oscillators).toHaveLength(0);
+  });
+
+  it("keeps a loop as looping in a browser with no audio at all", () => {
+    const { bus, events } = busWith({ audioContext: () => null });
+    bus.define("hum", BEEP);
+
+    bus.loop("hum");
+    expect(() => bus.unlock()).not.toThrow();
+
+    expect(bus.looping("hum")).toBe(true);
+    expect(looped(events)).toHaveLength(1);
+    bus.stop("hum");
+    expect(bus.looping("hum")).toBe(false);
+    expect(stopped(events)).toHaveLength(1);
+  });
+});
+
+describe("AudioBus loops and redeclaration", () => {
+  it("stops a looping cue when define replaces it, and loops the new spec on the next call", () => {
+    const { bus, events, fake } = busWithFake();
+    bus.unlock();
+    bus.define("hum", { ...BEEP, gain: 0.3 });
+    bus.loop("hum");
+
+    bus.define("hum", { wave: "square", freq: 55, gain: 0.1, durationMs: 10 });
+
+    expect(bus.looping("hum")).toBe(false);
+    expect(fake.oscillators[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(stopped(events)).toEqual([{ cue: "hum", t: 0 }]);
+
+    bus.loop("hum");
+    expect(fake.oscillators[1]?.type).toBe("square");
+    expect(looped(events)[1]).toEqual({ cue: "hum", t: 0, gain: 0.1 });
+  });
+
+  it("stops a looping cue when load rebinds it", async () => {
+    const { bus, events, fake } = busWithFake({
+      loadAudio: () => Promise.resolve(fakeBuffer()),
+    });
+    bus.unlock();
+    bus.define("theme", BEEP);
+    bus.loop("theme");
+
+    await bus.load("theme", "audio/theme.ogg");
+
+    expect(bus.looping("theme")).toBe(false);
+    expect(fake.oscillators[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(stopped(events)).toEqual([{ cue: "theme", t: 0 }]);
+  });
+
+  it("leaves a loop running when the load that would have replaced it fails", async () => {
+    const { bus, events, fake } = busWithFake({
+      loadAudio: () => Promise.reject(new Error("HTTP 404")),
+    });
+    bus.unlock();
+    bus.define("theme", BEEP);
+    bus.loop("theme");
+
+    await expect(bus.load("theme", "audio/theme.ogg")).rejects.toThrow(/404/);
+
+    expect(bus.looping("theme")).toBe(true);
+    expect(fake.oscillators[0]?.stop).not.toHaveBeenCalled();
+    expect(stopped(events)).toHaveLength(0);
+  });
+
+  it("announces no stop when a cue that is not looping is redeclared", () => {
+    const { bus, events } = busWithFake();
+    bus.define("hum", BEEP);
+
+    bus.define("hum", { ...BEEP, gain: 0.5 });
+
+    expect(stopped(events)).toHaveLength(0);
+  });
+});
+
+describe("AudioBus silence", () => {
+  it("stops every loop without announcing anything", async () => {
+    const { bus, events, fake } = busWithFake({
+      loadAudio: () => Promise.resolve(fakeBuffer()),
+    });
+    bus.define("hum", BEEP);
+    await bus.load("theme", "audio/theme.ogg");
+    bus.unlock();
+    bus.loop("hum");
+    bus.loop("theme");
+    const before = events.length;
+
+    bus.silence();
+
+    expect(fake.oscillators[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(fake.sources[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(bus.looping("hum")).toBe(false);
+    expect(bus.looping("theme")).toBe(false);
+    expect(events).toHaveLength(before);
+  });
+
+  it("leaves a working bus, so a loop can be started again", () => {
+    const { bus, events, fake } = busWithFake();
+    bus.unlock();
+    bus.define("hum", BEEP);
+    bus.loop("hum");
+    bus.silence();
+
+    bus.loop("hum");
+
+    expect(bus.looping("hum")).toBe(true);
+    expect(fake.oscillators).toHaveLength(2);
+    expect(looped(events)).toHaveLength(2);
+  });
+});
+
+describe("AudioBus loops and a dead context", () => {
+  it("keeps the loop's bookkeeping when the graph cannot be built", () => {
+    const fake = fakeContext();
+    const { bus, events } = busWith({ audioContext: () => fake.as() });
+    bus.define("hum", BEEP);
+    bus.unlock();
+    fake.ctx.createGain.mockImplementation(() => {
+      throw new Error("context is closed");
+    });
+
+    expect(() => bus.loop("hum")).not.toThrow();
+    expect(bus.looping("hum")).toBe(true);
+    expect(looped(events)).toHaveLength(1);
+
+    expect(() => bus.setMuted(true)).not.toThrow();
+    expect(() => bus.stop("hum")).not.toThrow();
+    expect(bus.looping("hum")).toBe(false);
+    expect(stopped(events)).toHaveLength(1);
+  });
+
+  it("survives a source that objects to being stopped", () => {
+    const { bus, fake } = busWithFake();
+    bus.unlock();
+    bus.define("hum", BEEP);
+    bus.loop("hum");
+    fake.oscillators[0]?.stop.mockImplementation(() => {
+      throw new Error("already stopped");
+    });
+
+    expect(() => bus.stop("hum")).not.toThrow();
+    expect(bus.looping("hum")).toBe(false);
+  });
+
+  it("survives a gain node that objects to the mute", () => {
+    const { bus, fake } = busWithFake();
+    bus.unlock();
+    bus.define("hum", BEEP);
+    bus.loop("hum");
+    fake.gains[0]?.gain.setValueAtTime.mockImplementation(() => {
+      throw new Error("context is closed");
+    });
+
+    expect(() => bus.setMuted(true)).not.toThrow();
+    expect(bus.muted()).toBe(true);
+    expect(bus.looping("hum")).toBe(true);
+  });
+});
+
+describe("AudioBus loop memory", () => {
+  it("retains one entry per running loop and nothing once it stops", () => {
+    const { bus } = busWithFake();
+    bus.unlock();
+    bus.define("hum", BEEP);
+    const declared = retained(bus);
+
+    bus.loop("hum");
+    expect(retained(bus)).toBe(declared + 1);
+
+    for (let i = 0; i < 1000; i += 1) {
+      bus.loop("hum");
+      bus.setMuted(i % 2 === 0);
+    }
+    expect(retained(bus)).toBe(declared + 1);
+
+    bus.stop("hum");
+    expect(retained(bus)).toBe(declared);
   });
 });

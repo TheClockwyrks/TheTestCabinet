@@ -12,6 +12,9 @@ api.audio.load(cue: string, path: string): Promise<void>;
 
 // In update:
 api.audio.play(cue: string): void;
+api.audio.loop(cue: string): void;
+api.audio.stop(cue: string): void;
+api.audio.looping(cue: string): boolean;
 api.audio.setMuted(muted: boolean): void;
 api.audio.muted(): boolean;
 ```
@@ -31,10 +34,10 @@ interface CueSpec {
 | Field | Unit | Default | Meaning |
 | --- | --- | --- | --- |
 | `wave` | — | `"sine"` | The oscillator waveform. |
-| `freq` | hertz | required | The starting frequency. |
-| `freqTo` | hertz | `freq` | The frequency swept to linearly across the duration. |
-| `gain` | `0`–`1` | `0.2` | The peak gain the envelope decays from. |
-| `durationMs` | milliseconds | required | How long the cue sounds. |
+| `freq` | hertz | required | The starting frequency. A loop holds it. |
+| `freqTo` | hertz | `freq` | The frequency swept to linearly across the duration. A loop ignores it. |
+| `gain` | `0`–`1` | `0.2` | The peak gain the envelope decays from. A loop holds it. |
+| `durationMs` | milliseconds | required | How long the cue sounds. A loop ignores it. |
 
 ```ts
 initialize(api) {
@@ -91,6 +94,35 @@ cue.
 `gain: 0`, so a build that reacted while muted stays distinguishable from one
 that never reacted.
 
+## Looping
+
+`loop` starts a cue sounding continuously and `stop` ends it. A file-backed cue
+loops its decoded buffer seamlessly. A synthesized cue holds its `wave` at
+`freq` at its `gain` until stopped, with no sweep and no decay. A cue is either
+looping or not, so `loop` on a cue that is already looping does nothing, and
+`stop` on a cue that is not looping does nothing.
+
+```ts
+update(state, api, dt) {
+  const thrusting = api.input.value("thrust") > 0;
+  if (thrusting && !api.audio.looping("engine")) api.audio.loop("engine");
+  if (!thrusting) api.audio.stop("engine");
+  return { ...state, thrusting };
+}
+```
+
+`loop` emits `cue:looped` once, when the loop starts, and `stop` emits
+`cue:stopped` once, when it ends. `looping` reports whether the cue is looping
+and is `false` for a name that was never declared.
+
+Mute is live. `setMuted(true)` silences every running loop and `setMuted(false)`
+restores each one's gain, without restarting either. A loop started before the
+unlock is looping from that call, its event already emitted, and it begins to
+sound the moment the gesture opens the context.
+
+Redeclaring a looping cue, with `define` or `load` under the same name, stops
+the loop and emits `cue:stopped`. `engine.destroy()` stops every loop.
+
 ## The unlock
 
 Browsers refuse to start audio before a user gesture. The engine opens the audio
@@ -116,17 +148,21 @@ initialization.
 
 ```ts
 "cue:played": { cue: string; t: number; gain: number };
+"cue:looped": { cue: string; t: number; gain: number };
+"cue:stopped": { cue: string; t: number };
 "audio:unlocked": Record<string, never>;
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `cue` | The name that was played. |
-| `t` | The frame loop's simulated time in milliseconds when it played. |
-| `gain` | The gain it played at. |
+| `cue` | The name that was played, started looping, or stopped. |
+| `t` | The frame loop's simulated time in milliseconds at that moment. |
+| `gain` | The gain it played or started looping at. |
 
-A play on a muted bus reports `gain: 0`. A play on an unmuted bus reports the
-spec's `gain` for a synthesized cue and `1` for a file-backed cue.
+A play or a loop on a muted bus reports `gain: 0`. On an unmuted bus it reports
+the spec's `gain` for a synthesized cue and `1` for a file-backed cue.
+`cue:looped` is emitted once per loop, when it starts, and `cue:stopped` once,
+when it ends.
 
 `t` is frame time rather than wall time, so a cue's stamp lines up with the
 frame counter. Handlers run synchronously at the moment of the play, so a
@@ -145,13 +181,14 @@ const off = engine.events.on("cue:played", (event) => played.push(event.cue));
 
 | Condition | Result |
 | --- | --- |
-| `play` names a cue that was never declared | Throws, naming the cue |
+| `play`, `loop`, or `stop` names a cue that was never declared | Throws, naming the cue |
+| `looping` names a cue that was never declared | Returns `false` |
 | `load` is given a path the asset loader refuses | Rejects with the `resolve` error, and the cue stays undeclared |
 | `load` cannot fetch or decode the audio | Rejects with the cause, and the cue stays undeclared |
-| No audio context is available | `play` emits `cue:played` and nothing sounds |
-| The audio graph throws during synthesis | The event is emitted and the frame continues |
+| No audio context is available | `play` and `loop` emit their events and nothing sounds |
+| The audio graph throws during synthesis or a loop | The event is emitted and the frame continues |
 
-Playing an undeclared cue throws because silence is the expected outcome of a
-muted or still-locked bus, so a typo'd name would otherwise disappear into the
-same silence and survive the run unnoticed. Nothing else about audio can fail a
-frame.
+Playing, looping, or stopping an undeclared cue throws because silence is the
+expected outcome of a muted or still-locked bus, so a typo'd name would otherwise
+disappear into the same silence and survive the run unnoticed. Nothing else
+about audio can fail a frame.
