@@ -175,6 +175,8 @@ running if a backend already holds an earlier definition. See
   editorial rules and the revision checklist for the seeded set.
 - [Instrumentation](/testing/end-to-end/instrumentation/) covers the debug API,
   deterministic core, and overlay a full-stack case must mandate.
+- [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/)
+  gives the design rules for that API and the validators that drive it.
 - [Full-Stack Tests](/testing/full-stack/evaluation/) covers how a finished run
   is validated, reviewed, and scored.
 - [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/)

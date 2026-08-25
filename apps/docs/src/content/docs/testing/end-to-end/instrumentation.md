@@ -132,17 +132,22 @@ to record the media at the speed the game runs.
 Beyond the core, a case declares its own control operations: the verbs that set
 up the scenarios its review items need. These are case-specific, and the
 specification must enumerate each by name, signature, and effect, precisely
-enough that a driver can call it blind. Typical shapes:
+enough that a driver can call it blind. Each control operation is atomic: it
+sets one field of the declared state, and takes scalar arguments. Typical
+shapes:
 
-- Enter a state the review needs, such as starting a match in a given mode or
-  opening a particular screen.
+- Select a screen or mode, such as `setScreen("countdown")` or
+  `setMode("versus")`.
 - Set a precondition value, such as putting the score at `10–10`, giving the
-  player a resource level, or placing an entity at a coordinate with a velocity.
+  player a resource level, or placing an entity at a coordinate.
 - Trigger a real event such as a serve, a shot, or a turn advancing, routed
   through the same code path normal play uses.
 
-A control operation is a setup verb. It arranges the world; `step()` runs the
-real systems; `snapshot()` or a screenshot reads the result.
+A control operation is a setup verb. It arranges one thing in the world;
+`step()` runs the real systems; `snapshot()` or a screenshot reads the result.
+Sequences of operations, such as opening a match in a given mode, are composed
+by the case's validators. The design rules for both sides are in
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
 
 ### The precondition guardrail
 
@@ -323,8 +328,9 @@ When adding instrumentation to a case's specification:
   `snapshot()` object and the unit `step` takes, so the contract is unambiguous.
 - Enumerate the control operations the case needs, each by name, signature, and
   effect, and keep every one on the precondition side of the
-  [guardrail](#the-precondition-guardrail). A well-designed operation arranges a
-  situation rather than announcing an outcome.
+  [guardrail](#the-precondition-guardrail). A well-designed operation sets one
+  value rather than announcing an outcome; see
+  [Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/).
 - Require the deterministic core the API rests on, fixed-timestep, render-free,
   and seedable, in the same spec that covers the simulation.
 - Require the read-only overlay, naming its toggle key and the state it must
