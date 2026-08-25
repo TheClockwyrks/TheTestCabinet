@@ -130,8 +130,8 @@ interface AudioState {
 | `muted` | Whether the bus is muted. |
 | `unlocked` | Whether a user gesture has opened the audio context. |
 
-The engine opens the audio context on the first pointer or key event it sees and
-emits `audio:unlocked` at that moment.
+The engine opens the audio context on the first pointerdown or keydown event it
+sees and emits `audio:unlocked` at that moment.
 
 ## Events
 

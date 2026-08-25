@@ -291,7 +291,7 @@ interface EngineEventMap {
 | `cue:played` | `world.audio.play` runs, on a muted bus as well as an audible one. |
 | `cue:looped` | `world.audio.loop` starts a cue looping, on a muted bus as well as an audible one. |
 | `cue:stopped` | `world.audio.stop` ends a running loop, or a redeclaration replaces a looping cue. |
-| `audio:unlocked` | The engine opens the audio context, on the first pointer or key event it sees. |
+| `audio:unlocked` | The engine opens the audio context, on the first pointerdown or keydown event it sees. |
 | `world:opening` | A transition begins, carrying the outgoing level name and the incoming one. |
 | `world:closed` | The outgoing world's game mode has ended play. |
 | `world:opened` | The incoming world is built and its game mode has begun play. |

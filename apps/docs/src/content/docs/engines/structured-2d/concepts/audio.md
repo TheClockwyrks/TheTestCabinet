@@ -77,9 +77,9 @@ different reasons.
 
 Muted is a decision the game or the player made. Unlocked records that a user
 gesture reached the engine, which is what a browser demands before it will start
-an audio context at all. The engine listens for the first pointer or key event
-on its surface and opens the context there, once, so a build supplies no gesture
-handler and no enable-sound screen of its own.
+an audio context at all. The engine listens for the first pointerdown or keydown
+event on its surface and opens the context there, once, so a build supplies no
+gesture handler and no enable-sound screen of its own.
 
 Keeping the two bits apart is what lets a silent build be diagnosed. A muted bus
 is the build behaving as asked. A locked bus is an environment nothing has
