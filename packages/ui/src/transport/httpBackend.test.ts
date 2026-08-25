@@ -565,3 +565,148 @@ describe("createBackendExec console stream", () => {
     expect(onNotification).toHaveBeenCalledTimes(1);
   });
 });
+
+// The live NDJSON stream (`GET /jobs/{id}/live`) as the browser hands it to the
+// reader: each chunk is delivered, then the body either closes cleanly or fails
+// mid-read the way a reset connection does (Chromium: `TypeError: Error in input
+// stream`).
+function liveBody(lines: string[], dropAfter: boolean): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const line of lines) controller.enqueue(encoder.encode(`${line}\n`));
+    },
+    // Called once the queued chunks are drained — so, as on the wire, the bytes
+    // that made it through are read before the drop (or the close) is seen.
+    pull(controller) {
+      if (dropAfter) controller.error(new TypeError("Error in input stream"));
+      else controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "content-type": "application/x-ndjson" },
+  });
+}
+
+function event(n: number): string {
+  return JSON.stringify({
+    timestamp: `2026-01-01T00:00:0${n}Z`,
+    type: "system",
+    message: `e${n}`,
+  });
+}
+
+// Drive `subscribeToRun` to its terminal handler, resolving with the outcome.
+function subscribe(client: ReturnType<typeof createBackendExec>) {
+  const onEvent = vi.fn();
+  const onError = vi.fn();
+  const done = new Promise<unknown>((resolve) => {
+    client.subscribeToRun("job-1", {
+      onEvent,
+      onError: (e) => {
+        onError(e);
+        resolve({ error: e });
+      },
+      onDone: resolve,
+    });
+  });
+  return { onEvent, onError, done };
+}
+
+describe("subscribeToRun over a dropped live stream", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // The regression: a gg run that refused its configuration exited within a
+  // minute, the live connection was reset mid-body, and the monitor surfaced
+  // the browser's `TypeError: Error in input stream` as a UI error instead of
+  // the run's own failed outcome.
+  it("resolves a run that has already ended to its outcome, not the transport error", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/jobs/job-1/live")) return liveBody([event(1)], true);
+      if (url.endsWith("/jobs/job-1"))
+        return Response.json({
+          id: "job-1",
+          state: "failed",
+          recordId: "run-1",
+          detail: "run failed: gg exited with code 1 (session ended `error`)",
+        });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const { onEvent, onError, done } = subscribe(client);
+
+    await expect(done).resolves.toEqual({
+      kind: "failed",
+      message: "run failed: gg exited with code 1 (session ended `error`)",
+    });
+    expect(onError).not.toHaveBeenCalled();
+    expect(onEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-joins a still-running job and skips the replayed backlog", async () => {
+    vi.useFakeTimers();
+    let liveOpens = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/jobs/job-1/live")) {
+        liveOpens += 1;
+        // First connection: two events, then the drop. Second: the backend
+        // replays both, adds a third, and closes because the run ended.
+        return liveOpens === 1
+          ? liveBody([event(1), event(2)], true)
+          : liveBody([event(1), event(2), event(3)], false);
+      }
+      if (url.endsWith("/jobs/job-1"))
+        return Response.json(
+          liveOpens === 1
+            ? { id: "job-1", state: "running" }
+            : { id: "job-1", state: "succeeded", recordId: "run-1" },
+        );
+      if (url.endsWith("/runs/run-1"))
+        return Response.json(storedRunBody("run-1"));
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const { onEvent, onError, done } = subscribe(client);
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    await expect(done).resolves.toMatchObject({ kind: "completed" });
+    expect(onError).not.toHaveBeenCalled();
+    expect(liveOpens).toBe(2);
+    expect(onEvent.mock.calls.map(([e]) => e.message)).toEqual([
+      "e1",
+      "e2",
+      "e3",
+    ]);
+  });
+
+  it("reports the drop once the job stays unreachable past the reconnect budget", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/jobs/job-1/live")) return liveBody([], true);
+      if (url.endsWith("/jobs/job-1"))
+        return Response.json({ id: "job-1", state: "running" });
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    const { onError, done } = subscribe(client);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await done;
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(String(onError.mock.calls[0]![0])).toContain(
+      "Error in input stream",
+    );
+  });
+});

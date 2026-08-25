@@ -2280,36 +2280,43 @@ async function streamLive(
 ): Promise<void> {
   const backend = createHttpBackend(backendUrl);
   try {
-    const res = await fetch(
-      joinUrl(backendUrl, `/jobs/${encodeURIComponent(runId)}/live`),
-      {
-        headers: { accept: "application/x-ndjson" },
-        signal: controller.signal,
-      },
-    );
-    if (!res.ok || !res.body) {
-      throw new Error(`live stream failed: ${res.status}`);
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let newline: number;
-      while ((newline = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, newline).trim();
-        buffer = buffer.slice(newline + 1);
-        if (line) emitLine(line, handlers);
+    // The connection can drop mid-body without the run being over — a
+    // port-forward or proxy resetting it, a browser giving up on a stalled read
+    // (Chromium reports either as `TypeError: Error in input stream`). That is a
+    // transport fault, not a run outcome, so it is never surfaced as one: the job
+    // is re-read, and a run that has since ended resolves to its real outcome
+    // below, while a run still going is re-joined. The backend replays the whole
+    // backlog to a new subscriber, so the events already forwarded are skipped by
+    // count — the backlog is append-only and in order, which makes the count the
+    // resume cursor.
+    const cursor: LiveCursor = { delivered: 0 };
+    let status: JobStatusResponse | null = null;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await readLiveStream(
+          backendUrl,
+          runId,
+          handlers,
+          controller.signal,
+          cursor,
+        );
+        break;
+      } catch (e) {
+        if (controller.signal.aborted) return;
+        status = await getJson<JobStatusResponse>(
+          backendUrl,
+          `/jobs/${encodeURIComponent(runId)}`,
+        ).catch(() => null);
+        if (status && mapJobState(status.state) !== "running") break;
+        if (attempt >= LIVE_RECONNECT_ATTEMPTS) throw e;
+        status = null;
+        await delay(LIVE_RECONNECT_DELAY_MS, controller.signal);
       }
     }
-    const tail = buffer.trim();
-    if (tail) emitLine(tail, handlers);
 
     // The stream closes when the run reaches a terminal state; read the job back
     // to learn how it ended and (on success) the produced record to open.
-    const status = await getJson<JobStatusResponse>(
+    status ??= await getJson<JobStatusResponse>(
       backendUrl,
       `/jobs/${encodeURIComponent(runId)}`,
     );
@@ -2347,6 +2354,106 @@ async function streamLive(
     if (controller.signal.aborted) return;
     handlers.onError?.(e);
   }
+}
+
+// How many times a dropped live stream is re-joined before the drop is reported,
+// and the pause before each attempt. The drops seen in practice are momentary
+// (a port-forward resetting one connection), so a short pause is enough; the
+// cap keeps a backend that is genuinely unreachable from being hammered forever.
+const LIVE_RECONNECT_ATTEMPTS = 5;
+const LIVE_RECONNECT_DELAY_MS = 1_000;
+
+// How far into a job's event backlog a subscriber has forwarded — the resume
+// point for a re-joined stream. Advanced in place as lines are forwarded, so it
+// stays correct when the read fails partway through.
+interface LiveCursor {
+  delivered: number;
+}
+
+// Open `GET /jobs/{id}/live` and forward every line until the backend closes it,
+// skipping the first `cursor.delivered` events (a re-joined stream's replayed
+// backlog) and advancing the cursor past each event forwarded. Rejects with the
+// transport's error when the read fails before the backend closed the stream.
+async function readLiveStream(
+  backendUrl: string,
+  runId: string,
+  handlers: RunSubscription,
+  signal: AbortSignal,
+  cursor: LiveCursor,
+): Promise<void> {
+  const res = await fetch(
+    joinUrl(backendUrl, `/jobs/${encodeURIComponent(runId)}/live`),
+    {
+      headers: { accept: "application/x-ndjson" },
+      signal,
+    },
+  );
+  if (!res.ok || !res.body) {
+    throw new Error(`live stream failed: ${res.status}`);
+  }
+  // Previews are not counted: the backend replays only the latest frame per
+  // kind, and re-delivering one is harmless.
+  let seen = 0;
+  const forward = (line: string): void => {
+    if (isPreviewLine(line)) {
+      emitLine(line, handlers);
+      return;
+    }
+    seen += 1;
+    if (seen <= cursor.delivered) return;
+    emitLine(line, handlers);
+    cursor.delivered = seen;
+  };
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline: number;
+    while ((newline = buffer.indexOf("\n")) !== -1) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) forward(line);
+    }
+  }
+  const tail = buffer.trim();
+  if (tail) forward(tail);
+}
+
+// Whether a live-stream line is an asset-preview frame rather than an event.
+function isPreviewLine(line: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(line);
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (parsed as { type?: unknown }).type === "asset_preview"
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Wait `ms`, resolving early (without error) if `signal` aborts meanwhile so an
+// unsubscribed monitor never lingers on a reconnect pause.
+function delay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort(): void {
+      clearTimeout(timer);
+      resolve();
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 // How long the monitor waits for a killed run's record to be attached, and how
