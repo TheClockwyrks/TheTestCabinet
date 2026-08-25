@@ -307,3 +307,22 @@ The `medium` factory is now drawn by hand, and a stale `large` oracle was re-sol
   training references were re-solved and confirmed unchanged.
 - **Playback regenerated.** `replay/assets/reference-*.json` were rebuilt from the
   scored set and re-vendored into `@test-cabinet/ui`.
+
+The `large` factory now builds the whole machine tree, drawn from `medium`:
+
+- **`large` is `medium` copied onto the 72×40 grid and extended.** medium's 630
+  entities are unchanged; 397 new ones fill the freed territory — two more smelting
+  banks (11 iron and 5 copper furnaces, 51 in all), three crafting bands hanging off a
+  serpentine feed belt, and seven terminal stations on a floor belt spanning the full
+  width. All three belt tiers are now in use.
+- **Every stage drains to its own single-item sink**, which `medium` cannot do. Over
+  360,000 ticks its sixteen sinks take `assembler` 3,742 + 3,740, `inserter` 3,740,
+  `circuit` 3,739, `transport-belt` 7,486 + 11,220, `iron-gear` ~5,610 at each of
+  four, `copper-cable` ~11,240 at each of five, and the surplus plate at the last.
+- **The fuel gate holds.** Transport is correct at **28.0B**, under the 40B ceiling
+  (23.9B at the old 634 entities); naive does not finish inside 400B. Transport fuel
+  is entity count times how long the factory takes to settle, so a station whose
+  output rate exactly matched the one inserter draining it had to be given a second
+  outlet — it cost 37B on its own.
+- **Playback regenerated.** `replay/assets/reference-large.json` was rebuilt from the
+  scored set and re-vendored into `@test-cabinet/ui`.

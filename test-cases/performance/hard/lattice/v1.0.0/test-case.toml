@@ -183,36 +183,32 @@ kind = "smoke"                 # one assembler's output feeds the next (2-stage 
 # scenarios so the efficiency gap between a naive and a transport-line engine
 # dominates the fuel total (`large` is 72x40 over 360,000 ticks).
 #
-# The set is a progression of two layouts (`lattice gen --layout`):
+# The set is a progression of two layouts:
 #   - `small` is a `lines` layout — independent east-flowing belt/craft/circuit
 #     lines stacked in bands. It is the fast, simple CORRECTNESS confirmation: a
 #     small grid an engine reproduces (or fails) in ~1s, exercising every entity and
 #     the circuit chain without the cost of a big factory.
-#   - `medium` and `large` are `bus` layouts — a real **main bus**. Every source
-#     emits ONLY raw ore (`iron-ore`/`copper-ore`) on the far-west column; the ore is
-#     rerouted (splitters fan it up/down) into plate smelters in the LEFT region and
-#     fully consumed there (no raw ore ever crosses half-width). Iron-plate and
-#     copper-plate sub-bus lanes then run east across the whole grid, LINED with
-#     product stations that tap them: gear and cable stations along the lanes, and a
-#     machine works building `circuit`, `transport-belt`, `inserter`, and `assembler`
-#     (the last from a belt fed forward into it — a machine building a machine). Every
-#     product drains to its own single-item sink spread down the east side. Machinery
-#     covers the full width edge to edge — not clustered at one end — and belts of all
-#     three tiers move at their own speeds. They stress every interconnection behavior
-#     the specs describe: belt→belt taps, curves, splitter rerouting/balancing, the
-#     two-input `circuit` chain, and multi-stage crafting through the machine tree, and
-#     every stage (cable, gear, circuit, and all three machines) reaches a sink, so a
+#   - `medium` and `large` are hand-drawn **main-bus** factories. Sources emit raw ore
+#     and the coal the smelters burn; the ore is rerouted (splitters fan it up/down)
+#     into plate smelters and fully consumed there. Plate lanes then run east across
+#     the grid, LINED with product stations that tap them: gear and cable stations
+#     along the lanes, and a machine works building `circuit`, `transport-belt`,
+#     `inserter`, and `assembler` (the last from a belt fed forward into it — a
+#     machine building a machine). Machinery covers the full width edge to edge — not
+#     clustered at one end — and belts of all three tiers move at their own speeds.
+#     They stress every interconnection behavior the specs describe: belt→belt taps,
+#     curves, splitter rerouting/balancing, the two-input `circuit` chain, and
+#     multi-stage crafting through the machine tree. On `large` every stage (cable,
+#     gear, circuit, and all three machines) drains to its own single-item sink, so a
 #     jammed-but-periodic engine cannot masquerade as correct.
 #
-# Every scored scenario still exercises EVERY entity and the multi-input recipe:
-# belts, a splitter, inserters, assemblers, and the two-input `circuit` chain. That
-# is a property of the generator rather than of these seeds — both layouts place the
-# circuit chain and a splitter outright. An earlier scored set was generated before
-# the generator could emit inserters or assemblers at all, so it graded only belts
-# and splitters while the specs described far more; an engine that skipped crafting
-# entirely would have scored correct.
+# Every scored scenario exercises EVERY entity and the multi-input recipe: belts, a
+# splitter, inserters, assemblers, and the two-input `circuit` chain. An earlier
+# scored set was generated before the generator could emit inserters or assemblers at
+# all, so it graded only belts and splitters while the specs described far more; an
+# engine that skipped crafting entirely would have scored correct.
 #
-# Each scored scenario is graded at FIVE ticks: the generator's quarter/half/end
+# Each scored scenario is graded at FIVE ticks: its quarter/half/end
 # checkpoints, plus two inside the browser-playback window (`1250` and `2500`, from
 # `lattice-core`'s `PLAYBACK_WINDOW_TICKS`). The window ones exist because playback
 # shows a scenario's first 2,500 ticks and nothing else, while the quarter/half/end
@@ -224,17 +220,16 @@ kind = "smoke"                 # one assembler's output feeds the next (2-stage 
 # compare its frames against (its drift gate). The two extra snapshots cost almost
 # nothing: an engine has to simulate those ticks regardless.
 #
-# Regenerate with (the seeds are recorded so the set is reproducible):
-#   lattice gen --layout lines --seed 0x5A11 --grid 24x12 --ticks 50000  --out cases/small.json
-#   lattice gen --layout bus   --seed 0x2A01 --grid 48x32 --ticks 300000 --out cases/medium.json
-#   lattice gen --layout bus   --seed 0x7E44 --grid 72x40 --ticks 360000 --out cases/large.json
+# `small` is generated; `medium` and `large` are drawn by hand in the designer
+# (`apps/lattice-designer`, which opens these files and saves back to them):
+#   lattice gen --layout lines --seed 0x5A11 --grid 24x12 --ticks 50000 --out cases/small.json
 # then `lattice solve --scenario cases/<name>.json --out cases/<name>.out` for each.
-# The generator schedules the window checkpoints itself, so these commands reproduce
-# the committed schedules; do not hand-edit a `snapshots` array. Any change to the
-# engine's rules or the generator's layout requires redoing both halves, since the
-# expected answers are the comparison key.
+# A scored `snapshots` array is load-bearing — the case grades at exactly those ticks
+# — so it is edited deliberately, never regenerated. Any change to the engine's rules
+# or to a layout requires redoing the oracle, since the expected answers are the
+# comparison key.
 #
-# A seed is not interchangeable: it must keep the naive-vs-transport EFFICIENCY GAP
+# A layout is not interchangeable: it must keep the naive-vs-transport EFFICIENCY GAP
 # wide AND leave the transport reference under the fuel ceiling. The main-bus factory
 # has a substantial one-time WARM-UP: its sub-bus lanes and splitter balancers take a
 # while to reach equilibrium, and the transport reference fingerprints the world until
@@ -243,11 +238,20 @@ kind = "smoke"                 # one assembler's output feeds the next (2-stage 
 # the gap WIDENS the longer a scenario runs. That is why the scored bus scenarios run
 # long (medium 300k, large 360k ticks): the warm-up is amortised and the naive/
 # transport gap opens to ~8-10x. Current transport fuel is small ~0.63B, medium ~20B,
-# large ~23B (all under the 40B ceiling; the small figure roughly doubled when the
+# large ~28B (all under the 40B ceiling; the small figure roughly doubled when the
 # two playback-window checkpoints were added, since the reference now materializes
 # state during warm-up as well as at steady state), while the naive engine burns
-# small ~15.6B, medium ~142B, large ~242B. The EFFICIENCY discrimination is on the
-# two bus scenarios: naive medium/large blow past the 40B ceiling and fail, transport
+# small ~15.6B, medium ~142B, and `large` does not finish inside 400B.
+#
+# The transport figure is entity count times how long the factory takes to SETTLE, so
+# a bigger layout stays affordable only if every station keeps to its own craft
+# period. One that spends its time output-blocked, or whose output rate exactly
+# matches the single inserter draining it (a `copper-cable` station makes 2 items per
+# 32 ticks and one arm moves 1 per 16), never lets the world repeat and costs billions
+# on its own; give such a station a second outlet.
+#
+# The EFFICIENCY discrimination is on the two bus scenarios: naive medium/large blow
+# past the 40B ceiling and fail, transport
 # passes. `small` is the CORRECTNESS confirmation, not an efficiency gate — its factory
 # is tiny enough that even the naive engine finishes under 40B, so both engines pass it;
 # the naive engine is failed by the case as a whole on medium and large. (When the
