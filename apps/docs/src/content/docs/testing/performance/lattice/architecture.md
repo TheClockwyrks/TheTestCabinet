@@ -315,6 +315,14 @@ caches those frames, and streams them to the renderer. There is **no reference
 fallback**: a module that will not start leaves playback unavailable rather than
 showing a factory the submission never ran.
 
+The scored boards are larger than a browser viewport at any legible scale — the
+medium factory is 48x32 cells and the large one 72x40, at one 32px sprite per cell —
+so the player **fits the whole board to the window** by default and offers a zoom
+ladder (with `Ctrl`/`Cmd` + wheel, about the cursor) to look closer. A factory is
+read as a whole: which lanes are starved, where items pile up, and which branch of
+the bus has stalled are all properties of the layout at large, invisible when a
+viewer can only see a screenful of it at a time.
+
 ### The drift gate
 
 Playback re-steps the run's own module, so at a tick the run **graded**, the frame the

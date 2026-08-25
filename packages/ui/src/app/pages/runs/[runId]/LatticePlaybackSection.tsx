@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   loadSheet,
   Renderer,
@@ -9,6 +15,7 @@ import {
 } from "../lattice/renderer";
 import type { PerformanceSnapshotCheck } from "@test-cabinet/run-record";
 import { firstDrift } from "../lattice/drift";
+import { fitZoom, MAX_ZOOM, MIN_ZOOM, stepZoom } from "../lattice/zoom";
 import type { PlaybackWorkerResponse } from "../lattice/playbackWorker";
 import { formatInteger } from "../../../format";
 import styles from "./LatticePlaybackSection.module.scss";
@@ -43,6 +50,12 @@ const DRAW_EVERY_TICK_BELOW = 4;
 // forever. (The reference engine always starts; the timeout simply never fires for
 // it.)
 const LOAD_TIMEOUT_MS = 8000;
+
+/** Clamp a normalized fraction, so an anchor point outside the board still names a
+ * point on it. */
+function clamp01(value: number): number {
+  return Math.min(Math.max(value, 0), 1);
+}
 
 // Load a bundled `?url` asset's bytes, tolerating both emitted file URLs and inlined
 // `data:` URLs. WebKit's WKWebView (the macOS Tauri webview) cannot `fetch()` a
@@ -132,6 +145,9 @@ export function PlaybackOverlay({
   onExit: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // The scrolling stage the canvas sits in. Zooming reads its box (to fit a board to
+  // it) and writes its scroll offsets (to hold the anchor point still).
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const boardRef = useRef<Board | null>(null);
@@ -158,6 +174,31 @@ export function PlaybackOverlay({
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [tick, setTick] = useState(0);
+  // The board's native pixel size, known once the engine posts its board. The canvas
+  // always renders at this resolution and is only *displayed* at `scale`, so zooming
+  // restyles one element and never re-draws or re-steps the factory.
+  const [natural, setNatural] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  // The stage's content box, tracked so Fit follows a resized window (or a desktop
+  // shell whose chrome changes height) instead of freezing at the size it opened at.
+  const [viewport, setViewport] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  // The zoom the viewer chose, or null while following the fit-to-stage scale — the
+  // default, because the two large factories do not come close to fitting a viewport
+  // at a legible zoom. Before this the board was drawn at a fixed 2x and the only way
+  // to see the far side of a 72x40 factory was to scroll to it, a screenful at a time,
+  // with no way to take the whole thing in.
+  const [zoom, setZoom] = useState<number | null>(null);
+
+  const scale = zoom ?? fitZoom(natural, viewport);
+  // The wheel handler is bound once (it must be non-passive; see below), so it reads
+  // the live scale from a ref rather than closing over a stale one.
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
 
   // Load the sheet and the engine module + scenario, then hand the module to a worker
   // to step. There is NO fallback in either direction: without both a module and a
@@ -180,6 +221,7 @@ export function PlaybackOverlay({
     framesRef.current = [];
     completeRef.current = false;
     posRef.current = 0;
+    setNatural(null);
 
     (async () => {
       try {
@@ -248,6 +290,7 @@ export function PlaybackOverlay({
             const size = renderer.size(board);
             canvas.width = size.width;
             canvas.height = size.height;
+            setNatural(size);
             boardRef.current = board;
             rendererRef.current = renderer;
             setReady(true);
@@ -329,6 +372,110 @@ export function PlaybackOverlay({
     return () => cancelAnimationFrame(raf);
   }, [ready, playing, speed]);
 
+  // Lock document scroll for the overlay's lifetime so the fixed overlay never
+  // scrolls the page underneath it — which, on a run's Results tab, also leaves the
+  // page's own scrollbar standing beside a factory that is fitted to the window and
+  // has nothing to scroll. Matches the adversarial replay overlay and the playable
+  // embed, the other two full-viewport players.
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
+  // Track the stage's content box so Fit is a live scale, not a one-off measurement.
+  // `contentRect` excludes the stage's padding, which is exactly the space the board
+  // has to fit into.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[entries.length - 1]?.contentRect;
+      if (box) setViewport({ width: box.width, height: box.height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Where the next zoom should keep the picture pinned, captured before the re-render
+  // (which is what changes the canvas's size) and applied after it.
+  const anchorRef = useRef<{
+    fx: number;
+    fy: number;
+    px: number;
+    py: number;
+  } | null>(null);
+
+  /**
+   * Change the zoom (null to resume following Fit) while keeping whatever the viewer
+   * was looking at under the same point on screen: the cursor for a wheel zoom, the
+   * middle of the stage for the buttons.
+   *
+   * Without this, zooming into a factory that overflows the stage lands wherever the
+   * scroll offsets happened to be — usually the top-left corner — so magnifying the
+   * machine you were watching scrolls it off screen instead.
+   */
+  const zoomTo = useCallback(
+    (next: number | null, at?: { clientX: number; clientY: number }) => {
+      const el = viewportRef.current;
+      const canvas = canvasRef.current;
+      if (el && canvas) {
+        const view = el.getBoundingClientRect();
+        const board = canvas.getBoundingClientRect();
+        const px = (at?.clientX ?? view.left + view.width / 2) - view.left;
+        const py = (at?.clientY ?? view.top + view.height / 2) - view.top;
+        // As a fraction of the board, which is the one coordinate that survives the
+        // resize — the canvas's own pixels are unchanged by zooming.
+        if (board.width > 0 && board.height > 0) {
+          anchorRef.current = {
+            fx: clamp01((px + view.left - board.left) / board.width),
+            fy: clamp01((py + view.top - board.top) / board.height),
+            px,
+            py,
+          };
+        }
+      }
+      setZoom(next);
+    },
+    [],
+  );
+
+  // Put the anchor point back under the pointer once the resized canvas has been laid
+  // out. `offsetLeft`/`offsetTop` are measured from the stage's padding edge (it is
+  // the positioned ancestor) and are unaffected by scrolling, so they compose with the
+  // target scroll offset directly.
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    anchorRef.current = null;
+    const el = viewportRef.current;
+    const canvas = canvasRef.current;
+    if (!el || !canvas) return;
+    el.scrollLeft =
+      canvas.offsetLeft + anchor.fx * canvas.offsetWidth - anchor.px;
+    el.scrollTop =
+      canvas.offsetTop + anchor.fy * canvas.offsetHeight - anchor.py;
+  });
+
+  // Ctrl/Cmd + wheel — which is also what a trackpad pinch sends — zooms about the
+  // cursor, the gesture every map and canvas app answers to. Bound by hand rather than
+  // as `onWheel` because React registers wheel listeners passively, where the
+  // `preventDefault` that stops the browser zooming the whole console instead is
+  // ignored.
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      zoomTo(stepZoom(scaleRef.current, event.deltaY < 0 ? 1 : -1), event);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [zoomTo]);
+
   const restart = useCallback(() => {
     posRef.current = 0;
     setTick(framesRef.current[0]?.tick ?? 0);
@@ -349,13 +496,50 @@ export function PlaybackOverlay({
         <span className={styles.overlayLabel}>{label}</span>
       </div>
       <div className={styles.stage}>
-        {error ? (
-          <div className={styles.error}>
-            Could not play this scenario: {error}
-          </div>
-        ) : (
-          <canvas ref={canvasRef} className={styles.canvas} />
-        )}
+        {/* The scroller. A board zoomed in past the stage is panned by scrolling this,
+            which is why the drift banner is its sibling rather than its child: pinned
+            to the stage, it stays on screen wherever the viewer has panned to. */}
+        <div
+          className={styles.viewport}
+          ref={viewportRef}
+          // A scroll container is only reachable by keyboard if something in it can
+          // take focus, and a canvas cannot — so without this, a zoomed-in factory
+          // could be panned by pointer only.
+          tabIndex={0}
+          role="region"
+          aria-label="Factory, scrollable when zoomed in"
+        >
+          {error ? (
+            <div className={styles.error}>
+              Could not play this scenario: {error}
+            </div>
+          ) : (
+            <canvas
+              ref={canvasRef}
+              // Sized in CSS pixels only — the canvas keeps its native resolution and
+              // the browser scales the drawn frame, so zooming costs nothing per frame.
+              // Floored so a fitted board can never round up past the stage and raise
+              // the scrollbars that would shrink the stage and refit it, smaller, on a
+              // loop.
+              style={
+                natural
+                  ? {
+                      width: `${Math.floor(natural.width * scale)}px`,
+                      height: `${Math.floor(natural.height * scale)}px`,
+                    }
+                  : undefined
+              }
+              className={
+                // Nearest-neighbour is right for pixel art magnified, and wrong for it
+                // shrunk: at the sub-1x zooms the large factory needs to fit, dropping
+                // pixels drops whole belt lanes, where filtering keeps them as a tint.
+                scale >= 1
+                  ? `${styles.canvas} ${styles.canvasPixelated}`
+                  : styles.canvas
+              }
+            />
+          )}
+        </div>
         {/* Drift is a warning, not a failure: the factory keeps playing (seeing the
             divergence is the point), with a standing banner saying it is not the
             graded state. */}
@@ -384,6 +568,42 @@ export function PlaybackOverlay({
         </button>
         <span className={styles.tick}>
           tick {formatInteger(tick)} / {formatInteger(total)}
+        </span>
+        {/* Zoom. Fit is the default and the way back to it: a viewer who has zoomed
+            into a corner of the large factory needs one click to see the whole board
+            again, not a hunt back down the ladder. */}
+        <span className={styles.zoom}>
+          <button
+            type="button"
+            className={styles.control}
+            onClick={() => zoomTo(stepZoom(scale, -1))}
+            disabled={!ready || scale <= MIN_ZOOM}
+            aria-label="Zoom out"
+            title="Zoom out"
+          >
+            −
+          </button>
+          <span className={styles.zoomLevel}>{Math.round(scale * 100)}%</span>
+          <button
+            type="button"
+            className={styles.control}
+            onClick={() => zoomTo(stepZoom(scale, 1))}
+            disabled={!ready || scale >= MAX_ZOOM}
+            aria-label="Zoom in"
+            title="Zoom in"
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className={zoom === null ? styles.speedOn : styles.control}
+            onClick={() => zoomTo(null)}
+            disabled={!ready}
+            aria-pressed={zoom === null}
+            title="Scale the whole factory to the window"
+          >
+            Fit
+          </button>
         </span>
         <span className={styles.speeds}>
           {SPEEDS.map((s) => (

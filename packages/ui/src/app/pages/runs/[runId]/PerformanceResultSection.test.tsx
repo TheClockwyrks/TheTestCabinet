@@ -291,6 +291,32 @@ describe("PlaybackOverlay", () => {
     expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
   });
 
+  it("offers zoom controls and follows the fitted scale by default", () => {
+    // The medium (48x32) and large (72x40) factories are several times a viewport at
+    // any legible scale, so the player opens fitted to the window rather than at a
+    // fixed magnification a viewer would have to scroll around. The ladder is how
+    // they get closer again; `zoom.test.ts` covers what each control computes.
+    render(
+      <PlaybackOverlay
+        scenarioUrl={null}
+        moduleUrl={null}
+        label="Large — 72×40"
+        onExit={() => {}}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Fit" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Zoom out" }),
+    ).toBeInTheDocument();
+    // Nothing loaded, so there is no board to scale: the controls are inert rather
+    // than reporting a zoom over an empty stage.
+    expect(screen.getByRole("button", { name: "Zoom in" })).toBeDisabled();
+  });
+
   it("names the factory being played, so a launched scenario is identifiable", () => {
     // The player covers the viewport: without the label a viewer who launched one of
     // several scenarios has nothing on screen saying which one this is.
