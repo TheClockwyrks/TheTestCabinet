@@ -75,6 +75,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
+        engine_format: false,
         name: "Foray".to_string(),
         difficulty: "hard".to_string(),
         tags: Vec::new(),

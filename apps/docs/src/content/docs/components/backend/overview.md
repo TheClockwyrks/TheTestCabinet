@@ -91,8 +91,8 @@ is playable, so the run can be reviewed. Review attaches one review per account
 to the run.
 
 Publish releases the run: its generated source to its own public repository and
-its build to Cloudflare Pages. The endpoint gates the run, refusing one with no
-review, and enqueues a per-publish `tcab-publisher` Job that the
+its build to Cloudflare Pages. The endpoint gates the run, refusing a legacy
+run with no review, and enqueues a per-publish `tcab-publisher` Job that the
 [dispatcher](/components/dispatcher/overview/) claims. When that Job reports a
 terminal success the backend marks the run published, uploads the run's
 documents and media to the public bucket, and writes its row to the public

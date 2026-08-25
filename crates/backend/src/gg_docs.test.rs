@@ -108,6 +108,7 @@ fn review(account: &str, rating: Rating, passed: &[&str]) -> StoredReview {
             domain: "gameplay".to_string(),
             rating,
         }],
+        aesthetics: vec![],
         writeup: "Reviewed.".to_string(),
         checklist: ["heavy", "light"]
             .into_iter()
@@ -140,6 +141,8 @@ fn item(id: &str, weight: u32) -> StoredReviewItem {
         weight,
         graded: false,
         domain: Some("gameplay".to_string()),
+        failure_cap: None,
+        domains: vec![],
         sub_items: vec![],
         validation: None,
     }
@@ -152,6 +155,7 @@ fn item(id: &str, weight: u32) -> StoredReviewItem {
 fn manifest() -> StoredManifest {
     StoredManifest {
         toolchain: None,
+        engine_format: false,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         name: "Carom".to_string(),
@@ -262,9 +266,14 @@ async fn a_review_added_after_indexing_changes_the_documents_score_rating_and_re
     // how long its answer is cached.
     let index = GgDocIndex::with_ttl(Duration::ZERO);
 
-    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("r1", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     let mut scores = CatalogScores::new(&store);
     let docs = index
@@ -340,9 +349,14 @@ async fn a_manifest_reweighting_is_invisible_until_the_index_is_invalidated() {
     let (_dir, store) = ingested_store();
     let index = GgDocIndex::with_ttl(Duration::ZERO);
 
-    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("r1", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     // One review earning the heavy item and failing the light one: 2 of 3.
     db.add_review("r1", &review("u1", Rating::Great, &["heavy"]), None)
         .await
@@ -409,9 +423,14 @@ async fn reconciling_reloads_only_the_runs_whose_mutation_stamp_moved() {
     let index = GgDocIndex::with_ttl(Duration::ZERO);
 
     for id in ["r1", "r2", "r3"] {
-        db.push(&gg_record(id, "mock/echo"), &RunLinks::default(), None)
-            .await
-            .unwrap();
+        db.push(
+            &gg_record(id, "mock/echo"),
+            &RunLinks::default(),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
     }
 
     let mut scores = CatalogScores::new(&store);
@@ -490,14 +509,21 @@ async fn the_index_holds_only_gg_runs() {
     let (_dir, store) = ingested_store();
     let index = GgDocIndex::with_ttl(Duration::ZERO);
 
-    db.push(&gg_record("gg1", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("gg1", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let mut other = gg_record("claude1", "claude-sonnet-4-5");
     other.subject.harness_slug = HarnessSlug::Claude;
     other.subject.gg_capability_set = None;
     other.subject.gg_summary = None;
-    db.push(&other, &RunLinks::default(), None).await.unwrap();
+    db.push(&other, &RunLinks::default(), None, None)
+        .await
+        .unwrap();
 
     let mut scores = CatalogScores::new(&store);
     let docs = index
@@ -523,7 +549,7 @@ async fn a_group_by_over_the_index_returns_buckets_summing_to_the_total() {
         ("r3", "anthropic/claude-opus-4"),
         ("r4", "openai/gpt-5"),
     ] {
-        db.push(&gg_record(id, model), &RunLinks::default(), None)
+        db.push(&gg_record(id, model), &RunLinks::default(), None, None)
             .await
             .unwrap();
     }
@@ -570,9 +596,14 @@ async fn a_run_of_an_uningested_case_indexes_with_no_score() {
     let store = DefinitionStore::open(dir.path()).unwrap();
     let index = GgDocIndex::with_ttl(Duration::ZERO);
 
-    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("r1", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     db.add_review("r1", &review("u1", Rating::Great, &["heavy"]), None)
         .await
         .unwrap();
@@ -607,12 +638,18 @@ async fn a_run_whose_record_no_longer_parses_is_tombstoned_not_retried_forever()
     let (_dir, store) = ingested_store();
     let index = GgDocIndex::with_ttl(Duration::ZERO);
 
-    db.push(&gg_record("good", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("good", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     db.push(
         &gg_record("corrupt", "mock/echo"),
         &RunLinks::default(),
+        None,
         None,
     )
     .await
@@ -657,6 +694,7 @@ async fn a_run_whose_record_no_longer_parses_is_tombstoned_not_retried_forever()
         &gg_record("corrupt", "mock/echo"),
         &RunLinks::default(),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -684,9 +722,14 @@ async fn a_reconcile_within_the_ttl_is_skipped_and_serves_the_same_corpus() {
     let (_dir, store) = ingested_store();
     let index = GgDocIndex::with_ttl(Duration::from_secs(3600));
 
-    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("r1", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let mut scores = CatalogScores::new(&store);
     let first = index
         .documents(&db, &mut |run| scores.score(run))
@@ -694,9 +737,14 @@ async fn a_reconcile_within_the_ttl_is_skipped_and_serves_the_same_corpus() {
         .unwrap();
     assert_eq!(first.len(), 1);
 
-    db.push(&gg_record("r2", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("r2", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let mut scores = CatalogScores::new(&store);
     let second = index
         .documents(&db, &mut |run| scores.score(run))
@@ -747,12 +795,19 @@ async fn the_public_export_is_decoupled_from_publication_but_not_from_the_catalo
     store.write_manifest(&wip).expect("write the wip manifest");
 
     // Neither run is published.
-    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("r1", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let mut hidden = gg_record("r2", "mock/echo");
     hidden.subject.test_case_slug = "wip".to_string();
-    db.push(&hidden, &RunLinks::default(), None).await.unwrap();
+    db.push(&hidden, &RunLinks::default(), None, None)
+        .await
+        .unwrap();
 
     let documents = public_documents(&db, &store).await.unwrap();
     let ids: Vec<&str> = documents.iter().map(|doc| doc.id()).collect();
@@ -786,9 +841,14 @@ async fn a_case_this_process_cannot_classify_is_withheld_from_the_export() {
     let dir = TempDir::new().expect("temp dir");
     let store = DefinitionStore::open(dir.path()).expect("open store");
 
-    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("r1", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     let documents = public_documents(&db, &store).await.unwrap();
     assert!(
@@ -836,7 +896,9 @@ async fn every_exported_document_is_redacted() {
                 params: serde_json::json!({ "brief": pasted, "budget": 3 }),
             });
     }
-    db.push(&record, &RunLinks::default(), None).await.unwrap();
+    db.push(&record, &RunLinks::default(), None, None)
+        .await
+        .unwrap();
 
     // What the console serves.
     let index = GgDocIndex::with_ttl(Duration::ZERO);
@@ -884,9 +946,14 @@ async fn the_export_is_documents_and_never_a_replay_record() {
             br#"{"messages":[{"role":"user","text":"the-verbatim-conversation"}]}"#,
         )
         .expect("store the run's session record");
-    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("r1", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     let documents = public_documents(&db, &store).await.unwrap();
     let json = serde_json::to_string(&documents).unwrap();
@@ -953,15 +1020,20 @@ async fn the_reconcile_builds_stats_facts_beside_the_documents() {
             ..GgProviderStat::default()
         }];
     }
-    db.push(&new_format, &RunLinks::default(), None)
+    db.push(&new_format, &RunLinks::default(), None, None)
         .await
         .unwrap();
 
     // An old-format tool-calling run: the fixture default — no slices, no
     // dispatch total.
-    db.push(&gg_record("old1", "mock/echo"), &RunLinks::default(), None)
-        .await
-        .unwrap();
+    db.push(
+        &gg_record("old1", "mock/echo"),
+        &RunLinks::default(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     let mut scores = CatalogScores::new(&store);
     let facts = index

@@ -52,6 +52,7 @@ const fetchCaseVariant = vi.fn(async (ref: CaseVariantRef) => {
     referenceScreenshots: [],
     reviewItems: [],
     domains: [],
+    validatorRated: false,
     referenceBuilds: {},
     referenceSheet: null,
   } as VariantSummary;

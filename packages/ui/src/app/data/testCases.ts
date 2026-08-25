@@ -5,6 +5,7 @@ import type {
   TestType,
 } from "@test-cabinet/run-record";
 import type { AssetKind, Erratum, ReferenceSheet } from "../../client";
+import type { FailureCap } from "../../ratings";
 
 export type { Erratum, ErratumSeverity } from "../../client";
 /** The published reference frames of one asset-generation case variant, as the
@@ -78,6 +79,13 @@ export interface ReviewItemSummary {
   graded?: boolean;
   /** Scoring domain (by id) this item belongs to, or null for a general item. */
   domain?: string | null;
+  /** On a validator-rated version, the failure cap of a whole-item point — the
+   * highest functional rating its `domains` may reach while its validator fails.
+   * Absent on a legacy version and on a category (whose points carry their own). */
+  failureCap?: FailureCap | null;
+  /** On a validator-rated version, the scoring domain ids a failure of this
+   * whole-item point lowers. Empty on a legacy version and on a category. */
+  domains?: string[];
   /** Whether this item contributes to the run's score. Set false on the effective
    * checklist only when an erratum's `excludeFromScore` links its verdict id (still
    * checked and shown, just not scored). Absent/true otherwise. */
@@ -103,6 +111,13 @@ export interface ReviewSubItemSummary {
   /** Optional paired reference view / proof id for this point. */
   reference?: string | null;
   proof?: string | null;
+  /** On a validator-rated version, this point's failure cap — the highest
+   * functional rating its `domains` may reach while its validator fails. Absent
+   * on a legacy version. */
+  failureCap?: FailureCap | null;
+  /** On a validator-rated version, the scoring domain ids a failure of this point
+   * lowers. Empty on a legacy version. */
+  domains?: string[];
   /** Whether this sub-item contributes to the run's score. Set false on the
    * effective checklist only when an erratum's `excludeFromScore` links its composite
    * verdict id (or excludes its whole category). Absent/true otherwise. */
@@ -193,6 +208,12 @@ export interface VariantSummary {
    * reviewer rates each independently; a run's overall rating is the worst across
    * them. Empty when the host could not resolve them. */
   domains: DomainSummary[];
+  /** Whether a run of this variant is **validator-rated**: its case version is on
+   * the engine manifest format and is not a game jam, so every point above
+   * carries a `failureCap` and `domains`, the functional rating and score are
+   * decided by the validators the moment a run completes, and a reviewer rates
+   * only the aesthetic channel. False on a legacy version, reviewed as before. */
+  validatorRated: boolean;
   /** The absolute URLs of this variant's **reference implementations**, keyed by
    * the engine each was built for — the authored, in-repo, versioned static builds
    * that are the *correct* implementation of the variant, deployed out-of-band by

@@ -116,6 +116,17 @@
     "RunSummary": {
       "description": "The denormalized summary card for one published run.",
       "properties": {
+        "aesthetic": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/AestheticRating"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run's aggregate **aesthetic** rating: the worst aesthetic rating any\nreviewer gave any domain, or `None` when no review has rated the aesthetic\nchannel — a validator-rated run nobody has reviewed yet, and every legacy\nrun (its reviews carry no aesthetic ratings, so it never shows the badge)."
+        },
         "caseName": {
           "type": "string"
         },
@@ -169,10 +180,10 @@
               "type": "null"
             }
           ],
-          "description": "The run's overall rating: the worst rating any reviewer gave any domain.\n`None` when the run carries no reviews yet (an unrated console run); the\nsnapshot only contains reviewed runs, so it is always `Some` there."
+          "description": "The run's **functional** rating. On a legacy run the worst rating any\nreviewer gave any domain, `None` while the run carries no reviews (an\nunrated console run). On a [validator-rated](Self::validator_rated) run the\nvalidator-decided rating — each failing scored point caps its domains at its\ndeclared failure cap, the run gets the worst domain, composed with the\ntoolchain gate — which is `Some` from the moment the run completes, with or\nwithout a review. A published run always has one."
         },
         "reviewCount": {
-          "description": "How many reviews the run carries. The site averages their scores; the\naggregate sits between the harshest and most generous review.",
+          "description": "How many reviews the run carries. The site averages their scores on a\nlegacy run; the aggregate sits between the harshest and most generous\nreview. On a validator-rated run it counts the aesthetic reviews.",
           "format": "uint",
           "minimum": 0,
           "type": "integer"
@@ -199,6 +210,10 @@
         },
         "validationLoaded": {
           "type": "boolean"
+        },
+        "validatorRated": {
+          "description": "Whether the run is **validator-rated**: its case version is on the engine\nmanifest format and not a game jam, so [`rating`](Self::rating) and\n[`score`](Self::score) are decided by the validators (present without any\nreview, and never changed by one), its reviewers supply only the\n[`aesthetic`](Self::aesthetic) channel, and it publishes with zero reviews.\n`false` for every legacy run, whose card reads exactly as it always has.\nLifted here so every consumer can branch on it without a catalog.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -211,6 +226,7 @@
         "metrics",
         "validationLoaded",
         "state",
+        "validatorRated",
         "reviewCount",
         "links"
       ],

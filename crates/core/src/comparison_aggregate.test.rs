@@ -17,6 +17,8 @@ use crate::validation::{AutoVerdict, DebugScriptResult, ValidationSummary};
 /// A binary review item worth `weight`.
 fn item(id: &str, weight: u32) -> ReviewItem {
     ReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
         id: id.into(),
         title: id.into(),
         text: String::new(),

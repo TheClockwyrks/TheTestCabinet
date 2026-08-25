@@ -95,7 +95,20 @@ export function useStaticGallery(): GalleryDataInput {
   // full record (they are unreviewed previews, so no reviews / null rating is
   // correct). The published summary index stays internal to this module (queried by
   // `queryRunSummaries` below); it is never exposed whole.
-  const producedSummaries = local.map((run) => toRunSummary(run, []));
+  // A dev-only local run is a legacy-shaped preview: the site has no store to say
+  // whether it is validator-rated, so it carries neither channel decided.
+  const producedSummaries = local.map((run) =>
+    toRunSummary({
+      id: run.id,
+      record: run,
+      reviews: [],
+      published: false,
+      rating: null,
+      aesthetic: null,
+      validatorRated: false,
+      score: null,
+    }),
+  );
 
   // The public gallery lists only models that a run has actually used. The
   // catalog already surfaces any model with a recorded run automatically, so the
@@ -235,9 +248,17 @@ export function useStaticGallery(): GalleryDataInput {
       const runReviews = publishedReviews[runId] ?? [];
       const localRun = localById.get(runId);
       // A dev-only local run is by definition not published; everything the
-      // static site serves as an emitted asset is.
+      // static site serves as an emitted asset is. It is also a legacy-shaped
+      // preview (no store to decide its channels).
       if (localRun)
-        return { record: localRun, reviews: runReviews, published: false };
+        return {
+          record: localRun,
+          reviews: runReviews,
+          published: false,
+          validatorRated: false,
+          rating: null,
+          aesthetic: null,
+        };
       const url = `${import.meta.env.BASE_URL}runs/${encodeURIComponent(
         runId,
       )}.json`;
@@ -245,7 +266,18 @@ export function useStaticGallery(): GalleryDataInput {
         const response = await fetch(url);
         if (!response.ok) return null;
         const record = (await response.json()) as RunRecord;
-        return { record, reviews: runReviews, published: true };
+        // The published summary card carries the store's word on the two rating
+        // channels and whether the run is validator-rated — the same fields the
+        // console reads off `GET /runs/{id}`.
+        const summary = publishedRunSummaries.find((s) => s.id === runId);
+        return {
+          record,
+          reviews: runReviews,
+          published: true,
+          validatorRated: summary?.validatorRated ?? false,
+          rating: summary?.rating ?? null,
+          aesthetic: summary?.aesthetic ?? null,
+        };
       } catch {
         return null;
       }

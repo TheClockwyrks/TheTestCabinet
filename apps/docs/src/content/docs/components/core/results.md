@@ -14,7 +14,10 @@ A finished run reaches the public gallery through two separate steps, review and
 publish, so that a model can be judged by someone other than the person who ran
 it. A run's record is stored on the backend automatically when it finishes, so
 it is reviewable as soon as it is produced. The public release of its code and
-build happens at publish (see [Lifecycle](#lifecycle)).
+build happens at publish (see [Lifecycle](#lifecycle)). On a
+[validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
+validators decide the functional rating and score at completion, so review
+supplies the aesthetic rating and may follow publish.
 
 ## Generated code
 
@@ -133,7 +136,9 @@ dataset the backend exports.
 A run reaches the gallery through two explicit steps, review and publish, after
 the automatic storage every produced run gets when it finishes. Splitting review
 from publish is what lets a run be reviewed by someone other than the operator
-who produced it, and it keeps the public gallery to runs a human has assessed.
+who produced it. On a legacy run it also keeps the public gallery to runs a
+human has assessed; a validator-rated run carries its functional rating and
+score from completion and may be published ahead of any review.
 
 ### Automatic storage
 
@@ -151,8 +156,10 @@ service.
 Reviewing a produced run is the assessment step. Anyone with an
 [account](/components/backend/overview/#authentication), typically someone other
 than the operator who produced it, plays the run's build and submits a
-[review](#reviews): a writeup, a rating per scoring domain, and the checklist
-verdicts. Every review is attributed to the authenticated account that wrote it.
+[review](#reviews). On a validator-rated run that is a writeup and an aesthetic
+rating per scoring domain; on a legacy run it is a writeup, a functional rating
+per scoring domain, and the checklist verdicts. Every review is attributed to
+the authenticated account that wrote it.
 
 A run may carry multiple reviews, one per account. A reviewer cannot submit two
 reviews for the same run; submitting again replaces their own. This is how a run
@@ -164,8 +171,10 @@ Publishing releases a reviewed run and flips it public. It is the only point at
 which a run's outputs cross onto the open internet. What it requires depends on
 the run's [terminal state](/components/core/run-records/#status):
 
-- A `completed` run is published through review. The backend refuses with `422`
-  to publish one that has no review.
+- A `completed` validator-rated run is publishable as soon as it completes,
+  with or without a review, since its functional rating and score stand on the
+  run record. A `completed` legacy run is published through review: the backend
+  refuses with `422` to publish one that has no review.
 - A `catastrophic` or `timed_out` run is a publishable model failure, real
   signal at the benchmark's edge from a model that produced unbuildable output
   or never converged. It has no review checklist to complete, so publishing it
@@ -269,9 +278,11 @@ per-run record](/components/backend/snapshot/#run-documents).
 Review and publish are separate so different people can perform them. When one
 operator ran the model, played it, and vouches for it, the CLI's `tcab publish`
 does both in one step: it self-reviews the run with the writeup and ratings the
-operator wrote, then publishes it. It is batch-capable. A batch is checked for
-its reviews up front, since the review is known locally, so a single run missing
-one stops the whole batch before anything is published.
+operator wrote, then publishes it. A validator-rated run with no local writeup
+is published without a self-review, and the command says so in its output. It
+is batch-capable. A batch is checked for its reviews up front, since the review
+is known locally, so a legacy run missing one stops the whole batch before
+anything is published.
 
 Submitting to the backend requires the caller to be authenticated. Review and
 publish each require a bearer token attributed to an account (see
@@ -282,16 +293,24 @@ open.
 
 A reviewed run carries one or more hand-written reviews. A single review is a
 short [writeup](/components/site/overview/#implementation-writeups) the site
-shows before the playable build, together with a rating per scoring domain, a
-checklist of verdicts on the items the test case asked the reviewer to check,
-and the reviewer's identity. The verdicts and the items' point weights produce
-that review's numeric score.
+shows before the playable build, together with a rating per scoring domain and
+the reviewer's identity. Which [rating
+channel](/testing/end-to-end/evaluation/#rating-channels) the reviewer rates
+depends on the run:
+
+- On a validator-rated run the review carries an aesthetic rating per domain.
+  The checklist is decided by the validators and the review carries no verdicts
+  and no functional rating.
+- On a legacy run the review carries a functional rating per domain and a
+  checklist of verdicts on the items the test case asked the reviewer to check.
+  The verdicts and the items' point weights produce that review's numeric score.
 
 A review is authored separately by a person after playing the finished build
 rather than emitted by a run, and it is not part of the [run
-record](/components/core/run-records/) contract. The per-domain ratings and the
-checklist verdicts travel with the writeup, in its frontmatter. Publishing makes
-a run's reviews available to the site alongside the run record.
+record](/components/core/run-records/) contract. The per-domain ratings and, on
+a legacy run, the checklist verdicts travel with the writeup, in its
+frontmatter. A review must carry at least one rating or verdict. Publishing
+makes a run's reviews available to the site alongside the run record.
 
 Which types are reviewed, and whether a reviewed type carries a checklist,
 varies by test type. A
@@ -311,9 +330,11 @@ The checklist records a verdict, with an optional note, for each reviewer
 checklist item the test case version declares (see the version manifest's
 [`review_item`s](/testing/end-to-end/manifests/)). An item that declares
 [sub-items](/testing/end-to-end/manifests/#sub-items) is verdicted per sub-item,
-each recorded under the composite id `<item id>.<sub-item id>`. Every declared
-item and sub-item must carry a verdict before a review can be submitted, so a
-reviewer cannot silently skip a requirement the case author called out.
+each recorded under the composite id `<item id>.<sub-item id>`. On a
+validator-rated run every verdict is the validator's, held on the run record.
+On a legacy run every declared item and sub-item must carry a verdict before a
+review can be submitted, so a reviewer cannot silently skip a requirement the
+case author called out.
 
 A binary item is judged `pass` or `fail`. Graded as a whole it earns its full
 weight on a `pass` and none on a `fail`. Graded by sub-items, each sub-item
@@ -334,31 +355,44 @@ neither side of that ratio while remaining visible and checked.
 ### Ratings
 
 A case declares one or more common scoring domains, for example a game's
-single-player and versus modes, and the run's variant may add its own. The
-reviewer assigns one of five tiers to each domain in the run variant's effective
-set, meaning the common domains plus that variant's own. The tiers, in
-descending order of fidelity to the spec, are `flawless`, `great`, `passable`,
-`scuffed`, and `broken`.
+single-player and versus modes, and the run's variant may add its own. Each
+domain in the run variant's effective set, meaning the common domains plus that
+variant's own, is rated on one or both of the run's rating channels.
 
-Within one review the overall rating is the worst across those domains, so a
-flawless mode cannot mask a broken one. What each tier means is reviewer
-judgement rather than anything a run emits, so the criteria for choosing one
-live with the review workflow; see [Reviewing Test Run
-Results](/guides/development/reviewing-test-run-results/).
+- The functional rating, in descending order of fidelity to the spec, is
+  `flawless`, `great`, `passable`, `scuffed`, or `broken`. On a validator-rated
+  run it is decided from the validator verdicts and each failing item's failure
+  cap, as [Evaluation](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)
+  specifies. On a legacy run the reviewer assigns it.
+- The aesthetic rating, best to worst, is `legendary`, `amazing`, `good`,
+  `okay`, or `slop`. The reviewer assigns it on a validator-rated run; a legacy
+  run has none.
+
+Within one review the overall rating on a channel is the worst across those
+domains, so a flawless mode cannot mask a broken one. What each reviewer-given
+tier means is reviewer judgement rather than anything a run emits, so the
+criteria for choosing one live with the review workflow; see [Reviewing Test
+Run Results](/guides/development/reviewing-test-run-results/).
 
 ### Aggregating across reviews
 
-A published run may carry several reviews, so the numbers shown for the run are
-aggregated across them:
+A published run may carry several reviews, so the reviewer-given numbers shown
+for the run are aggregated across them:
 
-- The run's score is the average of its reviews' scores, each review's earned
-  weight over the shared total declared weight.
-- The run's overall rating is the worst rating across all of its reviews: the
-  worst across domains within each review, then the worst of those across
-  reviews. One reviewer marking a domain `broken` pulls the run's overall rating
-  to `broken`, however generous the others were.
+- On a legacy run the score is the average of its reviews' scores, each
+  review's earned weight over the shared total declared weight. On a
+  validator-rated run the score is computed once from the validator verdicts;
+  it needs no review and is the same however many the run carries.
+- The run's overall rating on a channel is the worst rating across all of its
+  reviews: the worst across domains within each review, then the worst of those
+  across reviews. One reviewer marking a domain `broken` pulls a legacy run's
+  functional rating to `broken`, and one marking a domain `slop` pulls a
+  validator-rated run's aesthetic rating to `slop`, however generous the others
+  were. A validator-rated run with no review has a functional rating and score
+  and no aesthetic rating.
 
-The aggregate rating and score are shown together on the run, each review's
-per-domain ratings break it down attributed to its reviewer, and each test
-case's [leaderboard](/components/site/overview/#leaderboard) ranks models by the
-aggregate score.
+The functional rating and score are shown together on the run, with the
+aesthetic rating beside them when the run has one; each review's per-domain
+ratings break the reviewer-given channel down attributed to its reviewer, and
+each test case's [leaderboard](/components/site/overview/#leaderboard) ranks
+models by the aggregate score.

@@ -43,9 +43,10 @@ surfaces:
   that served the run.
 - The [validation](/components/core/validation/) signals, such as whether the
   implementation loaded.
-- The run's overall [rating](/components/core/results/#reviews), the worst
-  across every domain of every review it carries, with a count of contributing
-  reviewers.
+- The run's overall functional [rating](/components/core/results/#ratings),
+  and beside it the overall aesthetic rating when the run has one, with a count
+  of contributing reviewers. A legendary aesthetic badge is drawn distinctly so
+  it reads as exceptional at a glance.
 
 Run listings default to recency, newest first. Clicking a column header sorts by
 that column ascending, then descending, then back to the default; test, version,
@@ -60,9 +61,10 @@ case's [leaderboard](#leaderboard).
 
 The runs index lists the full run history a page at a time, with a search that
 narrows by test case, harness, or model name. A run's detail page opens on its
-Verdict tab: the aggregate overall rating and score first, then each review's
-writeup, per-domain ratings, and per-item checklist breakdown, attributed to its
-reviewer. The playable build has its own Play tab.
+Verdict tab: the functional rating, the aesthetic rating when there is one,
+and the score first, then the per-item checklist breakdown and each review's
+writeup and per-domain ratings, attributed to its reviewer. The playable build
+has its own Play tab.
 
 ## Playing and cloning
 
@@ -97,9 +99,9 @@ average cost are shown by default and the rest come from the column picker. A
 game jam carries a whole-game overall grade in place of a domain rating, and its
 rows show that grade.
 
-A run's score is carried on its projection row. Each review contributes its
-earned share of the declared checklist weight, and those are averaged across a
-run's reviews.
+A run's score is carried on its projection row. A validator-rated run's score
+is its validators' earned share of the declared checklist weight. A legacy run's
+reviews each contribute their earned share, averaged across the run's reviews.
 
 A [performance](/testing/performance/overview/) case carries no reviewer score,
 because it is graded by the harness on correctness and then on the fuel a
@@ -114,20 +116,22 @@ placement and percentile against this field.
 
 ## Implementation writeups
 
-A run carries one or more short, hand-written writeups, headed by the run's
-aggregate overall [rating](/components/core/results/#reviews) and score, with
-each review's per-domain ratings and per-item checklist breakdown alongside,
-attributed to its reviewer. A writeup is curatorial: it calls out known-broken
-elements, caveats, and things worth noticing, so a visitor knows what to expect
-before playing.
+A run carries short, hand-written writeups, headed by the run's overall
+[ratings](/components/core/results/#ratings) and score, with each review's
+per-domain ratings and the per-item checklist breakdown alongside, attributed to
+its reviewer. A writeup is curatorial: it calls out known-broken elements,
+caveats, and things worth noticing, so a visitor knows what to expect before
+playing.
 
-A writeup, its ratings, and its checklist together form one
+A writeup and its ratings, together with its checklist on a legacy run, form one
 [review](/components/core/results/#reviews). Reviews are authored separately
 from the machine-generated [run record](/components/core/run-records/) and each
-is attributed to the [account](/components/auth/overview/) that wrote it. Every
-published run carries at least one, because publishing requires a review, and
-may carry several from different reviewers. A run's score is the average across
-them and its overall rating the worst across them. Reviews travel to the gallery
+is attributed to the [account](/components/auth/overview/) that wrote it. A
+published legacy run carries at least one, because publishing it requires a
+review; a published validator-rated run may carry none yet, showing its
+functional rating and score alone until someone rates its aesthetics. A run may
+carry several reviews from different reviewers, and its overall rating on the
+reviewer-given channel is the worst across them. Reviews travel to the gallery
 in the run's published document alongside the record.
 
 ## Hosting

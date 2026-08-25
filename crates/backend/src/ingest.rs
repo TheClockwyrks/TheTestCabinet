@@ -471,6 +471,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         max_runtime_seconds: resolved.max_runtime_seconds,
         test_type: resolved.test_type,
         experimental: resolved.experimental,
+        engine_format: resolved.engine_format,
         engines: resolved.engines.clone(),
         build: resolved.build.as_ref().map(|build| StoredBuild {
             install: build.install.clone(),
@@ -639,11 +640,18 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
                 reference: sub.reference.clone(),
                 proof: sub.proof.clone(),
                 validation: sub.validation.as_ref().map(stored_validation),
+                failure_cap: sub.failure_cap,
+                domains: sub.domains.clone(),
             })
             .collect(),
         // The item's auto-validation driver (present only for a whole-item validated
         // item; a sub-divided item carries its drivers on the sub-items above).
         validation: item.validation.as_ref().map(stored_validation),
+        // The validator-rated scoring declaration (present only on a validator-rated
+        // version, and only on a whole-item point; a sub-divided item carries them on
+        // the sub-items above).
+        failure_cap: item.failure_cap,
+        domains: item.domains.clone(),
     }
 }
 

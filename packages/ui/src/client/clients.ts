@@ -9,6 +9,7 @@ import type {
   AssetPreview,
   AuthResult,
   BackendIdentity,
+  DomainAesthetic,
   DomainRating,
   HarnessConfigEntry,
   HarnessEvent,
@@ -1203,9 +1204,17 @@ export interface WorkerClient {
 
 // The reviewer's input when saving a review.
 export interface ReviewDocumentInput {
-  // The reviewer's rating for each of the case's scoring domains.
+  // The reviewer's FUNCTIONAL rating for each of the case's scoring domains — on a
+  // legacy run only. A validator-rated run refuses any (its functional rating is
+  // the validators'), so the editor sends none there.
   ratings: DomainRating[];
+  // The reviewer's AESTHETIC rating for each scoring domain — on a validator-rated
+  // run only, where every effective domain must be rated. A legacy run refuses
+  // any, so the editor sends none there.
+  aesthetics: DomainAesthetic[];
   writeup: string;
+  // The reviewer's per-point verdicts — on a legacy run only. The checklist of a
+  // validator-rated run is machine-decided and refuses any submitted verdict.
   checklist: ReviewVerdict[];
   // A note explaining what changed, required when this submission edits an existing
   // review (a first submission needs none). The backend enforces it — it alone knows

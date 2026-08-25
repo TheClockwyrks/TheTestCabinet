@@ -9,6 +9,7 @@ export {
 } from "./Dialog";
 export { Markdown } from "./Markdown";
 export { RatingBadge } from "./RatingBadge";
+export { AestheticBadge } from "./AestheticBadge";
 export { GradeBadge } from "./GradeBadge";
 export { Panel } from "./Panel";
 export { Spinner, type SpinnerProps, type SpinnerVariant } from "./Spinner";

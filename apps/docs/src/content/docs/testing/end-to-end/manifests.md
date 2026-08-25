@@ -121,10 +121,11 @@ sub_items = [
   { id = "moving", title = "Imparts spin while moving" },
 ]
 
-# COMMON scoring domains, rated for EVERY variant. The reviewer rates each
-# independently while playing the build; the run's OVERALL rating is the WORST
-# across the run variant's EFFECTIVE domain set (these plus any the run's variant
-# declares). At least one common domain is required.
+# COMMON scoring domains, rated for EVERY variant. Each is rated independently
+# on the run's rating channels (functional and aesthetic); the run's OVERALL
+# rating on a channel is the WORST across the run variant's EFFECTIVE domain set
+# (these plus any the run's variant declares). At least one common domain is
+# required.
 [[domain]]
 id = "single-player"         # stable slug, recorded with the per-domain rating
 name = "Single Player"       # display name (optional; defaults to a humanized id)
@@ -347,15 +348,23 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   neither. The two are independent, each named id must resolve for the item's
   variant, and the reviewer UI gives a single declared side the full width. An
   item may break into [sub-items](#sub-items) and may declare
-  [automated validation](#automated-validation).
+  [automated validation](#automated-validation). On a validator-rated version
+  the item also carries `domains` and `failure_cap`, with the meaning and the
+  domain rule given under
+  [the categories grammar](#the-categories-grammar-format--2); they sit on the
+  whole item, or on each sub-item when the item declares `sub_items` (an
+  item-level key beside `sub_items` is rejected, since a sub-divided item is
+  rated per sub-item). A legacy version rejects both keys wherever they appear.
 - `[[domain]]` declares a scoring domain the reviewer rates independently, by a
   stable `id` recorded with the per-domain rating, an optional `name` defaulting
   to a humanized `id`, and a required non-empty `description` telling the
   reviewer what they are rating. At least one common domain is required, and
   every variant is rated on all of them. A variant may declare additional
   domains, so the effective set for a run is the common domains plus that
-  variant's own; ids must be unique across that set. The run's overall rating is
-  the worst rating across the effective set. See
+  variant's own; ids must be unique across that set. A domain is rated on the
+  run's [rating channels](/testing/end-to-end/evaluation/#rating-channels), and
+  the run's overall rating on each channel is the worst across the effective
+  set. See
   [Scoring](/testing/end-to-end/evaluation/#scoring).
 
 ## The starter project
@@ -402,6 +411,18 @@ engine: a review item's `validation.script` is relative to the engine's validato
 project, and the case ships that suite under `validation/<engine>/` for every
 engine it supports. Resolution holds the declaration against each of them, so a
 point cannot be decided under one engine and left to the reviewer under another.
+
+The spelling also decides who rates the run. A version on the per-engine
+spelling, other than a game jam, is validator-rated: its validators decide the
+run's [functional rating](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating)
+and score, and reviewers supply the aesthetic rating. Resolution requires every
+graded point of such a version — a categories item, a whole `[[review_item]]`,
+or each sub-item of one that declares `sub_items` — to carry a `validation`
+script together with the `failure_cap` and `domains` keys described under
+[the categories grammar](#the-categories-grammar-format--2), and names the
+point when one is missing. A version on the `workspace` spelling is a legacy
+version, rated by its reviewers, and resolution rejects `failure_cap` and
+`domains` on it by name, since only a case on the engine format declares them.
 
 ## Supported engines
 
@@ -571,6 +592,10 @@ b, c… in the reviewer UI. It has no prose or media of its own; the parent item
 - Completeness. Every sub-item must be verdicted before a run can be published,
   exactly as every whole item must be. An item with sub-items has no verdict of
   its own.
+- Rating. On a validator-rated version each sub-item is its own point, so each
+  carries its own `domains` and `failure_cap` (and its own `validation`); the
+  parent item declares neither, and an item-level `domains` or `failure_cap`
+  beside `sub_items` is rejected.
 
 Sub-items are declared inline as an array of `{ id, title }` tables, as above,
 or as repeated `[[review_item.sub_item]]` tables. A variant's own additive items
@@ -687,17 +712,20 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   a scenario through under an engine — and may not sit on a graded
   [game-jam](/testing/game-jam/overview/) category, which has no pass/fail to
   decide. Weights and sub-item scoring are
-  unchanged: automation pre-decides the same verdicts a human would, in a
-  distinguishable color the reviewer can override.
+  unchanged: automation decides the same verdicts a human would. On a
+  validator-rated version the verdict is final and read-only; on a legacy
+  version it is pre-filled in a distinguishable color the reviewer can override.
 
 A script that cannot be driven against a conformant build fails the verdict it
 backs. The handle being missing, a call throwing, a malformed return, or a
 declared output never being produced each count, and the failed verdict is
-pre-filled into the review like any other auto verdict and overridable by the
-reviewer. See
+recorded like any other auto verdict, overridable by the reviewer on a legacy
+version only. See
 [load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing).
 A script whose precondition could not be met in the world the model invented
-decides nothing, so the point is left for the reviewer. A host with no browser
+decides nothing: on a validator-rated version the point lowers no rating, and
+on a legacy version it is left for the reviewer. A host
+with no browser
 degrades entirely, exactly as a check does. Which properties a script asserts is
 reporter-side detail: the seeded spec states the observable requirement and
 mandates the instrument.
@@ -723,6 +751,8 @@ id = "stationary"
 title = "No spin from a stationary paddle"
 description = "A stationary paddle imparts no new spin, so the return stays straight."
 weight = 1                     # optional, defaults to 1
+domains = ["single-player", "versus"] # the scoring domains a failure lowers
+failure_cap = "scuffed"        # the best functional rating those domains keep while it fails
 validation = { script = "validation/spin/stationary.mjs", outputs = [
   { id = "straight", kind = "video" },
 ] }
@@ -730,6 +760,11 @@ validation = { script = "validation/spin/stationary.mjs", outputs = [
 id = "decay"
 title = "Spin decays"
 description = "Imparted spin decays back to straight within a couple of seconds."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
+validation = { script = "validation/spin/decay.mjs", outputs = [
+  { id = "decay", kind = "video" },
+] }
 ```
 
 A category resolves to a review item whose sub-items are its review items, so
@@ -750,9 +785,20 @@ scoring, validation, and the reviewer UI treat both grammars identically:
 - The `format` is declared once, in the case manifest. A variant file adds its
   own `[[review.categories]]` and inherits the format; it must not use
   `[[review_item]]` or repeat `format`.
-- The categories grammar attaches no domain to a point. `[[domain]]` blocks stay
-  for the per-domain ratings, and a mode-specific category is simply named so
-  the checklist reads by mode. The reviewer UI renders categories as a
+- `domains` names the scoring domains a failure of the item lowers, and
+  `failure_cap` is the highest functional rating those domains may reach while
+  the item fails: one of `broken`, `scuffed`, `passable`, or `great`. Each entry
+  of `domains` must name a domain in the item's effective set: a common item
+  names common domains, and a variant's own item names common domains or that
+  variant's own. Both keys are required on every item of a validator-rated
+  version and are rejected on a legacy version. The `[[review_item]]` grammar
+  accepts the same two keys under the same rules, on the whole item or on each
+  of its [sub-items](#sub-items). How the caps combine into the
+  run's functional rating is in
+  [Evaluation](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating).
+- A category is a grouping rather than a domain roll-up. `[[domain]]` blocks
+  stay for the per-domain ratings, and a mode-specific category is simply named
+  so the checklist reads by mode. The reviewer UI renders categories as a
   collapsible accordion.
 
 ## Errata

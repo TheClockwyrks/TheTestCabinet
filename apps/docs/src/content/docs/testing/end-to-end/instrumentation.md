@@ -76,7 +76,8 @@ to land in the second category, three ways.
   reporting it, and the mismatch is the failure.
 
 Instrumentation decides the checklist, which is the part of a review that is
-expensive to verify by hand. The per-domain ratings stay with the reviewer (see
+expensive to verify by hand, and through each item's failure cap the run's
+functional rating. The per-domain aesthetic ratings stay with the reviewer (see
 [Human judgement](#human-judgement)).
 
 ## The debug API
@@ -296,13 +297,14 @@ and the debug API gives the model a way to verify its own build.
 
 ## Human judgement
 
-Instrumentation decides every checklist item and leaves the subjective
-judgement alone. Whether the art direction is coherent, whether the motion
-and audio feel right, and whether the game is enjoyable remain a human
-judgement; behavior is never something a reviewer is asked to decide. They are the [scoring
-domains](/testing/end-to-end/evaluation/#review) rated on the
-flawless-to-broken scale, and the review a person writes is what frames a
-published run. Instrumentation also cannot catch a bug living in a subsystem
+Instrumentation decides every checklist item, and with it the functional
+rating, and leaves the subjective judgement alone. Whether the art direction is
+coherent, whether the motion and audio feel right, and whether the game is
+enjoyable remain a human judgement; behavior is never something a reviewer is
+asked to decide. They are the [scoring
+domains](/testing/end-to-end/evaluation/#rating-channels) rated on the
+legendary-to-slop aesthetic scale, and the review a person writes is what
+frames a published run. Instrumentation also cannot catch a bug living in a subsystem
 that both the debug API and the observation route through. It moves the
 reviewer's job from reconstructing rare states by hand to auditing the scenarios
 that got flagged and judging how the whole thing plays.

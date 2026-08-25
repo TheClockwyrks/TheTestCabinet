@@ -26,9 +26,10 @@ are an operator surface rather than a dispatch one.
   collections are bare arrays too, for the reason given there.
 - Timestamps are RFC 3339 strings.
 - Harness slugs are those defined in [Harnesses](/components/core/harnesses/).
-- Ratings are the five tiers defined in
-  [Reviews](/components/core/results/#reviews): `flawless`, `great`, `passable`,
-  `scuffed`, `broken`.
+- Ratings are the tiers defined in
+  [Reviews](/components/core/results/#ratings): a functional rating is one of
+  `flawless`, `great`, `passable`, `scuffed`, `broken`, and an aesthetic rating
+  is one of `legendary`, `amazing`, `good`, `okay`, `slop`.
 - The reads on this page are open. The mutating run endpoints require an
   `Authorization: Bearer <token>` header identifying the acting account, which
   the backend verifies against the [auth service](/components/auth/overview/). A
@@ -277,10 +278,14 @@ A representative response:
         }
       ],
       // Variant-specific reviewer checklist items, for the consoles' guided
-      // review. Empty when the variant declares none.
+      // review. Empty when the variant declares none. On an engine-format
+      // version each graded point carries its `domains` and `failureCap`.
       "reviewItems": []
     }
   ],
+  // True when the version is on the engine-supported manifest format, which
+  // makes its runs validator-rated.
+  "engineFormat": true,
   "commonReferences": [
     {
       "view": "gameplay",
@@ -411,20 +416,27 @@ notification fires, and no retry is enqueued.
 ### `POST /runs/{id}/reviews`
 
 Submit a [review](/components/core/results/#reviews) for a produced run: the
-per-domain `ratings`, the markdown `writeup`, the checklist verdicts, and an
-`editNote`. The review is attributed to the account the bearer token resolves
-to; the reviewer identity is taken from the token rather than the body. A run
-carries many reviews, one per account, and re-submitting from the same account
-updates that account's own review.
+per-domain functional `ratings`, the per-domain `aesthetics`, the markdown
+`writeup`, the checklist verdicts, and an `editNote`. Which of them a run
+accepts follows its case version. A validator-rated run takes an `aesthetics`
+entry for every effective domain and refuses `ratings`, since the functional
+rating is the validators'; its checklist verdicts are the validators' and the
+body carries none. A legacy run takes `ratings` and the checklist verdicts and
+refuses `aesthetics`. The review is attributed to the account the bearer token
+resolves to; the reviewer identity is taken from the token rather than the
+body. A run carries many reviews, one per account, and re-submitting from the
+same account updates that account's own review.
 
 A re-submission that changes the review is an edit. It requires a non-empty
 `editNote`, keeps the original `reviewedAt`, stamps `editedAt`, and records the
-prior-to-new diff as a public revision. A re-submission that changes nothing is
-a no-op.
+prior-to-new diff as a public revision, covering the functional ratings, the
+aesthetic ratings, the verdicts, and the writeup. A re-submission that changes
+nothing is a no-op.
 
-`404` if the run is unknown. `422` when the review rates no domain and records
-no checklist verdict, when the writeup is empty, or when an edit arrives without
-a note. Schema:
+`404` if the run is unknown. `422` when the review carries no rating on either
+channel and no checklist verdict, when the writeup is empty, when it rates a
+channel the run's case version does not accept or leaves a domain on the
+accepted channel unrated, or when an edit arrives without a note. Schema:
 [`backend-api/review.schema.json`](https://docs.testcabinet.ai/schema/backend-api/review.schema.json).
 
 ### `POST /runs/{id}/publish`
@@ -435,8 +447,10 @@ fails), then enqueues a per-publish `tcab-publisher` Job and answers
 on. The run flips public when that Job reports a terminal success.
 
 The gate refuses a run that can never be published, an infrastructure failure or
-a canceled run, and it refuses a completed run carrying no review. A publishable
-failure needs no review, since it has no review checklist.
+a canceled run, and it refuses a completed legacy run carrying no review. A
+completed validator-rated run is admitted with or without a review, since its
+functional rating and score are on the record. A publishable failure needs no
+review, since it has no review checklist.
 
 ```jsonc
 { "publishJobId": "clx…", "liveUrl": "/publish-jobs/clx…/live" }
@@ -496,10 +510,11 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   finish time. This is the console's produced worklist, disjoint from the
   default published listing.
 - `state=publishable` — the publish worklist: the subset of `state=unpublished`
-  the publish gate accepts right now, which is a reviewed completed run or one
-  of the publishable failure tiers. This backs the console's Unpublished tab,
-  where every listed run is meant to be selected and published, so the slice
-  holds only rows the publish endpoint will accept.
+  the publish gate accepts right now, which is a validator-rated completed run,
+  a reviewed legacy completed run, or one of the publishable failure tiers. This
+  backs the console's Unpublished tab, where every listed run is meant to be
+  selected and published, so the slice holds only rows the publish endpoint will
+  accept.
 - `state=any` — the union of the published and unpublished slices: every
   recorded run, with no lifecycle predicate at all. This is what the consoles'
   run listings draw from, so a produced, and therefore unreviewed, run sorts and
@@ -517,12 +532,14 @@ not a publishable failure, so the other selectors omit it.
 
 `fields` selects how much of each run the listing returns:
 
-- Default, `fields` omitted — the full stored run per row.
+- Default, `fields` omitted — the full stored run per row, in the shape of the
+  [detail endpoint](#get-runsid) (record, reviews, ratings, and score).
 - `fields=summary` — a lightweight `RunSummary` card per row: the run's id and
   timestamps, its [subject](/components/core/run-records/#subject) including the
   [test type](/testing/overview/), [metrics](/components/core/metrics/), the
-  `validationLoaded` signal, state, the aggregate `rating`, `score` and
-  `reviewCount`, the denormalized case name, a performance run's fuel result,
+  `validationLoaded` signal, state, the functional `rating`, the `aesthetic`
+  rating, `validatorRated`, the `score` and `reviewCount`, the denormalized
+  case name, a performance run's fuel result,
   the ranking slice of a run's code analysis, and links. That is enough to
   render a run-list row, a card, a leaderboard entry, or a metrics aggregate
   without fetching each full record; the [detail endpoint](#get-runsid) loads
@@ -587,20 +604,51 @@ The offset mode additionally accepts:
 
 ### `GET /runs/{id}`
 
-One stored run, as `{ record, reviews, published, links }`: its record with
-links populated, the array of reviews it carries with each reviewer's identity,
-whether it is published, and its links. `404` if unknown.
+One stored run, as `{ record, reviews, published, links, rating, aesthetic,
+validatorRated, score }`: its record with links populated, the array of reviews
+it carries with each reviewer's identity, whether it is published, its links,
+and the run's ratings and score. Each review carries the `ratings` or
+`aesthetics` its run's channel accepts. `404` if unknown. The same shape is
+what the default projection of [`GET /runs`](#get-runs) lists per row.
+
+- `validatorRated`: whether the run's case version is
+  [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so a
+  consumer can show the run's points and functional rating from the record
+  immediately, offer publish without a review, and ask a reviewer for
+  aesthetics only.
+- `rating`: the run's **functional** rating. On a validator-rated run the
+  validator-decided rating, present from completion and never changed by a
+  review; on a legacy run the review aggregate. Composed with the toolchain
+  gate either way. `null` while unset — a legacy run with no review.
+- `aesthetic`: the run's aggregate **aesthetic** rating, the worst any reviewer
+  gave any domain. `null` when no review has rated that channel: every legacy
+  run, and an unreviewed validator-rated one.
+- `score`: the run's points against its case version's checklist weights — the
+  same `{ earned, total, reviews, overallGrade }` the summary card carries. On
+  a validator-rated run the validator-decided score (`reviews` is `0`), present
+  from completion; on a legacy run the mean across its reviews, `null` while
+  unreviewed. `null` when the run's case version is not ingested.
+
+The four are always present (`null` rather than omitted when unset), so a
+consumer reads them without defaulting. The functional rating and the score
+come through the same seams the summary cards and the snapshot use, so a
+validator-rated run's detail and its card never disagree.
 
 ```jsonc
 {
   "record": { "…": "full RunRecord, links populated" },
   "published": false,
+  "validatorRated": true,
+  "rating": "great",
+  "aesthetic": "amazing",
+  "score": { "earned": 66, "total": 68, "reviews": 0, "overallGrade": null },
   "reviews": [
     {
       "reviewerId": "acct_7yq…",
       "reviewer": "Ada",
       "username": "ada",
-      "ratings": [{ "domain": "single-player", "rating": "great" }],
+      "ratings": [],
+      "aesthetics": [{ "domain": "single-player", "rating": "amazing" }],
       "writeup": "Plays well, but…",
       "checklist": [],
       "reviewedAt": "2026-06-21T18:00:00Z"

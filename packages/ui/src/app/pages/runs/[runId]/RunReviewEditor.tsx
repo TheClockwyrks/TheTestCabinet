@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Avatar, GradeBadge, Panel, RatingBadge } from "@test-cabinet/ui";
+import {
+  AestheticBadge,
+  Avatar,
+  GradeBadge,
+  Panel,
+  RatingBadge,
+} from "@test-cabinet/ui";
 import { routes } from "../../../routes";
 import { useBackend, useWorkers } from "../../../../client/context";
 import { useAuth } from "../../../../client/auth";
@@ -26,6 +32,8 @@ import { ReviewItemAssets } from "./AssetResultSection";
 import { ValidationReplayPair } from "./ValidationReplayPair";
 import { DebugScriptList } from "./DebugScriptList";
 import {
+  AESTHETIC_META,
+  AESTHETIC_RATINGS,
   GRADE_LEVELS,
   GRADE_META,
   GRADE_MAX_POINTS,
@@ -33,15 +41,20 @@ import {
   RATINGS,
   RATING_META,
   VERDICT_META,
+  aggregateAestheticRating,
   aggregateOverallGrade,
   aggregateRating,
   aggregateScore,
   formatPoints,
+  worstAestheticRating,
+  isAestheticRating,
   isGrade,
   isRating,
   scoreChecklist,
   subItemVerdictId,
   verdictIdsForItem,
+  type AestheticRating,
+  type DomainAesthetic,
   type GradeStatus,
   type Rating,
 } from "../../../data/ratings";
@@ -53,6 +66,8 @@ import {
   type VerdictDraft,
 } from "./autoVerdicts";
 import { useConfirm } from "../../../components/ConfirmDialog";
+import type { ReviewModel } from "../../../data/galleryContext";
+import { ValidatorVerdict } from "./ValidatorVerdict";
 import styles from "../RunExec.module.scss";
 
 const STATUSES: VerdictStatus[] = ["pass", "fail"];
@@ -62,6 +77,12 @@ const STATUSES: VerdictStatus[] = ["pass", "fail"];
 // Built from the shared RATING_META so it stays in lockstep with the tiers.
 const RATING_CRITERIA = RATINGS.map(
   (rt) => `${RATING_META[rt].label} — ${RATING_META[rt].description}`,
+).join("\n\n");
+
+// The same reminder for the aesthetic scale, beside each domain's Aesthetic
+// picker on a validator-rated run.
+const AESTHETIC_CRITERIA = AESTHETIC_RATINGS.map(
+  (rt) => `${AESTHETIC_META[rt].label} — ${AESTHETIC_META[rt].description}`,
 ).join("\n\n");
 
 /** Format a point weight as `1 pt` / `2 pts`. */
@@ -175,10 +196,18 @@ function GradeChoice({
 // the item declares them — so the reviewer compares the target against the
 // evidence before judging. The run's existing reviews and the aggregate
 // rating/score are shown above the form.
+// On a VALIDATOR-RATED run the editor is a different, smaller form. The checklist
+// is machine-decided and shown read-only (the validators' verdicts, assertions,
+// and media — no override, no restore), and the points and functional rating
+// stand from the record before any review exists. The reviewer supplies only the
+// per-domain AESTHETIC tier and a writeup, and Publish is offered without a
+// review at all — a blatantly broken build needs no reviewer time to reach the
+// gallery, and an aesthetic review can be added later (or never).
 export function RunReviewEditor({
   run,
   reviews,
   published,
+  validatorRated,
   onChanged,
 }: {
   run: RunRecord;
@@ -192,6 +221,9 @@ export function RunReviewEditor({
    * still revise their own review, which refreshes the public snapshot on its
    * own. */
   published: boolean;
+  /** Whether the run is validator-rated (the store's word, lifted with the
+   * detail): the aesthetics-only form above, and publish without a review. */
+  validatorRated: boolean;
   onChanged: () => void;
 }) {
   const runId = run.id;
@@ -224,6 +256,13 @@ export function RunReviewEditor({
     [reviews, account],
   );
   const [ratings, setRatings] = useState<Record<string, Rating>>({});
+  // The per-domain AESTHETIC tier on a validator-rated run. Deliberately unset
+  // ("") until the reviewer chooses: the aesthetic scale has no neutral default
+  // the way the functional one defaults to "great", and pre-selecting Amazing
+  // would rate a build the reviewer never looked at.
+  const [aesthetics, setAesthetics] = useState<
+    Record<string, AestheticRating | "">
+  >({});
   const [writeup, setWriteup] = useState(ownReview?.writeup ?? "");
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [verdicts, setVerdicts] = useState<Record<string, VerdictDraft>>({});
@@ -285,6 +324,27 @@ export function RunReviewEditor({
   const auto = useMemo(() => autoVerdictMap(run), [run]);
   // The debug scripts that ran, for the run-list surfaced atop the editor.
   const debugScripts = useMemo(() => run.validation.debugScripts ?? [], [run]);
+  // The scoring model a validator-rated run's verdict is derived from: the loaded
+  // effective checklist (with each point's failure cap and domains) and the
+  // effective domains — the same shape the Verdict tab resolves from the catalog.
+  const validatorModel = useMemo<ReviewModel>(
+    () => ({ items, domains, validatorRated: true }),
+    [items, domains],
+  );
+  // The aggregate per-domain aesthetics across the run's reviews (worst wins), to
+  // show beside each domain's validator-decided functional rating.
+  const aggregateAesthetics = useMemo<DomainAesthetic[]>(() => {
+    const byDomain = new Map<string, AestheticRating[]>();
+    for (const review of reviews) {
+      for (const r of review.aesthetics ?? []) {
+        byDomain.set(r.domain, [...(byDomain.get(r.domain) ?? []), r.rating]);
+      }
+    }
+    return [...byDomain].flatMap(([domain, tiers]) => {
+      const worst = worstAestheticRating(tiers);
+      return worst ? [{ domain, rating: worst }] : [];
+    });
+  }, [reviews]);
   // The verdict ids currently holding their pre-filled auto value (i.e. the reviewer
   // has not overridden them this session). A verdict in this set renders in the
   // desaturated auto variant; touching its Pass/Fail control drops it from the set,
@@ -411,6 +471,20 @@ export function RunReviewEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [domains, account?.id]);
 
+  // Seed each domain's aesthetic tier from the account's own prior review (a
+  // validator-rated run); a domain the prior review did not rate stays unset.
+  useEffect(() => {
+    const prior = new Map(
+      (ownReview?.aesthetics ?? []).map((r) => [r.domain, r.rating]),
+    );
+    const seeded: Record<string, AestheticRating | ""> = {};
+    for (const domain of domains)
+      seeded[domain.id] = prior.get(domain.id) ?? "";
+    setAesthetics(seeded);
+    // Seed when the domain set or account changes; `ownReview` is the initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domains, account?.id]);
+
   // Seed the writeup from the account's own prior review, re-seeding when the
   // account resolves (it can load after mount). Mirrors the rating/verdict
   // seeding above so an existing reviewer's prose is restored when they reopen
@@ -454,12 +528,23 @@ export function RunReviewEditor({
         Boolean(verdicts[subItemVerdictId(item.id, sub.id)]?.status),
     );
   };
-  const allAddressed = items.every(itemAddressed);
+  // On a validator-rated run the checklist is the validators' — there is nothing
+  // for the reviewer to address.
+  const allAddressed = validatorRated || items.every(itemAddressed);
   // A jam is fully rated once the whole-game overall grade is picked (it has no
-  // domains); a domain-scored case once every domain carries a rating.
+  // domains); a validator-rated run once every domain carries an aesthetic tier;
+  // a legacy domain-scored case once every domain carries a rating.
   const allRated = jam
     ? overall !== ""
-    : domains.every((domain) => ratings[domain.id]);
+    : validatorRated
+      ? domains.length > 0 && domains.every((domain) => aesthetics[domain.id])
+      : domains.every((domain) => ratings[domain.id]);
+  // Whether the reviewer has started an aesthetic review at all — any tier
+  // picked, or any prose. On the solo path this decides whether Publish saves a
+  // review first or publishes the run bare.
+  const aestheticsTouched =
+    validatorRated &&
+    (writeup.trim() !== "" || domains.some((domain) => aesthetics[domain.id]));
 
   function setVerdict(id: string, patch: Partial<VerdictDraft>) {
     // Explicitly setting a verdict's Pass/Fail is a manual override: drop it from
@@ -831,17 +916,28 @@ export function RunReviewEditor({
 
   // The reviewer's input as the worker contract carries it. A jam has no scoring
   // domains, so it submits no per-domain ratings — its graded categories, overall
-  // grade, and writeup are the whole review.
+  // grade, and writeup are the whole review. A validator-rated run's review is
+  // the other way round: per-domain AESTHETIC tiers and the writeup only — no
+  // functional rating and no checklist verdict, both of which the backend refuses
+  // (they are the validators' to decide).
   function buildReview() {
+    const aestheticList: DomainAesthetic[] = validatorRated
+      ? domains.flatMap((domain) => {
+          const tier = aesthetics[domain.id];
+          return tier ? [{ domain: domain.id, rating: tier }] : [];
+        })
+      : [];
     return {
-      ratings: jam
-        ? []
-        : domains.map((domain) => ({
-            domain: domain.id,
-            rating: ratings[domain.id] ?? "great",
-          })),
+      ratings:
+        jam || validatorRated
+          ? []
+          : domains.map((domain) => ({
+              domain: domain.id,
+              rating: ratings[domain.id] ?? "great",
+            })),
+      aesthetics: aestheticList,
       writeup,
-      checklist: buildChecklist(),
+      checklist: validatorRated ? [] : buildChecklist(),
       // Only carried when revising an existing review; the backend ignores it on a
       // first submission and requires it on a content-changing edit.
       editNote: ownReview ? editNote.trim() : undefined,
@@ -900,7 +996,11 @@ export function RunReviewEditor({
   // review and runs review + publish in one step.
   const onPublish = () =>
     runAction("Published.", async () => {
-      if (solo) {
+      // The solo path saves the review on the way. A validator-rated run needs
+      // none: it saves one only when the reviewer wrote one (the button is
+      // disabled while a started review is incomplete, so a half-rated form is
+      // never silently dropped).
+      if (solo && (!validatorRated || aestheticsTouched)) {
         await client!.submitReview(runId, buildReview(), token!);
       }
       // Publishing is asynchronous: enqueue and observe the release over its live
@@ -927,8 +1027,11 @@ export function RunReviewEditor({
   }
 
   // Whether the run can be published: it carries at least one review (an existing
-  // one or one just submitted this session). The backend is the real gate.
-  const canPublish = reviews.length > 0 || submittedThisSession || solo;
+  // one or one just submitted this session) — or it is validator-rated, whose
+  // functional rating and score stand on their own with zero reviews. The backend
+  // is the real gate.
+  const canPublish =
+    validatorRated || reviews.length > 0 || submittedThisSession || solo;
   // A run published this session (the enqueued publish reported success) reads as
   // published straight away, without waiting for the detail record to be refetched
   // — so the action disappears the moment it succeeds rather than lingering as a
@@ -1097,7 +1200,25 @@ export function RunReviewEditor({
           reviewer sees what others recorded before adding their own. Each review
           links to its own page, where the active account's own review carries the
           Edit control that reopens this form to revise it. */}
-      <ExistingReviews reviews={reviews} items={items} runId={runId} />
+      <ExistingReviews
+        reviews={reviews}
+        items={items}
+        runId={runId}
+        validatorRated={validatorRated}
+      />
+
+      {/* A validator-rated run's verdict is the validators': the functional
+          rating, the points, the per-domain breakdown of what capped what, and the
+          read-only checklist with its assertions and media — shown before any
+          review exists, exactly as the Verdict tab shows them once published. The
+          reviewers' aggregate aesthetics ride beside each domain. */}
+      {validatorRated && (
+        <ValidatorVerdict
+          run={run}
+          model={validatorModel}
+          aesthetics={aggregateAesthetics}
+        />
+      )}
 
       {/* The instrumentation debug scripts this run's automated-validation items
           declare: which ran to completion against a conformant build (the debug-API
@@ -1110,13 +1231,15 @@ export function RunReviewEditor({
           stays folded away: by that point the reviewer has already made the call, so
           an expanded table here is a screenful of scrolling between them and the
           review summary and actions below. */}
-      {debugScripts.length > 0 && (ownReview || submittedThisSession) && (
-        <DebugScriptList
-          scripts={debugScripts}
-          heading="Automated validation"
-          collapsible
-        />
-      )}
+      {!validatorRated &&
+        debugScripts.length > 0 &&
+        (ownReview || submittedThisSession) && (
+          <DebugScriptList
+            scripts={debugScripts}
+            heading="Automated validation"
+            collapsible
+          />
+        )}
 
       {/* The review form proper — the checklist questions, the writeup, and the
           per-domain ratings — shown only while writing or revising a review. */}
@@ -1133,7 +1256,16 @@ export function RunReviewEditor({
               each graded category is worth `weight × 10` and earns its tier's points
               — so it gets the same running total; it simply never declares automated
               validation, so it always takes the plain branch. */}
-          {liveScore && (
+          {validatorRated && (
+            <p className={styles.notice}>
+              The functional rating and score above were decided by this
+              run&rsquo;s validators and are not yours to change. Rate how the
+              build <em>looks and feels</em> in each domain below, and write it
+              up. The run can be published now, with or without this review — an
+              aesthetic review can be added later.
+            </p>
+          )}
+          {!validatorRated && liveScore && (
             <div className={styles.notice}>
               {debugScripts.length > 0 ? (
                 <>
@@ -1195,7 +1327,7 @@ export function RunReviewEditor({
             </div>
           )}
 
-          {item && (
+          {!validatorRated && item && (
             <div className={styles.reviewLayout}>
               {/* The navigable rail of every checklist item; answered items are
               marked done, the current one highlighted. */}
@@ -1538,6 +1670,55 @@ export function RunReviewEditor({
                 </span>
               )}
             </fieldset>
+          ) : validatorRated ? (
+            /* One AESTHETIC tier per scoring domain — the reviewer rates each
+            independently and the run's aesthetic rating is the worst across them.
+            Unset until chosen; every domain is required. */
+            <fieldset className={styles.ratings}>
+              <legend className={styles.fieldLabel}>
+                Aesthetics
+                <span
+                  className={styles.help}
+                  role="img"
+                  aria-label="Aesthetic criteria"
+                  title={AESTHETIC_CRITERIA}
+                >
+                  ?
+                </span>
+              </legend>
+              {domains.map((domain) => (
+                <label
+                  key={domain.id}
+                  className={`${styles.field} ${styles.fieldStacked}`}
+                >
+                  <span
+                    className={styles.fieldLabel}
+                    title={domain.description}
+                  >
+                    {domain.name}
+                  </span>
+                  <select
+                    className={styles.select}
+                    value={aesthetics[domain.id] ?? ""}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (next !== "" && !isAestheticRating(next)) return;
+                      setAesthetics((prev) => ({
+                        ...prev,
+                        [domain.id]: next as AestheticRating | "",
+                      }));
+                    }}
+                  >
+                    <option value="">Choose a tier…</option>
+                    {AESTHETIC_RATINGS.map((rt) => (
+                      <option key={rt} value={rt}>
+                        {AESTHETIC_META[rt].label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </fieldset>
           ) : (
             /* One rating per scoring domain — the reviewer rates each independently
             and the run's overall rating is the worst across them. */
@@ -1597,7 +1778,9 @@ export function RunReviewEditor({
           ? undefined
           : jam
             ? "Write a review, grade the whole game, and grade every category first"
-            : "Write a review, rate every domain, and give every checklist item a verdict first";
+            : validatorRated
+              ? "Write a review and choose an aesthetic tier for every domain first"
+              : "Write a review, rate every domain, and give every checklist item a verdict first";
         const needAccount = !account || !token;
         // Who is reviewing, shown left of the action buttons (in place of the
         // former standalone "Reviewing as …" bar): the signed-in account's avatar
@@ -1649,6 +1832,21 @@ export function RunReviewEditor({
           </button>
         );
         if (solo && !isPublished) {
+          // A validator-rated run publishes with no review; a started-but-
+          // incomplete aesthetic review holds it (so nothing half-rated is
+          // dropped), and a complete one is saved on the way.
+          const soloReady = validatorRated
+            ? !aestheticsTouched || reviewReady
+            : reviewReady;
+          const soloTitle = needAccount
+            ? "Sign in to publish"
+            : soloReady
+              ? validatorRated && !aestheticsTouched
+                ? "Publish without an aesthetic review — one can be added later"
+                : undefined
+              : validatorRated
+                ? "Finish the aesthetic review (a tier for every domain and a writeup), or clear it to publish without one"
+                : reviewTitle;
           return (
             <div className={styles.actions}>
               {reviewingAs}
@@ -1656,10 +1854,12 @@ export function RunReviewEditor({
                 <button
                   className={styles.primary}
                   onClick={onPublish}
-                  disabled={busy || needAccount || !reviewReady}
-                  title={needAccount ? "Sign in to publish" : reviewTitle}
+                  disabled={busy || needAccount || !soloReady}
+                  title={soloTitle}
                 >
-                  Publish run
+                  {validatorRated && !aestheticsTouched
+                    ? "Publish without review"
+                    : "Publish run"}
                 </button>
                 {cancelButton}
               </div>
@@ -1676,7 +1876,11 @@ export function RunReviewEditor({
                 ? "Sign in to publish"
                 : !canPublish
                   ? "Submit at least one review before publishing"
-                  : undefined
+                  : validatorRated &&
+                      reviews.length === 0 &&
+                      !submittedThisSession
+                    ? "Publish without an aesthetic review — one can be added later"
+                    : undefined
             }
           >
             Publish run
@@ -1831,22 +2035,32 @@ function ExistingReviews({
   reviews,
   items,
   runId,
+  validatorRated,
 }: {
   reviews: StoredReview[];
   items: ReviewItem[];
   runId: string;
+  /** On a validator-rated run the reviews carry only the aesthetic channel: the
+   * aggregate badge is the aesthetic one, and there is no per-review score. */
+  validatorRated: boolean;
 }) {
   if (reviews.length === 0) return null;
 
   // A jam's rating badge is the aggregate overall grade (worst across reviews) in
   // place of the per-domain aggregate rating a domain-scored case shows.
   const jam = items.some((it) => it.graded);
-  const aggRating = jam ? null : aggregateRating(reviews.map((r) => r.ratings));
+  const aggRating =
+    jam || validatorRated
+      ? null
+      : aggregateRating(reviews.map((r) => r.ratings));
+  const aggAesthetic = validatorRated
+    ? aggregateAestheticRating(reviews.map((r) => r.aesthetics ?? []))
+    : null;
   const aggGrade = jam
     ? aggregateOverallGrade(reviews.map((r) => r.checklist))
     : null;
   const aggScore =
-    items.length > 0
+    items.length > 0 && !validatorRated
       ? aggregateScore(reviews.map((r) => scoreChecklist(items, r.checklist)))
       : null;
 
@@ -1866,6 +2080,11 @@ function ExistingReviews({
               <GradeBadge status={aggGrade} />
             </span>
           )}
+          {aggAesthetic && (
+            <span title="Aggregate aesthetic rating (worst across all reviews)">
+              <AestheticBadge rating={aggAesthetic} />
+            </span>
+          )}
           {aggScore && (
             <span className={styles.muted}>
               {formatPoints(aggScore.earned)} / {aggScore.total} pts (avg of{" "}
@@ -1878,7 +2097,12 @@ function ExistingReviews({
         </span>
       </div>
 
-      <ReviewList reviews={reviews} items={items} runId={runId} />
+      <ReviewList
+        reviews={reviews}
+        items={items}
+        runId={runId}
+        validatorRated={validatorRated}
+      />
     </div>
   );
 }

@@ -22,6 +22,7 @@ fn version(toolchain: Option<ToolchainCommands>, build: Option<BuildCommands>) -
         slug: "carom".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
+        engine_format: false,
         name: "Carom".to_string(),
         difficulty: "easy".to_string(),
         tags: Vec::new(),

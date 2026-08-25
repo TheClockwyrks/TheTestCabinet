@@ -4,8 +4,9 @@ use std::fs;
 use std::path::Path;
 
 use super::{
-    AssetKind, BuildCommands, ErratumSeverity, MediaKind, SpecKind, TestCaseCatalog, TestType,
-    is_shippable_package, shippable_package_description,
+    AssetKind, BuildCommands, ErratumSeverity, FailureCap, MediaKind, Result, SpecKind,
+    TestCaseCatalog, TestCaseVersion, TestType, is_shippable_package,
+    shippable_package_description,
 };
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
@@ -3624,6 +3625,7 @@ fn a_per_engine_validator_must_exist_in_every_engine_s_project() {
     let review = "[review]\nformat = 2\n\
                   [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
                   [[review.categories.items]]\nid = \"serve\"\ntitle = \"Serve\"\n\
+                  failure_cap = \"broken\"\ndomains = [\"gameplay\"]\n\
                   validation = { script = \"gameplay/serve.test.ts\", outputs = [\
                   { id = \"serve\", kind = \"video\" } ] }\n";
     let files: &[(&str, &str)] = &[
@@ -3662,4 +3664,278 @@ fn a_per_engine_validator_must_exist_in_every_engine_s_project() {
         .expect("the sub-item carries its validator");
     assert_eq!(validation.script, None);
     assert_eq!(validation.script_rel, "gameplay/serve.test.ts");
+}
+
+// --- validator-rated versions: `failure_cap` + `domains` ----------------------
+
+/// The validator project files a per-engine (validator-rated) fixture ships: one
+/// starter workspace and one validator project per engine, with the `serve` suite
+/// present in each.
+const VALIDATOR_RATED_FILES: &[(&str, &str)] = &[
+    ("workspaces/none/package.json", "{}"),
+    ("workspaces/simple-2d/package.json", "{}"),
+    ("validation/none/vitest.config.ts", "export default {}"),
+    ("validation/none/gameplay/serve.test.ts", "// check"),
+    ("validation/simple-2d/vitest.config.ts", "export default {}"),
+    ("validation/simple-2d/gameplay/serve.test.ts", "// check"),
+];
+
+/// A `[review] format = 2` block with one `serve` item carrying `extra` keys beside
+/// its validation — the point a validator-rated fixture rates.
+fn serve_review(extra: &str) -> String {
+    format!(
+        "[review]\nformat = 2\n\
+         [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+         [[review.categories.items]]\nid = \"serve\"\ntitle = \"Serve\"\n\
+         {extra}\
+         validation = {{ script = \"gameplay/serve.test.ts\", outputs = [\
+         {{ id = \"serve\", kind = \"video\" }} ] }}\n"
+    )
+}
+
+/// Resolve a per-engine (validator-rated) manifest whose review block is `review`.
+fn resolve_validator_rated(review: &str) -> Result<TestCaseVersion> {
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        &format!("[instrumentation]\nhandle = \"__demo\"\n{review}"),
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, VALIDATOR_RATED_FILES);
+    catalog.resolve("demo", "v1.0.0")
+}
+
+/// The rendered failure of resolving a validator-rated manifest with `review`.
+fn reject_validator_rated(review: &str) -> String {
+    let err = resolve_validator_rated(review).expect_err("the manifest should be refused");
+    format!("{err}")
+}
+
+#[test]
+fn a_per_engine_version_is_on_the_engine_format_and_validator_rated() {
+    // The per-engine spelling is what makes a version validator-rated: its
+    // functional rating is decided by the validators, so every graded point must say
+    // which domains a failure lowers and how far.
+    let version = resolve_validator_rated(&serve_review(
+        "failure_cap = \"scuffed\"\ndomains = [\"gameplay\"]\n",
+    ))
+    .expect("resolve");
+    assert!(version.engine_format);
+    assert!(version.validator_rated());
+
+    let base = version.variant("base").expect("base");
+    let items = version.review_items_for(base);
+    let point = &items[0].sub_items[0];
+    assert_eq!(point.failure_cap, Some(FailureCap::Scuffed));
+    assert_eq!(point.domains, vec!["gameplay".to_string()]);
+    // A category (the grouping item) carries no cap of its own.
+    assert_eq!(items[0].failure_cap, None);
+    assert!(items[0].domains.is_empty());
+
+    // The two keys reach the UI and the stored catalog in camelCase.
+    let json = serde_json::to_value(point).expect("serialize");
+    assert_eq!(json["failureCap"], "scuffed");
+    assert_eq!(json["domains"], serde_json::json!(["gameplay"]));
+}
+
+#[test]
+fn a_legacy_version_is_not_on_the_engine_format() {
+    // A version on the single-`workspace` spelling behaves exactly as it always has:
+    // reviewer-rated, with its resolved points carrying no cap and no domains — and
+    // those keys stay off the wire so a stored legacy definition gains no field.
+    let manifest = manifest_with(
+        "",
+        "[[review_item]]\nid = \"serve\"\ntitle = \"Serve\"\ntext = \"Serves.\"\nweight = 1\n",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(!version.engine_format);
+    assert!(!version.validator_rated());
+    let item = &version.common_review_items[0];
+    assert_eq!(item.failure_cap, None);
+    assert!(item.domains.is_empty());
+    let json = serde_json::to_value(item).expect("serialize");
+    assert!(json.get("failureCap").is_none());
+    assert!(json.get("domains").is_none());
+    let json = serde_json::to_value(&version).expect("serialize");
+    assert_eq!(json["engineFormat"], false);
+}
+
+#[test]
+fn a_validator_rated_point_must_declare_a_failure_cap() {
+    let msg = reject_validator_rated(&serve_review("domains = [\"gameplay\"]\n"));
+    assert!(
+        msg.contains("review category `gameplay` item `serve` declares no `failure_cap`"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn a_validator_rated_point_must_declare_its_domains() {
+    let msg = reject_validator_rated(&serve_review("failure_cap = \"broken\"\n"));
+    assert!(
+        msg.contains("review category `gameplay` item `serve` declares no `domains`"),
+        "got: {msg}"
+    );
+    // An explicitly empty list is the same omission.
+    let msg = reject_validator_rated(&serve_review("failure_cap = \"broken\"\ndomains = []\n"));
+    assert!(msg.contains("declares no `domains`"), "got: {msg}");
+}
+
+#[test]
+fn a_validator_rated_point_must_carry_a_validator() {
+    // Behaviour is fully validator-decided on such a version, so a point nobody
+    // machine-checks has no way to be rated at all.
+    let review = "[review]\nformat = 2\n\
+                  [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+                  [[review.categories.items]]\nid = \"serve\"\ntitle = \"Serve\"\n\
+                  failure_cap = \"broken\"\ndomains = [\"gameplay\"]\n";
+    let msg = reject_validator_rated(review);
+    assert!(
+        msg.contains("review category `gameplay` item `serve` declares no `validation`"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn a_failure_cap_is_never_flawless() {
+    // A failure always costs something, so `flawless` is not a cap the manifest
+    // grammar admits.
+    let msg = reject_validator_rated(&serve_review(
+        "failure_cap = \"flawless\"\ndomains = [\"gameplay\"]\n",
+    ));
+    assert!(msg.contains("flawless"), "got: {msg}");
+}
+
+#[test]
+fn a_validator_rated_point_s_domains_must_be_declared_and_distinct() {
+    let msg = reject_validator_rated(&serve_review(
+        "failure_cap = \"broken\"\ndomains = [\"versus\"]\n",
+    ));
+    assert!(
+        msg.contains("names domain `versus` in `domains`, which is not declared"),
+        "got: {msg}"
+    );
+    let msg = reject_validator_rated(&serve_review(
+        "failure_cap = \"broken\"\ndomains = [\"gameplay\", \"gameplay\"]\n",
+    ));
+    assert!(
+        msg.contains("names domain `gameplay` twice in `domains`"),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn a_variant_point_may_name_the_variant_s_own_domain_but_a_common_point_may_not() {
+    // A common item is rated on every variant, so it may only lower a common
+    // domain; a variant's own item may also lower that variant's domain.
+    let common = serve_review("failure_cap = \"broken\"\ndomains = [\"gameplay\", \"versus\"]\n");
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        &format!("[instrumentation]\nhandle = \"__demo\"\n{common}"),
+        &["none", "simple-2d"],
+    );
+    let variant = "slug = \"base\"\n[[domain]]\nid = \"versus\"\ndescription = \"Two players.\"\n\
+                   [[review.categories]]\nid = \"versus\"\ntitle = \"Versus\"\n\
+                   [[review.categories.items]]\nid = \"controls\"\ntitle = \"Controls\"\n\
+                   failure_cap = \"great\"\ndomains = [\"versus\"]\n\
+                   validation = { script = \"gameplay/controls.test.ts\", outputs = [\
+                   { id = \"controls\", kind = \"video\" } ] }\n";
+    let mut files = VALIDATOR_RATED_FILES.to_vec();
+    files.push(("validation/none/gameplay/controls.test.ts", "// check"));
+    files.push(("validation/simple-2d/gameplay/controls.test.ts", "// check"));
+    files.push(("variants/base.toml", variant));
+    let (_dir, catalog) = catalog_with_files(&manifest, &files);
+    let msg = format!(
+        "{}",
+        catalog
+            .resolve("demo", "v1.0.0")
+            .expect_err("a common point naming a variant domain is refused")
+    );
+    assert!(
+        msg.contains("item `serve` names domain `versus` in `domains`, which is not declared"),
+        "got: {msg}"
+    );
+
+    // With the common point on the common domain only, the variant's own point may
+    // lower the variant's domain.
+    let common = serve_review("failure_cap = \"broken\"\ndomains = [\"gameplay\"]\n");
+    let manifest = engines_manifest_with(
+        "engines = [\"none\", \"simple-2d\"]\n",
+        &format!("[instrumentation]\nhandle = \"__demo\"\n{common}"),
+        &["none", "simple-2d"],
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &files);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base");
+    let items = version.review_items_for(base);
+    let controls = &items[1].sub_items[0];
+    assert_eq!(controls.failure_cap, Some(FailureCap::Great));
+    assert_eq!(controls.domains, vec!["versus".to_string()]);
+}
+
+#[test]
+fn a_legacy_version_rejects_failure_cap_and_domains_by_name() {
+    // The reviewer gives a legacy run's rating, so the two validator-rating keys
+    // mean nothing there and are refused with a message that says why — in both
+    // review grammars.
+    let manifest = manifest_with(
+        "",
+        "[[review_item]]\nid = \"serve\"\ntitle = \"Serve\"\ntext = \"Serves.\"\nweight = 1\n\
+         failure_cap = \"broken\"\n",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let msg = format!(
+        "{}",
+        catalog.resolve("demo", "v1.0.0").expect_err("refused")
+    );
+    assert!(
+        msg.contains(
+            "review_item `serve` declares `failure_cap`, but only a case on the engine format"
+        ),
+        "got: {msg}"
+    );
+
+    let manifest = manifest_with(
+        "",
+        "[review]\nformat = 2\n\
+         [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+         [[review.categories.items]]\nid = \"serve\"\ntitle = \"Serve\"\ndomains = [\"gameplay\"]\n",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let msg = format!(
+        "{}",
+        catalog.resolve("demo", "v1.0.0").expect_err("refused")
+    );
+    assert!(
+        msg.contains(
+            "review category `gameplay` item `serve` declares `domains`, but only a case on the engine format"
+        ),
+        "got: {msg}"
+    );
+}
+
+#[test]
+fn a_sub_divided_legacy_item_rates_per_sub_item_on_a_validator_rated_version() {
+    // The legacy `[[review_item]]` grammar is admitted on the engine format too; a
+    // sub-divided item is rated per sub-item, exactly as it is validated per
+    // sub-item, so item-level keys beside `sub_items` are refused.
+    let review = "[[review_item]]\nid = \"serve\"\ntitle = \"Serve\"\ntext = \"Serves.\"\nweight = 1\n\
+                  failure_cap = \"broken\"\ndomains = [\"gameplay\"]\n\
+                  sub_item = [ { id = \"a\", title = \"A\", failure_cap = \"broken\", \
+                  domains = [\"gameplay\"], validation = { script = \"gameplay/serve.test.ts\", \
+                  outputs = [ { id = \"a\", kind = \"video\" } ] } } ]\n";
+    let msg = reject_validator_rated(review);
+    assert!(
+        msg.contains("review_item `serve` declares `sub_items` alongside an item-level"),
+        "got: {msg}"
+    );
+
+    let review = "[[review_item]]\nid = \"serve\"\ntitle = \"Serve\"\ntext = \"Serves.\"\nweight = 1\n\
+                  sub_item = [ { id = \"a\", title = \"A\", failure_cap = \"passable\", \
+                  domains = [\"gameplay\"], validation = { script = \"gameplay/serve.test.ts\", \
+                  outputs = [ { id = \"a\", kind = \"video\" } ] } } ]\n";
+    let version = resolve_validator_rated(review).expect("resolve");
+    let sub = &version.common_review_items[0].sub_items[0];
+    assert_eq!(sub.failure_cap, Some(FailureCap::Passable));
+    assert_eq!(sub.domains, vec!["gameplay".to_string()]);
 }

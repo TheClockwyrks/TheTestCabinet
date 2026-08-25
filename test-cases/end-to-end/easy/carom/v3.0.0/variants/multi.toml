@@ -43,6 +43,12 @@ none = "workspaces/none"
 # game (both Solo and Versus), and every point is about the one thing this variant
 # adds: that the three balls are independent of each other and solid to each
 # other. The `format` is inherited from the case manifest (`[review] format = 2`).
+# Every point carries `domains` and `failure_cap` on the scale the case manifest
+# sets out above its `[review]` table: the three balls, their independence and
+# their collision ARE this variant, so missing them is a rule noticeably wrong
+# (`scuffed`); a waiting ball's solidity and the launch draw are edge rules
+# (`passable`), a point that never scores is `broken`, and the extra cue is a
+# secondary path (`passable`).
 [[review.categories]]
 id = "multi-ball"
 title = "Multi-Ball"
@@ -50,6 +56,8 @@ title = "Multi-Ball"
 id = "three-balls"
 title = "Three balls, each on its own home point"
 description = "At the title and at the opening of a match, snapshot().balls has three entries whose centers are BALL_HOMES[0..2] ((640, 180), (640, 360), (640, 540)) in play order, each held at match start."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: read the balls back at the title screen and at the opening
 # of a real match, and confirm there are three, each on its own home point and each
 # waiting. See validation/<engine>/multi/three-balls.test.ts.
@@ -60,6 +68,8 @@ validation = { script = "multi/three-balls.test.ts", outputs = [
 id = "independent-hold"
 title = "Every ball holds on its own timer"
 description = "On the first frame after match start on which any ball is in flight, all three balls are in flight and the screen is playing."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: open a match and step one frame at a time until the first
 # ball leaves, then read all three on that frame — all in flight, and the field
 # live. See validation/<engine>/multi/independent-hold.test.ts.
@@ -70,6 +80,8 @@ validation = { script = "multi/independent-hold.test.ts", outputs = [
 id = "independent-respawn"
 title = "A scored ball respawns alone"
 description = "On the frame a ball crosses a goal edge, that ball is at its own home point and held, the other two balls keep their velocities, and the screen stays playing."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: set two balls bouncing in lanes the third never crosses,
 # drive the third out the right goal, and read the frame the score turns over — the
 # scored ball home and holding, the other two still in flight, the screen still
@@ -81,6 +93,8 @@ validation = { script = "multi/independent-respawn.test.ts", outputs = [
 id = "ball-collision"
 title = "Balls collide with each other"
 description = "Two balls posed head on at equal speed leave the collision each carrying the other's arrival velocity, within 1 percent of speed, with their centers at least BALL_COLLIDE_DIST apart."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: pose two balls level on the mid-field lane closing head on,
 # and read them the frame they come apart — each leaving the way the other arrived,
 # at the speed it arrived with. See validation/<engine>/multi/ball-collision.test.ts.
@@ -91,6 +105,8 @@ validation = { script = "multi/ball-collision.test.ts", outputs = [
 id = "waiting-ball-solid"
 title = "A waiting ball is solid and immovable"
 description = "A moving ball aimed at a held ball reflects with vx reversed at its arrival speed within 1 percent, while the held ball keeps its home point, its held flag, and its hold timer."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: open a match, aim one ball straight at the next ball's home
 # point, and read the frame it turns round — the target unmoved and still holding,
 # the moving ball away at the speed it arrived with. See
@@ -102,6 +118,8 @@ validation = { script = "multi/waiting-ball-solid.test.ts", outputs = [
 id = "launch-angle"
 title = "Launches are drawn over the full circle"
 description = "Over twenty-four launches under eight seeds, launches leave in both horizontal directions, at least a third leave at over 30 degrees from horizontal, and no two launches of one match share an angle."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: open a match under eight seeds, read all three launches of
 # each, and hold the sample of twenty-four to what a full-circle draw gives — both
 # directions, most of them steep, and each angle drawn afresh. See
@@ -125,6 +143,8 @@ title = "Gameplay"
 id = "launch-speed"
 title = "Launch speed"
 description = "Every one of the three balls leaves its launch at SERVE_SPEED (520 units per second), within 1 percent."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: open a match, cut the hold short, and read every ball's
 # speed on the launch frame. See validation/<engine>/multi/launch-speed.test.ts.
 validation = { script = "multi/launch-speed.test.ts", outputs = [
@@ -134,6 +154,8 @@ validation = { script = "multi/launch-speed.test.ts", outputs = [
 id = "hold-length"
 title = "Hold length"
 description = "From match start, the balls launch on the first frame at which HOLD_TIME (1.0 s) of game time has elapsed, within one frame, and a scored ball relaunches HOLD_TIME after its point, within one frame."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: start a match from the title with menu keys and count the
 # frames to the launch, then drive a real point and count the frames from it to the
 # scored ball leaving again. See validation/<engine>/multi/hold-length.test.ts.
@@ -144,6 +166,8 @@ validation = { script = "multi/hold-length.test.ts", outputs = [
 id = "scoring-p1"
 title = "Player one scores past the right goal"
 description = "A ball driven past the right goal edge increments player one's score by 1, leaves player two's unchanged, and leaves the screen on playing."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
 # Automated validation: drive a real ball out the right goal and confirm player one's
 # score increments, player two's does not, and the screen is still playing. See
 # validation/<engine>/multi/scoring-p1.test.ts.
@@ -154,6 +178,8 @@ validation = { script = "multi/scoring-p1.test.ts", outputs = [
 id = "scoring-p2"
 title = "Player two scores past the left goal"
 description = "A ball driven past the left goal edge increments player two's score by 1, leaves player one's unchanged, and leaves the screen on playing."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
 # Automated validation: drive a real ball out the left goal and confirm player two's
 # score increments, player one's does not, and the screen is still playing. See
 # validation/<engine>/multi/scoring-p2.test.ts.
@@ -164,6 +190,8 @@ validation = { script = "multi/scoring-p2.test.ts", outputs = [
 id = "match-win"
 title = "Match win at 11, lead by 2"
 description = "From 10-9, a point to 11-9 sets winner to left, screen to matchover, and leaves the score at 11-9."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: from 10-9, drive a real point across the goal to 11-9 and
 # confirm the match ends with the correct winner and final score. See
 # validation/<engine>/multi/match-win.test.ts.
@@ -174,6 +202,8 @@ validation = { script = "multi/match-win.test.ts", outputs = [
 id = "deuce"
 title = "Deuce past 10-10"
 description = "From 10-10, a point to 11-10 leaves winner null and the screen on playing, and a further point to 12-10 sets winner and screen to matchover."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
 # a further point to 12-10 must. See validation/<engine>/multi/deuce.test.ts.
 validation = { script = "multi/deuce.test.ts", outputs = [
@@ -191,6 +221,8 @@ title = "Audio"
 id = "ball-bounce"
 title = "Ball-bounce cue"
 description = "The ball-bounce cue plays once on the frame two balls bounce off each other, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: pose two balls closing head on across an empty lane and read
 # the cues on the frame they come apart — the ball-bounce cue, once. Under `none`
 # the cue's name is not observable from outside the build, so what is checked there

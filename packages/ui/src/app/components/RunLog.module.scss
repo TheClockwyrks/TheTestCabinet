@@ -91,10 +91,7 @@
   // Reviews tab — the reviewed run's identity, the account's own rating, and when
   // it reviewed). Resizable via `--ttc-cols` (see the global scope above); the
   // fallback is the resting template used until the user drags a header boundary.
-  grid-template-columns: var(
-    --ttc-cols,
-    1.2rem 1fr 7rem 6rem 1.6fr 6rem 9rem
-  );
+  grid-template-columns: var(--ttc-cols, 1.2rem 1fr 7rem 6rem 1.6fr 6rem 9rem);
   min-width: max(100%, 46rem);
 }
 
@@ -416,6 +413,8 @@ a.row:hover .selectCell .spinner,
 .rating {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
   font-size: 0.7rem;
 }
 

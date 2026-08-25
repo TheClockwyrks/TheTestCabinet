@@ -176,6 +176,7 @@ export function useReviewModel(subject: RunSubject): ReviewModelState {
   return {
     items: variant?.reviewItems ?? [],
     domains: variant?.domains ?? [],
+    validatorRated: variant?.validatorRated ?? false,
     status,
   };
 }

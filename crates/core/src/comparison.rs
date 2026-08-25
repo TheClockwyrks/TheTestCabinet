@@ -296,7 +296,24 @@ pub struct Comparison {
 ///   entirely and contributes to neither the numerator nor the denominator (the point
 ///   is left for a human).
 pub fn automated_only_score(items: &[ReviewItem], debug_scripts: &[DebugScriptResult]) -> Score {
-    let mut covered: BTreeSet<String> = BTreeSet::new();
+    let verdicts = automated_verdicts(debug_scripts);
+    let covered: BTreeSet<String> = verdicts.iter().map(|v| v.id.clone()).collect();
+    let restricted = restrict_items_to_covered(items, &covered);
+    score_checklist(&restricted, &verdicts)
+}
+
+/// The verdicts a run's validators decided, synthesized as [`ReviewVerdict`]s —
+/// the **failure semantics** shared by [`automated_only_score`] and the
+/// [validator-decided functional rating](crate::review::validator_domain_ratings):
+/// - A script with decided [verdicts](crate::validation::AutoVerdict) contributes
+///   each (`pass` → [`Pass`](VerdictStatus::Pass), else [`Fail`](VerdictStatus::Fail)).
+/// - A script that suffered a contract failure ([`ran`](DebugScriptResult::ran)
+///   `== false`) with no decided verdict **fails** the point it backs.
+/// - A script recorded [inconclusive](DebugScriptResult::precondition_unmet) is
+///   skipped entirely, as is a clean run that emitted no verdict.
+///
+/// The ids of the returned verdicts are exactly the auto-covered points.
+pub fn automated_verdicts(debug_scripts: &[DebugScriptResult]) -> Vec<ReviewVerdict> {
     let mut verdicts: Vec<ReviewVerdict> = Vec::new();
     for script in debug_scripts {
         // An inconclusive check says nothing about the model — leave the point for a
@@ -308,14 +325,11 @@ pub fn automated_only_score(items: &[ReviewItem], debug_scripts: &[DebugScriptRe
             // No decided verdict. A contract failure still fails the point it backs;
             // a clean run that simply emitted no verdict decides nothing, so skip it.
             if !script.ran {
-                let id = verdict_id_of(script);
-                covered.insert(id.clone());
-                verdicts.push(fail(id));
+                verdicts.push(fail(verdict_id_of(script)));
             }
             continue;
         }
         for v in &script.verdicts {
-            covered.insert(v.id.clone());
             verdicts.push(ReviewVerdict {
                 id: v.id.clone(),
                 status: if v.pass {
@@ -327,8 +341,7 @@ pub fn automated_only_score(items: &[ReviewItem], debug_scripts: &[DebugScriptRe
             });
         }
     }
-    let restricted = restrict_items_to_covered(items, &covered);
-    score_checklist(&restricted, &verdicts)
+    verdicts
 }
 
 /// The verdict id a debug-script result backs: `<item>.<sub>` for a per-sub-item

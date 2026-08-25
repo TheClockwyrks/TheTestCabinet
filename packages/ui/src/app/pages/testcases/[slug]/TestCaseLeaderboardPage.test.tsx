@@ -34,6 +34,31 @@ describe("resolveRunScore", () => {
       total: 5,
       rating: "great",
       grade: null,
+      aesthetic: null,
+    });
+  });
+
+  it("ranks a validator-rated run from its store score and rating with no review", () => {
+    // A validator-rated run this console produced: `toRunSummary` lifts the
+    // store's validator-decided score (reviews 0) and functional rating, so it
+    // ranks the moment it completes — findReview is never consulted, and the
+    // reviews it may carry rate only the aesthetic channel.
+    const run = summary({
+      validatorRated: true,
+      score: { earned: 7, total: 9, reviews: 0 },
+      rating: "passable",
+      aesthetic: "amazing",
+      reviewCount: 0,
+    });
+    const consulted = () => {
+      throw new Error("findReview must not be consulted for a scored summary");
+    };
+    expect(resolveRunScore(run, variant, consulted, {})).toEqual({
+      earned: 7,
+      total: 9,
+      rating: "passable",
+      grade: null,
+      aesthetic: "amazing",
     });
   });
 
@@ -41,6 +66,7 @@ describe("resolveRunScore", () => {
     const run = summary({ score: null, rating: null });
     const writeup: ParsedWriteup = {
       ratings: [{ domain: "d", rating: "scuffed" }],
+      aesthetics: [],
       checklist: [{ id: "a", status: "pass" }],
       body: "",
     };
@@ -52,6 +78,7 @@ describe("resolveRunScore", () => {
       total: 5,
       rating: "scuffed",
       grade: null,
+      aesthetic: null,
     });
   });
 
@@ -62,7 +89,12 @@ describe("resolveRunScore", () => {
 
   it("returns null when the only review carries no domain ratings", () => {
     const run = summary({ score: null, rating: null });
-    const writeup: ParsedWriteup = { ratings: [], checklist: [], body: "" };
+    const writeup: ParsedWriteup = {
+      ratings: [],
+      aesthetics: [],
+      checklist: [],
+      body: "",
+    };
     expect(resolveRunScore(run, variant, () => writeup, {})).toBeNull();
   });
 
@@ -82,6 +114,7 @@ describe("resolveRunScore", () => {
       total: 10,
       rating: null,
       grade: "great",
+      aesthetic: null,
     });
   });
 
@@ -91,6 +124,7 @@ describe("resolveRunScore", () => {
       ratings: [],
       // The category "fun" earned a `great` (8 pts × weight 1) and the reserved
       // overall verdict is the run's grade badge.
+      aesthetics: [],
       checklist: [
         { id: "fun", status: "great" },
         { id: "overall", status: "neutral" },
@@ -102,6 +136,7 @@ describe("resolveRunScore", () => {
       total: 10,
       rating: null,
       grade: "neutral",
+      aesthetic: null,
     });
   });
 });

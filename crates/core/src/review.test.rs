@@ -8,6 +8,8 @@ use crate::test_case::{Domain, ReviewItem, SubReviewItem};
 /// for these tests.
 fn item(id: &str, weight: u32) -> ReviewItem {
     ReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
         validation: None,
         id: id.to_string(),
         title: id.to_string(),
@@ -27,6 +29,8 @@ fn item(id: &str, weight: u32) -> ReviewItem {
 /// A game-jam category: a graded review item with the given id and weight.
 fn graded_item(id: &str, weight: u32) -> ReviewItem {
     ReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
         validation: None,
         graded: true,
         ..item(id, weight)
@@ -47,10 +51,14 @@ fn grade(id: &str, status: VerdictStatus) -> ReviewVerdict {
 /// of their weights).
 fn item_with_sub_items(id: &str, sub_ids: &[&str]) -> ReviewItem {
     ReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
         validation: None,
         sub_items: sub_ids
             .iter()
             .map(|sub_id| SubReviewItem {
+                failure_cap: None,
+                domains: Vec::new(),
                 id: sub_id.to_string(),
                 title: sub_id.to_string(),
                 description: None,
@@ -188,6 +196,7 @@ fn rejects_an_empty_body() {
 #[test]
 fn renders_a_canonical_file_that_reparses() {
     let writeup = Writeup {
+        aesthetics: Vec::new(),
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Scuffed,
@@ -206,6 +215,7 @@ fn renders_a_canonical_file_that_reparses() {
 #[test]
 fn renders_multiple_domain_ratings_in_order() {
     let writeup = Writeup {
+        aesthetics: Vec::new(),
         ratings: vec![
             DomainRating {
                 domain: "single-player".to_string(),
@@ -252,6 +262,7 @@ fn parses_checklist_verdicts_with_and_without_notes() {
 #[test]
 fn a_writeup_with_verdicts_round_trips() {
     let writeup = Writeup {
+        aesthetics: Vec::new(),
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Scuffed,
@@ -278,6 +289,7 @@ fn a_writeup_with_verdicts_round_trips() {
 fn a_note_with_a_stray_newline_is_normalized_to_one_line() {
     // A note must never break the frontmatter block: newlines collapse to spaces.
     let writeup = Writeup {
+        aesthetics: Vec::new(),
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Broken,
@@ -317,6 +329,7 @@ fn na_is_no_longer_a_valid_verdict() {
 fn missing_verdicts_reports_unaddressed_items() {
     let items = vec![item("ball-spin", 1), item("bank-shot", 1)];
     let writeup = Writeup {
+        aesthetics: Vec::new(),
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Great,
@@ -336,6 +349,7 @@ fn missing_verdicts_reports_unaddressed_items() {
     // Once every item has a verdict, nothing is missing — a stale extra verdict
     // for an unknown id does not change that.
     let complete = Writeup {
+        aesthetics: Vec::new(),
         checklist: vec![
             ReviewVerdict {
                 id: "ball-spin".to_string(),
@@ -373,6 +387,7 @@ fn missing_ratings_reports_unrated_domains() {
         },
     ];
     let writeup = Writeup {
+        aesthetics: Vec::new(),
         ratings: vec![DomainRating {
             domain: "single-player".to_string(),
             rating: Rating::Great,
@@ -390,6 +405,7 @@ fn missing_ratings_reports_unrated_domains() {
 fn score_sums_the_weight_of_passed_items() {
     let items = vec![item("a", 2), item("b", 3), item("c", 1)];
     let writeup = Writeup {
+        aesthetics: Vec::new(),
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Great,
@@ -523,12 +539,18 @@ fn diff_reviews_captures_rating_verdict_and_writeup_changes() {
         pass("c"),
     ];
     let diff = diff_reviews(
-        &prior_ratings,
-        "Old body.",
-        &prior_checklist,
-        &next_ratings,
-        "New body.",
-        &next_checklist,
+        ReviewContent {
+            ratings: &prior_ratings,
+            aesthetics: &[],
+            writeup: "Old body.",
+            checklist: &prior_checklist,
+        },
+        ReviewContent {
+            ratings: &next_ratings,
+            aesthetics: &[],
+            writeup: "New body.",
+            checklist: &next_checklist,
+        },
     );
 
     assert_eq!(diff.ratings.len(), 1);
@@ -567,17 +589,22 @@ fn diff_reviews_records_removals_and_is_empty_when_unchanged() {
     let checklist = vec![pass("a"), pass("b")];
 
     // An identical review diffs to nothing.
-    let unchanged = diff_reviews(&ratings, "Body.", &checklist, &ratings, "Body.", &checklist);
+    let content = ReviewContent {
+        ratings: &ratings,
+        aesthetics: &[],
+        writeup: "Body.",
+        checklist: &checklist,
+    };
+    let unchanged = diff_reviews(content, content);
     assert!(unchanged.is_empty());
 
     // Dropping the `b` verdict records it as a removal (`to = None`).
     let removed = diff_reviews(
-        &ratings,
-        "Body.",
-        &checklist,
-        &ratings,
-        "Body.",
-        &[pass("a")],
+        content,
+        ReviewContent {
+            checklist: &[pass("a")],
+            ..content
+        },
     );
     assert_eq!(removed.verdicts.len(), 1);
     assert_eq!(removed.verdicts[0].id, "b");
@@ -592,6 +619,7 @@ fn missing_verdicts_requires_every_sub_item_of_a_sub_itemed_item() {
         item_with_sub_items("spin", &["stationary", "moving"]),
     ];
     let writeup = Writeup {
+        aesthetics: Vec::new(),
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Great,
@@ -731,4 +759,484 @@ fn writeup_with_only_graded_verdicts_parses() {
     assert!(writeup.ratings.is_empty());
     assert_eq!(writeup.overall_grade(), Some(VerdictStatus::Incredible));
     assert_eq!(writeup.checklist.len(), 2);
+}
+
+// --- the aesthetic channel and the validator-decided functional rating ---------
+
+use crate::validation::{AutoVerdict, DebugScriptResult};
+
+/// A scoring domain with the given id.
+fn domain(id: &str) -> Domain {
+    Domain {
+        id: id.to_string(),
+        name: id.to_string(),
+        description: format!("The {id} mode."),
+    }
+}
+
+/// A validator-rated whole-item point: scored, validated, with a cap and domains.
+fn capped_item(id: &str, cap: FailureCap, domains: &[&str]) -> ReviewItem {
+    ReviewItem {
+        failure_cap: Some(cap),
+        domains: domains.iter().map(|d| d.to_string()).collect(),
+        ..item(id, 1)
+    }
+}
+
+/// A validator-rated category whose points each carry `(id, cap, domains)`.
+fn capped_category(id: &str, points: &[(&str, FailureCap, &[&str])]) -> ReviewItem {
+    ReviewItem {
+        sub_items: points
+            .iter()
+            .map(|(sub_id, cap, domains)| SubReviewItem {
+                id: sub_id.to_string(),
+                title: sub_id.to_string(),
+                description: None,
+                weight: 1,
+                reference: None,
+                proof: None,
+                scored: true,
+                validation: None,
+                failure_cap: Some(*cap),
+                domains: domains.iter().map(|d| d.to_string()).collect(),
+            })
+            .collect(),
+        ..item(id, points.len() as u32)
+    }
+}
+
+/// A debug-script result backing `item_id`(`.sub_item_id`), carrying the given
+/// `(verdict id, pass)` decisions, with `ran`/`precondition_unmet` control flags.
+fn script(
+    item_id: &str,
+    sub_item_id: Option<&str>,
+    verdicts: &[(&str, bool)],
+    ran: bool,
+    precondition_unmet: bool,
+) -> DebugScriptResult {
+    DebugScriptResult {
+        item_id: item_id.into(),
+        sub_item_id: sub_item_id.map(Into::into),
+        title: String::new(),
+        category_title: String::new(),
+        script: String::new(),
+        gates: true,
+        ran,
+        precondition_unmet,
+        detail: None,
+        verdicts: verdicts
+            .iter()
+            .map(|(id, pass)| AutoVerdict {
+                id: (*id).into(),
+                pass: *pass,
+                assertions: vec![],
+            })
+            .collect(),
+        outputs: vec![],
+    }
+}
+
+/// A decided verdict for `id` under item `item`, passing or failing.
+fn decided(item: &str, id: &str, pass: bool) -> DebugScriptResult {
+    let sub = id.strip_prefix(&format!("{item}."));
+    script(item, sub, &[(id, pass)], true, false)
+}
+
+fn aesthetic(domain: &str, rating: AestheticRating) -> DomainAesthetic {
+    DomainAesthetic {
+        domain: domain.to_string(),
+        rating,
+    }
+}
+
+#[test]
+fn every_aesthetic_tier_round_trips_through_its_token() {
+    for rating in AestheticRating::ALL {
+        assert_eq!(AestheticRating::parse(rating.as_str()), Some(rating));
+        let json = serde_json::to_string(&rating).expect("serialize");
+        assert_eq!(json, format!("\"{}\"", rating.as_str()));
+    }
+    assert_eq!(
+        AestheticRating::parse("  Amazing "),
+        Some(AestheticRating::Amazing)
+    );
+    assert_eq!(AestheticRating::parse("flawless"), None);
+}
+
+#[test]
+fn aesthetic_ratings_rank_best_to_worst_and_worst_picks_the_lowest() {
+    assert!(AestheticRating::Legendary.rank() < AestheticRating::Amazing.rank());
+    assert!(AestheticRating::Amazing.rank() < AestheticRating::Good.rank());
+    assert!(AestheticRating::Good.rank() < AestheticRating::Okay.rank());
+    assert!(AestheticRating::Okay.rank() < AestheticRating::Slop.rank());
+    assert_eq!(
+        AestheticRating::worst([
+            AestheticRating::Legendary,
+            AestheticRating::Okay,
+            AestheticRating::Good
+        ]),
+        Some(AestheticRating::Okay)
+    );
+    assert_eq!(AestheticRating::worst([]), None);
+}
+
+#[test]
+fn a_failure_cap_maps_onto_its_functional_rating_and_is_never_flawless() {
+    assert_eq!(FailureCap::Broken.rating(), Rating::Broken);
+    assert_eq!(FailureCap::Scuffed.rating(), Rating::Scuffed);
+    assert_eq!(FailureCap::Passable.rating(), Rating::Passable);
+    assert_eq!(FailureCap::Great.rating(), Rating::Great);
+    for cap in FailureCap::ALL {
+        assert_eq!(FailureCap::parse(cap.as_str()), Some(cap));
+        assert_eq!(
+            serde_json::to_string(&cap).expect("serialize"),
+            format!("\"{}\"", cap.as_str())
+        );
+    }
+    assert_eq!(FailureCap::parse("flawless"), None);
+    assert!(serde_json::from_str::<FailureCap>("\"flawless\"").is_err());
+}
+
+#[test]
+fn a_writeup_parses_and_round_trips_aesthetic_ratings() {
+    let raw =
+        "---\naesthetic.single-player: amazing\naesthetic.versus: Legendary\n---\n\nLovely.\n";
+    let writeup = parse_writeup(raw).expect("parse");
+    assert!(writeup.ratings.is_empty());
+    assert_eq!(
+        writeup.aesthetics,
+        vec![
+            aesthetic("single-player", AestheticRating::Amazing),
+            aesthetic("versus", AestheticRating::Legendary),
+        ]
+    );
+    assert_eq!(writeup.overall_rating(), None);
+    assert_eq!(
+        writeup.overall_aesthetic(),
+        Some(AestheticRating::Amazing),
+        "the overall aesthetic is the worst across domains"
+    );
+
+    let rendered = writeup.to_file_string();
+    assert_eq!(
+        rendered,
+        "---\naesthetic.single-player: amazing\naesthetic.versus: legendary\n---\n\nLovely.\n"
+    );
+    assert_eq!(parse_writeup(&rendered).expect("reparse"), writeup);
+}
+
+#[test]
+fn a_writeup_renders_ratings_then_aesthetics_then_verdicts() {
+    let writeup = Writeup {
+        ratings: vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Great,
+        }],
+        aesthetics: vec![aesthetic("gameplay", AestheticRating::Good)],
+        body: "Body.".to_string(),
+        checklist: vec![pass("a")],
+    };
+    assert_eq!(
+        writeup.to_file_string(),
+        "---\nrating.gameplay: great\naesthetic.gameplay: good\nreview.a: pass\n---\n\nBody.\n"
+    );
+    assert_eq!(
+        parse_writeup(&writeup.to_file_string()).expect("reparse"),
+        writeup
+    );
+}
+
+#[test]
+fn an_unknown_aesthetic_tier_or_empty_domain_is_rejected() {
+    let err = parse_writeup("---\naesthetic.gameplay: flawless\n---\n\nBody.\n").unwrap_err();
+    assert!(
+        format!("{err}").contains("`aesthetic.gameplay` must be one of legendary, amazing"),
+        "got: {err}"
+    );
+    let err = parse_writeup("---\naesthetic.: good\n---\n\nBody.\n").unwrap_err();
+    assert!(format!("{err}").contains("empty domain id"), "got: {err}");
+}
+
+#[test]
+fn missing_aesthetics_reports_the_unrated_domains() {
+    let domains = [domain("single-player"), domain("versus")];
+    let writeup = Writeup {
+        ratings: Vec::new(),
+        aesthetics: vec![aesthetic("versus", AestheticRating::Okay)],
+        body: "Body.".to_string(),
+        checklist: Vec::new(),
+    };
+    assert_eq!(
+        missing_aesthetics(&domains, &writeup),
+        vec!["single-player".to_string()]
+    );
+    // The functional-channel gate is untouched by aesthetics: it still reports
+    // every domain as unrated, which is exactly right for a validator-rated run
+    // (whose functional rating is not the reviewer's to give).
+    assert_eq!(
+        missing_ratings(&domains, &writeup),
+        vec!["single-player".to_string(), "versus".to_string()]
+    );
+}
+
+#[test]
+fn aggregate_aesthetic_is_the_worst_across_every_review_and_domain() {
+    let harsh = vec![
+        aesthetic("single-player", AestheticRating::Amazing),
+        aesthetic("versus", AestheticRating::Okay),
+    ];
+    let generous = vec![
+        aesthetic("single-player", AestheticRating::Legendary),
+        aesthetic("versus", AestheticRating::Amazing),
+    ];
+    assert_eq!(
+        aggregate_aesthetic([harsh.as_slice(), generous.as_slice()]),
+        Some(AestheticRating::Okay)
+    );
+    assert_eq!(aggregate_aesthetic([Vec::new().as_slice()]), None);
+    assert_eq!(aggregate_aesthetic(std::iter::empty()), None);
+}
+
+#[test]
+fn diff_reviews_captures_aesthetic_changes_alongside_ratings() {
+    let prior = vec![
+        aesthetic("single-player", AestheticRating::Good),
+        aesthetic("versus", AestheticRating::Good),
+    ];
+    let next = vec![
+        aesthetic("single-player", AestheticRating::Amazing),
+        aesthetic("hidden", AestheticRating::Slop),
+    ];
+    let diff = diff_reviews(
+        ReviewContent {
+            ratings: &[],
+            aesthetics: &prior,
+            writeup: "Body.",
+            checklist: &[],
+        },
+        ReviewContent {
+            ratings: &[],
+            aesthetics: &next,
+            writeup: "Body.",
+            checklist: &[],
+        },
+    );
+    assert!(diff.ratings.is_empty());
+    assert!(diff.verdicts.is_empty());
+    assert!(diff.writeup.is_none());
+    assert_eq!(
+        diff.aesthetics,
+        vec![
+            AestheticChange {
+                domain: "single-player".to_string(),
+                from: Some(AestheticRating::Good),
+                to: Some(AestheticRating::Amazing),
+            },
+            AestheticChange {
+                domain: "hidden".to_string(),
+                from: None,
+                to: Some(AestheticRating::Slop),
+            },
+            AestheticChange {
+                domain: "versus".to_string(),
+                from: Some(AestheticRating::Good),
+                to: None,
+            },
+        ]
+    );
+    assert!(!diff.is_empty(), "an aesthetic-only change is a change");
+    let json = serde_json::to_value(&diff).expect("serialize");
+    assert!(
+        json.get("ratings").is_none(),
+        "empty channels stay off the wire"
+    );
+    assert_eq!(json["aesthetics"].as_array().map(Vec::len), Some(3));
+}
+
+#[test]
+fn validator_domain_ratings_start_flawless_and_take_the_lowest_cap_per_domain() {
+    let domains = [domain("single-player"), domain("versus")];
+    let items = [capped_category(
+        "gameplay",
+        &[
+            ("serve", FailureCap::Broken, &["single-player", "versus"]),
+            ("ai", FailureCap::Scuffed, &["single-player"]),
+            ("controls", FailureCap::Great, &["versus"]),
+            ("hud", FailureCap::Passable, &["single-player", "versus"]),
+        ],
+    )];
+
+    // No failures at all: every domain is flawless.
+    let scripts = [
+        decided("gameplay", "gameplay.serve", true),
+        decided("gameplay", "gameplay.ai", true),
+        decided("gameplay", "gameplay.controls", true),
+        decided("gameplay", "gameplay.hud", true),
+    ];
+    let ratings = validator_domain_ratings(&domains, &items, &scripts);
+    assert_eq!(
+        ratings,
+        vec![
+            DomainRating {
+                domain: "single-player".to_string(),
+                rating: Rating::Flawless
+            },
+            DomainRating {
+                domain: "versus".to_string(),
+                rating: Rating::Flawless
+            },
+        ]
+    );
+    assert_eq!(validator_rating(false, &ratings), Some(Rating::Flawless));
+
+    // `ai` (scuffed, single-player only) and `controls` (great, versus only) fail:
+    // each lowers only its own domains, and the run's rating is the worst domain.
+    let scripts = [
+        decided("gameplay", "gameplay.serve", true),
+        decided("gameplay", "gameplay.ai", false),
+        decided("gameplay", "gameplay.controls", false),
+        decided("gameplay", "gameplay.hud", true),
+    ];
+    let ratings = validator_domain_ratings(&domains, &items, &scripts);
+    assert_eq!(ratings[0].rating, Rating::Scuffed);
+    assert_eq!(ratings[1].rating, Rating::Great);
+    assert_eq!(validator_rating(false, &ratings), Some(Rating::Scuffed));
+
+    // Two failures on one domain capped at great and passable → passable (the
+    // lowest cap wins); a third capped at broken → broken.
+    let scripts = [
+        decided("gameplay", "gameplay.controls", false),
+        decided("gameplay", "gameplay.hud", false),
+    ];
+    let ratings = validator_domain_ratings(&domains, &items, &scripts);
+    assert_eq!(ratings[0].rating, Rating::Passable);
+    assert_eq!(ratings[1].rating, Rating::Passable);
+    let scripts = [
+        decided("gameplay", "gameplay.controls", false),
+        decided("gameplay", "gameplay.hud", false),
+        decided("gameplay", "gameplay.serve", false),
+    ];
+    let ratings = validator_domain_ratings(&domains, &items, &scripts);
+    assert_eq!(ratings[0].rating, Rating::Broken);
+    assert_eq!(ratings[1].rating, Rating::Broken);
+}
+
+#[test]
+fn validator_domain_ratings_use_the_automated_only_failure_semantics() {
+    let domains = [domain("gameplay")];
+    let items = [
+        capped_item("crashed", FailureCap::Broken, &["gameplay"]),
+        capped_item("unmet", FailureCap::Broken, &["gameplay"]),
+        capped_item("silent", FailureCap::Broken, &["gameplay"]),
+        capped_item("unscripted", FailureCap::Broken, &["gameplay"]),
+    ];
+    // An inconclusive point (`precondition_unmet`), a clean run that decided
+    // nothing, and a point with no script result at all never lower a domain.
+    let scripts = [
+        script("unmet", None, &[], false, true),
+        script("silent", None, &[], true, false),
+    ];
+    let ratings = validator_domain_ratings(&domains, &items, &scripts);
+    assert_eq!(ratings[0].rating, Rating::Flawless);
+    // A contract failure (`ran == false`, not inconclusive) fails its point.
+    let scripts = [script("crashed", None, &[], false, false)];
+    let ratings = validator_domain_ratings(&domains, &items, &scripts);
+    assert_eq!(ratings[0].rating, Rating::Broken);
+}
+
+#[test]
+fn an_unscored_point_or_an_unknown_domain_never_lowers_a_rating() {
+    let domains = [domain("gameplay")];
+    // An erratum excluded `serve` from scoring: its failure is not the model's.
+    let mut excluded = capped_item("serve", FailureCap::Broken, &["gameplay"]);
+    excluded.scored = false;
+    let items = [
+        excluded,
+        // A point naming a domain outside the effective set (defensive: resolution
+        // forbids it) lowers nothing.
+        capped_item("stray", FailureCap::Broken, &["elsewhere"]),
+        // A legacy point with no cap cannot lower anything either.
+        item("uncapped", 1),
+    ];
+    let scripts = [
+        decided("serve", "serve", false),
+        decided("stray", "stray", false),
+        decided("uncapped", "uncapped", false),
+        decided("ghost", "ghost", false),
+    ];
+    let ratings = validator_domain_ratings(&domains, &items, &scripts);
+    assert_eq!(
+        ratings,
+        vec![DomainRating {
+            domain: "gameplay".to_string(),
+            rating: Rating::Flawless
+        }]
+    );
+
+    // Within a category, an excluded sub-item is skipped while its siblings count.
+    let mut category = capped_category(
+        "gameplay",
+        &[
+            ("serve", FailureCap::Broken, &["gameplay"]),
+            ("hud", FailureCap::Great, &["gameplay"]),
+        ],
+    );
+    category.sub_items[0].scored = false;
+    let scripts = [
+        decided("gameplay", "gameplay.serve", false),
+        decided("gameplay", "gameplay.hud", false),
+    ];
+    let ratings = validator_domain_ratings(&domains, &[category], &scripts);
+    assert_eq!(ratings[0].rating, Rating::Great);
+}
+
+#[test]
+fn validator_rating_composes_with_the_toolchain_gate() {
+    let flawless = [DomainRating {
+        domain: "gameplay".to_string(),
+        rating: Rating::Flawless,
+    }];
+    assert_eq!(validator_rating(true, &flawless), Some(Rating::Broken));
+    assert_eq!(validator_rating(false, &flawless), Some(Rating::Flawless));
+    // A validator-rated run always has a domain set, but an empty one is still
+    // only ever `None` when ungated.
+    assert_eq!(validator_rating(false, &[]), None);
+    assert_eq!(validator_rating(true, &[]), Some(Rating::Broken));
+}
+
+#[test]
+fn validator_score_is_the_automated_only_score_with_zero_reviews() {
+    let items = [capped_category(
+        "gameplay",
+        &[
+            ("serve", FailureCap::Broken, &["gameplay"]),
+            ("ai", FailureCap::Scuffed, &["gameplay"]),
+            ("hud", FailureCap::Great, &["gameplay"]),
+        ],
+    )];
+    let scripts = [
+        decided("gameplay", "gameplay.serve", true),
+        decided("gameplay", "gameplay.ai", false),
+        decided("gameplay", "gameplay.hud", true),
+    ];
+    let score = validator_score(false, &items, &scripts);
+    assert_eq!(
+        score,
+        AggregateScore {
+            earned: 2.0,
+            total: 3,
+            reviews: 0
+        }
+    );
+    // The gate zeroes the numerator and keeps the denominator, exactly as it does
+    // over a reviewed score.
+    let gated = validator_score(true, &items, &scripts);
+    assert_eq!(
+        gated,
+        AggregateScore {
+            earned: 0.0,
+            total: 3,
+            reviews: 0
+        }
+    );
 }

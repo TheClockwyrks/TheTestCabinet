@@ -110,6 +110,13 @@ interface SnapshotDomainRating {
   rating: string;
 }
 
+// One per-domain AESTHETIC rating of a review — the second channel, carried only
+// by a review of a validator-rated run.
+interface SnapshotDomainAesthetic {
+  domain: string;
+  rating: string;
+}
+
 // One review entry in a run's `reviews[]` array: the reviewer's verdict plus
 // attribution (the public snapshot exposes the display name and id, not the
 // username). A run can carry more than one.
@@ -117,6 +124,8 @@ interface SnapshotReview {
   reviewerId?: string;
   reviewer?: string;
   ratings: SnapshotDomainRating[];
+  // The reviewer's per-domain aesthetic ratings; absent on a legacy run's review.
+  aesthetics?: SnapshotDomainAesthetic[];
   writeup: string;
   checklist?: SnapshotReviewVerdict[];
   reviewedAt?: string | null;
@@ -174,6 +183,12 @@ interface SnapshotCaseFile {
   // The case's test type. Optional for snapshots written before it was published;
   // defaults to "end-to-end" when absent.
   testType?: TestType;
+  // Whether the version is on the ENGINE manifest format — which, with the test
+  // type (a game jam never is), makes it VALIDATOR-RATED: its runs' functional
+  // rating and score come from the validators (every review item carries a
+  // `failureCap` and `domains`) and reviewers rate only the aesthetic channel.
+  // Optional for snapshots written before the field existed (legacy).
+  engineFormat?: boolean;
   // The asset shape an asset-generation case produces, partitioning the catalog's
   // 2D / 3D / Particle / Audio tabs. Optional for snapshots written before it was
   // published; treated as `sprite` when absent.
@@ -313,6 +328,11 @@ interface SnapshotReviewItem {
   // field existed; treated as false (every pre-jam case is pass/fail).
   graded?: boolean;
   domain?: string | null;
+  // On a validator-rated version: the failure cap of a whole-item point and the
+  // domain ids a failure lowers (see `AssembledReviewItem`). Absent on a legacy
+  // version and on a snapshot written before the fields existed.
+  failureCap?: string | null;
+  domains?: string[];
   // The sub-items this item is graded by, each an independently scored pass/fail
   // point. Absent on snapshots written before sub-items existed.
   subItems?: SnapshotSubReviewItem[];
@@ -331,6 +351,10 @@ interface SnapshotSubReviewItem {
   // The reference view / proof id paired with this point, when it declares them.
   reference?: string | null;
   proof?: string | null;
+  // On a validator-rated version: this point's failure cap and the domain ids a
+  // failure lowers. Absent on a legacy version.
+  failureCap?: string | null;
+  domains?: string[];
 }
 
 interface SnapshotDomain {
@@ -347,6 +371,7 @@ interface AssembledReview {
   reviewerId: string;
   reviewer: string;
   ratings: SnapshotDomainRating[];
+  aesthetics: SnapshotDomainAesthetic[];
   writeup: string;
   checklist: SnapshotReviewVerdict[];
   reviewedAt: string | null;
@@ -435,6 +460,13 @@ interface AssembledReviewItem {
   // the grade tier. Omitted (treated as false) for a pass/fail case.
   graded?: boolean;
   domain: string | null;
+  // On a VALIDATOR-RATED version, the failure cap of a whole-item point — the
+  // highest functional rating its `domains` may reach while its validator fails —
+  // and the domain ids a failure lowers. The site derives a validator-rated run's
+  // functional rating from these exactly as the console does. Null/empty on a
+  // legacy version and on a category (whose points carry their own).
+  failureCap?: string | null;
+  domains: string[];
   // Whether this item contributes to the run's score. Omitted (treated as true)
   // unless a version erratum's `excludeFromScore` links its verdict id, in which case
   // it is `false` — still shown, just not scored. Mirrors `ReviewItem.scored`.
@@ -452,6 +484,10 @@ interface AssembledSubReviewItem {
   weight?: number;
   reference?: string | null;
   proof?: string | null;
+  // On a validator-rated version, this point's failure cap and the domain ids a
+  // failure lowers (see `AssembledReviewItem`). Null/empty on a legacy version.
+  failureCap?: string | null;
+  domains: string[];
   // Whether this sub-item contributes to the score (see `AssembledReviewItem.scored`).
   scored?: boolean;
 }
@@ -547,6 +583,11 @@ interface AssembledVariant {
   // The variant's effective scoring domains (common + its own) — the set a run of
   // this variant is rated against.
   domains: AssembledDomain[];
+  // Whether a run of this variant is validator-rated (the version is on the engine
+  // manifest format and is not a game jam): the items above carry failure caps
+  // and domains, the functional rating and score come from the run's validators,
+  // and reviewers rate only the aesthetic channel.
+  validatorRated: boolean;
   // The absolute URLs of this variant's reference-implementation builds, one per
   // engine, or empty when it declares none. Carried through verbatim from the
   // snapshot (each already a fully-qualified Cloudflare Pages URL), they are the
@@ -624,18 +665,33 @@ const EMPTY: AssembledSnapshot = {
 // run's aggregate. Mirrors the `Rating` enum in `packages/ui/src/ratings.ts`.
 const RATING_ORDER = ["flawless", "great", "passable", "scuffed", "broken"];
 
-// The worst (lowest) rating among `tiers`, or null when empty.
-function worstRating(tiers: string[]): string | null {
+// Aesthetic tiers, ordered best to worst — the second channel, rated per domain
+// by reviewers of a validator-rated run. Mirrors `AESTHETIC_RATINGS` in
+// `@test-cabinet/run-stats`.
+const AESTHETIC_ORDER = ["legendary", "amazing", "good", "okay", "slop"];
+
+// The worst (lowest) tier among `tiers` on the given scale, or null when empty.
+function worstOn(order: readonly string[], tiers: string[]): string | null {
   let worst: string | null = null;
   let worstRank = -1;
   for (const tier of tiers) {
-    const rank = RATING_ORDER.indexOf(tier);
+    const rank = order.indexOf(tier);
     if (rank > worstRank) {
       worstRank = rank;
       worst = tier;
     }
   }
   return worst;
+}
+
+// The worst (lowest) rating among `tiers`, or null when empty.
+function worstRating(tiers: string[]): string | null {
+  return worstOn(RATING_ORDER, tiers);
+}
+
+// The worst (lowest) aesthetic rating among `tiers`, or null when empty.
+function worstAestheticRating(tiers: string[]): string | null {
+  return worstOn(AESTHETIC_ORDER, tiers);
 }
 
 // Join a base URL with a snapshot-relative key, collapsing any double slash.
@@ -654,7 +710,8 @@ async function fetchJson<T>(url: string): Promise<T> {
 // Reconstruct a single *aggregate* writeup's `---\nrating.<domain>: …\n---\n\n
 // <body>` framing from a run's reviews, so the existing `parseWriteup` path is
 // unchanged on the site side and the cards/badges show the aggregate verdict. The
-// aggregate rating for a domain is the worst any reviewer gave it; a checklist
+// aggregate rating for a domain is the worst any reviewer gave it — on both
+// channels, the aesthetic one framed as `aesthetic.<domain>: …` lines; a checklist
 // item reads `pass` only when every reviewer who judged it passed it; the body
 // concatenates each reviewer's prose, attributed by display name. Mirrors
 // `frameReviews` in `@test-cabinet/ui`. Returns null for no reviews.
@@ -673,6 +730,18 @@ function frameWriteup(reviews: SnapshotReview[]): string | null {
   for (const [domain, tiers] of ratingsByDomain) {
     const worst = worstRating(tiers);
     if (worst) ratingLines.push(`rating.${domain}: ${worst}`);
+  }
+  const aestheticsByDomain = new Map<string, string[]>();
+  for (const review of reviews) {
+    for (const r of review.aesthetics ?? []) {
+      const list = aestheticsByDomain.get(r.domain) ?? [];
+      list.push(r.rating);
+      aestheticsByDomain.set(r.domain, list);
+    }
+  }
+  for (const [domain, tiers] of aestheticsByDomain) {
+    const worst = worstAestheticRating(tiers);
+    if (worst) ratingLines.push(`aesthetic.${domain}: ${worst}`);
   }
 
   const statusesByItem = new Map<string, string[]>();
@@ -713,6 +782,7 @@ function toAssembledReview(
     reviewerId: review.reviewerId ?? "",
     reviewer: review.reviewer ?? "Reviewer",
     ratings: review.ratings ?? [],
+    aesthetics: review.aesthetics ?? [],
     writeup: review.writeup ?? "",
     checklist: review.checklist ?? [],
     reviewedAt: review.reviewedAt ?? null,
@@ -833,6 +903,8 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
         weight: item.weight,
         graded: item.graded,
         domain: item.domain ?? null,
+        failureCap: item.failureCap ?? null,
+        domains: item.domains ?? [],
         scored: itemExcluded ? false : undefined,
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,
@@ -841,6 +913,8 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
           weight: sub.weight,
           reference: sub.reference ?? null,
           proof: sub.proof ?? null,
+          failureCap: sub.failureCap ?? null,
+          domains: sub.domains ?? [],
           scored:
             itemExcluded || excludedVerdictIds.has(`${item.id}.${sub.id}`)
               ? false
@@ -866,6 +940,11 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       referenceScreenshots,
       reviewItems,
       domains,
+      // Validator-rated iff the version is on the engine manifest format and is
+      // not a game jam — the same rule as the Rust `TestCaseVersion::validator_rated`.
+      validatorRated:
+        (file.engineFormat ?? false) &&
+        (file.testType ?? "end-to-end") !== "game-jam",
       // The reference-implementation build URLs, one per engine, carried through
       // verbatim (empty when the variant declares none).
       referenceBuilds: variant.referenceBuilds ?? {},
@@ -961,10 +1040,8 @@ function collapseCases(
     // selected version up here whichever one it is, and a list of slugs costs
     // nothing to carry twice.
     const enginesByVersion: Record<string, string[]> = {};
-    const variantsByVersion: Record<
-      string,
-      { slug: string; name: string }[]
-    > = {};
+    const variantsByVersion: Record<string, { slug: string; name: string }[]> =
+      {};
     for (const version of versions) {
       Object.assign(enginesByVersion, version.enginesByVersion);
       Object.assign(variantsByVersion, version.variantsByVersion);

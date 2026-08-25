@@ -25,6 +25,11 @@ pub struct Model {
     /// The reviewer's per-domain ratings as a JSON array of `{domain, rating}`.
     #[sea_orm(column_type = "Text")]
     pub ratings: String,
+    /// The reviewer's per-domain **aesthetic** ratings as a JSON array of
+    /// `{domain, rating}` — the aesthetic counterpart of `ratings`, carried only by
+    /// a review of a validator-rated run. `[]` on every legacy review.
+    #[sea_orm(column_type = "Text")]
+    pub aesthetics: String,
     #[sea_orm(column_type = "Text")]
     pub writeup: String,
     /// The reviewer's checklist verdicts as a JSON array.

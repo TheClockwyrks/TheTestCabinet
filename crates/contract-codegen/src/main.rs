@@ -151,10 +151,14 @@ const TOURNAMENT_DEFS: &[&str] = &[
 /// reference them here rather than each carrying a copy.
 const REVIEW_DEFS: &[&str] = &[
     "Rating",
+    "AestheticRating",
+    "FailureCap",
     "VerdictStatus",
     "ReviewVerdict",
     "DomainRating",
+    "DomainAesthetic",
     "RatingChange",
+    "AestheticChange",
     "VerdictChange",
     "WriteupChange",
     "ReviewDiff",
@@ -333,8 +337,10 @@ fn main() -> Result<()> {
         TsModule {
             file: "review.ts",
             decls: ts_decls![&cfg;
-                rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating,
-                rv::RatingChange, rv::VerdictChange, rv::WriteupChange, rv::ReviewDiff,
+                rv::Rating, rv::AestheticRating, rv::FailureCap, rv::VerdictStatus,
+                rv::ReviewVerdict, rv::DomainRating, rv::DomainAesthetic,
+                rv::RatingChange, rv::AestheticChange, rv::VerdictChange, rv::WriteupChange,
+                rv::ReviewDiff,
                 rv::ReviewRevision, snap::Review,
             ],
         },

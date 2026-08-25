@@ -18,8 +18,9 @@ vi.mock("../../components/PageLayout", () => ({
 // identity, so a fresh function per test keeps resolved coordinates from
 // leaking between tests.
 const host = vi.hoisted(() => ({
-  fetchCaseVariant: (() =>
-    Promise.resolve(null)) as (ref: CaseVariantRef) => Promise<VariantSummary | null>,
+  fetchCaseVariant: (() => Promise.resolve(null)) as (
+    ref: CaseVariantRef,
+  ) => Promise<VariantSummary | null>,
 }));
 vi.mock("../../data/galleryContext", () => ({
   useGalleryData: () => ({
@@ -90,6 +91,7 @@ describe("JamDetailLayout", () => {
           referenceScreenshots: [],
           reviewItems: [],
           domains: [],
+          validatorRated: false,
           referenceBuilds: {},
           referenceSheet: null,
         }) as VariantSummary,

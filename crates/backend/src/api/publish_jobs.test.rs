@@ -137,6 +137,10 @@ fn run_summary_lifts_the_runs_display_identity() {
         total_tokens: 100,
         cost_comparable: None,
         rating: Some("great".to_string()),
+
+        aesthetic: None,
+
+        validator_rated: false,
         review_count: 1,
         loaded: true,
         published: false,

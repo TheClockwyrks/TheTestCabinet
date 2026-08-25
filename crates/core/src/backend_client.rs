@@ -27,7 +27,7 @@ use crate::match_play::{ARENA_OPPONENT_IDS, ControllerRef, TournamentRecord};
 use crate::preview::AssetPreview;
 use crate::publish_job_api::{PublishProgress, PublishResult};
 use crate::reference::RenderedReference;
-use crate::review::Writeup;
+use crate::review::{FailureCap, Writeup};
 use crate::run_record::{PriorGameJamEntry, RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
@@ -984,6 +984,7 @@ impl BackendClient for HttpBackendClient {
         let url = self.url(&format!("/runs/{}/reviews", encode(run_id)));
         let body = ReviewBody {
             ratings: &review.ratings,
+            aesthetics: &review.aesthetics,
             writeup: &review.body,
             checklist: &review.checklist,
         };
@@ -1703,6 +1704,12 @@ struct VersionBody {
     /// wire shape (`id`, `name`, `description`) matches it field for field.
     #[serde(default)]
     domains: Vec<Domain>,
+    /// Whether the version is on the engine format (see
+    /// [`TestCaseVersion::engine_format`]), which with the test type decides
+    /// whether its runs are validator-rated. Absent from a definition stored
+    /// before the flag existed — every one of which is a legacy version.
+    #[serde(default)]
+    engine_format: bool,
     /// A performance case's held-out scored set. Empty for every other type.
     #[serde(default)]
     cases: Vec<CaseBody>,
@@ -1725,6 +1732,7 @@ impl VersionBody {
         // never reads it (it is site-facing only).
         let changelog_path = PathBuf::from("changelog.md");
         TestCaseVersion {
+            engine_format: self.engine_format,
             engines: self.engines,
             slug: self.slug,
             version: self.version,
@@ -1913,6 +1921,8 @@ fn workspace_from(file: &WorkspaceFileBody) -> WorkspaceFile {
 /// the script file. `None` for a human-judged item.
 fn review_item_from(item: ReviewItemBody) -> ReviewItem {
     ReviewItem {
+        failure_cap: item.failure_cap,
+        domains: item.domains,
         id: item.id,
         title: item.title,
         text: item.text,
@@ -1927,6 +1937,8 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
             .sub_items
             .into_iter()
             .map(|sub| SubReviewItem {
+                failure_cap: sub.failure_cap,
+                domains: sub.domains,
                 id: sub.id,
                 title: sub.title,
                 description: sub.description,
@@ -2240,6 +2252,14 @@ struct ReviewItemBody {
     /// validator runs it, so the backend serves it. `None` for a human-judged item.
     #[serde(default)]
     validation: Option<ReviewValidationBody>,
+    /// The failure cap of a whole-item point on a validator-rated version (see
+    /// [`ReviewItem::failure_cap`]); absent on a legacy version.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The domains a failure of a whole-item point lowers on a validator-rated
+    /// version (see [`ReviewItem::domains`]); empty on a legacy version.
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// The `[instrumentation]` table in the wire shape: the `window` handle a case's
@@ -2305,6 +2325,14 @@ struct SubReviewItemBody {
     proof: Option<String>,
     #[serde(default)]
     validation: Option<ReviewValidationBody>,
+    /// The point's failure cap on a validator-rated version (see
+    /// [`SubReviewItem::failure_cap`]); absent on a legacy version.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The domains a failure of this point lowers on a validator-rated version
+    /// (see [`SubReviewItem::domains`]); empty on a legacy version.
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// serde default for a wire sub-item's `weight`: one point.
@@ -2342,8 +2370,12 @@ struct CheckBody {
 
 #[derive(serde::Serialize)]
 struct ReviewBody<'a> {
-    /// The reviewer's rating for each scoring domain.
+    /// The reviewer's functional rating for each scoring domain (a legacy run).
     ratings: &'a [crate::review::DomainRating],
+    /// The reviewer's aesthetic rating for each scoring domain (a validator-rated
+    /// run). Omitted when empty so a legacy writeup posts exactly what it did before.
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    aesthetics: &'a [crate::review::DomainAesthetic],
     writeup: &'a str,
     /// The reviewer's verdicts on the case's declared checklist items.
     checklist: &'a [crate::review::ReviewVerdict],

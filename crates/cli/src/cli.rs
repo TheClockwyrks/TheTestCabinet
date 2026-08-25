@@ -46,7 +46,8 @@ pub enum Command {
     Review(ReviewArgs),
 
     /// Publish finished run(s): self-review + publish in one step (the solo path).
-    /// A run cannot be published without at least one review.
+    /// A legacy run cannot be published without at least one review; a
+    /// validator-rated run with no writeup is published without a self-review.
     Publish(PublishArgs),
 
     /// List supported harnesses and their availability.
@@ -278,7 +279,9 @@ pub struct ReviewArgs {
 #[derive(Debug, Args)]
 pub struct PublishArgs {
     /// One or more backend run ids to publish. Multiple values enable batch
-    /// publishing of a sweep's runs in a single invocation.
+    /// publishing of a sweep's runs in a single invocation. Each run's self-review
+    /// is read from `<run-id>.md` in the working directory; a validator-rated run
+    /// may omit it.
     #[arg(value_name = "RUN_ID", required = true, num_args = 1..)]
     pub run_ids: Vec<String>,
 

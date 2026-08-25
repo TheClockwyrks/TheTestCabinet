@@ -1,8 +1,17 @@
 import { Fragment, useMemo, useRef, type ReactNode } from "react";
 import { Link } from "react-router";
-import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
-import type { MyReview, StoredReview } from "../../client/types";
-import { overallGradeOf, worstRating } from "../data/ratings";
+import {
+  AestheticBadge,
+  GradeBadge,
+  RatingBadge,
+  canonicalModelId,
+} from "@test-cabinet/ui";
+import type { MyReview } from "../../client/types";
+import {
+  overallGradeOf,
+  worstAestheticRating,
+  worstRating,
+} from "../data/ratings";
 import { useFindModel } from "../data/useModels";
 import { useTestCaseName } from "../data/useTestCaseName";
 import { formatReviewedAt } from "../pages/runs/[runId]/ReviewList";
@@ -40,10 +49,21 @@ interface ReviewColumn {
 // This account's own verdict for a run: the worst rating across the domains it
 // scored, or — for a game jam, which scores no domains — its whole-game overall
 // grade (mirrors the run log's rating cell so the two tables read identically).
-function reviewerVerdict(review: StoredReview): ReactNode {
+// On a validator-rated run the account's review carries only the aesthetic
+// channel, so its badge is the aesthetic one, shown beside the run's
+// validator-decided functional rating.
+function reviewerVerdict(entry: MyReview): ReactNode {
+  const { review, run } = entry;
   const rated = review.ratings.length > 0;
-  const overall = rated ? worstRating(review.ratings.map((r) => r.rating)) : null;
-  const grade = rated ? null : overallGradeOf(review.checklist);
+  const overall = rated
+    ? worstRating(review.ratings.map((r) => r.rating))
+    : run.validatorRated
+      ? run.rating
+      : null;
+  const aesthetic = worstAestheticRating(
+    (review.aesthetics ?? []).map((r) => r.rating),
+  );
+  const grade = rated || aesthetic ? null : overallGradeOf(review.checklist);
   return (
     <span className={styles.rating} data-label="Rating">
       {grade ? (
@@ -51,8 +71,9 @@ function reviewerVerdict(review: StoredReview): ReactNode {
       ) : overall ? (
         <RatingBadge rating={overall} />
       ) : (
-        <span className={styles.noRating}>&mdash;</span>
+        !aesthetic && <span className={styles.noRating}>&mdash;</span>
       )}
+      {aesthetic && <AestheticBadge rating={aesthetic} />}
     </span>
   );
 }
@@ -125,7 +146,7 @@ const REVIEW_COLUMNS: readonly ReviewColumn[] = [
     default: "6rem",
     min: 56,
     optional: true,
-    render: (entry) => reviewerVerdict(entry.review),
+    render: (entry) => reviewerVerdict(entry),
   },
   {
     id: "reviewed",

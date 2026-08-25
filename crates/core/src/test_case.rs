@@ -15,6 +15,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::engine::{BUILT_IN_SLUGS, EngineCatalog, EngineSelection, NONE_SLUG};
 use crate::error::{Error, Result};
+use crate::review::FailureCap;
 
 /// The on-disk `test-case.toml` manifest for a single version.
 ///
@@ -1239,6 +1240,20 @@ struct ManifestReviewItem {
     /// handle. Reporter-side and never seeded. `None` for a human-judged item.
     #[serde(default)]
     validation: Option<ManifestReviewValidation>,
+    /// The highest functional rating the item's `domains` may reach while its
+    /// validator fails (see [`FailureCap`]). **Required** on a
+    /// [validator-rated](TestCaseVersion::validator_rated) version for an item
+    /// graded as a whole (an item with `sub_item`s declares it per sub-item);
+    /// **rejected** on a legacy version.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The scoring domains a failure of this item lowers, by id. **Required**
+    /// (non-empty) on a validator-rated version for an item graded as a whole;
+    /// **rejected** on a legacy version. Each must name a domain in the item's
+    /// effective set (common domains for a common item; common or the variant's
+    /// own for a variant item).
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// The `validation` sub-table of a `[[review_item]]`: the reporter-side automation
@@ -1308,6 +1323,16 @@ struct ManifestSubReviewItem {
     /// sub-item, so each point gets its own script and its own proof media.
     #[serde(default)]
     validation: Option<ManifestReviewValidation>,
+    /// The highest functional rating the sub-item's `domains` may reach while its
+    /// validator fails (see [`FailureCap`]). **Required** on a
+    /// [validator-rated](TestCaseVersion::validator_rated) version; **rejected**
+    /// on a legacy version.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The scoring domains a failure of this sub-item lowers, by id. **Required**
+    /// (non-empty) on a validator-rated version; **rejected** on a legacy version.
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// The `[review]` table: the opt-in **categories** review grammar
@@ -1393,6 +1418,22 @@ struct ManifestReviewCategoryItem {
     /// drive at most one item across the whole checklist.
     #[serde(default)]
     validation: Option<ManifestReviewValidation>,
+    /// The highest functional rating the item's `domains` may reach while its
+    /// validator fails — one of `broken`, `scuffed`, `passable`, `great` (see
+    /// [`FailureCap`]; `flawless` is never a cap, a failure always costs
+    /// something). **Required** on a [validator-rated](TestCaseVersion::validator_rated)
+    /// version, where every graded point is decided by its validator and the
+    /// build's functional rating is the lowest cap among its failing points;
+    /// **rejected** on a legacy version, whose rating the reviewer gives.
+    #[serde(default)]
+    failure_cap: Option<FailureCap>,
+    /// The scoring domains a failure of this item lowers, by id (for example
+    /// `["single-player", "versus"]`). **Required** (non-empty) on a
+    /// validator-rated version; **rejected** on a legacy version. Each must name a
+    /// domain in the item's effective set: a common item may name only a common
+    /// domain, a variant item a common domain or one of that variant's own.
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// A single `[[domain]]` entry in the manifest: one scoring domain a reviewer
@@ -3448,6 +3489,19 @@ pub struct ReviewItem {
     /// is correct — auto-validation only runs from a freshly resolved manifest.
     #[serde(skip)]
     pub validation: Option<ReviewValidation>,
+    /// The [`FailureCap`] of an item graded as a whole on a
+    /// [validator-rated](TestCaseVersion::validator_rated) version: the highest
+    /// functional rating its [`Self::domains`] may reach while its validator fails.
+    /// `None` on a legacy version, and on a category (whose points carry their own
+    /// caps; see [`SubReviewItem::failure_cap`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_cap: Option<FailureCap>,
+    /// The scoring domain ids a failure of this whole-item point lowers, on a
+    /// validator-rated version. Empty on a legacy version and on a category. This
+    /// is the scoring rule's input; [`Self::domain`] is the legacy display grouping
+    /// and is left as is.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
 }
 
 impl ReviewItem {
@@ -3603,6 +3657,8 @@ pub fn default_game_jam_review_items() -> Vec<ReviewItem> {
             sub_items: Vec::new(),
             scored: true,
             validation: None,
+            failure_cap: None,
+            domains: Vec::new(),
         })
         .collect()
 }
@@ -3666,6 +3722,17 @@ pub struct SubReviewItem {
     /// sub-items, since item-level validation is forbidden once sub-items exist.
     #[serde(skip)]
     pub validation: Option<ReviewValidation>,
+    /// The [`FailureCap`] of this point on a
+    /// [validator-rated](TestCaseVersion::validator_rated) version: the highest
+    /// functional rating its [`Self::domains`] may reach while its validator fails
+    /// (see [`crate::review::validator_domain_ratings`]). Always `Some` on a
+    /// validator-rated version; `None` on a legacy version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_cap: Option<FailureCap>,
+    /// The scoring domain ids a failure of this point lowers, on a validator-rated
+    /// version — never empty there, and empty on a legacy version.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
 }
 
 /// A scoring domain a test case declares.
@@ -3930,6 +3997,14 @@ pub struct TestCaseVersion {
     /// visibility filter and has no effect on how a run executes.
     #[serde(default)]
     pub experimental: bool,
+    /// Whether this version is authored on the **engine format** — the per-engine
+    /// manifest spelling (`[workspaces]` / `engines` / `[[engine]]`) rather than the
+    /// legacy single `workspace`. Set at resolution. Together with the test type it
+    /// decides whether the version is [validator-rated](Self::validator_rated).
+    /// Always present on the wire (a payload lacking it is one no resolution wrote,
+    /// and reads as legacy — the behaviour every frozen version has).
+    #[serde(default)]
+    pub engine_format: bool,
     /// The commands the validator runs to build the produced implementation into
     /// a served static site (from the manifest's `[build]` table). `Some` for an
     /// end-to-end case, `None` for any other type. Kept as a top-level optional
@@ -4105,6 +4180,17 @@ pub struct TestCaseVersion {
 }
 
 impl TestCaseVersion {
+    /// Whether runs of this version are **validator-rated**: their functional
+    /// rating and score are decided entirely by the validators (see
+    /// [`crate::review::validator_domain_ratings`]) and reviewers rate aesthetics
+    /// only. True iff the version is on the [engine format](Self::engine_format)
+    /// and is not a [game jam](TestType::GameJam) (a jam is graded, never
+    /// validated). Every version on the legacy spelling behaves exactly as it
+    /// always has: reviewer-rated, with no aesthetic channel.
+    pub fn validator_rated(&self) -> bool {
+        self.engine_format && self.test_type != TestType::GameJam
+    }
+
     /// Resolve a variant by its slug.
     pub fn variant(&self, slug: &str) -> Result<&Variant> {
         self.variants
@@ -6656,6 +6742,80 @@ impl TestCaseCatalog {
                     outputs,
                 })
             };
+        // Whether this version is validator-rated: the per-engine manifest format on
+        // any type but a game jam (see [`TestCaseVersion::validator_rated`]). On such
+        // a version behaviour is decided entirely by the validators, so EVERY graded
+        // point must say which domains a failure lowers and how far (`domains` +
+        // `failure_cap`) and must carry the `validation` that decides it. On a legacy
+        // version those two keys are meaningless — the reviewer gives the rating — so
+        // they are refused by name rather than silently carried.
+        let validator_rated = per_engine && test_type != TestType::GameJam;
+        let resolve_point_rating = |label: &str,
+                                    failure_cap: Option<FailureCap>,
+                                    point_domains: &[String],
+                                    has_validation: bool,
+                                    allowed_domains: &[Domain]|
+         -> Result<(Option<FailureCap>, Vec<String>)> {
+            if !validator_rated {
+                if failure_cap.is_some() {
+                    return Err(invalid(format!(
+                        "{label} declares `failure_cap`, but only a case on the engine format \
+                         (`[workspaces]` / `engines`) declares a failure cap; a legacy case's \
+                         rating is the reviewer's to give"
+                    )));
+                }
+                if !point_domains.is_empty() {
+                    return Err(invalid(format!(
+                        "{label} declares `domains`, but only a case on the engine format \
+                         (`[workspaces]` / `engines`) declares the domains a failure lowers; a \
+                         legacy case's rating is the reviewer's to give"
+                    )));
+                }
+                return Ok((None, Vec::new()));
+            }
+            let Some(cap) = failure_cap else {
+                return Err(invalid(format!(
+                    "{label} declares no `failure_cap`; on a validator-rated case every graded \
+                     point states the highest rating its domains may reach while it fails \
+                     (one of broken, scuffed, passable, great)"
+                )));
+            };
+            if point_domains.is_empty() {
+                return Err(invalid(format!(
+                    "{label} declares no `domains`; on a validator-rated case every graded \
+                     point names the scoring domains a failure lowers"
+                )));
+            }
+            if !has_validation {
+                return Err(invalid(format!(
+                    "{label} declares no `validation`; on a validator-rated case every graded \
+                     point is decided by a validator"
+                )));
+            }
+            let mut seen = std::collections::BTreeSet::new();
+            for domain in point_domains {
+                if !allowed_domains
+                    .iter()
+                    .any(|resolved| &resolved.id == domain)
+                {
+                    return Err(invalid(format!(
+                        "{label} names domain `{domain}` in `domains`, which is not declared \
+                         for this scope (declared: {})",
+                        allowed_domains
+                            .iter()
+                            .map(|d| d.id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )));
+                }
+                if !seen.insert(domain.as_str()) {
+                    return Err(invalid(format!(
+                        "{label} names domain `{domain}` twice in `domains`"
+                    )));
+                }
+            }
+            Ok((Some(cap), point_domains.to_vec()))
+        };
         let resolve_review_item =
             |item: &ManifestReviewItem, allowed_domains: &[Domain]| -> Result<ReviewItem> {
                 if item.id.trim().is_empty() {
@@ -6788,6 +6948,29 @@ impl TestCaseCatalog {
                     }
                     None => None,
                 };
+                // The failure cap and domains attach to the graded unit exactly as
+                // validation does: an item graded as a whole carries them itself; a
+                // sub-divided item carries them per sub-item, so item-level keys
+                // beside `sub_items` are refused rather than silently ignored.
+                let (failure_cap, point_domains) = if item.sub_items.is_empty() {
+                    resolve_point_rating(
+                        &format!("review_item `{}`", item.id),
+                        item.failure_cap,
+                        &item.domains,
+                        validation.is_some(),
+                        allowed_domains,
+                    )?
+                } else {
+                    if item.failure_cap.is_some() || !item.domains.is_empty() {
+                        return Err(invalid(format!(
+                            "review_item `{}` declares `sub_items` alongside an item-level \
+                             `failure_cap`/`domains`; a sub-divided item is rated per sub-item, \
+                             so move them onto each sub-item",
+                            item.id
+                        )));
+                    }
+                    (None, Vec::new())
+                };
                 // Each sub-item resolves its own optional validation driver (only ever
                 // present here, since item-level validation is forbidden above once
                 // sub-items exist). The name/uniqueness of the sub-items themselves were
@@ -6803,6 +6986,13 @@ impl TestCaseCatalog {
                             )?),
                             None => None,
                         };
+                        let (failure_cap, domains) = resolve_point_rating(
+                            &format!("review_item `{}` sub-item `{}`", item.id, sub.id),
+                            sub.failure_cap,
+                            &sub.domains,
+                            validation.is_some(),
+                            allowed_domains,
+                        )?;
                         Ok(SubReviewItem {
                             id: sub.id.clone(),
                             title: sub.title.clone(),
@@ -6817,6 +7007,8 @@ impl TestCaseCatalog {
                             proof: None,
                             scored: true,
                             validation,
+                            failure_cap,
+                            domains,
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -6834,6 +7026,8 @@ impl TestCaseCatalog {
                     sub_items,
                     scored: true,
                     validation,
+                    failure_cap,
+                    domains: point_domains,
                 })
             };
 
@@ -6910,8 +7104,13 @@ impl TestCaseCatalog {
         // review items; it carries no prose (`text` is empty), no domain, and no
         // paired media of its own, and its weight is the sum of its items'
         // weights. A category needs at least one item, item ids are unique within
-        // it, and each item's optional `validation` resolves like any other.
-        let resolve_review_category = |cat: &ManifestReviewCategory| -> Result<ReviewItem> {
+        // it, and each item's optional `validation` resolves like any other. On a
+        // validator-rated version each item's `failure_cap` + `domains` are required
+        // and its domains are checked against `allowed_domains` (the common domains
+        // for the case's own categories, the effective set for a variant's).
+        let resolve_review_category = |cat: &ManifestReviewCategory,
+                                       allowed_domains: &[Domain]|
+         -> Result<ReviewItem> {
             if cat.id.trim().is_empty() {
                 return Err(invalid(
                     "review category `id` must not be empty".to_string(),
@@ -6977,6 +7176,13 @@ impl TestCaseCatalog {
                     )?),
                     None => None,
                 };
+                let (failure_cap, domains) = resolve_point_rating(
+                    &format!("review category `{}` item `{}`", cat.id, it.id),
+                    it.failure_cap,
+                    &it.domains,
+                    validation.is_some(),
+                    allowed_domains,
+                )?;
                 sub_items.push(SubReviewItem {
                     id: it.id.clone(),
                     title: it.title.clone(),
@@ -6986,6 +7192,8 @@ impl TestCaseCatalog {
                     proof: it.proof.clone(),
                     scored: true,
                     validation,
+                    failure_cap,
+                    domains,
                 });
             }
             Ok(ReviewItem {
@@ -7002,6 +7210,8 @@ impl TestCaseCatalog {
                 sub_items,
                 scored: true,
                 validation: None,
+                failure_cap: None,
+                domains: Vec::new(),
             })
         };
 
@@ -7010,7 +7220,7 @@ impl TestCaseCatalog {
         let mut common_review_items = if let Some(review) = &manifest.review {
             let mut items = Vec::with_capacity(review.categories.len());
             for cat in &review.categories {
-                items.push(resolve_review_category(cat)?);
+                items.push(resolve_review_category(cat, &domains)?);
             }
             items
         } else {
@@ -7420,11 +7630,11 @@ impl TestCaseCatalog {
             // The variant's own review entries, in whichever grammar the case
             // uses (enforced consistent above). A legacy variant item may name a
             // common domain or one of this variant's own, so it is resolved
-            // against the effective set; a categories variant drops domains.
+            // against the effective set — in either grammar.
             let review_items = if let Some(review) = &variant.review {
                 let mut items = Vec::with_capacity(review.categories.len());
                 for cat in &review.categories {
-                    items.push(resolve_review_category(cat)?);
+                    items.push(resolve_review_category(cat, &effective_domains)?);
                 }
                 items
             } else {
@@ -7690,6 +7900,7 @@ impl TestCaseCatalog {
             max_runtime_seconds: crate::runtime_hours_to_seconds(manifest.max_runtime_hours),
             test_type,
             experimental: manifest.experimental,
+            engine_format: per_engine,
             build,
             toolchain,
             instrumentation,

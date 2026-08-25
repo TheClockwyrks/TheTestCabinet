@@ -24,6 +24,7 @@ fn stamp_mtime(store: &DefinitionStore, slug: &str, version: &str, unix_secs: u6
 fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
     StoredManifest {
         toolchain: None,
+        engine_format: false,
         slug: slug.to_string(),
         version: version.to_string(),
         name: "Sample".to_string(),
@@ -96,6 +97,8 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 weight: 1,
                 graded: false,
                 domain: None,
+                failure_cap: None,
+                domains: vec![],
                 sub_items: vec![],
                 validation: None,
             }],
@@ -120,6 +123,8 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             weight: 2,
             graded: false,
             domain: Some("single-player".to_string()),
+            failure_cap: None,
+            domains: vec![],
             sub_items: vec![],
             // An auto-validated item so the manifest round-trip (write → read) covers
             // the reporter-side validation driver.

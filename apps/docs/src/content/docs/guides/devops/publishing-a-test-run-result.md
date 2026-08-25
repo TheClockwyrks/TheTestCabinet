@@ -15,8 +15,10 @@ publish, split so anyone may judge a run someone else produced (see
 - Review is anyone submitting an assessment for a produced run; see
   [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).
   A run may gather several reviews, one per account.
-- Publish releases the reviewed run's source and build publicly and flips it
-  public. It is refused unless the run has at least one review.
+- Publish releases the run's source and build publicly and flips it public. A
+  [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run is
+  publishable as soon as it completes; a legacy run is refused unless it has at
+  least one review.
 
 This guide covers driving these from the [CLI](/components/cli/overview/), the
 path for scripting and batch sweeps. The
@@ -42,10 +44,11 @@ its record is already stored on the backend.
 
   See [Register and Log In](/quickstarts/setup/register-and-login/).
 - `TCAB_BACKEND_URL`, pointing at the backend holding the run.
-- A review, submitted before you publish. Publishing refuses a run with no
-  review. On the solo path below, a `<run-id>.md` writeup in the working
-  directory supplies it: a valid rating per domain and a non-empty body. Write
-  the review first; see
+- For a legacy run, a review submitted before you publish, since publishing
+  refuses a legacy run with no review. On the solo path below, a `<run-id>.md`
+  writeup in the working directory supplies it: a valid rating per domain and a
+  non-empty body. A validator-rated run needs none, and a writeup beside it
+  supplies the aesthetic rating. Write the review first; see
   [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).
 
 The public release is the per-run GitHub repository and the Cloudflare Pages
@@ -64,9 +67,10 @@ review and flipping no run public:
 tcab publish <run-id> --dry-run
 ```
 
-Every run's writeup is gated up front, so a single run missing one stops the
-whole batch before anything is published. `publish` takes multiple run ids for
-exactly this case:
+Every run's writeup is gated up front, so a single legacy run missing one stops
+the whole batch before anything is published, and a validator-rated run with no
+writeup is reported as publishing without a self-review. `publish` takes
+multiple run ids for exactly this case:
 
 ```sh
 tcab publish <run-a> <run-b> --dry-run
@@ -97,12 +101,14 @@ already stored and its build playable, so a reviewer can assess it straight away
 ```sh
 # someone with their own account reviews the run's playable build:
 tcab review <run-id> --writeup writeup.md
-# ... once the run has at least one review, an operator publishes it:
+# ... once the run has at least one review (any time, for a validator-rated run),
+# an operator publishes it:
 tcab publish <run-id>
 ```
 
 `review` submits a review attributed to its own account; a run gathers one review
-per account. `publish` flips the run public and is refused when no review exists.
+per account. `publish` flips the run public and is refused for a legacy run when
+no review exists.
 Both require a logged-in account. The backend performs the publish half alone, so
 two operators publishing at once cannot race on the store or the snapshot.
 

@@ -55,7 +55,7 @@ fn record(id: &str) -> RunRecord {
 /// Push, review, and publish a run so it lands in the published set the snapshot
 /// is built from.
 async fn seed_published(db: &Db, id: &str, published_at: &str) {
-    db.push(&record(id), &RunLinks::default(), None)
+    db.push(&record(id), &RunLinks::default(), None, None)
         .await
         .unwrap();
     db.add_review(
@@ -70,6 +70,7 @@ async fn seed_published(db: &Db, id: &str, published_at: &str) {
                 domain: "gameplay".to_string(),
                 rating: Rating::Great,
             }],
+            aesthetics: vec![],
             writeup: "ok".to_string(),
             checklist: vec![],
             reviewed_at: "2026-06-17T22:00:00Z".to_string(),

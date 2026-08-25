@@ -1282,9 +1282,20 @@ async fn persist_record(
     normalize_record_model_id(&mut record);
 
     let links = record.links.clone();
+    // The run's case version, so the store can decide whether the run is
+    // validator-rated and write its validator-decided functional rating at push.
+    // A version the store cannot resolve (ingested away since the job launched)
+    // pushes as a legacy run rather than losing the record.
+    let manifest = state
+        .store
+        .read_manifest(
+            &record.subject.test_case_slug,
+            &record.subject.test_case_version,
+        )
+        .ok();
     state
         .db
-        .push(&record, &links, events_json.as_deref())
+        .push(&record, &links, events_json.as_deref(), manifest.as_ref())
         .await
         .map_err(ApiError::from)?;
 

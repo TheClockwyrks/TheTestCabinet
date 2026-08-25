@@ -8,16 +8,24 @@ The Test Cabinet evaluates a run in two stages. Automated
 [validation](/components/core/validation/) catches gross failures cheaply and,
 through a case's [instrumentation](/testing/end-to-end/instrumentation/), drives
 the build to decide the checklist verdicts. A person's review then judges the
-build's visuals, polish, and feel, producing the per-[domain](/terminology/#domain)
-rating.
+build's visuals, polish, and feel.
+
+What the reviewer rates depends on the run. A
+[validator-rated](/testing/end-to-end/evaluation/#rating-channels) run, one
+whose case version is on the engine format, already carries a functional rating
+and score decided by its validators, so the reviewer supplies the per-domain
+[aesthetic rating](#rate-each-domain) and nothing else. A legacy run, one whose
+case version is on the `workspace` spelling, is rated by its reviewers: the
+per-domain [functional rating](#rate-a-legacy-run) and the checklist verdicts.
 
 A review is curatorial, authored by a person after playing the build, so it sits
 outside the [run record](/components/core/run-records/) contract. Every review is
 attributed to the [account](/components/backend/overview/#authentication) that wrote
 it, and a run may carry several reviews, one per account. Across them the run's
-score is the average and its overall rating the worst. A run needs at least one
-review before it can be
-[published](/guides/devops/publishing-a-test-run-result/).
+overall rating on the reviewer-given channel is the worst. A validator-rated run
+can be [published](/guides/devops/publishing-a-test-run-result/) with no review
+and gain an aesthetic rating later; a legacy run needs at least one review
+before it can be published.
 
 ## Review entry points
 
@@ -45,8 +53,11 @@ Validation also decides the checklist items through the case's
 [validators](/testing/end-to-end/instrumentation/), and fails any whose check
 the build's
 [debug API](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing)
-was too broken to answer. Those arrive pre-filled as failed. Overriding one is
-the exception, for a build that clearly does the right thing regardless.
+was too broken to answer. On a validator-rated run those verdicts are final,
+and the Verdict panel shows the points, the functional rating, and a per-domain
+breakdown naming each failing item and the cap it applied. On a legacy run they
+arrive pre-filled as failed, and overriding one is the exception, for a build
+that clearly does the right thing regardless.
 
 What is left to you is the subjective judgement: the per-domain ratings of how
 the build looks, how polished it is, and how it feels to play. A run that fails
@@ -72,14 +83,22 @@ there. Each such run shows as Unpublished. `TTC_RUNS_DIR` points the plugin at a
 different directory. The plugin is serve-time only, so a production `vite build`
 stays fully static and previewing publishes nothing.
 
-## Work the checklist
+## Read the checklist
 
 A test case version declares a checklist: one observable behavior per item,
 each decided by the case's validators (see the manifest's
 [`review_item`s](/testing/end-to-end/manifests/)). The checklist is
 reporter-side material and is never seeded into a run.
 
-In the review editor the items for the run's variant appear with their point
+On a validator-rated run the checklist is read-only. Each item shows the
+validator's verdict, its assertions, and the media it captured, together with
+the item's domains and failure cap, and the review editor offers no control
+over it. Read it to understand what the build got wrong before rating how it
+looks and feels.
+
+### Legacy checklist
+
+On a legacy run the items for the run's variant appear with their point
 weights, and each must be given a binary verdict before the review can be saved
 or the run published:
 
@@ -98,9 +117,10 @@ weight. An erratum may retire a point from scoring entirely; see
 
 ### Overriding and restoring an automated verdict
 
-A point the case [instruments](/testing/end-to-end/instrumentation/) arrives
-already answered by validation, shown **desaturated** to mark it as the machine's
-call rather than yours. Click it to override where the build clearly does the right
+On a legacy run a point the case
+[instruments](/testing/end-to-end/instrumentation/) arrives already answered by
+validation, shown **desaturated** to mark it as the machine's call rather than
+yours. Click it to override where the build clearly does the right
 thing regardless; the option fills in full color to show the verdict is now yours.
 
 An override is undoable at any time, including in a later edit of an
@@ -118,7 +138,20 @@ keeps no memory of having been auto-set.
 ## Write the review
 
 A review file is Markdown with YAML frontmatter: a rating for each scoring domain
-and a non-empty body. Each domain's rating is a `rating.<domain>:` line.
+and a non-empty body. On a validator-rated run each domain's aesthetic rating
+is an `aesthetic.<domain>:` line and the frontmatter carries nothing else:
+
+```markdown
+---
+aesthetic.single-player: amazing
+aesthetic.versus: good
+---
+
+Clean pixel art and a satisfying paddle thunk. The versus screen reuses the solo
+layout without adjusting for two players, so it feels cramped.
+```
+
+On a legacy run each domain's functional rating is a `rating.<domain>:` line.
 Checklist verdicts follow as `review.<id>: <status> [note]` lines, and a
 sub-item's verdict uses the composite id
 `review.<item id>.<sub-item id>: <status> [note]`:
@@ -141,8 +174,11 @@ file is also hand-editable, and because the CLI paths read it from disk:
 `tcab review` reads `writeup.md` (or the `--writeup` path), and `tcab publish`
 reads `<run-id>.md` from the working directory.
 
-A run cannot be published while any declared domain is unrated or any declared
-checklist item or sub-item is missing its verdict.
+A review of a validator-rated run is rejected while any declared domain is
+missing its aesthetic rating, and if it carries a `rating.*` line, since the
+functional rating is the validators' to give. A legacy run cannot be published
+while any declared domain is unrated or any declared checklist item or sub-item
+is missing its verdict.
 
 ## Rate each domain
 
@@ -151,6 +187,29 @@ ratings travel with it in the frontmatter. Rate each
 [domain](/terminology/#domain) in the run variant's effective set independently,
 choosing one of five tiers. The effective set is the case's common domains plus
 any the run's variant declares.
+
+On a validator-rated run you rate aesthetics: how the build looks, sounds, and
+feels to play, judged as a game rather than against the spec, since the
+validators have already decided how faithfully the spec was met.
+
+- `legendary`: exceptionally beautiful. Reserved for a build whose look and
+  feel stand out from every other run of the case; most amazing builds are not
+  legendary.
+- `amazing`: the normal maximum. Flawless presentation with nothing to fault.
+- `good`: looks and plays well, with minor rough edges that leave the
+  experience intact.
+- `okay`: passable presentation. Functional and coherent, with rough edges a
+  player notices.
+- `slop`: scuffed or broken presentation. Placeholder art, jarring motion or
+  audio, or a look that gets in the way of playing.
+
+The run's overall aesthetic rating is the worst across its domains, so an
+amazing mode cannot mask a slop one.
+
+### Rate a legacy run
+
+On a legacy run you rate function, how faithfully each domain implements the
+spec:
 
 - `flawless`: implemented to spec with no noticeable bugs.
 - `great`: to spec, with minor issues that leave playability intact.
@@ -161,8 +220,8 @@ any the run's variant declares.
 - `broken`: deviates from the spec, or carries bugs severe enough to render the
   game unplayable.
 
-The run's overall rating is the worst across its domains, so a flawless mode
-cannot mask a broken one.
+The run's overall functional rating is the worst across its domains, so a
+flawless mode cannot mask a broken one.
 
 ## Game jam grading
 
@@ -186,8 +245,9 @@ point score.
 
 ## Next step
 
-Once a run has at least one review it is ready to
-[publish](/guides/devops/publishing-a-test-run-result/). If you reviewed a run
+A validator-rated run is ready to
+[publish](/guides/devops/publishing-a-test-run-result/) as soon as it completes;
+a legacy run is ready once it has at least one review. If you reviewed a run
 someone else produced, an operator can now publish it. If you ran, reviewed, and
 are publishing it yourself, `tcab publish` does the self-review and publish in
 one step.

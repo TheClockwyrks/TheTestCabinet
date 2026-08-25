@@ -36,6 +36,8 @@ fn write_validator_project(version: &crate::test_case::TestCaseVersion, engine: 
 /// A review item whose one point is decided by the validator at `script_rel`.
 fn validated_item(id: &str, script_rel: &str) -> crate::test_case::ReviewItem {
     crate::test_case::ReviewItem {
+        failure_cap: None,
+        domains: Vec::new(),
         id: id.to_string(),
         title: format!("The {id} point"),
         text: String::new(),
@@ -438,6 +440,7 @@ fn base_variant() -> crate::test_case::Variant {
 /// A minimal asset-generation version drawing on a 4x4 transparent canvas.
 fn asset_version() -> TestCaseVersion {
     TestCaseVersion {
+        engine_format: false,
         toolchain: None,
         instrumentation: None,
         slug: "sprite".to_string(),
@@ -680,6 +683,7 @@ use crate::test_case::{ContractSpec, SandboxSpec, SimulationSpec};
 /// is `module_rel` (relative to the run root).
 fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        engine_format: false,
         toolchain: None,
         instrumentation: None,
         slug: "foray".to_string(),

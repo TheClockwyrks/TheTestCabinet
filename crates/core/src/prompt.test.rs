@@ -35,6 +35,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
+        engine_format: false,
         name: "Carom".to_string(),
         difficulty: "easy".to_string(),
         tags: vec![],

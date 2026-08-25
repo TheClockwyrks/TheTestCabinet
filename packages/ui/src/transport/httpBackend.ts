@@ -67,7 +67,10 @@ import type {
   ModelSpec,
   RunRecord,
 } from "@test-cabinet/run-record";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type {
+  RunScoreOut,
+  RunSummary,
+} from "@test-cabinet/run-record/snapshot";
 import type {
   BulkCancelOut,
   GgRunRequest,
@@ -143,6 +146,8 @@ import {
   applyScoreExclusions,
   excludedVerdictIds,
   mergeReviewItems,
+  type AestheticRating,
+  type Rating,
 } from "../ratings";
 
 // `GET /healthz` — the shape the backend reports.
@@ -222,6 +227,9 @@ interface ResolvedVersion {
   changelog: string;
   maxRuntimeSeconds: number;
   testType: TestType;
+  // Whether the version is on the engine manifest format (see
+  // `VersionInfo.engineFormat`); with the test type, whether it is validator-rated.
+  engineFormat: boolean;
   // The engines a run of this version may select, each with the version range the
   // case accepts it at. Never empty — a version that declares none supports the
   // engineless run. The range is the host's business, so only the slug is carried
@@ -282,6 +290,8 @@ interface ReviewResponse {
   reviewer: string;
   username?: string | null;
   ratings: StoredReview["ratings"];
+  // The reviewer's per-domain aesthetic ratings; absent on a legacy run's review.
+  aesthetics?: StoredReview["aesthetics"];
   writeup: string;
   checklist: StoredReview["checklist"];
   reviewedAt?: string | null;
@@ -297,6 +307,16 @@ interface StoredRunResponse {
   reviews?: ReviewResponse[] | null;
   published?: boolean;
   links?: { sourceRepo: string | null; playableBuild: string | null };
+  // The two rating channels the store decides (see `StoredRun`): the functional
+  // `rating` (validator-decided on a validator-rated run, the review aggregate on
+  // a legacy one), the aggregate `aesthetic`, and which way the functional one
+  // was decided.
+  rating: Rating | null;
+  aesthetic: AestheticRating | null;
+  validatorRated: boolean;
+  // The run's score against its case version's checklist weights (see
+  // `StoredRun.score`); null when the case version isn't ingested.
+  score: RunScoreOut | null;
 }
 
 // `GET /runs`: a page of stored runs plus the cursor for the next page. The
@@ -328,6 +348,7 @@ function toStoredReview(rv: ReviewResponse): StoredReview {
     reviewer: rv.reviewer,
     username: rv.username ?? null,
     ratings: rv.ratings,
+    aesthetics: rv.aesthetics ?? [],
     writeup: rv.writeup,
     checklist: rv.checklist,
     reviewedAt: rv.reviewedAt ?? null,
@@ -344,7 +365,16 @@ function toStoredRun(r: StoredRunResponse): StoredRun {
     ? { ...r.record, links: { ...r.record.links, ...r.links } }
     : r.record;
   const reviews: StoredReview[] = (r.reviews ?? []).map(toStoredReview);
-  return { id: record.id, record, reviews, published: r.published ?? true };
+  return {
+    id: record.id,
+    record,
+    reviews,
+    published: r.published ?? true,
+    rating: r.rating,
+    aesthetic: r.aesthetic,
+    validatorRated: r.validatorRated,
+    score: r.score,
+  };
 }
 
 // Resolve an account/reviewer id to its profile-picture URL on the auth service
@@ -475,6 +505,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         changelog: r.changelog,
         maxRuntimeSeconds: r.maxRuntimeSeconds,
         testType: r.testType,
+        engineFormat: r.engineFormat,
         // The engines this version supports, which is exactly what the run form's
         // engine picker offers.
         engines: r.engines.map((engine) => engine.slug),
@@ -2157,6 +2188,7 @@ export function createBackendExec(
         `/runs/${encodeURIComponent(id)}/reviews`,
         {
           ratings: review.ratings,
+          aesthetics: review.aesthetics,
           writeup: review.writeup,
           checklist: review.checklist,
           // Only meaningful on an edit; the backend ignores it on a first submission.

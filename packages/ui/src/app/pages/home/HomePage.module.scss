@@ -149,3 +149,11 @@
   color: t.$color-text-muted;
   @include h.halo;
 }
+
+// The featured run's rating stat: both channels' badges side by side.
+.badges {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}

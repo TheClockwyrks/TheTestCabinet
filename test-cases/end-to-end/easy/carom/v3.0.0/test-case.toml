@@ -293,14 +293,15 @@ source = "specs/instrumentation.md.hbs"
 # validators, which pose each scenario against the game the build wrote and
 # capture what it renders. The automated load check still runs.
 
-# Scoring domains. A reviewer rates each independently while playing the build,
-# and the run's overall rating is the WORST across them — a flawless single-player
-# mode cannot mask a broken versus mode. Every case must declare at least one.
-# The domain ratings are where the reviewer's judgement lives: the look, the
-# polish, and the feel of each mode. They are separate from the point checklist
-# below, which is scored globally (the categories grammar attaches no domain to a
-# point) and decided by validators. The mode-specific control categories are named
-# plainly so the checklist still reads by mode.
+# Scoring domains. A run is rated on each independently, and the run's overall
+# rating is the WORST across them — a flawless single-player mode cannot mask a
+# broken versus mode. Every case must declare at least one. This case is on the
+# engine format, so it is validator-rated: each domain's FUNCTIONAL rating is
+# decided by the validators behind the point checklist below (every point names
+# the domains its failure lowers and how far — see `domains` / `failure_cap`
+# there), and the reviewer's judgement lives in the separate AESTHETIC rating of
+# each domain: the look, the polish, and the feel of each mode. The mode-specific
+# control categories are named plainly so the checklist still reads by mode.
 [[domain]]
 id = "single-player"
 name = "Single Player"
@@ -355,6 +356,23 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 # the specification fixes about what is drawn — that the field is fitted, that the
 # solid bodies are told apart by color, that the scores are drawn, that the trail
 # has the length the spec gives it — and capture the frame as evidence.
+#
+# EVERY point also carries `domains` and `failure_cap`, because this case is
+# validator-rated: a point's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers — a "(Solo)" point
+# lowers only `single-player`, a "(Versus)" point only `versus`, and a point about
+# the game both modes share lowers both. `failure_cap` is the highest functional
+# rating those domains may reach while the point fails; each domain gets the LOWEST
+# cap among its failing points, and a domain with no failing point is flawless. The
+# caps are graded by how much of the game a failure takes away: `broken` where the
+# game cannot be played at all (no debug surface, the game never advances, a paddle
+# that cannot be moved, a match that cannot start, a point that never scores);
+# `scuffed` where a rule the game is built on is noticeably wrong (a hit angle, a
+# bounce, spin, the AI, the serve, the visibility of the bodies); `passable` where
+# the fault is a tolerance, a ceiling, an edge case or a secondary path (a speed
+# within a percentage, a clamp at a bound, a corner, a countdown, a menu detail, a
+# cue); and `great` where it is a cosmetic detail (the trail, the copy on a
+# screen, a duplicate binding). No point caps at `flawless`: a failure always costs.
 [review]
 format = 2
 
@@ -374,6 +392,8 @@ title = "Instrumentation"
 id = "debug-api"
 title = "Debug and automation API present"
 description = "Every operation specs/instrumentation.md names is present as a function on the debug surface, each poses or reads the running game, and snapshot reports the full documented shape with current values."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
 # Automated validation: reflect that every required operation is installed as a
 # function and that a snapshot reports the full documented shape, then capture the
 # live match that was driven. See validation/<engine>/instrumentation/debug-api.test.ts.
@@ -402,6 +422,8 @@ title = "Gameplay"
 id = "pause-during-countdown"
 title = "Pausing during the countdown"
 description = "A pause key pressed on the countdown screen sets screen to paused, with resumeScreen countdown."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: start a match (which opens on the countdown), dispatch a
 # pause key there, and confirm the game pauses. See
 # validation/<engine>/gameplay/pause-during-countdown.test.ts.
@@ -412,6 +434,8 @@ validation = { script = "gameplay/pause-during-countdown.test.ts", outputs = [
 id = "countdown-frozen"
 title = "Countdown pauses with the game"
 description = "While paused during the countdown, holdTimer does not change over an interval far longer than HOLD_TIME, the ball stays held, and resuming returns to the countdown screen."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: pause during the countdown, then let far more than the hold
 # elapse in both simulation and real time — the game must stay paused with the ball
 # still held, and resume back into the countdown. See
@@ -427,6 +451,8 @@ validation = { script = "gameplay/countdown-frozen.test.ts", outputs = [
 id = "ai-intercepts"
 title = "AI runs down a reachable shot (Solo)"
 description = "In Solo, a ball aimed to arrive 200 units from the AI paddle's center, with more flight time than that distance takes at AI_SPEED, is blocked: the ball leaves the paddle with vx < 0 and player one does not score."
+domains = ["single-player"]
+failure_cap = "scuffed"
 # Automated validation: drive the real AI against a shot ~200 units off its paddle's
 # start — within its reach — and confirm it blocks it (player one does not score). See
 # validation/<engine>/gameplay/ai-intercepts.test.ts.
@@ -437,6 +463,8 @@ validation = { script = "gameplay/ai-intercepts.test.ts", outputs = [
 id = "ai-outrun"
 title = "AI is outrun by a fast shot out of reach (Solo)"
 description = "In Solo, a fast, shallow shot arriving farther from the AI paddle's center than AI_SPEED covers in its flight time gets past: player one's score increments."
+domains = ["single-player"]
+failure_cap = "scuffed"
 # Automated validation: drive the real AI against a fast, low-angle shot arriving far
 # from its start and confirm the shot gets past it (player one scores) — an AI that
 # moved faster than it should would block it. See validation/<engine>/gameplay/ai-outrun.test.ts.
@@ -447,6 +475,8 @@ validation = { script = "gameplay/ai-outrun.test.ts", outputs = [
 id = "ai-no-predict"
 title = "AI does not predict bank shots (Solo)"
 description = "In Solo, a fast, steep shot that banks off a wall before arriving gets past the AI paddle, which tracks the ball's lagged position rather than its post-bounce destination: player one's score increments."
+domains = ["single-player"]
+failure_cap = "scuffed"
 # Automated validation: drive the real AI against a fast, steep shot that banks off a
 # wall and confirm the shot gets past it (player one scores) — an AI that predicted
 # the reflected destination, or moved too fast, would block it. See
@@ -458,6 +488,8 @@ validation = { script = "gameplay/ai-no-predict.test.ts", outputs = [
 id = "ai-homes"
 title = "AI returns home while the ball moves away (Solo)"
 description = "In Solo, with the ball moving away (vx < 0) and the AI paddle posed off center, the paddle moves toward AI_HOME_Y and stops with its center within AI_HOME_DEADZONE of it, at vy 0."
+domains = ["single-player"]
+failure_cap = "passable"
 # Automated validation: pose the AI paddle near a bound and a ball travelling toward
 # the left goal, advance, and confirm the paddle moves toward AI_HOME_Y and settles
 # within AI_HOME_DEADZONE of it. See validation/<engine>/gameplay/ai-homes.test.ts.
@@ -468,6 +500,8 @@ validation = { script = "gameplay/ai-homes.test.ts", outputs = [
 id = "advances-in-real-time"
 title = "The game advances itself in real time"
 description = "On a real wall clock, with nothing stepping the game from outside, a served ball's position changes over a stretch of real time."
+domains = ["single-player", "versus"]
+failure_cap = "broken"
 # Automated validation: hand the game a real wall clock, let the loop run itself for
 # a stretch of real time, and confirm the ball moved — a build that only advances
 # when something pokes it stays where it was put. See
@@ -480,6 +514,8 @@ validation = { script = "gameplay/advances-in-real-time.test.ts", outputs = [{ i
 id = "delta-time-independent"
 title = "The simulation advances on elapsed time, not on frames"
 description = "One scenario (a ball banked off a wall into a paddle and the flight that follows) driven under a steady clock, an uneven clock and a jittered clock reaches the same paddle contact, the same bank, the same scorer, the same final heading and speed, and takes the same game time."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: drive that one scenario three times under three clocks — a
 # `ConstantClock` at a steady 120 Hz, a `SequenceClock` repeating an uneven pattern of
 # deltas, and a seeded `JitterClock` — and compare the outcomes. Only facts that survive
@@ -504,6 +540,8 @@ title = "Paddles"
 id = "hit-center"
 title = "Hit angle: center returns straight"
 description = "A ball striking a stationary paddle at its center leaves with an angle from horizontal of 0 degrees, within 1 degree."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: read back the outgoing angle of a real stationary-paddle
 # bounce at the paddle center (~0 deg). See validation/<engine>/paddles/hit-center.test.ts.
 validation = { script = "paddles/hit-center.test.ts", outputs = [
@@ -513,6 +551,8 @@ validation = { script = "paddles/hit-center.test.ts", outputs = [
 id = "hit-top-edge"
 title = "Hit angle: top edge deflects upward"
 description = "A ball striking a stationary paddle at cy - PADDLE_HALF leaves upward at -MAX_BOUNCE_ANGLE (55 degrees above horizontal, vy < 0), within 2 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: read back the outgoing angle of a real stationary-paddle
 # bounce at the top edge (~-55 deg). See validation/<engine>/paddles/hit-top-edge.test.ts.
 validation = { script = "paddles/hit-top-edge.test.ts", outputs = [
@@ -522,6 +562,8 @@ validation = { script = "paddles/hit-top-edge.test.ts", outputs = [
 id = "hit-bottom-edge"
 title = "Hit angle: bottom edge deflects downward"
 description = "A ball striking a stationary paddle at cy + PADDLE_HALF leaves downward at +MAX_BOUNCE_ANGLE (55 degrees below horizontal, vy > 0), within 2 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: read back the outgoing angle of a real stationary-paddle
 # bounce at the bottom edge (~+55 deg). See validation/<engine>/paddles/hit-bottom-edge.test.ts.
 validation = { script = "paddles/hit-bottom-edge.test.ts", outputs = [
@@ -535,6 +577,8 @@ validation = { script = "paddles/hit-bottom-edge.test.ts", outputs = [
 id = "end-cap-top"
 title = "Top end cap reflects like a wall"
 description = "A ball dropping vertically onto a stationary paddle's top face leaves with vy reversed, vx and speed unchanged, spin unchanged, and its center at cy - PADDLE_HALF - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: drop a spinless ball straight down the paddle's own x
 # span onto its top face and read the rebound. See
 # validation/<engine>/paddles/end-cap-top.test.ts.
@@ -545,6 +589,8 @@ validation = { script = "paddles/end-cap-top.test.ts", outputs = [
 id = "end-cap-bottom"
 title = "Bottom end cap reflects like a wall"
 description = "A ball climbing vertically into a stationary paddle's bottom face leaves with vy reversed, vx and speed unchanged, spin unchanged, and its center at cy + PADDLE_HALF + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: send a spinless ball straight up the paddle's own x span
 # into its bottom face and read the rebound. See
 # validation/<engine>/paddles/end-cap-bottom.test.ts.
@@ -558,6 +604,8 @@ validation = { script = "paddles/end-cap-bottom.test.ts", outputs = [
 id = "rally-accelerates"
 title = "Rally accelerates after each hit"
 description = "Across a straight rally, the ball's speed after each paddle hit is SPEED_MULT (1.04) times its speed before the hit, within 1 percent, while below SPEED_CAP."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: drive a real straight rally and record the ball's speed after
 # each paddle hit — the per-hit ratio is ~1.04 and the sequence never decreases while
 # below the cap. See validation/<engine>/paddles/rally-accelerates.test.ts.
@@ -568,6 +616,8 @@ validation = { script = "paddles/rally-accelerates.test.ts", outputs = [
 id = "rally-caps"
 title = "Rally speed caps at the ceiling"
 description = "Across a long straight rally, the ball's speed reaches SPEED_CAP (980 units per second) within 1 percent and never exceeds it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: drive a real straight rally to its ceiling and confirm the
 # ball's speed plateaus at 980 and never exceeds it. See validation/<engine>/paddles/rally-caps.test.ts.
 validation = { script = "paddles/rally-caps.test.ts", outputs = [
@@ -587,6 +637,8 @@ title = "Paddle Movement"
 id = "speed-solo-player"
 title = "Human paddle speed (Solo)"
 description = "In Solo, while a movement key is held, the left paddle's center moves at PADDLE_SPEED (720 units per second), within 2 percent."
+domains = ["single-player"]
+failure_cap = "passable"
 # Automated validation: hold a movement key and measure the left paddle's rate. See
 # validation/<engine>/paddle-movement/speed-solo-player.test.ts.
 validation = { script = "paddle-movement/speed-solo-player.test.ts", outputs = [
@@ -596,6 +648,8 @@ validation = { script = "paddle-movement/speed-solo-player.test.ts", outputs = [
 id = "speed-solo-ai"
 title = "AI paddle speed (Solo)"
 description = "In Solo, the AI paddle chasing a ball far from its center moves at AI_SPEED (560 units per second), within 2 percent."
+domains = ["single-player"]
+failure_cap = "passable"
 # Automated validation: hand the real AI its paddle, give it a ball to chase, and
 # measure its rate. See validation/<engine>/paddle-movement/speed-solo-ai.test.ts.
 validation = { script = "paddle-movement/speed-solo-ai.test.ts", outputs = [
@@ -605,6 +659,8 @@ validation = { script = "paddle-movement/speed-solo-ai.test.ts", outputs = [
 id = "speed-versus-p1"
 title = "Player one paddle speed (Versus)"
 description = "In Versus, while a player-one movement key is held, the left paddle's center moves at PADDLE_SPEED (720 units per second), within 2 percent."
+domains = ["versus"]
+failure_cap = "passable"
 # Automated validation: hold a movement key and measure the left paddle's rate. See
 # validation/<engine>/paddle-movement/speed-versus-p1.test.ts.
 validation = { script = "paddle-movement/speed-versus-p1.test.ts", outputs = [
@@ -614,6 +670,8 @@ validation = { script = "paddle-movement/speed-versus-p1.test.ts", outputs = [
 id = "speed-versus-p2"
 title = "Player two paddle speed (Versus)"
 description = "In Versus, while a player-two movement key is held, the right paddle's center moves at PADDLE_SPEED (720 units per second), within 2 percent."
+domains = ["versus"]
+failure_cap = "passable"
 # Automated validation: hold a movement key and measure the right paddle's rate. See
 # validation/<engine>/paddle-movement/speed-versus-p2.test.ts.
 validation = { script = "paddle-movement/speed-versus-p2.test.ts", outputs = [
@@ -623,6 +681,8 @@ validation = { script = "paddle-movement/speed-versus-p2.test.ts", outputs = [
 id = "bound-top"
 title = "Paddle stops at the top bound"
 description = "A paddle driven upward stops with its center at PADDLE_MIN_CY (55) and reports vy 0 while the movement continues to be held into the bound."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: drive a paddle up past the bound and read its center and
 # velocity back. See validation/<engine>/paddle-movement/bound-top.test.ts.
 validation = { script = "paddle-movement/bound-top.test.ts", outputs = [
@@ -632,6 +692,8 @@ validation = { script = "paddle-movement/bound-top.test.ts", outputs = [
 id = "bound-bottom"
 title = "Paddle stops at the bottom bound"
 description = "A paddle driven downward stops with its center at PADDLE_MAX_CY (665) and reports vy 0 while the movement continues to be held into the bound."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: drive a paddle down past the bound and read its center and
 # velocity back. See validation/<engine>/paddle-movement/bound-bottom.test.ts.
 validation = { script = "paddle-movement/bound-bottom.test.ts", outputs = [
@@ -651,6 +713,8 @@ title = "Ball"
 id = "bounce-a-left"
 title = "Bounces off obstacle A (left face)"
 description = "A ball fired level at the midpoint of obstacle A's left face leaves with vx reversed, vy unchanged, and its center at x0 - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot at obstacle A's left face and confirm it
 # reflects, staying on the near side. See validation/<engine>/ball/bounce-a-left.test.ts.
 validation = { script = "ball/bounce-a-left.test.ts", outputs = [
@@ -660,6 +724,8 @@ validation = { script = "ball/bounce-a-left.test.ts", outputs = [
 id = "bounce-a-right"
 title = "Bounces off obstacle A (right face)"
 description = "A ball fired level at the midpoint of obstacle A's right face leaves with vx reversed, vy unchanged, and its center at x1 + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot at obstacle A's right face and confirm it
 # reflects, staying on the near side. See validation/<engine>/ball/bounce-a-right.test.ts.
 validation = { script = "ball/bounce-a-right.test.ts", outputs = [
@@ -669,6 +735,8 @@ validation = { script = "ball/bounce-a-right.test.ts", outputs = [
 id = "bounce-a-top"
 title = "Bounces off obstacle A (top face)"
 description = "A ball fired vertically at the midpoint of obstacle A's top face leaves with vy reversed, vx unchanged, and its center at y0 - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot down onto obstacle A's top face and confirm
 # it reflects upward. See validation/<engine>/ball/bounce-a-top.test.ts.
 validation = { script = "ball/bounce-a-top.test.ts", outputs = [
@@ -678,6 +746,8 @@ validation = { script = "ball/bounce-a-top.test.ts", outputs = [
 id = "bounce-a-bottom"
 title = "Bounces off obstacle A (bottom face)"
 description = "A ball fired vertically at the midpoint of obstacle A's bottom face leaves with vy reversed, vx unchanged, and its center at y1 + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot up onto obstacle A's bottom face and confirm
 # it reflects downward. See validation/<engine>/ball/bounce-a-bottom.test.ts.
 validation = { script = "ball/bounce-a-bottom.test.ts", outputs = [
@@ -687,6 +757,8 @@ validation = { script = "ball/bounce-a-bottom.test.ts", outputs = [
 id = "bounce-b-left"
 title = "Bounces off obstacle B (left face)"
 description = "A ball fired level at the midpoint of obstacle B's left face leaves with vx reversed, vy unchanged, and its center at x0 - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot at obstacle B's left face and confirm it
 # reflects, staying on the near side. See validation/<engine>/ball/bounce-b-left.test.ts.
 validation = { script = "ball/bounce-b-left.test.ts", outputs = [
@@ -696,6 +768,8 @@ validation = { script = "ball/bounce-b-left.test.ts", outputs = [
 id = "bounce-b-right"
 title = "Bounces off obstacle B (right face)"
 description = "A ball fired level at the midpoint of obstacle B's right face leaves with vx reversed, vy unchanged, and its center at x1 + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot at obstacle B's right face and confirm it
 # reflects, staying on the near side. See validation/<engine>/ball/bounce-b-right.test.ts.
 validation = { script = "ball/bounce-b-right.test.ts", outputs = [
@@ -705,6 +779,8 @@ validation = { script = "ball/bounce-b-right.test.ts", outputs = [
 id = "bounce-b-top"
 title = "Bounces off obstacle B (top face)"
 description = "A ball fired vertically at the midpoint of obstacle B's top face leaves with vy reversed, vx unchanged, and its center at y0 - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot down onto obstacle B's top face and confirm
 # it reflects upward. See validation/<engine>/ball/bounce-b-top.test.ts.
 validation = { script = "ball/bounce-b-top.test.ts", outputs = [
@@ -714,6 +790,8 @@ validation = { script = "ball/bounce-b-top.test.ts", outputs = [
 id = "bounce-b-bottom"
 title = "Bounces off obstacle B (bottom face)"
 description = "A ball fired vertically at the midpoint of obstacle B's bottom face leaves with vy reversed, vx unchanged, and its center at y1 + BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot up onto obstacle B's bottom face and confirm
 # it reflects downward. See validation/<engine>/ball/bounce-b-bottom.test.ts.
 validation = { script = "ball/bounce-b-bottom.test.ts", outputs = [
@@ -723,6 +801,8 @@ validation = { script = "ball/bounce-b-bottom.test.ts", outputs = [
 id = "corner-graze"
 title = "A corner hit reflects off one face, not both"
 description = "A ball arriving at a shallow angle on a vertical face 4 units inside its end leaves with vx reversed and vy keeping its sign, for each of three obstacle corners."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: graze three obstacle corners at a shallow angle, arriving on a
 # vertical face just inside its end, and confirm each reflects on ONE axis — the
 # horizontal velocity reverses while the vertical one keeps its sign. See
@@ -734,6 +814,8 @@ validation = { script = "ball/corner-graze.test.ts", outputs = [
 id = "no-tunnel-obstacle"
 title = "Never tunnels through an obstacle at high speed"
 description = "A ball fired at an obstacle at SPEED_CAP (980 units per second) reflects off it and is never observed on the far side."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot at an obstacle at the rally ceiling — the
 # fastest the spec allows the ball to move — and confirm it rebounds. See
 # validation/<engine>/ball/no-tunnel-obstacle.test.ts.
@@ -744,6 +826,8 @@ validation = { script = "ball/no-tunnel-obstacle.test.ts", outputs = [
 id = "no-tunnel-paddle"
 title = "Never tunnels through a paddle at high speed"
 description = "A ball fired at a paddle at SPEED_CAP (980 units per second) reflects off it and is never observed behind it."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot at a paddle at the rally ceiling and confirm
 # it rebounds. See validation/<engine>/ball/no-tunnel-paddle.test.ts.
 validation = { script = "ball/no-tunnel-paddle.test.ts", outputs = [
@@ -753,6 +837,8 @@ validation = { script = "ball/no-tunnel-paddle.test.ts", outputs = [
 id = "no-tunnel-wall"
 title = "Never tunnels through a wall at high speed"
 description = "A ball fired at a wall at SPEED_CAP (980 units per second) reflects off it and is never observed outside the field."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot at a wall at the rally ceiling and confirm it
 # rebounds. See validation/<engine>/ball/no-tunnel-wall.test.ts.
 validation = { script = "ball/no-tunnel-wall.test.ts", outputs = [
@@ -762,6 +848,8 @@ validation = { script = "ball/no-tunnel-wall.test.ts", outputs = [
 id = "obstacle-no-speedup"
 title = "Obstacle bounce keeps the ball's speed"
 description = "A ball's speed after bouncing off an obstacle equals its speed before, within 0.1 percent."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: fire a real shot at an obstacle and read the ball's speed
 # before and after the bounce. See validation/<engine>/ball/obstacle-no-speedup.test.ts.
 validation = { script = "ball/obstacle-no-speedup.test.ts", outputs = [
@@ -771,6 +859,8 @@ validation = { script = "ball/obstacle-no-speedup.test.ts", outputs = [
 id = "wall-bounce-top"
 title = "Bounces off the top wall"
 description = "A ball reaching the top wall leaves with vy reversed, vx unchanged, its speed unchanged, and its center at y = BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot into the top wall and read the velocity and
 # position back. See validation/<engine>/ball/wall-bounce-top.test.ts.
 validation = { script = "ball/wall-bounce-top.test.ts", outputs = [
@@ -780,6 +870,8 @@ validation = { script = "ball/wall-bounce-top.test.ts", outputs = [
 id = "wall-bounce-bottom"
 title = "Bounces off the bottom wall"
 description = "A ball reaching the bottom wall leaves with vy reversed, vx unchanged, its speed unchanged, and its center at y = FIELD_H - BALL_R, within one frame of travel."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: fire a real shot into the bottom wall and read the velocity
 # and position back. See validation/<engine>/ball/wall-bounce-bottom.test.ts.
 validation = { script = "ball/wall-bounce-bottom.test.ts", outputs = [
@@ -794,6 +886,8 @@ title = "Spin"
 id = "stationary"
 title = "No spin from a stationary paddle"
 description = "A ball with spin 0 striking a paddle whose vy is 0 leaves with spin 0."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: a real stationary-paddle contact imparts no spin, so the
 # return stays straight. See validation/<engine>/spin/stationary.test.ts.
 validation = { script = "spin/stationary.test.ts", outputs = [
@@ -803,6 +897,8 @@ validation = { script = "spin/stationary.test.ts", outputs = [
 id = "at-bound"
 title = "No spin at the field bound"
 description = "A ball struck by a paddle pinned at a bound, with the movement held into the bound, leaves with spin 0, while the same held movement mid-field imparts spin."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: a paddle pinned at the bound while holding the key into it
 # imparts no spin (its real velocity clamps to zero), while the same held key
 # mid-field does. See validation/<engine>/spin/at-bound.test.ts.
@@ -818,6 +914,8 @@ validation = { script = "spin/at-bound.test.ts", outputs = [
 id = "moving-solo-player"
 title = "Human paddle imparts spin while moving (Solo)"
 description = "In Solo, a ball struck by the left paddle moving downward at PADDLE_SPEED leaves with spin PADDLE_SPEED * SPIN_FROM_PADDLE (612), within 5 percent."
+domains = ["single-player"]
+failure_cap = "scuffed"
 # Automated validation: a real downward-swung left-paddle contact imparts positive
 # spin. See validation/<engine>/spin/moving-solo-player.test.ts.
 validation = { script = "spin/moving-solo-player.test.ts", outputs = [
@@ -827,6 +925,8 @@ validation = { script = "spin/moving-solo-player.test.ts", outputs = [
 id = "moving-solo-ai"
 title = "AI paddle imparts spin while moving (Solo)"
 description = "In Solo, a ball struck by the AI paddle while it chases at AI_SPEED leaves with spin of magnitude AI_SPEED * SPIN_FROM_PADDLE (476), within 10 percent, signed by the paddle's direction."
+domains = ["single-player"]
+failure_cap = "scuffed"
 # Automated validation: the real AI strikes the ball while chasing and imparts spin
 # from its motion. See validation/<engine>/spin/moving-solo-ai.test.ts.
 validation = { script = "spin/moving-solo-ai.test.ts", outputs = [
@@ -836,6 +936,8 @@ validation = { script = "spin/moving-solo-ai.test.ts", outputs = [
 id = "moving-versus-p1"
 title = "Player one imparts spin while moving (Versus)"
 description = "In Versus, a ball struck by the left paddle moving upward at PADDLE_SPEED leaves with spin -PADDLE_SPEED * SPIN_FROM_PADDLE (-612), within 5 percent."
+domains = ["versus"]
+failure_cap = "scuffed"
 # Automated validation: a real upward-swung left-paddle contact imparts negative
 # spin. See validation/<engine>/spin/moving-versus-p1.test.ts.
 validation = { script = "spin/moving-versus-p1.test.ts", outputs = [
@@ -845,6 +947,8 @@ validation = { script = "spin/moving-versus-p1.test.ts", outputs = [
 id = "moving-versus-p2"
 title = "Player two imparts spin while moving (Versus)"
 description = "In Versus, a ball struck by the right paddle moving downward at PADDLE_SPEED leaves with spin PADDLE_SPEED * SPIN_FROM_PADDLE (612), within 5 percent."
+domains = ["versus"]
+failure_cap = "scuffed"
 # Automated validation: a real downward-swung right-paddle contact imparts positive
 # spin. See validation/<engine>/spin/moving-versus-p2.test.ts.
 validation = { script = "spin/moving-versus-p2.test.ts", outputs = [
@@ -854,6 +958,8 @@ validation = { script = "spin/moving-versus-p2.test.ts", outputs = [
 id = "decay"
 title = "Spin decays"
 description = "A ball posed with spin loses half its spin magnitude after SPIN_HALFLIFE (0.8 s) of flight, within 5 percent, and has under a fifth of it after 2 s."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: impart real spin, then step the real simulation forward and
 # confirm the spin falls to half after one half-life and to a small fraction after
 # ~2 s. See validation/<engine>/spin/decay.test.ts.
@@ -868,6 +974,8 @@ validation = { script = "spin/decay.test.ts", outputs = [
 id = "curve-positive"
 title = "Positive spin curves clockwise"
 description = "A ball posed level with vx > 0 and positive spin has, after a short flight, vy > 0 and the same speed within 1 percent: its heading turned clockwise on screen by the arc the spin rule integrates to, within 2 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: pose a level rightward ball with positive spin, advance, and
 # read the heading back. See validation/<engine>/spin/curve-positive.test.ts.
 validation = { script = "spin/curve-positive.test.ts", outputs = [
@@ -877,6 +985,8 @@ validation = { script = "spin/curve-positive.test.ts", outputs = [
 id = "curve-negative"
 title = "Negative spin curves counterclockwise"
 description = "A ball posed level with vx > 0 and negative spin has, after a short flight, vy < 0 and the same speed within 1 percent: its heading turned counterclockwise on screen by the arc the spin rule integrates to, within 2 degrees."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: pose a level rightward ball with negative spin, advance, and
 # read the heading back. See validation/<engine>/spin/curve-negative.test.ts.
 validation = { script = "spin/curve-negative.test.ts", outputs = [
@@ -886,6 +996,8 @@ validation = { script = "spin/curve-negative.test.ts", outputs = [
 id = "preserved-wall"
 title = "Spin survives a wall bounce"
 description = "A spinning ball's spin after a wall bounce equals its spin before, less the decay over the elapsed time, within 2 percent."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: pose a spinning ball into a wall and compare the spin across
 # the bounce against the decay alone. See validation/<engine>/spin/preserved-wall.test.ts.
 validation = { script = "spin/preserved-wall.test.ts", outputs = [
@@ -895,6 +1007,8 @@ validation = { script = "spin/preserved-wall.test.ts", outputs = [
 id = "preserved-obstacle"
 title = "Spin survives an obstacle bounce"
 description = "A spinning ball's spin after an obstacle bounce equals its spin before, less the decay over the elapsed time, within 2 percent."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: pose a spinning ball into an obstacle and compare the spin
 # across the bounce against the decay alone. See
 # validation/<engine>/spin/preserved-obstacle.test.ts.
@@ -914,6 +1028,8 @@ title = "Pause"
 id = "paddle-solo-player"
 title = "Human paddle frozen while paused (Solo)"
 description = "In Solo, while paused with a movement key held, the left paddle's cy does not change."
+domains = ["single-player"]
+failure_cap = "passable"
 # Automated validation: pause, hold a movement key, and confirm the left paddle does
 # not move. See validation/<engine>/pause/paddle-solo-player.test.ts.
 validation = { script = "pause/paddle-solo-player.test.ts", outputs = [
@@ -923,6 +1039,8 @@ validation = { script = "pause/paddle-solo-player.test.ts", outputs = [
 id = "paddle-solo-ai"
 title = "AI paddle frozen while paused (Solo)"
 description = "In Solo, while paused with a ball posed for the AI to chase, the right paddle's cy does not change."
+domains = ["single-player"]
+failure_cap = "passable"
 # Automated validation: pose a ball for the AI to chase, pause, and confirm the AI
 # paddle does not move. See validation/<engine>/pause/paddle-solo-ai.test.ts.
 validation = { script = "pause/paddle-solo-ai.test.ts", outputs = [
@@ -932,6 +1050,8 @@ validation = { script = "pause/paddle-solo-ai.test.ts", outputs = [
 id = "paddle-versus-p1"
 title = "Player one paddle frozen while paused (Versus)"
 description = "In Versus, while paused with a player-one movement key held, the left paddle's cy does not change."
+domains = ["versus"]
+failure_cap = "passable"
 # Automated validation: pause, hold a movement key, and confirm the left paddle does
 # not move. See validation/<engine>/pause/paddle-versus-p1.test.ts.
 validation = { script = "pause/paddle-versus-p1.test.ts", outputs = [
@@ -941,6 +1061,8 @@ validation = { script = "pause/paddle-versus-p1.test.ts", outputs = [
 id = "paddle-versus-p2"
 title = "Player two paddle frozen while paused (Versus)"
 description = "In Versus, while paused with a player-two movement key held, the right paddle's cy does not change."
+domains = ["versus"]
+failure_cap = "passable"
 # Automated validation: pause, hold a movement key, and confirm the right paddle does
 # not move. See validation/<engine>/pause/paddle-versus-p2.test.ts.
 validation = { script = "pause/paddle-versus-p2.test.ts", outputs = [
@@ -950,6 +1072,8 @@ validation = { script = "pause/paddle-versus-p2.test.ts", outputs = [
 id = "ball-suspended"
 title = "Ball suspended while paused"
 description = "A ball in flight keeps the same x, y, vx, vy and spin across a long paused stretch."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: pause a ball in flight and confirm it does not move over a
 # long paused stretch. See validation/<engine>/pause/ball-suspended.test.ts.
 validation = { script = "pause/ball-suspended.test.ts", outputs = [
@@ -959,6 +1083,8 @@ validation = { script = "pause/ball-suspended.test.ts", outputs = [
 id = "ball-continues"
 title = "Ball continues after unpausing"
 description = "After resuming, the ball moves from its paused position by its preserved velocity times the game time elapsed since the resume, the resuming frame included, within one sub-step (MAX_SUBSTEP) of travel, with vx and vy unchanged."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: pause a ball in flight, resume, and confirm one step advances
 # it from the paused position with no teleport. See validation/<engine>/pause/ball-continues.test.ts.
 validation = { script = "pause/ball-continues.test.ts", outputs = [
@@ -978,36 +1104,50 @@ title = "Single Player Controls"
 id = "up"
 title = "Up arrow moves the paddle"
 description = "In Solo, holding ArrowUp decreases the left paddle's cy."
+domains = ["single-player"]
+failure_cap = "scuffed"
 validation = { script = "controls-solo/up.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "replay" }] }
 [[review.categories.items]]
 id = "down"
 title = "Down arrow moves the paddle"
 description = "In Solo, holding ArrowDown increases the left paddle's cy."
+domains = ["single-player"]
+failure_cap = "scuffed"
 validation = { script = "controls-solo/down.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "replay" }] }
 [[review.categories.items]]
 id = "w"
 title = "W moves the paddle"
 description = "In Solo, holding KeyW decreases the left paddle's cy."
+domains = ["single-player"]
+failure_cap = "broken"
 validation = { script = "controls-solo/w.test.ts", outputs = [{ id = "move", name = "Paddle moving up", kind = "replay" }] }
 [[review.categories.items]]
 id = "s"
 title = "S moves the paddle"
 description = "In Solo, holding KeyS increases the left paddle's cy."
+domains = ["single-player"]
+failure_cap = "broken"
 validation = { script = "controls-solo/s.test.ts", outputs = [{ id = "move", name = "Paddle moving down", kind = "replay" }] }
 [[review.categories.items]]
 id = "escape"
 title = "Esc pauses"
 description = "In Solo, pressing Escape during a live match sets screen to paused."
+domains = ["single-player"]
+failure_cap = "scuffed"
 validation = { script = "controls-solo/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
 [[review.categories.items]]
 id = "p"
 title = "P pauses"
 description = "In Solo, pressing KeyP during a live match sets screen to paused."
+domains = ["single-player"]
+failure_cap = "scuffed"
 validation = { script = "controls-solo/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
 [[review.categories.items]]
 id = "m"
 title = "M toggles mute"
 description = "In Solo, pressing KeyM flips the snapshot's muted flag, and pressing it again flips it back."
+domains = ["single-player"]
+failure_cap = "great"
 validation = { script = "controls-solo/m.test.ts", outputs = [
   { id = "mute", name = "Title after toggling mute", kind = "image" },
 ] }
@@ -1023,36 +1163,50 @@ title = "Multi Player Controls"
 id = "up"
 title = "Up arrow moves player two's paddle"
 description = "In Versus, holding ArrowUp decreases the right paddle's cy and leaves the left paddle's cy unchanged."
+domains = ["versus"]
+failure_cap = "broken"
 validation = { script = "controls-versus/up.test.ts", outputs = [{ id = "move", name = "Right paddle moving up", kind = "replay" }] }
 [[review.categories.items]]
 id = "down"
 title = "Down arrow moves player two's paddle"
 description = "In Versus, holding ArrowDown increases the right paddle's cy and leaves the left paddle's cy unchanged."
+domains = ["versus"]
+failure_cap = "broken"
 validation = { script = "controls-versus/down.test.ts", outputs = [{ id = "move", name = "Right paddle moving down", kind = "replay" }] }
 [[review.categories.items]]
 id = "w"
 title = "W moves player one's paddle"
 description = "In Versus, holding KeyW decreases the left paddle's cy and leaves the right paddle's cy unchanged."
+domains = ["versus"]
+failure_cap = "broken"
 validation = { script = "controls-versus/w.test.ts", outputs = [{ id = "move", name = "Left paddle moving up", kind = "replay" }] }
 [[review.categories.items]]
 id = "s"
 title = "S moves player one's paddle"
 description = "In Versus, holding KeyS increases the left paddle's cy and leaves the right paddle's cy unchanged."
+domains = ["versus"]
+failure_cap = "broken"
 validation = { script = "controls-versus/s.test.ts", outputs = [{ id = "move", name = "Left paddle moving down", kind = "replay" }] }
 [[review.categories.items]]
 id = "escape"
 title = "Esc pauses"
 description = "In Versus, pressing Escape during a live match sets screen to paused."
+domains = ["versus"]
+failure_cap = "scuffed"
 validation = { script = "controls-versus/escape.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
 [[review.categories.items]]
 id = "p"
 title = "P pauses"
 description = "In Versus, pressing KeyP during a live match sets screen to paused."
+domains = ["versus"]
+failure_cap = "scuffed"
 validation = { script = "controls-versus/p.test.ts", outputs = [{ id = "pause", name = "Pausing the match", kind = "replay" }] }
 [[review.categories.items]]
 id = "m"
 title = "M toggles mute"
 description = "In Versus, pressing KeyM flips the snapshot's muted flag, and pressing it again flips it back."
+domains = ["versus"]
+failure_cap = "great"
 validation = { script = "controls-versus/m.test.ts", outputs = [
   { id = "mute", name = "Title after toggling mute", kind = "image" },
 ] }
@@ -1069,81 +1223,113 @@ title = "Navigation"
 id = "title-down"
 title = "Down moves the title selection"
 description = "On the title with menuIndex 0, one ArrowDown press sets menuIndex to 1."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 validation = { script = "navigation/title-down.test.ts", outputs = [{ id = "menu", name = "The title menu with the second item selected", kind = "image" }] }
 [[review.categories.items]]
 id = "title-up-wraps"
 title = "Up wraps from the first title item to the last"
 description = "On the title with menuIndex 0, one ArrowUp press sets menuIndex to 2, the last item."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/title-up-wraps.test.ts", outputs = [{ id = "menu", name = "The title menu wrapped to the last item", kind = "image" }] }
 [[review.categories.items]]
 id = "title-down-wraps"
 title = "Down wraps from the last title item to the first"
 description = "On the title with menuIndex 2, one ArrowDown press sets menuIndex to 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/title-down-wraps.test.ts", outputs = [{ id = "menu", name = "The title menu wrapped to the first item", kind = "image" }] }
 [[review.categories.items]]
 id = "title-solo"
 title = "SOLO starts a Solo match"
 description = "On the title with menuIndex 0, pressing Enter sets mode to solo, screen to countdown, and both scores to 0."
+domains = ["single-player"]
+failure_cap = "broken"
 validation = { script = "navigation/title-solo.test.ts", outputs = [{ id = "countdown", name = "The Solo match opening on its countdown", kind = "image" }] }
 [[review.categories.items]]
 id = "title-versus"
 title = "VERSUS starts a Versus match"
 description = "On the title with menuIndex 1, pressing Enter sets mode to versus, screen to countdown, and both scores to 0."
+domains = ["versus"]
+failure_cap = "broken"
 validation = { script = "navigation/title-versus.test.ts", outputs = [{ id = "countdown", name = "The Versus match opening on its countdown", kind = "image" }] }
 [[review.categories.items]]
 id = "title-howto"
 title = "HOW TO PLAY opens the how-to screen"
 description = "On the title with menuIndex 2, pressing Enter sets screen to howto."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/title-howto.test.ts", outputs = [{ id = "howto", name = "The how-to screen", kind = "image" }] }
 [[review.categories.items]]
 id = "howto-back"
 title = "Escape leaves the how-to screen"
 description = "On the how-to screen, pressing Escape sets screen to title with menuIndex 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/howto-back.test.ts", outputs = [{ id = "title", name = "The title after leaving how-to", kind = "image" }] }
 [[review.categories.items]]
 id = "howto-confirm"
 title = "Enter leaves the how-to screen"
 description = "On the how-to screen, pressing Enter sets screen to title with menuIndex 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/howto-confirm.test.ts", outputs = [{ id = "title", name = "The title after leaving how-to", kind = "image" }] }
 [[review.categories.items]]
 id = "pause-escape"
 title = "Escape resumes from the pause menu"
 description = "On the pause menu reached from a live match, pressing Escape sets screen back to the screen that was paused."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 validation = { script = "navigation/pause-escape.test.ts", outputs = [{ id = "resumed", name = "The match resumed by Escape", kind = "image" }] }
 [[review.categories.items]]
 id = "pause-resume"
 title = "RESUME resumes"
 description = "On the pause menu with menuIndex 0, pressing Enter sets screen back to the screen that was paused."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 validation = { script = "navigation/pause-resume.test.ts", outputs = [{ id = "resumed", name = "The match resumed from the menu", kind = "image" }] }
 [[review.categories.items]]
 id = "pause-restart"
 title = "RESTART starts the match over"
 description = "On the pause menu with menuIndex 1, pressing Enter sets screen to countdown in the same mode with both scores 0 and both paddles at FIELD_CY."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/pause-restart.test.ts", outputs = [{ id = "restarted", name = "The restarted match opening on its countdown", kind = "image" }] }
 [[review.categories.items]]
 id = "pause-quit"
 title = "QUIT TO MENU returns to the title"
 description = "On the pause menu with menuIndex 2, pressing Enter sets screen to title with menuIndex 0 and both scores 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/pause-quit.test.ts", outputs = [{ id = "title", name = "The title after quitting", kind = "image" }] }
 [[review.categories.items]]
 id = "matchover-play-again"
 title = "PLAY AGAIN starts a new match"
 description = "On the match-over screen with menuIndex 0, pressing Enter sets screen to countdown in the same mode with both scores 0 and winner null."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/matchover-play-again.test.ts", outputs = [{ id = "restarted", name = "The new match opening on its countdown", kind = "image" }] }
 [[review.categories.items]]
 id = "matchover-menu"
 title = "MENU returns to the title"
 description = "On the match-over screen with menuIndex 1, pressing Enter sets screen to title with menuIndex 0, both scores 0 and winner null."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/matchover-menu.test.ts", outputs = [{ id = "title", name = "The title after the match", kind = "image" }] }
 [[review.categories.items]]
 id = "matchover-escape"
 title = "Escape leaves the match-over screen"
 description = "On the match-over screen, pressing Escape sets screen to title with menuIndex 0."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 validation = { script = "navigation/matchover-escape.test.ts", outputs = [{ id = "title", name = "The title after leaving match-over by Escape", kind = "image" }] }
 [[review.categories.items]]
 id = "space-confirms"
 title = "Space confirms a menu item"
 description = "On the title with menuIndex 2, pressing Space sets screen to howto."
+domains = ["single-player", "versus"]
+failure_cap = "great"
 validation = { script = "navigation/space-confirms.test.ts", outputs = [{ id = "howto", name = "The how-to screen opened by Space", kind = "image" }] }
 
 # --- Visibility (sampled from the rendered canvas) ----------------------------
@@ -1159,6 +1345,8 @@ title = "Visibility"
 id = "left-paddle"
 title = "Left paddle stands apart"
 description = "The pixel at the left paddle's center is more than 50/441 in RGB distance from an empty patch of field and from the pixel at the right paddle's center."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: sample the rendered pixels at the left paddle, right paddle,
 # and an empty patch of field, and compare the distances. See
 # validation/<engine>/visibility/left-paddle.test.ts.
@@ -1169,6 +1357,8 @@ validation = { script = "visibility/left-paddle.test.ts", outputs = [
 id = "right-paddle"
 title = "Right paddle stands apart"
 description = "The pixel at the right paddle's center is more than 50/441 in RGB distance from an empty patch of field and from the pixel at the left paddle's center."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: sample the rendered pixels at the right paddle, left paddle,
 # and an empty patch of field, and compare the distances. See
 # validation/<engine>/visibility/right-paddle.test.ts.
@@ -1179,6 +1369,8 @@ validation = { script = "visibility/right-paddle.test.ts", outputs = [
 id = "obstacle"
 title = "Obstacles stand apart"
 description = "The pixel at an obstacle's center is more than 50/441 in RGB distance from an empty patch of field and from the pixels at both paddle centers."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: sample the rendered pixels at an obstacle center, both paddle
 # centers, and an empty patch of field, and compare the distances. See
 # validation/<engine>/visibility/obstacle.test.ts.
@@ -1189,6 +1381,8 @@ validation = { script = "visibility/obstacle.test.ts", outputs = [
 id = "ball"
 title = "Ball stands apart"
 description = "The pixel at the ball's center is more than 50/441 in RGB distance from an empty patch of field."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: sample the rendered pixels at the ball and an empty patch of
 # field, and compare the distance. See validation/<engine>/visibility/ball.test.ts.
 validation = { script = "visibility/ball.test.ts", outputs = [
@@ -1206,6 +1400,8 @@ title = "HUD"
 id = "score-p1"
 title = "Player one's score is drawn"
 description = "After setScore(7, 9), a frame of the live match draws the text 7 left of the field's center."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: pose the scores, render, and find the text draw. See
 # validation/<engine>/hud/score-p1.test.ts.
 validation = { script = "hud/score-p1.test.ts", outputs = [
@@ -1215,6 +1411,8 @@ validation = { script = "hud/score-p1.test.ts", outputs = [
 id = "score-p2"
 title = "Player two's score is drawn"
 description = "After setScore(7, 9), a frame of the live match draws the text 9 right of the field's center."
+domains = ["single-player", "versus"]
+failure_cap = "scuffed"
 # Automated validation: pose the scores, render, and find the text draw. See
 # validation/<engine>/hud/score-p2.test.ts.
 validation = { script = "hud/score-p2.test.ts", outputs = [
@@ -1234,6 +1432,8 @@ title = "UI"
 id = "window-fit"
 title = "Window fit"
 description = "Over surfaces wider than the field, taller than it, and at a raised device pixel ratio, the whole 1280x720 field is inside the surface, its aspect ratio is preserved, the letterboxing is even, and the bars show the field's background clear color: within an RGB distance of 25/441 of the nearest sampled empty-field patch, and under an engine within rounding of the exported BACKGROUND. The fit is read on the first frame before any input."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: build the game over several differently-shaped surfaces and
 # read the viewport the engine derived back, then sample the bar pixels against the
 # clear color and the empty-field patches. The 25 is bar-versus-field shading room:
@@ -1246,6 +1446,8 @@ validation = { script = "rendering/window-fit.test.ts", outputs = [
 id = "trail-length"
 title = "Trail length follows TRAIL_TIME"
 description = "Behind a ball in steady flight, the drawn trail reaches back along the ball's path between 0.5 and 1.5 times speed * TRAIL_TIME, plus up to two ball radii."
+domains = ["single-player", "versus"]
+failure_cap = "great"
 # Automated validation: drive a rally, then read the frame the build drew: the
 # geometry or lit pixels behind the ball reach roughly speed * TRAIL_TIME along its
 # recent path. See validation/<engine>/rendering/trail-length.test.ts.
@@ -1256,6 +1458,8 @@ validation = { script = "rendering/trail-length.test.ts", outputs = [
 id = "trail-scales"
 title = "Trail length scales with speed"
 description = "The drawn trail behind a ball at a high speed is longer than the drawn trail behind the same ball at a low speed."
+domains = ["single-player", "versus"]
+failure_cap = "great"
 # Automated validation: read the trail's reach behind a slow ball and a fast one and
 # compare. See validation/<engine>/rendering/trail-scales.test.ts.
 validation = { script = "rendering/trail-scales.test.ts", outputs = [
@@ -1266,6 +1470,8 @@ validation = { script = "rendering/trail-scales.test.ts", outputs = [
 id = "state-title"
 title = "Title / main menu"
 description = "After reset() the screen is title, and the frame draws TITLE_TEXT and every item of TITLE_ITEMS."
+domains = ["single-player", "versus"]
+failure_cap = "great"
 # Automated validation: reset to the title, read the text draws, and capture it. See
 # validation/<engine>/ui/state-title.test.ts.
 validation = { script = "ui/state-title.test.ts", outputs = [
@@ -1275,6 +1481,8 @@ validation = { script = "ui/state-title.test.ts", outputs = [
 id = "state-howto"
 title = "How to play"
 description = "Selecting HOW TO PLAY from the title sets screen to howto, and the frame draws text naming the movement keys."
+domains = ["single-player", "versus"]
+failure_cap = "great"
 # Automated validation: navigate the menu to How to Play, read the text draws, and
 # capture it. See validation/<engine>/ui/state-howto.test.ts.
 validation = { script = "ui/state-howto.test.ts", outputs = [
@@ -1284,6 +1492,8 @@ validation = { script = "ui/state-howto.test.ts", outputs = [
 id = "state-pause"
 title = "Pause (resume/restart/quit)"
 description = "Pausing a live match sets screen to paused, and the frame draws every item of PAUSE_ITEMS."
+domains = ["single-player", "versus"]
+failure_cap = "great"
 # Automated validation: pause a live match, read the text draws, and capture the
 # pause menu. See validation/<engine>/ui/state-pause.test.ts.
 validation = { script = "ui/state-pause.test.ts", outputs = [
@@ -1293,6 +1503,8 @@ validation = { script = "ui/state-pause.test.ts", outputs = [
 id = "state-matchover"
 title = "Match over (play again/menu)"
 description = "A match driven to its end sets screen to matchover, and the frame draws every item of MATCHOVER_ITEMS and the final score."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: drive a real match to its end, read the text draws, and
 # capture the match-over screen. See validation/<engine>/ui/state-matchover.test.ts.
 validation = { script = "ui/state-matchover.test.ts", outputs = [
@@ -1315,6 +1527,8 @@ title = "Audio"
 id = "paddle-hit"
 title = "Paddle-hit cue"
 description = "The paddle-hit cue plays on the frame the ball hits a paddle, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: drive a real paddle contact and confirm the `paddle-hit` cue
 # is played on that frame. See validation/<engine>/audio/paddle-hit.test.ts.
 validation = { script = "audio/paddle-hit.test.ts", outputs = [
@@ -1324,6 +1538,8 @@ validation = { script = "audio/paddle-hit.test.ts", outputs = [
 id = "wall-bounce"
 title = "Wall bounce cue"
 description = "The wall-bounce cue plays on the frame the ball bounces off the top or bottom wall, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: fire the ball into a wall and confirm the `wall-bounce` cue
 # is played on that frame. See validation/<engine>/audio/wall-bounce.test.ts.
 validation = { script = "audio/wall-bounce.test.ts", outputs = [
@@ -1333,6 +1549,8 @@ validation = { script = "audio/wall-bounce.test.ts", outputs = [
 id = "obstacle-bounce"
 title = "Obstacle bounce cue"
 description = "The obstacle-bounce cue plays on the frame the ball bounces off an obstacle, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: fire the ball into an obstacle and confirm the
 # `obstacle-bounce` cue is played on that frame. See
 # validation/<engine>/audio/obstacle-bounce.test.ts.
@@ -1343,6 +1561,8 @@ validation = { script = "audio/obstacle-bounce.test.ts", outputs = [
 id = "scoring"
 title = "Scoring cue"
 description = "The score cue plays on the frame a point is scored, and on no frame before it."
+domains = ["single-player", "versus"]
+failure_cap = "passable"
 # Automated validation: drive a real point and confirm the `score` cue is played on
 # that frame. See validation/<engine>/audio/scoring.test.ts.
 validation = { script = "audio/scoring.test.ts", outputs = [

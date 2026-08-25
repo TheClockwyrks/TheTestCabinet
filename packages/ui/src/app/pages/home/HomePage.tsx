@@ -5,7 +5,12 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { ReviewerWidgets } from "./ReviewerWidgets";
 import { useAuth } from "../../../client/auth";
-import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import {
+  AestheticBadge,
+  GradeBadge,
+  RatingBadge,
+  canonicalModelId,
+} from "@test-cabinet/ui";
 import { LoadingState } from "../../components/LoadingState";
 import { RunLog, useRunTable } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
@@ -13,8 +18,10 @@ import { useFindModel } from "../../data/useModels";
 import {
   asGrade,
   overallGradeOf,
+  type AestheticRating,
   type GradeStatus,
   type Rating,
+  worstAestheticRating,
   worstRating,
 } from "../../data/ratings";
 import { useGalleryData } from "../../data/galleryContext";
@@ -105,9 +112,21 @@ export function HomePage() {
   const featuredReview = featured
     ? findReview(featured.id, localWriteups)
     : undefined;
+  // On a validator-rated run the functional rating is the validators' (the
+  // summary's), whatever a local writeup says; the writeup supplies the
+  // aesthetic, which likewise wins over the summary's aggregate.
   const featuredRating = featured
-    ? (worstRating(featuredReview?.ratings.map((r) => r.rating) ?? []) ??
-      featured.rating)
+    ? featured.validatorRated
+      ? featured.rating
+      : (worstRating(featuredReview?.ratings.map((r) => r.rating) ?? []) ??
+        featured.rating)
+    : null;
+  const featuredAesthetic = featured
+    ? (worstAestheticRating(
+        featuredReview?.aesthetics.map((r) => r.rating) ?? [],
+      ) ??
+      featured.aesthetic ??
+      null)
     : null;
   // A game jam carries no per-domain rating: its badge is the reviewer's
   // whole-game overall grade, resolved the same way (a local, in-progress review
@@ -149,6 +168,7 @@ export function HomePage() {
                 // published), mirroring the run log's own tag.
                 local={localIds.has(featured.id) || !featured.publishedAt}
                 rating={featuredRating}
+                aesthetic={featuredAesthetic}
                 grade={featuredGrade}
               />
             )}
@@ -179,11 +199,15 @@ function FeaturedRun({
   run,
   local,
   rating,
+  aesthetic,
   grade,
 }: {
   run: RunSummary;
   local: boolean;
   rating: Rating | null;
+  /** The run's aggregate aesthetic rating, shown beside the functional one; null
+   * until a reviewer rates the channel (always, for a legacy run). */
+  aesthetic: AestheticRating | null;
   /** A game jam's whole-game overall grade, shown in place of the rating a jam
    * does not carry. Null for every domain-rated run. */
   grade: GradeStatus | null;
@@ -228,13 +252,16 @@ function FeaturedRun({
         <Stat
           label="Rating"
           value={
-            rating ? (
-              <RatingBadge rating={rating} />
-            ) : grade ? (
-              <GradeBadge status={grade} />
-            ) : (
-              <span className={styles.noRating}>—</span>
-            )
+            <span className={styles.badges}>
+              {rating ? (
+                <RatingBadge rating={rating} />
+              ) : grade ? (
+                <GradeBadge status={grade} />
+              ) : (
+                <span className={styles.noRating}>—</span>
+              )}
+              {aesthetic && <AestheticBadge rating={aesthetic} />}
+            </span>
           }
         />
       </dl>

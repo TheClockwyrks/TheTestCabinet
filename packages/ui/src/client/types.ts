@@ -17,9 +17,15 @@ import type {
 export type { AssetKind };
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import type { HarnessEvent } from "@test-cabinet/run-record/event";
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  RunScoreOut,
+  RunSummary,
+} from "@test-cabinet/run-record/snapshot";
+import type {
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   ReviewRevision,
   ReviewVerdict,
@@ -27,7 +33,10 @@ import type {
 } from "../ratings";
 
 export type {
+  AestheticRating,
+  DomainAesthetic,
   DomainRating,
+  FailureCap,
   Rating,
   ReviewRevision,
   ReviewVerdict,
@@ -577,6 +586,12 @@ export interface VersionInfo {
   // The case's test type. Drives type-specific UI affordances — notably the
   // run-launch orchestrator selector, which is offered only for "end-to-end".
   testType: TestType;
+  // Whether the version is on the ENGINE manifest format, which (with the test
+  // type — a game jam is never) makes it VALIDATOR-RATED: a run's functional
+  // rating and score are decided by its validators (every review item declares a
+  // `failureCap` and `domains`), and a reviewer rates only the aesthetic channel.
+  // False on every legacy version, whose runs are reviewed exactly as before.
+  engineFormat: boolean;
   // The engine slugs a run of this version may select, in the order the case
   // declares them. Never empty: a version that declares no engine supports the
   // engineless run. This is the compatibility gate a run is held to, so the
@@ -718,6 +733,13 @@ export interface ReviewItem {
   // Optional scoring domain (by id) this item belongs to, or null/undefined for a
   // general item that belongs to no single domain.
   domain?: string | null;
+  // On a validator-rated version, the FAILURE CAP of a whole-item point: the highest
+  // functional rating its `domains` may reach while its validator fails. Absent on
+  // a legacy version and on a category (whose points carry their own).
+  failureCap?: FailureCap | null;
+  // On a validator-rated version, the scoring domains (by id) a failure of this
+  // whole-item point lowers. Empty on a legacy version and on a category.
+  domains?: string[];
   // Whether this item contributes to the run's score. Set false on the effective
   // checklist only when an erratum's `excludeFromScore` links this item's verdict id
   // (the item is still checked and shown). Absent/true otherwise. See
@@ -749,6 +771,13 @@ export interface ReviewSubItem {
   // puts the pairing on the item rather than the category). Null when unpaired.
   reference?: string | null;
   proof?: string | null;
+  // On a validator-rated version, this point's FAILURE CAP: the highest functional
+  // rating its `domains` may reach while its validator fails. Absent on a legacy
+  // version.
+  failureCap?: FailureCap | null;
+  // On a validator-rated version, the scoring domains (by id) a failure of this
+  // point lowers. Empty on a legacy version.
+  domains?: string[];
   // Whether this sub-item contributes to the run's score. Set false on the effective
   // checklist only when an erratum's `excludeFromScore` links its composite verdict
   // id (or excludes the whole category). Absent/true otherwise.
@@ -764,9 +793,15 @@ export interface Domain {
 }
 
 export interface ReviewDocument {
-  // The reviewer's rating for each of the case's scoring domains. The run's
-  // overall rating is the worst across them.
+  // The reviewer's FUNCTIONAL rating for each of the case's scoring domains, on a
+  // legacy run's review. The run's overall rating is the worst across them. Empty
+  // on a validator-rated run's review, whose functional rating is not the
+  // reviewer's to give.
   ratings: DomainRating[];
+  // The reviewer's AESTHETIC rating for each scoring domain, on a validator-rated
+  // run's review (the run's aesthetic rating is the worst across them, then across
+  // reviews). Empty/absent on a legacy run's review, which has no aesthetic channel.
+  aesthetics?: DomainAesthetic[];
   writeup: string;
   checklist: ReviewVerdict[];
 }
@@ -814,6 +849,26 @@ export interface StoredRun {
   // Whether the run has cleared the publish gate (a published run is publicly
   // visible). Worker-produced runs default to false until published.
   published: boolean;
+  // The run's FUNCTIONAL rating as the store decides it: on a validator-rated run
+  // the validator-decided rating (present from completion, never changed by a
+  // review); on a legacy run the review aggregate (null while unreviewed). Composed
+  // with the toolchain gate either way.
+  rating: Rating | null;
+  // The run's aggregate AESTHETIC rating — the worst any reviewer gave any domain —
+  // or null when no review has rated the aesthetic channel (every legacy run, and
+  // an unreviewed validator-rated one).
+  aesthetic: AestheticRating | null;
+  // Whether the run is VALIDATOR-RATED (its case version is on the engine manifest
+  // format and is not a game jam): its points and functional rating come from the
+  // record immediately, it publishes with zero reviews, and a reviewer rates only
+  // the aesthetic channel.
+  validatorRated: boolean;
+  // The run's score against its case version's checklist weights, as the backend
+  // computes it (the same figure the summary cards carry): the validator-decided
+  // score on a validator-rated run (present from completion, `reviews` 0), the
+  // mean across reviews on a legacy run (null while unreviewed). Null when the
+  // host holds no catalog for the run's case version (the static site).
+  score: RunScoreOut | null;
 }
 
 // --- Accounts & auth ---

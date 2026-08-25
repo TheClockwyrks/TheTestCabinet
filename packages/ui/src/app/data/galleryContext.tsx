@@ -35,7 +35,13 @@ import type {
   RunEventStreams,
   StoredReview,
 } from "../../client/types";
-import { type ParsedWriteup, parseWriteup, subItemVerdictId } from "./ratings";
+import {
+  type AestheticRating,
+  type ParsedWriteup,
+  type Rating,
+  parseWriteup,
+  subItemVerdictId,
+} from "./ratings";
 import { extensionFor } from "./proofMedia";
 import { findModelByModelId, type ModelSummary } from "./models";
 import type {
@@ -84,6 +90,25 @@ export interface RunDetail {
   record: RunRecord;
   reviews: StoredReview[];
   /**
+   * Whether the run is **validator-rated** (its case version is on the engine
+   * manifest format and is not a game jam): its points and functional rating are
+   * read off the record the moment it completes, it publishes with zero reviews,
+   * and a reviewer rates only the aesthetic channel. False for a legacy run, whose
+   * review surfaces are unchanged.
+   */
+  validatorRated: boolean;
+  /**
+   * The run's functional rating as its store decided it — the validator-decided
+   * rating on a validator-rated run (present from completion), the review
+   * aggregate on a legacy one — or null while a legacy run is unreviewed.
+   */
+  rating: Rating | null;
+  /**
+   * The run's aggregate aesthetic rating (the worst any reviewer gave any domain),
+   * or null when no review has rated the channel — every legacy run.
+   */
+  aesthetic: AestheticRating | null;
+  /**
    * Whether the run has cleared the publish gate — it is public, in the snapshot
    * and the gallery. The review surfaces branch on this so an already-published
    * run is never offered a Publish action again (its reviewer can still revise
@@ -100,6 +125,10 @@ export interface RunDetail {
 export interface ReviewModel {
   items: ReviewItemSummary[];
   domains: DomainSummary[];
+  /** Whether the run is validator-rated (see `VariantSummary.validatorRated`):
+   * the items carry failure caps and domains, the functional rating and score
+   * come from the record's validators, and a review rates aesthetics only. */
+  validatorRated: boolean;
 }
 
 // The gallery's data source, injected by the host app. The same routed UI lives

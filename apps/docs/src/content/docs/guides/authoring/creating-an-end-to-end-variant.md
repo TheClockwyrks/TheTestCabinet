@@ -143,6 +143,8 @@ title = "Gyre"
 id = "oriented-bounce"
 title = "Oriented bounces"
 description = "The ball bounces off the obstacles' tilted faces at oriented angles."
+domains = ["gyre"]
+failure_cap = "scuffed"
 validation = { script = "gyre/oriented-bounce.test.ts", outputs = [
   { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "video" },
 ] }
@@ -174,7 +176,8 @@ Rules enforced at resolution:
   rejected.
 - A variant's own `[[domain]]` tables are additional to the case's common
   domains, and a domain id must be unique across that effective set. A variant's
-  review item may name a common domain or one of its own.
+  review item may name a common domain or one of its own, in its `domains` on a
+  validator-rated case and its `domain` on a legacy one.
 - `[[proof]]` entries are additive on the common proofs. A proof id must be
   unique within the variant's effective set, and the seeded spec must instruct
   the build to write the file at that same `dest`.

@@ -114,6 +114,7 @@ fn performance_version_with_pass_limit(
         slug: "performance-factorio".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
+        engine_format: false,
         name: "Lattice".to_string(),
         difficulty: "hard".to_string(),
         tags: Vec::new(),

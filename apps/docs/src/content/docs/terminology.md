@@ -91,11 +91,12 @@ scales with the cluster.
 A scoring domain is a facet of a test case the reviewer rates independently,
 such as a game's single-player and versus modes. A case declares common domains
 that every variant is rated on, and a [variant](#variant) may add its own, so
-the effective set for a run is the common domains plus its variant's. The
-reviewer assigns a [rating](#rating) to each while playing the build, and the
-run's overall rating is the worst across that effective set. A [review
-item](#reviewer-checklist) may roll up to a domain, or stay general when it
-applies to every mode.
+the effective set for a run is the common domains plus its variant's. Each
+domain carries a [rating](#rating) on each of the run's rating channels, and
+the run's overall rating on a channel is the worst across that effective set. A
+[review item](#reviewer-checklist) names the domains its failure lowers on a
+[validator-rated](#validator-rated) version, and on a legacy version may roll
+up to a domain or stay general when it applies to every mode.
 
 ## Driver
 
@@ -119,6 +120,15 @@ In the context of The Test Cabinet, "engine" refers to two elements:
 The first is provided to a run and the second is the deliverable of one. A
 performance case's engine is the artifact under test, so it is never selected and
 a performance case supports no engine in the first sense.
+
+## Failure cap
+
+A failure cap is a review item's declared `failure_cap`: the highest functional
+[rating](#rating) the item's `domains` may reach while the item's validator
+fails, one of `broken`, `scuffed`, `passable`, or `great`. A domain's functional
+rating is the lowest cap among its failing items, so the caps let the validators
+decide the rating without a reviewer. Every item of a
+[validator-rated](#validator-rated) case version declares one.
 
 ## Harness
 
@@ -191,9 +201,11 @@ the second of two steps, review then publish, and the release runs
 asynchronously in a per-publish `tcab-publisher` Job. The CLI's `tcab publish`
 performs both steps at once for a solo operator.
 
-A completed run needs at least one [review](#review) before it can be published.
-Two waivers apply. A run in a publishable failure state (catastrophic, timed
-out, harness error) has no checklist to complete. An auto-validated
+A completed [validator-rated](#validator-rated) run is publishable from the
+moment it completes, on its functional rating and score. A completed legacy run
+needs at least one [review](#review) before it can be published, with two
+waivers. A run in a publishable failure state (catastrophic, timed out, harness
+error) has no checklist to complete. An auto-validated
 [comparison](/comparisons/overview/) run carries automated verdicts in place of
 a review.
 
@@ -204,10 +216,22 @@ publicly. See [Results](/components/core/results/#lifecycle).
 
 ## Rating
 
-A rating is the reviewer's subjective quality tier for one [domain](#domain) of
-a run: `flawless`, `great`, `passable`, `scuffed`, or `broken`. Each
-[review](#review) carries one rating per domain, and a run's overall rating is
-the worst across every domain of every review it has.
+A run is rated on two channels, each a five-tier scale per [domain](#domain),
+and its overall rating on a channel is the worst across its domains.
+
+The functional rating says how faithfully a domain implements the spec:
+`flawless`, `great`, `passable`, `scuffed`, or `broken`. On a
+[validator-rated](#validator-rated) run the validators decide it from each
+failing item's [failure cap](#failure-cap). On a legacy run each
+[review](#review) carries one per domain and the run's is the worst across
+every review.
+
+The aesthetic rating says how a domain looks, sounds, and feels to play:
+`legendary`, `amazing`, `good`, `okay`, or `slop`. `amazing` is the normal
+maximum and `legendary` is reserved for an exceptionally beautiful build. Only
+a validator-rated run has one; each review carries one per domain and the
+run's is the worst across every review. See
+[Evaluation](/testing/end-to-end/evaluation/#rating-channels).
 
 ## Reporters
 
@@ -218,17 +242,19 @@ are both reporters and [runners](#runners).
 
 ## Review
 
-All runs are manually reviewed after the implementation is complete. The
-reviewer assesses how well a model matched the spec, checks for bugs, and
-provides the feedback automation cannot. Reviews are subjective, since games do
-not map cleanly to a rigid grading scale.
+A review is a person's assessment of a run after playing its build, providing
+the feedback automation cannot. Reviews are subjective, since games do not map
+cleanly to a rigid grading scale.
 
-A review carries a per-domain [rating](#rating), a prose writeup, a verdict on
-each [reviewer-checklist](#reviewer-checklist) item the case declares, and the
-identity of the [account](#user-account) that wrote it. A run may carry one
-review per account, typically from people other than the operator who produced
-it. The verdicts and item weights produce each review's numeric [score](#score),
-which are averaged across a run's reviews.
+A review carries a prose writeup, a per-domain [rating](#rating), and the
+identity of the [account](#user-account) that wrote it. On a
+[validator-rated](#validator-rated) run the rating is the aesthetic one and the
+checklist is the validators'. On a legacy run the rating is the functional one,
+the review also carries a verdict on each
+[reviewer-checklist](#reviewer-checklist) item the case declares, and those
+verdicts and item weights produce the review's numeric [score](#score), averaged
+across the run's reviews. A run may carry one review per account, typically from
+people other than the operator who produced it.
 
 ## Review buffer
 
@@ -250,10 +276,12 @@ carries a point weight. An item may break into name-only sub-items, each judged
 on its own, with the item's weight split evenly across them. A game-jam case
 grades its items on a five-level scale instead of pass/fail.
 
-The [consoles](#web-console) present the checklist as a guided review with a
-completeness gate: every item and sub-item needs a verdict before a review can
-be saved or the run published. The checklist is reporter-side and is never
-seeded, so it stays out of the model's input.
+On a [validator-rated](#validator-rated) run every verdict is the validator's
+and the [consoles](#web-console) show the checklist read-only. On a legacy run
+they present it as a guided review with a completeness gate: every item and
+sub-item needs a verdict before a review can be saved or the run published. The
+checklist is reporter-side and is never seeded, so it stays out of the model's
+input.
 
 ## Rig
 
@@ -293,13 +321,15 @@ run at the [backend](#backend) and watch it.
 
 ## Score
 
-A [review](#review)'s score is its earned points over the points available. Each
+A score is earned points over the points available. Each
 [reviewer-checklist](#reviewer-checklist) item is worth a weight, a pass earns
 that weight, and a fail earns none, so the total is the sum of every declared
 item's weight. An item with sub-items earns the fraction of its weight whose
-sub-items passed, so a review's earned score can be fractional. A run carrying
-several reviews scores the average of its reviews' scores. The run's score is
-shown alongside its overall [rating](#rating), and is what the per-case
+sub-items passed, so an earned score can be fractional. A
+[validator-rated](#validator-rated) run scores once, from its validators'
+verdicts, the moment it completes. A legacy run scores per [review](#review) and
+a run carrying several reviews scores the average. The run's score is shown
+alongside its functional [rating](#rating), and is what the per-case
 [leaderboard](#leaderboard) ranks on.
 
 A [comparison](/comparisons/experiments/) scores a run from its automated
@@ -345,6 +375,16 @@ requires the build to expose, whether the spelled-out mechanics work when the
 build is driven into the states that exercise them. A build that fails the
 mandated debug-API contract fails automatically. A game's feel and quality are
 left to a human [review](#review).
+
+## Validator-rated
+
+A case version is validator-rated when it is on the engine-supported manifest
+format, the `[workspaces]` / `engines` / `[[engine]]` spelling of its starter
+project, and is not a game jam. A run is validator-rated when its case version
+is. Its validators decide its functional [rating](#rating) and [score](#score)
+at completion, so it is publishable with no review, and its reviewers supply
+only the aesthetic rating. Every other version is a legacy version, whose
+reviewers supply the functional rating and checklist verdicts.
 
 ## Variant
 

@@ -349,7 +349,9 @@ only one variant introduces is therefore rated on its own domain rather than
 folded into the shared ones. A common review item may name only a common domain;
 a variant's own item may name a common domain or one of that variant's own.
 Domain ids must be unique across the common domains and any one variant's own.
-The run's overall rating is the worst across its effective domains.
+The run's overall rating on each
+[rating channel](/testing/end-to-end/evaluation/#rating-channels) is the worst
+across its effective domains.
 
 ## Self-contained specifications
 
