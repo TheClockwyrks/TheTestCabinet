@@ -20,6 +20,10 @@ cases get a reference is in the
 - `wrangler` on `PATH`, with `CLOUDFLARE_API_TOKEN` (Cloudflare Pages: Edit) and
   `CLOUDFLARE_ACCOUNT_ID` set, plus Node and npm for the case's `[build]`
   commands. The command contacts no backend, so it needs no login or token.
+- The repository's npm workspace installed and its packages built
+  (`npm ci && npm run build:packages` at the repository root): an engine-backed
+  reference resolves its engine from `packages/<slug>/`. `tcab capture-baselines`
+  needs the same.
 - The target Pages project exists: `test-cabinet-references` for prod, or
   `test-cabinet-references-staging` for staging. See
   [Releasing](/development/releasing/).

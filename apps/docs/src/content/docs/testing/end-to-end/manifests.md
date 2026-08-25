@@ -539,9 +539,16 @@ standing for every engine the case supports, the right form when the reference
 build does not vary by engine, which includes every case supporting only `none`.
 A table keyed by engine slug names one directory per engine, because the build a
 reference demonstrates differs under each: an engine-backed build hands its
-runtime surfaces to the vendored engine and keeps only the game, while the
-engineless build carries that runtime itself. The table must name exactly the
-engines the case supports.
+runtime surfaces to the engine and keeps only the game, while the engineless
+build carries that runtime itself. The table must name exactly the engines the
+case supports.
+
+An engine-backed reference depends on the engine's package in the repository
+(`packages/<slug>/`) by a relative `file:` path, which npm installs as a symlink,
+so the reference builds and tests against the engine's current source. The
+repository's npm workspace must therefore be installed and its packages built
+(`npm ci && npm run build:packages` at the repository root) before a reference
+is built.
 
 By convention a per-engine directory lives at `references/<engine>/<variant>/`.
 Each directory is built with the case's `[build]` commands run from it, and its

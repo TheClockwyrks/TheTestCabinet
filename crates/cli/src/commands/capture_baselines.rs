@@ -138,8 +138,8 @@ pub(super) fn capture_variant_baseline(
 ///
 /// A variant's reference implementations are keyed by engine, because the build a
 /// reference demonstrates genuinely differs under each — an engineless one carries
-/// its own runtime, an engine-backed one hands the same surfaces to the runtime it
-/// vendors. So the unit both commands work in is the pair, not the variant: a case
+/// its own runtime, an engine-backed one hands the same surfaces to the engine it is
+/// built on. So the unit both commands work in is the pair, not the variant: a case
 /// supporting two engines has two reference builds per variant, each built and
 /// deployed on its own, and the case's Reference tab lets a reader switch between
 /// them.

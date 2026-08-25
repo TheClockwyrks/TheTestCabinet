@@ -1,5 +1,5 @@
 # Everything that is not authored source: installed packages, build output,
-# coverage reports, captured proof, and the vendored engine.
+# coverage reports, captured proof, and validation scratch.
 node_modules/
 /dist/
 /build/

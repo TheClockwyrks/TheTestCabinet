@@ -140,14 +140,23 @@ events — is the engine's, which is why the surface carries no `step` or
 
 ## Install
 
+From the repository root, install the npm workspace and build its packages:
+
+```sh
+npm ci && npm run build:packages
+```
+
+Then, in this directory:
+
 ```sh
 npm ci
 ```
 
-The engine is vendored, prebuilt, under `.tcab/engine/@test-cabinet/simple-2d/`
-so this project installs and builds with a plain `npm ci` outside the monorepo.
-A real run receives the identical package, vendored to the identical path, so
-the import in the sources is the same either way.
+The engine, `@test-cabinet/simple-2d`, is a relative `file:` dependency on the
+repository's `packages/simple-2d`, which npm installs as a symlink, so this
+project builds and tests against the engine's current source. A run receives the
+same package at `.tcab/engine/@test-cabinet/simple-2d/` instead, so the import
+in the sources is the same either way.
 
 ## Run in development
 
@@ -198,7 +207,6 @@ checked for structure and solved from its carved solution.
 index.html            Vite entry; hosts the <canvas>, sized by CSS alone
 vite.config.ts        Build config (emits to dist/)
 vitest.config.ts      The build's own test suite, over src/
-.tcab/engine/         The vendored, prebuilt @test-cabinet/simple-2d
 src/
   main.ts             Bootstrap: create the engine, initialize it, and run
   constants.ts        Every figure the specification fixes (logical 1280x720);

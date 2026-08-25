@@ -97,6 +97,7 @@ branch on `engine.slug` alone.
 | ---------------- | -------------- | ----------------------------------------------------------------------- |
 | `specs/`         | **Yes**        | The spec handed to the model, by concern.                               |
 | `workspaces/`    | **Yes**        | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
+| `references/`    | No             | The authored, correct build, one directory per engine. Never seeded.    |
 | `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                           |
 | `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
 | `variants/`      | No             | One TOML file per variant (listed in `variants`).                       |
@@ -147,12 +148,10 @@ exists:
 - **No validators.** There is no `validation/` directory. The checklist points are
   authored from the specs, but the Vitest suites that decide them — one project
   per engine, `validation/none/` and `validation/simple-2d/` — have not been
-  written. Until they are, no point is machine-decided and no run's media is
-  produced by a validator.
-- **No reference implementation.** There is no `references/<engine>/base`, so
-  `variants/base.toml` declares no `[reference_implementation]`, the case has no
-  Reference tab, and there is nothing for `tcab capture-baselines` to run against.
-  Consequently there is no `validation-baseline/` either.
+  written. Until they are, no point is machine-decided, no run's media is
+  produced by a validator, and there is nothing for `tcab capture-baselines` to
+  capture against the reference builds, so there is no `validation-baseline/`
+  either.
 - **Campaign board solution counts are unresolved.** All `24` boards in
   `specs/campaign-boards.md` are verified **solvable and well formed**, which is
   the load-bearing fact and the one the specs rest on. Two independent solvers

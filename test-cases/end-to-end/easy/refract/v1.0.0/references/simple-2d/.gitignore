@@ -1,11 +1,11 @@
-# Dependencies — reinstalled with `npm ci`; never committed.
+# Dependencies — reinstalled with `npm ci`; never committed. The engine,
+# `@test-cabinet/simple-2d`, is resolved from the repository's own
+# `packages/simple-2d` through a relative `file:` dependency that npm installs
+# as a symlink, so nothing of it is written here.
 node_modules/
 
-# Production build output — produced by `npm run build`. Every pattern here is
-# ANCHORED to the repository root on purpose: the engine is vendored into this
-# repository at `.tcab/engine/@test-cabinet/simple-2d/`, prebuilt, and its own
-# `dist/` is committed with the seed. An unanchored `dist/` would match that
-# directory too and leave the build unable to resolve the engine.
+# Production build output — produced by `npm run build`. Anchored to this
+# project's root so the patterns name only its own output.
 /dist/
 /build/
 /out/
@@ -20,14 +20,5 @@ playwright-report/
 # Logs.
 *.log
 
-# --- Only in this copy -------------------------------------------------------
-#
-# A seeded run repository is its own repository, so the file above is the whole of
-# its ignore rules. This copy of the build lives inside the Test Cabinet monorepo,
-# whose root .gitignore ignores `.tcab/` (scratch that `tcab validate` writes) and
-# any directory named `dist`. Both would swallow the vendored, prebuilt engine at
-# `.tcab/engine/@test-cabinet/simple-2d/`, which is committed here so this
-# reference installs and builds standalone with a plain `npm ci`. A rule in a
-# deeper .gitignore wins, so re-including it here is what keeps it tracked.
-!.tcab/
-!.tcab/**
+# Scratch that `tcab validate --implementation` writes beside the build.
+.tcab/

@@ -14,7 +14,7 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
-    "@test-cabinet/simple-2d": "file:./.tcab/engine/@test-cabinet/simple-2d",
+    "@test-cabinet/simple-2d": "file:../../../../../../../../packages/simple-2d",
     "ts-essentials": "^10.2.1"
   },
   "devDependencies": {

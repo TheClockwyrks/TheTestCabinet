@@ -14,7 +14,7 @@
 //! `url` in place rather than accumulating rows. The engine is part of the identity
 //! because the build a reference demonstrates genuinely differs under each — an
 //! engineless one carries its own runtime, an engine-backed one hands the same
-//! surfaces to the runtime it vendors — so a variant supporting two engines has two
+//! surfaces to the engine it is built on — so a variant supporting two engines has two
 //! rows and the case's Reference tab lets a reader switch between them. A variant
 //! with no reference implementation simply has no row here. Timestamps are RFC 3339 strings, matching the model-catalog tables,
 //! so the schema stays portable across the SQLite (local/tests) and PostgreSQL

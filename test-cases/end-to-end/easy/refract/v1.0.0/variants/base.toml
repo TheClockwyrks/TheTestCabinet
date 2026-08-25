@@ -22,13 +22,14 @@ description = "The optical bench with both modes: the fixed twenty-four-board Ca
 # build a reference demonstrates differs under each: `references/none` carries
 # its own runtime layer (frame loop, canvas fit, keyboard and pointer input,
 # audio, overlay, and the `window.__refract` surface), while
-# `references/simple-2d` hands all of that to the vendored engine and ships the
-# game as `src/game.ts` beside the seeded entry point. The game either one
-# implements is identical, which is what makes a run on one engine comparable
-# with a run on the other. The table names every engine the case supports and
-# nothing else. Neither directory is ever seeded into a run: each is the
-# authored answer, built with the case's own `[build]` commands and held to the
-# same four toolchain gates a run is.
+# `references/simple-2d` hands all of that to the engine package resolved from
+# the repository's `packages/simple-2d` and ships the game as `src/game.ts`
+# beside the seeded entry point. The game either one implements is identical,
+# which is what makes a run on one engine comparable with a run on the other.
+# The table names every engine the case supports and nothing else. Neither
+# directory is ever seeded into a run: each is the authored answer, built with
+# the case's own `[build]` commands and held to the same four toolchain gates a
+# run is.
 [reference_implementation]
 none = "references/none"
 "simple-2d" = "references/simple-2d"

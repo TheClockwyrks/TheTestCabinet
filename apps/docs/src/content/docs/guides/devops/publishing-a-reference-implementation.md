@@ -15,7 +15,7 @@ person.
 The unit both commands here work in is the variant-on-an-engine pair, because the
 build a reference demonstrates differs under each engine: an engineless one
 carries its own runtime, an engine-backed one hands the same surfaces to the
-runtime it vendors. A variant supporting two engines therefore has two reference
+engine it is built on. A variant supporting two engines therefore has two reference
 builds, each deployed and recorded on its own, and the case page's Reference tab
 offers a switch between them.
 
@@ -76,6 +76,11 @@ or backend URL to configure:
   the account that owns the Pages project. The command shells out to
   `wrangler pages deploy`.
 - Node and npm, so the case's `[build]` install and build commands run.
+- The repository's npm workspace installed and its packages built, with
+  `npm ci && npm run build:packages` at the repository root. An engine-backed
+  reference resolves its engine from `packages/<slug>/` by a relative `file:`
+  path, so the built package must exist before the reference is built. The same
+  holds for `tcab capture-baselines`, which builds the same reference.
 - The target Cloudflare Pages project: `test-cabinet-references` for production,
   `test-cabinet-references-staging` for staging. Each is a Direct Upload project
   created once in the Cloudflare dashboard; see
