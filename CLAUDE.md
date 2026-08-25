@@ -187,7 +187,8 @@ Task-oriented walkthroughs:
   independently of the test case**: a case only declares which engines it
   *supports*, and the engine's own docs are seeded from its package rather than
   restated in a case's specs. The runtime itself is an npm package
-  (`packages/simple-2d/` for `simple-2d`), staged into the host package store and
+  (`packages/simple-2d/` for `simple-2d`, `packages/structured-2d/` for
+  `structured-2d`), staged into the host package store and
   vendored into the run repo at seed time. See
   [`engines/README.md`](engines/README.md), the contract doc
   [`components/core/engines.md`](apps/docs/src/content/docs/components/core/engines.md),

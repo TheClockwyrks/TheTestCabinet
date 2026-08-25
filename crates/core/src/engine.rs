@@ -45,7 +45,7 @@ pub const NONE_SLUG: &str = "none";
 
 /// The slugs of every built-in engine, in catalogue order. Kept in step with
 /// the built-in manifest table, and the order [`EngineCatalog::all`] enumerates in.
-pub const BUILT_IN_SLUGS: &[&str] = &[NONE_SLUG, "simple-2d"];
+pub const BUILT_IN_SLUGS: &[&str] = &[NONE_SLUG, "simple-2d", "structured-2d"];
 
 /// A built-in engine's manifest, baked in at build time so the catalog needs no
 /// filesystem access and a backend-driven worker (which has no checkout) resolves
@@ -54,6 +54,7 @@ fn built_in(slug: &str) -> Option<&'static str> {
     match slug {
         NONE_SLUG => Some(include_str!("../../../engines/none/engine.toml")),
         "simple-2d" => Some(include_str!("../../../engines/simple-2d/engine.toml")),
+        "structured-2d" => Some(include_str!("../../../engines/structured-2d/engine.toml")),
         _ => None,
     }
 }

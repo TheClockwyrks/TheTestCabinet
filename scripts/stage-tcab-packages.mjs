@@ -28,7 +28,8 @@
 // The SHIPPABLE list below is the superset of the SHIPPABLE_PACKAGES allowlist in
 // crates/core/src/test_case.rs. That allowlist is what a case's manifest `packages`
 // names are validated against, so every name a case may request must appear in both
-// lists. The extra entries here are ENGINE runtimes (@test-cabinet/simple-2d).
+// lists. The extra entries here are ENGINE runtimes (@test-cabinet/simple-2d,
+// @test-cabinet/structured-2d).
 // They are staged into the same store, but an engine is a run dimension selected
 // per run (`tcab run --engine <slug>`) rather than something a case declares, and
 // it is seeded into `.tcab/engine/` rather than `.tcab/packages/`. So an engine
@@ -44,16 +45,17 @@ import { fileURLToPath } from "node:url";
 /**
  * Everything staged into the package store. The first two are the packages a test
  * case may request via its manifest `packages` key, and those two MUST also appear
- * in SHIPPABLE_PACKAGES in crates/core/src/test_case.rs. The third is an engine
- * runtime: selected per run via `--engine`, seeded into `.tcab/engine/`, and never
- * nameable by a case — so it is staged from here and is deliberately absent from
- * that Rust allowlist.
+ * in SHIPPABLE_PACKAGES in crates/core/src/test_case.rs. The rest are engine
+ * runtimes: selected per run via `--engine`, seeded into `.tcab/engine/`, and never
+ * nameable by a case — so they are staged from here and are deliberately absent
+ * from that Rust allowlist.
  */
 const SHIPPABLE = [
   "@test-cabinet/particle-runtime",
   "@test-cabinet/voxel-runtime",
-  // Engine runtime — staged, but not a `packages` name. See above.
+  // Engine runtimes — staged, but not `packages` names. See above.
   "@test-cabinet/simple-2d",
+  "@test-cabinet/structured-2d",
 ];
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");

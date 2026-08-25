@@ -88,6 +88,12 @@ under `[workspace.dependencies]` and inherited with `{ workspace = true }`.
   interface a driver binds to. It is staged into the host package store and
   vendored into the run repository at seed time, and its package version is the
   engine version recorded on the run.
+- `packages/structured-2d`: `@test-cabinet/structured-2d`. The Structured 2D
+  [engine](/components/core/engines/), providing a gameplay framework of worlds,
+  levels, game modes, actors, and controllers, with engine-owned rendering and
+  collision, around a 2D game written in TypeScript. It is staged and vendored
+  the same way as `packages/simple-2d`, and its package version is the engine
+  version recorded on the run.
 - `packages/gg-sandbox`: the TypeScript and JavaScript arm of gg's
   responses-as-code sandbox.
 - `apps/desktop`: `@test-cabinet/desktop`. The React + Vite UI the Tauri

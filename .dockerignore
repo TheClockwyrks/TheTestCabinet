@@ -194,12 +194,13 @@
 !/packages/ui
 !/packages/voxel-runtime
 !/packages/particle-runtime
-# @test-cabinet/simple-2d is the odd one out in this block: the console does not
-# bundle it and the ui library does not import it. It rides along for the BASE
-# image below, whose staging script bakes it into the package store beside the
-# shippable packages — it is an engine runtime, seeded per run rather than named
-# by a case, so it appears in that script's list and in no case manifest.
+# The engine runtimes are the odd ones out in this block: the console does not
+# bundle them and the ui library does not import them. They ride along for the
+# BASE image below, whose staging script bakes them into the package store beside
+# the shippable packages — an engine runtime is seeded per run rather than named
+# by a case, so each appears in that script's list and in no case manifest.
 !/packages/simple-2d
+!/packages/structured-2d
 # The run-container BASE image (containers/base/Dockerfile) reuses this same npm
 # slice: its builder stage `npm ci`s the workspace and runs the staging script to
 # bake the shippable @test-cabinet packages — and the simple-2d engine runtime —

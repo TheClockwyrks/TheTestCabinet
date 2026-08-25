@@ -29,6 +29,7 @@ export interface EngineOption {
 export const ENGINES: readonly EngineOption[] = [
   { slug: DEFAULT_ENGINE_SLUG, name: "None" },
   { slug: "simple-2d", name: "Simple 2D" },
+  { slug: "structured-2d", name: "Structured 2D" },
 ];
 
 /**

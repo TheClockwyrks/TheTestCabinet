@@ -12,9 +12,6 @@ in TypeScript and imported by a build as an ordinary dependency. Its source is
 `packages/structured-2d/`, and the documentation seeded into a run workspace is
 that package's own `docs/` directory.
 
-The engine is designed and awaiting implementation, so it is outside the set a
-run may select.
-
 ## What each side owns
 
 The engine owns the frame loop, the
