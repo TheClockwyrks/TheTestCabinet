@@ -504,7 +504,7 @@ fn main_program(body: &str) -> String {
     format!("fn main() -> Result<(), {SDK_CRATE}::Failure> {{\n{body}    Ok(())\n}}\n")
 }
 
-/// The opening turn: **one** search listing every module the agent holds, then the array of
+/// The opening turn: **one** search listing every module gg handed it, then the array of
 /// documentation keys and a `for` over it, each call composed with `?`.
 ///
 /// One call rather than one per module, because a `modules` filter is a **union**: the modules a

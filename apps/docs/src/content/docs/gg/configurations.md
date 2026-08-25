@@ -85,12 +85,12 @@ root, which passes the flag to whatever is left. A configuration must have at
 least one agent to be saved.
 
 Opening an agent switches the editor into that profile's own view, itself
-organized into tabs: Agent, then whichever of Tools, APIs, Slots, Roster, Hooks
-and States the profile's type has. That view is saved or discarded on its own. Save
-agent returns to the configuration keeping the edits, Cancel returns discarding
-them, and the back chevron beside the title does the same as Cancel but asks
-first if there is anything to lose. The configuration itself is written to the
-account only by the Save button on the configuration view.
+organized into tabs: Agent, then whichever of Tools, APIs, Opening Turn, Slots,
+Roster, Hooks and States the profile's type has. That view is saved or discarded
+on its own. Save agent returns to the configuration keeping the edits, Cancel
+returns discarding them, and the back chevron beside the title does the same as
+Cancel but asks first if there is anything to lose. The configuration itself is
+written to the account only by the Save button on the configuration view.
 
 Each profile carries:
 
@@ -98,6 +98,8 @@ Each profile carries:
   what the rest of the form offers;
 - its own enabled capabilities, their implementations and params, and the
   [calls it is granted](#granting-calls) out of them;
+- for a RaC agent, its [opening turn](#the-opening-turn), the modules and
+  functions its fresh window opens holding documentation of;
 - its own [model slots](#agent-slots), and one model either pinned outright or
   deferred to one of them, with the
   [prompt-cache lifetime](#prompt-cache-lifetime) its requests ask for;
@@ -220,6 +222,43 @@ capability off" the same edit, and a run's
 Studying a narrower surface is therefore a comparison of two configurations:
 duplicate the arm, take the calls out of the copy, and run both against the same
 test case and model.
+
+### The opening turn
+
+A RaC agent's `openingTurn` names what the program gg seeds its fresh window
+with lists and opens. It sits beside the two allowlists and is required on every
+agent, so a document without it is refused:
+
+```json
+"openingTurn": {
+  "modules":   ["files", "shell"],
+  "functions": ["docs.search", "views.open_docs_view", "views.open_text",
+                "views.open_file", "files.search"]
+}
+```
+
+`modules` names gg modules by id, the namespace half of an operation id, and
+the listed modules are searched together in one listing view keyed by the
+modules in the listed order. `functions` names operation ids, and each listed function's documentation
+is opened in the listed order. The value above is the default a new profile is
+seeded with, and the two lists are independent of each other.
+
+The lists are checked against the operation vocabulary the way `operations` is.
+A module id that is no gg module, a function id that is no gg operation, or a
+function held by role or placement rather than by configuration, refuses the
+launch and names the entry. An entry the agent's capabilities and allowlist do
+not hold is dropped when the window is seeded, with a warning per entry. An
+opening turn left empty seeds no program. The seeding rules are stated in full
+under [views](/gg/responses-as-code/views/#the-opening-turn).
+
+The editor's Opening Turn tab, shown for a RaC agent, carries one block per gg
+module: a List module switch, enabled when the agent holds at least one of the
+module's functions, and beneath it an Open documentation checkbox per held
+function, each toggled independently of the switch. Each function row names its
+operation id and the capability that offers it. A reset restores the default.
+The tab keeps every entry the agent has ever chosen; the saved configuration
+carries only the ones the agent currently holds, so switching a capability off
+and on loses nothing.
 
 ### Agent type
 

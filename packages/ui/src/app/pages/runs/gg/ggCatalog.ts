@@ -1975,6 +1975,174 @@ export const DEFAULT_CAP_IDS = CAPABILITIES.filter((c) => c.defaultOn).map(
   (c) => c.id,
 );
 
+// --- The opening turn -------------------------------------------------------------
+//
+// What gg puts in front of a code agent's first turn is per-agent configuration
+// (`GgAgentConfig.openingTurn`): the modules whose brief and function list the window
+// opens with, and the functions whose full documentation it opens with. gg decides
+// neither list — it reads the configuration, drops what the agent does not hold, and
+// seeds nothing at all when both lists come out empty.
+
+/**
+ * gg's cross-arm modules, in the order gg's own operations table groups them
+ * (`crates/gg/src/sandbox/operations.rs`). The id is the namespace half of an operation id
+ * (`files` in `files.read_file`), and is what an opening turn's `modules` list names.
+ *
+ * A static table rather than something derived from the capability catalog because a module
+ * is gg's grouping, not the console's: two capabilities may sell operations of one module
+ * (`read-file` and `search` both sell `files.*`), and one capability may sell operations of
+ * two (`agent-managed-context` sells `context.*` and `views.close`). The purpose is written
+ * here in the console's voice, the same way a capability's is.
+ */
+export const GG_MODULES: ReadonlyArray<{
+  id: string;
+  name: string;
+  purpose: string;
+}> = [
+  {
+    id: "shell",
+    name: "Shell",
+    purpose: "Run shell commands in the run container.",
+  },
+  {
+    id: "files",
+    name: "Files",
+    purpose: "Read, write, edit, list and search the workspace's files.",
+  },
+  {
+    id: "skills",
+    name: "Skills",
+    purpose: "Read a skill from the agent's skills library into the window.",
+  },
+  {
+    id: "memories",
+    name: "Memories",
+    purpose: "Write, read, edit, search and delete the agent's memories.",
+  },
+  {
+    id: "tasks",
+    name: "Tasks",
+    purpose:
+      "Keep the agent's own task list: add, update, block, complete, remove.",
+  },
+  {
+    id: "board",
+    name: "Board",
+    purpose:
+      "File epics and issues on the run's project board, and wait on them.",
+  },
+  {
+    id: "context",
+    name: "Context",
+    purpose:
+      "Manage the window itself: evict file views, archive and search the thread, compact.",
+  },
+  {
+    id: "delegation",
+    name: "Delegation",
+    purpose:
+      "Put other agents to work: spawn, wait on, message, hand off to and fork them.",
+  },
+  {
+    id: "docs",
+    name: "Docs",
+    purpose: "Search this API's documentation, and close what a search opened.",
+  },
+  {
+    id: "views",
+    name: "Views",
+    purpose:
+      "Open a file, a computed text or a function's documentation as a view in the window, and close one.",
+  },
+  {
+    id: "programs",
+    name: "Programs",
+    purpose: "Look up, read and re-run the programs earlier turns executed.",
+  },
+];
+
+/**
+ * The three operations bound to every program whatever a run enables — a program must
+ * always be able to find what it holds and show its model something — so every agent holds
+ * them and no capability offers them. Mirrors `Binding::Always` in gg's operations table.
+ */
+export const ALWAYS_BOUND_OPERATIONS: ReadonlyArray<string> = [
+  "docs.search",
+  "views.open_text",
+  "views.open_docs_view",
+];
+
+/**
+ * The opening turn a fresh agent is seeded with — what `GgAgentConfig::root()` writes, and
+ * the two lists gg used to hard-code before they became configuration: the workspace and
+ * shell modules listed, and the five calls a program needs to look around with opened.
+ */
+export const DEFAULT_OPENING_TURN: {
+  modules: ReadonlyArray<string>;
+  functions: ReadonlyArray<string>;
+} = {
+  modules: ["files", "shell"],
+  functions: [
+    "docs.search",
+    "views.open_docs_view",
+    "views.open_text",
+    "views.open_file",
+    "files.search",
+  ],
+};
+
+/** One function an opening turn may open the documentation of, and who offers it. */
+export interface OpeningTurnFunction {
+  /** The operation id — `files.read_file`. */
+  id: string;
+  /** The module the id belongs to — its namespace half. */
+  module: string;
+  /**
+   * The capability that offers this operation, or `null` for one of the
+   * [always-bound three](ALWAYS_BOUND_OPERATIONS), which every agent holds unconditionally.
+   */
+  offeredBy: CapSpec | null;
+}
+
+/**
+ * Every operation an opening turn may name, grouped by module in [GG_MODULES] order and,
+ * within a module, in the order the capability catalog offers them: the always-bound three
+ * first, then each capability's operations (its feature bundles included).
+ *
+ * Derived from the catalog rather than listed a second time, so a capability that gains an
+ * operation gains a row here without a second table to keep in step. A [mode marker](isModeCapability)
+ * offers nothing: its one operation (`delegation.transition_state`) is bound by where an
+ * instance stands in its machine, not by configuration, and gg refuses an opening turn that
+ * promises it.
+ */
+export function openingTurnFunctions(): ReadonlyArray<OpeningTurnFunction> {
+  const rows: OpeningTurnFunction[] = [];
+  const seen = new Set<string>();
+  const push = (id: string, offeredBy: CapSpec | null) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    rows.push({ id, module: id.split(".")[0] ?? id, offeredBy });
+  };
+  for (const id of ALWAYS_BOUND_OPERATIONS) push(id, null);
+  for (const cap of CAPABILITIES) {
+    if (isModeCapability(cap.id)) continue;
+    for (const id of cap.operations ?? []) push(id, cap);
+    for (const feature of cap.features ?? []) {
+      for (const id of feature.operations) push(id, cap);
+    }
+  }
+  const order = new Map(GG_MODULES.map((m, i) => [m.id, i] as const));
+  // A stable sort by module, so the within-module order above is kept.
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort(
+      (a, b) =>
+        (order.get(a.row.module) ?? GG_MODULES.length) -
+          (order.get(b.row.module) ?? GG_MODULES.length) || a.i - b.i,
+    )
+    .map(({ row }) => row);
+}
+
 // --- Run limits -----------------------------------------------------------------
 //
 // The execution ceilings a run is bounded by. Deliberately **not** [CapSpec]s: a

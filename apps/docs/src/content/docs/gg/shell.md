@@ -30,7 +30,8 @@ requested timeout is clamped to 24 hours and then to whatever is left of the
 run's wall-clock budget, since a host call cannot be cut short once it is in
 flight. What the call does is carried by the function's own one-line brief, which
 the [opening turn](/gg/responses-as-code/views/#the-opening-turn)'s search puts
-in front of the agent.
+in front of an agent whose opening turn lists the `shell` module, as the default
+does.
 
 ## Output offloading
 

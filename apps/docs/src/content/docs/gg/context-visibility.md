@@ -30,7 +30,7 @@ one band per source, in this fixed order.
 | File views | The contents of files read into the window. |
 | Agent views | Material a program composed and opened for itself, keyed by label. |
 | Documentation | The documentation views an agent opened, keyed by name, and the ones using a code skill or memory opened from its module. |
-| Doc search | The agent's last documentation search, and the opening turn's listing of each module it was granted. |
+| Doc search | The agent's last documentation search, and the opening turn's listing of the modules its configuration names. |
 | Skills | The [skills](/gg/skills/) shown and used. |
 | Memories | The [memories](/gg/memories/) in play. |
 | Task list | The [task](/gg/tasks/) list. |
@@ -53,10 +53,10 @@ Doc search holds two kinds of listing under two kinds of selector. An agent's
 own searches are keyed by the constant `search results`, so each of them
 replaces the last. The
 [opening turn](/gg/responses-as-code/views/#the-opening-turn) keys its listing of
-each granted module under that module's own path, so every listing stands until
-that module is listed again. The band sits apart from Documentation so that what
-a model spends finding its surface is readable separately from what it spends
-reading it.
+the modules its configuration names under those modules' paths, so the listing
+stands until exactly those modules are listed again. The band sits apart from
+Documentation so that what a model spends finding its surface is readable
+separately from what it spends reading it.
 
 Compiler errors and Runtime errors sit directly after tool output rather
 than inside it. Under responses as code a program that compiled and ran earns no
@@ -270,8 +270,8 @@ open view into the next prompt. The spellings below are TypeScript's; each
   thing it documents.
 - `gg.docs.search(...)` opens its results in Doc search, under the constant
   selector `search results`, so each search an agent runs replaces the last. The
-  opening turn's module listings land in the same band keyed by module path, and
-  each stands until its own module is listed again.
+  opening turn's module listing lands in the same band keyed by the paths of the
+  modules it names, and stands until exactly those are listed again.
 
 The bands are separate because the authorship is: a file view is workspace
 material with an on-disk truth behind it, tool output is gg's reporting back to

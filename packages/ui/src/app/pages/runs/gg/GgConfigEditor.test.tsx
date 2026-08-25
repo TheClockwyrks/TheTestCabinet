@@ -254,7 +254,14 @@ describe("an agent's type", () => {
     expect(tabNames()).toEqual(["Agent", "Tools", "Slots", "Roster", "Hooks"]);
 
     fireEvent.click(typeSegment("RaC"));
-    expect(tabNames()).toEqual(["Agent", "APIs", "Slots", "Roster", "Hooks"]);
+    expect(tabNames()).toEqual([
+      "Agent",
+      "APIs",
+      "Opening Turn",
+      "Slots",
+      "Roster",
+      "Hooks",
+    ]);
 
     fireEvent.click(typeSegment("FSM"));
     expect(tabNames()).toEqual(["Agent", "States"]);
@@ -686,7 +693,11 @@ describe("authoring a state machine", () => {
 // carrying one is refused at launch.
 describe("module ownership", () => {
   it("is not offered on any capability", () => {
-    for (const capId of ["project-management", "agent-managed-context", "memories"]) {
+    for (const capId of [
+      "project-management",
+      "agent-managed-context",
+      "memories",
+    ]) {
       const { unmount } = renderCaps(draftWith(capId, ""));
       expect(
         within(capabilityRow(capId)).queryByLabelText(/^Ownership/),
@@ -1893,5 +1904,154 @@ describe("a control that has been moved off its authored value", () => {
       (within(row).getByLabelText(/^Max retries/) as HTMLInputElement).value,
     ).toBe("0");
     expect(resetIn(row, "Max retries")).toBeNull();
+  });
+});
+
+// The opening turn — what gg puts in front of a code agent's first turn — is edited per
+// module: a switch to list the module, and a checkbox per held function to open its
+// documentation. Only what the agent holds is offered, and the two are independent.
+describe("the Opening Turn tab", () => {
+  // The draft the tab is reached from: a code agent, with the language answered and the
+  // search capability on so the `files` module has one held function.
+  function codeDraft(): GgConfigDraft {
+    const draft = draftWith("search", "", {}, "rac");
+    const agent = draft.agents[0]!;
+    agent.capabilities["responses-as-code"] = {
+      ...agent.capabilities["responses-as-code"]!,
+      enabled: true,
+      params: {
+        ...agent.capabilities["responses-as-code"]!.params,
+        language: "typescript",
+      },
+    };
+    agent.operations = ["files.search"];
+    return draft;
+  }
+
+  // One module's block, by the accessible name its group carries.
+  function moduleBlock(name: string): HTMLElement {
+    return screen.getByRole("group", { name: `${name} module` });
+  }
+  // The module's own switch: the first checkbox in its block, in the header label.
+  function moduleSwitch(name: string): HTMLInputElement {
+    return within(moduleBlock(name)).getAllByRole(
+      "checkbox",
+    )[0] as HTMLInputElement;
+  }
+  // One function's "open documentation" checkbox, by the operation id it is labelled with.
+  function functionBox(module: string, id: string): HTMLInputElement {
+    return within(moduleBlock(module)).getByRole("checkbox", {
+      name: new RegExp(`^${id.replace(".", "\\.")}\\b`),
+    }) as HTMLInputElement;
+  }
+
+  it("is a section of a code agent's form and of no other type's", () => {
+    render(<Harness initial={emptyDraft()} />);
+    const names = () =>
+      screen
+        .getAllByRole("tab")
+        .map((tab) => tab.firstElementChild?.textContent?.trim() ?? "");
+    expect(names()).not.toContain("Opening Turn");
+    fireEvent.click(typeSegment("RaC"));
+    expect(names()).toContain("Opening Turn");
+    fireEvent.click(typeSegment("FSM"));
+    expect(names()).not.toContain("Opening Turn");
+  });
+
+  it("opens on the default, listed modules on and the rest off", () => {
+    render(<Harness initial={codeDraft()} />);
+    openTab("Opening Turn");
+    // `files` is held (search is on) and listed by default; `docs` is held by every agent
+    // and not listed by default.
+    expect(moduleSwitch("Files").checked).toBe(true);
+    expect(moduleSwitch("Files")).not.toBeDisabled();
+    expect(moduleSwitch("Docs").checked).toBe(false);
+    expect(moduleSwitch("Docs")).not.toBeDisabled();
+    expect(functionBox("Files", "files.search").checked).toBe(true);
+    expect(functionBox("Docs", "docs.search").checked).toBe(true);
+    // Nothing has moved, so there is nothing to reset.
+    expect(
+      screen.queryByRole("button", { name: "Reset Opening turn" }),
+    ).toBeNull();
+  });
+
+  it("cannot list a module none of whose capabilities is enabled, and can once one is", () => {
+    render(<Harness initial={codeDraft()} />);
+    openTab("Opening Turn");
+    expect(moduleSwitch("Context")).toBeDisabled();
+    expect(
+      within(moduleBlock("Context")).getByText(
+        /No capability from this module is enabled/,
+      ),
+    ).toBeInTheDocument();
+    // No function rows either: a function the agent does not hold has no row at all.
+    expect(
+      within(moduleBlock("Context")).getAllByRole("checkbox"),
+    ).toHaveLength(1);
+
+    openTab("APIs");
+    fireEvent.click(
+      within(capabilityRow("agent-managed-context")).getAllByRole(
+        "checkbox",
+      )[0]!,
+    );
+    openTab("Opening Turn");
+    expect(moduleSwitch("Context")).not.toBeDisabled();
+    expect(functionBox("Context", "context.evict_file_view")).toBeDefined();
+    expect(
+      within(moduleBlock("Context")).queryByText(
+        /No capability from this module is enabled/,
+      ),
+    ).toBeNull();
+  });
+
+  it("opens a function's documentation independently of listing its module", () => {
+    render(<Harness initial={codeDraft()} />);
+    openTab("Opening Turn");
+    // Unlist the module; its function stays openable and stays checked.
+    fireEvent.click(moduleSwitch("Files"));
+    expect(moduleSwitch("Files").checked).toBe(false);
+    expect(functionBox("Files", "files.search").checked).toBe(true);
+    expect(functionBox("Files", "files.search")).not.toBeDisabled();
+    // And toggles on its own.
+    fireEvent.click(functionBox("Files", "files.search"));
+    expect(functionBox("Files", "files.search").checked).toBe(false);
+    expect(moduleSwitch("Files").checked).toBe(false);
+    // Both moved off the default, so the tab offers its reset — which puts both back.
+    fireEvent.click(screen.getByRole("button", { name: "Reset Opening turn" }));
+    expect(moduleSwitch("Files").checked).toBe(true);
+    expect(functionBox("Files", "files.search").checked).toBe(true);
+  });
+
+  it("says which capability offers each function, or that every agent holds it", () => {
+    render(<Harness initial={codeDraft()} />);
+    openTab("Opening Turn");
+    expect(
+      within(moduleBlock("Files")).getByText(/offered by Search/),
+    ).toBeInTheDocument();
+    expect(
+      within(moduleBlock("Docs")).getByText(/always available/),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no control at all on a read-only form", () => {
+    const draft = codeDraft();
+    render(
+      <GgConfigEditor
+        value={draft}
+        onChange={() => {}}
+        name="under test"
+        onNameChange={() => {}}
+        description=""
+        onDescriptionChange={() => {}}
+        editingAgentId={draft.agents[0]!.id}
+        onEditingAgentChange={() => {}}
+        models={[]}
+        readOnly
+      />,
+    );
+    openTab("Opening Turn");
+    expect(moduleSwitch("Files")).toBeDisabled();
+    expect(functionBox("Files", "files.search")).toBeDisabled();
   });
 });

@@ -16,7 +16,7 @@ import {
   capabilitySetFromDraft,
   emptyDraft,
 } from "./gg/ggConfigDraft";
-import { DEFAULT_CAP_IDS } from "./gg/ggCatalog";
+import { DEFAULT_CAP_IDS, DEFAULT_OPENING_TURN } from "./gg/ggCatalog";
 
 // The page's app chrome reads contexts (gallery data, backdrop settings) that are
 // irrelevant to the configure/launch logic under test. Stub it so the test
@@ -157,6 +157,10 @@ const SAVED_CONFIG = {
         slug: "root",
         name: "Root",
         capabilities: [{ id: "shell", enabled: true, params: {} }],
+        openingTurn: {
+          modules: [...DEFAULT_OPENING_TURN.modules],
+          functions: [...DEFAULT_OPENING_TURN.functions],
+        },
         modelId: "",
         modelSlot: "primary",
         modelSlots: [{ name: "primary" }],
@@ -166,6 +170,10 @@ const SAVED_CONFIG = {
         slug: "reviewer",
         name: "Critic",
         capabilities: [],
+        openingTurn: {
+          modules: [...DEFAULT_OPENING_TURN.modules],
+          functions: [...DEFAULT_OPENING_TURN.functions],
+        },
         modelId: "",
         modelSlot: "primary",
         modelSlots: [{ name: "primary" }],
@@ -175,6 +183,10 @@ const SAVED_CONFIG = {
         slug: "solo",
         name: "Lone critic",
         capabilities: [],
+        openingTurn: {
+          modules: [...DEFAULT_OPENING_TURN.modules],
+          functions: [...DEFAULT_OPENING_TURN.functions],
+        },
         modelId: "",
         modelSlot: "primary",
         modelSlots: [
@@ -190,6 +202,10 @@ const SAVED_CONFIG = {
         slug: "judge",
         name: "Judge",
         capabilities: [],
+        openingTurn: {
+          modules: [...DEFAULT_OPENING_TURN.modules],
+          functions: [...DEFAULT_OPENING_TURN.functions],
+        },
         modelId: "openai/o-fixed",
       },
     ],

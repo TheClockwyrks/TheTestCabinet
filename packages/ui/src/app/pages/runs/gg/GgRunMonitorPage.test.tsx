@@ -216,6 +216,7 @@ function sessionStartedWith(
           return { id, enabled: true, params };
         }),
         modelId: "mock/scripted-builder",
+        openingTurn: { modules: [], functions: [] },
       })),
     },
   });
@@ -295,6 +296,7 @@ function sessionStartedGranting(
             params: {},
           })),
           modelId: "mock/scripted-builder",
+          openingTurn: { modules: [], functions: [] },
           tools,
         },
       ],

@@ -46,9 +46,9 @@ could not honor.
 The `search` capability's one tool scans the workspace's files for a query and
 returns the matching lines, each with its path and 1-based line number. Under
 [responses as code](/gg/responses-as-code/overview/) the same operation is
-`gg.files.search`, and an agent that holds it has its documentation opened by
-[the opening turn](/gg/responses-as-code/views/#the-opening-turn), before the
-model's first turn.
+`gg.files.search`, and the default
+[opening turn](/gg/responses-as-code/views/#the-opening-turn) opens its
+documentation for an agent that holds it, before the model's first turn.
 
 The query is a **regular expression** (Rust syntax — `foo|bar`, `fn\s+update`,
 `(?i)todo` for a case-insensitive match), tried against each line on its own;

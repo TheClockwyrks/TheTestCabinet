@@ -50,6 +50,12 @@
 //! - `minOffenders > windowWords` — armed exactly as declared, provably inert.
 //! - An allowlist entry naming a real gg tool or operation that *this* agent's capabilities do not
 //!   offer. It grants nothing, it is not a typo, and it is the legitimate shared-document case.
+//! - An `openingTurn` entry naming a real gg module or operation that *this* agent does not hold —
+//!   the same shared-document case, dropped at seed time with a line naming it. What **refuses**
+//!   there is a module id or operation id gg has no vocabulary for, and a function held by role or
+//!   placement (an ending call, the machine transition), which no document can promise a window
+//!   will open on (`check_opening_turn` in [`crate::agent`]). Two lists that come out empty are a
+//!   configuration, not a defect: the agent is seeded no opening program at all.
 //! - A `params` key known to the capability but unused by the arm its `implementation` selected —
 //!   the deliberate "one shared params block per sweep" case.
 //! - The `info` lines reporting what *is* in force: the armed ceilings, the loop detector.

@@ -69,7 +69,11 @@ configuration's own profile, never to the agent it follows.
 
 The [call allowlist](/gg/configurations/#granting-calls) is one field. A
 configuration that pins it decides which calls its copy grants for good,
-including for a capability the saved agent switches on later.
+including for a capability the saved agent switches on later. The
+[opening turn](/gg/configurations/#the-opening-turn) is one field as well, and
+it is compared as the agent holds it: two opening turns that differ only in
+entries the agent's capabilities and allowlist do not hold are the same field,
+so an entry kept for a capability that is switched off is no override.
 
 Two controls end the link. Revert drops the overrides, returning the profile to
 the saved agent as it stands, under the name the configuration gave it. Detach

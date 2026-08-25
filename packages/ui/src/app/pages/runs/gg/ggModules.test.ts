@@ -190,6 +190,7 @@ function set(agents: Array<[string, string[], string?]>): GgCapabilitySet {
         params: {},
       })),
       subagents: [],
+      openingTurn: { modules: [], functions: [] },
       promptCacheTtl: "standard",
     })),
   };

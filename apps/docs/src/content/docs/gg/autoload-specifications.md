@@ -7,9 +7,9 @@ with the full contents of every file the test case provided, its specifications
 and its reference images, injected as though the model had already read each for
 itself. The whole brief is in the window from the first turn. An agent with the
 capability off reads what it needs itself. Its opening context is the
-[build prompt](/gg/prompts/) and, in code mode, the
-[opening turn](/gg/responses-as-code/views/#the-opening-turn) every fresh window
-is seeded with.
+[build prompt](/gg/prompts/) and, in code mode, whatever its configured
+[opening turn](/gg/responses-as-code/views/#the-opening-turn) seeds the fresh
+window with.
 
 It is per agent, and a profile that does not enable it does not have it. It is
 one profile's [capability](/gg/configurations/), listed in the editor's Context

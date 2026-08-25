@@ -42,9 +42,10 @@ nothing else.
 A search view carries a selector like any other view, and a search the agent
 itself ran is keyed under one constant selector, so every such search replaces
 the last. The selector is an argument rather than a constant because [the
-opening turn](#the-opening-turn) keys one listing per module and each has to
-survive the next. A search view behaves like a text view at that boundary:
-composed text under one label, closed by `gg.views.close`.
+opening turn](#the-opening-turn) keys its listing under the paths of the modules
+it lists and that listing has to survive the next search. A search view behaves
+like a text view at that boundary: composed text under one label, closed by
+`gg.views.close`.
 
 ## Opening and closing views
 
@@ -333,9 +334,9 @@ operation is reachable through more than one declaration on some arms.
 The [ending calls](/gg/ending-a-session/) are the one exemption. The system prompt
 spells them at the model in the arm's own words, so calling one follows an
 instruction gg gave. Every other call is measured, `gg.docs.search` and
-the view-opening functions included: [the opening turn](#the-opening-turn) opens
-their documentation before the model's first turn, so they are documented from
-turn one.
+the view-opening functions included: the default
+[opening turn](#the-opening-turn) opens their documentation before the model's
+first turn, so they are documented from turn one.
 
 gg's own programs contribute nothing. The opening turn's program and the on-use
 script of a skill or memory are written by gg rather than by a model, so their
@@ -375,28 +376,63 @@ the example a model opens on has the shape of a reply it has to send. It carries
 its own import line and its own entry point, on the terms in
 [invariants](/gg/responses-as-code/invariants/).
 
-The program makes two kinds of call. It runs one search naming the agent's
-filesystem and shell modules together, which leaves a single view listing every
-function those two modules offer with its one-line brief. It also opens
-documentation views of the calls discovery and showing are made of:
-`gg.docs.search`, and every view-opening function this agent is offered, which
-is `gg.views.openText` and `gg.views.openDocsView` on every run and
-`gg.views.openFile` where the agent holds it. Where the agent holds
-[`gg.files.search`](/gg/filesystem/#searching), its documentation is opened
-too, so the call that greps a workspace is read before it is written. Between
-them the agent opens holding what it reaches for first, the calls that put
-anything in its own window, and the means to find everything else.
+The program makes two kinds of call, and the agent's `openingTurn`
+configuration names the targets of both:
 
-The window opens on those two modules alone. The system prompt names every
-module the agent holds, one line each, and a module path is an exact lookup, so
-a module the agent turns out to need costs it one search and a module it never
-touches costs it nothing. Listing every granted module up front spends a
-directory apiece on the ones a run never reaches for, on every request of that
-run.
+```json
+"openingTurn": {
+  "modules":   ["files", "shell"],
+  "functions": ["docs.search", "views.open_docs_view", "views.open_text",
+                "views.open_file", "files.search"]
+}
+```
 
-The listing is one view keyed under the modules it lists, so only a re-listing
-of exactly those supersedes it. The agent's own searches keep the single results
-selector and keep superseding each other.
+`modules` names gg modules by id, the namespace half of an operation id
+(`files`, `shell`, `skills`, `memories`, `tasks`, `board`, `context`,
+`delegation`, `docs`, `views`, `programs`). The program runs one search naming
+every listed module together, which leaves a single view listing each function
+those modules offer with its one-line brief, ordered alphabetically, and keyed
+by the listed modules in the listed order. `functions`
+names operation ids such as `files.search`. The program opens one documentation
+view per listed function, in the listed order, which puts the function's full
+signature in the window. The two lists are independent: a function's
+documentation is opened whether or not its module is listed, and a listed module
+opens no documentation of its own.
+
+The value above is the default a new profile is seeded with. It lists the
+filesystem and shell modules, and it opens the documentation of the calls
+discovery and showing are made of: `docs.search`, every view-opening function,
+and the workspace search. An agent opening on it holds what it reaches for
+first, the calls that put anything in its own window, and the means to find
+everything else. Anything else the agent holds costs it one search when it turns
+out to be needed, since the system prompt names every module and a module path
+is an exact lookup.
+
+An entry is honoured only when the agent holds it. A function is held on the
+terms the [reference](/gg/reference/) states for it: an always-available call is
+held by every agent, and any other needs its capability enabled and its
+operation in the agent's `operations` allowlist. A module is held when at least
+one of its functions is. An entry in the right vocabulary that this agent does
+not hold is dropped when the window is seeded, with a `warn` line per dropped
+entry naming it and why, on the same footing as an allowlist entry the agent's
+capabilities do not offer: a shared configuration naming a call only some of its
+profiles enable is ordinary. A duplicate entry is opened once.
+
+Three kinds of entry refuse the launch, each reported against its own locus
+(`openingTurn.modules[i]`, `openingTurn.functions[i]`): a module id that is no
+gg module, a function id that is no gg operation (the refusal names the list a
+tool name belongs in, when it is one), and a function held by role or placement
+rather than by configuration, which is the [ending calls](/gg/ending-a-session/)
+and `delegation.transition_state`, since an opening turn cannot promise them.
+
+An opening turn whose two lists are empty once the unheld entries are dropped
+seeds no program at all: the window opens on the build prompt alone, the agent
+starts normally, and one `debug` line records that the opening turn is empty.
+An empty opening turn is an operator's choice, so it is not a defect.
+
+The listing is one view keyed under the paths of the modules it lists, so only a
+re-listing of exactly those supersedes it. The agent's own searches keep the
+single results selector and keep superseding each other.
 
 The program runs against the agent's real capability grants and sandbox limits,
 with no deadline and no code modules, and it is prepared through a cache keyed
@@ -410,7 +446,8 @@ a history-keeping `fork` is not re-seeded.
 
 A failure to run it is gg's, not the model's. A program that fails to prepare,
 a sandbox error, an execution the program itself reports as failed, a refused
-call, or a run that places no view at all ends the agent as an internal error:
+call, or a seeded program that places no view at all ends the agent as an
+internal error:
 the fault latch is raised, the detail goes to the operator's `error` stream, and
 the run stops rather than opening a window the prompt describes and the session
 does not have.

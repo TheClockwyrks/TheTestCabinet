@@ -43,8 +43,9 @@
 //! `language.displayName` and `language.checker` — and a segment is written as
 //! `{{#if (eq language.id "rust")}}…{{/if}}` against the [`eq` helper](engine) this module
 //! registers. Everything a model needs about the *surface* it is calling arrives by a different
-//! route entirely: the opening turn runs a program that lists every module the run granted, with a
-//! one-line brief each.
+//! route entirely: the opening turn runs a program that lists the modules the agent's own
+//! `openingTurn` configuration names, with a one-line brief per function, and opens the
+//! documentation of the functions it names.
 //!
 //! The rule that survives all of that unchanged: **a sentence a model reads lives in a `.hbs`
 //! file.** The context carries ids, names, numbers and flags — never prose — which is why
@@ -77,8 +78,12 @@
 //! That is not the same as withholding the surface, and it stopped being the same the moment the
 //! template went language-agnostic. gg makes the first search **itself**: the
 //! [bootstrap](crate::bootstrap) opens every code session by running a program, in the agent's own
-//! language, that looks up each granted module whole — so a model reads every function it may call,
-//! with a one-line brief each, before its first real turn. What it still has to go and get is a
+//! language, that looks up whole the modules the agent's `openingTurn` configuration lists and
+//! opens a documentation view of each function it names — so a model reads the function list of
+//! the modules its operator chose, with a one-line brief each, and the full signature of the calls
+//! its operator chose, before its first real turn. Which modules and which functions is the
+//! profile's to say, not gg's; a fresh profile is seeded with the two modules a build starts in and
+//! the calls discovery and showing are made of. What a model still has to go and get is any other
 //! *signature*, by opening a documentation view of a name it has now seen.
 //!
 //! The one vocabulary the prompt does supply is the [capability modules](SystemContext::modules) a
@@ -490,9 +495,10 @@ pub struct SystemContext {
     /// Not the functions: those are read out of the surface rather than the prompt, by searching for
     /// one and opening its documentation, which is the whole point of the redesign. A module path is
     /// what makes that an exact lookup rather than a guessing game — and gg spends the first one on
-    /// the agent's behalf, since the [bootstrap](crate::bootstrap) looks up each of these modules
-    /// whole on the opening turn. So an agent that knows nothing else has already been shown what
-    /// every module here holds, and knows the path to ask for it by again.
+    /// the agent's behalf, since the [bootstrap](crate::bootstrap) looks up whole, on the opening
+    /// turn, whichever of these modules the profile's `openingTurn` lists. So an agent that knows
+    /// nothing else has already been shown what those modules hold, and knows the path to ask for
+    /// any module here by.
     ///
     /// Empty on the tool-calling path, where the tools are in the request and there is no module
     /// structure to name; on the code path it always carries at least the module that puts material
@@ -644,8 +650,9 @@ pub struct ReadFileView {
 // one call returns and the directory the whole output is kept in. The second half was trimmed from
 // both templates first, because every one of those facts travels with the truncated output itself.
 // The first half went with the ruling that a prompt describes no capability whose functions' own
-// briefs describe it: the opening turn puts `shell`'s brief in the window before the model's first
-// real turn, so a sentence here was a second copy of it. No template in `crates/gg/templates/`
+// briefs describe it: an opening turn listing `shell` — which a fresh profile's does — puts its
+// brief in the window before the model's first real turn, so a sentence here was a second copy of
+// it. No template in `crates/gg/templates/`
 // reads a `shell` variable, and a rendering context is exactly the list of what a template may
 // reference, so the struct is not kept against the day one might.
 

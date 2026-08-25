@@ -297,12 +297,19 @@ describe("a profile's error record", () => {
   // is named by the slug its `agent_spawned` events are stamped with.
   const SET: GgCapabilitySet = {
     agents: [
-      { slug: "root", name: "Root", capabilities: [], modelId: "vendor/model" },
+      {
+        slug: "root",
+        name: "Root",
+        capabilities: [],
+        modelId: "vendor/model",
+        openingTurn: { modules: [], functions: [] },
+      },
       {
         slug: "reviewer",
         name: "Reviewer",
         capabilities: [],
         modelId: "vendor/model",
+        openingTurn: { modules: [], functions: [] },
       },
     ] satisfies GgAgentConfig[],
   };
@@ -356,18 +363,21 @@ describe("a profile's error record", () => {
           name: "Root",
           capabilities: [],
           modelId: "vendor/model",
+          openingTurn: { modules: [], functions: [] },
         },
         {
           slug: "reviewer",
           name: "Reviewer",
           capabilities: [],
           modelId: "vendor/model",
+          openingTurn: { modules: [], functions: [] },
         },
         {
           slug: "reviewer-2",
           name: "Reviewer",
           capabilities: [],
           modelId: "vendor/model",
+          openingTurn: { modules: [], functions: [] },
         },
       ] satisfies GgAgentConfig[],
     };

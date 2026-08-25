@@ -25,6 +25,7 @@ import {
   capabilityActive,
   capabilityGrantWarning,
   capabilitySetFromDraft,
+  defaultOpeningTurn,
   draftFromCapabilitySet,
   draftSaveError,
   dropAgentReferences,
@@ -32,15 +33,19 @@ import {
   featureBundleOffered,
   fsmStatesWarnings,
   grantsOf,
+  heldOpeningTurn,
   isValidAgentSlug,
   launchModelSlots,
   loopDetectionWarning,
+  moduleHeld,
+  operationHeld,
   renameAgentSlug,
   renameStateDraft,
   resetAgentForMode,
   runLimitsWarning,
   setFeatureBundle,
   slotMappingError,
+  withCapabilityGrants,
   type GgAgentDraft,
   type GgConfigDraft,
   type GgConfigSlotDraft,
@@ -61,6 +66,7 @@ import {
   BUILT_IN_SKILL_OPTIONS,
   BYTES_PER_MIB,
   CAPABILITIES,
+  DEFAULT_OPENING_TURN,
   FSM_CAP,
   FSM_CAP_ID,
   LOOP_DETECTION_SPECS,
@@ -93,6 +99,7 @@ function agent(partial: Partial<GgAgentConfig> = {}): GgAgentConfig {
     name,
     capabilities: [],
     modelId: "mock/x",
+    openingTurn: defaultOpeningTurn(),
     ...partial,
     slug: partial.slug ?? name.toLowerCase(),
   };
@@ -1298,12 +1305,19 @@ describe("a profile's identity on the wire", () => {
   it("mints an internal id for a stored profile that carries none", () => {
     const launched: GgCapabilitySet = {
       agents: [
-        { slug: "root", name: ROOT_AGENT, capabilities: [], modelId: "mock/x" },
+        {
+          slug: "root",
+          name: ROOT_AGENT,
+          capabilities: [],
+          modelId: "mock/x",
+          openingTurn: defaultOpeningTurn(),
+        },
         {
           slug: "reviewer",
           name: "Reviewer",
           capabilities: [],
           modelId: "mock/y",
+          openingTurn: defaultOpeningTurn(),
         },
       ],
     };
@@ -3124,6 +3138,7 @@ describe("a configuration's two hook lists", () => {
           name: ROOT_AGENT,
           capabilities: [],
           modelId: "",
+          openingTurn: defaultOpeningTurn(),
           hooks: [AGENT_HOOK],
         } as unknown as GgAgentConfig,
         {
@@ -3131,6 +3146,7 @@ describe("a configuration's two hook lists", () => {
           name: ROOT_AGENT,
           capabilities: [],
           modelId: "",
+          openingTurn: defaultOpeningTurn(),
           hooks: [AGENT_HOOK],
         } as unknown as GgAgentConfig,
       ],
@@ -3175,5 +3191,223 @@ describe("a configuration's two hook lists", () => {
     // pre-write gate to fire around. Committing is where the earlier type's hooks stop
     // being held, exactly as its roster and prompt do.
     expect(resetAgentForMode(machine).hooks).toEqual([]);
+  });
+});
+
+// The opening turn is per-agent configuration gg reads and never decides: the modules whose
+// brief and function list a code agent's window opens with, and the functions whose
+// documentation it opens with. The draft keeps whatever was listed; the wire gets what the
+// agent holds.
+describe("an agent's opening turn", () => {
+  // The two lists gg used to hard-code, now what `GgAgentConfig::root()` writes and what a
+  // fresh profile is seeded with. Pinned as a literal so a drift on either side is a failing
+  // test rather than a console that quietly seeds something gg's root profile does not.
+  const ROOT_DEFAULT = {
+    modules: ["files", "shell"],
+    functions: [
+      "docs.search",
+      "views.open_docs_view",
+      "views.open_text",
+      "views.open_file",
+      "files.search",
+    ],
+  };
+
+  // `agent` with the capability switched on and its whole offering granted — what the
+  // editor's switch writes. A blank draft has every capability present and off, so a test
+  // about what an agent holds has to switch something on first.
+  function enabled(agent: GgAgentDraft, ...capIds: string[]): GgAgentDraft {
+    let out = agent;
+    for (const capId of capIds) {
+      const cap = capabilitySpec(capId)!;
+      out = {
+        ...out,
+        capabilities: {
+          ...out.capabilities,
+          [capId]: { ...capabilityDraftFor(capId), enabled: true },
+        },
+        ...withCapabilityGrants(out, cap, true),
+      };
+    }
+    return out;
+  }
+  // A code agent holding the search and read-file capabilities, which between them sell
+  // three `files.*` operations and one `views.*`.
+  function code(): GgAgentDraft {
+    return enabled(codeDraft().agents[0]!, "search", "read-file");
+  }
+
+  it("seeds a fresh agent with the default gg's root profile writes", () => {
+    expect(DEFAULT_OPENING_TURN).toEqual(ROOT_DEFAULT);
+    expect(blankAgentDraft().openingTurn).toEqual(ROOT_DEFAULT);
+    expect(emptyDraft().agents[0]!.openingTurn).toEqual(ROOT_DEFAULT);
+  });
+
+  it("round-trips through the draft, order and all", () => {
+    const configured = set({
+      agents: [
+        agent({
+          capabilities: [
+            {
+              id: CODE,
+              enabled: true,
+              params: authoredParams(CODE, { language: LANG }),
+            },
+            {
+              id: "read-file",
+              enabled: true,
+              params: authoredParams("read-file"),
+            },
+            { id: "shell", enabled: true, params: authoredParams("shell") },
+          ],
+          operations: ["files.read_file", "views.open_file", "shell.shell"],
+          openingTurn: {
+            modules: ["shell", "files"],
+            functions: [
+              "shell.shell",
+              "views.open_docs_view",
+              "files.read_file",
+            ],
+          },
+        }),
+      ],
+    });
+    const back = capabilitySetFromDraft(
+      draftFromCapabilitySet(configured),
+      null,
+    );
+    expect(back.agents[0]!.openingTurn).toEqual({
+      modules: ["shell", "files"],
+      functions: ["shell.shell", "views.open_docs_view", "files.read_file"],
+    });
+  });
+
+  it("holds the always-bound three on every agent, and a capability's calls only while it grants them", () => {
+    const bare = codeDraft().agents[0]!;
+    for (const id of [
+      "docs.search",
+      "views.open_text",
+      "views.open_docs_view",
+    ]) {
+      expect(operationHeld(bare, id)).toBe(true);
+    }
+    // The docs module is held by everybody: the search is always bound. The files module
+    // is not, until something sells one of its calls.
+    expect(moduleHeld(bare, "docs")).toBe(true);
+    expect(moduleHeld(bare, "files")).toBe(false);
+    expect(operationHeld(bare, "files.search")).toBe(false);
+
+    const held = code();
+    expect(operationHeld(held, "files.search")).toBe(true);
+    expect(operationHeld(held, "views.open_file")).toBe(true);
+    expect(moduleHeld(held, "files")).toBe(true);
+    // Take the grant back without switching the capability off: an allowlist narrowed by
+    // hand is the other way an on capability stops offering a call.
+    expect(
+      operationHeld(
+        {
+          ...held,
+          operations: held.operations.filter((op) => op !== "files.search"),
+        },
+        "files.search",
+      ),
+    ).toBe(false);
+    // Nothing of a capability that is off, and a module none of whose calls are held.
+    expect(operationHeld(held, "context.compact")).toBe(false);
+    expect(moduleHeld(held, "context")).toBe(false);
+    // Neither vocabulary gg refuses is ever held here.
+    expect(operationHeld(held, "delegation.transition_state")).toBe(false);
+    expect(operationHeld(held, "session.finish")).toBe(false);
+    expect(moduleHeld(held, "session")).toBe(false);
+  });
+
+  it("writes only what the agent holds, and keeps the rest in the draft", () => {
+    const draft = codeDraft();
+    const search = capabilitySpec("search")!;
+    const held: GgAgentDraft = {
+      ...code(),
+      openingTurn: {
+        modules: ["files", "context", "not-a-module"],
+        functions: ["files.search", "context.compact", "docs.search", "nope"],
+      },
+    };
+    expect(heldOpeningTurn(held)).toEqual({
+      modules: ["files"],
+      functions: ["files.search", "docs.search"],
+    });
+
+    // Switching the capability that sells `files.search` off prunes it from what is
+    // written…
+    const off: GgAgentDraft = {
+      ...held,
+      capabilities: {
+        ...held.capabilities,
+        search: { ...held.capabilities.search!, enabled: false },
+      },
+      ...withCapabilityGrants(held, search, false),
+    };
+    const written = capabilitySetFromDraft({ ...draft, agents: [off] }, null);
+    expect(written.agents[0]!.openingTurn).toEqual({
+      // `files` is still held: `read-file` sells `files.read_file`.
+      modules: ["files"],
+      functions: ["docs.search"],
+    });
+    // …and not from the draft, so switching it on again lists it once more.
+    expect(off.openingTurn.functions).toContain("files.search");
+    expect(heldOpeningTurn(enabled(off, "search")).functions).toEqual([
+      "files.search",
+      "docs.search",
+    ]);
+  });
+
+  it("opens a function's documentation without its module being listed", () => {
+    const held: GgAgentDraft = {
+      ...code(),
+      openingTurn: { modules: [], functions: ["files.search"] },
+    };
+    expect(heldOpeningTurn(held)).toEqual({
+      modules: [],
+      functions: ["files.search"],
+    });
+  });
+
+  it("lists each entry once, whatever the draft repeats", () => {
+    const held: GgAgentDraft = {
+      ...code(),
+      openingTurn: {
+        modules: ["files", "files"],
+        functions: ["docs.search", "docs.search"],
+      },
+    };
+    expect(heldOpeningTurn(held)).toEqual({
+      modules: ["files"],
+      functions: ["docs.search"],
+    });
+  });
+
+  it("is written for every type, since the wire field is required", () => {
+    const draft = emptyDraft();
+    // A tool-calling agent holds its calls in the seeded operations vocabulary, so the
+    // default survives whole once the capabilities that sell it are on.
+    const tools = capabilitySetFromDraft(
+      {
+        ...draft,
+        agents: [enabled(draft.agents[0]!, "shell", "search", "read-file")],
+      },
+      null,
+    ).agents[0]!;
+    expect(tools.openingTurn).toEqual(ROOT_DEFAULT);
+    const machine = capabilitySetFromDraft(
+      {
+        ...draft,
+        agents: [resetAgentForMode({ ...draft.agents[0]!, mode: "fsm" })],
+      },
+      null,
+    ).agents[0]!;
+    // A machine grants nothing, so only what every agent holds survives the pruning.
+    expect(machine.openingTurn).toEqual({
+      modules: [],
+      functions: ["docs.search", "views.open_docs_view", "views.open_text"],
+    });
   });
 });

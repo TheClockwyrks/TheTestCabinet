@@ -322,6 +322,7 @@ fn a_capability_set_without_a_prompt_cache_lifetime_reads_as_standard() {
             "slug": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
+            "openingTurn": opening_turn_json(),
             "modelId": "anthropic/claude-opus-4.8",
         }],
     });
@@ -467,6 +468,7 @@ fn loop_detection_is_per_agent_and_omitted_when_nothing_was_declared() {
             "slug": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
+            "openingTurn": opening_turn_json(),
             "modelId": "openai/gpt-5.6",
         }],
     }))
@@ -586,6 +588,7 @@ fn a_capability_set_without_limits_deserializes_to_none_and_re_serializes_withou
             "slug": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": "shell", "enabled": true }],
+            "openingTurn": opening_turn_json(),
             "modelId": "anthropic/claude-opus-4.8",
         }],
     }))
@@ -983,6 +986,7 @@ fn a_set_without_model_slots_deserializes_unchanged() {
             "slug": ROOT_PROFILE_ID,
             "name": ROOT_AGENT,
             "capabilities": [{ "id": "shell", "enabled": true }],
+            "openingTurn": opening_turn_json(),
             "modelId": "anthropic/claude-opus-4.8",
         }],
     }))
@@ -995,6 +999,94 @@ fn a_set_without_model_slots_deserializes_unchanged() {
     let value = serde_json::to_value(&set).expect("serialize");
     assert!(value.get("modelSlots").is_none());
     assert!(value["agents"][0].get("modelSlot").is_none());
+}
+
+/// The [opening turn](GgOpeningTurn) a fresh profile is seeded with, as a document writes it — for
+/// the fixtures here that spell an agent out by hand, since the key is required.
+fn opening_turn_json() -> serde_json::Value {
+    serde_json::to_value(GgOpeningTurn::seeded()).expect("serialize")
+}
+
+/// **`openingTurn` is required and always written.** A fresh profile carries the seeded default,
+/// it round-trips, and a document that omits the key does not read — there is no runtime default
+/// for the lists an agent's window opens on.
+#[test]
+fn an_agents_opening_turn_is_required_and_seeded_on_a_fresh_profile() {
+    let root = GgAgentConfig::root();
+    assert_eq!(root.opening_turn, GgOpeningTurn::seeded());
+    assert_eq!(
+        root.opening_turn.modules,
+        DEFAULT_OPENING_MODULES
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        root.opening_turn.functions,
+        DEFAULT_OPENING_FUNCTIONS
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+    );
+
+    let value = serde_json::to_value(&root).expect("serialize");
+    assert_eq!(
+        value["openingTurn"],
+        json!({
+            "modules": ["files", "shell"],
+            "functions": [
+                "docs.search",
+                "views.open_docs_view",
+                "views.open_text",
+                "views.open_file",
+                "files.search",
+            ],
+        }),
+        "the key is always written, in camelCase, with both lists"
+    );
+    let back: GgAgentConfig = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back, root);
+
+    // An empty pair is a valid document: a window that opens on the build prompt alone.
+    let empty: GgAgentConfig = serde_json::from_value(json!({
+        "slug": ROOT_PROFILE_ID,
+        "name": ROOT_AGENT,
+        "openingTurn": { "modules": [], "functions": [] },
+    }))
+    .expect("an empty opening turn reads");
+    assert!(empty.opening_turn.is_empty());
+    let value = serde_json::to_value(&empty).expect("serialize");
+    assert_eq!(
+        value["openingTurn"],
+        json!({ "modules": [], "functions": [] }),
+        "and it is still written out, empty"
+    );
+
+    // A document without the key does not read.
+    let error = serde_json::from_value::<GgAgentConfig>(json!({
+        "slug": ROOT_PROFILE_ID,
+        "name": ROOT_AGENT,
+    }))
+    .expect_err("a profile without an opening turn is not a profile gg reads");
+    assert!(
+        error.to_string().contains("openingTurn"),
+        "the error names the missing key: {error}"
+    );
+    // And neither does one missing half of it, or carrying a key gg does not know.
+    for (what, opening) in [
+        ("half an opening turn", json!({ "modules": [] })),
+        (
+            "an unknown key",
+            json!({ "modules": [], "functions": [], "tools": [] }),
+        ),
+    ] {
+        serde_json::from_value::<GgAgentConfig>(json!({
+            "slug": ROOT_PROFILE_ID,
+            "name": ROOT_AGENT,
+            "openingTurn": opening,
+        }))
+        .expect_err(what);
+    }
 }
 
 /// A capability that writes neither an `implementation` nor `params` still **deserializes**, and

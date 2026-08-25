@@ -307,8 +307,9 @@ fn code_mode_names_objects_and_teaches_discovery() {
 ///
 /// What this no longer reads is the **gating**. The section used to grow a sentence when the run
 /// offered `read_file` and another when it offered `shell`, and both are gone by the ruling that a
-/// prompt describes no capability whose functions' own briefs describe it — the opening turn puts
-/// those briefs in the window before the model's first real turn. The one fact under this heading
+/// prompt describes no capability whose functions' own briefs describe it — an opening turn listing
+/// a module (a fresh profile's lists `files` and `shell`) puts those briefs in the window before the
+/// model's first real turn. The one fact under this heading
 /// that is still gated on `read_file` is whether the model can be shown an image, which no brief can
 /// answer, and [`code_mode_states_image_support_and_neither_capability_contract`] is where that is
 /// read.
@@ -392,9 +393,9 @@ fn code_mode_teaches_views_rather_than_logging() {
 /// that a program may read a workspace file, and that it may run a command — on the argument that
 /// reading a file and running a build are what a program is usually for. Both sentences are gone,
 /// and the ruling that removed them is the one this now proves the other side of: the opening turn
-/// runs a search that puts every function the agent may call, one brief each, into the window, so a
-/// prompt that described either capability was writing a second copy of a brief the model already
-/// holds — with nothing keeping the copies equal.
+/// runs a search that puts every function of the modules the profile's `openingTurn` lists, one
+/// brief each, into the window, so a prompt that described either capability was writing a second
+/// copy of a brief the model already holds — with nothing keeping the copies equal.
 ///
 /// What survives is the one fact under the same heading that **no brief can answer**, because it is
 /// a fact about this run's model rather than about a function: whether reading an image shows the
@@ -2272,9 +2273,9 @@ fn every_language_prompt_states_the_rules_a_program_runs_under() {
 /// [program language](crate::sandbox::ProgramLanguage), and a language-agnostic template **cannot
 /// spell a call** — the spelling is the arm's. There is no sentence left for such a table to hold to
 /// account. What it once asserted is not withheld from the model either: the
-/// [bootstrap](crate::bootstrap)'s opening turn runs a program that lists every module the run
-/// granted, with a one-line brief per function, so the surface still arrives on turn one — just not
-/// out of a `.hbs` file.
+/// [bootstrap](crate::bootstrap)'s opening turn runs a program that lists the modules the agent's
+/// `openingTurn` configuration names, with a one-line brief per function, so the surface still
+/// arrives on turn one — just not out of a `.hbs` file.
 ///
 /// What it was protecting moved to [the discoverability gate](crate::docs), which verifies the same
 /// property end to end and far better: for every capability an agent is granted, the words a model

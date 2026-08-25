@@ -38,16 +38,20 @@ import type {
   GgLoopDetection,
   GgModelSlot,
   GgModuleKind,
+  GgOpeningTurn,
   GgPromptCacheTtl,
   GgRunLimits,
   GgSubagentRef,
   GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
 import {
+  ALWAYS_BOUND_OPERATIONS,
   AUTHORED_HOOK_TIMEOUT_SECS,
   BYTES_PER_MIB,
   CAPABILITIES,
+  DEFAULT_OPENING_TURN,
   GG_BUILTIN_HOOK_IDS,
+  GG_MODULES,
   DEFAULT_CAP_IDS,
   type GgHookScope,
   FSM_CAP_ID,
@@ -293,6 +297,17 @@ export interface GgAgentDraft {
   // reads.
   tools: string[];
   operations: string[];
+  // What gg puts in front of this agent's first turn ([GgOpeningTurn]): the modules whose
+  // brief and function list the window opens with, and the functions whose documentation
+  // it opens with. Read by a code agent only — a tool-calling agent writes no program for
+  // gg to seed one in front of — but held, and written, under every type, because the
+  // wire field is required and switching type and back must lose nothing.
+  //
+  // The draft keeps **everything the operator listed**, held or not: a module none of
+  // whose functions this agent holds stays listed so that switching the capability that
+  // sells it off and on again loses nothing. Only the held entries reach the wire
+  // ([heldOpeningTurn]), which is also the pruning gg would do itself at seed time.
+  openingTurn: GgOpeningTurnDraft;
   customInstructions: string;
   systemPromptTemplate: string;
   // How long this agent asks the provider to keep its stable prompt-cache entries. Held
@@ -312,6 +327,20 @@ export interface GgAgentDraft {
   // declared inline. Detaching an imported profile clears it, which keeps the profile
   // exactly as it is and stops it following anything.
   source: GgAgentSourceDraft | null;
+}
+
+/** The two lists of an agent's opening turn, as the editor holds them: the wire shape. */
+export interface GgOpeningTurnDraft {
+  modules: string[];
+  functions: string[];
+}
+
+/** A copy of the [default opening turn](DEFAULT_OPENING_TURN), free to mutate. */
+export function defaultOpeningTurn(): GgOpeningTurnDraft {
+  return {
+    modules: [...DEFAULT_OPENING_TURN.modules],
+    functions: [...DEFAULT_OPENING_TURN.functions],
+  };
 }
 
 // One agent's loop detection as the editor holds it: the switch as a boolean, and one
@@ -645,6 +674,7 @@ export function resetAgentForMode(agent: GgAgentDraft): GgAgentDraft {
         loopDetection: blankLoopDetection(),
         tools: [],
         operations: [],
+        openingTurn: defaultOpeningTurn(),
         customInstructions: "",
         systemPromptTemplate: "",
         subagents: [],
@@ -737,6 +767,9 @@ export function blankAgentDraft(
     // with. Without it a "fresh agent, defaults on" would be an agent with eight
     // capabilities and not one call.
     ...grantsOf(enabledIds),
+    // A fresh profile opens on the default opening turn — the same two lists gg seeded
+    // every code agent with before they were configuration.
+    openingTurn: defaultOpeningTurn(),
     customInstructions: "",
     systemPromptTemplate: "",
     promptCacheTtl: "standard",
@@ -886,6 +919,10 @@ function cloneAgentDraft(agent: GgAgentDraft): GgAgentDraft {
     modelSlots: agent.modelSlots.map((slot) => ({ ...slot })),
     tools: [...agent.tools],
     operations: [...agent.operations],
+    openingTurn: {
+      modules: [...agent.openingTurn.modules],
+      functions: [...agent.openingTurn.functions],
+    },
     subagents: agent.subagents.map((s) => ({ ...s })),
     hooks: agent.hooks.map((h) => ({ ...h })),
     source: agent.source ? { ...agent.source } : null,
@@ -1511,6 +1548,12 @@ export function agentDraftFromConfig(agent: GgAgentConfig): GgAgentDraft {
     tools: mode === "tools" ? [...(agent.tools ?? [])] : seeded.tools,
     operations:
       mode === "rac" ? [...(agent.operations ?? [])] : seeded.operations,
+    // Required on the wire and copied as written: what a stored configuration listed is
+    // what the form shows, whether or not this agent holds all of it.
+    openingTurn: {
+      modules: [...agent.openingTurn.modules],
+      functions: [...agent.openingTurn.functions],
+    },
     customInstructions: agent.customInstructions ?? "",
     systemPromptTemplate: agent.systemPromptTemplate ?? "",
     // A configuration that names no lifetime reads as the standard one, which is the
@@ -1582,6 +1625,7 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
           {
             slug: ROOT_PROFILE_ID,
             name: ROOT_AGENT,
+            openingTurn: defaultOpeningTurn(),
             capabilities: DEFAULT_CAP_IDS.map((id) => ({
               id,
               enabled: true,
@@ -1985,6 +2029,95 @@ function inAgentVocabulary(
   return agent.mode === "rac"
     ? [agent.operations, offer.operations ?? []]
     : [agent.tools, offer.tools ?? []];
+}
+
+// --- The opening turn ------------------------------------------------------------
+//
+// An opening turn may only promise what the agent holds, and "held" is the same question
+// gg's `DocsRuntime::bound` answers: an always-bound operation is held by every agent, and
+// a capability-bound one is held when its capability is on AND the agent's `operations`
+// allowlist grants it. A module is held when any of its functions is.
+
+/** The capability that offers `operationId` to a code agent, or `undefined` for none. */
+function capabilityOffering(operationId: string): CapSpec | undefined {
+  return CAPABILITIES.find(
+    (cap) =>
+      !isModeCapability(cap.id) &&
+      ((cap.operations ?? []).includes(operationId) ||
+        (cap.features ?? []).some((f) => f.operations.includes(operationId))),
+  );
+}
+
+/**
+ * Whether this agent holds the operation `operationId`: one of the
+ * [always-bound three](ALWAYS_BOUND_OPERATIONS), or offered by a capability that is
+ * [live](capabilityActive) on this agent and granted in its `operations` allowlist.
+ *
+ * The allowlist half is asked of `operations` whatever the agent's type, because the
+ * opening turn is a code agent's and the operations vocabulary is the one it is written in;
+ * a tool-calling agent's `operations` is the seeded scratch half, which is the same answer
+ * switching it to RaC would give.
+ */
+export function operationHeld(
+  agent: GgAgentDraft,
+  operationId: string,
+): boolean {
+  if (ALWAYS_BOUND_OPERATIONS.includes(operationId)) return true;
+  const cap = capabilityOffering(operationId);
+  if (!cap) return false;
+  return capabilityActive(agent, cap) && agent.operations.includes(operationId);
+}
+
+/** Whether this agent holds at least one function of the module `moduleId`. */
+export function moduleHeld(agent: GgAgentDraft, moduleId: string): boolean {
+  if (!GG_MODULES.some((m) => m.id === moduleId)) return false;
+  if (ALWAYS_BOUND_OPERATIONS.some((id) => id.startsWith(`${moduleId}.`)))
+    return true;
+  return CAPABILITIES.some(
+    (cap) =>
+      !isModeCapability(cap.id) &&
+      capabilityActive(agent, cap) &&
+      [
+        ...(cap.operations ?? []),
+        ...(cap.features ?? []).flatMap((f) => f.operations),
+      ].some(
+        (id) => id.startsWith(`${moduleId}.`) && agent.operations.includes(id),
+      ),
+  );
+}
+
+/**
+ * The opening turn as the wire carries it: what the draft lists, narrowed to what this
+ * agent [holds](operationHeld), each entry once, in the listed order.
+ *
+ * A module is kept when the agent holds any of its functions, whether or not that function
+ * is listed too — listing a module and opening a function's documentation are independent
+ * choices. An entry the console has no row for (one a stored configuration wrote by hand)
+ * is not held and so is not written, which is the one thing about it gg would not merely
+ * warn about.
+ */
+export function heldOpeningTurn(agent: GgAgentDraft): GgOpeningTurn {
+  const once = (names: ReadonlyArray<string>, keep: (n: string) => boolean) =>
+    names.filter((name, i) => keep(name) && names.indexOf(name) === i);
+  return {
+    modules: once(agent.openingTurn.modules, (id) => moduleHeld(agent, id)),
+    functions: once(agent.openingTurn.functions, (id) =>
+      operationHeld(agent, id),
+    ),
+  };
+}
+
+/**
+ * Whether the draft's opening turn is exactly the [default](DEFAULT_OPENING_TURN): both
+ * lists, in order. What the tab's reset control shows itself on.
+ */
+export function openingTurnIsDefault(turn: GgOpeningTurnDraft): boolean {
+  const same = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
+    a.length === b.length && a.every((v, i) => v === b[i]);
+  return (
+    same(turn.modules, DEFAULT_OPENING_TURN.modules) &&
+    same(turn.functions, DEFAULT_OPENING_TURN.functions)
+  );
 }
 
 /**
@@ -2706,6 +2839,8 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
       name: agent.name.trim(),
       capabilities,
       modelId: "",
+      // Required on the wire even of a machine, which takes no turns for gg to open.
+      openingTurn: heldOpeningTurn(agent),
     };
   }
   // An entry with no scopes is dropped: the editor removes a roster row by clearing its
@@ -2749,6 +2884,10 @@ function agentConfigFromDraft(agent: GgAgentDraft): GgAgentConfig {
       : agent.tools.length
         ? { tools: [...agent.tools] }
         : {}),
+    // Only what this agent holds is written — the same pruning gg does at seed time, done
+    // here so the record claims nothing the run could not open. The rest of what the
+    // operator listed stays in the draft ([GgAgentDraft.openingTurn]).
+    openingTurn: heldOpeningTurn(agent),
     ...(custom ? { customInstructions: custom } : {}),
     ...(template.trim() ? { systemPromptTemplate: template } : {}),
     // The standard lifetime is the default, so an agent left on it writes no key — which is

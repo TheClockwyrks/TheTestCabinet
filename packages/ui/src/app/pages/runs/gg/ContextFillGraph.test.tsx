@@ -72,7 +72,15 @@ function caps(ids: readonly string[]): GgCapabilitySet {
   return {
     // A set read off a run: its profiles are named by slug, the internal ids having been
     // resolved away at launch.
-    agents: [{ slug: "root", name: "Root", capabilities, modelId: "mock/x" }],
+    agents: [
+      {
+        slug: "root",
+        name: "Root",
+        capabilities,
+        modelId: "mock/x",
+        openingTurn: { modules: [], functions: [] },
+      },
+    ],
   };
 }
 
@@ -153,18 +161,21 @@ describe("visibleSources", () => {
           name: "Root",
           capabilities: [{ id: "shell", enabled: true, params: {} }],
           modelId: "mock/x",
+          openingTurn: { modules: [], functions: [] },
         },
         {
           slug: "coder",
           name: "Coder",
           capabilities: [{ id: "tasks", enabled: true, params: {} }],
           modelId: "mock/x",
+          openingTurn: { modules: [], functions: [] },
         },
         {
           slug: "coder-2",
           name: "Coder",
           capabilities: [{ id: "shell", enabled: true, params: {} }],
           modelId: "mock/x",
+          openingTurn: { modules: [], functions: [] },
         },
       ],
     };

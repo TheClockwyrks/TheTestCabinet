@@ -48,11 +48,11 @@ use serde::Serialize;
 use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SHELL, CAPABILITY_WRITE_FILE, GgContextSource, GgProgramLanguage,
+    CAPABILITY_SHELL, CAPABILITY_WRITE_FILE, GgContextSource, GgOpeningTurn, GgProgramLanguage,
 };
 
-use crate::agent::{code_heading_views, ending_view, module_paths, module_views};
-use crate::bootstrap::{BOOTSTRAP_MODULES, bootstrap_function, bootstrap_keys};
+use crate::agent::{code_heading_views, ending_view, module_views};
+use crate::bootstrap::{bootstrap_function, resolve_opening_turn};
 use crate::completion::{SUBMIT_PROGRAM_ACK, submit_program_tool};
 use crate::context::{ShownLines, item_heading};
 use crate::docs::{DocQuery, DocViewTypes, DocsRuntime, MAX_SEARCH_LIMIT};
@@ -60,8 +60,7 @@ use crate::ending::EndingRole;
 use crate::prompts::{self, ReadFileView, SystemContext};
 use crate::sandbox::{
     DocSearchQuery, FILES_EDIT_FILE, FILES_LIST_DIR, FILES_WRITE_FILE, OperationId, SHELL_SHELL,
-    VIEWS_OPEN_DOCS_VIEW, capability_operations, catalogue_functions, catalogue_modules, language,
-    spell,
+    VIEWS_OPEN_DOCS_VIEW, capability_operations, catalogue_functions, language, spell,
 };
 
 /// The gg capability ids the probe agent holds — the one grant every case is built under.
@@ -321,18 +320,19 @@ pub(crate) fn fixture_for(id: GgProgramLanguage) -> Result<ProbeFixture, String>
         None,
     )?;
 
-    // The modules the opening listing covers and the base documentation keys, resolved exactly as
-    // the bootstrap resolves them for a real session.
-    let opening_paths: Vec<&'static str> = catalogue_modules(arm)
-        .into_iter()
-        .filter(|module| BOOTSTRAP_MODULES.contains(&module.id))
-        .map(|module| module.path)
-        .collect();
-    let modules: Vec<String> = module_paths(&capabilities, &operations, role, id)
-        .into_iter()
-        .filter(|path| opening_paths.contains(&path.as_str()))
-        .collect();
-    let base_keys = bootstrap_keys(&docs)?;
+    // The modules the opening listing covers and the base documentation keys: the opening turn a
+    // fresh profile is seeded with, resolved exactly as the bootstrap resolves an agent's own for a
+    // real session — so an entry the probe agent does not hold (the workspace search, which its
+    // grant does not buy) is dropped here exactly as a run would drop it.
+    let resolved = resolve_opening_turn(
+        &docs,
+        &GgOpeningTurn::seeded(),
+        &capabilities,
+        &operations,
+        role,
+    );
+    let modules = resolved.modules;
+    let base_keys = resolved.keys;
 
     let tool = submit_program_tool(id);
     let contract_notice = prompts::render_contract_notice(id);

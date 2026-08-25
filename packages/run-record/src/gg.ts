@@ -155,6 +155,19 @@ export type GgAgentConfig = {
    */
   operations?: Array<string>;
   /**
+   * What this agent's window **opens holding** under
+   * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE): the modules gg's synthesized opening
+   * turn lists and the functions whose documentation it opens — see [`GgOpeningTurn`] for the
+   * vocabulary and the held/drop/refuse rules. Read only for an agent that writes programs;
+   * carried, and still required, on a tool-calling one, so that the one switch between the two
+   * modes stays a one-line edit.
+   *
+   * **Required and always written.** There is no default gg substitutes for an absent key: the
+   * lists an agent opens on are part of the agent's record, and a document that omits them does
+   * not read. [`GgAgentConfig::root`] seeds a fresh profile with [`GgOpeningTurn::seeded`].
+   */
+  openingTurn: GgOpeningTurn;
+  /**
    * Operator-authored instructions inserted into this agent's system prompt. `None`
    * (or empty) leaves the stock prompt. This is the field an operator edits normally;
    * [`system_prompt_template`](Self::system_prompt_template) is the escape hatch for
@@ -212,6 +225,51 @@ export type GgAgentConfig = {
    * An agent that declares none omits the key entirely.
    */
   hooks?: Array<GgHook>;
+};
+
+/**
+ * **What a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens holding** — the
+ * two lists gg's synthesized opening turn is generated from, per agent.
+ *
+ * A code agent's first turn is a program gg writes in the agent's own language and runs before the
+ * model has said a word: it searches the documentation of the modules named here, together, in one
+ * listing keyed by their paths, and opens a documentation view of each function named here, in the
+ * order written. The prompt names no function, so this is the only thing that hands a model its way
+ * into its own surface; the lists are **configuration** rather than gg's choice because what a
+ * window should open on is an operator's decision about the agent, and a study that varies it is a
+ * study gg has no business deciding the answer to.
+ *
+ * Both vocabularies are gg's cross-arm ones: [`modules`](Self::modules) names a module by its id
+ * (the namespace half of an operation id — `files`, `shell`, `views`, …) and
+ * [`functions`](Self::functions) names an operation (`files.read_file`), never an arm's own
+ * spelling of either. The two lists are **independent**: a function's documentation is opened
+ * whether or not its module is listed, and a module is listed whether or not any of its functions
+ * is opened.
+ *
+ * An entry gg has no vocabulary for refuses the launch, on the terms an
+ * [allowlist](GgAgentConfig::operations) entry does; so does a function held by role or by
+ * placement (an ending call, `delegation.transition_state`), which no configuration can promise.
+ * An entry in the right vocabulary that *this* agent does not hold — a module none of whose
+ * functions it may call, a function it was not granted — is dropped at seed time with a warning,
+ * which is what lets one shared document describe agents with different grants. Duplicates are
+ * opened once. Two lists that come out empty seed no program at all, which is a valid choice
+ * rather than a defect.
+ *
+ * **Required** on every agent, and always written: a document without it does not read. The
+ * authored default a fresh profile is seeded with is [`GgAgentConfig::root`]'s —
+ * [`DEFAULT_OPENING_MODULES`] and [`DEFAULT_OPENING_FUNCTIONS`].
+ */
+export type GgOpeningTurn = {
+  /**
+   * The gg module ids whose whole function list the opening program searches for, together, in
+   * one directory listing keyed by the modules in this order: `files`, `shell`, `board`, ….
+   */
+  modules: Array<string>;
+  /**
+   * The operation ids whose documentation view the opening program opens, in this order:
+   * `docs.search`, `views.open_file`, ….
+   */
+  functions: Array<string>;
 };
 
 /**

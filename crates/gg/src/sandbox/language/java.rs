@@ -535,7 +535,7 @@ fn listed(names: &[&str]) -> String {
     }
 }
 
-/// The opening turn: **one** search naming every module the agent holds, then a `List.of(…)` of the
+/// The opening turn: **one** search naming every module gg handed it, then a `List.of(…)` of the
 /// names to open as documentation views with an enhanced `for` over it — in the `main` of a class gg
 /// declares, because this program is **executed** as the session's first turn.
 ///

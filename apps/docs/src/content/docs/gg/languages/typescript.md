@@ -237,6 +237,7 @@ the modules it calls into, since a model reads it as an example of its own
 output. A file view is one call with an optional trailing options object carrying
 `offset` and `limit`; a set of documentation views is a `const` array of names
 with a `for…of` over it; the bootstrap program is one import, one search naming
-every granted module at once, and a `for…of` opening a documentation view
-apiece. Paths and names are rendered through JSON so a quote or a backslash
-cannot produce a program that will not parse.
+the configured modules at once when there are any, and a `for…of` opening a
+documentation view apiece when there are any. Paths and names are rendered
+through JSON so a quote or a backslash cannot produce a program that will not
+parse.

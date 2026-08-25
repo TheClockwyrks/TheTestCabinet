@@ -270,11 +270,11 @@ is what makes a signature readable before it is relied on.
 
 Because the calls that do the discovering are themselves functions, every code
 agent's session opens with a program gg wrote in that agent's own language and
-ran. It lists the agent's filesystem and shell modules and opens the
-documentation of the two discovery calls, so the window opens on the functions
-an agent reaches for first, one line each, beside the source of a program that
-provably ran. Every other module is reached through the prompt's own list, at
-the cost of one search. See [the opening
+ran. It lists the modules and opens the documentation of the functions named by
+the agent's `openingTurn` configuration, so the window opens on whatever the
+operator decided the agent reaches for first, beside the source of a program
+that provably ran. Every other module is reached through the prompt's own list,
+at the cost of one search. See [the opening
 turn](/gg/responses-as-code/views/#the-opening-turn).
 
 ### Function names

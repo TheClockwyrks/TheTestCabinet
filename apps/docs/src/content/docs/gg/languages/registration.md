@@ -60,8 +60,9 @@ instead. See [prompts](/gg/prompts/).
 ### The bootstrap program
 
 The program gg runs to seed a fresh window is the arm's own, generated from the
-module list and the documentation keys gg hands it. It is one program by the
-arm's own rules, meaning one module, one `main` or one translation unit where
+module list and the documentation keys gg hands it, either of which may be
+empty, in which case the program carries no search or no opens. It is one
+program by the arm's own rules, meaning one module, one `main` or one translation unit where
 the language wants one. It is the model's first example of its own output, so it
 is written the way that arm's users write, down to how it handles a failed call.
 

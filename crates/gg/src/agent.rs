@@ -6584,16 +6584,19 @@ impl Agent {
         }
 
         // The bootstrap turn: on a code agent's fresh window, a program gg writes in this agent's
-        // language and **runs** — listing every module the agent was granted and opening the
-        // documentation of the calls discovery itself is made of — and the views its own calls
-        // placed. First of every seeding step, because the prompt names no function and this is the
-        // only thing that hands the model its way in; see `crate::bootstrap` for why it is a program
-        // that runs, what it carries, and why a failure of it is gg's rather than the model's.
+        // language and **runs** — listing the modules and opening the documentation of the
+        // functions the profile's own `openingTurn` names, of those this agent holds — and the
+        // views its own calls placed. First of every seeding step, because the prompt names no
+        // function and this is the only thing that hands the model its way in; see
+        // `crate::bootstrap` for why it is a program that runs, how the two lists are resolved, and
+        // why a failure of it is gg's rather than the model's. An entry the agent does not hold is
+        // dropped with a `warn` line each; two lists that come out empty seed nothing, on purpose.
         if !carried {
             match crate::bootstrap::seed_bootstrap(
                 context,
                 &mut docs,
                 crate::bootstrap::BootstrapAgent {
+                    opening_turn: &profile.opening_turn,
                     capabilities: &granted_capabilities,
                     operations: &granted_operations,
                     role: ending_role,
@@ -6603,12 +6606,25 @@ impl Agent {
             )
             .await
             {
-                Ok(placed) => {
-                    if placed > 0 {
-                        emitter.emit(log(
-                            "debug",
-                            format!("opened {placed} view(s) to bootstrap discovery"),
-                        ));
+                Ok(bootstrap) => {
+                    for dropped in bootstrap.dropped() {
+                        emitter.emit(log("warn", dropped.to_string()));
+                    }
+                    match bootstrap {
+                        crate::bootstrap::Bootstrap::Seeded { placed, .. } => {
+                            emitter.emit(log(
+                                "debug",
+                                format!("opened {placed} view(s) on the opening turn"),
+                            ));
+                        }
+                        crate::bootstrap::Bootstrap::Empty { .. } => {
+                            emitter.emit(log(
+                                "debug",
+                                "this agent's opening turn is configured empty, so no opening \
+                                 program was seeded",
+                            ));
+                        }
+                        crate::bootstrap::Bootstrap::NotCodeMode => {}
                     }
                 }
                 // gg wrote the program, granted the scope it ran under and implements every call in
@@ -10448,6 +10464,7 @@ pub(crate) fn check_launch(profile: &GgAgentConfig, report: &mut crate::validate
     resolve_signal_threshold(profile, report);
     AutoloadSetup::resolve(profile, report);
     check_allowlists(profile, report);
+    check_opening_turn(profile, report);
 }
 
 /// The run-wide half of this module's [launch pass](crate::validate::validate_launch)
@@ -10976,7 +10993,8 @@ struct PromptInputs<'a> {
     ///
     /// There is no `shell` counterpart: the [output policy](OffloadPolicy) states its own tail on
     /// the output it truncates, and that a program may run a command at all is what `shell`'s brief
-    /// says on the opening turn.
+    /// says — on the opening turn, where the profile lists `shell` as a fresh one does, and in a
+    /// module lookup otherwise.
     read_policy: Option<ReadPolicy>,
     /// This agent's model and the run's vision registry, so the prompt can state whether a
     /// reference image can actually be shown to it.
@@ -11133,6 +11151,81 @@ fn check_allowlists(profile: &GgAgentConfig, report: &mut crate::validate::Launc
                 "`{name}` is not a gg operation{hint}. The `operations` allowlist grants nothing \
                  for it, and an agent narrowed by accident is indistinguishable from one narrowed \
                  on purpose."
+            ),
+        ));
+    }
+}
+
+/// The launch pass over a profile's [opening turn](test_cabinet_core::gg::GgOpeningTurn) — the
+/// vocabulary half of the rules the [bootstrap](crate::bootstrap) applies, on exactly the terms
+/// [`check_allowlists`] applies them to the two allowlists.
+///
+/// Three things refuse. A module id that is the namespace of no operation gg has, and a function
+/// id that is no gg operation, are entries nothing could ever honour — and, as with an allowlist,
+/// the effect of accepting one would be **silence**: a window short of a listing it was written to
+/// open on looks exactly like a window deliberately opened on less. The third is a function held by
+/// **role or placement** rather than by configuration — an ending call, or the machine transition —
+/// which no profile can promise its window will open on, since which agent holds it is decided by
+/// where the run puts the agent and not by anything in its document.
+///
+/// What does *not* refuse is an entry in the right vocabulary that this agent's grant does not
+/// reach: a module none of whose functions it may call, a function its allowlist does not name.
+/// That is the shared-document case the allowlists also allow, and the bootstrap drops it at seed
+/// time with a `warn` line naming the entry. An arm that does not catalogue a function is the same
+/// case seen from the other side, and is left to the seed as well — the launch does not know the
+/// arm every profile will run on.
+fn check_opening_turn(profile: &GgAgentConfig, report: &mut crate::validate::LaunchReport) {
+    for (index, id) in profile.opening_turn.modules.iter().enumerate() {
+        if crate::sandbox::family_of_module(id).is_some() {
+            continue;
+        }
+        let hint = if crate::sandbox::operation_by_id(id).is_some() {
+            "; it is an operation id, which belongs in `openingTurn.functions`"
+        } else {
+            ""
+        };
+        report.report(crate::validate::LaunchDefect::run_level(
+            format!("openingTurn.modules[{index}]"),
+            id,
+            format!(
+                "`{id}` is not a gg module{hint}. The opening turn could list nothing for it, and a \
+                 window opened on less by accident is indistinguishable from one opened on less on \
+                 purpose."
+            ),
+        ));
+    }
+    for (index, id) in profile.opening_turn.functions.iter().enumerate() {
+        let locus = format!("openingTurn.functions[{index}]");
+        let Some(operation) = crate::sandbox::operation_by_id(id) else {
+            let hint = if crate::tools::ALL_TOOL_NAMES.contains(&id.as_str()) {
+                "; it is a tool name, and the opening turn opens the documentation of operations"
+            } else if crate::sandbox::family_of_module(id).is_some() {
+                "; it is a module id, which belongs in `openingTurn.modules`"
+            } else {
+                ""
+            };
+            report.report(crate::validate::LaunchDefect::run_level(
+                locus,
+                id,
+                format!(
+                    "`{id}` is not a gg operation{hint}. The opening turn could open nothing for it, \
+                     and a window opened on less by accident is indistinguishable from one opened \
+                     on less on purpose."
+                ),
+            ));
+            continue;
+        };
+        let held_by = match operation.binding {
+            crate::sandbox::Binding::Ending(_) => "the role an agent is dispatched in",
+            crate::sandbox::Binding::Machine => "the machine an agent is placed in",
+            crate::sandbox::Binding::Capability(_) | crate::sandbox::Binding::Always => continue,
+        };
+        report.report(crate::validate::LaunchDefect::run_level(
+            locus,
+            id,
+            format!(
+                "`{id}` is held by {held_by}, not by this profile's configuration, so an opening \
+                 turn cannot promise to open its documentation."
             ),
         ));
     }
@@ -11300,11 +11393,12 @@ pub(crate) fn module_views(
 /// The **paths** of the modules this agent binds, in the prompt's own order — [`module_views`] with
 /// everything but the identifier dropped.
 ///
-/// It exists so the [bootstrap](crate::bootstrap) searches exactly the set the prompt publishes,
-/// by the name the prompt shows. The two must be one answer: the prompt tells the model these paths
-/// are where its surface is filed, and the opening turn is what fills that in — a bootstrap that
-/// derived its own list could list a module the prompt did not name, or miss one it did, and in
-/// either direction the model's first window would contradict its own instructions.
+/// It exists so the [bootstrap](crate::bootstrap) lists, of the modules the agent's own
+/// `openingTurn` names, exactly those the prompt publishes, by the name the prompt shows. The two
+/// must be one answer: the prompt tells the model these paths are where its surface is filed, and
+/// the opening turn is what fills that in — a bootstrap that decided held-ness its own way could
+/// list a module the prompt did not name, or drop one it did, and in either direction the model's
+/// first window would contradict its own instructions.
 ///
 /// A path rather than gg's module id because the path is what a *search* takes and what the model
 /// reads: the module filter accepts either, but a listing keyed by an id the model never saw would
@@ -11505,9 +11599,10 @@ fn system_prompt(inputs: PromptInputs<'_>) -> Result<String, String> {
 
     // Nothing about `shell` is built here any more, and neither half of what used to be is missed.
     // That its output may be a tail travels with the truncated output itself; that a program may run
-    // a command at all is the first line of `shell`'s own brief, which the opening turn puts in the
-    // window before the model's first real turn. A prompt describes no capability its functions'
-    // briefs describe, so there is no shell view on the rendering context to fill.
+    // a command at all is the first line of `shell`'s own brief, which an opening turn listing
+    // `shell` (a fresh profile's does) puts in the window before the model's first real turn. A
+    // prompt describes no capability its functions' briefs describe, so there is no shell view on
+    // the rendering context to fill.
 
     // The message headings this run can put in front of a synthesized `user` message — only under
     // responses-as-code, where the transcript is plain text and the model needs the vocabulary named

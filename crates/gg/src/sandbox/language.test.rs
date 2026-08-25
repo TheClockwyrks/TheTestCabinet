@@ -311,6 +311,27 @@ fn every_language_writes_the_program_that_opens_the_session() {
         }
     }
 
+    // The agent whose opening turn lists modules and opens no function: `docs` arrives empty and
+    // the program still searches. Read rather than prepared here; the sibling test below drives
+    // every arm's compiler over this shape, since an empty collection is where a typed arm has to
+    // spell an element type it could otherwise infer.
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let program = language.bootstrap_program(&MODULES, &[]);
+        let search = written(language, DOCS_SEARCH);
+        assert!(
+            program.contains(&search),
+            "{}: an opening turn that lists modules and opens nothing lost its search:\n{program}",
+            language.display_name()
+        );
+        for name in MODULES {
+            assert!(
+                program.contains(name),
+                "{}: the opening program never names `{name}`:\n{program}",
+                language.display_name()
+            );
+        }
+    }
+
     // Two implementations, written out, because containment cannot show that the syntax *around*
     // the two calls is each language's own: a trailing options object and a `for…of` here, keyword
     // arguments and no loop at all there.
@@ -342,6 +363,31 @@ fn every_language_writes_the_program_that_opens_the_session() {
         "views.open_docs_view(\"gg.docs.search\")\n",
         "the search gg would have to refuse is left out, and nothing else moves with it"
     );
+}
+
+/// **Every language's opening program still prepares when it opens no function**, which is the
+/// half of [`every_language_writes_the_program_that_opens_the_session`] that containment cannot
+/// show: an empty list is where a typed arm has to write an element type it would otherwise infer
+/// (`[&str; 0]`, `listOf<String>()`, `std::array<std::string_view, 0>`), and a generator that got
+/// that wrong writes a program every agent with such an opening turn fails to start on.
+///
+/// Its own test rather than a paragraph of the sweep above because it drives every arm's real
+/// compiler once more, and `cargo nextest` bounds each test rather than each assertion.
+#[test]
+fn every_language_prepares_an_opening_program_that_opens_nothing() {
+    const MODULES: [&str; 2] = ["gg.files", "gg.views"];
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let program = language.bootstrap_program(&MODULES, &[]);
+        language
+            .prepare_program(&program, &[], &PrepareContext::new())
+            .unwrap_or_else(|failure| {
+                panic!(
+                    "{}: cannot prepare the opening program that opens nothing ({failure}):\n\
+                     {program}",
+                    language.display_name()
+                )
+            });
+    }
 }
 
 /// **What an arm's catalogue says about reaching a module is what gg's own program does about

@@ -27,7 +27,11 @@ fn deserializes_a_full_invocation_file() {
                             "params": { "lineCap": 250 }
                         },
                         { "id": "write-file", "enabled": true }
-                    ]
+                    ],
+                    "openingTurn": {
+                        "modules": ["files", "shell"],
+                        "functions": ["docs.search", "views.open_docs_view"]
+                    }
                 }
             ]
         }

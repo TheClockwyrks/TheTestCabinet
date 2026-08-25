@@ -431,8 +431,8 @@ pub(super) fn open_docs_views_statement(language: &dyn ProgramLanguage, names: &
     )
 }
 
-/// The opening turn: the import, **one** search naming every granted module at once, then a `for…of`
-/// over the documentation keys, each iteration opening one view.
+/// The opening turn: the import, **one** search naming every module gg handed it at once, then a
+/// `for…of` over the documentation keys, each iteration opening one view.
 ///
 /// ```text
 /// import { docs, views } from "gg";

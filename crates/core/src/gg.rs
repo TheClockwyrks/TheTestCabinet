@@ -2466,6 +2466,73 @@ impl fmt::Display for GgDispatchError<'_> {
     }
 }
 
+/// **What a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent's window opens holding** — the
+/// two lists gg's synthesized opening turn is generated from, per agent.
+///
+/// A code agent's first turn is a program gg writes in the agent's own language and runs before the
+/// model has said a word: it searches the documentation of the modules named here, together, in one
+/// listing keyed by their paths, and opens a documentation view of each function named here, in the
+/// order written. The prompt names no function, so this is the only thing that hands a model its way
+/// into its own surface; the lists are **configuration** rather than gg's choice because what a
+/// window should open on is an operator's decision about the agent, and a study that varies it is a
+/// study gg has no business deciding the answer to.
+///
+/// Both vocabularies are gg's cross-arm ones: [`modules`](Self::modules) names a module by its id
+/// (the namespace half of an operation id — `files`, `shell`, `views`, …) and
+/// [`functions`](Self::functions) names an operation (`files.read_file`), never an arm's own
+/// spelling of either. The two lists are **independent**: a function's documentation is opened
+/// whether or not its module is listed, and a module is listed whether or not any of its functions
+/// is opened.
+///
+/// An entry gg has no vocabulary for refuses the launch, on the terms an
+/// [allowlist](GgAgentConfig::operations) entry does; so does a function held by role or by
+/// placement (an ending call, `delegation.transition_state`), which no configuration can promise.
+/// An entry in the right vocabulary that *this* agent does not hold — a module none of whose
+/// functions it may call, a function it was not granted — is dropped at seed time with a warning,
+/// which is what lets one shared document describe agents with different grants. Duplicates are
+/// opened once. Two lists that come out empty seed no program at all, which is a valid choice
+/// rather than a defect.
+///
+/// **Required** on every agent, and always written: a document without it does not read. The
+/// authored default a fresh profile is seeded with is [`GgAgentConfig::root`]'s —
+/// [`DEFAULT_OPENING_MODULES`] and [`DEFAULT_OPENING_FUNCTIONS`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgOpeningTurn {
+    /// The gg module ids whose whole function list the opening program searches for, together, in
+    /// one directory listing keyed by the modules in this order: `files`, `shell`, `board`, ….
+    pub modules: Vec<String>,
+    /// The operation ids whose documentation view the opening program opens, in this order:
+    /// `docs.search`, `views.open_file`, ….
+    pub functions: Vec<String>,
+}
+
+impl GgOpeningTurn {
+    /// The opening turn a fresh profile is **seeded** with — [`DEFAULT_OPENING_MODULES`] and
+    /// [`DEFAULT_OPENING_FUNCTIONS`] — which is what [`GgAgentConfig::root`] writes.
+    ///
+    /// An authored document, not a runtime default: gg reads the field as written and never
+    /// substitutes this for an absent one.
+    pub fn seeded() -> Self {
+        Self {
+            modules: DEFAULT_OPENING_MODULES
+                .iter()
+                .map(|id| id.to_string())
+                .collect(),
+            functions: DEFAULT_OPENING_FUNCTIONS
+                .iter()
+                .map(|id| id.to_string())
+                .collect(),
+        }
+    }
+
+    /// Whether both lists are empty — an agent whose window opens on the build prompt alone.
+    pub fn is_empty(&self) -> bool {
+        self.modules.is_empty() && self.functions.is_empty()
+    }
+}
+
 /// A single **agent profile** within a [`GgCapabilitySet`] — the per-agent unit that
 /// makes gg's capabilities configurable independently for each agent in a run.
 ///
@@ -2603,6 +2670,17 @@ pub struct GgAgentConfig {
     /// a spelling gg accepts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub operations: Vec<String>,
+    /// What this agent's window **opens holding** under
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE): the modules gg's synthesized opening
+    /// turn lists and the functions whose documentation it opens — see [`GgOpeningTurn`] for the
+    /// vocabulary and the held/drop/refuse rules. Read only for an agent that writes programs;
+    /// carried, and still required, on a tool-calling one, so that the one switch between the two
+    /// modes stays a one-line edit.
+    ///
+    /// **Required and always written.** There is no default gg substitutes for an absent key: the
+    /// lists an agent opens on are part of the agent's record, and a document that omits them does
+    /// not read. [`GgAgentConfig::root`] seeds a fresh profile with [`GgOpeningTurn::seeded`].
+    pub opening_turn: GgOpeningTurn,
     /// Operator-authored instructions inserted into this agent's system prompt. `None`
     /// (or empty) leaves the stock prompt. This is the field an operator edits normally;
     /// [`system_prompt_template`](Self::system_prompt_template) is the escape hatch for
@@ -2692,6 +2770,7 @@ impl GgAgentConfig {
             model_slots: Vec::new(),
             tools: DEFAULT_TOOLS.iter().map(|name| name.to_string()).collect(),
             operations: DEFAULT_OPERATIONS.iter().map(|id| id.to_string()).collect(),
+            opening_turn: GgOpeningTurn::seeded(),
             custom_instructions: None,
             system_prompt_template: None,
             prompt_cache_ttl: GgPromptCacheTtl::default(),
@@ -3299,6 +3378,36 @@ const DEFAULT_OPERATIONS: &[&str] = &[
     // The read-file capability's second row: a program opens a file straight into its own window
     // rather than into a variable, and that channel is bought by the same capability the read is.
     "views.open_file",
+];
+
+/// The **modules** a fresh profile's [opening turn](GgOpeningTurn::modules) lists: the two an agent
+/// that builds anything reaches for first. Every module the agent holds is named in its prompt, one
+/// line each, and a module path is an exact lookup into the surface — so a module the agent turns
+/// out to need costs it one search, while a module it never touches costs it nothing. Listing all
+/// of them up front would spend a directory apiece on the ones a run never reaches for, on every
+/// request of that run.
+///
+/// The authored default and nothing more: gg reads an agent's own list, never this one.
+pub const DEFAULT_OPENING_MODULES: &[&str] = &["files", "shell"];
+
+/// The **functions** a fresh profile's [opening turn](GgOpeningTurn::functions) opens the
+/// documentation of: the calls discovery and showing are made of, and nothing else.
+///
+/// First, both halves of the loop the prompt describes, in the order it describes them — a model
+/// searches for what it needs and then opens a documentation view of what it found — so the
+/// transcript's first turn reads as the loop rather than as two unrelated calls. Then every other
+/// function that puts something in the agent's own window (the text view every run has, and the
+/// file view an agent holding `read-file` has), and the workspace search, so the call that greps a
+/// workspace is read before it is written.
+///
+/// Held to gg's operations table by the same test the allowlist defaults are. The authored default
+/// and nothing more: gg reads an agent's own list, never this one.
+pub const DEFAULT_OPENING_FUNCTIONS: &[&str] = &[
+    "docs.search",
+    "views.open_docs_view",
+    "views.open_text",
+    "views.open_file",
+    "files.search",
 ];
 
 /// The configuration of a single capability within a [`GgCapabilitySet`].

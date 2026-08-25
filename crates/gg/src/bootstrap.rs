@@ -1,8 +1,7 @@
 //! The **synthesized opening turn** a [code-mode](crate::context::ContextModel::code_mode) agent's
 //! session starts with: one program, written by gg in the agent's own language and actually run,
-//! that lists every module the agent was granted and opens the documentation of the calls discovery
-//! itself is made of and of every call that puts something in the agent's own window — plus the
-//! views those calls placed.
+//! that lists the modules the agent's [opening turn](GgOpeningTurn) configuration names and opens
+//! the documentation of the functions it names — plus the views those calls placed.
 //!
 //! # Why anything is seeded at all
 //!
@@ -28,20 +27,31 @@
 //! follow, and both are the point: the first program in the window provably compiles and runs in
 //! that arm's language, and gg cannot tell a model it opened something it did not.
 //!
-//! # What it carries: the two modules a build starts in, and the calls discovery and showing are made of
+//! # What it carries: the agent's own two lists
 //!
-//! One whole-module listing covering the [opening modules](BOOTSTRAP_MODULES) this agent was
-//! granted — searched together, by the paths [`module_paths`](crate::agent::module_paths) publishes
-//! into the prompt — and a documentation view of each [bootstrap call](BOOTSTRAP_CALLS) the agent
-//! holds: the documentation search, every view-opening function, and the workspace search.
+//! **gg decides neither list.** What a window opens on is per-agent configuration —
+//! [`GgAgentConfig::opening_turn`](test_cabinet_core::gg::GgAgentConfig::opening_turn) — and the
+//! bootstrap reads it and nothing else. The `modules` are gg's cross-arm module ids, searched
+//! **together in one search** — a directory listing, ordered alphabetically by key — and left
+//! as one listing view keyed by the paths [`module_paths`](crate::agent::module_paths) publishes
+//! into the prompt, in the order written; the `functions` are
+//! operation ids, each opened as a documentation view in the order written. The two lists are
+//! independent: a function's documentation is opened whether or not its module is listed. The only
+//! defaults gg holds are the ones a *fresh* profile is authored with
+//! ([`DEFAULT_OPENING_MODULES`](test_cabinet_core::gg::DEFAULT_OPENING_MODULES),
+//! [`DEFAULT_OPENING_FUNCTIONS`](test_cabinet_core::gg::DEFAULT_OPENING_FUNCTIONS)), and those are
+//! read by the console seeding a document, never by this module.
 //!
-//! The window opens on what an agent that builds anything reaches for first, and on the means to
-//! find the rest. The prompt names every module the agent holds, one line each, and a module path is
-//! an exact lookup into the surface, so a module the agent turns out to need costs it one search
-//! while a module it never touches costs it nothing on every request of the run. A model that has
-//! already seen one valid program in its own language is likelier to write the next one, and the
-//! round trip it still makes is the one that matters: from a brief to the whole signature, by
-//! opening a documentation view of it.
+//! **Held is the whole test.** A function is held exactly when [`DocsRuntime::bound`] says so for
+//! this agent — the same predicate every other reader of "may this agent call X" asks — and a module
+//! is held when at least one of its functions is. An entry in the right vocabulary that this agent
+//! does not hold is **dropped**, one [`warn`](Dropped) line each, because one shared document
+//! naming a call only some of the profiles it describes enable is the ordinary way a sweep is
+//! written; an entry in no vocabulary at all, or a function held by role or placement rather than by
+//! configuration, refused the launch before this ran (`check_opening_turn` in [`crate::agent`]).
+//! Duplicates are opened once, silently. Nothing is required: a document may leave both lists
+//! empty, and an agent whose two lists come out empty after dropping is seeded **no program at all**
+//! ([`Bootstrap::Empty`]) — that is an operator's choice, not a defect.
 //!
 //! # Where it sits, and why it survives
 //!
@@ -105,11 +115,12 @@
 //! agent's surface record must report what the *model* reached for.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
-use test_cabinet_core::gg::{GgCallFailure, GgProgramLanguage};
+use test_cabinet_core::gg::{GgCallFailure, GgOpeningTurn, GgProgramLanguage};
 
 use crate::board::IssueStatus;
 use crate::context::{ContextModel, DocviewOpen, SEARCH_RESULTS_VIEW, TurnRange, ViewKind};
@@ -120,10 +131,10 @@ use crate::memories::MemoryCode;
 use crate::programs::{ProgramRefusal, ProgramSummary};
 use crate::sandbox::signatures::CatalogueFunction;
 use crate::sandbox::{
-    ApiIdentity, Binding, DOCS_SEARCH, DocSearchQuery, DocSearchResult, FILES_SEARCH, OperationApi,
-    OperationId, PreparedProgram, ProgramLanguage, ProgramScope, RunEnding, SandboxLimits,
-    SandboxOutcome, SandboxViewOpened, VIEWS_OPEN_DOCS_VIEW, VIEWS_OPEN_FILE, VIEWS_OPEN_TEXT,
-    ViewOpenOutcome, ViewRefusal, catalogue_functions, catalogue_modules, operation, operation_of,
+    ApiIdentity, DocSearchQuery, DocSearchResult, OperationApi, OperationId, PreparedProgram,
+    ProgramLanguage, ProgramScope, RunEnding, SandboxLimits, SandboxOutcome, SandboxViewOpened,
+    ViewOpenOutcome, ViewRefusal, catalogue_functions, catalogue_modules, operation_by_id,
+    operation_of,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{ToolFailure, ToolOutcome};
@@ -132,56 +143,18 @@ use crate::tools::{ToolFailure, ToolOutcome};
 /// loop never mints, so the opening turn cannot collide with a real call's id.
 const BOOTSTRAP_CALL_ID: &str = "bootstrap-program";
 
-/// **The calls the bootstrap opens the documentation of** — the ones discovery and showing are made
-/// of, and nothing else.
+/// Everything about **this agent** the bootstrap program has to run as: what its window should open
+/// on, what it was granted, what its programs run under, and what an `openDocsView` of a function
+/// opens beside it.
 ///
-/// First, both halves of the loop the [prompt](crate::prompts) describes, in the order it describes
-/// them: a model searches for what it needs and then opens a documentation view of what it found.
-/// Seeding them in that order means the transcript's first turn reads as the loop rather than as
-/// two unrelated calls, and the model's own example of a well-formed turn is the one it will spend
-/// the session repeating. Then every other function that puts something in the agent's own window —
-/// the text view every run has, and the file view an agent holding `read-file` has — because a
-/// program that cannot show its result to the model that wrote it has done nothing the model can
-/// read. And where the agent holds it, the workspace search, so the call that greps a workspace is
-/// read before it is written.
-///
-/// A call bound to every program ([`Binding::Always`]) is **required**: an arm that does not
-/// catalogue one leaves a model with no way to reach its own surface, and [`seed_bootstrap`] refuses
-/// the run. A call bought by a capability is opened where the agent holds it and left out where it
-/// does not — the opening turn documents this agent's surface, not some other agent's.
-///
-/// The **search** the bootstrap program makes is not on this list and does not need to be: it is
-/// resolved from [`BOOTSTRAP_MODULES`] rather than from an operation table. This is only what the
-/// program opens a *documentation view* of.
-pub(crate) const BOOTSTRAP_CALLS: &[OperationId] = &[
-    DOCS_SEARCH,
-    VIEWS_OPEN_DOCS_VIEW,
-    VIEWS_OPEN_TEXT,
-    VIEWS_OPEN_FILE,
-    FILES_SEARCH,
-];
-
-/// **The modules the opening program lists**, by gg's cross-arm id for them.
-///
-/// The window opens on the two an agent that builds anything reaches for first, and on nothing
-/// else. Every module the agent holds is named in the [prompt](crate::prompts), one line each, and a
-/// module path is an exact lookup into the surface — so a module the agent turns out to need costs
-/// it one search, while a module it never touches costs it nothing. Listing all of them up front
-/// spends a directory apiece on the ones a run never reaches for, on every request of that run.
-///
-/// An agent holding neither lists nothing and opens on the two discovery calls alone, which is the
-/// same bargain read at its lower bound rather than a special case.
-pub(crate) const BOOTSTRAP_MODULES: &[&str] = &["files", "shell"];
-
-/// Everything about **this agent** the bootstrap program has to run as: what it was granted, what
-/// its programs run under, and what an `openDocsView` of a function opens beside it.
-///
-/// One value rather than five parameters because it is one thing — *the agent gg is standing up* —
+/// One value rather than six parameters because it is one thing — *the agent gg is standing up* —
 /// and because every field of it is read straight off what the loop already resolved for this
 /// instance. Nothing here is re-derived from the profile: a second reading would be a second answer,
 /// and a bootstrap running under a wider grant than the membrane will service is a program gg wrote
 /// and gg then refuses.
 pub(crate) struct BootstrapAgent<'a> {
+    /// The two lists this agent's window opens on, exactly as its profile wrote them.
+    pub opening_turn: &'a GgOpeningTurn,
     /// The gg capability ids this agent holds, as the loop resolved them.
     pub capabilities: &'a [String],
     /// The operations its allowlist names within those capabilities.
@@ -197,18 +170,164 @@ pub(crate) struct BootstrapAgent<'a> {
     pub doc_view_types: DocViewTypes,
 }
 
-/// Seed `context` with the bootstrap turn: the program gg wrote on this agent's behalf, run, and
-/// the views its own calls placed.
+/// One entry of an agent's [opening turn](GgOpeningTurn) that was **dropped** at seed time: in gg's
+/// vocabulary, but not held by this agent, so the program was written without it.
 ///
-/// Returns **how many views the program placed** — the one search view covering this agent's
-/// [opening modules](BOOTSTRAP_MODULES), where it holds any, plus one documentation view per
-/// [bootstrap call](BOOTSTRAP_CALLS) and its types — for the run's log. `0`
-/// is not one of the answers: a run that placed nothing is an [`Err`], because a model whose opening
-/// turn shows a program beside an empty window has been taught that opening a view sometimes
-/// silently does nothing, which is the one lesson this turn must not carry.
+/// Carried back to the loop rather than logged here because the bootstrap holds no emitter — it is
+/// not a turn and records nothing itself — and the loop is where every other line about how a
+/// window was opened is written. [`Display`](fmt::Display) is the `warn` line, and it names the
+/// entry and the reason, because an operator reading a run whose window lacks a module they listed
+/// needs to be told which document line went unhonoured and why that is not a refusal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Dropped {
+    /// A module id this agent holds no function of on this arm.
+    Module(String),
+    /// An operation id this agent does not hold, or that this arm does not catalogue.
+    Function(String),
+}
+
+impl fmt::Display for Dropped {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Module(id) => write!(
+                f,
+                "`{id}` is listed in this agent's opening turn but the agent holds no function of \
+                 it, so it is not listed"
+            ),
+            Self::Function(id) => write!(
+                f,
+                "`{id}` is listed in this agent's opening turn but the agent does not hold it, so \
+                 its documentation is not opened"
+            ),
+        }
+    }
+}
+
+/// What [`seed_bootstrap`] did to the window.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Bootstrap {
+    /// The window is not in code mode, so there was no program to put in its mouth. Nothing was
+    /// resolved and nothing was placed.
+    NotCodeMode,
+    /// Both of the agent's lists were empty once the entries it does not hold were dropped, so no
+    /// program was seeded: the window opens on the build prompt alone. An operator's choice, and
+    /// `Ok` — but the dropped entries are still reported, since a window that was *meant* to open on
+    /// something is the case this most needs to be legible in.
+    Empty { dropped: Vec<Dropped> },
+    /// The program ran and placed `placed` views — the one search view covering the listed modules,
+    /// where any were, plus one documentation view per opened function and its types. Never `0`: a
+    /// program that ran and placed nothing is an [`Err`] out of [`seed_bootstrap`], because a model
+    /// whose opening turn shows a program beside an empty window has been taught that opening a
+    /// view sometimes silently does nothing, which is the one lesson this turn must not carry.
+    Seeded {
+        placed: usize,
+        dropped: Vec<Dropped>,
+    },
+}
+
+impl Bootstrap {
+    /// The entries dropped on the way to whatever was seeded, for the loop's `warn` lines.
+    pub(crate) fn dropped(&self) -> &[Dropped] {
+        match self {
+            Self::NotCodeMode => &[],
+            Self::Empty { dropped } | Self::Seeded { dropped, .. } => dropped,
+        }
+    }
+}
+
+/// An agent's [opening turn](GgOpeningTurn) resolved against what it actually holds on its arm:
+/// the module **paths** the program searches, the documentation **keys** it opens, and the entries
+/// it was written without.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ResolvedOpeningTurn {
+    /// The paths of the listed modules this agent holds, in the order the profile listed them —
+    /// spelled as the prompt spells them, because a listing keyed by an id the model never saw would
+    /// be a view it could not match to anything.
+    pub modules: Vec<String>,
+    /// This arm's fully-qualified name for each listed function the agent holds, in the order the
+    /// profile listed them, each once.
+    pub keys: Vec<String>,
+    /// Every entry in gg's vocabulary that this agent does not hold, in document order.
+    pub dropped: Vec<Dropped>,
+}
+
+impl ResolvedOpeningTurn {
+    /// Whether there is nothing left to seed.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.modules.is_empty() && self.keys.is_empty()
+    }
+}
+
+/// Resolve `opening` for the agent `docs` answers for: which of its modules and functions this
+/// agent holds, by the names this arm files them under.
 ///
-/// `Ok(0)` is returned for the one case that is not a failure at all: a window that is not in code
-/// mode has no program to put in its mouth.
+/// **The fully-qualified name** is the key the catalogue advertises, the key search files a hit
+/// under, and the only spelling that two modules each offering a `close` could not both claim. A
+/// function is resolved by the **operation** its entry names rather than by an arm's spelling,
+/// because the operation id is gg's own identity for a call and a spelling is one of eleven; the
+/// held test is [`DocsRuntime::bound`], the one implementation of "may this agent call X".
+///
+/// A module is held when the prompt names it — [`module_paths`](crate::agent::module_paths) is the
+/// very list the prompt publishes, so the listing the window opens on cannot name a module the
+/// prompt did not, or miss one it did — and the catalogue is what joins gg's id to that arm's path,
+/// which is where every other cross-arm join in gg is made. A module id on no catalogue module of
+/// this arm, or whose path the prompt does not carry, is dropped on the same terms as a function.
+///
+/// Entries in no vocabulary at all cannot reach here from a launched profile (`check_opening_turn`
+/// refused them); one that does anyway is dropped like the rest rather than taking the run down,
+/// because this runs on every window and a refusal belongs to the launch.
+pub(crate) fn resolve_opening_turn(
+    docs: &DocsRuntime,
+    opening: &GgOpeningTurn,
+    capabilities: &[String],
+    operations: &[OperationId],
+    role: EndingRole,
+) -> ResolvedOpeningTurn {
+    let language = docs.language();
+    let held_paths = crate::agent::module_paths(capabilities, operations, role, language.id());
+    let catalogue = catalogue_modules(language);
+    let mut dropped = Vec::new();
+
+    let mut modules: Vec<String> = Vec::new();
+    for id in &opening.modules {
+        let path = catalogue
+            .iter()
+            .find(|module| module.id == id)
+            .map(|module| module.path.to_string())
+            .filter(|path| held_paths.contains(path));
+        match path {
+            Some(path) if modules.contains(&path) => {}
+            Some(path) => modules.push(path),
+            None => dropped.push(Dropped::Module(id.clone())),
+        }
+    }
+
+    let functions = catalogue_functions(language);
+    let mut keys: Vec<String> = Vec::new();
+    for id in &opening.functions {
+        let key = operation_by_id(id).and_then(|operation| {
+            bootstrap_function(&functions, operation.id, |function| docs.bound(function))
+                .map(|function| function.fqn.to_string())
+        });
+        match key {
+            Some(key) if keys.contains(&key) => {}
+            Some(key) => keys.push(key),
+            None => dropped.push(Dropped::Function(id.clone())),
+        }
+    }
+
+    ResolvedOpeningTurn {
+        modules,
+        keys,
+        dropped,
+    }
+}
+
+/// Seed `context` with the bootstrap turn: the program gg wrote on this agent's behalf from its
+/// [opening turn](GgOpeningTurn), run, and the views its own calls placed.
+///
+/// Returns what happened ([`Bootstrap`]) — including the entries dropped for not being held, so the
+/// loop can say so — or the sentence naming the gg defect that stopped it.
 ///
 /// # Why the window and the documentation runtime are moved through
 ///
@@ -222,35 +341,30 @@ pub(crate) async fn seed_bootstrap(
     context: &mut ContextModel,
     docs: &mut DocsRuntime,
     agent: BootstrapAgent<'_>,
-) -> Result<usize, String> {
+) -> Result<Bootstrap, String> {
     if !context.code_mode() {
-        return Ok(0);
+        return Ok(Bootstrap::NotCodeMode);
     }
     let language = docs.language();
-    // The modules the opening listing covers, named by the path the prompt shows.
-    //
-    // The set of granted paths is `crate::agent::module_paths` — the very list the prompt publishes,
-    // rather than a second answer to "what was this agent granted" — and `BOOTSTRAP_MODULES` names
-    // the two to keep by gg's cross-arm id. The paths carry no id, so the catalogue is what joins
-    // the two vocabularies, which is where every other cross-arm join in gg is made.
-    let opening: Vec<&'static str> = catalogue_modules(language)
-        .into_iter()
-        .filter(|module| BOOTSTRAP_MODULES.contains(&module.id))
-        .map(|module| module.path)
-        .collect();
-    let modules: Vec<String> = crate::agent::module_paths(
+    let resolved = resolve_opening_turn(
+        docs,
+        agent.opening_turn,
         agent.capabilities,
         agent.operations,
         agent.role,
-        language.id(),
-    )
-    .into_iter()
-    .filter(|path| opening.contains(&path.as_str()))
-    .collect();
-    let keys = bootstrap_keys(docs)?;
+    );
+    if resolved.is_empty() {
+        return Ok(Bootstrap::Empty {
+            dropped: resolved.dropped,
+        });
+    }
     let source = language.bootstrap_program(
-        &modules.iter().map(String::as_str).collect::<Vec<_>>(),
-        &keys.iter().map(String::as_str).collect::<Vec<_>>(),
+        &resolved
+            .modules
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        &resolved.keys.iter().map(String::as_str).collect::<Vec<_>>(),
     );
 
     // Pushed **before** the program runs, so the window reads in the order the work happened: the
@@ -324,7 +438,11 @@ pub(crate) async fn seed_bootstrap(
     // opening context is intact enough to read.
     *context = api.context;
     *docs = api.docs;
-    placed_views(outcome?, &api.unimplemented, language)
+    let placed = placed_views(outcome?, &api.unimplemented, language)?;
+    Ok(Bootstrap::Seeded {
+        placed,
+        dropped: resolved.dropped,
+    })
 }
 
 /// What the bootstrap's run amounts to: the number of views it placed, or the sentence naming the
@@ -374,45 +492,6 @@ fn placed_views(
         ));
     }
     Ok(outcome.views_opened.len())
-}
-
-/// This arm's model-facing keys for the [bootstrap calls](BOOTSTRAP_CALLS) **this agent holds**, in
-/// that order.
-///
-/// The **fully-qualified name**, which is the key the catalogue advertises, the key search files a
-/// hit under, and the only spelling that two modules each offering a `close` could not both claim.
-///
-/// Resolved by the **operation** each entry names rather than by the spelling an arm files it
-/// under, because the [operation id](OperationId) is gg's own identity for a call and a spelling is
-/// one of eleven. A call the agent does not hold — one bought by a capability it was not granted, or
-/// left out of its allowlist — is left out, on the terms [`BOOTSTRAP_CALLS`] states. A call bound to
-/// **every** program that this arm does not catalogue, or that the runtime would not bind, is the
-/// defect [`seed_bootstrap`] refuses the run over rather than a program with a call quietly dropped
-/// from it.
-pub(crate) fn bootstrap_keys(docs: &DocsRuntime) -> Result<Vec<String>, String> {
-    let functions = catalogue_functions(docs.language());
-    let mut keys = Vec::new();
-    for call in BOOTSTRAP_CALLS {
-        let bound = bootstrap_function(&functions, *call, |function| docs.bound(function));
-        match (bound, bootstrap_required(*call)) {
-            (Some(function), _) => keys.push(function.fqn.to_string()),
-            (None, false) => {}
-            (None, true) => {
-                return Err(format!(
-                    "gg could not name `{call}`, which the {} bootstrap program has to open for \
-                     every agent (it catalogues {keys:?} so far)",
-                    docs.language().display_name()
-                ));
-            }
-        }
-    }
-    Ok(keys)
-}
-
-/// Whether a [bootstrap call](BOOTSTRAP_CALLS) is one every agent's opening turn must open: the
-/// ones bound to every program whatever a run enables. The rest are opened where held.
-pub(crate) fn bootstrap_required(call: OperationId) -> bool {
-    operation(call).is_some_and(|operation| operation.binding == Binding::Always)
 }
 
 /// The catalogue entry an arm binds `call` under — its canonical spelling, never an alias — where
@@ -646,7 +725,8 @@ impl OperationApi for BootstrapApi {
             offset: query.offset,
             limit: query.limit,
         })?;
-        // The modules gg's own program named. A bootstrap search always names some; the constant is
+        // The modules gg's own program named. The program makes this call only when its agent's
+        // opening turn listed a module it holds, so the filter is never empty here; the constant is
         // what a search with no module filter means everywhere else in gg, so it is what an
         // unfiltered one would land under here too.
         let selector = match query.modules.is_empty() {
@@ -677,8 +757,8 @@ impl OperationApi for BootstrapApi {
     /// open is a total no-op.
     ///
     /// A name that resolves to nothing is a [refusal](ViewRefusal) here as it is there — but it is
-    /// also a gg defect, since [`bootstrap_keys`] resolved every key gg's program names against this
-    /// same runtime, so it is recorded like an unimplemented call and ends the run.
+    /// also a gg defect, since [`resolve_opening_turn`] resolved every key gg's program names against
+    /// this same runtime, so it is recorded like an unimplemented call and ends the run.
     fn open_docs_view(&mut self, name: String) -> Result<Vec<SandboxViewOpened>, ViewRefusal> {
         let Some((key, read)) = self
             .docs
