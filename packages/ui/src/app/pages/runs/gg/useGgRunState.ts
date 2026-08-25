@@ -424,8 +424,9 @@ export interface PromptTurn {
 // judge the turn by.
 export type ProgramStatus = "success" | "compile" | "runtime" | "other";
 
-// One responses-as-code turn as a *program*: the reply the model wrote, whether it
-// compiled and ran, and what went wrong when it did not. The Programs view is built from
+// One responses-as-code turn as a *program*: the programs the reply submitted (its
+// `submit_program` calls, read from the pooled reply), whether they compiled and ran, and
+// what went wrong when they did not. The Programs view is built from
 // these — the itemized "did each response work?" companion to the Requests view, which
 // shows every message of every turn and buries the one question an operator of a code
 // agent asks first.

@@ -31,18 +31,54 @@ const STATUS_LABELS: Record<ProgramStatus, string> = {
   other: "error",
 };
 
-// A one-line preview of a program for its collapsed row: its first non-blank line, which
-// for a program is usually the import or the comment the model opened with — enough to
-// tell one turn from the next without opening either.
+// The name of the one tool a responses-as-code turn is offered — mirrors gg's
+// `SUBMIT_PROGRAM_TOOL`. A reply's programs are the `program` strings of its calls to
+// it, in order: the reply's text is not a program (a code-mode reply usually has none),
+// so this view reads the calls and never the content.
+export const SUBMIT_PROGRAM_TOOL = "submit_program";
+
+// One submission the reply made: the program it carried, or null for a call that
+// carried none (a missing or non-string `program` argument — gg answers it with a
+// refusal and runs nothing).
+export interface SubmittedProgram {
+  callId: string;
+  program: string | null;
+}
+
+// Every `submit_program` call in a pooled reply, in the order the model wrote them —
+// gg runs all of them, sequentially, whether or not an earlier one failed, so every one
+// is a program the turn ran and every one is shown.
+export function submittedPrograms(
+  message: PooledMessage | undefined,
+): SubmittedProgram[] {
+  if (!message) return [];
+  return message.toolCalls
+    .filter((call) => call.name === SUBMIT_PROGRAM_TOOL)
+    .map((call) => {
+      const program = call.args.program;
+      return {
+        callId: call.id,
+        program: typeof program === "string" ? program : null,
+      };
+    });
+}
+
+// A one-line preview of a turn's programs for its collapsed row: the first program's
+// first non-blank line, which is usually the import or the comment the model opened
+// with — enough to tell one turn from the next without opening either — suffixed with
+// the count when the reply submitted more than one.
 const PREVIEW_MAX = 160;
-function programPreview(message: PooledMessage | undefined): string {
-  const content = message?.content;
-  if (!content || !content.trim()) return "(no program)";
-  const line = content
+function programPreview(submissions: SubmittedProgram[]): string {
+  const first = submissions.find((s) => s.program != null)?.program;
+  if (first == null || !first.trim()) return "(no program)";
+  const line = first
     .split("\n")
     .map((l) => l.trim())
     .find((l) => l !== "");
-  return (line ?? "").slice(0, PREVIEW_MAX);
+  const preview = (line ?? "").slice(0, PREVIEW_MAX);
+  return submissions.length > 1
+    ? `${preview} · ${submissions.length} programs`
+    : preview;
 }
 
 // What the specific error type is called in the entry's error caption: the contract's
@@ -75,6 +111,7 @@ function ProgramEntry({
 }) {
   const response =
     program.responseId != null ? pool.get(program.responseId) : undefined;
+  const submissions = submittedPrograms(response);
   const failed = program.status !== "success";
   return (
     <details className={panels.reqTurn}>
@@ -83,7 +120,9 @@ function ProgramEntry({
           ▸
         </span>
         <span className={panels.reqTurnLabel}>Turn {program.turn + 1}</span>
-        <span className={panels.progPreview}>{programPreview(response)}</span>
+        <span className={panels.progPreview}>
+          {programPreview(submissions)}
+        </span>
         {/* An empty cell rather than a zero for a response whose tokens were not
             estimated, as the Requests view's message rows do. */}
         <span className={panels.reqTokens}>
@@ -94,17 +133,40 @@ function ProgramEntry({
         </span>
       </summary>
       <div className={panels.reqTurnBody}>
-        <div className={panels.reqSectionLabel}>Program</div>
-        {response?.content ? (
-          <ExpandablePre
-            content={response.content}
-            className={panels.reqContent}
-            label={`Turn ${program.turn + 1} program`}
-          />
+        {/* One section per `submit_program` call, in the order the model wrote them —
+            all of them, because gg ran all of them. A turn that submitted exactly one
+            is captioned "Program"; several are numbered so the error that follows can
+            be read against the chain it came from. */}
+        {submissions.length === 0 ? (
+          <>
+            <div className={panels.reqSectionLabel}>Program</div>
+            <p className={panels.reqEmptyResponse}>
+              No program — the reply made no {SUBMIT_PROGRAM_TOOL} call.
+            </p>
+          </>
         ) : (
-          <p className={panels.reqEmptyResponse}>
-            No assistant message — the turn produced only a stop.
-          </p>
+          submissions.map((submission, index) => {
+            const caption =
+              submissions.length === 1
+                ? "Program"
+                : `Program ${index + 1} of ${submissions.length}`;
+            return (
+              <div key={submission.callId}>
+                <div className={panels.reqSectionLabel}>{caption}</div>
+                {submission.program != null ? (
+                  <ExpandablePre
+                    content={submission.program}
+                    className={panels.reqContent}
+                    label={`Turn ${program.turn + 1} ${caption.toLowerCase()}`}
+                  />
+                ) : (
+                  <p className={panels.reqEmptyResponse}>
+                    The call carried no program.
+                  </p>
+                )}
+              </div>
+            );
+          })
         )}
         {failed && (
           <>
