@@ -2246,11 +2246,12 @@ fn library_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
 async fn a_program_fetches_its_predecessor_patches_it_and_gg_runs_the_patched_one() {
     let dir = TempDir::new().unwrap();
     // Turn 1 writes the wrong contents. Turn 2 never re-emits the program: it fetches turn 1's
-    // source, replaces the one wrong word, and hands it back — which is the whole point of the
-    // capability, and the reason the second reply is two lines rather than one program.
+    // source — the most recent entry in the history, by the id the library issued it — replaces the
+    // one wrong word, and hands it back — which is the whole point of the capability, and the
+    // reason the second reply is two lines rather than one program.
     let first =
         "import * as gg from \"gg\";\ngg.files.writeFile(\"level.txt\", \"cosnt LEVELS = 3;\");";
-    let second = "import * as gg from \"gg\";\nconst source = gg.programs.get(1);\n\
+    let second = "import * as gg from \"gg\";\nconst source = gg.programs.history().at(-1)!.source();\n\
          gg.programs.rerun(source.replace(\"cosnt\", \"const\"));";
     let (outcome, events) =
         drive_code_run(&dir, library_set("mock/primary", json!({})), move |b| {
@@ -2284,9 +2285,10 @@ async fn a_program_fetches_its_predecessor_patches_it_and_gg_runs_the_patched_on
 /// **The library survives what the window does not, and records the program that ran.**
 ///
 /// Two properties in one run, because each costs a component compile. First, `history()` reports
-/// what gg holds and `get()` with no argument is the most recent. Second — and this is what makes
-/// fetch-patch-rerun *compose* — the source kept for a chained turn is the program that
-/// **executed**, not the two lines that handed it over.
+/// what gg holds — gg's own opening programs included, on turn 0 — and `get(id)` fetches by the id
+/// each entry carries. Second — and this is what makes fetch-patch-rerun *compose* — the source
+/// kept for a chained submission is the program that **executed**, not the two lines that handed
+/// it over, and it is kept under the submission's own id.
 #[tokio::test]
 async fn the_library_keeps_the_program_that_ran_not_the_one_that_handed_it_over() {
     let dir = TempDir::new().unwrap();
@@ -2294,9 +2296,13 @@ async fn the_library_keeps_the_program_that_ran_not_the_one_that_handed_it_over(
     // Turn 2 hands over a program that is itself worth fetching later.
     let second = "import * as gg from \"gg\";\n\
          gg.programs.rerun('import * as gg from \"gg\";\\ngg.files.writeFile(\"b.txt\", \"two\");');";
-    // Turn 3 reads back what turn 2 *ran*, and shows it to the operator so the test can read it.
-    let third = "import * as gg from \"gg\";\nconsole.log(gg.programs.get(2));\n\
-         console.log(JSON.stringify(gg.programs.history().map((p) => p.turn)));";
+    // Turn 3 reads back what turn 2 *ran* — by the id its history entry carries — and shows it to
+    // the operator so the test can read it, along with the turn each held program ran on and a
+    // check that every id is distinct and of the configured length.
+    let third = "import * as gg from \"gg\";\nconst history = gg.programs.history();\n\
+         console.log(gg.programs.get(history.find((p) => p.turn === 2)!.id));\n\
+         console.log(JSON.stringify(history.map((p) => p.turn)));\n\
+         console.log(JSON.stringify([new Set(history.map((p) => p.id)).size, history.every((p) => p.id.length === 4)]));";
     let (outcome, events) =
         drive_code_run(&dir, library_set("mock/primary", json!({})), move |b| {
             scripted_programs(&b.model_id, &[first, second, third])
@@ -2311,8 +2317,13 @@ async fn the_library_keeps_the_program_that_ran_not_the_one_that_handed_it_over(
         "the turn kept the program that did the work, not the `rerun` that asked for it"
     );
     assert_eq!(
-        third_logs[1], "[1,2]",
-        "one entry per turn that ran a program, keyed by the turn the model reads on its results"
+        third_logs[1], "[0,1,2]",
+        "one entry per submission that carried a program, gg's opening program (turn 0) included, \
+         each carrying the turn it ran on"
+    );
+    assert_eq!(
+        third_logs[2], "[3,true]",
+        "three distinct ids, each of the configured length"
     );
 }
 
@@ -2354,6 +2365,183 @@ async fn a_hand_over_is_cancelled_when_the_program_then_throws() {
             .any(|body| body.contains("was NOT run") && body.contains("failed after handing it")),
         "the model is told its hand-over was cancelled: {bodies:#?}"
     );
+}
+
+/// **An exec moves the library, through the loop itself**: the successor's own program fetches a
+/// program its predecessor ran, by the id the predecessor's acknowledgement carried.
+///
+/// `programs.rs` proves what `adopt` does to a `ProgramLibrary` value; only here is the whole
+/// carry exercised — the handoff picks the live library up as the incarnation ends, the succession
+/// carries it, and the successor (which resolves its own library from its own profile before
+/// adopting) answers `programs.get` with source it never ran itself.
+#[tokio::test]
+async fn an_exec_moves_the_library_and_the_successor_fetches_a_pre_exec_program_by_its_id() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-exec-library".to_string()), Box::new(sink.clone()));
+    // The predecessor: code mode + the library + `exec`, with the successor on its roster.
+    let mut set = library_set("mock/library-before", json!({}));
+    set.agents[0].subagents = vec![GgSubagentRef {
+        agent_id: "after".to_string(),
+        description: String::new(),
+        scopes: ALL_SUBAGENT_SCOPES.to_vec(),
+    }];
+    crate::tools::grant(&mut set.agents[0], test_cabinet_core::gg::CAPABILITY_EXEC);
+    // The code surface offers `delegation.exec` only to an agent that can delegate at all
+    // (`availability::can_delegate`), so the subagents capability rides along.
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        crate::tools::configured(CAPABILITY_SUBAGENTS, json!({ "maxDepth": 1 })),
+    );
+    // The successor: its own profile, its own model, its own library — which is the point: what it
+    // fetches below arrived by the move, not by having run anything.
+    let mut after = GgAgentConfig {
+        slug: "after".to_string(),
+        name: "The Successor".to_string(),
+        model_id: "mock/library-after".to_string(),
+        ..GgAgentConfig::root()
+    };
+    crate::tools::grant_configured(
+        &mut after,
+        crate::tools::configured(CAPABILITY_RESPONSES_AS_CODE, json!({})),
+    );
+    crate::tools::grant_configured(
+        &mut after,
+        crate::tools::configured(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY, json!({})),
+    );
+    set.agents.push(after);
+
+    // Turn 1 runs a recognizable program; turn 2 hands the session to the successor.
+    let pre_exec = "import * as gg from \"gg\";\ngg.files.writeFile(\"pre-exec.txt\", \"before\");";
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_PROFILE_ID, move |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![
+                    code_reply(pre_exec),
+                    code_reply("import * as gg from \"gg\";\ngg.delegation.exec(\"after\");"),
+                ],
+            )) as Box<dyn ModelClient>
+        })
+        .slot("after", |b| {
+            // The successor reads the moved library: the entry recorded on its predecessor's
+            // turn 1, fetched by the id that entry carries.
+            scripted_programs(
+                &b.model_id,
+                &["import * as gg from \"gg\";\nconsole.log(\"carried:\" + \
+                   gg.programs.get(gg.programs.history().find((p) => p.turn === 1)!.id));"],
+            )
+        });
+    let inv = invocation(dir.path(), set);
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    assert!(
+        events.iter().any(|event| matches!(
+            &event.kind,
+            GgTelemetryKind::AgentTransition {
+                kind: GgAgentTransitionKind::Exec,
+                ..
+            }
+        )),
+        "the exec really happened"
+    );
+    let lines: Vec<String> = code_logs(&events)
+        .into_iter()
+        .flat_map(|(lines, _)| lines)
+        .collect();
+    assert!(
+        lines
+            .iter()
+            .any(|line| line.starts_with("carried:") && line.contains("pre-exec.txt")),
+        "the successor fetched its predecessor's program by the predecessor's id: {lines:?}"
+    );
+}
+
+/// **A fork clones the library, through the loop itself**: after the fork, the forker *and* the
+/// copy each fetch the pre-fork program by the id the forker's acknowledgement carried.
+///
+/// The forker's half matters as much as the copy's — a move here instead of a clone would leave
+/// the forker unable to answer for its own history — so both sides log the fetch and both lines
+/// are asserted.
+#[tokio::test]
+async fn a_fork_clones_the_library_and_both_sides_fetch_the_pre_fork_program() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-fork-library".to_string()), Box::new(sink.clone()));
+    let mut set = library_set("mock/fork-library", json!({}));
+    set.agents[0].subagents = vec![GgSubagentRef {
+        agent_id: ROOT_PROFILE_ID.to_string(),
+        description: String::new(),
+        scopes: ALL_SUBAGENT_SCOPES.to_vec(),
+    }];
+    crate::tools::grant(&mut set.agents[0], test_cabinet_core::gg::CAPABILITY_FORK);
+    crate::tools::grant_configured(
+        &mut set.agents[0],
+        crate::tools::configured(CAPABILITY_SUBAGENTS, json!({ "maxDepth": 1 })),
+    );
+
+    // Both incarnations run the root profile, so both come off the one slot: the first client
+    // scripted here is the forker, every later one a copy.
+    let fetch_turn_one = "gg.programs.get(gg.programs.history().find((p) => p.turn === 1)!.id)";
+    let instances = Arc::new(AtomicUsize::new(0));
+    let factory = ScriptedFactory::new().slot(ROOT_PROFILE_ID, move |b| {
+        let n = instances.fetch_add(1, Ordering::SeqCst);
+        let programs = if n == 0 {
+            vec![
+                code_reply(
+                    "import * as gg from \"gg\";\ngg.files.writeFile(\"pre-fork.txt\", \"before\");",
+                ),
+                code_reply(
+                    "import * as gg from \"gg\";\ngg.delegation.fork(\"read the library\");",
+                ),
+                code_reply(&format!(
+                    "import * as gg from \"gg\";\nconsole.log(\"forker:\" + {fetch_turn_one});"
+                )),
+                code_reply(FINISHING_PROGRAM),
+            ]
+        } else {
+            vec![
+                code_reply(&format!(
+                    "import * as gg from \"gg\";\nconsole.log(\"copy:\" + {fetch_turn_one});"
+                )),
+                code_reply(FINISHING_PROGRAM),
+            ]
+        };
+        Box::new(MockClient::new(&b.model_id, programs)) as Box<dyn ModelClient>
+    });
+    let inv = invocation(dir.path(), set);
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    assert!(
+        events.iter().any(|event| matches!(
+            &event.kind,
+            GgTelemetryKind::AgentTransition {
+                kind: GgAgentTransitionKind::Fork,
+                ..
+            }
+        )),
+        "the fork really happened"
+    );
+    let lines: Vec<String> = code_logs(&events)
+        .into_iter()
+        .flat_map(|(lines, _)| lines)
+        .collect();
+    for side in ["forker:", "copy:"] {
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with(side) && line.contains("pre-fork.txt")),
+            "{side} the pre-fork program is fetchable by its pre-fork id on this side: {lines:?}"
+        );
+    }
 }
 
 /// **A code memory written under the scratchpad opens its documentation too**, end to end — the
@@ -2401,4 +2589,108 @@ async fn a_code_memory_written_under_the_scratchpad_opens_its_documentation() {
         !after_write.contains("It loads — and its `lib` key is named — when you read the memory"),
         "and nothing was appended to the write's own reply: {after_write}"
     );
+}
+
+/// **Each of a reply's several submissions is acknowledged with its own id, and each id holds
+/// exactly the program its call submitted.**
+///
+/// The mapping is the property nothing else pins: three `submit_program` calls in one reply must
+/// come back as three distinct ids of the configured length — never the fixed `ok` — read out of
+/// the very `tool` messages that answered the calls, and a `get` of the id that acknowledged call
+/// *k* must return call *k*'s program, not a neighbour's. A miss is asserted from the same run:
+/// it names the asked-for id and every id that is held.
+#[tokio::test]
+async fn each_of_several_submissions_is_acknowledged_with_the_id_its_own_program_is_kept_under() {
+    let dir = TempDir::new().unwrap();
+    let first = "import * as gg from \"gg\";\ngg.files.writeFile(\"one.txt\", \"1\"); // MARK-ONE";
+    let probe = "import * as gg from \"gg\";\n\
+        const history = gg.programs.history();\n\
+        console.log(JSON.stringify(history.map((p) => [p.id, p.turn])));\n\
+        for (const p of history) { console.log(p.id + \"=>\" + gg.programs.get(p.id).split(\"\\n\").at(-1)); }\n\
+        try { gg.programs.get(\"nope-such-id\"); } catch (e) { console.log(\"MISS:\" + String(e)); }";
+    let mut script = program_script(&[first, probe]);
+    script[0].tool_calls.push(ToolCall {
+        id: "vfy-second".to_string(),
+        name: crate::completion::SUBMIT_PROGRAM_TOOL.to_string(),
+        arguments: json!({ "program": "import * as gg from \"gg\";\ngg.files.writeFile(\"two.txt\", \"2\"); // MARK-TWO" }),
+    });
+    script[0].tool_calls.push(ToolCall {
+        id: "vfy-third".to_string(),
+        name: crate::completion::SUBMIT_PROGRAM_TOOL.to_string(),
+        arguments: json!({ "program": "import * as gg from \"gg\";\ngg.files.writeFile(\"three.txt\", \"3\"); // MARK-THREE" }),
+    });
+    let (outcome, events, requests) =
+        drive_recorded_code_run(&dir, library_set("mock/primary", json!({})), script).await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+    assert_valid_conversations(&requests);
+
+    // The second turn's request carries the three acknowledgements, one per call, each a bare id.
+    let turn2 = &requests[1];
+    let first_call_id = turn2
+        .iter()
+        .flat_map(|m| m.tool_calls.iter())
+        .find(|c| c.id.starts_with("submit-"))
+        .expect("the scripted first call")
+        .id
+        .clone();
+    let ack = |call_id: &str| -> String {
+        turn2
+            .iter()
+            .find(|m| m.role == Role::Tool && m.tool_call_id.as_deref() == Some(call_id))
+            .unwrap_or_else(|| panic!("no tool result answers `{call_id}`"))
+            .content
+            .clone()
+            .expect("an acknowledgement has a body")
+    };
+    let acks = [ack(&first_call_id), ack("vfy-second"), ack("vfy-third")];
+    for id in &acks {
+        assert_eq!(id.len(), 4, "the default idLength is 4: `{id}`");
+        assert_ne!(
+            id, "ok",
+            "the acknowledgement is the id, not the fixed word"
+        );
+        assert!(
+            id.chars().all(|c| c.is_ascii_alphanumeric()),
+            "a cuid2 id: `{id}`"
+        );
+    }
+    assert_eq!(
+        acks.iter().collect::<std::collections::BTreeSet<_>>().len(),
+        3,
+        "three distinct ids: {acks:?}"
+    );
+
+    // The probe turn read the library back: each acknowledged id holds the very program its call
+    // submitted, and a miss names the held ids.
+    let logs = code_logs(&events);
+    let (probe_logs, _) = &logs[3]; // 3 executions for turn 1, probe is the 4th
+    let fetched = probe_logs.join("\n");
+    for (id, marker) in acks.iter().zip(["MARK-ONE", "MARK-TWO", "MARK-THREE"]) {
+        assert!(
+            fetched.contains(&format!("{id}=>")),
+            "id `{id}` is fetchable: {fetched}"
+        );
+        let line = probe_logs
+            .iter()
+            .find(|l| l.starts_with(&format!("{id}=>")))
+            .unwrap();
+        assert!(
+            line.contains(marker),
+            "id `{id}` holds its own call's program ({marker}): {line}"
+        );
+    }
+    let miss = probe_logs
+        .iter()
+        .find(|l| l.starts_with("MISS:"))
+        .expect("the unknown id was refused");
+    assert!(
+        miss.contains("no program is kept under the id `nope-such-id`"),
+        "the miss names the asked id: {miss}"
+    );
+    for id in &acks {
+        assert!(
+            miss.contains(id.as_str()),
+            "the miss names held id `{id}`: {miss}"
+        );
+    }
 }

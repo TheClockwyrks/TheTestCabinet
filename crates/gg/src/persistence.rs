@@ -289,16 +289,22 @@ impl PersistenceSetup {
 /// back. A file that can no longer be read — deleted, renamed, or moved since it was recorded — is
 /// skipped with a warning rather than failing the agent: the desk it was on is gone, which is a normal
 /// thing to come back to. Returns how many views were actually re-opened.
+///
+/// `Err` is a [program library](crate::programs::ProgramLibrary) that could not mint an id for a
+/// restored view's synthesized submission — gg's own defect, which the caller ends the run over the
+/// way it ends any setup fault, rather than resuming an agent whose desk gg could not honestly
+/// acknowledge.
 pub async fn restore_file_views(
     context: &mut ContextModel,
+    programs: &mut crate::programs::ProgramLibrary,
     views: &[OpenFileView],
     read_policy: Option<ReadPolicy>,
     tool_ctx: &ToolContext,
     language: GgProgramLanguage,
     emitter: &Emitter,
-) -> usize {
+) -> Result<usize, String> {
     if views.is_empty() {
-        return 0;
+        return Ok(0);
     }
     let already_open: BTreeSet<String> = context
         .open_file_views()
@@ -308,7 +314,7 @@ pub async fn restore_file_views(
     // Nothing to re-open a view *through*: a profile that configures no read policy is offered no
     // `read_file`, so the desk it is resuming was never assembled by reading files either.
     let Some(read_policy) = read_policy else {
-        return 0;
+        return Ok(0);
     };
     let reader = ReadFileTool::new(read_policy);
     let mut restored = 0;
@@ -340,18 +346,27 @@ pub async fn restore_file_views(
             // windows, not a single opening brief, and a per-view program keeps each assistant turn
             // paired with the view it produced even when a later read fails and is skipped.
             let call_id = format!("{RESTORED_CALL_PREFIX}-{index}");
+            let program = open_file_call(language, view);
+            // Acknowledged as the model's own submissions are, with the id the library issued it,
+            // and kept under that id as one of gg's opening programs (turn 0). A library that
+            // could not mint one is gg's defect, fatal the way a host fault is: the restore stops
+            // here and the caller ends the run, rather than resuming an agent whose desk gg could
+            // not honestly acknowledge.
+            let id = programs.issue_id().map_err(|exhausted| exhausted.message)?;
             context.push_assistant(
                 None,
                 vec![crate::completion::synthesized_submission(
-                    &call_id,
-                    &open_file_call(language, view),
+                    &call_id, &program,
                 )],
             );
             context.push_tool_result(
                 test_cabinet_core::gg::GgContextSource::ToolOutput,
                 &call_id,
-                crate::completion::SUBMIT_PROGRAM_ACK,
+                crate::completion::submit_program_ack(id.as_deref()),
             );
+            if let Some(id) = &id {
+                programs.record(id, 0, &program, true, None);
+            }
             let lines = ShownLines::of_read(outcome.data.as_ref());
             context.seed_file_view(
                 view.path.clone(),
@@ -383,7 +398,7 @@ pub async fn restore_file_views(
         );
         restored += 1;
     }
-    restored
+    Ok(restored)
 }
 
 /// Re-open `views` in `context` as the [text views](crate::context::ContextModel::open_text_view)

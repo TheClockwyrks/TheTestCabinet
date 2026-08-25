@@ -539,7 +539,7 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_rust_too() {
             &["programs", "session"],
             r####"    let history = programs::history()?;
     gg::log(history.len().to_string());
-    match programs::get(Some(2)) {
+    match programs::get("p2") {
         Ok(source) => gg::log(source),
         Err(failure) => gg::log(format!("{:?}", failure.code)),
     }
@@ -553,8 +553,8 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_rust_too() {
         true,
         canned_outcome,
     );
-    // A session that has run nothing has an empty history — never an error — and a turn it never
-    // kept a program for is a `NotFound` the program matches on in Rust's own idiom.
+    // A session that has run nothing has an empty history — never an error — and an id it never
+    // issued a program under is a `NotFound` the program matches on in Rust's own idiom.
     assert_eq!(logs(&outcome), ["0", "NotFound"]);
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
     assert!(
@@ -677,6 +677,7 @@ fn an_inherent_method_reaches_the_operation_it_is_an_alias_of() {
     gg::log(format!("{} {}", history[0].turn, history[0].source()?));
 "####,
         )),
+        "p3",
         3,
         "gg::log(\"the program that ran\");",
         canned_outcome,

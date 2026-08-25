@@ -52,6 +52,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_EXEC, CAPABILITY_FORK, GgRosterEntry, GgSubagentScope, GgTelemetryKind,
 };
 
+use crate::programs::ProgramLibrary;
 use crate::tools::{EXEC_TOOL, FORK_TOOL};
 
 // ---------------------------------------------------------------------------
@@ -84,6 +85,14 @@ pub(super) struct Handoff {
     /// `exec`, which the loop replaces with a machine's entry position when the target turns out to
     /// be a shell.
     pub(super) fsm: Option<FsmPosition>,
+    /// The predecessor's [program library](crate::programs), which a succession **moves** to the
+    /// successor: entries and issued ids together, so the successor can fetch the program its
+    /// predecessor wrote and never re-issues an id it once handed out.
+    ///
+    /// Declared [disabled](ProgramLibrary::disabled) — the call that declares a handoff is made from
+    /// inside a turn, where the library is on the other side of the api — and
+    /// [attached](Self::carrying) by the loop as the incarnation ends, where the library is in hand.
+    pub(super) programs: ProgramLibrary,
 }
 
 /// Why one agent instance handed off to another — the gg-side half of [`GgAgentTransitionKind`].
@@ -103,6 +112,13 @@ pub(super) enum HandoffReason {
 }
 
 impl Handoff {
+    /// This handoff carrying the outgoing incarnation's [program library](crate::programs) to its
+    /// successor.
+    pub(super) fn carrying(mut self, programs: ProgramLibrary) -> Self {
+        self.programs = programs;
+        self
+    }
+
     /// How this handoff names its destination in a refusal: the machine state when it has one, and
     /// the successor's profile otherwise.
     fn profile_state(&self) -> &str {
@@ -154,6 +170,13 @@ pub(super) struct Succession {
     /// The [machine](crate::fsm) state the predecessor was in, for the successor's own
     /// [`FsmState`](GgTelemetryKind::FsmState) event. `None` for a succession outside a machine.
     pub(super) from_state: Option<String>,
+    /// The [program library](crate::programs) the successor [adopts](ProgramLibrary::adopt):
+    /// **moved** from the predecessor by an exec or a machine edge, **cloned** from the forker by a
+    /// fork. It is not a module — nothing in a transfer plan names it, and it is not reported in
+    /// the opening note — but it crosses on the same terms as the modules do: the successor
+    /// resolves its own retention and id length from its own profile and then adopts what was
+    /// carried, and a successor whose profile disables the capability keeps nothing.
+    pub(super) programs: ProgramLibrary,
     /// How many turns the thread in [`modules`](Self::modules) has already spent.
     ///
     /// It numbers the successor's turns continuously (a carried `Turn #37` still means turn 37, so
@@ -293,6 +316,7 @@ pub(super) fn handle_transition(
             from: position.state().to_string(),
         },
         fsm: Some(next),
+        programs: ProgramLibrary::disabled(),
     });
     ToolOutcome::ok(
         format!(
@@ -351,6 +375,7 @@ pub(super) fn handle_exec(
             from: spawner.profile_id.clone(),
         },
         fsm: None,
+        programs: ProgramLibrary::disabled(),
     });
     ToolOutcome::ok(
         format!(
@@ -466,6 +491,10 @@ pub(super) struct ForkSource<'a> {
     pub history_id: &'a str,
     /// The modules the copy links or copies, per kind.
     pub caps: &'a CapabilityModules,
+    /// The forker's [program library](crate::programs), which the copy clones — entries and issued
+    /// ids alike, so each keeps fetching the programs written before the fork and neither re-issues
+    /// an id the other holds.
+    pub programs: &'a ProgramLibrary,
 }
 
 /// Start every [fork](handle_fork) this turn declared, now that the turn's tool results are all
@@ -506,6 +535,7 @@ pub(super) fn dispatch_forks(
             // The copy continues its forker's turn numbering, because it is holding the very turns
             // that numbering refers to.
             turn_base: turns_taken,
+            programs: source.programs.clone(),
         };
         let spec = ChildSpec::new(spawner.profile_id.clone(), fork.prompt.clone())
             .forked(fork.id.clone(), seed);

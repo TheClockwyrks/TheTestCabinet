@@ -199,8 +199,10 @@ diagnostic its own program earned.
 Every agent in this mode whose configured
 [opening turn](/gg/responses-as-code/views/#the-opening-turn) names anything it
 holds opens with a turn gg wrote in the protocol's own shape, a `submit_program`
-call carrying the program answered by the fixed `ok` acknowledgement, and gg
-runs that program. What the window then holds is
+call carrying the program acknowledged the way the model's own submissions are —
+with the id the [program library](/gg/program-library/) issued it, or the fixed
+`ok` when the agent keeps no library — and gg runs that program. What the window
+then holds is
 what the program's own calls placed there, so the model's first example of a
 well-formed reply is one that provably ran. The result may be cached across
 the agents of a run, keyed by the language and the source.

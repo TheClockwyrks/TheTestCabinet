@@ -39,27 +39,73 @@ export const SUBMIT_PROGRAM_TOOL = "submit_program";
 
 // One submission the reply made: the program it carried, or null for a call that
 // carried none (a missing or non-string `program` argument — gg answers it with a
-// refusal and runs nothing).
+// refusal and runs nothing), and the id the program library assigned it — the body of
+// the `tool` message that acknowledged the call, which is the handle `programs.get`
+// takes for the program. Null when there is no id: the call carried no program, the
+// agent has no program library (the acknowledgement is then the bare `ok`), or the
+// acknowledgement is not in the pool.
 export interface SubmittedProgram {
   callId: string;
   program: string | null;
+  id: string | null;
+}
+
+// The acknowledgement gg answers a call that carried no program library with — mirrors
+// gg's `SUBMIT_PROGRAM_ACK`.
+const SUBMIT_PROGRAM_ACK = "ok";
+
+// Whether this agent keeps a program library, read off the acknowledgements in its
+// pool: an agent with one is acknowledged with an id on every program-carrying call,
+// and an agent without one with the fixed `ok` on every one — so any program's
+// acknowledgement that differs from `ok` proves the library, and then even a literal
+// `ok` is an id (a real cuid2 at the 2-character length). The one transcript this
+// cannot decide is an agent whose every program-carrying ack reads `ok`: overwhelmingly
+// a library-less agent, so that is how it is shown.
+function libraryArmed(
+  pool: ReadonlyMap<string, PooledMessage>,
+  acks: ReadonlyMap<string, string>,
+): boolean {
+  for (const entry of pool.values()) {
+    if (entry.role !== "assistant") continue;
+    for (const call of entry.toolCalls) {
+      if (call.name !== SUBMIT_PROGRAM_TOOL) continue;
+      if (typeof call.args.program !== "string") continue;
+      const ack = acks.get(call.id)?.trim() ?? "";
+      if (ack !== "" && ack !== SUBMIT_PROGRAM_ACK) return true;
+    }
+  }
+  return false;
 }
 
 // Every `submit_program` call in a pooled reply, in the order the model wrote them —
 // gg runs all of them, sequentially, whether or not an earlier one failed, so every one
-// is a program the turn ran and every one is shown.
+// is a program the turn ran and every one is shown. The pool, when given, is where each
+// call's acknowledgement is read from, for the id it carries.
 export function submittedPrograms(
   message: PooledMessage | undefined,
+  pool?: ReadonlyMap<string, PooledMessage>,
 ): SubmittedProgram[] {
   if (!message) return [];
+  const acks = new Map<string, string>();
+  if (pool) {
+    for (const entry of pool.values()) {
+      if (entry.role === "tool" && entry.toolCallId != null) {
+        acks.set(entry.toolCallId, entry.content ?? "");
+      }
+    }
+  }
+  const armed = pool != null && libraryArmed(pool, acks);
   return message.toolCalls
     .filter((call) => call.name === SUBMIT_PROGRAM_TOOL)
     .map((call) => {
       const program = call.args.program;
-      return {
-        callId: call.id,
-        program: typeof program === "string" ? program : null,
-      };
+      const source = typeof program === "string" ? program : null;
+      const ack = acks.get(call.id)?.trim() ?? "";
+      const id =
+        source != null && ack !== "" && (armed || ack !== SUBMIT_PROGRAM_ACK)
+          ? ack
+          : null;
+      return { callId: call.id, program: source, id };
     });
 }
 
@@ -111,7 +157,7 @@ function ProgramEntry({
 }) {
   const response =
     program.responseId != null ? pool.get(program.responseId) : undefined;
-  const submissions = submittedPrograms(response);
+  const submissions = submittedPrograms(response, pool);
   const failed = program.status !== "success";
   return (
     <details className={panels.reqTurn}>
@@ -136,7 +182,9 @@ function ProgramEntry({
         {/* One section per `submit_program` call, in the order the model wrote them —
             all of them, because gg ran all of them. A turn that submitted exactly one
             is captioned "Program"; several are numbered so the error that follows can
-            be read against the chain it came from. */}
+            be read against the chain it came from. The id the program library assigned
+            each one follows the caption, so a `programs.get` in a later program can be
+            read back to the program it fetched. */}
         {submissions.length === 0 ? (
           <>
             <div className={panels.reqSectionLabel}>Program</div>
@@ -152,7 +200,15 @@ function ProgramEntry({
                 : `Program ${index + 1} of ${submissions.length}`;
             return (
               <div key={submission.callId}>
-                <div className={panels.reqSectionLabel}>{caption}</div>
+                <div className={panels.reqSectionLabel}>
+                  {caption}
+                  {submission.id != null && (
+                    <>
+                      {" · "}
+                      <code>{submission.id}</code>
+                    </>
+                  )}
+                </div>
                 {submission.program != null ? (
                   <ExpandablePre
                     content={submission.program}

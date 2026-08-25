@@ -355,6 +355,7 @@ pub(crate) fn subagent_result(result: gen::delegation::SubagentResult) -> Subage
 /// One program the library holds.
 pub(crate) fn program_summary(summary: gen::programs::ProgramSummary) -> ProgramSummary {
     ProgramSummary {
+        id: summary.id,
         turn: summary.turn,
         lines: summary.lines,
         chars: summary.chars,

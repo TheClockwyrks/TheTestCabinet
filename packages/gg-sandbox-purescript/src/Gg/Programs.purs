@@ -5,7 +5,7 @@
 -- | what ran, patch it with ordinary string work, hand it back.
 -- |
 -- | ```
--- | source <- Gg.Programs.get {}
+-- | source <- Gg.Programs.get "k3p9"
 -- | Gg.Programs.rerun (replaceAll (Pattern "opentext") (Replacement "openText") source)
 -- | ```
 module Gg.Programs
@@ -14,7 +14,6 @@ module Gg.Programs
   , sourceOf
   , rerun
   , ProgramSummary
-  , GetOptions
   ) where
 
 import Prelude
@@ -22,10 +21,6 @@ import Prelude
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Gg.Internal.Wire as Wire
-import Prim.Row (class Union)
-
--- | Which program to fetch. Optional; `{}` fetches the most recent one.
-type GetOptions = (turn :: Int)
 
 -- | One program that has already run, as the library's directory lists it.
 -- |
@@ -35,13 +30,15 @@ type GetOptions = (turn :: Int)
 -- |
 -- | # Fields
 -- |
--- | - `turn` — The turn it ran on, which is what fetches its source.
+-- | - `id` — The id its `submit_program` acknowledgement carried, which is what fetches its source.
+-- | - `turn` — The turn it ran on.
 -- | - `lines` — How many lines of source it was.
 -- | - `chars` — How many characters of source it was.
 -- | - `ok` — Whether it ran to its end, with no uncaught failure and no sandbox ceiling stopping it.
 -- | - `error` — The error it ended with, when it did not run to its end.
 type ProgramSummary =
-  { turn :: Int
+  { id :: String
+  , turn :: Int
   , lines :: Int
   , chars :: Int
   , ok :: Boolean
@@ -64,18 +61,19 @@ type ProgramSummary =
 -- |
 -- | # Returns
 -- |
--- | One summary per program already run, oldest first: the turn it ran on, how big it was, and
--- | whether it ran to its end. A session that has run nothing yet gets an empty array.
+-- | One summary per program already run, oldest first: its id, the turn it ran on, how big it was,
+-- | and whether it ran to its end. A session that has run nothing yet gets an empty array.
 history :: Effect (Array ProgramSummary)
 history = map programSummary <$> Wire.call "history" "programs" "Gg.Programs.history" []
 
--- | The source of one program that ran; with `{}`, the most recent one.
+-- | Fetch the exact source of one program that ran, by the id its acknowledgement carried.
 -- |
 -- | This is the first half of fixing a program without rewriting it: get what ran, patch it with
 -- | ordinary string work, and hand the result back to be run. What comes back is the program that
--- | **executed**, so when a turn's program was itself handed over, the answer is the program that
--- | ran rather than the few lines that asked for it — and fetch, patch and run compose turn after
--- | turn.
+-- | **executed**, so when a submission's program was itself handed over, the answer is the program
+-- | that ran rather than the few lines that asked for it — and fetch, patch and run compose turn
+-- | after turn. A rerun runs under the id of the submission that handed it over, so what that id
+-- | holds afterwards is the program that executed.
 -- |
 -- | # Operation
 -- |
@@ -83,8 +81,7 @@ history = map programSummary <$> Wire.call "history" "programs" "Gg.Programs.his
 -- |
 -- | # Arguments
 -- |
--- | - `options` — Which program to fetch; `{}` fetches the most recent one.
--- | - `options.turn` — The turn whose program to fetch, as the history reports it.
+-- | - `id` — The program's id, as its acknowledgement carried it and as the history reports it.
 -- |
 -- | # Returns
 -- |
@@ -92,18 +89,14 @@ history = map programSummary <$> Wire.call "history" "programs" "Gg.Programs.his
 -- |
 -- | # Throws
 -- |
--- | `NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that
--- | the library has dropped it.
-get
-  :: forall given rest
-   . Union given rest GetOptions
-  => Record given
-  -> Effect String
-get options = Wire.call "get" "programs" "Gg.Programs.get" [ Wire.pick "turn" options ]
+-- | `NotFound`, naming the ids that are held, for an id this agent was never issued or one whose
+-- | program is old enough that the library has dropped it.
+get :: String -> Effect String
+get id = Wire.call "get" "programs" "Gg.Programs.get" [ Wire.wire id ]
 
 -- | Fetch the source of one program the history listed.
 -- |
--- | `Gg.Programs.get` with the turn already taken out of the summary, for the common case where the
+-- | `Gg.Programs.get` with the id already taken out of the summary, for the common case where the
 -- | directory entry that named the program is the thing in hand. A summary describes a program's
 -- | shape and never its text, so this is how the one worth patching is read.
 -- |
@@ -121,21 +114,21 @@ get options = Wire.call "get" "programs" "Gg.Programs.get" [ Wire.pick "turn" op
 -- |
 -- | # Throws
 -- |
--- | `NotFound` when the library has since dropped that turn.
+-- | `NotFound` when the library has since dropped that program.
 sourceOf :: ProgramSummary -> Effect String
-sourceOf program = get { turn: program.turn }
+sourceOf program = get program.id
 
 -- | Hand gg a program to run in place of this one.
 -- |
--- | This program finishes, then gg compiles and runs the given source as this turn's program. Paired
--- | with a fetch it fixes a program without re-emitting it. Nothing is undone: every call this
--- | program already made stands, and the program that runs next sees the world this one left behind,
--- | so handing over comes before work that should not be done twice.
+-- | This program finishes, then gg compiles and runs the given source as this submission's program,
+-- | under the same id. Paired with a fetch it fixes a program without re-emitting it. Nothing is
+-- | undone: every call this program already made stands, and the program that runs next sees the
+-- | world this one left behind, so handing over comes before work that should not be done twice.
 -- |
 -- | The first call stands, because a silently replaced program is a change nobody can see. A program
 -- | that then fails cancels the hand-over along with everything else it decided, and the turn ends as
--- | an ordinary error. Chains are bounded: one hand-over per turn, and the fixed program does the
--- | work.
+-- | an ordinary error. Chains are bounded: a submission runs at most four programs, this one plus
+-- | three handed over, and the fixed program does the work.
 -- |
 -- | # Operation
 -- |
@@ -147,7 +140,7 @@ sourceOf program = get { turn: program.turn }
 -- |
 -- | # Throws
 -- |
--- | `Refused` for a second hand-over in one turn, and `InvalidArgument` for a blank source.
+-- | `Refused` for a second hand-over from the same program, and `InvalidArgument` for a blank source.
 rerun :: String -> Effect Unit
 rerun source = Wire.call_ "rerun" "programs" "Gg.Programs.rerun" [ Wire.wire source ]
 
@@ -155,7 +148,8 @@ rerun source = Wire.call_ "rerun" "programs" "Gg.Programs.rerun" [ Wire.wire sou
 -- | One program in the library's directory.
 programSummary :: Wire.Wire -> ProgramSummary
 programSummary value =
-  { turn: Wire.field "turn" value
+  { id: Wire.field "id" value
+  , turn: Wire.field "turn" value
   , lines: Wire.field "lines" value
   , chars: Wire.field "chars" value
   , ok: Wire.field "ok" value

@@ -517,7 +517,7 @@ import gg
 let history = try programs.history()
 gg.log("\(history.count)")
 do {
-    gg.log(try programs.get(turn: 2))
+    gg.log(try programs.get("k3p9"))
 } catch let failure as core.ApiError {
     gg.log("\(failure.code)")
 }
@@ -530,8 +530,8 @@ try session.requestChanges(["widen the test", "name the file"])
         true,
         canned_outcome,
     );
-    // A session that has run nothing has an empty history — never a failure — and a turn it never
-    // kept a program for is a `.notFound` the program catches in Swift's own idiom.
+    // A session that has run nothing has an empty history — never a failure — and an id it never
+    // issued a program under is a `.notFound` the program catches in Swift's own idiom.
     assert_eq!(logs(&outcome), ["0", "notFound"]);
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
     assert!(

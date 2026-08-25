@@ -46,6 +46,11 @@ inherited, along with whatever the `prompt` said. An agent left to discover an
 empty task list by calling `add_task` has spent a turn learning something a
 sentence could have said.
 
+The [program library](/gg/program-library/) crosses with them: an `exec` moves
+the predecessor's entries and issued ids to the successor, which re-resolves its
+retention and id length from its own profile and keeps nothing if that profile
+disables the capability.
+
 The system prompt is not on that table, because it never crosses. It describes
 the agent it was rendered for: its toolset, its roster, its capability prose, and
 the calls that end its session. The prompt is not a message in the thread at all.
@@ -134,6 +139,10 @@ Memories follow the forker's [scope](/gg/memories/):
 | `read-only` | Linked to the forker's instance; the copy may not write it, because its own profile says so |
 
 Every scope that links agents at all stays linked across a fork.
+
+The [program library](/gg/program-library/) is cloned, entries and issued ids
+alike, so each copy keeps fetching the programs written before the fork and
+neither re-issues an id the other holds.
 
 The copy's opening message names the agent and the turn it was forked from, says
 the original is still running its own copy of that conversation in parallel, and

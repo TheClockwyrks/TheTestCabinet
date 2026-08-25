@@ -11,11 +11,14 @@ use super::super::test_cabinet::gg::types::ErrorCode;
 use super::*;
 use crate::sandbox::fake::{CallLog, FakeOperationApi, membrane_from, membrane_from_scope};
 
-/// A membrane state whose library already holds `programs` (turn, source).
-fn membrane_holding(log: &CallLog, programs: &[(u64, &str)]) -> MembraneState<FakeOperationApi> {
+/// A membrane state whose library already holds `programs` (id, turn, source).
+fn membrane_holding(
+    log: &CallLog,
+    programs: &[(&str, u64, &str)],
+) -> MembraneState<FakeOperationApi> {
     let mut api = FakeOperationApi::new(log);
-    for (turn, source) in programs {
-        api = api.with_program(*turn, source);
+    for (id, turn, source) in programs {
+        api = api.with_program(id, *turn, source);
     }
     membrane_from(api)
 }
@@ -28,12 +31,14 @@ fn membrane_without_a_library(log: &CallLog) -> MembraneState<FakeOperationApi> 
 #[test]
 fn history_lists_the_shape_of_every_kept_program() {
     let log = CallLog::default();
-    let mut state = membrane_holding(&log, &[(1, "one"), (2, "two\nlines")]);
+    let mut state = membrane_holding(&log, &[("aaaa", 1, "one"), ("bbbb", 2, "two\nlines")]);
 
     let history = state.history().expect("this agent keeps a library");
 
     assert_eq!(history.len(), 2);
+    assert_eq!(history[0].id, "aaaa");
     assert_eq!(history[0].turn, 1);
+    assert_eq!(history[1].id, "bbbb");
     assert_eq!(history[1].turn, 2);
     assert_eq!(history[1].lines, 2);
     assert!(history[1].ok);
@@ -66,7 +71,7 @@ fn every_library_call_is_refused_without_the_capability() {
 
     let refusals = [
         state.history().err(),
-        state.get(None).err(),
+        state.get("aaaa".to_string()).err(),
         state.rerun("fs.writeFile('a.ts', 'x');".to_string()).err(),
     ];
 
@@ -119,23 +124,27 @@ fn the_capability_is_checked_before_the_arguments() {
 }
 
 #[test]
-fn get_returns_the_most_recent_program_with_no_turn() {
+fn get_returns_the_program_held_under_the_id() {
     let log = CallLog::default();
-    let mut state = membrane_holding(&log, &[(1, "first"), (2, "second")]);
+    let mut state = membrane_holding(&log, &[("aaaa", 1, "first"), ("bbbb", 2, "second")]);
 
-    assert_eq!(state.get(None).unwrap(), "second");
-    assert_eq!(state.get(Some(1)).unwrap(), "first");
+    assert_eq!(state.get("bbbb".to_string()).unwrap(), "second");
+    assert_eq!(state.get("aaaa".to_string()).unwrap(), "first");
 }
 
 #[test]
-fn a_turn_the_library_does_not_hold_is_not_found() {
+fn an_id_the_library_does_not_hold_is_not_found_naming_what_is_held() {
     let log = CallLog::default();
-    let mut state = membrane_holding(&log, &[(1, "first")]);
+    let mut state = membrane_holding(&log, &[("aaaa", 1, "first")]);
 
-    let error = state.get(Some(9)).unwrap_err();
+    let error = state.get("zzzz".to_string()).unwrap_err();
 
     assert_eq!(error.code, ErrorCode::NotFound);
-    assert!(error.message.contains('1'), "{}", error.message);
+    assert!(
+        error.message.contains("`aaaa` (turn 1)"),
+        "{}",
+        error.message
+    );
 }
 
 #[test]

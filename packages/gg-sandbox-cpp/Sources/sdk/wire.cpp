@@ -314,6 +314,7 @@ docs::doc_search lift_doc_search(test_cabinet_gg_docs_doc_search_t& wire) {
 
 programs::program_summary lift_program_summary(const test_cabinet_gg_programs_program_summary_t& wire) {
   programs::program_summary summary;
+  summary.id = lift(wire.id);
   summary.turn = wire.turn;
   summary.lines = wire.lines;
   summary.chars = wire.chars;

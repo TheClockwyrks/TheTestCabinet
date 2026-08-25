@@ -45,6 +45,7 @@ impl<A: OperationApi> ProgramsHost for MembraneState<A> {
                 .program_history()
                 .into_iter()
                 .map(|summary| ProgramSummary {
+                    id: summary.id,
                     // The library counts turns in `u64` because a session's turn numbers are the
                     // context window's, which are; the membrane carries `u32`, which no real session
                     // approaches. Saturating rather than wrapping keeps a nonsense value out of a
@@ -59,12 +60,12 @@ impl<A: OperationApi> ProgramsHost for MembraneState<A> {
         })
     }
 
-    /// The source of one program as it was run, or `not-found` naming the turns that are held.
-    fn get(&mut self, turn: Option<u32>) -> Result<String, ApiError> {
+    /// The source of one program as it was run, or `not-found` naming the ids that are held.
+    fn get(&mut self, id: String) -> Result<String, ApiError> {
         self.recorded(PROGRAMS_GET, |state, rec| {
             state
                 .api(rec)
-                .program_source(turn.map(u64::from))
+                .program_source(&id)
                 .map_err(|refusal| ApiError {
                     code: super::error_code(Some(refusal.failure)),
                     operation: PROGRAMS_GET.key.to_string(),
@@ -98,7 +99,7 @@ impl<A: OperationApi> ProgramsHost for MembraneState<A> {
             if state.rerun.is_some() {
                 return Err(refused(
                     ErrorCode::Refused,
-                    "a program was already handed over this turn",
+                    "this program already handed one over",
                 ));
             }
             state.rerun = Some(source);
@@ -113,7 +114,7 @@ impl<A: OperationApi> ProgramsHost for MembraneState<A> {
 /// between the two kinds of refusal this file produces. The roster answers "what did the model reach
 /// for that this run does not offer it" — which is what the bracket's own
 /// [gate](MembraneState::granted) records, and what a comparison of two configurations counts. A blank
-/// source, or a second hand-over in one turn, is neither: the call was offered and was made, and
+/// source, or a second hand-over from one program, is neither: the call was offered and was made, and
 /// what it says about the model is nothing such a comparison is measuring. The throw the program sees is
 /// the whole report, which is what it is for — the model reads it, drops the second hand-over, and
 /// carries on.

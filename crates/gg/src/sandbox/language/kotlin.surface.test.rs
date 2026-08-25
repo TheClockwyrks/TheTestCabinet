@@ -21,7 +21,8 @@ use serde_json::{Value, json};
 
 use super::compile::{compile_module, compile_program};
 use super::substrate::{
-    evaluate_as, evaluate_closing_docviews, logs, prepare, prepare_with, trap, whole,
+    evaluate_as, evaluate_closing_docviews, evaluate_with_program, logs, prepare, prepare_with,
+    trap, whole,
 };
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::export_names;
@@ -463,7 +464,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         "val history = gg.programs.history()\n\
          gg.log(history.size.toString())\n\
          try {\n\
-         \x20   gg.programs.get(2)\n\
+         \x20   gg.programs.get(\"zzzz\")\n\
          } catch (failure: gg.core.ApiError) {\n\
          \x20   gg.log(failure.code.toString())\n\
          }\n\
@@ -474,8 +475,8 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         true,
         canned_outcome,
     );
-    // A session that has run nothing has an empty history — never an error — and a turn it never kept
-    // a program for is a `NOT_FOUND` the program catches in Kotlin's own idiom.
+    // A session that has run nothing has an empty history — never an error — and an id it never
+    // issued a program under is a `NOT_FOUND` the program catches in Kotlin's own idiom.
     assert_eq!(logs(&outcome), ["0", "NOT_FOUND"]);
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
     assert!(
@@ -533,7 +534,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          gg.views.openText(\"scratch\", \"body\")\n\
          gg.log(gg.views.close(\"scratch\").toString())\n\
          try {\n\
-         \x20   gg.programs.ProgramSummary(2, 1, 1, true, null).source()\n\
+         \x20   gg.programs.ProgramSummary(\"zzzz\", 2, 1, 1, true, null).source()\n\
          } catch (failure: gg.core.ApiError) {\n\
          \x20   gg.log(failure.code.toString())\n\
          }\n",
@@ -558,6 +559,23 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         log.args("wait_for_issue"),
         Some(json!({ "issueId": "EPIC-1" }))
     );
+
+    // The fourth member hangs off the program library, which is bought by a capability rather than
+    // by a tool, and answers out of a history a fresh double has none of — so it needs one seeded.
+    // The summary carries the id its acknowledgement did, and `source()` fetches by that id rather
+    // than by the turn, which is kept for orientation only.
+    let (outcome, _log) = evaluate_with_program(
+        &prepare(&whole(
+            "",
+            "val summary = gg.programs.history()[0]\n\
+             gg.log(\"${summary.id} ${summary.turn} ${summary.source()}\")\n",
+        )),
+        "p3",
+        3,
+        "gg.log(\"the program that ran\")",
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["p3 3 gg.log(\"the program that ran\")"]);
     assert_eq!(
         log.args("read_memory"),
         Some(json!({ "name": "build-commands" }))

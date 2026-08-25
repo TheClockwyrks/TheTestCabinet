@@ -551,7 +551,7 @@ var history = Programs.History();
 Console.WriteLine(history.Count);
 try
 {
-    Console.WriteLine(Programs.Get(2));
+    Console.WriteLine(Programs.Get("zzzz"));
 }
 catch (ApiException failure)
 {
@@ -566,8 +566,8 @@ Session.RequestChanges("widen the test", "name the file");
         true,
         canned_outcome,
     );
-    // A session that has run nothing has an empty history — never a failure — and a turn it never
-    // kept a program for is a `NotFound` the program catches in C#'s own idiom.
+    // A session that has run nothing has an empty history — never a failure — and an id it never
+    // issued a program under is a `NotFound` the program catches in C#'s own idiom.
     assert_eq!(logs(&outcome), ["0", "NotFound"]);
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
     assert!(
@@ -695,6 +695,7 @@ var summary = Programs.History()[0];
 Console.WriteLine($"{summary.Turn} {summary.Source()}");
 "####,
         ),
+        "p3",
         3,
         "Console.WriteLine(\"the program that ran\");",
         canned_outcome,

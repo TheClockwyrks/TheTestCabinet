@@ -437,8 +437,12 @@ single results selector and keep superseding each other.
 The program runs against the agent's real capability grants and sandbox limits,
 with no deadline and no code modules, and it is prepared through a cache keyed
 by language and source so a run with a dozen agents compiles it once. It is not
-an agent turn: it consumes no turn index, no usage and no cost, records no
-program-library entry, and emits no turn or execution event.
+an agent turn: it consumes no turn index, no usage and no cost, and emits no
+turn or execution event. It is acknowledged and kept the way the model's own
+submissions are: the [program library](/gg/program-library/) issues it an id,
+the acknowledgement carries that id, and the program is recorded under it as
+one of gg's opening programs, on turn 0. An agent that keeps no library issues
+nothing, records nothing, and answers with the fixed `ok`.
 
 Seeding happens once, on a fresh window, immediately after the build prompt and
 before every other opening step. A window carried across an `exec` succession or

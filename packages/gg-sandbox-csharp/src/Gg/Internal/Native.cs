@@ -373,6 +373,7 @@ internal static class Native
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool History(
+        out string[] ids,
         out uint[] turns,
         out uint[] lines,
         out uint[] chars,
@@ -380,7 +381,7 @@ internal static class Native
         out string[] errors);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
-    internal static extern bool GetProgram(int turn, out string source);
+    internal static extern bool GetProgram(string id, out string source);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool Rerun(string source);

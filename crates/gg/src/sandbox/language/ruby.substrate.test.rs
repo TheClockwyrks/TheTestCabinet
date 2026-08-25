@@ -143,9 +143,52 @@ fn evaluate(
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
+    evaluate_through(program, operations, modules, ending, library, |log| {
+        FakeOperationApi::with(log, responder)
+    })
+}
+
+/// [`run_as`] for an agent that keeps a program library with `source` already recorded under `id`
+/// on `turn`, every operation granted and no ending.
+///
+/// The one thing a library-holding agent cannot be driven to without it: `GG::Programs.get` and the
+/// `ProgramSummary#source` method that is a second spelling of it both answer out of a history a
+/// fresh double has none of, so a test that seeded nothing can only ever observe a `:not_found`.
+fn run_with_program(
+    ruby: &str,
+    id: &str,
+    turn: u64,
+    source: &str,
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    evaluate_through(
+        &prepare(ruby),
+        &all_operations(),
+        &[],
+        RunEnding::None,
+        true,
+        |log| FakeOperationApi::with(log, responder).with_program(id, turn, source),
+    )
+}
+
+/// What [`evaluate`] and [`run_with_program`] are: one evaluation, with everything the scope
+/// carries stated.
+///
+/// The double is BUILT here rather than passed in, because the log it writes to is created here and
+/// the two must be the same one. `build` takes that log and hands back the api, which is what lets a
+/// caller seed the double — a program library with something in it — without a second parameter for
+/// every thing a caller might seed.
+fn evaluate_through(
+    program: &str,
+    operations: &[crate::sandbox::operations::OperationId],
+    modules: &[CodeModule],
+    ending: RunEnding,
+    library: bool,
+    build: impl FnOnce(&CallLog) -> FakeOperationApi,
+) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::AMPLE;
     let log = CallLog::default();
-    let api = FakeOperationApi::with(&log, responder);
+    let api = build(&log);
     // Both of these before the store exists, for the reason this function's documentation gives.
     let component = component();
     let linker = linker::<FakeOperationApi>().expect("the production linker builds");
@@ -1145,6 +1188,56 @@ GG::Session.request_changes("widen the test", "name the file")
         outcome.result
     );
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
+
+    // A library with something in it: the summary carries the id its acknowledgement did, `get`
+    // takes that id as a String and answers the source that ran, `#source` is the same fetch with
+    // the id already supplied, and an id this agent was never issued is a `:not_found` that names
+    // the ones it holds.
+    let (outcome, log) = run_with_program(
+        r##"
+require "gg"
+ran = GG::Programs.history
+first = ran.first
+puts "#{ran.size} #{first.id} #{first.id.class} #{first.turn} #{first.ok?} #{first.error.inspect}"
+source = GG::Programs.get("p3")
+puts source.inspect
+puts (first.source == source).inspect
+begin
+  GG::Programs.get("p4")
+rescue GG::Core::ApiError => failure
+  puts "#{failure.operation} #{failure.code == GG::Core::ApiErrorCode::NOT_FOUND} #{failure.message.include?("p3")}"
+end
+GG::Programs.rerun(source.sub("ran", "walked"))
+"##,
+        "p3",
+        3,
+        "puts 'the program that ran'",
+        canned_outcome,
+    );
+    assert!(
+        matches!(&outcome.result, Ok(result) if result.error.is_none()),
+        "{:?}",
+        outcome.result
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "1 p3 String 3 true nil",
+            "\"puts 'the program that ran'\"",
+            "true",
+            "get true true",
+        ]
+    );
+    assert_eq!(
+        outcome.rerun.as_deref(),
+        Some("puts 'the program that walked'"),
+        "the patched program is what gg was handed"
+    );
+    assert!(
+        log.calls().is_empty(),
+        "the library is answered by the membrane, not by a tool: {:?}",
+        log.calls()
+    );
 
     // The one program gg **generates** rather than quotes: the on-use script of every built-in
     // family skill, written by this arm's own

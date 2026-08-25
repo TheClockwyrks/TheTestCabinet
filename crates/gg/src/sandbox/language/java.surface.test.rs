@@ -534,7 +534,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
     let (outcome, _log) = run_as(
         "List<Programs.ProgramSummary> history = Programs.history();\n\
          Gg.log(String.valueOf(history.size()));\n\
-         try { Programs.get(2); }\n\
+         try { Programs.get(\"p2\"); }\n\
          catch (ApiError failure) { Gg.log(failure.code().toString()); }\n\
          Programs.rerun(\"Gg.log(\\\"again\\\");\");\n\
          Session.requestChanges(\"widen the test\", \"name the file\");\n",
@@ -543,8 +543,8 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
         true,
         canned_outcome,
     );
-    // A session that has run nothing has an empty history — never an error — and a turn it never
-    // kept a program for is a `NOT_FOUND` the program catches in Java's own idiom.
+    // A session that has run nothing has an empty history — never an error — and an id it was never
+    // issued is a `NOT_FOUND` the program catches in Java's own idiom.
     assert_eq!(logs(&outcome), ["0", "NOT_FOUND"]);
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
     assert!(
@@ -596,7 +596,7 @@ fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_ar
          Views.openText(\"scratch\", \"body\");\n\
          Gg.log(String.valueOf(Views.close(\"scratch\")));\n\
          try {\n\
-         \x20   new Programs.ProgramSummary(2, 1, 1, true, Optional.empty()).source();\n\
+         \x20   new Programs.ProgramSummary(\"p2\", 2, 1, 1, true, Optional.empty()).source();\n\
          } catch (ApiError failure) {\n\
          \x20   Gg.log(String.valueOf(failure.code()));\n\
          }\n",
@@ -976,7 +976,7 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
         );
     }
     assert_eq!(
-        groups, 14,
+        groups, 13,
         "the entries this arm expresses as an overload group rather than as a default argument"
     );
 

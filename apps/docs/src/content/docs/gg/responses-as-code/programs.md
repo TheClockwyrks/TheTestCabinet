@@ -64,11 +64,13 @@ submitting prose. A reply that makes **no** `submit_program` call at all runs
 nothing and is an error turn of its own (`missing_completion_no_program`).
 
 Each call is acknowledged in the transcript by its own `tool` result, pushed
-directly after the assistant message and before anything runs — `ok` for a call
-that carried a program (a receipt, never a verdict), the reason when a call
-carried no `program` string, a redirect when the model called a tool this mode
-does not offer. What a program produces lands beneath the acknowledgements as
-its own messages.
+directly after the assistant message and before anything runs. A call that
+carried a program is answered with the id the [program
+library](/gg/program-library/) assigned it (a receipt, never a verdict; the
+fixed `ok` for an agent that keeps no library), a call
+that carried no `program` string with the reason, and a call to a tool this mode
+does not offer with a redirect. What a program produces lands beneath the
+acknowledgements as its own messages.
 
 ## Several submissions in one reply
 
@@ -97,8 +99,9 @@ stands.
 3. Instantiate the guest and evaluate the program. Each call the program
    composes crosses the typed membrane into gg's tools, is gated, dispatched
    and streamed as an ordinary `ToolCall`/`ToolResult` pair.
-4. Record the source that executed, with the turn's verdict, for an agent whose
-   profile enabled the [program library](/gg/program-library/).
+4. Record the source that executed, with its verdict, under the submission's
+   id, for an agent whose profile enabled the
+   [program library](/gg/program-library/).
 5. Report to the operator, and emit the program's `code_execution` event. The
    event is emitted whether the program succeeded or not, including one whose
    source never compiled.
@@ -172,11 +175,11 @@ calling it, once that one has finished. Everything the handing-over program
 already did stands, and the program that runs next sees the world it left
 behind. The first hand-over in a turn stands and a second is refused.
 
-One turn runs at most four programs: the model's own, plus up to three handed
-over. The turn's outcome and its ending come from the last
-program in the chain, and that is the source the program library records. The
-calls dispatched, the views opened, the lines logged, the module errors and the
-elapsed and compile time accumulate across every link.
+One submission runs at most four programs: the model's own, plus up to three
+handed over. The submission's outcome and its ending come from the last program
+in the chain, and that is the source the program library records under the
+submission's id. The calls dispatched, the views opened, the lines logged, the
+module errors and the elapsed and compile time accumulate across every link.
 
 gg declines a hand-over for three reasons, and each earns a `Notice` of its own:
 the handing-over program failed afterwards, it also ended the session, or the

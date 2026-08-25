@@ -253,7 +253,7 @@ describe("programs file", () => {
   it("reads a turn's programs from its submit_program calls, never its text", () => {
     const { messagePool } = reduceGgEvents(codeTurn(1, "ok()", { ok: true }));
     expect(submittedPrograms(messagePool.get("m_reply1"))).toEqual([
-      { callId: "call_1_0", program: "ok()" },
+      { callId: "call_1_0", program: "ok()", id: null },
     ]);
     // A reply whose text is not a program and whose calls are something else.
     expect(
@@ -267,7 +267,98 @@ describe("programs file", () => {
         ],
         images: [],
       }),
-    ).toEqual([{ callId: "c2", program: null }]);
+    ).toEqual([{ callId: "c2", program: null, id: null }]);
+  });
+
+  // The acknowledgement a call gets is the id the program library assigned the program
+  // — the handle `programs.get` takes — or the bare `ok` under an agent with no library.
+  // The id is read off the pooled `tool` message answering the call, and shown beside
+  // the program so a later fetch can be read back to what it fetched. An agent with a
+  // library is acknowledged with an id on every program-carrying call, so once any ack
+  // differs from `ok` the library is proven and even a literal `ok` ack is an id (a
+  // real cuid2 at the 2-character length).
+  it("reads each program's id from its acknowledgement and shows it", () => {
+    const ack = (callId: string, body: string): HarnessEvent =>
+      gg({
+        type: "context_message",
+        id: `m_ack_${callId}`,
+        role: "tool",
+        content: body,
+        toolCalls: [],
+        toolCallId: callId,
+        images: [],
+        tokens: 1,
+      } as GgTelemetryKind);
+    const state = reduceGgEvents([
+      ...codeTurn(1, ["first();", "second();"], { ok: true }),
+      ack("call_1_0", "k3p9"),
+      ack("call_1_1", "ok"),
+    ]);
+    expect(submittedPrograms(state.messagePool.get("m_reply1"))).toEqual([
+      { callId: "call_1_0", program: "first();", id: null },
+      { callId: "call_1_1", program: "second();", id: null },
+    ]);
+    expect(
+      submittedPrograms(state.messagePool.get("m_reply1"), state.messagePool),
+    ).toEqual([
+      { callId: "call_1_0", program: "first();", id: "k3p9" },
+      { callId: "call_1_1", program: "second();", id: "ok" },
+    ]);
+    // An agent whose every acknowledgement reads `ok` keeps no library: none of its
+    // programs has an id.
+    const libraryless = reduceGgEvents([
+      ...codeTurn(1, ["first();", "second();"], { ok: true }),
+      ack("call_1_0", "ok"),
+      ack("call_1_1", "ok"),
+    ]);
+    expect(
+      submittedPrograms(
+        libraryless.messagePool.get("m_reply1"),
+        libraryless.messagePool,
+      ),
+    ).toEqual([
+      { callId: "call_1_0", program: "first();", id: null },
+      { callId: "call_1_1", program: "second();", id: null },
+    ]);
+    // A call that carried no program is refused, never issued an id — whatever the
+    // acknowledgement says.
+    expect(
+      submittedPrograms(
+        {
+          id: "m",
+          role: "assistant",
+          content: "",
+          toolCalls: [{ id: "c2", name: "submit_program", args: {} }],
+          images: [],
+        },
+        new Map([
+          [
+            "m_ack_c2",
+            {
+              id: "m_ack_c2",
+              role: "tool",
+              content: "The call carried no program.",
+              toolCalls: [],
+              toolCallId: "c2",
+              images: [],
+            },
+          ],
+        ]),
+      ),
+    ).toEqual([{ callId: "c2", program: null, id: null }]);
+
+    render(
+      <ProgramsView
+        programs={state.programs}
+        pool={state.messagePool}
+        live={false}
+      />,
+    );
+    const row = screen.getByRole("group");
+    expect(within(row).getByText("k3p9")).toBeInTheDocument();
+    expect(within(row).getByText(/^Program 1 of 2/)).toBeInTheDocument();
+    // The `ok` beside a proven library is an id, and shows as one.
+    expect(within(row).getByText("ok")).toBeInTheDocument();
   });
 
   it("shows every program a reply submitted, in order", () => {

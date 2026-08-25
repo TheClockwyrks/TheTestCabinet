@@ -3601,14 +3601,20 @@ async fn drive_agent(
         // A successor's set is not built here at all: it was [transferred](crate::modules::transfer)
         // on the far side of the handoff, where the outgoing instance's stream was still live to
         // report what it carried.
+        // The program library a succession or a fork carried, handed to the loop beside the
+        // opening so the successor can adopt it once it has resolved its own retention.
+        let mut carried_programs: Option<crate::programs::ProgramLibrary> = None;
         let (mut modules, opening) = match succession.take() {
-            Some(succession) => (
-                succession.modules,
-                Opening::Carried {
-                    note: succession.note,
-                    history: succession.history,
-                },
-            ),
+            Some(succession) => {
+                carried_programs = Some(succession.programs);
+                (
+                    succession.modules,
+                    Opening::Carried {
+                        note: succession.note,
+                        history: succession.history,
+                    },
+                )
+            }
             None => {
                 // This profile's own catalogue: the module set about to be resolved is this
                 // agent's, and so is the library it reads from.
@@ -4163,6 +4169,7 @@ async fn drive_agent(
                     },
                     ending_role,
                     opening,
+                    carried_programs: carried_programs.take(),
                     turn_base: turns_taken,
                     replay: orch.replay.clone(),
                 },
@@ -4377,6 +4384,9 @@ async fn drive_agent(
             history: report.carries(ModuleKind::History),
             from_state: handoff.reason.departed_state(),
             turn_base: turns_taken,
+            // Moved, not cloned: the outgoing incarnation is over, and its library is the
+            // successor's now.
+            programs: handoff.programs,
         });
         next_client = successor_client;
         let successor = agent.succeeding(successor_id, successor_profile_id, successor_fsm);
@@ -6380,6 +6390,7 @@ impl Agent {
             hooks,
             ending_role,
             opening,
+            carried_programs,
             turn_base,
             replay,
         } = setup;
@@ -6416,6 +6427,11 @@ impl Agent {
             profile,
             &mut crate::validate::LaunchReport::Discarding,
         );
+        // What a succession moved here, or a fork cloned: adopted under **this** profile's
+        // retention and id length, and adopted into nothing when this profile keeps no library.
+        if let Some(carried) = carried_programs {
+            programs.adopt(carried);
+        }
         // **What this agent was granted on the API surface**, resolved once for the whole session
         // and handed to every reader of it: the documentation runtime below, the prompt's API
         // section, and the per-turn code scope the membrane builds its own grant from. Three
@@ -6583,6 +6599,7 @@ impl Agent {
             match crate::bootstrap::seed_bootstrap(
                 context,
                 &mut docs,
+                &mut programs,
                 crate::bootstrap::BootstrapAgent {
                     opening_turn: &profile.opening_turn,
                     capabilities: &granted_capabilities,
@@ -6692,6 +6709,7 @@ impl Agent {
             && !carried
             && let Err(detail) = autoload_specifications(
                 context,
+                &mut programs,
                 provided_files,
                 tool_ctx,
                 code.language,
@@ -6715,15 +6733,22 @@ impl Agent {
         // views, which are the thing nothing else could reconstruct, sit closest to the tail.
         if persistence.enabled() && !carried {
             let desk = persistence.restored();
-            let files = crate::persistence::restore_file_views(
+            let files = match crate::persistence::restore_file_views(
                 context,
+                &mut programs,
                 &desk.files,
                 read_policy,
                 tool_ctx,
                 code.language,
                 emitter,
             )
-            .await;
+            .await
+            {
+                Ok(files) => files,
+                // The program library could not mint an id for a restored view's synthesized
+                // submission — gg's own defect, fatal the way a host fault is.
+                Err(detail) => return setup_broke(self, emitter, &limits, turn_base, detail),
+            };
             let texts = crate::persistence::restore_text_views(context, &desk.texts);
             // Last, because documentation is the least of the three a model needs at the tail: the
             // material it was working *on* sits closest to where it resumes reading.
@@ -7564,15 +7589,33 @@ impl Agent {
                 let mut submissions: Vec<code::SubmittedProgram> = Vec::new();
                 for call in &response.tool_calls {
                     if call.name == completion::SUBMIT_PROGRAM_TOOL {
-                        let submission = code::submitted_program(call);
-                        context.push_tool_result(
-                            GgContextSource::ToolOutput,
-                            &call.id,
-                            match &submission.program {
-                                Ok(_) => completion::SUBMIT_PROGRAM_ACK.to_string(),
-                                Err(why) => why.clone(),
+                        let mut submission = code::submitted_program(call);
+                        // A call that carried a program is issued its id **here**, before it runs:
+                        // the acknowledgement's body is the id, so the receipt the model reads is
+                        // the handle `programs.get` takes for the program. A call that carried
+                        // none is issued nothing and answered with why. A library that could not
+                        // mint one hands the turn a receipt the code turn ends the session on; the
+                        // transcript is still answered, because the request must stay a
+                        // conversation even on the way out.
+                        let body = match &submission.program {
+                            Ok(_) => match programs.issue_id() {
+                                Ok(id) => {
+                                    let body = completion::submit_program_ack(id.as_deref());
+                                    submission.receipt = id.map_or(
+                                        code::ProgramReceipt::Unkept,
+                                        code::ProgramReceipt::Id,
+                                    );
+                                    body
+                                }
+                                Err(exhausted) => {
+                                    submission.receipt =
+                                        code::ProgramReceipt::Exhausted(exhausted.message);
+                                    completion::SUBMIT_PROGRAM_ACK.to_string()
+                                }
                             },
-                        );
+                            Err(why) => why.clone(),
+                        };
+                        context.push_tool_result(GgContextSource::ToolOutput, &call.id, body);
                         submissions.push(submission);
                     } else {
                         emitter.emit(log(
@@ -7642,7 +7685,8 @@ impl Agent {
                 let turn_ctx = CodeTurn {
                     spawner: self,
                     // The same session turn the window's own headers carry, so the number the model
-                    // reads on a result and the number `programs.get` takes are one number.
+                    // reads on a result and the turn a `programs.history()` entry names are one
+                    // number.
                     turn: turn as u64 + 1,
                     tool_ctx,
                     read_policy,
@@ -7777,6 +7821,7 @@ impl Agent {
                                         context,
                                         history_id: &history_id,
                                         caps,
+                                        programs: &state.programs,
                                     },
                                     emitter,
                                     state.forks_requested,
@@ -7890,6 +7935,7 @@ impl Agent {
                                     context,
                                     history_id: &history_id,
                                     caps,
+                                    programs: &programs,
                                 },
                                 emitter,
                                 turn_forks,
@@ -8014,7 +8060,12 @@ impl Agent {
                                 final_text: None,
                                 ending: None,
                                 limit: None,
-                                handoff: Some(handoff),
+                                // The library goes with the successor: moved, since this
+                                // incarnation reads it no further.
+                                handoff: Some(handoff.carrying(std::mem::replace(
+                                    &mut programs,
+                                    crate::programs::ProgramLibrary::disabled(),
+                                ))),
                             };
                         }
                         // The turn must end on a message from gg. Usually it already does — a view
@@ -8429,6 +8480,7 @@ impl Agent {
                         context,
                         history_id: &history_id,
                         caps,
+                        programs: &programs,
                     },
                     emitter,
                     std::mem::take(&mut declared_forks),
@@ -8543,7 +8595,12 @@ impl Agent {
                     final_text: None,
                     ending: None,
                     limit: None,
-                    handoff: Some(handoff),
+                    // A tool-calling incarnation's library is empty (it runs no programs), but it is
+                    // still the one its successor adopts, so it travels on the same terms.
+                    handoff: Some(handoff.carrying(std::mem::replace(
+                        &mut programs,
+                        crate::programs::ProgramLibrary::disabled(),
+                    ))),
                 };
             }
 
@@ -9963,6 +10020,10 @@ struct DriveSetup {
     /// How this incarnation's window is [opened](Opening) — seeded fresh, or continued from the
     /// instance it succeeds.
     opening: Opening,
+    /// The [program library](crate::programs) a succession moved, or a fork cloned, to this
+    /// incarnation — `None` for an agent's first incarnation. Adopted after this incarnation has
+    /// resolved its own library from its own profile.
+    carried_programs: Option<crate::programs::ProgramLibrary>,
     /// How many turns this agent has already taken across its earlier incarnations, and therefore
     /// the number its next turn is the successor of.
     ///
@@ -11821,6 +11882,7 @@ pub(crate) fn ending_view(
 /// since removed) and the agent — and the run — ends on it.
 async fn autoload_specifications(
     context: &mut ContextModel,
+    programs: &mut crate::programs::ProgramLibrary,
     provided_files: &[PathBuf],
     tool_ctx: &ToolContext,
     language: GgProgramLanguage,
@@ -11868,21 +11930,24 @@ async fn autoload_specifications(
 
     if context.code_mode() {
         // The synthesized turn takes exactly the shape the model's own turns must: a
-        // `submit_program` call carrying the program, answered by the fixed acknowledgement, with
-        // the views the program opened beneath it.
+        // `submit_program` call carrying the program, answered by the acknowledgement the model's
+        // own would get — the id the library issued it, under which the program is kept as one of
+        // gg's opening programs (turn 0) — with the views the program opened beneath it.
         let call_id = "autoload-program";
+        let program = open_file_program(language, seeded.iter().map(|(rel, _)| rel));
+        let id = programs.issue_id().map_err(|exhausted| exhausted.message)?;
         context.push_assistant(
             None,
-            vec![completion::synthesized_submission(
-                call_id,
-                &open_file_program(language, seeded.iter().map(|(rel, _)| rel)),
-            )],
+            vec![completion::synthesized_submission(call_id, &program)],
         );
         context.push_tool_result(
             GgContextSource::ToolOutput,
             call_id,
-            completion::SUBMIT_PROGRAM_ACK,
+            completion::submit_program_ack(id.as_deref()),
         );
+        if let Some(id) = &id {
+            programs.record(id, 0, &program, true, None);
+        }
         for (rel, outcome) in seeded {
             // The path is the workspace-relative one the case provided, so the view's heading
             // names the file as the model would open it itself.

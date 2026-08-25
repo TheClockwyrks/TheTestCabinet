@@ -22,13 +22,12 @@ std::vector<programs::program_summary> history() {
   return summaries;
 }
 
-std::string get(std::optional<std::uint32_t> turn) {
-  std::uint32_t which = turn.value_or(0);
+std::string get(std::string_view id) {
+  detail::scratch scratch;
+  sandbox_string_t lowered = scratch.str(id);
   sandbox_string_t ret{};
   test_cabinet_gg_types_api_error_t err{};
-  if (!test_cabinet_gg_programs_get(turn.has_value() ? &which : nullptr, &ret, &err)) {
-    detail::fail(err);
-  }
+  if (!test_cabinet_gg_programs_get(&lowered, &ret, &err)) detail::fail(err);
   std::string source = detail::lift(ret);
   sandbox_string_free(&ret);
   return source;
@@ -42,8 +41,8 @@ void rerun(std::string_view source) {
 }
 
 // The member function the summary offers, which is the same capability reached from the value that
-// already carries the turn.
-std::string program_summary::source() const { return programs::get(turn); }
+// already carries the id.
+std::string program_summary::source() const { return programs::get(id); }
 
 }  // namespace programs
 

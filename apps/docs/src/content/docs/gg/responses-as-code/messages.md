@@ -4,10 +4,12 @@ title: "Messages"
 
 An assistant turn submits its programs as `submit_program` tool calls, and gg
 answers each call with a terse `tool` result directly after the assistant
-message: `ok` for a call that carried a program — pushed before the program
-runs, so it is a receipt, never a verdict — the reason when a call carried no
-`program` string, and a redirect when the model called a tool this mode does
-not offer.
+message. A call that carried a program is answered with the id the [program
+library](/gg/program-library/) assigned it, pushed before the program runs, so
+it is a receipt rather than a verdict; an agent that keeps no library is
+answered with the fixed `ok`. A call that carried no `program` string
+is answered with the reason, and a call to a tool this mode does not offer with
+a redirect.
 
 Everything else gg sends back is plain `user` text. There the heading is the
 only thing telling the model what it is looking at, so the vocabulary is

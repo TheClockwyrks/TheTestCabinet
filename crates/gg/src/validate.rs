@@ -119,8 +119,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE,
     COMPACTION_PARAM_MODEL, COMPACTION_PARAM_MODEL_SLOT, COMPACTION_STRATEGY_MEMORY,
     FSM_PARAM_STATES, GG_CAPABILITY_CATALOG, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
-    GgSubagentScope, MEMORY_PARAM_SCOPE, PARAM_BUILT_INS, PARAM_DOC_VIEW_TYPES, PARAM_KEEP,
-    PARAM_LANGUAGE, PARAM_LINE_CAP, PARAM_MAX_CHARS, PARAM_MAX_COUNT, PARAM_MAX_DEPTH,
+    GgSubagentScope, MEMORY_PARAM_SCOPE, PARAM_BUILT_INS, PARAM_DOC_VIEW_TYPES, PARAM_ID_LENGTH,
+    PARAM_KEEP, PARAM_LANGUAGE, PARAM_LINE_CAP, PARAM_MAX_CHARS, PARAM_MAX_COUNT, PARAM_MAX_DEPTH,
     PARAM_MAX_EPICS, PARAM_MAX_ISSUES, PARAM_MAX_LEN_DESCRIPTION, PARAM_MAX_LEN_INDEX,
     PARAM_MAX_LEN_PER_MEMORY, PARAM_MAX_LINES, PARAM_MAX_MEMORY_BYTES, PARAM_MAX_RESULTS,
     PARAM_MAX_RETRIES, PARAM_MAX_TASKS, PARAM_MAX_TOTAL_LEN, PARAM_MODE, PARAM_REVIEWERS,
@@ -890,10 +890,16 @@ const CAPABILITY_PARAMS: &[(&str, &[(&str, Requirement)])] = &[
     ),
     (
         CAPABILITY_PROGRAM_LIBRARY,
-        &[(
-            PARAM_KEEP,
-            Requirement::Required("how many of the session's programs the library retains"),
-        )],
+        &[
+            (
+                PARAM_KEEP,
+                Requirement::Required("how many of the session's programs the library retains"),
+            ),
+            (
+                PARAM_ID_LENGTH,
+                Requirement::Required("how many characters long each program's id is"),
+            ),
+        ],
     ),
     (CAPABILITY_DOCVIEW_CLOSE, &[]),
 ];

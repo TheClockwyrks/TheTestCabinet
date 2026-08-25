@@ -190,10 +190,12 @@ a `submit_program` call whose `program` string is one whole, legal program in
 this run's language, as bare code with no fences around it and no prose inside
 it, processed exactly as written. It states that `submit_program` is the only
 tool in the session and that every reply must call it, that each call is
-acknowledged with a tool result reading `ok` with what the program produced
-arriving as separate messages after it, that text written beside the call is
-recorded but nothing reads code out of it, and that a reply carrying several
-calls runs every program sequentially, in submission order.
+acknowledged with a tool result carrying the id the program library assigned
+that program (a receipt that `gg.programs.get` takes and a rerun keeps) or,
+for an agent that keeps no library, the fixed `ok`, with what the program
+produced arriving as separate messages after it, that text written beside the
+call is recorded but nothing reads code out of it, and that a reply carrying
+several calls runs every program sequentially, in submission order.
 
 The runtime holds every one of those statements. The request offers exactly the
 one tool and requires a call to it through forced tool choice; a call to any

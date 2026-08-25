@@ -231,6 +231,7 @@ async fn seed_granted(
     let placed = seed_bootstrap(
         &mut ctx,
         &mut docs,
+        &mut crate::programs::ProgramLibrary::disabled(),
         agent(opening, capabilities, operations),
     )
     .await;
@@ -425,6 +426,7 @@ async fn a_tool_calling_window_is_not_seeded() {
         seed_bootstrap(
             &mut ctx,
             &mut docs,
+            &mut crate::programs::ProgramLibrary::disabled(),
             agent(&seeded(), &capabilities, &operations)
         )
         .await,
@@ -513,6 +515,7 @@ async fn seeding_twice_re_places_no_documentation_and_no_second_listing() {
     seed_bootstrap(
         &mut ctx,
         &mut docs,
+        &mut crate::programs::ProgramLibrary::disabled(),
         agent(&opening, &capabilities, &operations),
     )
     .await
@@ -524,6 +527,7 @@ async fn seeding_twice_re_places_no_documentation_and_no_second_listing() {
         seed_bootstrap(
             &mut ctx,
             &mut docs,
+            &mut crate::programs::ProgramLibrary::disabled(),
             agent(&opening, &capabilities, &operations),
         )
         .await

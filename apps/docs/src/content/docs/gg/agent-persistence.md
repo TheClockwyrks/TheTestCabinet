@@ -94,6 +94,13 @@ import { views } from "gg";
 views.openFile("src/main.rs", { offset: 40, limit: 120 });
 ```
 
+Each code-mode submission is acknowledged the way the model's own are: the
+[program library](/gg/program-library/) issues it an id, the acknowledgement
+carries that id, and the program is recorded under it as one of gg's opening
+programs, on turn 0. An agent that keeps no library is answered with the fixed
+`ok`. A library that cannot mint an id ends the agent as an internal error, on
+the terms the program library sets for an exhausted mint.
+
 Either way the model can act on them directly, they land in the file band of the
 [context breakdown](/gg/context-visibility/), and they are ephemeral working
 material that [compaction](/gg/compaction/) may summarize and

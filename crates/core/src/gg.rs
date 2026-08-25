@@ -1378,15 +1378,16 @@ pub const PARAM_DOC_VIEW_TYPES: &str = "docViewTypes";
 /// and latency for text the model has already written once.
 ///
 /// The library makes the fix proportional to the mistake. gg records the source of every program it
-/// runs, keyed by the turn it ran on, and a program can fetch one back:
+/// runs under an id of its own — the bare string the `submit_program` acknowledgement carries, minted
+/// before the program runs — and a program can fetch one back:
 ///
 /// ```ts
-/// const source = programs.get();                            // the previous turn's program
+/// const source = programs.get("k3p9");                      // the program that id was issued to
 /// programs.rerun(source.replace("cosnt x", "const x"));      // gg runs the patched one
 /// ```
 ///
 /// Three functions, on a `programs` object bound only when this capability is on: `history()` lists
-/// the programs held (turn, size, whether each ran to its end), `get(turn?)` returns one's exact
+/// the programs held (id, turn, size, whether each ran to its end), `get(id)` returns one's exact
 /// source, and `rerun(source)` hands gg a program to run **in place of the one that called it**.
 ///
 /// # What `rerun` does, and what it does not
@@ -1394,22 +1395,23 @@ pub const PARAM_DOC_VIEW_TYPES: &str = "docViewTypes";
 /// It is **registered, not performed**, exactly as [`compact`](CAPABILITY_AGENT_MANAGED_CONTEXT) and
 /// an [exec](CAPABILITY_EXEC) are: the call validates the source and returns, the calling program
 /// carries on to its end, and gg then compiles and runs what it was handed as the
-/// same turn's program. Nothing is undone — every call the registering program made stands — and the
+/// same submission's program. Nothing is undone — every call the registering program made stands — and the
 /// program that runs next sees exactly the world it left behind. The first registration stands and a
 /// second is refused; a program that then fails loses the registration along with everything else it
-/// decided, on the same rule that revokes an ending. The chain is bounded, and a turn that reaches
-/// the bound is told so.
+/// decided, on the same rule that revokes an ending. The chain is bounded, and a submission that
+/// reaches the bound is told so.
 ///
-/// The source gg keeps for a turn is the program that **executed**, so fetch-patch-rerun composes:
-/// the patched program is what the next turn's `get()` returns, not the two lines that asked for it.
+/// The source gg keeps for a submission is the program that **executed**, under the submission's
+/// id, so fetch-patch-rerun composes: the patched program is what the next `get` of that id returns,
+/// not the two lines that asked for it.
 /// The library also outlives the context window — it is gg's own state, not a message — so a
 /// [compacted](CAPABILITY_COMPACTION) agent can still reach the program it wrote forty turns ago.
 ///
 /// # What it is bounded by
 ///
 /// Its [`keep`](PARAM_KEEP) param is how many of the most recent programs are retained. It bounds
-/// memory, not the model: a `get` of a turn the retention has dropped is `not-found` naming the
-/// turns that are held.
+/// memory, not the model: a `get` of an id the retention has dropped is `not-found` naming the ids
+/// that are held. Its [`idLength`](PARAM_ID_LENGTH) param is how long those ids are.
 ///
 /// gg includes it **so its effectiveness can be measured empirically** — toggled against the same
 /// runs without it, it answers "does making a retry proportional to the mistake pay for itself?"
@@ -1422,6 +1424,14 @@ pub const CAPABILITY_PROGRAM_LIBRARY: &str = "program-library";
 ///
 /// An enabled capability writes it, and an absent one refuses the launch.
 pub const PARAM_KEEP: &str = "keep";
+
+/// The [program-library](CAPABILITY_PROGRAM_LIBRARY) capability's `idLength` param: how many
+/// characters long the cuid2 id assigned to each of the agent's programs is, from 2 to 32. A longer
+/// id costs the model more tokens on every fetch and buys more room before a collision re-rolls.
+///
+/// An enabled capability writes it; an absent one, one gg cannot read as a count, and one outside
+/// the range each refuse the launch.
+pub const PARAM_ID_LENGTH: &str = "idLength";
 
 /// The stable id of the **documentation-view close** capability: whether a
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent may take a documentation view back out of
@@ -1695,7 +1705,7 @@ fn build_authoring_catalog() -> Vec<GgAuthoredCapability> {
         entry(
             CAPABILITY_PROGRAM_LIBRARY,
             None,
-            params([(PARAM_KEEP, json!(20))]),
+            params([(PARAM_KEEP, json!(20)), (PARAM_ID_LENGTH, json!(4))]),
         ),
         entry(CAPABILITY_DOCVIEW_CLOSE, None, none()),
     ]

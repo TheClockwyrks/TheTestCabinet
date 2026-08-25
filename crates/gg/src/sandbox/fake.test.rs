@@ -261,7 +261,7 @@ impl FakeOperationApi {
             log: log.clone(),
             responder: Box::new(responder),
             views: Vec::new(),
-            programs: ProgramLibrary::enabled(None),
+            programs: ProgramLibrary::enabled(None, 4),
             api: ApiLog::default(),
             documented: None,
         }
@@ -290,10 +290,10 @@ impl FakeOperationApi {
         self
     }
 
-    /// Seed the library with a program said to have run on `turn`, so a test can drive
+    /// Seed the library with a program said to have run under `id` on `turn`, so a test can drive
     /// `programs.get` against something.
-    pub(crate) fn with_program(mut self, turn: u64, source: &str) -> Self {
-        self.programs.record(turn, source, true, None);
+    pub(crate) fn with_program(mut self, id: &str, turn: u64, source: &str) -> Self {
+        self.programs.record(id, turn, source, true, None);
         self
     }
 
@@ -742,8 +742,8 @@ impl OperationApi for FakeOperationApi {
         self.programs.summaries()
     }
 
-    fn program_source(&mut self, turn: Option<u64>) -> Result<String, ProgramRefusal> {
-        self.programs.source(turn).map(str::to_string)
+    fn program_source(&mut self, id: &str) -> Result<String, ProgramRefusal> {
+        self.programs.source(id).map(str::to_string)
     }
 }
 

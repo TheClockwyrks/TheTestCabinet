@@ -263,7 +263,8 @@ impl ProbeFixtureMessage {
         }
     }
 
-    /// The fixed `ok` acknowledgement answering the call `id`.
+    /// The `ok` acknowledgement answering the call `id` — the receipt an agent that keeps no
+    /// program library gets, which the probe agent is.
     fn acknowledgement(id: &'static str) -> Self {
         Self {
             role: "tool",

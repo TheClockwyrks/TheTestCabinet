@@ -257,5 +257,5 @@ message, which would quote a minted id an OpenAI-shaped provider rejects. A
 skill body is pinned exactly once however many times a program uses it.
 
 The program library is a separate record, held outside the context window: one
-entry per turn that ran a program, holding the source that executed. See the
-[program library](/gg/program-library/).
+entry per submitted program, under the id its acknowledgement carried, holding
+the source that executed. See the [program library](/gg/program-library/).

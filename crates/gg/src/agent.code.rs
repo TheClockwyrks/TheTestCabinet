@@ -237,6 +237,33 @@ pub(super) struct SubmittedProgram {
     /// The program to run, or (`Err`) the sentence the call's tool result already delivered about
     /// why nothing will run for it.
     pub(super) program: Result<String, String>,
+    /// What the [library](crate::programs) issued this submission when it was acknowledged. Set by
+    /// the loop at the acknowledgement, after [`submitted_program`] has read the call — a call
+    /// that carried no program is issued nothing.
+    pub(super) receipt: ProgramReceipt,
+}
+
+/// What the [program library](crate::programs) handed a submission at its acknowledgement.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum ProgramReceipt {
+    /// No id: the agent keeps no library, or the call carried no program to issue one to. The
+    /// acknowledgement was the fixed word, and nothing is recorded for the submission.
+    Unkept,
+    /// The id the acknowledgement carried, under which the submission's program is recorded.
+    Id(String),
+    /// The library could not mint an id. The turn is fatal before the submission runs — gg's own
+    /// defect, never charged to the model — and the sentence is the operator's.
+    Exhausted(String),
+}
+
+impl ProgramReceipt {
+    /// The id under which this submission's program is recorded, if the library issued one.
+    fn id(&self) -> Option<&str> {
+        match self {
+            Self::Id(id) => Some(id.as_str()),
+            Self::Unkept | Self::Exhausted(_) => None,
+        }
+    }
 }
 
 /// Read one `submit_program` call's `program` argument.
@@ -259,6 +286,7 @@ pub(super) fn submitted_program(call: &ToolCall) -> SubmittedProgram {
     SubmittedProgram {
         call_id: call.id.clone(),
         program,
+        receipt: ProgramReceipt::Unkept,
     }
 }
 
@@ -346,6 +374,19 @@ pub(super) async fn run_code_turn(
     let mut first_error: Option<TurnErrorType> = None;
     let mut last_report = String::new();
     for (index, submission) in submissions.into_iter().enumerate() {
+        // The library could not mint this submission an id, which is gg's defect: the session ends
+        // here, as it does on a host fault, and the program is not run. Checked before the source is
+        // read, because a submission without an id has nowhere to be recorded and a program run
+        // under no id is exactly the silent fallback the bound forbids.
+        if let ProgramReceipt::Exhausted(message) = submission.receipt {
+            return (
+                CodeTurnOutcome::Fatal {
+                    fault: crate::limits::FatalFault::HostFault,
+                    message,
+                },
+                Some(state),
+            );
+        }
         let source = match submission.program {
             Ok(source) => source,
             Err(_) => {
@@ -368,7 +409,15 @@ pub(super) async fn run_code_turn(
                 continue;
             }
         };
-        let (decision, one_state) = run_one_program(&source, code, deadline, turn, state).await;
+        let (decision, one_state) = run_one_program(
+            &source,
+            submission.receipt.id(),
+            code,
+            deadline,
+            turn,
+            state,
+        )
+        .await;
         match decision {
             CodeTurnOutcome::Finished { ending } => {
                 let skipped = total - index - 1;
@@ -424,6 +473,7 @@ pub(super) async fn run_code_turn(
 /// them is how they drift.
 async fn run_one_program(
     source: &str,
+    id: Option<&str>,
     code: &CodeSetup,
     deadline: Option<Instant>,
     turn: &CodeTurn<'_>,
@@ -478,12 +528,15 @@ async fn run_one_program(
     });
 
     // Keep what ran, so a later turn can fetch it back and patch it instead of writing it again.
-    // Recorded against the source the chain actually **executed**, so a fetch returns a program
-    // rather than the lines that handed one over. A library the agent's profile did not enable
-    // ignores this.
-    if let Some(state) = state.as_mut() {
+    // Recorded once per submission, under the id its acknowledgement carried, against the source the
+    // chain actually **executed** — so a `rerun` chain keeps the submission's id and a fetch of it
+    // returns a program rather than the lines that handed one over. A submission with no id belongs
+    // to an agent whose library issues none, and is not kept.
+    if let (Some(state), Some(id)) = (state.as_mut(), id) {
         let (ok, error) = program_verdict(&outcome);
-        state.programs.record(turn.turn, &chain.source, ok, error);
+        state
+            .programs
+            .record(id, turn.turn, &chain.source, ok, error);
     }
     report_to_operator(&outcome, emitter);
     report_chain_to_operator(code.language, &chain, &outcome, emitter);
@@ -1295,9 +1348,9 @@ pub(super) struct CodeTurn<'a> {
     /// The agent running the program — the spawner a delegation call is attributed to, and the id
     /// a session-record entry is tagged with.
     pub(super) spawner: &'a Agent,
-    /// This agent's **session turn** — the number the [library](crate::programs) keys this turn's
-    /// program under, and the same number the window's turn headers carry, so a model that reads
-    /// `Turn #12` and asks for `programs.get(12)` is naming the turn it saw.
+    /// This agent's **session turn** — the number the [library](crate::programs) records beside
+    /// this turn's programs for orientation, and the same number the window's turn headers carry,
+    /// so a `Turn #12` a model reads and the turn a history entry names are one number.
     pub(super) turn: u64,
     /// The workspace root and vision context every tool call is executed against.
     pub(super) tool_ctx: &'a ToolContext,
@@ -1388,9 +1441,9 @@ pub(super) struct CodeTurnState {
     pub(super) skills: SkillsRuntime,
     /// The per-agent documentation runtime behind `docs.search` / `view.openDocsView()`.
     pub(super) docs: DocsRuntime,
-    /// The per-agent [program library](crate::programs), with **this turn's program already
+    /// The per-agent [program library](crate::programs), with **this turn's programs already
     /// recorded in it** — the turn appends before it hands the state back, so the next turn's
-    /// `programs.get()` returns the program this one ran.
+    /// `programs.get` of an id this turn's acknowledgements carried returns the program that ran.
     pub(super) programs: ProgramLibrary,
     /// The code this agent has loaded by reading a code [skill](crate::skills) or
     /// [memory](crate::memories) — the modules bound at `lib.<key>` in every later program. It costs
@@ -1698,9 +1751,9 @@ pub(super) struct ProgramChain {
     /// How many programs the turn ran. `1` for the ordinary turn, which is every turn that made no
     /// hand-over.
     pub(super) programs: u32,
-    /// The source of the program that actually did the turn's work — the last one in the chain.
-    /// This is what the [library](crate::programs) records for the turn, so a later `programs.get`
-    /// returns a program that ran rather than the lines that asked for it.
+    /// The source of the program that actually did the submission's work — the last one in the
+    /// chain. This is what the [library](crate::programs) records under the submission's id, so a
+    /// later `programs.get` returns a program that ran rather than the lines that asked for it.
     pub(super) source: String,
     /// Why the last hand-over was not honoured, or `None` when none was refused (which includes
     /// every turn that never made one).
@@ -3978,9 +4031,9 @@ impl OperationApi for LoopOperationApi {
         self.programs.summaries()
     }
 
-    /// The source of one program this agent ran, or the refusal naming the turns that are held.
-    fn program_source(&mut self, turn: Option<u64>) -> Result<String, ProgramRefusal> {
-        self.programs.source(turn).map(str::to_string)
+    /// The source of one program this agent ran, or the refusal naming the ids that are held.
+    fn program_source(&mut self, id: &str) -> Result<String, ProgramRefusal> {
+        self.programs.source(id).map(str::to_string)
     }
 }
 

@@ -82,6 +82,13 @@ Every one of those views is present in the same opening context, since the run
 ends on a file gg cannot read. A program listing a call whose view never arrived
 would teach the model that opening a file view sometimes does nothing.
 
+The submission is acknowledged the way the model's own are: the
+[program library](/gg/program-library/) issues it an id, the acknowledgement
+carries that id, and the program is recorded under it as one of gg's opening
+programs, on turn 0. An agent that keeps no library is answered with the fixed
+`ok`. A library that cannot mint the id ends the agent as an internal error, on
+the terms the program library sets for an exhausted mint.
+
 ## Images
 
 The `images` param decides whether an autoloaded reference mockup is attached as

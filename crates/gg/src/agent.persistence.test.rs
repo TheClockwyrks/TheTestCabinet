@@ -122,6 +122,7 @@ async fn drive_instance_in(
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },

@@ -5,7 +5,7 @@
 //! what ran, patch it with ordinary string work, hand it back.
 //!
 //! ```ignore
-//! let source = programs::get(None)?;
+//! let source = programs::get("k3p9")?;
 //! programs::rerun(&source.replace("views::open_tex(", "views::open_text("))?;
 //! ```
 
@@ -15,14 +15,14 @@ use crate::wire;
 
 /// List the programs this session has already run, oldest first.
 ///
-/// Each carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes,
-/// not sources: [`get`] is what fetches one. The list survives a compaction, so it is also how a
-/// program whose text has left the context window is found again. A session that has run nothing yet
-/// gets an empty `Vec` rather than an error.
+/// Each carries its id, the turn it ran on, how big it was, and whether it ran to its end. It lists
+/// shapes, not sources: [`get`] is what fetches one. The list survives a compaction, so it is also
+/// how a program whose text has left the context window is found again. A session that has run
+/// nothing yet gets an empty `Vec` rather than an error.
 ///
 /// # Returns
 ///
-/// One summary per program this session has run, oldest first, each carrying the turn [`get`] takes.
+/// One summary per program this session has run, oldest first, each carrying the id [`get`] takes.
 ///
 /// # Errors
 ///
@@ -34,18 +34,19 @@ pub fn history() -> Result<Vec<ProgramSummary>, ApiError> {
         .map(|summaries| summaries.into_iter().map(wire::program_summary).collect())
 }
 
-/// Fetch the exact source of one program that ran, as a `String`; `None` fetches the most recent.
+/// Fetch the exact source of one program that ran, by the id its acknowledgement carried.
 ///
-/// This is the first half of fixing a program without rewriting it: get what ran, patch it with
-/// ordinary string work, and hand the result to [`rerun`]. What comes back is the program that
-/// **executed**, so when a turn's program was itself handed over by [`rerun`], the program that ran is
-/// what arrives rather than the few lines that asked for it — and fetch-patch-run composes turn after
-/// turn.
+/// The id is the tool result the `submit_program` call that carried the program was acknowledged
+/// with — a receipt, not a verdict — and [`history`] reports it beside every program. This is the
+/// first half of fixing a program without rewriting it: get what ran, patch it with ordinary string
+/// work, and hand the result to [`rerun`]. What comes back is the program that **executed**, so when
+/// a submission's program was itself handed over by [`rerun`], the program that ran is what arrives
+/// rather than the few lines that asked for it — and fetch-patch-run composes turn after turn. A
+/// rerun keeps the id of the submission it ran for.
 ///
 /// # Arguments
 ///
-/// * `turn` — The turn whose program to fetch, as [`history`] reports it; `None` fetches the most
-///   recent one.
+/// * `id` — The program's id, as its acknowledgement carried it and as [`history`] reports it.
 ///
 /// # Returns
 ///
@@ -54,24 +55,27 @@ pub fn history() -> Result<Vec<ProgramSummary>, ApiError> {
 ///
 /// # Errors
 ///
-/// `NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that
-/// the library has dropped it, and `Unavailable` when this agent keeps no program library.
+/// `NotFound`, naming the ids that are held, for an id this agent was never issued or one whose
+/// program is old enough that the library has dropped it, and `Unavailable` when this agent keeps no
+/// program library.
 #[doc(alias = "ggop:programs.get")]
-pub fn get(turn: Option<u32>) -> Result<String, ApiError> {
-    wire::lift(programs::get(turn))
+pub fn get(id: &str) -> Result<String, ApiError> {
+    wire::lift(programs::get(id))
 }
 
 /// Hand gg a program to run in place of this one.
 ///
-/// The calling program finishes, then gg compiles and runs `source` as this turn's program. Used with
-/// [`get`] it fixes a program without re-emitting it. Nothing is undone: every call the calling
+/// The calling program finishes, then gg compiles and runs `source` as this submission's program,
+/// under the same id — so a later [`get`] of that id returns `source`, the program that ran. Used
+/// with [`get`] it fixes a program without re-emitting it. Nothing is undone: every call the calling
 /// program already made stands, and the program that runs next sees the world it left behind — so the
 /// hand-over belongs before work that should not happen twice.
 ///
 /// The first call stands, because a silently replaced program is a change nobody can see. If the
 /// calling program then fails, the hand-over is cancelled along with everything else that program
-/// decided, and the turn ends in an ordinary error. Chains are bounded: one hand-over per turn, and
-/// the fixed program is the one that does the work.
+/// decided, and the turn ends in an ordinary error. Chains are bounded: a submission runs at most
+/// four programs, this one plus three handed over, and the fixed program is the one that does the
+/// work.
 ///
 /// # Arguments
 ///
@@ -79,7 +83,7 @@ pub fn get(turn: Option<u32>) -> Result<String, ApiError> {
 ///
 /// # Errors
 ///
-/// `Refused` for a second hand-over in one turn, `InvalidArgument` for a blank source, and
+/// `Refused` for a second hand-over from the same program, `InvalidArgument` for a blank source, and
 /// `Unavailable` when this agent keeps no program library.
 #[doc(alias = "ggop:programs.rerun")]
 pub fn rerun(source: &str) -> Result<(), ApiError> {
@@ -93,7 +97,9 @@ pub fn rerun(source: &str) -> Result<(), ApiError> {
 /// to avoid. [`get`] is what fetches a source.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramSummary {
-    /// The turn it ran on — what [`get`] takes.
+    /// The id its `submit_program` acknowledgement carried — what [`get`] takes.
+    pub id: String,
+    /// The turn it ran on.
     pub turn: u32,
     /// How many lines of source it was.
     pub lines: u32,
@@ -108,7 +114,7 @@ pub struct ProgramSummary {
 impl ProgramSummary {
     /// Fetch the exact source of this program.
     ///
-    /// [`get`] with the turn already supplied, for the common case where the summary worth fetching
+    /// [`get`] with the id already supplied, for the common case where the summary worth fetching
     /// is in hand.
     ///
     /// # Returns
@@ -117,9 +123,9 @@ impl ProgramSummary {
     ///
     /// # Errors
     ///
-    /// `NotFound` when the library's retention has since dropped that turn.
+    /// `NotFound` when the library's retention has since dropped that program.
     #[doc(alias = "ggop-alias:programs.get")]
     pub fn source(&self) -> Result<String, ApiError> {
-        get(Some(self.turn))
+        get(&self.id)
     }
 }

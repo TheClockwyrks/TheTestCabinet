@@ -9,8 +9,11 @@ prose inside it — and it is processed exactly as written. All calls are
 synchronous.
 
 `submit_program` is the only tool in this session, and every reply must call it.
-Each call is acknowledged with a tool result reading `ok`; what the program
-produced arrives as separate messages after it. Text you write alongside the
+{{#if programLibrary}}Each call that carries a program is acknowledged with a tool result whose body
+is the id the program library assigned that program (for example `k3p9`) — a
+receipt, not a verdict; what the program produced arrives as separate messages
+after it.{{else}}Each call is acknowledged with a tool result reading `ok`; what the program
+produced arrives as separate messages after it.{{/if}} Text you write alongside the
 call is recorded, but nothing reads code out of it: only the `program` string
 runs. If one reply makes several `submit_program` calls, the programs run
 sequentially, in order, every one of them.
@@ -125,8 +128,12 @@ find in the documentation is what you can call.
 {{#if programLibrary}}
 ## Reusing a program you already ran
 
-Everything a program did before you fetch it and hand a patched copy back still
-stands.
+Your most recent programs are kept, each under the id its acknowledgement
+carried, and that id is what the library's fetch takes; the history lists the
+ids still held. A
+program you hand back to be re-run keeps the id of the submission it replaces,
+and the source kept under it is the program that actually ran. Everything a
+program did before you fetch it and hand a patched copy back still stands.
 {{/if}}
 
 {{#if codeHeadings}}

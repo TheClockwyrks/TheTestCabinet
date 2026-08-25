@@ -567,7 +567,9 @@ declare module "test-cabinet:gg/views" {
 declare module "test-cabinet:gg/programs" {
   /** One program this agent ran, as `history` lists it — its shape, never its source. */
   export interface ProgramSummaryRaw {
-    /** The turn it ran on — what `get` takes. */
+    /** The id its `submit_program` acknowledgement carried — what `get` takes. */
+    id: string;
+    /** The turn it ran on. */
     turn: number;
     /** How many lines of source it was. */
     lines: number;
@@ -581,8 +583,8 @@ declare module "test-cabinet:gg/programs" {
 
   /** The programs this agent has run, oldest first; throws `unavailable` without a library. */
   export function history(): ProgramSummaryRaw[];
-  /** The source of one program as it was run; `undefined` is the most recent. */
-  export function get(turn: number | undefined): string;
+  /** The source of one program as it was run, by the id its acknowledgement carried. */
+  export function get(id: string): string;
   /** Register a program for gg to run in place of this one, once this one has ended. */
   export function rerun(source: string): void;
 }

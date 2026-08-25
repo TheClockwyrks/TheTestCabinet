@@ -1241,6 +1241,10 @@ export const AUTHORED_PROGRAM_TIMEOUT_SECS = 30;
 export const AUTHORED_PROGRAM_MAX_MEMORY_BYTES = 268_435_456;
 // How many of a code agent's most recent programs the library holds.
 export const AUTHORED_PROGRAMS_KEPT = 20;
+// How long the id the library assigns each program is. Four characters of cuid2's
+// alphabet is about 1.7 million ids, and ids are per agent, so a longer value only
+// matters for an agent that runs thousands of programs in one session.
+export const AUTHORED_PROGRAM_ID_LENGTH = 4;
 
 export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   // --- Models & tools ---------------------------------------------------------
@@ -1428,7 +1432,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "number",
         required: true,
         defaultValue: String(AUTHORED_PROGRAMS_KEPT),
-        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get`. Older ones are dropped, and asking for one says which turns are still held. `0` keeps every program of the session — the setting for a study that reads them all back, spelled as a figure like every other.",
+        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get` by the id each was acknowledged with. Older ones are dropped, and asking for one says which ids are still held (and their turns). `0` keeps every program of the session — the setting for a study that reads them all back, spelled as a figure like every other.",
+      },
+      {
+        key: "idLength",
+        label: "Id length",
+        kind: "number",
+        required: true,
+        defaultValue: String(AUTHORED_PROGRAM_ID_LENGTH),
+        hint: "How many characters the id assigned to each program is — the body of the `submit_program` acknowledgement, and what `programs.get` takes. Ids are scoped to the one agent, and 4 characters is about 1.7 million of them, so a longer value (up to 32) only matters for an agent that runs thousands of programs in one session; shorter than 2 is refused.",
       },
     ],
     // No `tools`, for the reason `modes` gives: there are no programs in a tool-calling

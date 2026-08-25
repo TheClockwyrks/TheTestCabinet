@@ -5,7 +5,7 @@ program costs the sixty lines again. The library makes the fix proportional to t
 what ran, patch it with ordinary string work, hand it back.
 
 ```python
-source = gg.programs.get()
+source = gg.programs.get("k3p9")
 gg.programs.rerun(source.replace("improt", "import"))
 ```
 """
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from wit_world.imports import programs as wire
 
 from ._registry import alias, missing, operation
-from .core import _call, _uint
+from .core import _call
 
 __all__ = ["ProgramSummary", "get", "history", "rerun"]
 
@@ -31,8 +31,11 @@ class ProgramSummary:
     to avoid. `get` is what fetches a source.
     """
 
+    id: str
+    """The id its `submit_program` acknowledgement carried — what `get` takes."""
+
     turn: int
-    """The turn it ran on — what `get` takes."""
+    """The turn it ran on."""
 
     lines: int
     """How many lines of source it was."""
@@ -50,16 +53,16 @@ class ProgramSummary:
     def source(self) -> str:
         """Fetch this program's source, which a summary does not carry.
 
-        `get` with the turn already supplied, for the common case where the directory entry that
+        `get` with the id already supplied, for the common case where the directory entry that
         named the program is the thing in hand.
 
         Returns:
-            The source of the program that ran on that turn, as a string.
+            The source of the program that ran under that id, as a string.
 
         Raises:
-            ApiError: `not-found` when the library has since dropped that turn.
+            ApiError: `not-found` when the library has since dropped that program.
         """
-        return get(turn=self.turn)
+        return get(self.id)
 
 
 @operation("programs.history")
@@ -70,8 +73,8 @@ def history() -> list[ProgramSummary]:
     is also how a program whose text has left the context window is found again.
 
     Returns:
-        One summary per program already run, oldest first: the turn it ran on, how big it was, and
-            whether it ran to its end. A session that has run nothing yet gets an empty list.
+        One summary per program already run, oldest first: its id, the turn it ran on, how big it
+            was, and whether it ran to its end. A session that has run nothing yet gets an empty list.
 
     Raises:
         ApiError: `unavailable` when this agent keeps no program library, which is a different fact
@@ -79,6 +82,7 @@ def history() -> list[ProgramSummary]:
     """
     return [
         ProgramSummary(
+            id=entry.id,
             turn=entry.turn,
             lines=entry.lines,
             chars=entry.chars,
@@ -90,49 +94,51 @@ def history() -> list[ProgramSummary]:
 
 
 @operation("programs.get")
-def get(turn: int | None = None) -> str:
-    """Fetch the exact source of one program that ran; the default fetches the most recent.
+def get(id: str) -> str:
+    """Fetch the exact source of one program that ran, by the id its acknowledgement carried.
 
     This is the first half of fixing a program without rewriting it: get what ran, patch it with
     ordinary string work — `replace`, an f-string, a regular expression — and hand the result to
-    `rerun`. What comes back is the program that **executed**, so when a turn's program was itself
-    handed over by `rerun`, the program that ran is what arrives rather than the few lines that asked
-    for it, and fetch-patch-run composes turn after turn.
+    `rerun`. What comes back is the program that **executed**, so when a submission's program was
+    itself handed over by `rerun`, the program that ran is what arrives rather than the few lines
+    that asked for it, and fetch-patch-run composes turn after turn. A rerun keeps the id of the
+    submission it replaced.
 
     Args:
-        turn: The turn whose program to fetch, as `history` reports it. The default fetches the most
-            recent one.
+        id: The program's id, as its acknowledgement carried it and as `history` reports it.
 
     Returns:
-        The source of the program that ran on that turn, as a string.
+        The source of the program that ran under that id, as a string.
 
     Raises:
-        ApiError: `not-found`, naming the turns that are held, for a turn that ran no program or one
-            old enough that the library has dropped it, and `unavailable` when this agent keeps no
-            program library.
+        ApiError: `not-found`, naming the ids that are held, for an id this agent was never issued
+            or one whose program is old enough that the library has dropped it, and `unavailable`
+            when this agent keeps no program library.
     """
-    return _call(wire.get, _uint("get", "turn", turn))
+    return _call(wire.get, id)
 
 
 @operation("programs.rerun")
 def rerun(source: str) -> None:
     """Hand gg a program to run in place of this one.
 
-    The calling program finishes, then gg runs `source` as this turn's program. Used with `get` it
-    fixes a program without re-emitting it. Nothing is undone: every call the calling program already
-    made stands, and the program that runs next sees the world it left behind — so the hand-over
-    belongs before work that should not happen twice.
+    The calling program finishes, then gg runs `source` as this submission's program, under the
+    same id — a later `get` of that id returns the program that ran, not the one that asked. Used
+    with `get` it fixes a program without re-emitting it. Nothing is undone: every call the calling
+    program already made stands, and the program that runs next sees the world it left behind — so
+    the hand-over belongs before work that should not happen twice.
 
     The first call stands, because a silently replaced program is a change nobody can see. If the
     calling program then raises, the hand-over is cancelled along with everything else that program
-    decided, and the turn ends in an ordinary error. Chains are bounded: one hand-over per turn, and
-    the fixed program is the one that does the work.
+    decided, and the turn ends in an ordinary error. Chains are bounded: a submission runs at most
+    four programs, this one plus three handed over, and the fixed program is the one that does the
+    work.
 
     Args:
         source: The program to run in place of this one, as Python. It may not be blank.
 
     Raises:
-        ApiError: `refused` for a second hand-over in one turn, `invalid-argument` for a blank
+        ApiError: `refused` for a second hand-over from the same program, `invalid-argument` for a blank
             source, and `unavailable` when this agent keeps no program library.
     """
     _call(wire.rerun, source)

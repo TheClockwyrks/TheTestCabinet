@@ -1049,7 +1049,8 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
     let log = CallLog::default();
     // A library with something in it, which is what `Gg.Programs.sourceOf` needs a summary of; the
     // plain double answers an empty history, and an alias driven over an empty array proves nothing.
-    let api = FakeOperationApi::new(&log).with_program(2, "module Main where\nmain = pure unit");
+    let api =
+        FakeOperationApi::new(&log).with_program("p2", 2, "module Main where\nmain = pure unit");
     let operations = all_operations();
     let program = prepare(
         &program_of(&[
@@ -1070,7 +1071,7 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
             "Console.log (show closed)",
             "history <- Gg.Programs.history",
             "sources <- traverse Gg.Programs.sourceOf history",
-            "Console.log (show (map _.turn history) <> \" \" <> show sources)",
+            "Console.log (show (map _.id history) <> \" \" <> show sources)",
         ])
         .replace(
             "import Effect (Effect)\n",
@@ -1102,7 +1103,8 @@ fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
             "agent-1",
             // The one view open was the one its label named, and closing it took that view alone.
             "1",
-            "[2] [\"module Main where\\nmain = pure unit\"]",
+            // The summary's id is what `sourceOf` fetched by, and the source is the one it names.
+            "[\"p2\"] [\"module Main where\\nmain = pure unit\"]",
         ]
     );
     // Each of the three that is a gg tool reached dispatch under the operation it aliases, in the
@@ -1202,10 +1204,10 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
     let (outcome, _log) = run_as(
         &program_of(&[
             "history <- Gg.Programs.history",
-            "outcome <- Gg.Core.attempt (Gg.Programs.get { turn: 2 })",
+            "outcome <- Gg.Core.attempt (Gg.Programs.get \"k3p9\")",
             "Gg.Programs.rerun \"module Main where\\nimport Prelude\\nmain = pure unit\"",
             "Gg.Session.requestChanges [ \"widen the test\", \"name the file\" ]",
-            "Console.log (show (map _.turn history))",
+            "Console.log (show (map _.id history))",
             "case outcome of\n                 Left failure -> Console.log (show failure.code)\n                 Right source -> Console.log source",
         ])
         .replace(
@@ -1219,8 +1221,8 @@ fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_pure
         true,
         canned_outcome,
     );
-    // A session that has run nothing has an empty history — never an error — and a turn it never
-    // kept a program for is a `NotFound` the program catches in PureScript's own idiom.
+    // A session that has run nothing has an empty history — never an error — and an id it never
+    // issued a program under is a `NotFound` the program catches in PureScript's own idiom.
     assert_eq!(logs(&outcome), ["[]", "NotFound"]);
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
     assert!(
@@ -1435,7 +1437,7 @@ fn every_optional_argument_is_a_field_of_a_record() {
         .filter(|field| field["optional"] == json!(true))
         .count();
     assert_eq!(
-        optional, 43,
+        optional, 42,
         "the optional record fields the surface declares"
     );
 }

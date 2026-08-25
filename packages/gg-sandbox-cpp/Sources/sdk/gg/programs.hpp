@@ -22,7 +22,7 @@ namespace gg {
 /// fetch what ran, patch it with ordinary string work, hand it back.
 ///
 /// ```cpp
-/// auto source = gg::programs::get();
+/// auto source = gg::programs::get("k3p9");
 /// source.replace(source.find("gg::views::open_tex("), 20, "gg::views::open_text(");
 /// gg::programs::rerun(source);
 /// ```
@@ -36,7 +36,9 @@ namespace programs {
 /// would put the whole session back in the context window, which is the one thing the library
 /// exists to avoid.
 struct program_summary {
-  /// The turn it ran on, which is what fetching its source takes.
+  /// The id its `submit_program` acknowledgement carried, which is what fetching its source takes.
+  std::string id;
+  /// The turn it ran on.
   std::uint32_t turn{};
   /// How many lines of source it was.
   std::uint32_t lines{};
@@ -52,7 +54,7 @@ struct program_summary {
   /// <ggop-alias>programs.get</ggop-alias>
   ///
   /// \returns that program's exact source.
-  /// \throws gg::core::api_error `not_found` when the library has since dropped that turn.
+  /// \throws gg::core::api_error `not_found` when the library has since dropped that program.
   std::string source() const;
 };
 
@@ -70,35 +72,35 @@ struct program_summary {
 ///   different fact from a library that is empty, and the reason this can fail.
 std::vector<programs::program_summary> history();
 
-/// Fetch the exact source of one program that ran; with no argument, the most recent one.
+/// Fetch the exact source of one program that ran, by the id its acknowledgement carried.
 ///
 /// This is the first half of fixing a program without rewriting it: fetch what ran, patch it with
 /// ordinary string work, and hand the result back to be run. What comes back is the program that
-/// executed — so where a turn's program was itself handed over, this is the program that ran
-/// rather than the few lines that asked for it, and fetch-patch-run composes turn after turn.
+/// executed — so where a submission's program was itself handed over, this is the program that ran
+/// rather than the few lines that asked for it, and fetch-patch-run composes turn after turn. A
+/// rerun keeps the id of the submission it replaced.
 ///
 /// <ggop>programs.get</ggop>
 ///
-/// \param turn The turn whose program to fetch, as the history reports it; empty fetches the most
-///   recent one.
+/// \param id The program's id, as its acknowledgement carried it and as the history reports it.
 /// \returns that program's exact source.
-/// \throws gg::core::api_error `not_found`, naming the turns that are held, for a turn that ran no
-///   program or one old enough that the library has dropped it.
-std::string get(std::optional<std::uint32_t> turn = std::nullopt);
+/// \throws gg::core::api_error `not_found`, naming the ids that are held, for an id this agent was
+///   never issued or one whose program is old enough that the library has dropped it.
+std::string get(std::string_view id);
 
 /// Hand gg a program to run in place of this one, once this one has finished.
 ///
-/// Nothing is undone: every call this program already made stands, and the program that runs next
-/// sees the world this one left behind — so the hand-over belongs before work that should not
-/// happen twice. The first call in a turn stands, because a silently replaced program is a change
-/// nobody can see, and a program that then fails cancels the hand-over along with everything else
-/// it decided.
+/// It runs under this submission's id, so a later fetch of that id returns it. Nothing is undone:
+/// every call this program already made stands, and the program that runs next sees the world this
+/// one left behind — so the hand-over belongs before work that should not happen twice. The first
+/// call in a turn stands, because a silently replaced program is a change nobody can see, and a
+/// program that then fails cancels the hand-over along with everything else it decided.
 ///
 /// <ggop>programs.rerun</ggop>
 ///
 /// \param source The program to run in place of this one, as C++. It may not be blank, and it must
 ///   define `main`.
-/// \throws gg::core::api_error `refused` for a second hand-over in one turn, and `invalid_argument`
+/// \throws gg::core::api_error `refused` for a second hand-over from the same program, and `invalid_argument`
 ///   for a blank source.
 void rerun(std::string_view source);
 

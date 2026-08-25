@@ -37,7 +37,7 @@
 //!
 //! **Inline spans** — text between single backticks — are taken when they read as a *call*: a path
 //! of two or more `::`-separated identifiers followed by `(`. That admits `files::list()`,
-//! `programs::get(turn)` and `Brief::Prompt("…")`, and passes over `unwrap()` (no path),
+//! `programs::get(id)` and `Brief::Prompt("…")`, and passes over `unwrap()` (no path),
 //! `#[derive(…)]`, `Result<(), Failure>`, `<object>::<function>(args...)` and
 //! `<key>::<name>(args…)` (segments that are not identifiers), and `std::thread::spawn` (no
 //! call). The one thing that rule *would* wrongly admit is a rendered `{{api.….signature}}`, which
@@ -88,9 +88,9 @@ const PREAMBLE: &str = "\
     let body = \"what the program computed\";
     let name = \"physics\";
     let options = files::ReadOptions::default();
-    let turn: Option<u32> = None;
+    let id = \"k3p9\";
     let source = String::from(\"fn main() {}\");
-    let _ = (path, label, body, name, &options, turn, &source);
+    let _ = (path, label, body, name, &options, id, &source);
 ";
 
 /// **The lines a model copying one of these examples would have written above it**, taken from the

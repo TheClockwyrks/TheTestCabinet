@@ -534,7 +534,7 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
             r####"
   gg::log(std::to_string(gg::programs::history().size()));
   try {
-    gg::log(gg::programs::get(2));
+    gg::log(gg::programs::get("k3p9"));
   } catch (const gg::core::api_error &failure) {
     gg::log(std::string(gg::core::gg_name(failure.code())));
   }
@@ -547,8 +547,8 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
         true,
         canned_outcome,
     );
-    // A session that has run nothing has an empty history — never a failure — and a turn it never
-    // kept a program for is a `not_found` the program catches in C++'s own idiom.
+    // A session that has run nothing has an empty history — never a failure — and an id it never
+    // issued a program under is a `not_found` the program catches in C++'s own idiom.
     assert_eq!(logs(&outcome), ["0", "not-found"]);
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
     assert!(

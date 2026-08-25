@@ -345,6 +345,7 @@ async fn drive_root(
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1136,6 +1137,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1196,6 +1198,7 @@ async fn drive_times_out_at_a_passed_deadline() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1257,6 +1260,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1347,6 +1351,7 @@ async fn drive_hooked(
                 hooks,
                 ending_role,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1611,6 +1616,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1669,6 +1675,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -1840,6 +1847,7 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
     ];
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &provided,
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -1913,6 +1921,7 @@ async fn autoload_seeds_a_code_agent_with_a_submitted_program() {
     ];
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &provided,
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -2034,6 +2043,7 @@ async fn autoload_seeds_a_mockup_without_its_picture_by_default() {
 
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &[
             PathBuf::from("SPEC.md"),
             PathBuf::from("reference/title.png"),
@@ -2094,6 +2104,7 @@ async fn a_text_only_model_is_never_seeded_a_picture_even_when_images_are_asked_
 
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &[PathBuf::from("reference/title.png")],
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -2132,6 +2143,7 @@ async fn a_locked_code_mode_seed_is_pinned() {
 
     autoload_specifications(
         &mut context,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &[PathBuf::from("SPEC.md")],
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -2171,6 +2183,7 @@ async fn locked_autoload_survives_compaction() {
     unlocked.push_user_prompt("build");
     autoload_specifications(
         &mut unlocked,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &provided,
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -2198,6 +2211,7 @@ async fn locked_autoload_survives_compaction() {
     locked.push_user_prompt("build");
     autoload_specifications(
         &mut locked,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &provided,
         &ctx,
         GgProgramLanguage::TypeScript,
@@ -3076,6 +3090,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3276,6 +3291,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3446,6 +3462,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3536,6 +3553,7 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3740,6 +3758,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -3873,6 +3892,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -4157,6 +4177,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -4327,6 +4348,7 @@ async fn drive_never_compacts_when_capability_off() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -4575,6 +4597,7 @@ async fn drive_manages_context_end_to_end() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },
@@ -4772,6 +4795,7 @@ async fn drive_without_amc_offers_no_context_management() {
                 hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
+                carried_programs: None,
                 turn_base: 0,
                 replay: None,
             },

@@ -106,15 +106,27 @@ pub(crate) fn missing_completion_feedback(role: EndingRole) -> String {
 /// name in [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES).
 pub(crate) const SUBMIT_PROGRAM_TOOL: &str = "submit_program";
 
-/// The fixed tool result answering a [`submit_program`](SUBMIT_PROGRAM_TOOL) call that carried a
-/// program.
+/// The tool result answering a [`submit_program`](SUBMIT_PROGRAM_TOOL) call that carried a program,
+/// for an agent that keeps **no** [program library](crate::programs).
 ///
 /// It is pushed **before** the program runs — the transcript needs a `tool` message directly after
 /// the assistant's call for the request to stay a conversation every provider accepts, and the
 /// program's own products (views, errors, notices) land as their own messages after it — so it can
-/// carry no outcome, and deliberately says nothing beyond receipt. The system prompt states this
-/// once, so the model reads `ok` as the protocol rather than as a verdict.
+/// carry no outcome, and deliberately says nothing beyond receipt. An agent that keeps a library is
+/// answered with the id the library minted for the program instead — see [`submit_program_ack`] —
+/// and the system prompt states both, so the model reads the body as the protocol rather than as a
+/// verdict.
 pub(crate) const SUBMIT_PROGRAM_ACK: &str = "ok";
+
+/// The body of the tool result acknowledging a program: the bare id the
+/// [program library](crate::programs) issued it (`k3p9`), or [`SUBMIT_PROGRAM_ACK`] for an agent
+/// whose library issues none.
+///
+/// A receipt and not a verdict either way. The id is what `programs.get` takes for this program,
+/// and a `programs.rerun` chain inside the submission keeps it.
+pub(crate) fn submit_program_ack(id: Option<&str>) -> String {
+    id.map_or_else(|| SUBMIT_PROGRAM_ACK.to_string(), str::to_string)
+}
 
 /// The [`SUBMIT_PROGRAM_TOOL`] definition for an agent writing `language` — the single tool a
 /// responses-as-code request offers, with the request's tool choice pinned to it

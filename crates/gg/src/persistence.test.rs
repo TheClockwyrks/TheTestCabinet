@@ -309,13 +309,15 @@ async fn restoring_re_reads_each_view_from_the_workspace_as_it_stands_now() {
 
     let restored = restore_file_views(
         &mut window,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &[whole("a.rs")],
         Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
     )
-    .await;
+    .await
+    .expect("the library minted every id it was asked for");
     assert_eq!(restored, 1);
 
     let items = window.items();
@@ -362,13 +364,15 @@ async fn restoring_a_paged_view_re_reads_the_same_region() {
     };
     let restored = restore_file_views(
         &mut window,
+        &mut crate::programs::ProgramLibrary::disabled(),
         std::slice::from_ref(&view),
         Some(ReadPolicy::DefaultCap(100)),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
     )
-    .await;
+    .await
+    .expect("the library minted every id it was asked for");
     assert_eq!(restored, 1);
 
     let items = window.items();
@@ -414,13 +418,15 @@ async fn two_windows_of_one_file_both_come_back() {
     ];
     let restored = restore_file_views(
         &mut window,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &desk,
         Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
     )
-    .await;
+    .await
+    .expect("the library minted every id it was asked for");
     assert_eq!(restored, 2);
     assert_eq!(window.open_file_views(), desk);
 }
@@ -435,13 +441,15 @@ async fn a_view_whose_file_is_gone_is_skipped_with_a_warning() {
 
     let restored = restore_file_views(
         &mut window,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &[whole("gone.rs"), whole("here.rs")],
         Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
     )
-    .await;
+    .await
+    .expect("the library minted every id it was asked for");
     assert_eq!(restored, 1, "the readable view still opens");
     assert_eq!(window.open_file_views(), vec![whole("here.rs")]);
 
@@ -475,13 +483,15 @@ async fn a_view_already_open_is_not_re_opened() {
 
     let restored = restore_file_views(
         &mut window,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &[whole("spec.md")],
         Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
     )
-    .await;
+    .await
+    .expect("the library minted every id it was asked for");
     assert_eq!(restored, 0);
     assert_eq!(window.open_file_views(), vec![whole("spec.md")]);
 }
@@ -497,13 +507,15 @@ async fn an_empty_record_seeds_nothing() {
     assert_eq!(
         restore_file_views(
             &mut window,
+            &mut crate::programs::ProgramLibrary::disabled(),
             &[],
             Some(ReadPolicy::Unlimited),
             &ctx,
             GgProgramLanguage::TypeScript,
             &emitter,
         )
-        .await,
+        .await
+        .expect("the library minted every id it was asked for"),
         0
     );
     // Nothing was added to the thread; the system prompt is a slot, not an item.
@@ -795,13 +807,15 @@ async fn a_code_mode_window_records_and_restores_the_views_a_program_opened() {
     );
     let files = restore_file_views(
         &mut next,
+        &mut crate::programs::ProgramLibrary::disabled(),
         &recorded.files,
         Some(ReadPolicy::Unlimited),
         &ctx,
         GgProgramLanguage::TypeScript,
         &emitter,
     )
-    .await;
+    .await
+    .expect("the library minted every id it was asked for");
     let texts = restore_text_views(&mut next, &recorded.texts);
     assert_eq!((files, texts), (1, 1));
 
@@ -819,4 +833,51 @@ async fn a_code_mode_window_records_and_restores_the_views_a_program_opened() {
         "{bodies}"
     );
     assert_eq!(PersistedDesk::of(&next), recorded);
+}
+
+/// **A library that cannot mint an id for a restored view is fatal, not a skip.** Exhausting the
+/// id mint's attempt bound is gg's own defect, and the restore hands it to the caller — which ends
+/// the run the way it ends any setup fault — rather than resuming an agent whose desk gg could not
+/// honestly acknowledge.
+#[tokio::test]
+async fn a_restore_whose_library_cannot_mint_an_id_is_an_error() {
+    /// A minter that only ever produces one id, so the second issue exhausts the attempt bound.
+    struct OneId;
+    impl crate::programs::ProgramIdMinter for OneId {
+        fn mint(&self, _length: usize) -> String {
+            "aaaa".to_string()
+        }
+    }
+
+    let (_dir, ctx) = workspace(&[("game.js", "// the draft\n")]);
+    let (emitter, _sink) = emitter();
+    let mut library =
+        crate::programs::ProgramLibrary::enabled(None, 4).with_minter(Arc::new(OneId));
+    assert_eq!(
+        library.issue_id().unwrap().as_deref(),
+        Some("aaaa"),
+        "the one id the minter has is issued"
+    );
+
+    // A code-mode window, so the restore synthesizes a submission and asks the library for its id.
+    let mut window = ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(100_000),
+        true,
+    );
+    let error = restore_file_views(
+        &mut window,
+        &mut library,
+        &[whole("game.js")],
+        Some(ReadPolicy::Unlimited),
+        &ctx,
+        GgProgramLanguage::TypeScript,
+        &emitter,
+    )
+    .await
+    .expect_err("every roll collides, so the restore cannot acknowledge the view");
+    assert!(
+        error.contains("could not mint a fresh program id"),
+        "{error}"
+    );
 }

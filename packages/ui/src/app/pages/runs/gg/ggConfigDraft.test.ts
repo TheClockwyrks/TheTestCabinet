@@ -2999,6 +2999,35 @@ describe("an agent's type", () => {
     expect(capsOf(asTools, "shell")?.enabled).toBe(true);
   });
 
+  // The library's two params are both required and both authored: a set that names
+  // only `keep` is written back with the id length it opened on, and one that names an
+  // id length keeps it as the string the form holds.
+  it("seeds the program library's id length and keeps one it was saved with", () => {
+    const fresh = capabilityDraftFor("program-library");
+    expect(fresh.params).toEqual({ keep: "20", idLength: "4" });
+    const draft = draftFromCapabilitySet(
+      capSet([
+        {
+          id: "responses-as-code",
+          enabled: true,
+          params: { language: LANG },
+        },
+        {
+          id: "program-library",
+          enabled: true,
+          params: { keep: 5, idLength: 8 },
+        },
+      ]),
+    );
+    expect(draft.agents[0]!.capabilities["program-library"]!.params).toEqual({
+      keep: "5",
+      idLength: "8",
+    });
+    expect(
+      capsOf(capabilitySetFromDraft(draft, null), "program-library")?.params,
+    ).toEqual({ keep: 5, idLength: 8 });
+  });
+
   // Switching type inside one editing session must lose nothing…
   it("keeps another type's configuration in the draft until the agent is committed", () => {
     const draft = draftFromCapabilitySet(

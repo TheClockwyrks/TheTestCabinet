@@ -340,6 +340,7 @@ pub(crate) fn resolve_opening_turn(
 pub(crate) async fn seed_bootstrap(
     context: &mut ContextModel,
     docs: &mut DocsRuntime,
+    programs: &mut crate::programs::ProgramLibrary,
     agent: BootstrapAgent<'_>,
 ) -> Result<Bootstrap, String> {
     if !context.code_mode() {
@@ -372,6 +373,11 @@ pub(crate) async fn seed_bootstrap(
     // shaped exactly as the model's own must be — a `submit_program` call answered by a `tool`
     // result — so the first example of its own output a model reads is one in the protocol's
     // shape.
+    //
+    // Acknowledged the way the model's own submissions are: with the id the program library issued
+    // it, under which it is kept — as one of gg's opening programs, on turn 0 — once it has run. A
+    // library the agent does not keep issues nothing, and the acknowledgement is the fixed word.
+    let id = programs.issue_id().map_err(|exhausted| exhausted.message)?;
     context.push_assistant(
         None,
         vec![crate::completion::synthesized_submission(
@@ -382,7 +388,7 @@ pub(crate) async fn seed_bootstrap(
     context.push_tool_result(
         test_cabinet_core::gg::GgContextSource::ToolOutput,
         BOOTSTRAP_CALL_ID,
-        crate::completion::SUBMIT_PROGRAM_ACK,
+        crate::completion::submit_program_ack(id.as_deref()),
     );
 
     // Owned copies of the grant: nothing borrowed from the caller survives the move onto the
@@ -401,7 +407,9 @@ pub(crate) async fn seed_bootstrap(
         unimplemented: Vec::new(),
     };
 
-    let ran = tokio::task::spawn_blocking(move || match prepared_program(language, &source) {
+    // The program's text stays with the caller too: it is what the library records once it has run.
+    let program = source.clone();
+    let ran = tokio::task::spawn_blocking(move || match prepared_program(language, &program) {
         Err(detail) => (Err(detail), api),
         Ok(prepared) => {
             let (outcome, api) = crate::sandbox::run_prepared_program(
@@ -439,6 +447,9 @@ pub(crate) async fn seed_bootstrap(
     *context = api.context;
     *docs = api.docs;
     let placed = placed_views(outcome?, &api.unimplemented, language)?;
+    if let Some(id) = &id {
+        programs.record(id, 0, &source, true, None);
+    }
     Ok(Bootstrap::Seeded {
         placed,
         dropped: resolved.dropped,
@@ -900,7 +911,7 @@ impl OperationApi for BootstrapApi {
         open_text_view(label: String, body: String) -> Result<SandboxViewOpened, ViewRefusal>;
         close_view(selector: String) -> Result<u32, ViewRefusal>;
         program_history() -> Vec<ProgramSummary>;
-        program_source(turn: Option<u64>) -> Result<String, ProgramRefusal>;
+        program_source(id: &str) -> Result<String, ProgramRefusal>;
     }
 }
 

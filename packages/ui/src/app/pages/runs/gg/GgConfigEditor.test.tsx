@@ -303,6 +303,28 @@ describe("an agent's type", () => {
     ).toBeInTheDocument();
   });
 
+  // The library's id length opens on its authored figure like every other control —
+  // no "(default: 4)" in the label; the reset beside it is what says it has moved.
+  it("seeds the program library's id length and offers a reset once it moves", () => {
+    renderCaps(draftWith("program-library", "", {}, "rac"));
+    const row = capabilityRow("program-library");
+    const length = within(row).getByLabelText(/^Id length/) as HTMLInputElement;
+    expect(length.value).toBe("4");
+    expect(
+      within(row).queryByRole("button", { name: "Reset Id length" }),
+    ).toBeNull();
+    fireEvent.change(length, { target: { value: "8" } });
+    const reset = within(row).getByRole("button", { name: "Reset Id length" });
+    fireEvent.click(reset);
+    expect(
+      (
+        within(capabilityRow("program-library")).getByLabelText(
+          /^Id length/,
+        ) as HTMLInputElement
+      ).value,
+    ).toBe("4");
+  });
+
   it("offers a machine no capabilities at all — its configuration is the machine", () => {
     render(<Harness initial={emptyDraft()} />);
     openTab("Tools");

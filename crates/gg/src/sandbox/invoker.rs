@@ -74,7 +74,7 @@ pub struct SandboxToolCall {
 ///
 /// One roster for all of them, because they are one fact — **the model reached for something it was
 /// not given** — and that fact is what a comparison of two configurations counts. What is *not* here is a
-/// call the model was offered and got wrong: a blank argument, a second hand-over in one turn. Those
+/// call the model was offered and got wrong: a blank argument, a second hand-over from one program. Those
 /// throw and say why, and putting them here would make the roster a count of mistakes rather than a
 /// count of withheld capabilities.
 ///
@@ -487,7 +487,7 @@ pub trait OperationApi: Send + 'static {
     /// list rather than a failure. An agent without the capability never asks, because the object is
     /// not in its scope.
     fn program_history(&mut self) -> Vec<ProgramSummary>;
-    /// The source of one program this agent ran — `None` being the most recent — or the
-    /// [refusal](ProgramRefusal) naming the turns the library holds.
-    fn program_source(&mut self, turn: Option<u64>) -> Result<String, ProgramRefusal>;
+    /// The source of one program this agent ran, by the id its acknowledgement carried, or the
+    /// [refusal](ProgramRefusal) naming the ids the library holds.
+    fn program_source(&mut self, id: &str) -> Result<String, ProgramRefusal>;
 }
