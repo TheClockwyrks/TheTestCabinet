@@ -12,9 +12,8 @@ whichever engines suit it.
 The runtime is the npm package `@test-cabinet/simple-3d`, written entirely in
 TypeScript and imported by a build as an ordinary dependency, with
 `packages/simple-3d/` as its place in the repository and that package's own
-`docs/` directory as the documentation seeded into a run workspace. The engine
-is designed and awaiting implementation, so it is outside the set a run may
-select.
+`docs/` directory as the documentation seeded into a run workspace. A run
+selects it like any other engine in the catalogue.
 
 ## What each side owns
 

@@ -15,8 +15,7 @@ in TypeScript and imported by a build as an ordinary dependency, with
 `packages/structured-3d/` as its place in the repository and that package's
 own `docs/` directory as the documentation seeded into a run workspace — the
 framework documented in the depth a model needs to use it without seeing its
-source. The engine is designed and awaiting implementation, so it is outside
-the set a run may select.
+source. A run selects it like any other engine in the catalogue.
 
 ## What each side owns
 

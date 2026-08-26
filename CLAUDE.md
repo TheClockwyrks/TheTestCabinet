@@ -52,10 +52,15 @@ TypeScript types + JSON Schema for the run record contract; see
 rules, each mirroring a counterpart in `crates/core/src/review.rs`, plus the
 set-level rollup that lets a figure frozen at one moment and the same figure
 recomputed later be compared; `packages/ui`'s `ratings` module re-exports the
-scoring half alongside its display metadata)
-and `packages/browser-driver/` (the Playwright driver the
+scoring half alongside its display metadata),
+`packages/browser-driver/` (the Playwright driver the
 [validator](apps/docs/src/content/docs/components/core/validation.md) shells out
-to).
+to)
+and `packages/headless-webgl2/` (`@test-cabinet/headless-webgl2` — a
+pure-TypeScript WebGL2 implementation for Node, which is how the 3D engines and
+a 3D case's validators render with no browser and no GPU; it reaches a run as a
+**shippable package** a case names in its manifest's `packages` key, vendored
+under `.tcab/packages/`, never by the engine route).
 
 **Reviewer scheduling (coverage plans & ladders):** the per-account planning
 surface — what runs a reviewer wants to exist and how fast they arrive — is
@@ -187,8 +192,9 @@ Task-oriented walkthroughs:
   independently of the test case**: a case only declares which engines it
   *supports*, and the engine's own docs are seeded from its package rather than
   restated in a case's specs. The runtime itself is an npm package
-  (`packages/simple-2d/` for `simple-2d`, `packages/structured-2d/` for
-  `structured-2d`), staged into the host package store and
+  named for the slug (`packages/simple-2d/`, `packages/structured-2d/`,
+  `packages/simple-3d/`, `packages/structured-3d/`), staged into the host
+  package store and
   vendored into the run repo at seed time. See
   [`engines/README.md`](engines/README.md), the contract doc
   [`components/core/engines.md`](apps/docs/src/content/docs/components/core/engines.md),
