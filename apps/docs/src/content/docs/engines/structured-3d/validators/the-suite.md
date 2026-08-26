@@ -78,8 +78,11 @@ surface the harness supplies, so the suites need no DOM.
 ## The harness
 
 The harness builds an engine headlessly: a canvas from
-`@test-cabinet/headless-webgl2`, which implements the WebGL2 context in process
-and which the case declares as a development dependency of the workspace, and a
+`@test-cabinet/headless-webgl2`, which implements the WebGL2 context in
+process. It is one of the repo's shippable packages — the case names it in its
+manifest's `packages` key, seeding vendors it into the run repository under
+`.tcab/packages/`, and the shipped workspace declares it as a development
+dependency by the `file:` spec resolution requires. Beside the canvas sits a
 [`SurfaceMetrics`](/engines/structured-3d/apis/engine/) object supplying the
 size, the device pixel ratio, and the event target the engine listens on.
 

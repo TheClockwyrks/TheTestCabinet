@@ -156,9 +156,10 @@ declares a light actor therefore owns its lighting outright.
 
 `TextComponent` draws one string as a billboard: a quad at the component's
 world position that always faces the camera. `font` defaults to
-`"16px sans-serif"`, `fill` to `"#ffffff"`, `align` to `"center"`, and
-`baseline` to `"middle"`. The font size is world units of text height, so a
-label a few units from the camera wants a fraction of a unit.
+`"16px monospace"`, `fill` to `"#ffffff"`, `align` to `"center"`, and
+`baseline` to `"middle"`. Only the font size is read, as world units of text
+height — the face is always the engine's monospace face — so a label a few
+units from the camera wants a fraction of a unit.
 
 ```ts
 import {

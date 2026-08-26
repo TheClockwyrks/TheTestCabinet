@@ -116,7 +116,10 @@ receives that overlay surface's 2D context. The overlay surface tracks the
 canvas's backing-store size. With a document behind the canvas the engine
 positions it over the canvas; over a supplied surface with no document it is an
 offscreen canvas reached through `draw`. Everything observable about the
-overlay is unchanged from the surface's placement.
+overlay is unchanged from the surface's placement. In an environment that can
+make no 2D surface at all — Node, where there is no document and no 2D
+`OffscreenCanvas` — the overlay is inert: the engine draws nothing and calls
+`draw` on nothing, while `read` and `metrics` answer as always.
 
 `width` and `height` are the dimensions of the surface being drawn on, in device
 pixels. The engine resets the context transform to the identity before calling

@@ -32,6 +32,14 @@ events. The audio the [asset-generation
 tools](/testing/asset-generation/manifests/overview/) produce is loaded this
 way.
 
+Decoding needs no audio context. A file-backed cue is a PCM WAV, the container
+the asset-generation tools produce, and the engine decodes it itself, so
+`load` resolves once the cue is decoded and `assets.loadAudio` resolves the
+decoded buffer whether or not a context exists. Headless, that buffer is an
+`AudioBuffer`-shaped value carrying the channel data, sample rate, and
+duration, so a suite awaits the same promises a browser build does and nothing
+sounds.
+
 ## `CueSpec`
 
 ```ts

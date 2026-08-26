@@ -37,6 +37,14 @@ and the same path rules, and it emits the same `asset:loaded` and
 tools](/testing/asset-generation/manifests/overview/) produce is loaded this
 way.
 
+Decoding needs no audio context. A file-backed cue is a PCM WAV, the container
+the asset-generation tools produce, and the engine decodes it itself, so
+`load` resolves once the cue is decoded and `assets.loadAudio` resolves the
+decoded buffer whether or not a context exists. Headless, that buffer is an
+`AudioBuffer`-shaped value carrying the channel data, sample rate, and
+duration, so a suite awaits the same promises a browser build does and nothing
+sounds.
+
 ## Cues a level declares
 
 A level declares the cues it alone needs from its `load`, which the engine
@@ -171,6 +179,8 @@ the cues a game plays from its start level onward and across every transition.
 | `load` is given a path the asset loader refuses | Rejects with the `resolve` error, and the cue stays undeclared |
 | `load` cannot fetch or decode the audio | Rejects with the cause, and the cue stays undeclared |
 | `load` rejects inside the instance's `initialize` or the start level's `load` | `engine.initialize` rejects with the cause |
+| No audio context is available | `play` and `loop` emit their events and nothing sounds |
+| The audio graph throws during synthesis or a loop | The event is emitted and the frame continues |
 
 ## Exports
 

@@ -132,8 +132,9 @@ no stack of saved states exists to survive a frame boundary.
 The scene context has no save stack and no clip or path machinery. What
 survives a frame boundary is the renderer state: the camera, the lights, and
 the render mode, each set through the scene context and holding until set
-again. A frame's operations are its draw calls plus any state-setting calls it
-issued, and its inherited state is the renderer state in force when it opened.
+again. A frame's operations are its draw calls, any state-setting calls, and
+any depth clears it issued, and its inherited state is the renderer state in
+force when it opened.
 
 ```ts
 type RenderMode = "standard" | "wireframe" | "unlit" | "normals";
@@ -277,6 +278,12 @@ replay needs nothing from the run's tree. A handle is immutable and loaded
 once, so it is keyed on identity and captured once, however many frames draw
 it.
 
+A texture the engine rasterized itself — a
+[`TextComponent`](/engines/structured-3d/apis/components/)'s billboard — is
+captured the same way, as a `texture` entry whose `path` is `text:` followed
+by the string, so a player draws the lettering from the captured pixels
+without owning the face.
+
 Capture stops once the recording holds 16 MB of asset bytes, counted over
 `data` and `src`. Captured assets keep resolving, and a further new capture
 records `{ $opaque: "MeshHandle" }` or the handle's type name, the same
@@ -302,8 +309,9 @@ type ResourceOp =
 | `then` | The calls and assignments made on the value before this use, in order. |
 
 A resource is a value the scene context produced: procedural geometry and
-materials created in code, through the five producing methods `createBox`,
-`createSphere`, `createCylinder`, `createPlane`, and `createMaterial`. A
+materials created in code, through the six producing methods `createBox`,
+`createSphere`, `createCylinder`, `createCapsule`, `createPlane`, and
+`createMaterial`. A
 producing call belongs to the recipe of the value it made rather than to the
 frame, so `ops` holds no producing call.
 
@@ -359,4 +367,7 @@ on screen at that moment.
 `Recording`, `RecordedFrame`, `RenderState`, `RenderMode`, `LightState`,
 `Color`, `DrawOp`, `DrawValue`, `CapturedAsset`, `Resource`, and `ResourceOp`
 are exported as types from `@test-cabinet/structured-3d`, and
-`RECORDING_FORMAT` is exported as a value from the same entry point.
+`RECORDING_FORMAT` is exported as a value from the same entry point. The
+`@test-cabinet/structured-3d/recording` subpath serves the same names as a
+leaf module, loadable with no engine and no DOM, which is what a player that
+only reads recordings imports.

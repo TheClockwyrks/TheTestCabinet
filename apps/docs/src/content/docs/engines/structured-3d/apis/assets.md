@@ -50,6 +50,11 @@ loaders do not cover — level data, a voxel `rig.json`, a font — goes through
 produce: `mesh.glb` from the meshed model kinds, `material.json` with its PBR
 maps from the material kind, and `clip.wav` from the audio kinds.
 
+A texture is a PNG — the format those tools produce and the format a
+[recording](/engines/structured-3d/apis/recording/) re-embeds — and audio is a
+PCM WAV. The engine decodes both itself, so a load resolves identically in a
+browser and in Node.
+
 Each loader call fetches; nothing is cached across calls. A game loads once
 during initialization and keeps the handle.
 

@@ -180,9 +180,10 @@ by its world-space surface normal, mapped as `rgb = (n + 1) / 2`, which turns a
 sample into a claim about a surface's orientation.
 
 `setCollisionOverlay` draws every enabled collider's shape as wireframe outlines
-over the finished picture, in a color per response with depth testing off, and
-is independent of the mode. A check that is about a collider compares a frame
-with the overlay on against the same frame with it off.
+over the finished picture, in a color per response and after a depth clear so
+nothing the game drew hides it, and is independent of the mode. A check that
+is about a collider compares a frame with the overlay on against the same
+frame with it off.
 
 ## Choosing between them
 

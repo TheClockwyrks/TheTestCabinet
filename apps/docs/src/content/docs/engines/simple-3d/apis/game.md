@@ -197,6 +197,8 @@ interface SceneContext {
   setLights(lights: readonly LightState[]): void;
   setMode(mode: RenderMode): void;
 
+  clearDepth(): void;
+
   drawMesh(mesh: MeshHandle, transform: Transform, options?: DrawMeshOptions): void;
   drawGeometry(geometry: Geometry, material: MaterialLike, transform: Transform): void;
   drawBillboard(texture: TextureHandle, position: Vec3, size: Vec2): void;
@@ -207,20 +209,22 @@ interface SceneContext {
   createBox(size: Vec3): Geometry;
   createSphere(radius: number): Geometry;
   createCylinder(radius: number, height: number): Geometry;
+  createCapsule(radius: number, height: number): Geometry;
   createPlane(width: number, depth: number): Geometry;
   createMaterial(spec: MaterialSpec): Material;
 }
 ```
 
-The whole drawing vocabulary: three state setters, six draw calls, and five
-producers. Every draw call is self-contained, naming its full world transform
-or position explicitly, and no method reads anything back.
+The whole drawing vocabulary: three state setters, a depth clear, six draw
+calls, and six producers. Every draw call is self-contained, naming its full
+world transform or position explicitly, and no method reads anything back.
 
 | Member | Intent |
 | --- | --- |
 | `setCamera` | Sets the frustum camera the scene is projected through. Retained: holds until set again. The argument is copied. |
 | `setLights` | Replaces the light list wholesale. Retained. The array and its entries are copied. The renderer uses the first 64 entries. |
-| `setMode` | Sets the render mode: `"standard"` is the lit default, beside `"wireframe"`, `"unlit"`, and `"normals"`. Retained. |
+| `setMode` | Sets the render mode: `"standard"` is the lit default, beside `"wireframe"`, `"unlit"`, and `"normals"`. Retained. The mode governs mesh and geometry draws; billboards, lines, and HUD draws render the same under every mode. |
+| `clearDepth` | Clears the depth buffer where it stands in the issue order, so draws issued after it sit over everything drawn before it however near the earlier geometry is. Not retained: every frame still opens with its own depth reset. |
 | `drawMesh` | Draws a loaded glTF mesh under a world transform, with its file's own materials unless overridden. |
 | `drawGeometry` | Draws a procedural geometry under a world transform with the given material. |
 | `drawBillboard` | Draws a camera-facing, unlit, alpha-blended quad of `size` world units centered at `position`. |
@@ -230,6 +234,7 @@ or position explicitly, and no method reads anything back.
 | `createBox` | A box geometry of `size` world units, centered at the local origin. |
 | `createSphere` | A sphere of `radius`, centered at the local origin, tessellated at 32×16 segments. |
 | `createCylinder` | A capped cylinder of `radius` and `height` on the local Y axis, centered, 32 radial segments. |
+| `createCapsule` | A capsule of `radius` on the local Y axis, centered; `height` is the distance between the centers of its two hemispherical caps, so the extent along the axis is `height + 2 * radius`. 32 radial segments, each cap 8 rings. |
 | `createPlane` | A `width`×`depth` plane on the local XZ plane, +Y normal, centered. |
 | `createMaterial` | A material built in code from a `MaterialSpec`. |
 
@@ -254,10 +259,14 @@ keeps its camera in its own state and re-applies it with `setCamera`.
 ### Draw order
 
 Opaque draws resolve by the depth buffer, so their issue order does not affect
-the picture. Translucent draws — a material whose `opacity` is below 1, every
-billboard, every line over a translucent color — render after every opaque
-draw, sorted farthest-first by the distance from the camera to the draw's
-position. HUD draws composite last, above the 3D picture, in issue order.
+the picture. The state setters and `clearDepth` divide a frame's draws into
+runs, and translucent draws — a material whose `opacity` is below 1, every
+billboard, every line over a translucent color — render after their own run's
+opaque draws, sorted farthest-first by the distance from the run's camera to
+the draw's position. A frame that sets its state once and clears no depth
+mid-frame is a single run, so the common case reads as it always has:
+translucent after every opaque draw. HUD draws composite last, above the 3D
+picture, in issue order across the whole frame.
 
 ### Animation posing
 
@@ -269,7 +278,7 @@ itself alone.
 
 ### Producers
 
-The five `create*` methods are exactly the scene context's producing methods,
+The six `create*` methods are exactly the scene context's producing methods,
 carried in a recording as [resources](/engines/simple-3d/apis/recording/). A
 produced value is immutable: its recipe is the producing call with no further
 steps, and its identity is the call that made it. Creation is cheap and
@@ -368,7 +377,13 @@ interface HudTextOptions {
 `position` is the top-left of the text's em box under `"left"`, the top-center
 under `"center"`, the top-right under `"right"`. The face is the engine's own
 monospace face; there is no font option, so the same call letters the same in
-every build and in the player.
+every build and in the player. The face is Unscii 16, a public-domain 8×16
+bitmap face carried in the package as glyph data rather than as a font file,
+covering printable ASCII; a character outside the coverage letters as the
+replacement box. `size` is the height of the 16-pixel glyph cell in logical
+units, and each glyph advances half of `size`, so the engine's lettering is a
+pure function of the call and the player letters it from its own copy of the
+same data.
 
 ## `Geometry`
 
@@ -455,7 +470,7 @@ The scene context refuses its own misuse where it happens:
 | A scene context method called outside `render` | `Error` naming the rule |
 | `drawMesh` with a `clip` not in `mesh.clips` | `Error` naming the clip and listing `mesh.clips` |
 | `setMode` with a value outside `RenderMode` | `Error` naming every valid mode |
-| `createBox`, `createSphere`, `createCylinder`, or `createPlane` with a dimension that is not finite and positive | `RangeError` naming the value |
+| `createBox`, `createSphere`, `createCylinder`, `createCapsule`, or `createPlane` with a dimension that is not finite and positive | `RangeError` naming the value |
 | `createMaterial` with `roughness`, `metallic`, or `opacity` outside `0`–`1` or not finite | `RangeError` naming the field and value |
 
 ## Exports

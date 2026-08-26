@@ -47,7 +47,11 @@ The renderer is reached as `engine.renderer` and is available from
 construction, so whoever holds the engine drives both switches.
 
 The collision overlay draws every enabled collider's shape over the finished
-picture, in a color per response, and is independent of the mode.
+picture, in a color per response, and is independent of the mode. The color
+states the strongest response the collider's own `responses` declare:
+`#ff4040` for a collider that declares a `block` answer, `#40ff40` for one
+whose strongest answer is `overlap`, and `#808080` for one that declares
+neither.
 
 ## The pipeline
 
@@ -69,15 +73,20 @@ Each frame, after the ticks and after any transition:
 5. The collection is sorted by `layer` ascending, then by the owning actor's
    spawn order, then by attachment order. The sort is stable.
 6. The layers draw in ascending order, and the depth buffer is cleared before
-   each layer, so a later layer draws over an earlier one however near the
-   earlier one's geometry sits. Within a layer, components at opacity `1` draw
-   in sort order with the depth buffer ordering their fragments; components
-   below opacity `1` draw afterwards, farthest from the camera first (by their
-   world positions' distance to the camera, ties broken by the sort order). A
-   `DrawComponent` receives `DrawApi` and draws itself in its place.
+   each layer — issued through the scene context as
+   [`clearDepth`](/engines/simple-3d/apis/game/), so a recording carries the
+   clear — which is what lets a later layer draw over an earlier one however
+   near the earlier one's geometry sits. Within a layer, components at opacity
+   `1` draw in sort order with the depth buffer ordering their fragments;
+   components below opacity `1` draw afterwards, farthest from the camera
+   first (by their world positions' distance to the camera, ties broken by the
+   sort order). A `DrawComponent` receives `DrawApi` and draws itself in its
+   place.
 7. The collision overlay draws, when it is enabled: every enabled collider's
    shape as wireframe outlines over the finished picture, in a color per
-   response, with depth testing off.
+   response. It draws through the scene context as a `clearDepth` followed by
+   `drawLine` outlines, so nothing the game drew hides it and a recording
+   replays it exactly.
 8. The debug overlay draws on the engine's overlay surface, in device space,
    above the rendering canvas.
 
@@ -128,7 +137,9 @@ The render mode is renderer state the scene context holds, so a
 `DrawComponent`'s calls are drawn under the mode in force without the component
 implementing anything; `api.mode` remains readable for a component that draws
 differently per mode. A `DrawComponent` does not set the scene context's
-camera, lights, or mode; those belong to the pipeline.
+camera, lights, or mode, and does not clear depth; those belong to the
+pipeline, and a call to `setCamera`, `setLights`, `setMode`, or `clearDepth`
+from `draw` throws, naming the rule.
 
 ## The ticks and the pipeline
 
@@ -145,7 +156,10 @@ ticks and its picture from the pipeline.
 
 ## Exports
 
-`RenderMode`, `Renderer`, and `DrawApi` are exported as types, and
-`DrawComponent` as an abstract class, from `@test-cabinet/structured-3d`. The
+`RenderMode`, `Renderer`, `DrawApi`, and `SceneContext` are exported as types,
+and `DrawComponent` as an abstract class, from `@test-cabinet/structured-3d`.
+`SceneContext` is the vocabulary
+[Simple 3D specifies](/engines/simple-3d/apis/game/), shared verbatim, so the
+type reads the same in both packages. The
 render components the pipeline draws are exported from the same specifier and
 listed on the [components](/engines/structured-3d/apis/components/) page.

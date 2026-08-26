@@ -123,8 +123,9 @@ boundary and nothing else needs carrying.
 
 What survives a frame boundary is the renderer state: the camera, the lights,
 and the render mode, each set through the scene context and holding until set
-again. A frame's operations are its draw calls plus any state-setting calls it
-issued; its inherited state is the renderer state in force when it opened.
+again. A frame's operations are its draw calls, any state-setting calls, and
+any depth clears it issued; its inherited state is the renderer state in force
+when it opened.
 
 ```ts
 type RenderMode = "standard" | "wireframe" | "unlit" | "normals";
@@ -276,8 +277,9 @@ type ResourceOp =
 | `then` | The calls and assignments made on the value before this use, in order. |
 
 A resource is a value the scene context produced: the geometries and materials
-built in code. Exactly five methods produce one — `createBox`, `createSphere`,
-`createCylinder`, `createPlane`, and `createMaterial` — and a producing call
+built in code. Exactly six methods produce one — `createBox`, `createSphere`,
+`createCylinder`, `createCapsule`, `createPlane`, and `createMaterial` — and a
+producing call
 belongs to the recipe of the value it made rather than to the frame, so `ops`
 holds no producing call.
 

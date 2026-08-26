@@ -111,7 +111,10 @@ that overlay surface's `CanvasRenderingContext2D`, with `width` and `height`
 the overlay surface's dimensions in device pixels. The overlay surface tracks
 the canvas's backing-store size. With a document behind the canvas the engine
 positions it over the canvas; over a supplied surface with no document it is an
-offscreen canvas reached through `draw`. The engine resets the context
+offscreen canvas reached through `draw`. In an environment that can make no 2D
+surface at all — Node, where there is no document and no 2D `OffscreenCanvas`
+— the overlay is inert: the engine draws nothing and calls `draw` on nothing,
+while `read` and `metrics` answer as always. The engine resets the context
 transform to the identity before calling `draw`, and `draw` saves and restores
 the context around all of its own work, including when measuring or drawing
 throws. The overlay draws on its own surface and never enters a

@@ -383,11 +383,15 @@ The canvas and the runner are devDependencies of the seeded workspace. The
 engine renders through the canvas's WebGL2 context, so the seeded workspace
 supplies a headless canvas whose `getContext("webgl2")` yields a real one; a
 canvas that yields none is the engine's construction error.
+`@test-cabinet/headless-webgl2` is a shippable package: the case names it in
+its manifest's `packages` key, seeding vendors it into the run repository
+under `.tcab/packages/`, and the workspace's `package.json` declares it by the
+`file:` spec resolution requires.
 
 ```json
 {
   "devDependencies": {
-    "@test-cabinet/headless-webgl2": "^0.1",
+    "@test-cabinet/headless-webgl2": "file:./.tcab/packages/@test-cabinet/headless-webgl2",
     "vitest": "^3"
   }
 }

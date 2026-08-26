@@ -39,7 +39,7 @@ The logical field keeps the 2D convention: origin top-left, x right, y down,
 in logical units. World space is y-up, and the flip between the two lives in
 the projection's NDC step and nowhere else.
 
-## `Vec2`, `Vec3`, and `Quat`
+## `Vec2`, `Vec3`, `Quat`, and `Box3`
 
 ```ts
 interface Vec2 {
@@ -59,12 +59,25 @@ interface Quat {
   z: number;
   w: number;
 }
+
+interface Box3 {
+  min: Vec3;
+  max: Vec3;
+}
 ```
 
 `Vec2` is a point in the logical field. `Vec3` is a point or a direction in
 world units. `Quat` is the orientation representation: identity is
 `{ x: 0, y: 0, z: 0, w: 1 }`, and a readable rotation is built with
-`quatFromAxisAngle`. There is no Euler type.
+`quatFromAxisAngle`. There is no Euler type. `Box3` is the axis-aligned box:
+a [collider's](/engines/structured-3d/apis/collision/) `bounds()` and a
+[`MeshHandle`](/engines/structured-3d/apis/assets/)'s `bounds` are one.
+
+The math functions that operate on these types are the vocabulary
+[Simple 3D specifies](/engines/simple-3d/apis/viewport/), shared with the same
+names and the same behavior: `vec3Add`, `vec3Sub`, `vec3Scale`, `vec3Dot`,
+`vec3Cross`, `vec3Length`, `vec3Normalize`, `quatFromAxisAngle`,
+`quatMultiply`, `rotateVec3`, and `transformPoint`, each pure over plain data.
 
 ## `CameraState`
 
@@ -310,6 +323,10 @@ was read in.
 
 ## Exports
 
-`Vec2`, `Vec3`, `Quat`, `Ray`, `CameraState`, `Camera`, and `Viewport` are
-exported as types, and `projectPoint`, `pointerRay`, `fitViewport`, and
-`syncCanvas` as functions, from `@test-cabinet/structured-3d`.
+`Vec2`, `Vec3`, `Quat`, `Transform`, `Box3`, `Ray`, `CameraState`, `Camera`,
+and `Viewport` are exported as types, and `vec3Add`, `vec3Sub`, `vec3Scale`,
+`vec3Dot`, `vec3Cross`, `vec3Length`, `vec3Normalize`, `quatFromAxisAngle`,
+`quatMultiply`, `rotateVec3`, `transformPoint`, `projectPoint`, `pointerRay`,
+`fitViewport`, and `syncCanvas` as functions, from
+`@test-cabinet/structured-3d`. `Transform` is specified on the
+[actors](/engines/structured-3d/apis/actors/) page.

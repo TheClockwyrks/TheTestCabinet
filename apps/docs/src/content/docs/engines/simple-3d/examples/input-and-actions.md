@@ -257,7 +257,7 @@ and attaches its key listeners. Dispatching a key event on that event target
 takes the same path a browser's key takes, so the suite exercises the build's
 own bindings rather than a parallel entry point.
 
-### tests/driving.test.ts
+### validation/driving.test.ts
 
 ```ts
 import { createCanvas } from "@test-cabinet/headless-webgl2";

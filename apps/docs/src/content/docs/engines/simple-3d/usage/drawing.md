@@ -118,8 +118,10 @@ single frame enough to describe what the game looked like at that instant.
 Issue order is not paint order. Opaque draws resolve by the depth buffer, so a
 build issues them in whatever order its code reads best. Translucent draws — a
 material with `opacity` below `1`, every billboard, a line over a translucent
-color — render after every opaque draw, sorted farthest-first from the camera.
-HUD draws composite last, above the 3D picture, in issue order.
+color — render after their own run's opaque draws — after every opaque draw,
+in the common frame that sets its state once and clears no depth mid-frame —
+sorted farthest-first from the run's camera. HUD draws composite last, above
+the 3D picture, in issue order.
 
 ```ts
 import type { RenderApi } from "@test-cabinet/simple-3d";
@@ -139,9 +141,9 @@ function render(state: DeepReadonly<Arena>, api: RenderApi): void {
 
 ## Geometry and materials are cheap
 
-Procedural geometry and code-built materials come from the scene context's five
-producers: `createBox`, `createSphere`, `createCylinder`, `createPlane`, and
-`createMaterial`. A produced value is immutable and creation is deterministic,
+Procedural geometry and code-built materials come from the scene context's six
+producers: `createBox`, `createSphere`, `createCylinder`, `createCapsule`,
+`createPlane`, and `createMaterial`. A produced value is immutable and creation is deterministic,
 so creating per frame inside `render` is the idiomatic pattern — two calls with
 the same arguments share one entry in a
 [recording](/engines/simple-3d/apis/recording/) — and keeping the value in

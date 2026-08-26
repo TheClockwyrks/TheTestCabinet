@@ -66,8 +66,9 @@ build made.
 
 The collision overlay is a second switch of the same kind, independent of the
 mode. It draws every enabled collider's shape as wireframe outlines over the
-finished picture, in a color per response and with depth testing off, so what
-the engine tests for collision is visible beside what the game drew.
+finished picture, in a color per response and after a depth clear so nothing
+the game drew hides it, and what the engine tests for collision is visible
+beside what the game drew.
 
 ## Layers clear the depth buffer
 

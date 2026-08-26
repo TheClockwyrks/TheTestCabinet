@@ -10,11 +10,14 @@ reference.
 
 ## Entry point
 
-The package `@test-cabinet/structured-3d` has one entry point.
+The package `@test-cabinet/structured-3d` has one entry point for game and
+validator code, and a `./recording` subpath that serves the recording format
+on its own.
 
 | Specifier | Provides |
 | --- | --- |
 | `@test-cabinet/structured-3d` | `createEngine`, the framework classes, the built-in components, the clocks, the math functions, `TOUCH_LAYOUTS`, the viewport and projection functions, `RECORDING_FORMAT`, and every type a game or a validator names. |
+| `@test-cabinet/structured-3d/recording` | `RECORDING_FORMAT` and the [recording](/engines/structured-3d/apis/recording/) format's types, as a leaf module loadable with no engine and no DOM. |
 
 A game and a validator both import it. A validator constructs the engine over
 the build's own game definition, installs a scripted

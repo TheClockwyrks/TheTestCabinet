@@ -169,12 +169,15 @@ npx vitest run --config validation/vitest.config.ts  # the case's validators
 The canvas and the runner are devDependencies of the seeded workspace.
 `@test-cabinet/headless-webgl2` serves a canvas whose WebGL2 context is
 implemented natively, which is what lets the engine construct in Node exactly
-as `@napi-rs/canvas` serves the 2D engine's context.
+as `@napi-rs/canvas` serves the 2D engine's context. It is a shippable
+package: the case names it in its manifest's `packages` key, seeding vendors
+it into the run repository under `.tcab/packages/`, and the workspace's
+`package.json` declares it by the `file:` spec resolution requires.
 
 ```json
 {
   "devDependencies": {
-    "@test-cabinet/headless-webgl2": "^0.1",
+    "@test-cabinet/headless-webgl2": "file:./.tcab/packages/@test-cabinet/headless-webgl2",
     "vitest": "^3"
   }
 }

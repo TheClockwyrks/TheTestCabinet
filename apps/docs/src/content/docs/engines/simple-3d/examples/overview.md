@@ -10,14 +10,14 @@ working code. Every file compiles against the types the
 Each build has the same shape. `index.html` is the page the build is served as,
 `src/main.ts` creates the engine and boots it, `src/game.ts` exports the
 `Game<S, D>` the engine drives, `assets/` holds the files the game loads, and
-`tests/` holds the vitest suites a case checks the build with.
+`validation/` holds the vitest suites a case checks the build with.
 
-```
+```text
 index.html
 src/main.ts
 src/game.ts
 assets/
-tests/
+validation/
 ```
 
 The boot sequence is the same on every page as well: construct the engine,

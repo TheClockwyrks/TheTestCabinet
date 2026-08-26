@@ -188,7 +188,7 @@ class TextComponent extends RenderComponent {
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `text` | — | The string drawn. |
-| `font` | `"16px sans-serif"` | A CSS font shorthand, with the size read as world units of text height. |
+| `font` | `"16px monospace"` | A CSS font shorthand. Only the size is read, as world units of text height; the face is always the engine's own monospace face, the one [HUD text](/engines/simple-3d/apis/game/) letters in, so the same string letters the same in every build and in the player. |
 | `fill` | `"#ffffff"` | The fill color. |
 | `align` | `"center"` | Horizontal alignment against the component's transform. |
 | `baseline` | `"middle"` | Vertical alignment against the component's transform. |
@@ -198,6 +198,13 @@ always faces the camera, positioned against the transform by `align` and
 `baseline`. The billboard ignores the component's rotation, and the transform's
 x and y scale factors scale the quad. Text draws unlit in every render mode
 except `wireframe`, where its quad's outline draws in `fill`.
+
+The pipeline lowers the component onto the scene context's own vocabulary: the
+engine rasterizes the string in its monospace face into a texture, in `fill`,
+and issues a `drawBillboard` with it, so the lettering reaches a
+[recording](/engines/structured-3d/apis/recording/) as an ordinary texture
+asset and the player letters it from the captured pixels. Under `wireframe`
+the pipeline issues the quad's outline as a `drawLine` loop in `fill` instead.
 
 ## `DrawComponent`
 
@@ -233,7 +240,9 @@ The render mode is renderer state the scene context holds, so a
 `DrawComponent`'s calls are drawn under the mode in force without the component
 implementing anything; `api.mode` remains readable for a component that draws
 differently per mode. A `DrawComponent` does not set the scene context's
-camera, lights, or mode; those belong to the pipeline.
+camera, lights, or mode, and does not clear depth; those belong to the
+pipeline, and a call to `setCamera`, `setLights`, `setMode`, or `clearDepth`
+from `draw` throws, naming the rule.
 
 ## `CameraComponent`
 
