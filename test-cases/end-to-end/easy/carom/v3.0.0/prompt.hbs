@@ -132,6 +132,13 @@ it lives in your project's `node_modules` like any other dependency. Launch
 Chromium with the `--no-sandbox` argument, since this container has no Chromium
 sandbox and a default launch fails.
 
+## The showcase
+
+The game ships with its store-page presentation: a `showcase/` directory at the
+project root holding a player-facing description of the game and a short
+carousel of captured media. `specs/showcase.md` defines its contents — the
+description, the `showcase.toml` carousel, and how the media are captured.
+
 ## Commit your work
 
 Your project root is a git repository, initialized before you started with the
@@ -141,4 +148,5 @@ published. When the build is complete, commit everything: run `git add -A` then
 `git commit`, and confirm `git status` reports a clean working tree with nothing
 uncommitted or untracked. A `.gitignore` already excludes `node_modules/`, the
 build output, and coverage reports, so a clean tree means committing your source,
-your tests, your `package-lock.json`, and your `README.md`.
+your tests, your `package-lock.json`, your `showcase/` directory, and your
+`README.md`.

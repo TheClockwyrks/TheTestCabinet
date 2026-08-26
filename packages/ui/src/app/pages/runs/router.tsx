@@ -11,7 +11,7 @@ import { RunGgPage } from "./[runId]/RunGgPage";
 import { RunMetadataPage } from "./[runId]/RunMetadataPage";
 import { RunMetricsPage } from "./[runId]/RunMetricsPage";
 import { RunMonitorPage } from "./[runId]/RunMonitorPage";
-import { RunPlayPage } from "./[runId]/RunPlayPage";
+import { RunPlayPage, RunPlayRedirect } from "./[runId]/RunPlayPage";
 import { RunProofPage } from "./[runId]/RunProofPage";
 import { RunInputsPage } from "./[runId]/RunInputsPage";
 import { RunVerdictPage } from "./[runId]/RunVerdictPage";
@@ -22,9 +22,11 @@ import { ComparisonDetailPage } from "../comparisons/ComparisonDetailPage";
 import { ComparisonEditPage } from "../comparisons/ComparisonEditPage";
 
 // Routes owned by the runs section: the all-runs index list and the per-run
-// detail, whose Verdict / Play / Inputs / Proof / Metrics / Events / Metadata
-// tabs are each their own URL so a tab is linkable. The Verdict tab is the
-// default at the bare run URL. Validation no longer has its own tab — it lives on
+// detail, whose Play / Verdict / Inputs / Proof / Metrics / Events / Metadata
+// tabs are each their own URL so a tab is linkable. The Play tab is the default
+// at the bare run URL (a run with no playable build redirects from there to its
+// Verdict tab at `/verdict`; the old `/play` path only redirects to the bare
+// URL). Validation no longer has its own tab — it lives on
 // the Metadata tab. The
 // run-execution routes (new run, live monitor) are included only when the host
 // can execute runs —
@@ -97,11 +99,13 @@ export function runsRoutes(canExecute: boolean) {
           routes, console-only. Their `/runs/gg` prefix is more specific than the
           `/runs/:runId` dynamic route below. */}
       {ggRoutes(canExecute)}
-      <Route path={routePatterns.runDetail} element={<RunVerdictPage />} />
+      <Route path={routePatterns.runDetail} element={<RunPlayPage />} />
+      <Route path={routePatterns.runVerdict} element={<RunVerdictPage />} />
       <Route path={routePatterns.runReview} element={<RunReviewPage />} />
       <Route path={routePatterns.runInputs} element={<RunInputsPage />} />
       <Route path={routePatterns.runProof} element={<RunProofPage />} />
-      <Route path={routePatterns.runPlay} element={<RunPlayPage />} />
+      {/* Legacy Play deep links redirect to the bare run URL, where Play lives now. */}
+      <Route path={routePatterns.runPlay} element={<RunPlayRedirect />} />
       <Route path={routePatterns.runMetrics} element={<RunMetricsPage />} />
       <Route path={routePatterns.runEvents} element={<RunEventsPage />} />
       {/* A finished gg run's rich view, rebuilt from its recorded telemetry — the

@@ -130,6 +130,16 @@ than gated. A model run carries its emitted geometry and the binary's rendered
 preview. When the run finishes these files are uploaded and served back as
 per-run media under `/runs/<id>/asset/<file>`.
 
+### Showcase
+
+The run's [showcase](/components/core/showcase/), when the produced tree
+carried a readable one: the player-facing markdown description and the ordered
+media carousel, each entry recording its file name, its caption, and its kind
+on the same three-kind scale as validation media. The field is optional. A run
+whose tree carried no parseable showcase omits it, as does every run recorded
+before the field existed, and a showcase problem never changes the run's
+status.
+
 ### Links
 
 - A link to the public repository holding the run's generated source.
@@ -232,7 +242,10 @@ artifacts:
   `dest`. When the run finishes, each present proof is uploaded to the [artifact
   service](/components/artifacts/overview/) and served back as per-run media
   (`/runs/<id>/proof/<proof-id>.<ext>`) so the reviewer UI can show the
-  submitted evidence beside the expected reference.
+  submitted evidence beside the expected reference. A
+  [showcase](/components/core/showcase/) the model wrote lives here at
+  `showcase/`, and its files are uploaded and served back the same way
+  (`/runs/<id>/showcase/<file>`).
 - `raw.jsonl`: the harness's raw output, one JSON object per captured line in
   arrival order, each tagging the [stream](/components/core/events/) the line
   came from and the line's verbatim text.

@@ -183,7 +183,8 @@ The artifact service serves a run only to the console session that produced it,
 so the driver also mirrors a backend-driven run's servable media into the
 [backend](/components/backend/overview/) store: every run's
 proof-of-implementation media, synthesized validation media and code-analysis
-document, an adversarial run's controller wasm and proof replays, a performance
+document, the files of a run's [showcase](/components/core/showcase/), an
+adversarial run's controller wasm and proof replays, a performance
 run's scored scenarios, an asset-generation run's regenerated and preview images
 with their action log, and a captured gg replay. That store, rather than the
 artifact service, is what the backend exports the public

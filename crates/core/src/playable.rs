@@ -222,6 +222,54 @@ pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidat
     })
 }
 
+/// A showcase file resolved from a run, ready to write to an HTTP or IPC
+/// response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServedShowcaseFile {
+    /// The `Content-Type` to send, derived from the file name.
+    pub content_type: &'static str,
+    /// The `Content-Encoding` to send, `None` unless the bytes are a framed
+    /// document (see [`crate::content_labels`]).
+    pub content_encoding: Option<&'static str>,
+    /// The media bytes, served verbatim.
+    pub body: Vec<u8>,
+}
+
+/// Resolve and read one of a run's [showcase](crate::RunShowcase) files from a
+/// produced run's output directory, for serving to a reviewer the same way
+/// [`serve_validation_file`] serves validation media.
+///
+/// `run_dir` is the run's output directory (`<out>/<id>`), holding its
+/// `run-record.json` and its collected `implementation/` tree. `file` is the plain
+/// file name a showcase entry (or an image the description references) carries —
+/// the showcase directory is a flat namespace by construction — so this reads
+/// straight from `implementation/showcase/<file>`. `showcase.toml` is refused so
+/// this route exposes exactly the namespace the backend store mirror holds (the
+/// manifest is capture-side input, already folded into the record). Returns `None`
+/// when the file is missing or the name would escape the directory — the caller
+/// maps that to a 404.
+///
+/// A `.json.gz` replay is labelled as the JSON it is with the gzip declared as the
+/// body's framing (exactly as validation replays are), so a browser inflates it
+/// transparently before the player sees it.
+pub fn serve_showcase_file(run_dir: &Path, file: &str) -> Option<ServedShowcaseFile> {
+    // The name is a single flat segment; reject any path separator or traversal so a
+    // request can only ever name a file directly inside the showcase dir.
+    if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..") {
+        return None;
+    }
+    if file == "showcase.toml" {
+        return None;
+    }
+    let body = std::fs::read(run_dir.join("implementation").join("showcase").join(file)).ok()?;
+    let labels = showcase_labels(file);
+    Some(ServedShowcaseFile {
+        content_type: labels.content_type,
+        content_encoding: labels.content_encoding,
+        body,
+    })
+}
+
 /// An asset-generation media file resolved from a run, ready to write to an HTTP
 /// or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -435,6 +483,20 @@ fn proof_labels(file: &str) -> ContentLabels {
         // An uncompressed recording, and any other JSON media a proof names.
         Some("json") => ContentLabels::plain("application/json"),
         _ => ContentLabels::plain("application/octet-stream"),
+    }
+}
+
+/// The labels for a showcase file, by file name: the proof formats (the showcase's
+/// media kinds are inferred by the same extension rule) plus the markdown
+/// description itself, which is also a plain file in the directory.
+fn showcase_labels(file: &str) -> ContentLabels {
+    let ext = Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
+    match ext.as_deref() {
+        Some("md") => ContentLabels::plain("text/markdown; charset=utf-8"),
+        _ => proof_labels(file),
     }
 }
 

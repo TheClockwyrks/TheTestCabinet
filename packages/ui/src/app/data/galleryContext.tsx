@@ -15,6 +15,7 @@ import type {
   ModelSpec,
   NineSlice,
   RunRecord,
+  RunShowcase,
   RunSubject,
   TournamentRecord,
 } from "@test-cabinet/run-record";
@@ -116,6 +117,16 @@ export interface RunDetail {
    * serves published runs only, so it is always true there.
    */
   published: boolean;
+  /**
+   * The run's showcase — the model's own presentation of the game it built (a
+   * store-page description plus an ordered media carousel), lifted off the stored
+   * record the same way the rating channels are so a page reads `run.showcase`
+   * directly. Null for a run whose tree carried no parseable showcase and for
+   * every record written before the field existed; the Play tab then renders the
+   * plain playable embed. Its media files resolve through
+   * {@link GalleryDataInput.showcaseMediaUrl}.
+   */
+  showcase: RunShowcase | null;
 }
 
 /** The scoring model for a run: the variant's weighted checklist items and its
@@ -591,6 +602,17 @@ export interface GalleryDataInput {
    * site at the snapshot asset. Omitted by a host that serves no validation media.
    */
   validationMediaUrl?: (runId: string, file: string) => string | null;
+  /**
+   * Resolve the loadable URL for one of a run's **showcase** files — a carousel
+   * media file, or an image the description references by bare relative path — or
+   * null when the host cannot serve it. `file` is the plain file name the record's
+   * carousel (or the description) carries. Run-scoped, wired the same way
+   * {@link proofMediaUrl} and {@link validationMediaUrl} are: the consoles point at
+   * the backend (published) or worker (produced) showcase endpoint, the static site
+   * at the snapshot asset (where a video's `.webm` name resolves to its published
+   * `.mp4`). Omitted by a host that serves no showcase media.
+   */
+  showcaseMediaUrl?: (runId: string, file: string) => string | null;
   /**
    * Resolve the URL to download a run's entire produced tree from as one gzip tar
    * (source, build, media, and logs), or null when the host cannot serve it.

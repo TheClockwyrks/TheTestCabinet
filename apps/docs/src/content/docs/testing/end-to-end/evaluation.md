@@ -157,7 +157,10 @@ build and writing it up. On a validator-rated run it carries two things.
 
 The checklist on a validator-rated run is machine-decided. The reviewer sees
 each point's validator verdict, assertions, and media read-only; a review
-carries no checklist verdicts of its own and no override exists. A review on a
+carries no checklist verdicts of its own and no override exists. The same
+read-only item browser is shown to every visitor of the run's Verdict tab,
+the public gallery included, because it is an exhibit of the evidence rather
+than a reviewer control. A review on a
 validator-rated run carries no functional rating either, since the functional
 rating is not the reviewer's to give.
 

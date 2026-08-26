@@ -295,6 +295,7 @@ export default defineConfig({
                 "components/core/metrics",
                 "components/core/validation",
                 "components/core/run-records",
+                "components/core/showcase",
                 "components/core/results",
               ],
             },

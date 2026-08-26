@@ -308,6 +308,16 @@ pub fn router(state: AppState) -> Router {
                 .post(test_cases::put_run_validation)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
+        // A published run's showcase files (the carousel media, plus any image the
+        // description references): mirrored in by the driver (POST) and served for
+        // the Play tab's showcase view (GET). The description text itself rides the
+        // run record; `showcase.toml` is never stored.
+        .route(
+            "/runs/{id}/showcase/{file}",
+            get(test_cases::run_showcase)
+                .post(test_cases::put_run_showcase)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
+        )
         // An adversarial run's pushed controller wasm: uploaded by the publisher at
         // push (POST) and served so the arena can pit a pushed implementation from
         // any host (GET).

@@ -273,11 +273,17 @@ export const routes = {
     const query = params.toString();
     return query ? `/gg/reference/api?${query}` : "/gg/reference/api";
   },
-  // The run's default (Verdict) tab. `edit` opens the review editor in revise
-  // mode — used by the single-review page's Edit control to return here with the
-  // owner's review form reopened.
-  runDetail: (runId: string, opts?: { edit?: boolean }): string =>
-    `/runs/${encodeURIComponent(runId)}${opts?.edit ? "?edit=1" : ""}`,
+  // The run's landing tab: the bare run URL is the Play tab (the build exactly as
+  // the model wrote it). A run with no playable build — an asset-generation,
+  // adversarial, or performance run, or one whose state produced nothing to host —
+  // redirects from here to its Verdict tab. Generic "open this run" links use
+  // this; links that mean "this run's verdict/review" use `runVerdict`.
+  runDetail: (runId: string): string => `/runs/${encodeURIComponent(runId)}`,
+  // The run's Verdict tab (labelled "Results" for a results-scored run). `edit`
+  // opens the review editor in revise mode — used by the single-review page's
+  // Edit control to return here with the owner's review form reopened.
+  runVerdict: (runId: string, opts?: { edit?: boolean }): string =>
+    `/runs/${encodeURIComponent(runId)}/verdict${opts?.edit ? "?edit=1" : ""}`,
   // One reviewer's full review of a run: their writeup and per-item verdicts.
   // Keyed by the reviewing account's id (a run carries at most one review per
   // account), so each review is its own linkable URL.
@@ -287,6 +293,8 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/inputs`,
   runProof: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/proof`,
+  // Legacy: Play now lives at the bare run URL (`runDetail`), and `/play` only
+  // redirects there so old deep links keep working. Nothing new should link here.
   runPlay: (runId: string): string => `/runs/${encodeURIComponent(runId)}/play`,
   runMetrics: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/metrics`,
@@ -452,9 +460,11 @@ export const routePatterns = {
   ggReferenceApi: "/gg/reference/api",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
+  runVerdict: "/runs/:runId/verdict",
   runReview: "/runs/:runId/reviews/:reviewerId",
   runInputs: "/runs/:runId/inputs",
   runProof: "/runs/:runId/proof",
+  // Legacy: redirects to the bare run URL, which is now the Play tab.
   runPlay: "/runs/:runId/play",
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",

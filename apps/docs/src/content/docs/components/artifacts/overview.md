@@ -4,8 +4,9 @@ title: Overview
 
 The artifact service serves the produced run trees off a persistent volume: a
 run's playable build, its proof clips, its validation media, its
-[asset-generation](/testing/asset-generation/overview/) media, and its recorded
-event logs. Those bytes survive the ephemeral
+[asset-generation](/testing/asset-generation/overview/) media, its
+[showcase](/components/core/showcase/) files, and its recorded event logs.
+Those bytes survive the ephemeral
 [driver](/components/driver/overview/) `Job`s that produced them. The driver
 uploads each run's tree here when it finishes, and a
 [console](/components/web/overview/) reads it here to play and review a run
@@ -34,7 +35,7 @@ is the run record's id.
 | `DELETE /runs/{id}/artifacts` | The backend, pruning a deleted run's tree |
 | `GET /runs/{id}/tree.tar` | The publisher Job, pulling the source tree to release |
 | `GET /runs/{id}/build[/{path}]` | A console, loading the playable build |
-| `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}` | A console, loading a run's media |
+| `GET /runs/{id}/proof/{file}`, `/asset/{file}`, `/validation/{file}`, `/showcase/{file}` | A console, loading a run's media |
 | `GET /runs/{id}/events.jsonl`, `/raw.jsonl` | A console, reading the recorded logs |
 | `GET /runs/{id}/archive.tar.gz` | A reviewer, downloading the whole run |
 
@@ -80,8 +81,8 @@ The artifact service has no Kubernetes API access. It only talks HTTP.
 ## Downloading a whole run
 
 `GET /runs/{id}/archive.tar.gz` returns a run's entire stored tree as one gzip
-tar: the generated source, the built playable output, the proof, asset and
-validation media, and the `events.jsonl` and `raw.jsonl` logs. Every entry sits
+tar: the generated source, the built playable output, the proof, asset,
+validation and showcase media, and the `events.jsonl` and `raw.jsonl` logs. Every entry sits
 under a `<run-id>/` prefix, so the archive unpacks into its own directory.
 
 Here the gzip is the resource the reviewer asked for, so the archive is served

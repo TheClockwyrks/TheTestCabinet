@@ -281,7 +281,8 @@ handle = "__refract"
 # build's own shape versus the exact `RefractState` declaration each engine run
 # writes), `instrumentation.md.hbs` (the global versus `engine.debug`, and the
 # clock operations only an engineless build needs), `ui.md.hbs` (where cues are
-# played) and the two mode files (how the state is referred to) all branch on it.
+# played), `showcase.md.hbs` (how motion is captured for the carousel) and the
+# two mode files (how the state is referred to) all branch on it.
 # Nothing branches on the variant. A spec's `dest` defaults to its `source` with a trailing
 # `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path and a plain
 # `.md` source is seeded verbatim.
@@ -348,6 +349,15 @@ source = "specs/modes/campaign.md.hbs"
 [[spec]]
 source = "specs/modes/cascade.md.hbs"
 
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured (a gzipped recording from the engine's own draw-command
+# recorder on an engine run, screenshots and a short clip under `none`); it seeds
+# to `specs/showcase.md`.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
 # No `[[reference]]`, no `[[check]]`, and no `[[proof]]`.
 #
 # Refract deliberately fixes no palette, no font, no node artwork, no beam
@@ -362,8 +372,10 @@ source = "specs/modes/cascade.md.hbs"
 # joining cell centers), and that is checked by a reviewer looking at the running
 # game, in the Board and rendering and Presentation categories below.
 #
-# `[[proof]]` is likewise empty: nothing is asked of the build beyond the game
-# itself. The automated load check still runs.
+# `[[proof]]` is likewise empty: no proof media is asked of the build. The
+# showcase spec above does ask for media, but as the game's own store-page
+# presentation rather than as evidence any point is judged on. The automated load
+# check still runs.
 
 # Scoring domains. A reviewer rates each independently while playing the build, and
 # the run's overall rating is the WORST across them — an immaculate Campaign cannot

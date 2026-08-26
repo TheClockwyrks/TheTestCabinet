@@ -99,6 +99,20 @@ describe("createBackendExec build-link resolution", () => {
   });
 });
 
+describe("createBackendExec media resolvers", () => {
+  it("resolves a run's showcase file against the artifact service", () => {
+    const client = createBackendExec(BACKEND, AUTH, ARTIFACTS);
+    expect(client.showcaseMediaUrl?.("run-1", "title.png")).toBe(
+      `${ARTIFACTS}/runs/run-1/showcase/title.png`,
+    );
+  });
+
+  it("resolves no showcase file without an artifact service", () => {
+    const client = createBackendExec(BACKEND, AUTH, null);
+    expect(client.showcaseMediaUrl?.("run-1", "title.png")).toBeNull();
+  });
+});
+
 describe("createBackendExec catalog listing", () => {
   // The listing is what a catalog page renders from, and it must be ONE request:
   // the fan-out this endpoint's metadata replaced (resolve every version of every

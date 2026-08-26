@@ -498,6 +498,7 @@ fn gg_record() -> RunRecord {
         seed_commit: Some("abc123".to_string()),
         code_analysis: None,
         toolchain: None,
+        showcase: None,
     }
 }
 

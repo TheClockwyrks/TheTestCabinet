@@ -28,6 +28,7 @@ import {
   proofMediaUrls as publishedProofMediaUrls,
   assetMediaUrls as publishedAssetMediaUrls,
   validationMediaUrls as publishedValidationMediaUrls,
+  showcaseMediaUrls as publishedShowcaseMediaUrls,
   validationBaselineUrls as publishedValidationBaselineUrls,
   referenceMediaUrls as publishedReferenceMediaUrls,
 } from "virtual:tcab-snapshot";
@@ -258,6 +259,9 @@ export function useStaticGallery(): GalleryDataInput {
           validatorRated: false,
           rating: null,
           aesthetic: null,
+          // Lifted off the record the same way the rating channels are, so a
+          // page reads `run.showcase` directly.
+          showcase: localRun.showcase ?? null,
         };
       const url = `${import.meta.env.BASE_URL}runs/${encodeURIComponent(
         runId,
@@ -277,6 +281,7 @@ export function useStaticGallery(): GalleryDataInput {
           validatorRated: summary?.validatorRated ?? false,
           rating: summary?.rating ?? null,
           aesthetic: summary?.aesthetic ?? null,
+          showcase: record.showcase ?? null,
         };
       } catch {
         return null;
@@ -340,6 +345,17 @@ export function useStaticGallery(): GalleryDataInput {
   const validationMediaUrl = useCallback(
     (runId: string, file: string): string | null =>
       publishedValidationMediaUrls[runId]?.[file] ?? null,
+    [],
+  );
+
+  // A published run's showcase media (the carousel files, plus any image the
+  // description references), resolved at build time to absolute snapshot URLs keyed
+  // by run id then the recorded file name (a video's `.webm` request resolving to
+  // its published `.mp4`). Produced (local, dev-only) runs are not published, so
+  // they have no snapshot media.
+  const showcaseMediaUrl = useCallback(
+    (runId: string, file: string): string | null =>
+      publishedShowcaseMediaUrls[runId]?.[file] ?? null,
     [],
   );
 
@@ -419,6 +435,7 @@ export function useStaticGallery(): GalleryDataInput {
     proofMediaUrl,
     assetMediaUrl,
     validationMediaUrl,
+    showcaseMediaUrl,
     validationBaselineUrl,
     referenceMediaUrl,
   };

@@ -1559,6 +1559,24 @@
       "required": ["runTimeSeconds", "tokens", "cost"],
       "type": "object"
     },
+    "RunShowcase": {
+      "description": "A run's showcase: the model's own presentation of the game it built, captured\nonto the record from the produced tree's `showcase/` directory (see\n`docs/showcase.md`). The description is `showcase/showcase.md`; the carousel is\n`showcase/showcase.toml`'s `[[media]]` tables, in their declared order.\n\nThe media *bytes* do not ride the record — they are uploaded from the produced\ntree and served per run at `/runs/<id>/showcase/<file>` alongside the run's\nproof, asset, and validation media; this block carries only the description\ntext and the carousel's file names, captions, and kinds.",
+      "properties": {
+        "description": {
+          "description": "The player-facing markdown description, in the style of a store page. It may\nreference images beside it in `showcase/` by bare relative path\n(`![Title](title.png)`), which a renderer resolves against the run's served\nshowcase files. Capped at capture; a longer description is truncated on a\nchar boundary with a trailing marker.",
+          "type": "string"
+        },
+        "media": {
+          "description": "The media carousel, in the order the model declared it — carousel order is\npresentation order. Capped at capture; entries whose files were missing or\noversized were dropped there, so every entry named here was present and\nwithin bounds when the record was assembled.",
+          "items": {
+            "$ref": "#/$defs/ShowcaseMedia"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["description", "media"],
+      "type": "object"
+    },
     "RunState": {
       "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) and\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded);\na harness that stopped itself on one of its own configured ceilings is\n[`LimitExceeded`](RunState::LimitExceeded), one that exits **non-zero** any\nother way is a [`HarnessError`](RunState::HarnessError), and one that stops\nresponding altogether is [`Hung`](RunState::Hung); a run stopped before the\nharness finished is [`TimedOut`](RunState::TimedOut) (the runtime cap),\n[`Canceled`](RunState::Canceled) (an operator killed it), or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
@@ -1854,6 +1872,25 @@
         }
       },
       "required": ["loaded", "checks"],
+      "type": "object"
+    },
+    "ShowcaseMedia": {
+      "description": "One entry of a [showcase](RunShowcase)'s media carousel.",
+      "properties": {
+        "file": {
+          "description": "The media file's name in the run's `showcase/` directory (a plain file name,\nno subdirectories), which is also its name under the run's served\n`/runs/<id>/showcase/<file>` route.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MediaKind",
+          "description": "The kind of media, inferred from the file's extension by the same rule as a\ndeclared proof ([`MediaKind::from_path`]): `.png` an image, `.json.gz` a\ndraw-command replay, `.webm` a video."
+        },
+        "name": {
+          "description": "The model's short caption for this entry.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name", "kind"],
       "type": "object"
     },
     "StepResult": {
@@ -2309,6 +2346,17 @@
     "seedCommit": {
       "description": "The commit hash of the run's **seed** commit — the single commit\n[`RepoSeeder::seed`](crate::execution::RepoSeeder::seed) makes after laying\ndown the specs, assets, and rendered reference images, before the container\never starts. Everything reachable from it is scaffolding the run was given;\neverything else in the produced tree is the model's own work.\n\nRecorded because it is the only *exact* answer to \"which files did the model\nwrite?\", and it is computed host-side where nothing the model does can affect\nit. The obvious substitute — treat the produced tree's root commit as the seed\n— fails in the worst direction: a model that amends, squashes, rebases, or\nre-runs `git init` folds its own work into the root commit, so the seeded set\nswallows the authored files and the run reports near-zero authored code\n*stamped as an exact measurement*. See\n[code analysis](https://docs.testcabinet.ai/gg/analysis/code-analysis/) for the\nbasis ladder that falls back when this field is absent.\n\nDistinct from, and authoritative over, a gg session record's `baselineCommit`: that is\ngg's own in-container observation of the same commit, and a mismatch between\nthem is diagnostic rather than redundant.\n\nDefaulted and omitted when absent so records written before the field existed\nstill deserialize, and a run that failed before its workspace was seeded — which\nhas no seed commit to name — serializes without the key rather than with an\nempty string that would read as a real hash.",
       "type": ["string", "null"]
+    },
+    "showcase": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunShowcase"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The run's showcase: the model's own presentation of the game it built — a\nplayer-facing description and a short, ordered media carousel — captured\nfrom the produced tree's `showcase/` directory at record assembly (see\n`docs/showcase.md`). The Play page renders it around the playable build.\n\nAbsent for a run whose tree carried no parseable showcase and for every\nrecord written before the field existed; a showcase problem never fails a\nrun and never degrades its status, so absence says nothing about the run\nbeyond \"there is nothing to show\". Defaulted and omitted when absent so\nolder records still deserialize."
     },
     "startedAt": {
       "description": "RFC 3339 timestamp for when the run started.",

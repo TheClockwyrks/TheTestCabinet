@@ -165,6 +165,12 @@ interface SnapshotRunFile {
   // clip). Absent for a run with no debug scripts and for snapshots written before
   // automated validation existed.
   validationMedia?: Array<{ file: string; key: string }>;
+  // The run's showcase files — the carousel media plus any image the description
+  // references. `file` is the recorded name the UI requests; `key` is the published
+  // object (a video transcoded to `.mp4`, so `key` and `file` differ in extension
+  // for a clip). Absent for a run whose record carries no showcase and for
+  // snapshots written before the showcase existed.
+  showcaseMedia?: Array<{ file: string; key: string }>;
   // The snapshot-relative key of the run's unbounded code-analysis document (every
   // authored file, scored function, import edge, cycle and clone group), published as
   // its own generation-keyed object so the Code tab fetches it on demand instead of
@@ -415,6 +421,11 @@ interface AssembledSnapshot {
   // flat `<item>__<output>.<ext>` name the reviewer UI requests. The app's
   // `validationMediaUrl(runId, file)` reads this.
   validationMediaUrls: Record<string, Record<string, string>>;
+  // Resolved showcase media URLs (the run's carousel media plus any image the
+  // description references), keyed by run id then by the recorded file name (a
+  // video's `.webm` request resolving to its published `.mp4`). The app's
+  // `showcaseMediaUrl(runId, file)` reads this.
+  showcaseMediaUrls: Record<string, Record<string, string>>;
   // Resolved code-analysis document URLs, keyed by run id — one URL per run, not a
   // map of files, because a run has exactly one analysis. The app's
   // `readCodeAnalysis(runId)` fetches this on demand.
@@ -656,6 +667,7 @@ const EMPTY: AssembledSnapshot = {
   proofMediaUrls: {},
   assetMediaUrls: {},
   validationMediaUrls: {},
+  showcaseMediaUrls: {},
   codeAnalysisUrls: {},
   validationBaselineUrls: {},
   referenceMediaUrls: {},
@@ -1100,6 +1112,7 @@ async function loadSnapshot(
   const proofMediaUrls: Record<string, Record<string, string>> = {};
   const assetMediaUrls: Record<string, Record<string, string>> = {};
   const validationMediaUrls: Record<string, Record<string, string>> = {};
+  const showcaseMediaUrls: Record<string, Record<string, string>> = {};
   const codeAnalysisUrls: Record<string, string> = {};
   const validationBaselineUrls: Record<string, Record<string, string>> = {};
   const referenceMediaUrls: Record<string, Record<string, string>> = {};
@@ -1161,6 +1174,16 @@ async function loadSnapshot(
         byFile[media.file] = joinUrl(base, media.key);
       }
       validationMediaUrls[summary.id] = byFile;
+    }
+    // The run's showcase media, keyed by the recorded file name the UI requests (a
+    // video's `.webm` request resolving to its published `.mp4` key), resolved to
+    // absolute URLs the Play tab's showcase view loads.
+    if (runFile.showcaseMedia?.length) {
+      const byFile: Record<string, string> = {};
+      for (const media of runFile.showcaseMedia) {
+        byFile[media.file] = joinUrl(base, media.key);
+      }
+      showcaseMediaUrls[summary.id] = byFile;
     }
     // The run's unbounded code-analysis document, resolved to the absolute URL of its
     // own generation-keyed object. Absent for a run that was never analysed, which is
@@ -1297,6 +1320,7 @@ async function loadSnapshot(
     assetMediaUrls,
     codeAnalysisUrls,
     validationMediaUrls,
+    showcaseMediaUrls,
     validationBaselineUrls,
     referenceMediaUrls,
   };
@@ -1316,6 +1340,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
     `export const codeAnalysisUrls = ${JSON.stringify(data.codeAnalysisUrls)};`,
     `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,
+    `export const showcaseMediaUrls = ${JSON.stringify(data.showcaseMediaUrls)};`,
     `export const validationBaselineUrls = ${JSON.stringify(data.validationBaselineUrls)};`,
     `export const referenceMediaUrls = ${JSON.stringify(data.referenceMediaUrls)};`,
   ].join("\n");

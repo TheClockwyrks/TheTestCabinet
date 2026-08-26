@@ -1424,13 +1424,14 @@ impl DefinitionStore {
     // --- Per-run media ------------------------------------------------------
 
     /// The directory all of a run's stored media lives under
-    /// (`runs/<run_id>/`): its proof and asset media and its controller wasm.
+    /// (`runs/<run_id>/`): its proof, asset, and showcase media and its controller
+    /// wasm.
     pub fn run_dir(&self, run_id: &str) -> PathBuf {
         self.root.join("runs").join(run_id)
     }
 
     /// Remove a run's entire stored-media tree (`runs/<run_id>/` — proof, asset,
-    /// and controller). Idempotent: a run that uploaded no media (so the directory
+    /// showcase, and controller). Idempotent: a run that uploaded no media (so the directory
     /// never existed) is treated as already gone. Called when a run is deleted so
     /// no orphaned bytes are left behind.
     pub fn delete_run_media(&self, run_id: &str) -> Result<()> {
@@ -1664,6 +1665,71 @@ impl DefinitionStore {
         let path = self.run_asset_dir(run_id).join(file);
         std::fs::read(&path)
             .map_err(|_| BackendError::NotFound(format!("asset `{run_id}/{file}` not stored")))
+    }
+
+    // --- Per-run showcase files ----------------------------------------------
+
+    /// The directory a published run's [showcase](test_cabinet_core::RunShowcase)
+    /// files are stored under (`runs/<run_id>/showcase/`) — the carousel media plus
+    /// any image the description references, mirrored here by the driver so the
+    /// public snapshot can read them. The description text itself rides the run
+    /// record; `showcase.toml` is never stored (the manifest is capture-side input,
+    /// already folded into the record).
+    pub fn run_showcase_dir(&self, run_id: &str) -> PathBuf {
+        self.run_dir(run_id).join("showcase")
+    }
+
+    /// Persist one showcase file for a run under `runs/<run_id>/showcase/<file>`
+    /// (`file` is the plain file name in the produced tree's `showcase/` — a flat
+    /// namespace by construction). Keyed by the run id the upload carries, so a
+    /// re-upload overwrites the identical bytes. `showcase.toml` is refused —
+    /// the manifest is capture-side input, already folded into the record — which
+    /// is what keeps the "never stored" invariant true whatever a client sends.
+    pub fn write_run_showcase(&self, run_id: &str, file: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) || file == "showcase.toml" {
+            return Err(BackendError::BadRequest(
+                "invalid run id or showcase file".to_string(),
+            ));
+        }
+        let dir = self.run_showcase_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
+    }
+
+    /// List a run's stored showcase file names, sorted. A run with no stored
+    /// showcase files yields an empty list — every run recorded before the showcase
+    /// existed, and every run that never produced one.
+    pub fn list_run_showcase(&self, run_id: &str) -> Result<Vec<String>> {
+        let dir = self.run_showcase_dir(run_id);
+        let read = match std::fs::read_dir(&dir) {
+            Ok(read) => read,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        let mut names = Vec::new();
+        for entry in read {
+            let entry = entry?;
+            if entry.file_type()?.is_file()
+                && let Some(name) = entry.file_name().to_str()
+            {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
+    /// Read one showcase file for a run.
+    pub fn read_run_showcase(&self, run_id: &str, file: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or showcase file".to_string(),
+            ));
+        }
+        let path = self.run_showcase_dir(run_id).join(file);
+        std::fs::read(&path)
+            .map_err(|_| BackendError::NotFound(format!("showcase `{run_id}/{file}` not stored")))
     }
 
     /// Where a run's pushed controller wasm lives: `runs/<run_id>/controller.wasm`.

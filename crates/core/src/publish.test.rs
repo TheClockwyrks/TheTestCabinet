@@ -87,6 +87,7 @@ fn sample_record() -> RunRecord {
         seed_commit: None,
         code_analysis: None,
         toolchain: None,
+        showcase: None,
     }
 }
 

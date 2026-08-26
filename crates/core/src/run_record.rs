@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::code_analysis::CodeAnalysisSummary;
 use crate::gg::{GgCapabilitySet, GgSessionSummary};
 use crate::metrics::RunMetrics;
+use crate::test_case::MediaKind;
 use crate::toolchain::ToolchainSummary;
 use crate::validation::ValidationSummary;
 
@@ -769,6 +770,19 @@ pub struct RunRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub toolchain: Option<ToolchainSummary>,
+    /// The run's showcase: the model's own presentation of the game it built — a
+    /// player-facing description and a short, ordered media carousel — captured
+    /// from the produced tree's `showcase/` directory at record assembly (see
+    /// `docs/showcase.md`). The Play page renders it around the playable build.
+    ///
+    /// Absent for a run whose tree carried no parseable showcase and for every
+    /// record written before the field existed; a showcase problem never fails a
+    /// run and never degrades its status, so absence says nothing about the run
+    /// beyond "there is nothing to show". Defaulted and omitted when absent so
+    /// older records still deserialize.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub showcase: Option<RunShowcase>,
 }
 
 impl RunRecord {
@@ -805,6 +819,49 @@ pub struct PriorGameJamEntry {
     pub finished_at: String,
     /// The gameplay README the prior run produced.
     pub readme: String,
+}
+
+/// A run's showcase: the model's own presentation of the game it built, captured
+/// onto the record from the produced tree's `showcase/` directory (see
+/// `docs/showcase.md`). The description is `showcase/showcase.md`; the carousel is
+/// `showcase/showcase.toml`'s `[[media]]` tables, in their declared order.
+///
+/// The media *bytes* do not ride the record — they are uploaded from the produced
+/// tree and served per run at `/runs/<id>/showcase/<file>` alongside the run's
+/// proof, asset, and validation media; this block carries only the description
+/// text and the carousel's file names, captions, and kinds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunShowcase {
+    /// The player-facing markdown description, in the style of a store page. It may
+    /// reference images beside it in `showcase/` by bare relative path
+    /// (`![Title](title.png)`), which a renderer resolves against the run's served
+    /// showcase files. Capped at capture; a longer description is truncated on a
+    /// char boundary with a trailing marker.
+    pub description: String,
+    /// The media carousel, in the order the model declared it — carousel order is
+    /// presentation order. Capped at capture; entries whose files were missing or
+    /// oversized were dropped there, so every entry named here was present and
+    /// within bounds when the record was assembled.
+    pub media: Vec<ShowcaseMedia>,
+}
+
+/// One entry of a [showcase](RunShowcase)'s media carousel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ShowcaseMedia {
+    /// The media file's name in the run's `showcase/` directory (a plain file name,
+    /// no subdirectories), which is also its name under the run's served
+    /// `/runs/<id>/showcase/<file>` route.
+    pub file: String,
+    /// The model's short caption for this entry.
+    pub name: String,
+    /// The kind of media, inferred from the file's extension by the same rule as a
+    /// declared proof ([`MediaKind::from_path`]): `.png` an image, `.json.gz` a
+    /// draw-command replay, `.webm` a video.
+    pub kind: MediaKind,
 }
 
 #[cfg(test)]

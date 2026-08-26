@@ -60,11 +60,19 @@ authoritative ranking of models for a given case and variant lives in that
 case's [leaderboard](#leaderboard).
 
 The runs index lists the full run history a page at a time, with a search that
-narrows by test case, harness, or model name. A run's detail page opens on its
-Verdict tab: the functional rating, the aesthetic rating when there is one,
-and the score first, then the per-item checklist breakdown and each review's
-writeup and per-domain ratings, attributed to its reviewer. The playable build
-has its own Play tab.
+narrows by test case, harness, or model name. A run with a playable build opens
+its detail page on the Play tab: the run's
+[showcase](/components/core/showcase/), when its record carries one, and the
+playable embed. A run with no playable build opens on its Verdict tab instead.
+
+The Verdict tab shows the functional rating, the aesthetic rating when there is
+one, and the score first, then the per-item checklist breakdown and each
+review's writeup and per-domain ratings, attributed to its reviewer. On a
+validator-rated run the checklist breakdown is a read-only browser of the
+automated items: a rail listing every item, each item's validator verdict and
+per-verdict assertions, and the implementation's replay beside the reference
+baseline's, scrubbed together. Every visitor sees the browser, alongside the
+aesthetic ratings the reviewers gave.
 
 ## Playing and cloning
 

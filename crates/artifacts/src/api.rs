@@ -47,7 +47,8 @@ use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use test_cabinet_core::{
-    find_build_output, serve_asset_file, serve_build_file, serve_proof_file, serve_validation_file,
+    find_build_output, serve_asset_file, serve_build_file, serve_proof_file, serve_showcase_file,
+    serve_validation_file,
 };
 
 use crate::auth::{verify_job_token, verify_publish_job_token};
@@ -124,6 +125,7 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{id}/proof/{file}", get(proof_file))
         .route("/runs/{id}/asset/{file}", get(asset_file))
         .route("/runs/{id}/validation/{file}", get(validation_file))
+        .route("/runs/{id}/showcase/{file}", get(showcase_file))
         .route("/runs/{id}/events.jsonl", get(events_file))
         .route("/runs/{id}/raw.jsonl", get(raw_file))
         .layer(axum::middleware::from_fn(accept_trace))
@@ -518,6 +520,26 @@ async fn validation_file(
     let served = serve_validation_file(&run_dir, &file).ok_or_else(|| {
         ApiError::not_found(format!("run `{id}` has no validation media `{file}`"))
     })?;
+    Ok(media_response(
+        served.content_type,
+        served.content_encoding,
+        served.body,
+    ))
+}
+
+/// `GET /runs/{id}/showcase/{file}` — one of a run's showcase files (`{file}` is
+/// the plain file name in the produced tree's `showcase/` — a carousel media file,
+/// or an image the description references), resolved from the collected tree via
+/// [`serve_showcase_file`]. Ungated (browser-loaded). A `.json.gz` replay serves
+/// as JSON travelling gzip-framed, exactly as validation replays do, so a browser
+/// inflates it transparently. `404` when the run or the file is absent.
+async fn showcase_file(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let run_dir = state.store.run_dir(&id);
+    let served = serve_showcase_file(&run_dir, &file)
+        .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no showcase file `{file}`")))?;
     Ok(media_response(
         served.content_type,
         served.content_encoding,

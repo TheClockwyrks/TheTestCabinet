@@ -27,6 +27,7 @@ import { AdversarialReplaySection } from "./AdversarialReplaySection";
 import { PerformanceResultSection } from "./PerformanceResultSection";
 import { RunErrataCallout } from "./RunErrataCallout";
 import { ValidatorVerdict } from "./ValidatorVerdict";
+import { ReviewItemBrowser } from "./ReviewItemBrowser";
 import styles from "./RunDetailPages.module.scss";
 
 // The note a run without a result stands in place of one on its default tab: it
@@ -51,13 +52,14 @@ function FailureNote({ presentation }: { presentation: RunStatePresentation }) {
   );
 }
 
-// The run's default tab (`/runs/:runId`), which renders as one of two things.
+// The run's Verdict tab (`/runs/:runId/verdict`), which renders as one of two
+// things. It leads the tab strip — and is where the bare run URL redirects —
+// for a run with no playable build; a playable run lands on its Play tab
+// instead, with the verdict one tab over.
 //
 // For a human-reviewed run it is the **Verdict** tab: the hand-written,
 // post-implementation review — its overall rating and score, the per-domain
-// ratings, the reviewer's writeup, and the per-item checklist breakdown. This is
-// the default tab so a visitor reads the verdict before launching the (possibly
-// broken) build on the Play tab.
+// ratings, the reviewer's writeup, and the per-item checklist breakdown.
 //
 // For a performance run it is the **Results** tab: that type is graded
 // automatically (correctness gates, then the fuel a correct engine burned), so it
@@ -218,6 +220,11 @@ function ReadOnlyVerdictPanel({
             model={model}
             aesthetics={review?.aesthetics ?? []}
           />
+          {/* The per-item browser under the validators' verdict: every checked
+              point walked one at a time with the reference-vs-run media and
+              assertions behind its verdict. Read-only, so it renders for every
+              visitor — the public gallery included. */}
+          <ReviewItemBrowser run={run} items={model.items} />
           {review?.body && (
             <Markdown breaks className={styles.writeupBody}>
               {review.body}

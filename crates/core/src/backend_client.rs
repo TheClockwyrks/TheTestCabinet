@@ -287,6 +287,23 @@ pub trait BackendClient: Send + Sync {
         Ok(())
     }
 
+    /// Upload one [showcase](crate::RunShowcase) file for a published run — a
+    /// carousel media file, or an image the description references — served back
+    /// for the Play tab's showcase view. `file` is the plain file name in the
+    /// produced tree's `showcase/` directory. (`POST /runs/{id}/showcase/{file}`)
+    /// Idempotent: identical bytes overwrite.
+    ///
+    /// Defaults to a no-op so a backend without showcase support (or a test stub)
+    /// stays valid; the HTTP client overrides it.
+    async fn publish_run_showcase(
+        &self,
+        _run_id: &str,
+        _file: &str,
+        _bytes: Vec<u8>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Upload an adversarial run's controller wasm module for a pushed run, served
     /// back so the arena can resolve and pit a pushed implementation from any host.
     /// (`POST /runs/{id}/controller.wasm`) Idempotent: identical bytes overwrite.
@@ -1123,6 +1140,32 @@ impl BackendClient for HttpBackendClient {
     )]
     async fn publish_run_asset(&self, run_id: &str, file: &str, bytes: Vec<u8>) -> Result<()> {
         let url = self.url(&format!("/runs/{}/asset/{}", encode(run_id), encode(file)));
+        let content_type = content_type_for_file(file);
+        let headers = self.headers();
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, content_type)
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id, showcase.file = %file),
+        err,
+    )]
+    async fn publish_run_showcase(&self, run_id: &str, file: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!(
+            "/runs/{}/showcase/{}",
+            encode(run_id),
+            encode(file)
+        ));
         let content_type = content_type_for_file(file);
         let headers = self.headers();
         let response = self

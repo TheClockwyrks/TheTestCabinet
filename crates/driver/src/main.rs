@@ -228,6 +228,11 @@ async fn main() -> ExitCode {
             // action log): the public snapshot reads it from the backend store, so
             // mirror it there or the published asset result view has nothing to show.
             finalize_asset_backend_upload(&config, &record).await;
+            // Same for the run's showcase files (the carousel media and any image the
+            // description references): the public snapshot reads them from the backend
+            // store, so mirror them there or the published Play tab renders the
+            // description with broken images and an empty carousel.
+            finalize_showcase_backend_upload(&config, &record).await;
             // For a gg run captured with the (debug-only) replay capability, mirror its
             // `.gg/replay.json` record into the backend store so `GET /runs/{id}/replay`
             // can serve it to a replay driver. A no-op for any run that captured none.
@@ -632,6 +637,30 @@ async fn finalize_asset_backend_upload(config: &Config, record: &test_cabinet_co
             run_id = %record.id,
             error = %err,
             "could not upload asset-generation media to the backend store",
+        );
+    }
+}
+
+/// Mirror a run's showcase files (the carousel media, plus any image the
+/// description references) into the **backend store**, so the public snapshot
+/// carries them and the published Play tab can render the showcase around the
+/// playable build. A no-op for a run whose record captured no showcase. Reads the
+/// files from the produced tree the driver still holds on disk; an upload failure
+/// is logged but never fatal, exactly like the proof and asset uploads — a
+/// showcase problem never fails a run.
+async fn finalize_showcase_backend_upload(config: &Config, record: &test_cabinet_core::RunRecord) {
+    let out_dir = config.work_dir.join("out");
+    if let Err(err) = test_cabinet_driver::artifacts::upload_showcase_to_backend(
+        &config.backend_url,
+        record,
+        &out_dir,
+    )
+    .await
+    {
+        tracing::warn!(
+            run_id = %record.id,
+            error = %err,
+            "could not upload the run's showcase files to the backend store",
         );
     }
 }

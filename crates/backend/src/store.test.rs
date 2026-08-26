@@ -646,6 +646,71 @@ fn delete_run_media_removes_every_kind_and_is_idempotent() {
 }
 
 #[test]
+fn showcase_files_round_trip_and_list_sorted() {
+    let (_dir, store) = temp_store();
+    store
+        .write_run_showcase("r1", "title.png", b"png:title")
+        .unwrap();
+    store
+        .write_run_showcase("r1", "showcase.md", b"# My Game")
+        .unwrap();
+    store
+        .write_run_showcase("r1", "clip.json.gz", b"\x1f\x8bgz")
+        .unwrap();
+
+    assert_eq!(
+        store.read_run_showcase("r1", "title.png").unwrap(),
+        b"png:title"
+    );
+    // The listing enumerates the stored names, sorted, so the snapshot builder
+    // publishes a stable set.
+    assert_eq!(
+        store.list_run_showcase("r1").unwrap(),
+        vec![
+            "clip.json.gz".to_string(),
+            "showcase.md".to_string(),
+            "title.png".to_string(),
+        ]
+    );
+    // A run with nothing stored lists empty rather than erroring — every run
+    // recorded before the showcase existed.
+    assert_eq!(store.list_run_showcase("r2").unwrap(), Vec::<String>::new());
+    assert!(store.read_run_showcase("r2", "title.png").is_err());
+    // Showcase media is part of the per-run tree the delete sweeps.
+    store.delete_run_media("r1").unwrap();
+    assert!(store.read_run_showcase("r1", "title.png").is_err());
+}
+
+#[test]
+fn showcase_files_reject_unsafe_segments() {
+    let (_dir, store) = temp_store();
+    assert!(matches!(
+        store
+            .write_run_showcase("../escape", "a.png", b"x")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .write_run_showcase("r1", "../a.png", b"x")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store.read_run_showcase("r1", "..").unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    // The manifest is capture-side input, already folded into the record — the
+    // store refuses it so "showcase.toml is never stored" holds for any client.
+    assert!(matches!(
+        store
+            .write_run_showcase("r1", "showcase.toml", b"[[media]]")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+}
+
+#[test]
 fn delete_run_media_rejects_an_unsafe_run_id() {
     let (_dir, store) = temp_store();
     let err = store.delete_run_media("../escape").unwrap_err();

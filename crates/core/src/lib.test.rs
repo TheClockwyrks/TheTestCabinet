@@ -6,12 +6,14 @@ use std::path::PathBuf;
 
 use super::{
     EngineCatalog, EngineSelection, EngineSupport, Error, EventFormat, EventKind, EventParser,
-    HarnessEvent, HarnessOutcome, HarnessSlug, MAX_GAME_JAM_README_BYTES, NONE_SLUG,
-    OrchestratorSelection, OutputStream, RawOutputLine, ResolvedEngine, Result, RunRequest,
-    RunState, TestCaseVersion, TestType, Usage, build_failed_record, completed_state, copy_tree,
-    init_failure_detail, read_game_jam_readme, resolve_engine, with_runtime_cap, write_run_streams,
+    HarnessEvent, HarnessOutcome, HarnessSlug, MAX_GAME_JAM_README_BYTES,
+    MAX_SHOWCASE_DESCRIPTION_BYTES, MAX_SHOWCASE_MEDIA_ENTRIES, NONE_SLUG, OrchestratorSelection,
+    OutputStream, RawOutputLine, ResolvedEngine, Result, RunRequest, RunState, TestCaseVersion,
+    TestType, Usage, build_failed_record, completed_state, copy_tree, init_failure_detail,
+    read_game_jam_readme, read_showcase, resolve_engine, with_runtime_cap, write_run_streams,
 };
 use crate::execution::ExecOutput;
+use crate::test_case::MediaKind;
 use crate::validation::{DebugScriptResult, ValidationSummary};
 use time::OffsetDateTime;
 
@@ -105,6 +107,171 @@ fn read_game_jam_readme_truncates_an_oversized_readme_on_a_char_boundary() {
     // Valid UTF-8 (no split char), bounded, and marked as truncated.
     assert!(captured.len() <= MAX_GAME_JAM_README_BYTES + "\n\n…(README truncated)".len());
     assert!(captured.ends_with("…(README truncated)"));
+}
+
+/// Lay down a `showcase/` directory with the given `showcase.md`, `showcase.toml`,
+/// and media files (each written with a tiny placeholder body), returning the repo
+/// root the capture reads from.
+fn showcase_repo(description: &str, manifest: &str, files: &[&str]) -> tempfile::TempDir {
+    let repo = tempfile::tempdir().expect("temp dir");
+    let dir = repo.path().join("showcase");
+    std::fs::create_dir(&dir).expect("showcase dir");
+    std::fs::write(dir.join("showcase.md"), description).expect("write showcase.md");
+    std::fs::write(dir.join("showcase.toml"), manifest).expect("write showcase.toml");
+    for file in files {
+        std::fs::write(dir.join(file), b"media bytes").expect("write media file");
+    }
+    repo
+}
+
+#[test]
+fn read_showcase_captures_the_description_and_the_carousel_in_declared_order() {
+    let manifest = r#"
+[[media]]
+file = "title.png"
+name = "Title screen"
+
+[[media]]
+file = "rally.json.gz"
+name = "A long rally"
+
+[[media]]
+file = "trailer.webm"
+name = "Trailer"
+"#;
+    let repo = showcase_repo(
+        "# My Game\n\nA store-page blurb.",
+        manifest,
+        &["title.png", "rally.json.gz", "trailer.webm"],
+    );
+
+    let showcase = read_showcase(repo.path()).expect("captured");
+    assert_eq!(showcase.description, "# My Game\n\nA store-page blurb.");
+    // Carousel order is declared order, and each kind is inferred from the
+    // extension exactly like a declared proof's.
+    let entries: Vec<(&str, &str, MediaKind)> = showcase
+        .media
+        .iter()
+        .map(|m| (m.file.as_str(), m.name.as_str(), m.kind))
+        .collect();
+    assert_eq!(
+        entries,
+        vec![
+            ("title.png", "Title screen", MediaKind::Image),
+            ("rally.json.gz", "A long rally", MediaKind::Replay),
+            ("trailer.webm", "Trailer", MediaKind::Video),
+        ],
+    );
+}
+
+#[test]
+fn read_showcase_is_absent_when_no_showcase_directory_was_produced() {
+    let repo = tempfile::tempdir().expect("temp dir");
+    assert_eq!(read_showcase(repo.path()), None);
+}
+
+#[test]
+fn read_showcase_records_nothing_for_an_unparseable_showcase() {
+    // A manifest that is not TOML at all: no showcase, no panic.
+    let repo = showcase_repo("A game.", "this is [ not toml", &[]);
+    assert_eq!(read_showcase(repo.path()), None);
+
+    // An entry missing its required caption is a parse failure, not a partial
+    // capture.
+    let repo = showcase_repo("A game.", "[[media]]\nfile = \"a.png\"\n", &["a.png"]);
+    assert_eq!(read_showcase(repo.path()), None);
+
+    // A showcase directory without the description records nothing either.
+    let repo = tempfile::tempdir().expect("temp dir");
+    let dir = repo.path().join("showcase");
+    std::fs::create_dir(&dir).expect("showcase dir");
+    std::fs::write(dir.join("showcase.toml"), "").expect("write showcase.toml");
+    assert_eq!(read_showcase(repo.path()), None);
+}
+
+#[test]
+fn read_showcase_truncates_an_oversized_description_on_a_char_boundary() {
+    // A multi-byte char repeated past the cap, so a naive byte cut could split it.
+    let big = "é".repeat(MAX_SHOWCASE_DESCRIPTION_BYTES);
+    let repo = showcase_repo(&big, "", &[]);
+
+    let showcase = read_showcase(repo.path()).expect("captured");
+    // Valid UTF-8 (no split char), bounded, and marked as truncated.
+    assert!(
+        showcase.description.len()
+            <= MAX_SHOWCASE_DESCRIPTION_BYTES + "\n\n…(description truncated)".len()
+    );
+    assert!(showcase.description.ends_with("…(description truncated)"));
+}
+
+#[test]
+fn read_showcase_drops_an_entry_whose_file_is_missing_or_escapes_the_directory() {
+    let manifest = r#"
+[[media]]
+file = "present.png"
+name = "Present"
+
+[[media]]
+file = "missing.png"
+name = "Missing"
+
+[[media]]
+file = "sub/dir.png"
+name = "In a subdirectory"
+
+[[media]]
+file = "shot..final.png"
+name = "Traversal-looking name"
+"#;
+    // `shot..final.png` exists, but the serve routes refuse any name containing
+    // `..`, so capture must drop it too — a recorded name is a servable name.
+    let repo = showcase_repo("A game.", manifest, &["present.png", "shot..final.png"]);
+
+    // The bad entries cost only themselves; the rest of the carousel survives.
+    let showcase = read_showcase(repo.path()).expect("captured");
+    assert_eq!(showcase.media.len(), 1);
+    assert_eq!(showcase.media[0].file, "present.png");
+}
+
+#[test]
+fn read_showcase_trims_the_carousel_to_the_entry_cap() {
+    let files: Vec<String> = (0..MAX_SHOWCASE_MEDIA_ENTRIES + 2)
+        .map(|i| format!("shot-{i}.png"))
+        .collect();
+    let manifest: String = files
+        .iter()
+        .map(|file| format!("[[media]]\nfile = \"{file}\"\nname = \"Shot\"\n\n"))
+        .collect();
+    let file_refs: Vec<&str> = files.iter().map(String::as_str).collect();
+    let repo = showcase_repo("A game.", &manifest, &file_refs);
+
+    // The first N declared entries are kept; the excess is dropped, not an error.
+    let showcase = read_showcase(repo.path()).expect("captured");
+    assert_eq!(showcase.media.len(), MAX_SHOWCASE_MEDIA_ENTRIES);
+    assert_eq!(showcase.media[0].file, "shot-0.png");
+    assert_eq!(
+        showcase.media[MAX_SHOWCASE_MEDIA_ENTRIES - 1].file,
+        format!("shot-{}.png", MAX_SHOWCASE_MEDIA_ENTRIES - 1),
+    );
+}
+
+#[test]
+fn read_showcase_drops_an_entry_of_no_known_media_kind() {
+    let manifest = r#"
+[[media]]
+file = "notes.txt"
+name = "Notes"
+
+[[media]]
+file = "title.png"
+name = "Title"
+"#;
+    let repo = showcase_repo("A game.", manifest, &["notes.txt", "title.png"]);
+
+    let showcase = read_showcase(repo.path()).expect("captured");
+    assert_eq!(showcase.media.len(), 1);
+    assert_eq!(showcase.media[0].file, "title.png");
+    assert_eq!(showcase.media[0].kind, MediaKind::Image);
 }
 
 #[test]

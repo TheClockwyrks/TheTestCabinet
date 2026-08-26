@@ -1190,6 +1190,14 @@ export interface WorkerClient {
    */
   validationMediaUrl?(runId: string, file: string): string | null;
   /**
+   * The URL to load one of a run's showcase files — a carousel media file, or an
+   * image the description references by bare relative path (`file` is the plain
+   * name in the produced tree's `showcase/`) — or null when this worker cannot
+   * serve it. Optional, mirroring {@link proofMediaUrl} and {@link assetMediaUrl}:
+   * a worker reachable over HTTP needs no override.
+   */
+  showcaseMediaUrl?(runId: string, file: string): string | null;
+  /**
    * The URL to download a run's entire produced tree from as one gzip tar, or null
    * when this worker cannot serve it. Unlike the media resolvers above this is not
    * loaded into the page — it is handed to a download link, so the reviewer gets

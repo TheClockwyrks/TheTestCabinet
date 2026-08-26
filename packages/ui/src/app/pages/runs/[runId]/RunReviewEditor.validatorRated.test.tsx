@@ -34,6 +34,9 @@ const fixture = vi.hoisted(() => ({
     proofMediaFor: () => [],
     assetResultFor: () => null,
     validationMediaFor: () => [],
+    // The read-only item browser resolves the run's catalog variant for its
+    // reference media; a null resolution just means no expected panes.
+    fetchCaseVariant: async () => null,
   },
 }));
 
@@ -166,12 +169,58 @@ describe("RunReviewEditor on a validator-rated run", () => {
     expect(screen.queryByText("Mark unplayable")).toBeNull();
     expect(screen.queryByText("Ratings")).toBeNull();
 
+    // The automated items can still be BROWSED, though: the read-only item rail
+    // is mounted with each checked point navigable, the machine's tally in its
+    // summary, and the validators' call shown as a readout, not a control.
+    expect(
+      screen.getByRole("navigation", { name: "Checked points" }),
+    ).toBeTruthy();
+    expect(screen.getByText("1/2 passed")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Ball serves" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "AI paddle tracks the ball (Solo)" }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Pass — decided by this run/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "← Previous" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Next →" })).toBeTruthy();
+
     // What the reviewer is asked for: one aesthetic picker per domain.
     expect(screen.getByText("Aesthetics")).toBeTruthy();
     const pickers = screen.getAllByRole("combobox");
     expect(pickers).toHaveLength(2);
     // Unset until chosen — the scale has no neutral default.
     expect((pickers[0] as HTMLSelectElement).value).toBe("");
+  });
+
+  it("walks the browsed items one at a time without offering a verdict", async () => {
+    fixture.readReviewItems.mockResolvedValue(items);
+    mount(
+      <RunReviewEditor
+        run={run}
+        reviews={[]}
+        published={false}
+        validatorRated
+        onChanged={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
+
+    // Landing on the first point: the passed serve, read from the record.
+    expect(screen.getByText("Pass — decided by this run’s validators.", {
+      exact: false,
+    })).toBeTruthy();
+
+    // Stepping forward shows the failed AI point, still with no control.
+    fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+    expect(screen.getByText("Fail — decided by this run’s validators.", {
+      exact: false,
+    })).toBeTruthy();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
+    // The last point: nothing further to step to.
+    expect(
+      (screen.getByRole("button", { name: "Next →" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 
   it("offers Publish without a review, and Submit only once every domain is rated", async () => {

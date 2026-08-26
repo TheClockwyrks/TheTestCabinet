@@ -299,6 +299,37 @@
       "required": ["id", "kind", "key"],
       "type": "object"
     },
+    "RunShowcase": {
+      "description": "A run's showcase: the model's own presentation of the game it built, captured\nonto the record from the produced tree's `showcase/` directory (see\n`docs/showcase.md`). The description is `showcase/showcase.md`; the carousel is\n`showcase/showcase.toml`'s `[[media]]` tables, in their declared order.\n\nThe media *bytes* do not ride the record — they are uploaded from the produced\ntree and served per run at `/runs/<id>/showcase/<file>` alongside the run's\nproof, asset, and validation media; this block carries only the description\ntext and the carousel's file names, captions, and kinds.",
+      "properties": {
+        "description": {
+          "description": "The player-facing markdown description, in the style of a store page. It may\nreference images beside it in `showcase/` by bare relative path\n(`![Title](title.png)`), which a renderer resolves against the run's served\nshowcase files. Capped at capture; a longer description is truncated on a\nchar boundary with a trailing marker.",
+          "type": "string"
+        },
+        "media": {
+          "description": "The media carousel, in the order the model declared it — carousel order is\npresentation order. Capped at capture; entries whose files were missing or\noversized were dropped there, so every entry named here was present and\nwithin bounds when the record was assembled.",
+          "items": {
+            "$ref": "#/$defs/ShowcaseMedia"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["description", "media"],
+      "type": "object"
+    },
+    "RunShowcaseOut": {
+      "description": "A [showcase](test_cabinet_core::RunShowcase) file exposed in a per-run document —\na carousel media file, or an image the description references. `file` is the\nrecorded name the gallery requests (the plain file name in the produced tree's\n`showcase/`); `key` is its snapshot-relative object key, whose bytes are the\nmedia as published — a video transcoded to `.mp4`, so `key` and `file` differ in\nextension for a clip while the name the UI requests still resolves through the\nstatic gallery's map (the validation-media convention).",
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": ["file", "key"],
+      "type": "object"
+    },
     "RunValidationMediaOut": {
       "description": "A synthesized *actual* validation media file exposed in a per-run document — one\ndebug-script output captured from the model's build. `file` is the flat\n`<item>__<output>.<ext>` name the gallery requests (`.png`/`.webm`, keyed off the\noutput's kind exactly as the reviewer UI's `validationMediaFor` computes it); `key`\nis its snapshot-relative object key, whose bytes are the media as published — a\nvideo transcoded to `.mp4`, so `key` and `file` differ in extension for a clip while\nthe flat name the UI requests still resolves through the static gallery's map.",
       "properties": {
@@ -310,6 +341,25 @@
         }
       },
       "required": ["file", "key"],
+      "type": "object"
+    },
+    "ShowcaseMedia": {
+      "description": "One entry of a [showcase](RunShowcase)'s media carousel.",
+      "properties": {
+        "file": {
+          "description": "The media file's name in the run's `showcase/` directory (a plain file name,\nno subdirectories), which is also its name under the run's served\n`/runs/<id>/showcase/<file>` route.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind",
+          "description": "The kind of media, inferred from the file's extension by the same rule as a\ndeclared proof ([`MediaKind::from_path`]): `.png` an image, `.json.gz` a\ndraw-command replay, `.webm` a video."
+        },
+        "name": {
+          "description": "The model's short caption for this entry.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name", "kind"],
       "type": "object"
     }
   },
@@ -356,6 +406,13 @@
       "minimum": 0,
       "type": "integer"
     },
+    "showcaseMedia": {
+      "description": "The run's [showcase](test_cabinet_core::RunShowcase) files — the carousel\nmedia plus any image the description references — named by snapshot-relative\nkey. Empty for a run whose record carries no showcase (every record written\nbefore the field existed), and possibly a subset of the carousel when a\nfile's bytes could not be read. Always emitted (possibly empty); the static\ngallery treats it as optional so a snapshot written before this field\nexisted still loads.",
+      "items": {
+        "$ref": "#/$defs/RunShowcaseOut"
+      },
+      "type": "array"
+    },
     "validationMedia": {
       "description": "The run's synthesized *actual* automated-validation media (the model build's\nper-review-item debug-script outputs), named by snapshot-relative key. Empty\nwhen the run declares no debug scripts (or none produced media). The case-scoped\n*baseline* counterpart rides on [`CaseMetadata::validation_baselines`]. Always\nemitted (possibly empty); the static gallery treats it as optional so a snapshot\nwritten before this field existed still loads.",
       "items": {
@@ -371,7 +428,8 @@
     "links",
     "proofMedia",
     "validationMedia",
-    "assetMedia"
+    "assetMedia",
+    "showcaseMedia"
   ],
   "title": "PerRun",
   "type": "object"

@@ -474,6 +474,7 @@ impl SnapshotBuilder {
             let (validation_media, validation_objects) =
                 self.run_validation_media(&run.record).await;
             let (asset_media, asset_objects) = self.run_assets(run).await;
+            let (showcase_media, showcase_objects) = self.run_showcase(&run.record).await;
             // The unbounded code-analysis document is the one per-run object whose
             // bytes are not media: it is published beside the run rather than inside
             // it, so it is scrubbed *here*, on its own, before it becomes an object
@@ -496,6 +497,7 @@ impl SnapshotBuilder {
                 proof_media,
                 validation_media,
                 asset_media,
+                showcase_media,
                 code_analysis_key,
             })
             .map_err(|e| {
@@ -535,6 +537,7 @@ impl SnapshotBuilder {
             objects.extend(proof_objects);
             objects.extend(validation_objects);
             objects.extend(asset_objects);
+            objects.extend(showcase_objects);
             objects.extend(code_analysis_object);
         }
         tracing::debug!(
@@ -1291,6 +1294,108 @@ impl SnapshotBuilder {
         (metas, objects)
     }
 
+    /// Collect a run's [showcase](test_cabinet_core::RunShowcase) files: the
+    /// `showcaseMedia[]` metadata entries (recorded file name + snapshot-relative
+    /// key) and the media objects to upload.
+    ///
+    /// The record decides whether a showcase exists at all — a run whose record
+    /// carries none contributes nothing, whatever the store happens to hold — but
+    /// the file *set* is everything in the store's showcase dir, not just the
+    /// carousel: an image the description references by bare relative path must be
+    /// published even when the carousel does not list it, which is why the driver
+    /// mirrors the whole directory (see `upload_showcase_to_backend`). Any name
+    /// the store listing misses — a carousel entry, or an image reference
+    /// extracted from the record's description ([`description_image_references`])
+    /// — is still tried through the store-then-artifact-service fallback
+    /// ([`Self::read_media`]): the backend store is an ephemeral emptyDir, so a
+    /// run mirrored before a restart may list nothing at publish time, and a
+    /// description-only image is named nowhere else on the record. A file whose
+    /// bytes are in neither place contributes nothing.
+    ///
+    /// Each entry's `file` is the recorded name the gallery requests. A `.json.gz`
+    /// replay publishes verbatim (JSON travelling gzip-framed, exactly as it is
+    /// served); a **video** (`.webm`) is transcoded to `.mp4` for the public gallery
+    /// and published under the mp4 name, while `file` stays the recorded `.webm` so
+    /// the name the UI requests still resolves — copying the validation-media
+    /// convention ([`Self::run_validation_media`]). A transcode that fails falls
+    /// back to publishing the raw webm so the media still appears. An
+    /// already-present media key is referenced without re-reading or re-transcoding.
+    async fn run_showcase(&self, record: &RunRecord) -> (Vec<RunShowcaseOut>, Vec<SnapshotObject>) {
+        let mut metas = Vec::new();
+        let mut objects = Vec::new();
+        let Some(showcase) = record.showcase.as_ref() else {
+            return (metas, objects);
+        };
+        let run_id = &record.id;
+        // Everything the store holds, then any carousel entry or
+        // description-referenced image the listing missed — deduplicated, so a file
+        // several of them know about publishes once. `showcase.toml` is never
+        // stored (nor uploaded), but a stray copy is filtered rather than
+        // published: the manifest is capture-side input, already on the record.
+        let mut files: Vec<String> = self
+            .store
+            .list_run_showcase(run_id)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|file| file != "showcase.toml")
+            .collect();
+        for media in &showcase.media {
+            if !files.contains(&media.file) {
+                files.push(media.file.clone());
+            }
+        }
+        for file in description_image_references(&showcase.description) {
+            if !files.contains(&file) {
+                files.push(file);
+            }
+        }
+        for file in &files {
+            let file = file.as_str();
+            let is_video = file.to_ascii_lowercase().ends_with(".webm");
+            let published_file = if is_video {
+                format!("{}.mp4", file.strip_suffix(".webm").unwrap_or(file))
+            } else {
+                file.to_string()
+            };
+            // The stable, snapshot-independent key. When it is already in the bucket,
+            // reference it without touching the source bytes (no store read, and — for
+            // a video — no re-transcode).
+            let published_key = format!("{MEDIA_PREFIX}/{run_id}/showcase/{published_file}");
+            if self.existing_media.contains(&published_key) {
+                metas.push(RunShowcaseOut {
+                    file: file.to_string(),
+                    key: published_key,
+                });
+                continue;
+            }
+            let Some(raw) = self.read_media(run_id, "showcase", file).await else {
+                continue;
+            };
+            let (published_file, bytes) = if is_video {
+                match transcode_webm_to_mp4(&raw).await {
+                    Some(mp4) => (published_file, mp4),
+                    None => {
+                        tracing::warn!(
+                            run_id = %run_id,
+                            file = %file,
+                            "webm→mp4 transcode unavailable; publishing raw showcase webm (not iOS-playable)"
+                        );
+                        (file.to_string(), raw)
+                    }
+                }
+            } else {
+                (published_file, raw)
+            };
+            let key = format!("{MEDIA_PREFIX}/{run_id}/showcase/{published_file}");
+            objects.push(SnapshotObject::media(key.clone(), bytes, &published_file));
+            metas.push(RunShowcaseOut {
+                file: file.to_string(),
+                key,
+            });
+        }
+        (metas, objects)
+    }
+
     /// Publish a run's **unbounded** code-analysis document as its own object, and
     /// return the key the per-run document points at it by.
     ///
@@ -1398,8 +1503,9 @@ impl SnapshotBuilder {
         )
     }
 
-    /// Resolve one run media file (`kind` is `proof` or `asset`) to its bytes,
-    /// preferring the local store and falling back to the artifact service.
+    /// Resolve one run media file (`kind` is `proof`, `validation`, `showcase`, or
+    /// `asset`) to its bytes, preferring the local store and falling back to the
+    /// artifact service.
     ///
     /// The store is the fast path — the driver mirrors a run's media there at run
     /// time — but it is an ephemeral emptyDir in production, so it may be empty for a
@@ -1411,6 +1517,7 @@ impl SnapshotBuilder {
         let from_store = match kind {
             "proof" => self.store.read_run_proof(run_id, file),
             "validation" => self.store.read_run_validation(run_id, file),
+            "showcase" => self.store.read_run_showcase(run_id, file),
             _ => self.store.read_run_asset(run_id, file),
         };
         if let Ok(bytes) = from_store {
@@ -1512,6 +1619,93 @@ async fn transcode_webm_to_mp4(webm: &[u8]) -> Option<Vec<u8>> {
     // Best-effort cleanup regardless of outcome.
     let _ = tokio::fs::remove_dir_all(&dir).await;
     result
+}
+
+/// The showcase file names a description references as inline Markdown images
+/// (`![alt](file)`), deduplicated in reference order.
+///
+/// A description may embed an image by bare relative path without listing it in
+/// the carousel, and such a name lives nowhere else on the record — so this
+/// extraction is what lets [`run_showcase`](SnapshotBuilder::run_showcase) try
+/// the artifact-service fallback for it after the ephemeral store has been
+/// wiped, instead of publishing a description whose image is permanently broken
+/// (the write-once media convention means a later snapshot never heals it).
+///
+/// Only a name the store and serve routes would accept is returned: the same
+/// relative-reference rule the console's Markdown renderer applies before it
+/// resolves an image against the published showcase (no scheme, not
+/// document-anchored), then the flat-namespace rule of the showcase dir itself
+/// (no separators, no `..`, not `showcase.toml`). A percent-escaped destination
+/// is decoded to the plain file name the author wrote, exactly as the renderer
+/// decodes it before resolving.
+fn description_image_references(description: &str) -> Vec<String> {
+    let mut files = Vec::new();
+    // Inline-image syntax only (`![alt](dest)` / `![alt](<dest>)`, optionally
+    // with a title after the destination) — the convention the specs instruct.
+    let mut rest = description;
+    while let Some(start) = rest.find("![") {
+        rest = &rest[start + 2..];
+        // The destination opens at the first `](` after the alt text.
+        let Some(open) = rest.find("](") else { break };
+        let after = &rest[open + 2..];
+        let dest = if let Some(bracketed) = after.strip_prefix('<') {
+            // An angle-bracketed destination runs to the closing `>` (the form
+            // that permits spaces in the name).
+            let Some(end) = bracketed.find('>') else {
+                rest = after;
+                continue;
+            };
+            &bracketed[..end]
+        } else {
+            // A plain destination ends at the first whitespace (a title may
+            // follow) or the closing parenthesis.
+            match after.find(|c: char| c.is_whitespace() || c == ')') {
+                Some(end) => &after[..end],
+                None => after,
+            }
+        };
+        rest = after;
+        // Only a relative reference resolves against the showcase — the same rule
+        // the renderer applies (no scheme, not `/`-, `#`- or `?`-anchored).
+        if dest.is_empty() || dest.starts_with(['/', '#', '?']) || has_url_scheme(dest) {
+            continue;
+        }
+        // The parser hands the renderer a percent-encoded destination and the
+        // resolver decodes it; decode here too so the extracted name is the plain
+        // file name the store and the published key use.
+        let file = match percent_encoding::percent_decode_str(dest).decode_utf8() {
+            Ok(decoded) => decoded.into_owned(),
+            // Malformed escapes: take the reference as written.
+            Err(_) => dest.to_string(),
+        };
+        // The flat-namespace rule every showcase route enforces.
+        if file.contains(['/', '\\']) || file.contains("..") || file == "showcase.toml" {
+            continue;
+        }
+        if !files.contains(&file) {
+            files.push(file);
+        }
+    }
+    files
+}
+
+/// Whether a Markdown URL reference opens with a scheme (`letter` then
+/// letters/digits/`+`/`.`/`-` up to a `:`), mirroring the renderer's
+/// relative-reference test.
+fn has_url_scheme(url: &str) -> bool {
+    let mut chars = url.chars();
+    if !chars.next().is_some_and(|c| c.is_ascii_alphabetic()) {
+        return false;
+    }
+    for c in chars {
+        if c == ':' {
+            return true;
+        }
+        if !c.is_ascii_alphanumeric() && !matches!(c, '+' | '.' | '-') {
+            return false;
+        }
+    }
+    false
 }
 
 /// The top-level prefix every snapshot generation is written under.
@@ -1622,6 +1816,8 @@ fn media_labels(file: &str) -> ContentLabels {
         "mp4" => ContentLabels::plain("video/mp4"),
         "json" => ContentLabels::plain("application/json"),
         "gz" => content_labels::for_gz(file),
+        // A showcase's description file — markdown a page renders, never raw bytes.
+        "md" => ContentLabels::plain("text/markdown; charset=utf-8"),
         "glb" => ContentLabels::plain("model/gltf-binary"),
         "wav" => ContentLabels::plain("audio/wav"),
         "mid" | "midi" => ContentLabels::plain("audio/midi"),
@@ -2176,6 +2372,14 @@ pub struct PerRun {
     /// An asset-generation run's media (regenerated/preview image + action log),
     /// named by snapshot-relative key. Empty for a non-asset-generation run.
     pub asset_media: Vec<RunAssetOut>,
+    /// The run's [showcase](test_cabinet_core::RunShowcase) files — the carousel
+    /// media plus any image the description references — named by snapshot-relative
+    /// key. Empty for a run whose record carries no showcase (every record written
+    /// before the field existed), and possibly a subset of the carousel when a
+    /// file's bytes could not be read. Always emitted (possibly empty); the static
+    /// gallery treats it as optional so a snapshot written before this field
+    /// existed still loads.
+    pub showcase_media: Vec<RunShowcaseOut>,
     /// The snapshot-relative key of the run's **unbounded**
     /// [code-analysis document](test_cabinet_core::code_analysis::CodeAnalysisDocument) —
     /// every authored file, every scored function, every import edge, cycle and clone
@@ -2218,6 +2422,21 @@ pub struct RunProofOut {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunAssetOut {
+    pub file: String,
+    pub key: String,
+}
+
+/// A [showcase](test_cabinet_core::RunShowcase) file exposed in a per-run document —
+/// a carousel media file, or an image the description references. `file` is the
+/// recorded name the gallery requests (the plain file name in the produced tree's
+/// `showcase/`); `key` is its snapshot-relative object key, whose bytes are the
+/// media as published — a video transcoded to `.mp4`, so `key` and `file` differ in
+/// extension for a clip while the name the UI requests still resolves through the
+/// static gallery's map (the validation-media convention).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunShowcaseOut {
     pub file: String,
     pub key: String,
 }

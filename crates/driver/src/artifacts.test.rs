@@ -23,7 +23,8 @@ use test_cabinet_core::validation::*;
 
 use super::{
     upload_adversarial_to_backend, upload_assets_to_backend, upload_code_analysis_to_backend,
-    upload_proofs_to_backend, upload_replay_to_backend, upload_validation_to_backend,
+    upload_proofs_to_backend, upload_replay_to_backend, upload_showcase_to_backend,
+    upload_validation_to_backend,
 };
 
 /// One upload the stub backend received: its request path and body byte length.
@@ -207,6 +208,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
         seed_commit: None,
         code_analysis: None,
         toolchain: None,
+        showcase: None,
     }
 }
 
@@ -1009,5 +1011,79 @@ async fn a_run_with_no_code_analysis_uploads_nothing() {
     assert!(
         received.lock().unwrap().is_empty(),
         "a run with no code-analysis document makes no request",
+    );
+}
+
+/// A record whose showcase was captured, driving the `upload_showcase_to_backend`
+/// mirror. The carousel lists only `title.png`; the directory holds more, which is
+/// the point — the mirror takes the directory, not the carousel.
+fn record_with_showcase() -> RunRecord {
+    let mut rec = record(None);
+    rec.showcase = Some(RunShowcase {
+        description: "# My Game".to_string(),
+        media: vec![ShowcaseMedia {
+            file: "title.png".to_string(),
+            name: "Title".to_string(),
+            kind: MediaKind::Image,
+        }],
+    });
+    rec
+}
+
+#[tokio::test]
+async fn uploads_every_showcase_file_except_the_manifest() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // The whole produced showcase/: the carousel image, the description and an
+    // image it references (not in the carousel), and the manifest — which is
+    // capture-side input, already folded into the record, and must not upload. A
+    // file over the capture's media cap is skipped too: the capture refused to
+    // record it, so shipping it would bloat every store downstream.
+    write_impl_file(out.path(), "showcase/title.png", b"png:title");
+    write_impl_file(out.path(), "showcase/showcase.md", b"# My Game");
+    write_impl_file(out.path(), "showcase/banner.png", b"png:banner");
+    write_impl_file(out.path(), "showcase/showcase.toml", b"[[media]]");
+    let oversized = vec![0u8; (test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES + 1) as usize];
+    write_impl_file(out.path(), "showcase/huge.png", &oversized);
+
+    upload_showcase_to_backend(&backend_url, &record_with_showcase(), out.path())
+        .await
+        .expect("upload succeeds");
+
+    let mut paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        vec![
+            "/runs/run-1/showcase/banner.png".to_string(),
+            "/runs/run-1/showcase/showcase.md".to_string(),
+            "/runs/run-1/showcase/title.png".to_string(),
+        ],
+        "every file uploads except the manifest and the oversized one; got {paths:?}",
+    );
+}
+
+#[tokio::test]
+async fn run_without_a_captured_showcase_uploads_nothing() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // Files on disk without a captured showcase on the record are not mirrored:
+    // nothing serves them without the record's description and carousel.
+    write_impl_file(out.path(), "showcase/title.png", b"png:title");
+
+    upload_showcase_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("upload succeeds");
+
+    assert!(
+        received.lock().unwrap().is_empty(),
+        "a run whose record carries no showcase makes no request",
     );
 }

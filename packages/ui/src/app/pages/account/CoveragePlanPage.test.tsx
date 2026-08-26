@@ -369,7 +369,9 @@ describe("ReviewQueue", () => {
     // Emission order, not newest-first and not alphabetical (the catalog resolver
     // title-cases a slug it does not know).
     expect(links.map((l) => l.textContent)).toEqual(["Zeta", "Alpha"]);
-    expect(links[0]!.getAttribute("href")).toBe("/runs/r1");
+    // The queue is a review worklist, so its rows deep-link to the run's
+    // Verdict tab rather than the Play landing tab.
+    expect(links[0]!.getAttribute("href")).toBe("/runs/r1/verdict");
   });
 
   it("hands the run's back control a return to the plan it was opened from", () => {
@@ -380,7 +382,7 @@ describe("ReviewQueue", () => {
         <GalleryDataProvider value={galleryValue()}>
           <Routes>
             <Route path="/account/coverage/:planId" element={<Dashboard />} />
-            <Route path="/runs/:runId" element={<p>a run</p>} />
+            <Route path="/runs/:runId/verdict" element={<p>a run</p>} />
           </Routes>
         </GalleryDataProvider>
       </MemoryRouter>,

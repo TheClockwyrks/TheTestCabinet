@@ -513,7 +513,7 @@ export function ReviewQueue({
           <li key={entry.runId} className={styles.queueRow}>
             <Link
               className={styles.queueLink}
-              to={routes.runDetail(entry.runId)}
+              to={routes.runVerdict(entry.runId)}
               onClick={() => claimSectionReturn("coverage", returnLabel)}
             >
               {testCaseName(entry.slug)}

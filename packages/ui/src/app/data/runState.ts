@@ -1,4 +1,4 @@
-import type { RunState } from "@test-cabinet/run-record";
+import type { RunRecord, RunState } from "@test-cabinet/run-record";
 
 // How a run's terminal state reads in the UI. The Rust contract
 // (`crates/core/src/run_record.rs`) is the source of truth for the states
@@ -149,4 +149,24 @@ export function runStateColor(state: RunState): string {
  */
 export function hasPlayableOutcome(state: RunState): boolean {
   return state === "completed";
+}
+
+/**
+ * Whether a run has a playable build to host on its Play tab. None of an
+ * asset-generation run (a static asset), an adversarial run (a match replay), or
+ * a performance run (a wasm engine scored on fuel) produces a hostable playable
+ * build, whatever its state; and a run of any type whose state produced no build
+ * (see {@link hasPlayableOutcome}) likewise has nothing to play.
+ *
+ * The single gate for the run detail's Play tab: the tab strip offers Play (and
+ * leads with it) exactly when this is true, and the bare run URL redirects to the
+ * Verdict tab exactly when it is false.
+ */
+export function hasPlayableBuild(run: RunRecord): boolean {
+  return (
+    hasPlayableOutcome(run.status.state) &&
+    run.subject.testType !== "asset-generation" &&
+    run.subject.testType !== "adversarial" &&
+    run.subject.testType !== "performance"
+  );
 }

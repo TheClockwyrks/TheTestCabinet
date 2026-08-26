@@ -266,8 +266,9 @@ handle = "__carom"
 # branching resolves at seed time and the model never sees the alternative.
 #
 # There is no proof spec: the media a reviewer looks at is captured by this
-# case's own validators from scenarios the case controls, so nothing is asked of
-# the build.
+# case's own validators from scenarios the case controls. The showcase spec below
+# does ask the build for media, but as the game's own store-page presentation
+# rather than as evidence any point is judged on.
 #
 # Every spec is an `.hbs` template, rendered before it lands, and two axes are
 # branched on. `variant.slug` selects the obstacles the game has and how many balls
@@ -281,8 +282,8 @@ handle = "__carom"
 # `setObstacleClock` operation and the obstacle poses a snapshot reports, and how
 # multi's operations address a ball by index).
 # `engine.slug` selects what the build is handed and what it writes:
-# `specs/overview.md.hbs`, `specs/state.md.hbs` and
-# `specs/instrumentation.md.hbs`. A spec's `dest` defaults to its `source` with a
+# `specs/overview.md.hbs`, `specs/state.md.hbs`, `specs/instrumentation.md.hbs`
+# and `specs/showcase.md.hbs`. A spec's `dest` defaults to its `source` with a
 # trailing `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path.
 [[spec]]
 source = "specs/overview.md.hbs"
@@ -318,6 +319,15 @@ source = "specs/state.md.hbs"
 # variant for gyre's extra operation; it seeds to `specs/instrumentation.md`.
 [[spec]]
 source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. It branches on the engine for how
+# motion is captured (a gzipped recording from the engine's own draw-command
+# recorder on an engine run, screenshots and a short clip under `none`); it seeds
+# to `specs/showcase.md`.
+[[spec]]
+source = "specs/showcase.md.hbs"
 
 # No `[[reference]]`, no `[[proof]]`, and no `[[check]]`: the specification fixes
 # behavior, not appearance, so there is no visual target to seed or to score

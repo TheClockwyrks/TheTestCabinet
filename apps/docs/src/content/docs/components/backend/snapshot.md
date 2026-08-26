@@ -57,6 +57,7 @@ documents/gg-runs/<digest>.json
 media/runs/<run-id>/proof/<file>
 media/runs/<run-id>/asset/<file>
 media/runs/<run-id>/validation/<file>
+media/runs/<run-id>/showcase/<file>
 media/runs/<run-id>/code-analysis/v<generation>.json
 media/cases/<slug>/<version>/references/<scope>/<digest>-<view>.png
 media/cases/<slug>/<version>/validation-baseline/<engine>/<variant>/<digest>-<file>
@@ -140,15 +141,20 @@ Schema:
 
 A per-run document names its media by snapshot-relative key: `proofMedia` for
 the proof-of-implementation images and videos, `validationMedia` for the run's
-synthesized automated-validation outputs, and `assetMedia` for an
-asset-generation run's produced images and action logs. Those keys point under
+synthesized automated-validation outputs, `assetMedia` for an
+asset-generation run's produced images and action logs, and `showcaseMedia` for
+the files of the run's [showcase](/components/core/showcase/), each entry
+pairing the recorded file name with its published key. Those keys point under
 `media/runs/<run-id>/`. A published run's media never changes, so it is keyed by
 the run id and written once:
 
 - On each publish the builder lists what is already under `media/` and
   references any object already there without reading the source bytes or
   re-uploading. A run's media is exported exactly once across all snapshots, and
-  a video is transcoded from webm to mp4, for iOS playback, exactly once.
+  a video is transcoded from webm to mp4, for iOS playback, exactly once. A
+  transcoded video's recorded file name keeps its `.webm` spelling while its
+  published key ends `.mp4`, which is why a reader follows the key rather than
+  composing one from the name.
 - Only media not yet in the bucket is read, from the backend store or the
   [artifact service](/components/artifacts/overview/), and uploaded.
 

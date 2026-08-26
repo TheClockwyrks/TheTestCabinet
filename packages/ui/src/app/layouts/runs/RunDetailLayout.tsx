@@ -27,15 +27,17 @@ import {
   worstRating,
 } from "../../data/ratings";
 import { frameReviews } from "../../data/frameReview";
-import { describeRunState, hasPlayableOutcome } from "../../data/runState";
+import { describeRunState, hasPlayableBuild } from "../../data/runState";
 import { routes } from "../../routes";
 import styles from "./RunDetailLayout.module.scss";
 
 // The run detail page's tabs. Each is a distinct route; this drives which tab
-// link reads as active. The `verdict` key names the run's default tab, which
-// reads as "Verdict" for a human-reviewed run and "Results" for a
-// results-scored run (a performance run scored on fuel, an adversarial run on
-// its match records) — one route, two labels.
+// link reads as active. The `play` key names the run's landing tab (the bare run
+// URL) where the run has a playable build; the `verdict` key names its Verdict
+// tab, which leads instead when there is no Play tab and reads as "Verdict" for
+// a human-reviewed run and "Results" for a results-scored run (a performance run
+// scored on fuel, an adversarial run on its match records) — one route, two
+// labels.
 export type RunDetailTab =
   | "verdict"
   | "play"
@@ -243,19 +245,15 @@ export function RunDetailLayout({
   const overallGrade =
     review && !isResultsScored ? overallGradeOf(review.checklist) : null;
 
-  // None of an asset-generation run (a static asset), an adversarial run (a match
-  // replay), or a performance run (a wasm engine scored on fuel) produces a
-  // hostable playable build, so none has a Play tab: an asset run shows its result
-  // on the Verdict tab, while a performance run and an adversarial run each show
-  // their result on the Results tab (fuel scores and match records respectively).
-  // A run that never produced a build to host (catastrophic, timed-out, or
-  // infrastructure) likewise has no Play tab regardless of type
-  // (`hasPlayableOutcome` is the single gate for that distinction).
-  const hasPlayableBuild =
-    hasPlayableOutcome(run.status.state) &&
-    run.subject.testType !== "asset-generation" &&
-    run.subject.testType !== "adversarial" &&
-    !isPerformance;
+  // Whether the run has a build to host on a Play tab (`hasPlayableBuild` is the
+  // single gate — it excludes the three types with nothing playable and any run
+  // whose state produced no build). With one, Play is the landing tab at the bare
+  // run URL and leads the strip; without one there is no Play tab at all — the
+  // bare URL redirects to the Verdict tab, which leads as before: an asset run
+  // shows its result on the Verdict tab, while a performance run and an
+  // adversarial run each show their result on the Results tab (fuel scores and
+  // match records respectively).
+  const playable = hasPlayableBuild(run);
   // The Proof tab is only meaningful when there is proof to show, so a case (or
   // game jam) that requests none hides it entirely rather than showing an empty
   // "requests no proof" page. What counts is the proof-of-implementation media a
@@ -272,14 +270,16 @@ export function RunDetailLayout({
   // harness slug reads differently still resolves correctly.
   const isGg = subject.harnessSlug === "gg" || Boolean(subject.ggCapabilitySet);
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
+    // Play first when present — it is the landing tab at the bare run URL —
+    // then Verdict/Results, which leads when there is nothing to play.
+    ...(playable
+      ? [{ key: "play" as const, label: "Play", to: routes.runDetail(run.id) }]
+      : []),
     {
       key: "verdict",
       label: isResultsScored ? "Results" : "Verdict",
-      to: routes.runDetail(run.id),
+      to: routes.runVerdict(run.id),
     },
-    ...(hasPlayableBuild
-      ? [{ key: "play" as const, label: "Play", to: routes.runPlay(run.id) }]
-      : []),
     { key: "inputs", label: "Inputs", to: routes.runInputs(run.id) },
     ...(hasProof
       ? [{ key: "proof" as const, label: "Proof", to: routes.runProof(run.id) }]

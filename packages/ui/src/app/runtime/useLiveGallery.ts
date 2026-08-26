@@ -499,6 +499,24 @@ export function useLiveGallery(
     [backendUrl, workerUrl, workerClient, localIds],
   );
 
+  // A run's showcase files (the carousel media, plus any image the description
+  // references by bare relative path) resolve exactly the way proof and asset
+  // media do: the desktop transport may supply a custom-scheme resolver, the web
+  // worker/backend an HTTP endpoint under `/runs/{id}/showcase/{file}`.
+  const showcaseMediaUrl = useCallback(
+    (runId: string, file: string): string | null => {
+      const path = `/runs/${encodeURIComponent(runId)}/showcase/${encodeURIComponent(file)}`;
+      if (localIds.has(runId)) {
+        if (workerClient?.showcaseMediaUrl) {
+          return workerClient.showcaseMediaUrl(runId, file);
+        }
+        return workerUrl ? joinPath(workerUrl, path) : null;
+      }
+      return backendUrl ? joinPath(backendUrl, path) : null;
+    },
+    [backendUrl, workerUrl, workerClient, localIds],
+  );
+
   // A run's whole-tree download resolves differently from the media above: it is
   // served **only** by the artifact service, which holds every uploaded tree —
   // publishing a run copies its media to the backend but does not move (or remove)
@@ -757,6 +775,9 @@ export function useLiveGallery(
         // must still read as published so the review surfaces don't offer to
         // publish it a second time.
         published: stored.published ?? false,
+        // The run's showcase, lifted off the record the same way the rating
+        // channels are so a page reads `run.showcase` directly.
+        showcase: stored.record.showcase ?? null,
       });
       try {
         // Prefer the worker (execution) client whenever one is connected. In the
@@ -806,6 +827,7 @@ export function useLiveGallery(
     proofMediaUrl,
     assetMediaUrl,
     validationMediaUrl,
+    showcaseMediaUrl,
     validationBaselineUrl,
     referenceMediaUrl,
     runArchiveUrl,

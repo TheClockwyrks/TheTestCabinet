@@ -363,6 +363,17 @@ export type RunAssetOut = { file: string; key: string };
 export type RunValidationMediaOut = { file: string; key: string };
 
 /**
+ * A [showcase](test_cabinet_core::RunShowcase) file exposed in a per-run document —
+ * a carousel media file, or an image the description references. `file` is the
+ * recorded name the gallery requests (the plain file name in the produced tree's
+ * `showcase/`); `key` is its snapshot-relative object key, whose bytes are the
+ * media as published — a video transcoded to `.mp4`, so `key` and `file` differ in
+ * extension for a clip while the name the UI requests still resolves through the
+ * static gallery's map (the validation-media convention).
+ */
+export type RunShowcaseOut = { file: string; key: string };
+
+/**
  * A per-run document (`runs/<id>.json`): the run record, its reviews and links,
  * the recorded event stream, and the snapshot-relative keys of its media.
  */
@@ -400,6 +411,16 @@ export type PerRun = {
    * named by snapshot-relative key. Empty for a non-asset-generation run.
    */
   assetMedia: Array<RunAssetOut>;
+  /**
+   * The run's [showcase](test_cabinet_core::RunShowcase) files — the carousel
+   * media plus any image the description references — named by snapshot-relative
+   * key. Empty for a run whose record carries no showcase (every record written
+   * before the field existed), and possibly a subset of the carousel when a
+   * file's bytes could not be read. Always emitted (possibly empty); the static
+   * gallery treats it as optional so a snapshot written before this field
+   * existed still loads.
+   */
+  showcaseMedia: Array<RunShowcaseOut>;
   /**
    * The snapshot-relative key of the run's **unbounded**
    * [code-analysis document](test_cabinet_core::code_analysis::CodeAnalysisDocument) —

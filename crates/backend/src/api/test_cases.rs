@@ -443,6 +443,38 @@ pub async fn put_run_asset(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
+/// `GET /runs/{id}/showcase/{file}` — one of a published run's
+/// [showcase](test_cabinet_core::RunShowcase) files (`{file}` is the plain file
+/// name in the produced tree's `showcase/` — a carousel media file, or an image
+/// the description references), mirrored into the backend store by the driver so
+/// it reaches the public snapshot. The content type follows the extension; a
+/// `.json.gz` replay serves as JSON travelling gzip-framed, so a browser inflates
+/// it before the player sees it.
+pub async fn run_showcase(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_run_showcase(&id, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `POST /runs/{id}/showcase/{file}` — store one of a published run's showcase
+/// files, uploaded by the publisher alongside the run record.
+pub async fn put_run_showcase(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_showcase(&id, &file, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
 /// `GET /runs/{id}/controller.wasm` — an adversarial run's pushed controller wasm,
 /// served so the arena can resolve and pit a pushed implementation from any host.
 pub async fn run_controller(
@@ -1030,6 +1062,7 @@ fn labels_for(path: &str) -> ContentLabels {
         "webp" => ContentLabels::plain("image/webp"),
         "gif" => ContentLabels::plain("image/gif"),
         "mp4" => ContentLabels::plain("video/mp4"),
+        "webm" => ContentLabels::plain("video/webm"),
         "svg" => ContentLabels::plain("image/svg+xml"),
         "css" => ContentLabels::plain("text/css"),
         "js" | "mjs" => ContentLabels::plain("text/javascript"),

@@ -35,7 +35,8 @@ of each from `GET /config`:
   account profile pictures. The console posts credentials to it and carries the
   returned bearer token when it reviews or publishes.
 - The [artifact service](/components/artifacts/overview/) serves a produced
-  run's build, proof media, and asset-generation media before it is published.
+  run's build, proof media, showcase files, and asset-generation media before
+  it is published.
 - The [arena service](/components/arena/overview/) runs
   [adversarial](/testing/adversarial/overview/) matches and tournaments.
 
@@ -123,12 +124,19 @@ unmounted, since it holds nothing unreviewed or unpublished.
   ([`state=publishable`](/components/backend/api/#get-runs)), which is the publish
   backlog.
 
-A run's detail page opens on its Verdict panel. On a
-[validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
-panel shows the points and the functional rating from the run record the moment
-the run completes, with a per-domain breakdown naming each failing item and the
-cap it applied, and the checklist read-only with each item's validator verdict,
-assertions, and media. The review form asks only for a per-domain aesthetic
+A run with a playable build opens its detail page on the Play tab, which leads
+the tab strip: the run's [showcase](/components/core/showcase/), when its
+record carries one, and the playable embed. A run with no playable build opens
+on Verdict, which then leads the strip as before.
+
+On a [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
+Verdict panel shows the points and the functional rating from the run record
+the moment the run completes, with a per-domain breakdown naming each failing
+item and the cap it applied, and a read-only browser of the automated items: a
+rail listing every item, each item's validator verdict and per-verdict
+assertions, and the implementation's replay beside the reference baseline's,
+scrubbed together. The browser is informational, so every visitor sees it, the
+public gallery included. The review form asks only for a per-domain aesthetic
 tier and the writeup, and Publish is offered whether or not a review exists. On
 a legacy run the panel is the guided review: the checklist takes verdicts, the
 form takes the per-domain functional rating, and Publish waits on a review.

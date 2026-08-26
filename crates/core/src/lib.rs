@@ -142,9 +142,10 @@ pub use orchestrator::{
 };
 pub use performance_validator::PerformanceValidator;
 pub use playable::{
-    BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, ServedValidationFile,
-    find_build_output, proof_labelled_name, proof_published_extension, proof_served_extension,
-    serve_asset_file, serve_build_file, serve_proof_file, serve_validation_file,
+    BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, ServedShowcaseFile,
+    ServedValidationFile, find_build_output, proof_labelled_name, proof_published_extension,
+    proof_served_extension, serve_asset_file, serve_build_file, serve_proof_file,
+    serve_showcase_file, serve_validation_file,
 };
 pub use post_run::{PostRunContext, PostRunReport, PostRunStage};
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
@@ -165,8 +166,8 @@ pub use review::{
     missing_verdicts, parse_writeup, score,
 };
 pub use run_record::{
-    AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunState,
-    RunStatus, RunSubject, RunTooling,
+    AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunShowcase,
+    RunState, RunStatus, RunSubject, RunTooling, ShowcaseMedia,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
@@ -1751,6 +1752,11 @@ where
             // still only *recorded* here — the engine renders no verdict from it, and
             // the terminal state below is decided exactly as it was before.
             toolchain: post_run.toolchain,
+            // The model's own presentation of its game, captured from the produced
+            // tree's `showcase/` directory so the Play page can render it around the
+            // playable build. `None` when the tree carries no parseable showcase — a
+            // showcase problem never fails the run and never degrades its status.
+            showcase: read_showcase(&artifacts.repo_path),
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1797,6 +1803,167 @@ fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String>
         end -= 1;
     }
     Some(format!("{}\n\n…(README truncated)", &readme[..end]))
+}
+
+/// The largest showcase description captured into a run record, in bytes. The
+/// description is a store-page blurb; this cap keeps a pathological one from
+/// bloating the record blob. A longer description is truncated on a char boundary
+/// with a trailing marker.
+const MAX_SHOWCASE_DESCRIPTION_BYTES: usize = 64 * 1024;
+
+/// The most media entries captured from a showcase carousel. Excess entries are
+/// dropped with a warning — the carousel is a highlight reel, not an archive.
+const MAX_SHOWCASE_MEDIA_ENTRIES: usize = 10;
+
+/// The largest media file a showcase carousel entry may name, in bytes. An entry
+/// naming a larger file is dropped with a warning, since the file travels the
+/// per-run media path and a pathological one would bloat every store downstream.
+/// Public because the driver's backend-store mirror applies the same cap to the
+/// directory it uploads, so a file the capture refused never ships either.
+pub const MAX_SHOWCASE_MEDIA_FILE_BYTES: u64 = 25 * 1024 * 1024;
+
+/// The shape of `showcase/showcase.toml`: the ordered carousel, one `[[media]]`
+/// table per entry. Deliberately lenient about unknown keys — the manifest is
+/// model-written, and a stray extra key is not worth losing the whole showcase.
+#[derive(serde::Deserialize)]
+struct ShowcaseManifest {
+    #[serde(default)]
+    media: Vec<ShowcaseManifestEntry>,
+}
+
+/// One `[[media]]` table of `showcase/showcase.toml`.
+#[derive(serde::Deserialize)]
+struct ShowcaseManifestEntry {
+    /// The media file's name in `showcase/` itself (no subdirectories).
+    file: String,
+    /// The model's short caption for the entry.
+    name: String,
+}
+
+/// Capture a run's [showcase](RunShowcase) from the collected tree's `showcase/`
+/// directory, or `None` when none was produced or it could not be parsed.
+///
+/// The showcase is the model's own presentation of its game — `showcase.md` (the
+/// description) plus `showcase.toml` (the ordered media carousel) — instructed
+/// through the case's prompt and specs rather than declared by any manifest key,
+/// so the same capture applies to every test type that asks for one. Capture is
+/// bounded: the description is truncated to [`MAX_SHOWCASE_DESCRIPTION_BYTES`] on
+/// a char boundary, the carousel is capped at [`MAX_SHOWCASE_MEDIA_ENTRIES`], and
+/// an entry whose file is not a plain readable file within
+/// [`MAX_SHOWCASE_MEDIA_FILE_BYTES`] — or whose extension names no known
+/// [`MediaKind`] — is dropped with a warning.
+///
+/// A showcase problem never fails a run and never degrades its status: the
+/// showcase is presentation, so the worst a malformed one costs is itself.
+fn read_showcase(repo_path: &Path) -> Option<RunShowcase> {
+    let dir = repo_path.join("showcase");
+    if !dir.is_dir() {
+        // No showcase was produced — the ordinary case for a run that was never
+        // asked for one, so not worth a warning.
+        return None;
+    }
+    let description = match std::fs::read_to_string(dir.join("showcase.md")) {
+        Ok(text) => text,
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "the produced showcase/ has no readable showcase.md; recording no showcase",
+            );
+            return None;
+        }
+    };
+    if description.trim().is_empty() {
+        tracing::warn!("the produced showcase.md is blank; recording no showcase");
+        return None;
+    }
+    let manifest = match std::fs::read_to_string(dir.join("showcase.toml")) {
+        Ok(text) => text,
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "the produced showcase/ has no readable showcase.toml; recording no showcase",
+            );
+            return None;
+        }
+    };
+    let manifest: ShowcaseManifest = match toml::from_str(&manifest) {
+        Ok(manifest) => manifest,
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                "the produced showcase.toml could not be parsed; recording no showcase",
+            );
+            return None;
+        }
+    };
+
+    let description = if description.len() <= MAX_SHOWCASE_DESCRIPTION_BYTES {
+        description
+    } else {
+        // Truncate on a char boundary so the stored string stays valid UTF-8.
+        let mut end = MAX_SHOWCASE_DESCRIPTION_BYTES;
+        while end > 0 && !description.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}\n\n…(description truncated)", &description[..end])
+    };
+
+    let mut entries = manifest.media;
+    if entries.len() > MAX_SHOWCASE_MEDIA_ENTRIES {
+        tracing::warn!(
+            declared = entries.len(),
+            kept = MAX_SHOWCASE_MEDIA_ENTRIES,
+            "the produced showcase.toml declares more media than the carousel cap; dropping the excess",
+        );
+        entries.truncate(MAX_SHOWCASE_MEDIA_ENTRIES);
+    }
+    let mut media = Vec::new();
+    for entry in entries {
+        // An entry names a plain file in `showcase/` itself — no subdirectories —
+        // which is also the invariant that keeps the served
+        // `/runs/<id>/showcase/<file>` route a flat namespace. The `..` check
+        // matches the serve side (`playable::serve_showcase_file` refuses any name
+        // *containing* `..`), so a name capture records is a name every route
+        // serves.
+        if entry.file.is_empty() || entry.file.contains(['/', '\\']) || entry.file.contains("..") {
+            tracing::warn!(
+                file = %entry.file,
+                "a showcase media entry does not name a plain file in showcase/; dropping it",
+            );
+            continue;
+        }
+        let metadata = match std::fs::metadata(dir.join(&entry.file)) {
+            Ok(metadata) if metadata.is_file() => metadata,
+            _ => {
+                tracing::warn!(
+                    file = %entry.file,
+                    "a showcase media entry names a file missing from showcase/; dropping it",
+                );
+                continue;
+            }
+        };
+        if metadata.len() > MAX_SHOWCASE_MEDIA_FILE_BYTES {
+            tracing::warn!(
+                file = %entry.file,
+                bytes = metadata.len(),
+                "a showcase media entry names a file over the size cap; dropping it",
+            );
+            continue;
+        }
+        let Some(kind) = MediaKind::from_path(Path::new(&entry.file)) else {
+            tracing::warn!(
+                file = %entry.file,
+                "a showcase media entry's extension names no known media kind; dropping it",
+            );
+            continue;
+        };
+        media.push(ShowcaseMedia {
+            file: entry.file,
+            name: entry.name,
+            kind,
+        });
+    }
+    Some(RunShowcase { description, media })
 }
 
 /// The terminal state for a run whose harness exited cleanly, given the test type
@@ -2000,6 +2167,8 @@ fn build_failed_record(
         // Absent, never an empty measurement.
         code_analysis: None,
         toolchain: None,
+        // A run that failed before producing a tree has no showcase to capture.
+        showcase: None,
     }
 }
 

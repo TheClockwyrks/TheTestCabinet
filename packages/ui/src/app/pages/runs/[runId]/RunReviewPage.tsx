@@ -36,7 +36,7 @@ export function RunReviewPage() {
         run.subject.testType === "performance" ? (
           <Panel>
             <div className={styles.reviewTopBar}>
-              <Link to={routes.runDetail(run.id)} className={styles.backLink}>
+              <Link to={routes.runVerdict(run.id)} className={styles.backLink}>
                 ← Results
               </Link>
             </div>
@@ -101,12 +101,12 @@ function SingleReview({
   return (
     <Panel>
       <div className={styles.reviewTopBar}>
-        <Link to={routes.runDetail(run.id)} className={styles.backLink}>
+        <Link to={routes.runVerdict(run.id)} className={styles.backLink}>
           ← All reviews
         </Link>
         {canEdit && (
           <Link
-            to={routes.runDetail(run.id, { edit: true })}
+            to={routes.runVerdict(run.id, { edit: true })}
             className={styles.editReviewLink}
           >
             Edit review

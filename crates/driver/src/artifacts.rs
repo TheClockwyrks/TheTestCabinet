@@ -545,6 +545,80 @@ pub async fn upload_assets_to_backend(
     Ok(())
 }
 
+/// Mirror a run's [showcase](test_cabinet_core::RunShowcase) files into the
+/// **backend store**, keyed by run id — the showcase counterpart to
+/// [`upload_proofs_to_backend`], for the same reason: the public snapshot reads a
+/// run's showcase media from the backend store (`snapshot::run_showcase` →
+/// `store::read_run_showcase`), and nothing else writes that store's
+/// `runs/{id}/showcase/` dir for a backend-driven run. Without this mirror a
+/// showcase's carousel media never reach the snapshot and the published Play tab
+/// has only the description text (which rides the record) to show.
+///
+/// Every file in the produced tree's `implementation/showcase/` uploads under its
+/// own name **except `showcase.toml`** — the manifest is capture-side input,
+/// already folded into the record's carousel. The description's `showcase.md` text
+/// also rides the record, but the file uploads anyway: an image the description
+/// references by bare relative path must be served per run even when the carousel
+/// does not list it, which is why the upload takes the whole directory rather than
+/// the carousel — and taking the directory whole keeps the mirror in lockstep with
+/// `playable::serve_showcase_file`, which serves the same namespace from the tree.
+/// A file over the capture's media cap
+/// ([`test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES`]) is skipped: the capture
+/// already refused to record it, so shipping it would bloat every store downstream
+/// for a file nothing references.
+///
+/// A no-op for a run whose record carries no showcase — the files serve no one
+/// without the record's description and carousel. Best-effort: an unreadable file
+/// is skipped (the run is still inspectable); a rejected upload is surfaced so the
+/// caller can log it. The backend upload route is ungated on the private network,
+/// so the client carries no token.
+pub async fn upload_showcase_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    if record.showcase.is_none() {
+        return Ok(());
+    }
+    let dir = out_dir
+        .join(&record.id)
+        .join("implementation")
+        .join("showcase");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        // The record captured a showcase but the tree no longer holds the dir —
+        // nothing to mirror.
+        return Ok(());
+    };
+    let client = HttpBackendClient::new(backend_url);
+    for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if !file_type.is_file() {
+            continue;
+        }
+        let Some(file) = entry.file_name().to_str().map(str::to_string) else {
+            continue;
+        };
+        if file == "showcase.toml" {
+            continue;
+        }
+        if entry
+            .metadata()
+            .is_ok_and(|m| m.len() > test_cabinet_core::MAX_SHOWCASE_MEDIA_FILE_BYTES)
+        {
+            continue;
+        }
+        let Ok(bytes) = std::fs::read(entry.path()) else {
+            continue;
+        };
+        client
+            .publish_run_showcase(&record.id, &file, bytes)
+            .await?;
+    }
+    Ok(())
+}
+
 /// Publish a list of `(served-name, run-root-relative on-disk path)` artifacts,
 /// skipping any that are missing on disk. Shared by the UI/material/particle/audio
 /// mirror branches, whose served name and on-disk `rel` differ.

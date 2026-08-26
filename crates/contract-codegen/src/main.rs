@@ -328,7 +328,7 @@ fn main() -> Result<()> {
                 tch::ToolchainCommandResult, tch::ToolchainTestRun, tch::ToolchainSmokeResult,
                 tch::ToolchainSummary,
                 rr::RunLinks, rr::RunStatus,
-                rr::PriorGameJamEntry, rr::RunRecord,
+                rr::PriorGameJamEntry, rr::ShowcaseMedia, rr::RunShowcase, rr::RunRecord,
             ],
         },
         // The review value types (shared by the backend and snapshot
@@ -537,7 +537,7 @@ fn main() -> Result<()> {
                 snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
                 snap::RunScoreOut, snap::PerformanceSummaryOut, snap::CodeSummaryOut,
                 snap::RunsIndex, snap::RunProofOut,
-                snap::RunAssetOut, snap::RunValidationMediaOut, snap::PerRun,
+                snap::RunAssetOut, snap::RunValidationMediaOut, snap::RunShowcaseOut, snap::PerRun,
                 tc::ReferenceKind, tc::SpecKind, tc::ErratumSeverity,
                 snap::CaseCheckOut, snap::CaseDomainOut,
                 snap::CaseErratumOut, snap::CaseReviewItemOut, snap::CaseSubReviewItemOut,

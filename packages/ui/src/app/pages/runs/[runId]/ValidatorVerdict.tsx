@@ -73,9 +73,10 @@ export function decideValidatorRun(
  * The read-only verdict of a validator-rated run: the functional badge beside the
  * aesthetic one (when any reviewer has rated it), the validator-decided points,
  * a per-domain breakdown that lists the failing items that capped each domain,
- * and the machine-decided checklist — read-only, with the assertions and media
- * behind each verdict in the automated-validation list. No override exists on
- * such a run, so nothing here is a control.
+ * and the machine-decided checklist — read-only, with each assertion's detail in
+ * the automated-validation list. (The media behind each verdict is browsed per
+ * item in the ReviewItemBrowser the verdict surfaces mount beside this.) No
+ * override exists on such a run, so nothing here is a control.
  *
  * `aesthetics` is the aggregate per-domain aesthetic rating (worst across
  * reviewers) to show beside each domain; empty until someone reviews the run.
@@ -209,8 +210,10 @@ export function ValidatorVerdict({
             />
           )}
           {/* The scripts behind those verdicts: which ran, and each assertion's
-              detail and media. Public on a validator-rated run — there is no
-              reviewer call for it to bias. */}
+              detail. (The media each output captured is browsed per item in the
+              ReviewItemBrowser the verdict surfaces mount beside this.) Public
+              on a validator-rated run — there is no reviewer call for it to
+              bias. */}
           {debugScripts.length > 0 && (
             <div className={styles.checklist}>
               <DebugScriptList

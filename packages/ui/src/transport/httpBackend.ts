@@ -2283,6 +2283,9 @@ export function createBackendExec(
     validationMediaUrl(runId: string, file: string): string | null {
       return mediaUrl(runId, "validation", file);
     },
+    showcaseMediaUrl(runId: string, file: string): string | null {
+      return mediaUrl(runId, "showcase", file);
+    },
 
     // The whole run tree as one gzip tar, served by the artifact service (which
     // holds the tree; the control-plane backend is not in the artifact path). Null

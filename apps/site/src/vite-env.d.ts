@@ -92,6 +92,12 @@ declare module "virtual:tcab-snapshot" {
    */
   export const validationMediaUrls: Record<string, Record<string, string>>;
   /**
+   * Resolved showcase media URLs (the run's carousel media plus any image the
+   * description references), keyed by run id then by the recorded file name (a
+   * video's `.webm` request resolving to its published `.mp4`).
+   */
+  export const showcaseMediaUrls: Record<string, Record<string, string>>;
+  /**
    * Resolved code-analysis document URLs, keyed by run id — one per run, since a run
    * has exactly one analysis.
    *

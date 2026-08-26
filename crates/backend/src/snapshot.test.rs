@@ -105,6 +105,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             seed_commit: None,
             code_analysis: None,
             toolchain: None,
+            showcase: None,
         },
         reviews: vec![StoredReview {
             reviewer: crate::db::Reviewer {
@@ -644,6 +645,224 @@ async fn per_run_file_omits_asset_media_for_a_non_asset_run() {
     // An end-to-end run carries an empty assetMedia list and exports no asset objects.
     assert_eq!(parsed["assetMedia"].as_array().unwrap().len(), 0);
     assert!(!snapshot.objects.iter().any(|o| o.key.contains("/asset/")));
+}
+
+#[tokio::test]
+async fn per_run_file_exports_showcase_media_and_names_it_by_key() {
+    let (_tmp, store) = empty_store();
+    // The store holds the whole mirrored directory: the carousel entry, the
+    // description file, and an image the description references that the carousel
+    // does NOT list — which must still publish, or the description renders broken.
+    store
+        .write_run_showcase("s1", "title.png", b"png:title")
+        .unwrap();
+    store
+        .write_run_showcase("s1", "showcase.md", b"# My Game\n![B](banner.png)")
+        .unwrap();
+    store
+        .write_run_showcase("s1", "banner.png", b"png:banner")
+        .unwrap();
+
+    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
+    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+        description: "# My Game\n![B](banner.png)".to_string(),
+        media: vec![test_cabinet_core::ShowcaseMedia {
+            file: "title.png".to_string(),
+            name: "Title".to_string(),
+            kind: MediaKind::Image,
+        }],
+    });
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    // Every stored file is exported under the run's content-stable media prefix
+    // (NOT this snapshot's prefix) with a content type that follows the extension.
+    let title_key = "media/runs/s1/showcase/title.png".to_string();
+    let title = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == title_key)
+        .expect("carousel image exported");
+    assert_eq!(title.content_type, "image/png");
+    assert_eq!(title.bytes, b"png:title");
+    let banner = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/s1/showcase/banner.png")
+        .expect("description-referenced image exported even when not in the carousel");
+    assert_eq!(banner.bytes, b"png:banner");
+
+    // The per-run document names each file by its recorded name + key; the store
+    // listing is sorted, so the set is stable.
+    let parsed = run_document_json(&snapshot, "s1");
+    let media = parsed["showcaseMedia"].as_array().unwrap();
+    let files: Vec<&str> = media.iter().map(|m| m["file"].as_str().unwrap()).collect();
+    assert_eq!(files, vec!["banner.png", "showcase.md", "title.png"]);
+    let title_meta = media.iter().find(|m| m["file"] == "title.png").unwrap();
+    assert_eq!(title_meta["key"], title_key);
+}
+
+#[tokio::test]
+async fn per_run_file_omits_showcase_media_when_the_record_carries_none() {
+    let (_tmp, store) = empty_store();
+    // Bytes sitting in the store without a captured showcase on the record are not
+    // published: the record decides, exactly as it does for code analysis.
+    store
+        .write_run_showcase("s1", "title.png", b"png:title")
+        .unwrap();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("s1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+    let parsed = run_document_json(&snapshot, "s1");
+    assert_eq!(parsed["showcaseMedia"].as_array().unwrap().len(), 0);
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.contains("/showcase/"))
+    );
+}
+
+#[tokio::test]
+async fn showcase_video_recorded_as_webm_is_transcoded_to_mp4() {
+    // A `.webm` carousel clip publishes as an iOS-playable `.mp4` under the mp4
+    // key, while the per-run doc keeps the recorded `.webm` name the UI requests —
+    // the validation-media convention.
+    let Some(webm) = make_test_webm() else {
+        eprintln!("skipping: ffmpeg/libvpx unavailable");
+        return;
+    };
+    let (_tmp, store) = empty_store();
+    store.write_run_showcase("s1", "clip.webm", &webm).unwrap();
+
+    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
+    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+        description: "# My Game".to_string(),
+        media: vec![test_cabinet_core::ShowcaseMedia {
+            file: "clip.webm".to_string(),
+            name: "Gameplay".to_string(),
+            kind: MediaKind::Video,
+        }],
+    });
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|o| o.key.ends_with("/clip.webm")),
+        "the raw showcase webm must not be published",
+    );
+    let clip = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "media/runs/s1/showcase/clip.mp4")
+        .expect("showcase video published as mp4");
+    assert_eq!(clip.content_type, "video/mp4");
+
+    let parsed = run_document_json(&snapshot, "s1");
+    let media = parsed["showcaseMedia"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["file"], "clip.webm");
+    assert_eq!(media[0]["key"], "media/runs/s1/showcase/clip.mp4");
+}
+
+#[tokio::test]
+async fn existing_showcase_media_is_referenced_without_rereading_the_store() {
+    // A key already in the bucket is referenced without touching the source bytes:
+    // stage NO bytes in the store, hand the builder the key as already-existing, and
+    // the meta still names it.
+    let (_tmp, store) = empty_store();
+    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
+    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+        description: "# My Game".to_string(),
+        media: vec![test_cabinet_core::ShowcaseMedia {
+            file: "title.png".to_string(),
+            name: "Title".to_string(),
+            kind: MediaKind::Image,
+        }],
+    });
+    let key = "media/runs/s1/showcase/title.png".to_string();
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_existing_media(std::collections::HashSet::from([key.clone()]))
+        .build(now())
+        .await
+        .unwrap();
+
+    assert!(
+        !snapshot.objects.iter().any(|o| o.key == key),
+        "an existing showcase key must not be re-uploaded",
+    );
+    let parsed = run_document_json(&snapshot, "s1");
+    let media = parsed["showcaseMedia"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["file"], "title.png");
+    assert_eq!(media[0]["key"], key);
+}
+
+#[tokio::test]
+async fn showcase_description_image_survives_a_wiped_store_via_the_record() {
+    // The backend store is ephemeral, and an image the description references
+    // without listing in the carousel is named nowhere else on the record — the
+    // builder must extract its name from the description text or a store loss
+    // silently breaks the published page's image forever (the write-once media
+    // convention never heals it). Stage NOTHING in the store and hand the image's
+    // key as already-in-bucket: the meta naming it proves the extracted name
+    // reached the lookup.
+    let (_tmp, store) = empty_store();
+    let mut run = stored_run("s1", "2026-06-17T21:40:00Z");
+    run.record.showcase = Some(test_cabinet_core::RunShowcase {
+        description: "# My Game\n![B](banner.png)".to_string(),
+        media: vec![],
+    });
+    let key = "media/runs/s1/showcase/banner.png".to_string();
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_existing_media(std::collections::HashSet::from([key.clone()]))
+        .build(now())
+        .await
+        .unwrap();
+
+    let parsed = run_document_json(&snapshot, "s1");
+    let media = parsed["showcaseMedia"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["file"], "banner.png");
+    assert_eq!(media[0]["key"], key);
+}
+
+#[test]
+fn description_image_references_extracts_only_flat_relative_names() {
+    // Bare relative names come back (percent-escapes decoded, angle-bracketed
+    // and titled destinations handled, duplicates folded); everything the
+    // renderer would not resolve against the showcase — absolute, anchored,
+    // schemed — and every name the flat namespace refuses is skipped.
+    let description = "\
+# My Game\n\
+![Banner](banner.png)\n\
+![Same again](banner.png)\n\
+![Encoded](my%20shot.png)\n\
+![Bracketed](<two words.png> \"With a title\")\n\
+![Titled](titled.png \"The title\")\n\
+![Absolute](/logo.png)\n\
+![Anchor](#top)\n\
+![External](https://example.com/x.png)\n\
+![Data](data:image/png;base64,AAAA)\n\
+![Traversal](../escape.png)\n\
+![Dotted](shot..final.png)\n\
+![Manifest](showcase.toml)\n";
+    assert_eq!(
+        description_image_references(description),
+        vec!["banner.png", "my shot.png", "two words.png", "titled.png"],
+    );
 }
 
 #[tokio::test]
