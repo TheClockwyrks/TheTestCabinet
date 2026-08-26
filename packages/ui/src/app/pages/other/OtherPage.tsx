@@ -4,6 +4,8 @@ import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useRecordSectionIndex } from "../../components/backReturn";
+import { useGalleryData } from "../../data/galleryContext";
+import type { TestCaseSummary } from "../../data/testCases";
 import { useTestCases } from "../../data/useTestCases";
 import { routes } from "../../routes";
 import { TournamentsList } from "../tournaments/TournamentsPage";
@@ -16,11 +18,38 @@ import styles from "../testcases/TestCasesPage.module.scss";
 // section's Comparisons tab, where they render on the public site too.)
 export type OtherTab = "game-jams" | "tournaments";
 
-const OTHER_TABS: ReadonlyArray<{ tab: OtherTab; label: string; to: string }> =
-  [
-    { tab: "game-jams", label: "Game Jams", to: routes.otherGameJams() },
-    { tab: "tournaments", label: "Tournaments", to: routes.otherTournaments() },
-  ];
+/** What this host can list under the section's tabs — the inputs `hasEntries`
+ *  reads, gathered once so a tab's visibility is decided in one place. */
+interface OtherHost {
+  /** The game-jam cases the catalog holds. */
+  jams: TestCaseSummary[];
+  /** Whether the host carries the arena capability tournaments are read through.
+   *  Without it there is no tournament to list — and, on the static site, no
+   *  Tournaments route mounted either. */
+  hasArena: boolean;
+}
+
+const OTHER_TABS: ReadonlyArray<{
+  tab: OtherTab;
+  label: string;
+  to: string;
+  /** Whether this host has anything to show under the tab. Consulted only off a
+   *  console (see `visibleTabs`). */
+  hasEntries: (host: OtherHost) => boolean;
+}> = [
+  {
+    tab: "game-jams",
+    label: "Game Jams",
+    to: routes.otherGameJams(),
+    hasEntries: (host) => host.jams.length > 0,
+  },
+  {
+    tab: "tournaments",
+    label: "Tournaments",
+    to: routes.otherTournaments(),
+    hasEntries: (host) => host.hasArena,
+  },
+];
 
 interface OtherPageProps {
   /** Which tab this route renders. Carried in the URL (one route per tab) so the
@@ -33,9 +62,37 @@ interface OtherPageProps {
 // their own pages) and Tournaments (the arena standings list). The tab bar mirrors
 // the Test Cases page; the bare `/other` redirects to the first tab.
 export function OtherPage({ tab }: OtherPageProps) {
+  const { canExecute, arena } = useGalleryData();
+  const { testCases, status } = useTestCases();
   // Record the viewed tab so a jam or tournament detail page's back chevron
   // returns here rather than to the section default.
   useRecordSectionIndex("other");
+
+  // Jams are excluded from the Test Cases catalog and surface only here. Listed
+  // alphabetically, never ranked.
+  const jams = useMemo(
+    () =>
+      testCases
+        .filter((testCase) => testCase.testType === "game-jam")
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [testCases],
+  );
+
+  // Mirrors the Test Cases page's tab bar: a console shows every tab regardless
+  // of what it currently holds, so the bar's shape is stable even for a surface
+  // with nothing under it yet; elsewhere (the static gallery site) a tab with no
+  // entries is hidden, so the bar advertises only what this host can actually
+  // list.
+  const visibleTabs = useMemo(
+    () =>
+      canExecute
+        ? OTHER_TABS
+        : OTHER_TABS.filter((entry) =>
+            entry.hasEntries({ jams, hasArena: arena != null }),
+          ),
+    [canExecute, jams, arena],
+  );
+
   return (
     <PageLayout>
       <PromptHeader
@@ -51,7 +108,7 @@ export function OtherPage({ tab }: OtherPageProps) {
 
       <div className={styles.controls}>
         <nav className={styles.tabs} aria-label="Other sections">
-          {OTHER_TABS.map((entry) => (
+          {visibleTabs.map((entry) => (
             <NavLink
               key={entry.tab}
               to={entry.to}
@@ -67,28 +124,28 @@ export function OtherPage({ tab }: OtherPageProps) {
         </nav>
       </div>
 
-      {tab === "game-jams" ? <GameJamsList /> : <TournamentsList />}
+      {tab === "game-jams" ? (
+        <GameJamsList jams={jams} status={status} />
+      ) : (
+        <TournamentsList />
+      )}
     </PageLayout>
   );
 }
 
 // The Game Jams list: every game-jam case as a full-width card (name, summary,
-// tags), linking to its own detail page. Reuses the catalog data pipeline
-// (`useTestCases`), filtered to the game-jam type — jams are excluded from the
-// Test Cases catalog and surface only here. Listed alphabetically, never ranked
-// (a jam isn't tiered, so — unlike a test-case card — there is no difficulty
-// badge; the theme reads through the tags).
-function GameJamsList() {
-  const { testCases, status } = useTestCases();
-
-  const jams = useMemo(
-    () =>
-      testCases
-        .filter((testCase) => testCase.testType === "game-jam")
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [testCases],
-  );
-
+// tags), linking to its own detail page. The jams come from the catalog data
+// pipeline (`useTestCases`) filtered to the game-jam type — resolved by the page
+// above, which needs the same set to decide whether the tab shows at all. A jam
+// isn't tiered, so — unlike a test-case card — there is no difficulty badge; the
+// theme reads through the tags.
+function GameJamsList({
+  jams,
+  status,
+}: {
+  jams: TestCaseSummary[];
+  status: ReturnType<typeof useTestCases>["status"];
+}) {
   if (status === "loading") {
     return <LoadingState label="Loading catalog…" />;
   }

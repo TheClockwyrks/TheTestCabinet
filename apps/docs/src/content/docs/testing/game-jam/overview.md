@@ -13,7 +13,8 @@ A jam is not a test case. It lives in its own `game-jams/` folder, is authored
 through its own [`game-jam.toml`](/testing/game-jam/manifests/) format, runs in
 its own image, and is [graded](/testing/game-jam/evaluation/) on categories
 rather than scored against a checklist. Discovery folds the folder into the same
-catalog as `test-cases/`, and jams surface in the console's Other section.
+catalog as `test-cases/`, and jams surface in the Other section of the console
+and the public gallery.
 
 ## Provided material
 

@@ -44,15 +44,17 @@ export function NotFoundPage() {
             <Link to={routes.models()} className={styles.link}>
               Models
             </Link>
-            {/* The About section is the static gallery's; the consoles put the
-                same material behind the Settings gear and show Other instead,
-                mirroring the top-bar nav. */}
-            <Link
-              to={canExecute ? routes.other() : routes.about()}
-              className={styles.link}
-            >
-              {canExecute ? "Other" : "About"}
+            {/* Mirroring the top-bar nav: Other is on every host, and the
+                About section — the static gallery's, the consoles putting the
+                same material behind the Settings gear — follows it there. */}
+            <Link to={routes.other()} className={styles.link}>
+              Other
             </Link>
+            {!canExecute && (
+              <Link to={routes.about()} className={styles.link}>
+                About
+              </Link>
+            )}
           </nav>
         </div>
       </Panel>

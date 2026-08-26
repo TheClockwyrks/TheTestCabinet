@@ -153,15 +153,19 @@ export function PageLayout({
   // site keeps the About link in the nav. Both surface the Settings gear — on
   // the site it opens the Appearance-only settings (the sun and feed-style
   // choices that used to live in the topbar toggle). The Other link (Game Jams +
-  // Tournaments) is shown on every console — game jams are always available — and
-  // is omitted on the static site, which shows About in its place.
+  // Tournaments) is shown on every host: game jams are published to the public
+  // gallery like any other run, so the section is the site's only way to reach
+  // them. Which tabs it offers is the section's own business — the static site
+  // hides a tab it has nothing to list under (see `OtherPage`).
   // A mode's chrome replaces the section nav wholesale (its own tabs); otherwise
   // the standard links apply.
   const navLinks =
     chrome?.links ??
-    (canExecute
-      ? [...NAV_LINKS, { label: "Other", to: routes.other() }]
-      : [...NAV_LINKS, { label: "About", to: routes.about() }]);
+    [
+      ...NAV_LINKS,
+      { label: "Other", to: routes.other() },
+      ...(canExecute ? [] : [{ label: "About", to: routes.about() }]),
+    ];
 
   // The mobile section nav collapses behind a hamburger toggle. CSS owns which
   // presentation (inline row vs. dropdown sheet) is visible at a given width, so
