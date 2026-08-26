@@ -4,11 +4,13 @@
 // units per second) while a movement action is held. The match is started from
 // the title with menu keys, so the game stays under normal player control, and
 // the key is pressed through Chromium's own input pipeline the way a player's
-// is. The displacement over a window of held frames is measured back into a
-// speed. The window opens a few frames after the press, so it reads a paddle in
-// steady travel rather than the frame the press was first seen on, and a
-// paddle that integrates `vy * dt` exactly covers `PADDLE_SPEED * window`; two
-// percent is rounding room on that.
+// is — the one route the API affords, since every posing operation
+// (`startMatch` included) hands both paddles to the debug driver and only
+// `reset` gives them back. The displacement over a window of held frames is
+// measured back into a speed. The window opens a few frames after the press,
+// so it reads a paddle in steady travel rather than the frame the press was
+// first seen on, and a paddle that integrates `vy * dt` exactly covers
+// `PADDLE_SPEED * window`; two percent is rounding room on that.
 //
 // Player one's key moves player one's paddle alone (specs/modes/versus.md), so
 // the right paddle's drift over the same window is read too.

@@ -1,18 +1,19 @@
 // gameplay/pause-during-countdown — pausing is accepted during the pre-serve hold.
 //
 // specs/ui.md: on `countdown`, `pause` sets `resumeScreen` to the current
-// screen and `screen = paused`. The match is started from the title with menu
-// keys, so the game stays under normal player control and opens on the
-// countdown, and the pause key is pressed THERE, with no time run first. The
-// snapshot does not report `resumeScreen`, so it is read the way a player reads
-// it: resuming returns to the countdown rather than to live play.
+// screen and `screen = paused`. The match is opened on its countdown through
+// the debug surface — the debug driver takes only the paddles, so the pause key
+// works in a posed match and the menus are not this check's to drive — and the
+// key is pressed THERE, with no time run first. The snapshot does not report
+// `resumeScreen`, so it is read the way a player reads it: resuming returns to
+// the countdown rather than to live play.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
-  startWithKeys,
+  openCountdown,
   type Harness,
 } from "../harness";
 
@@ -27,7 +28,7 @@ afterEach(async () => {
 });
 
 it("pauses when the pause key is pressed during the countdown", async () => {
-  await startWithKeys(harness, "solo");
+  await openCountdown(harness, "solo");
 
   assertEqual((await harness.snapshot()).screen, "countdown");
 

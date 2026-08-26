@@ -1,11 +1,12 @@
 // gameplay/countdown-frozen — the pre-serve countdown does not run while paused.
 //
-// A match is started with menu keys (opening on the countdown), advanced partway,
-// then paused; far more than the whole hold is then let pass. A countdown that
-// kept running while paused would elapse and the ball would serve — so the game
-// must stay paused with the ball still held at centre, resume back INTO the
-// countdown rather than into a live rally, and then finish the remaining hold and
-// actually launch.
+// A match is opened on its countdown through the debug surface — the freeze is
+// what this check decides, so the menus are not its to drive — then advanced
+// partway and paused; far more than the whole hold is then let pass. A countdown
+// that kept running while paused would elapse and the ball would serve — so the
+// game must stay paused with the ball still held at centre, resume back INTO the
+// countdown rather than into a live rally, and then finish the remaining hold
+// and actually launch.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { HOLD_TIME } from "../../src/constants";
@@ -19,7 +20,7 @@ import {
   captureReplay,
   createHarness,
   holdTimer0,
-  startWithKeys,
+  openCountdown,
   TICK_HZ,
   type Harness,
 } from "../harness";
@@ -42,7 +43,7 @@ afterEach(() => {
 });
 
 it("freezes the countdown while paused and resumes it where it stopped", async () => {
-  await startWithKeys(harness, "solo");
+  await openCountdown(harness, "solo");
 
   // The whole bracket is one recorded section: a countdown part-run, the press
   // that pauses it, the long stretch in which it does NOT run, the press that

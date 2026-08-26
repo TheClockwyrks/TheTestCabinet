@@ -19,7 +19,10 @@
 // build and every step of it is exercised, which makes this check stronger here
 // rather than weaker. The key is then held for a known span and the
 // displacement read back off the game's own state, which is what makes this a
-// check of the CONTROL rather than of the simulation.
+// check of the CONTROL rather than of the simulation. The title route is
+// load-bearing, not a preference: every posing operation (`startMatch`
+// included) hands both paddles to the debug driver and only `reset` gives them
+// back, so a match posed open would leave this key dead.
 //
 // The direction is the whole point here, not the rate: how fast a held paddle
 // travels is the `paddle-movement` category's, and asserting it in both places

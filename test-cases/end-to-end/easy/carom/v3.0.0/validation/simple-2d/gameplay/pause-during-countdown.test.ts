@@ -1,17 +1,18 @@
 // gameplay/pause-during-countdown — pausing is accepted during the pre-serve hold.
 //
 // Pausing is allowed at any time during gameplay, not only once the ball is in
-// flight. The match is started from the title with menu keys — so the game stays
-// under normal player control and opens on the countdown — and the pause key is
-// pressed THERE, with no time run first.
+// flight. The match is opened on its countdown through the debug surface — the
+// debug driver takes only the paddles, so the pause key works in a posed match
+// and the menus are not this check's to drive — and the key is pressed THERE,
+// with no time run first.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   captureStill,
   createHarness,
+  openCountdown,
   resumeScreen0,
-  startWithKeys,
   type Harness,
 } from "../harness";
 
@@ -26,7 +27,7 @@ afterEach(() => {
 });
 
 it("pauses when the pause key is pressed during the countdown", async () => {
-  await startWithKeys(harness, "solo");
+  await openCountdown(harness, "solo");
 
   assertEqual(harness.snapshot().screen, "countdown");
 

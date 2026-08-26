@@ -12,7 +12,10 @@
 // Everything here goes through the keyboard: the match is started from the title
 // with key events pressed through Chromium's own input pipeline, paused with one,
 // and driven with one. No control operation is involved, so the paddle is under
-// normal player control throughout.
+// normal player control throughout. The menu route is load-bearing: every
+// posing operation (`startMatch` included) hands both paddles to the debug
+// driver, and only `reset` gives them back — posed open, the held key could
+// not move the paddle in live play at all.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo, assertEqual, assertGreaterThan } from "../assert";

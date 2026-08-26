@@ -3,7 +3,10 @@
 // The match is started from the title with menu keys, so the game stays under
 // normal player control — no control op is ever called and the paddles respond to
 // held input exactly as they do for a player. A movement key is then held for a
-// known span and the displacement is measured back into a speed.
+// known span and the displacement is measured back into a speed. The menu
+// route is load-bearing: every posing operation (`startMatch` included) hands
+// both paddles to the debug driver, and only `reset` gives them back — a match
+// posed open would leave the held key dead.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED } from "../../src/constants";

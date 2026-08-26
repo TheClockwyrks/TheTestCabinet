@@ -8,7 +8,10 @@
 // it. The match is started with menu keys and the key is held, through
 // Chromium's own input pipeline, for longer than the paddle needs to reach the
 // bound from center (305 units at 720 per second is 0.42 s), and both are read
-// with the key still down.
+// with the key still down. The menu route is load-bearing: every posing
+// operation (`startMatch` included) hands both paddles to the debug driver,
+// and only `reset` gives them back — a match posed open would leave the held
+// key dead.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertCloseTo } from "../assert";

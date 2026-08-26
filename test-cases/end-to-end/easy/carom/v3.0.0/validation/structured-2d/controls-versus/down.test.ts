@@ -10,7 +10,10 @@
 // The match is started from the title with real key events dispatched at the
 // target the runtime listens on, so the game stays under normal player control:
 // nothing here calls a control operation, and the paddle moves only because the
-// build read the action the runtime raised from the key the case binds.
+// build read the action the runtime raised from the key the case binds. The
+// title route is load-bearing, not a preference: every posing operation
+// (`startMatch` included) hands both paddles to the debug driver and only
+// `reset` gives them back, so a match posed open would leave this key dead.
 //
 // The direction is the whole point here, not the rate: how fast a held paddle
 // travels is the `paddle-movement` category's, and asserting it in both places

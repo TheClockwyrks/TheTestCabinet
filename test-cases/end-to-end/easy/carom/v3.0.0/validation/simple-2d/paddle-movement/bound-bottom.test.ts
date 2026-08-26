@@ -7,7 +7,10 @@
 // paddle pinned against a bound with the movement still held into it therefore
 // reports `vy = 0` and `cy` exactly at the bound. The match is started from the
 // title with menu keys and a real movement key is held, so it is the build's
-// own input path that drives the paddle into the bound.
+// own input path that drives the paddle into the bound. The menu route is
+// load-bearing: every posing operation (`startMatch` included) hands both
+// paddles to the debug driver, and only `reset` gives them back — a match
+// posed open would leave the held key dead.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CY, PADDLE_SPEED, PADDLE_MAX_CY } from "../../src/constants";

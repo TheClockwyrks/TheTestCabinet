@@ -1,7 +1,10 @@
 // paddle-movement/speed-versus-p2 — player two's paddle speed in Versus.
 //
 // The mirror of `speed-versus-p1`: player two's movement key drives the right
-// paddle at the paddle speed, and leaves player one's alone.
+// paddle at the paddle speed, and leaves player one's alone. The menu route is
+// load-bearing: every posing operation (`startMatch` included) hands both
+// paddles to the debug driver, and only `reset` gives them back — a match
+// posed open would leave the held key dead.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED } from "../../src/constants";

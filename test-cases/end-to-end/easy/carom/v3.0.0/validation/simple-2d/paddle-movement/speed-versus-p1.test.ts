@@ -4,7 +4,10 @@
 // human-driven and no control op is involved. Player one's movement key is held
 // for a known span and the displacement is measured back into a speed. Because
 // Versus has no AI, this also confirms the key leaves player two's paddle alone —
-// the common bug where one player's key drives both.
+// the common bug where one player's key drives both. The menu route is
+// load-bearing: every posing operation (`startMatch` included) hands both
+// paddles to the debug driver, and only `reset` gives them back — a match
+// posed open would leave the held key dead.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { PADDLE_SPEED } from "../../src/constants";

@@ -19,7 +19,10 @@
 // engineless build supplies, and gives the surface no keyboard operation at
 // all — so the whole path from a physical key to a moving paddle belongs to the
 // build and every step of it is exercised, which makes this check stronger here
-// rather than weaker.
+// rather than weaker. The title route is load-bearing, not a preference:
+// every posing operation (`startMatch` included) hands both paddles to the
+// debug driver and only `reset` gives them back, so a match posed open would
+// leave this key dead.
 //
 // The direction is the whole point here, not the rate: how fast a held paddle
 // travels is the `paddle-movement` category's, and asserting it in both places

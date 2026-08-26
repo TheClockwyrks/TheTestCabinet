@@ -5,32 +5,28 @@
 // mode, the scores and the winner, and not `menuIndex`; a check about the
 // selection therefore reads it the way a player does, by confirming and seeing
 // which entry was taken. These helpers bring the game to the screen a check
-// starts from, through the keys where the specification leaves the build's own
-// code to make the transition, and through the surface where only a posed
-// precondition (a score one short of the win) can reach it in bounded time.
+// starts from: through the debug surface where that screen is only the check's
+// ground (a live, paused, or finished match — the title menus are the
+// navigation checks' own surface to grade, not a route to somewhere else), and
+// through the keys where the menu transition itself is what the check decides.
 
 import { assertEqual } from "../assert";
 import { WIN_SCORE } from "../constants";
 import {
   arrangeGoal,
   driveGoal,
-  startWithKeys,
   startPlaying,
   type Harness,
   type Mode,
 } from "../harness";
 
-/** Frames from the title confirm into a live rally: the hold, plus a margin. */
-export const INTO_PLAY_TICKS = 156; // 1.3 s
-
-/** Open a `mode` match from the title with keys and run it into live play. */
+/** Open a `mode` match through the debug surface and run it into live play. */
 export async function reachPlaying(h: Harness, mode: Mode): Promise<void> {
-  await startWithKeys(h, mode);
-  await h.advance(INTO_PLAY_TICKS);
+  await startPlaying(h, mode);
   assertEqual((await h.snapshot()).screen, "playing");
 }
 
-/** Open a `mode` match with keys, run it into live play, and pause it. */
+/** Open a `mode` match into live play through the surface, and pause it. */
 export async function reachPaused(h: Harness, mode: Mode): Promise<void> {
   await reachPlaying(h, mode);
   await h.tap("Escape");

@@ -1,11 +1,13 @@
 // Carom — ui/state-pause: pausing a live match opens the pause menu, and that
 // menu offers what the specification says it offers.
 //
-// The match is started from the title with real key events and played past the
-// pre-serve hold into a live rally, so the menu is raised over a match in flight
-// rather than over its countdown. The pause key is a real key event too, and
-// `Escape` drives both `pause` and `back`, so the build has to resolve it as the
-// pause here.
+// The match is opened through the debug surface and run up to live play
+// (`startPlaying`), so the menu is raised over a match in flight rather than
+// over its countdown, and a build with a broken title menu but a working pause
+// fails only the navigation checks. The pause is a real `Escape` key event —
+// the debug driver holds only the paddles, so the key still lands — and
+// `Escape` drives both `pause` and `back`, so the build has to resolve it as
+// the pause here.
 //
 // The three entries are the case's copy, from the specification. Matching is by
 // substring, because a selected entry is commonly drawn with a marker beside it.
@@ -17,12 +19,9 @@ import {
   captureStill,
   createHarness,
   drewText,
-  startWithKeys,
+  startPlaying,
   type Harness,
 } from "../harness";
-
-/** Past the 1.0 s pre-serve hold and into a live rally: 1.3 s at 120 Hz. */
-const RALLY_TICKS = 156;
 
 let h: Harness;
 
@@ -35,8 +34,7 @@ afterEach(async () => {
 });
 
 it("opens a pause menu offering resume, restart, and quit", async () => {
-  await startWithKeys(h, "versus");
-  await h.advance(RALLY_TICKS);
+  await startPlaying(h, "versus");
   assertEqual((await h.snapshot()).screen, "playing");
 
   await h.tap("Escape");

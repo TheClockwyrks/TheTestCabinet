@@ -8,33 +8,31 @@
 // key rather than the action is what puts that ambiguity in front of the build,
 // which is the whole of what this item is about.
 //
-// The match is started from the title with real key events and then played into a
-// live rally — past the pre-serve hold, so what is paused is a match in flight
-// rather than its countdown, which is the `gameplay/pause-during-countdown`
-// item's separate point. The key event is dispatched at the target the runtime
-// listens on, so the action is raised by the binding the case declares rather
-// than by anything this check reaches into.
+// The match is opened through the debug surface and run up to live play — past
+// the pre-serve hold, so what is paused is a match in flight rather than its
+// countdown, which is the `gameplay/pause-during-countdown` item's separate
+// point. The menus are the navigation checks' surface, not this item's: a build
+// with a broken menu and a working pause must fail those checks, not this one.
+// The posed opening hands only the PADDLES to the debug driver, so the pause
+// key still reaches the build. The key event is dispatched at the target the
+// runtime listens on, so the action is raised by the binding the case declares
+// rather than by anything this check reaches into.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import {
   captureReplay,
   createHarness,
-  startWithKeys,
+  startPlaying,
   type Harness,
 } from "../harness";
 
-/** Past the 1.0 s pre-serve hold and into a live rally: 1.3 s at 120 Hz. */
-const RALLY_TICKS = 156;
-
 /**
- * The last stretch of the rally, recorded, and the stretch before it that is not.
+ * The stretch of live rally recorded before the key goes down.
  *
- * `RALLY_TICKS` frames still pass before the key is pressed — the split is only
- * where the recorder is armed, and nothing about the match's timeline moves. What
- * it buys is a clip that opens on a match IN MOTION: this point is about the
- * transition into the pause, and a recording that began at the key press would
- * hold nothing but the screen it ended on.
+ * The clip opens on a match IN MOTION: this point is about the transition into
+ * the pause, and a recording that began at the key press would hold nothing but
+ * the screen it ended on.
  */
 const LIVE_TICKS = 48; // 0.4 s
 
@@ -52,8 +50,7 @@ afterEach(() => {
 });
 
 it("pauses a live Versus match when Escape is pressed", async () => {
-  await startWithKeys(h, "versus");
-  await h.advance(RALLY_TICKS - LIVE_TICKS);
+  await startPlaying(h, "versus");
 
   await captureReplay(h, "pause", async () => {
     await h.advance(LIVE_TICKS);
