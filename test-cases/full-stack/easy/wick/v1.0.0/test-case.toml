@@ -5,10 +5,6 @@
 # and what a reviewer grades. The testing harness reads this file to resolve a
 # `TestCaseVersion`.
 
-# Format 2 names engines: it replaces the single `workspace` key with a
-# `[workspaces]` table holding one starter directory per engine.
-format = 2
-
 # The case's stable identity: the definition-store key, recorded in every run.
 slug = "wick"
 
@@ -16,8 +12,9 @@ slug = "wick"
 name = "Wick"
 
 # Experimental until the case carries what a public version must: the
-# validation suites under `validation/none/` and `validation/simple-2d/`, a
-# `validation` key on every review item, and the two reference implementations
+# validation suites under `validation/none/` and `validation/simple-2d/`, the
+# engine manifest format that binds them to every review item (parked below —
+# see the `workspace` key), and the two reference implementations
 # `variants/base.toml` describes. A version that runs freezes, and a frozen
 # version can never gain a validator, so this keeps the version off the catalog
 # unless a deployment opts in with `TCAB_BACKEND_ALLOW_EXPERIMENTAL`. Drop the
@@ -87,35 +84,45 @@ init = "npm install && npx playwright install chromium"
 # `engine.slug`. A root key, so it must precede the first table header.
 variants = ["variants/base.toml"]
 
-# The engines a run may select. Wick supports two, and the game is the same
-# under both; what differs is how much of the build is handed over. `none`
-# supplies no runtime and no `src/` at all, so the build writes the frame loop,
-# input, audio with looping cues, asset loading, the overlay, and the
-# `window.__wick` surface itself. `simple-2d` vendors the runtime as a package and
-# seeds the modules around the game (`src/constants.ts`, `src/main.ts`, and the
-# `src/game.ts` the build writes). The engine's `loop`, `stop`, and `looping`
-# audio operations are what the music bed and the hum ride on under it.
+# The starter project seeded into the root of every run. It carries the
+# Vite/TypeScript/ESLint/Prettier/Vitest configuration the `[toolchain]` commands
+# run against and an `index.html` holding the canvas — that configuration and
+# nothing else: no `src/`. Every run is engineless, so the build writes the frame
+# loop, input, audio with looping cues, asset loading, the overlay, and the
+# `window.__wick` surface itself.
 #
-# `none` carries no version and is named in the bare `engines` list; `simple-2d`
-# is pinned from 1.0.0 with no ceiling, the API the specs are written against.
-engines = ["none"]
-
-[[engine]]
-slug = "simple-2d"
-min_version = "1.0.0"
-
-# The starter project seeded into the root of every run, one per engine. Both
-# carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration the
-# `[toolchain]` commands run against and an `index.html` holding the canvas.
+# Wick is DESIGNED for two engines — the game is the same under both; what
+# differs is how much of the build is handed over — but the whole ENGINE
+# MANIFEST FORMAT (`engines` + `[workspaces]`) is PARKED here, not abandoned.
+# Unlike an uncatalogued engine, `simple-2d` itself would resolve fine; what
+# parks the format is the obligation it brings: the engine format makes a case
+# VALIDATOR-RATED, which requires every graded review point below to declare
+# `validation`, `failure_cap`, and `domains` — and the validator suites are not
+# authored yet (see the `experimental` note). The engine declarations can only
+# be made through the format, so they are parked with it.
 #
-#   - `none`      supplies the configuration and nothing else: no `src/`.
-#   - `simple-2d` declares the engine in its `package.json` (vendored in at seed
-#                 time) and seeds the case-owned modules: `src/constants.ts`
-#                 (every figure the specification fixes) and `src/main.ts` (the
-#                 entry). The build writes `src/game.ts`.
-[workspaces]
-none = "workspaces/none"
-"simple-2d" = "workspaces/simple-2d"
+# So the case declares the legacy single `workspace` and stays reviewer-rated.
+# The `simple-2d` starter workspace (`workspaces/simple-2d`, which declares the
+# engine in its `package.json` — vendored in at seed time — and seeds the
+# case-owned modules `src/constants.ts` + `src/main.ts`, leaving the build to
+# write `src/game.ts`, whose music bed and hum ride the engine's `loop`, `stop`,
+# and `looping` audio operations), the specs' `engine.slug` branches, and the
+# reference notes in `variants/base.toml` are all still authored and still on
+# disk; nothing audits for unreferenced files, so they sit inert. When the
+# validator suites are authored, restore the engine format in place of this
+# key — this version is not frozen, so that restoration edits it in place
+# rather than minting a new one:
+#
+#   engines = ["none"]
+#
+#   [[engine]]
+#   slug = "simple-2d"
+#   min_version = "1.0.0"
+#
+#   [workspaces]
+#   none = "workspaces/none"
+#   "simple-2d" = "workspaces/simple-2d"
+workspace = "workspaces/none"
 
 # How validation (and the per-run static deploy) turns a produced implementation
 # into a served site. `npm ci` is deliberate: it requires a committed lockfile.
@@ -233,12 +240,14 @@ description = "The produced sprites, animation, icons, and audio, and the HUD an
 # seeded specification already states, in its vocabulary, one observable
 # behavior per item, weighted 1 each (the default).
 #
-# NO ITEM DECLARES A `validation` SCRIPT YET, which is why the version is
-# `experimental`: the validation suites do not exist, and a manifest naming a
-# script not shipped under `validation/<engine>/` does not resolve. Every item
-# below is written so a script can decide it from the debug surface and the
-# figures the specs state, with the one-tick tolerance the timer rule in
-# `specs/world.md` implies.
+# NO ITEM DECLARES `validation`, `failure_cap`, or `domains` YET, and on the
+# legacy single-`workspace` format those keys are refused: the checklist is
+# reviewer-rated, exactly as for the other full-stack cases. Restoring the
+# engine format (see the `workspace` comment above) makes the case
+# validator-rated, at which point EVERY graded point must declare all three.
+# Every item below is already written so a script can decide it from the debug
+# surface and the figures the specs state, with the one-tick tolerance the
+# timer rule in `specs/world.md` implies.
 [review]
 format = 2
 
