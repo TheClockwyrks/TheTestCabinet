@@ -1,0 +1,36 @@
+{
+  "name": "@test-cabinet/structured-3d",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "The Structured 3D engine: the runtime a produced 3D game is built inside. An engine is created over a canvas and bound to one game definition, and it owns the gameplay framework the game subclasses — worlds built from level descriptions, the game mode and game state that decide a match, actors assembled from components, and the controllers that possess and drive pawns — together with the frame loop and its replaceable clock, engine-owned WebGL2 rendering with its layer-ordered pipeline and render modes, collision detection with volumetric shapes reported as events and manifolds, the letterboxed device-pixel-ratio-aware canvas fit and the frustum camera that projects world units into it, named input actions read only through a player controller, an audio cue bus with its first-gesture unlock, asset loading for meshes, textures, materials, and audio under a fixed root, a diagnostics overlay, the debug surface a game instance returns from its initialize, and an opt-in draw-command recorder whose recordings replay the frames a build drew — leaving the game to write only its own rules and behavior. Everything it does is observed by subscribing to its events rather than by reading a log it accumulates.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./recording": {
+      "types": "./dist/recording.d.ts",
+      "default": "./dist/recording.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^0.1",
+    "@test-cabinet/headless-webgl2": "^0.1",
+    "jsdom": "^25",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}
