@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use super::{
-    AssetKind, BuildCommands, ErratumSeverity, MediaKind, SpecKind, TestCaseCatalog, TestType,
-    is_shippable_package, shippable_package_description,
+    AssetKind, BuildCommands, ErratumSeverity, MediaKind, SHIPPABLE_PACKAGES, SpecKind,
+    TestCaseCatalog, TestType, is_shippable_package, shippable_package_description,
 };
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
@@ -1503,14 +1503,49 @@ fn every_shippable_package_carries_a_ui_description() {
     // Every shippable package a case may declare has a non-empty UI-only
     // description (the single source of truth the Inputs surfaces read), and an
     // unknown name resolves to `None`.
-    assert!(is_shippable_package("@test-cabinet/particle-runtime"));
-    assert!(
-        shippable_package_description("@test-cabinet/particle-runtime")
-            .is_some_and(|d| !d.is_empty()),
-        "particle-runtime should carry a non-empty description"
-    );
+    for package in SHIPPABLE_PACKAGES {
+        assert!(
+            is_shippable_package(package.name),
+            "`{}` is in the list, so it must be recognised as shippable",
+            package.name
+        );
+        assert!(
+            shippable_package_description(package.name).is_some_and(|d| !d.is_empty()),
+            "`{}` should carry a non-empty description",
+            package.name
+        );
+    }
     assert!(!is_shippable_package("@test-cabinet/not-a-real-package"));
     assert!(shippable_package_description("@test-cabinet/not-a-real-package").is_none());
+}
+
+#[test]
+fn the_shippable_allowlist_is_the_set_a_case_may_declare() {
+    // The names, pinned: this list is an allowlist, so growing or shrinking it
+    // changes what a case's `packages` key may say and what the staging script in
+    // `scripts/stage-tcab-packages.mjs` must bake into the host package store.
+    let names: Vec<&str> = SHIPPABLE_PACKAGES.iter().map(|pkg| pkg.name).collect();
+    assert_eq!(
+        names,
+        vec![
+            "@test-cabinet/particle-runtime",
+            "@test-cabinet/voxel-runtime",
+            "@test-cabinet/headless-webgl2",
+        ]
+    );
+    // An engine runtime is staged into the same store but is a run dimension the
+    // case never names, so it must stay out of the allowlist.
+    for engine_package in [
+        "@test-cabinet/simple-2d",
+        "@test-cabinet/structured-2d",
+        "@test-cabinet/simple-3d",
+        "@test-cabinet/structured-3d",
+    ] {
+        assert!(
+            !is_shippable_package(engine_package),
+            "`{engine_package}` is an engine runtime: a case must not be able to pin it"
+        );
+    }
 }
 
 /// Write a `demo/v1.0.0` version with the given manifest and supporting files

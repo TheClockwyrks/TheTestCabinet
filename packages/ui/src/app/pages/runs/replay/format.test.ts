@@ -104,6 +104,12 @@ describe("reading a recording", () => {
     );
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
+    // A document that states no space is the 2D one, which is the half of the
+    // envelope every test in this file rests on: the tables below are the tables
+    // a 2D player draws from, and a 3D document carries different ones.
+    if (parsed.recording.space === "3d") {
+      throw new Error("a document with no space was read as a 3D one");
+    }
     expect(parsed.recording.images).toHaveLength(1);
     expect(parsed.recording.resources).toHaveLength(1);
     expect(parsed.recording.ops).toHaveLength(1);
@@ -143,6 +149,104 @@ describe("reading a recording", () => {
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.recording.frames[0]?.truncated).toBeUndefined();
+  });
+});
+
+/**
+ * Which drawing a document is.
+ *
+ * One reading path serves every engine's recordings, so the `space` field is
+ * where a document is told which drawer it belongs to — and a document naming a
+ * space this console has no drawer for has to be refused by name, for the reason
+ * an unknown `format` is. The 3D document's own shape checks live beside its
+ * contract in `format3d.test.ts`; what is checked here is the routing.
+ */
+describe("telling the drawing spaces apart", () => {
+  /** The smallest well-formed 3D document, as JSON reaches the parser. */
+  function recording3d(overrides: Record<string, unknown> = {}): unknown {
+    return {
+      format: RECORDING_FORMAT,
+      space: "3d",
+      width: 640,
+      height: 360,
+      background: "#05060a",
+      assets: [],
+      resources: [],
+      ops: [{ op: "call", method: "clearDepth", args: [] }],
+      states: [
+        {
+          camera: {
+            position: { x: 0, y: 0, z: 10 },
+            rotation: { x: 0, y: 0, z: 0, w: 1 },
+            fovY: 1.0472,
+            near: 0.1,
+            far: 1000,
+          },
+          lights: [],
+          mode: "standard",
+        },
+      ],
+      frames: [
+        {
+          count: 0,
+          timeMs: 0,
+          deltaMs: 16,
+          surface: { width: 640, height: 360 },
+          state: 0,
+          ops: [0],
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it("reads a document that states no space as the 2D one it is", () => {
+    const parsed = parseRecording(recording());
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.recording.space).toBeUndefined();
+  });
+
+  it("reads a document that states the 3D space with the 3D contract", () => {
+    // The tables a 3D document carries are not the ones a 2D document carries,
+    // so this is not the 2D parser being lenient: it is the envelope handing the
+    // document to the half of the format that knows what `assets` and `states`
+    // mean here.
+    const parsed = parseRecording(recording3d());
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.recording.space).toBe("3d");
+    if (parsed.recording.space !== "3d") return;
+    expect(parsed.recording.assets).toEqual([]);
+    expect(parsed.recording.frames).toHaveLength(1);
+  });
+
+  it("passes a damaged 3D document's refusal on as it stands", () => {
+    const parsed = parseRecording(recording3d({ assets: undefined }));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.message).toMatch(/asset table/i);
+  });
+
+  it("refuses a space this player has no drawer for, naming it", () => {
+    const parsed = parseRecording(recording3d({ space: "4d" }));
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.message).toContain('"4d"');
+    expect(parsed.message).toMatch(/not produced by an engine recorder/i);
+  });
+
+  it("refuses a 2D-shaped document that states a space, rather than drawing it", () => {
+    // The whole point of the check: this document's every other field is one the
+    // 2D parser would accept, and drawing it would put a picture in front of a
+    // reviewer that no recorder wrote.
+    for (const space of ["2d", null, 3, ""]) {
+      const parsed = parseRecording(recording({ space }));
+      expect(
+        parsed.ok,
+        `a document stating space ${JSON.stringify(space)}`,
+      ).toBe(false);
+    }
   });
 });
 

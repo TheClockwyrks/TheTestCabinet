@@ -10,9 +10,18 @@
 // wired differently, so a change to how a frame is drawn or how playback is paced
 // reaches both.
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { drawFrame, prepareRecording, type ReplayResources } from "./drawFrame";
-import { fetchRecording, type Recording } from "./format";
+import type { Replay3dResources } from "./drawFrame3d";
+import { fetchRecording, type AnyRecording, type Recording } from "./format";
 import {
   REPLAY_SPEEDS,
   timelineFor,
@@ -21,12 +30,23 @@ import {
 } from "./useReplayClock";
 import styles from "./ReplayPlayer.module.scss";
 
+// The 3D pane brings `three`, a glTF parser and a scene drawer with it, so it
+// is fetched only by a page that actually has a 3D recording to show — the
+// same split the console's other three-backed viewers use. A 2D replay never
+// pays for it.
+const Replay3dCanvas = lazy(() => import("./Replay3dCanvas"));
+
 /** A recording being fetched, the recording, or the reason there is none. */
 export interface LoadedRecording {
   /** The recording, once it has arrived and been read. */
-  readonly recording: Recording | null;
-  /** Its images, decoded — set with the recording, so the two never disagree. */
-  readonly resources: ReplayResources | null;
+  readonly recording: AnyRecording | null;
+  /**
+   * What it draws with, decoded — set with the recording, so the two never
+   * disagree. A 2D recording's images or a 3D one's assets, matching its
+   * space: the loader below is the only thing that builds the pair, and it
+   * builds both halves from the one document.
+   */
+  readonly resources: ReplayResources | Replay3dResources | null;
   /** Why there is no recording to show, written for a reviewer. */
   readonly error: string | null;
   /** Whether the fetch is still in flight. */
@@ -74,10 +94,16 @@ export function useRecording(url: string | null): LoadedRecording {
     let cancelled = false;
     setState({ recording: null, resources: null, error: null, loading: true });
     fetchRecording(url)
-      .then(async (recording) => ({
-        recording,
-        resources: await prepareRecording(recording),
-      }))
+      .then(async (recording) => {
+        if (recording.space === "3d") {
+          // Fetched rather than imported, so that everything three brings with
+          // it — the renderer, the glTF parser, the scene drawer — lands in
+          // the chunk the 3D pane is in rather than in the entry bundle.
+          const { prepare3dReplay } = await import("./threeSceneDrawer");
+          return { recording, resources: await prepare3dReplay(recording) };
+        }
+        return { recording, resources: await prepareRecording(recording) };
+      })
       .then(
         ({ recording, resources }) => {
           if (!cancelled) {
@@ -103,7 +129,74 @@ export function useRecording(url: string | null): LoadedRecording {
 }
 
 /**
- * One recording, drawn at one frame.
+ * One recording, drawn at one frame, whichever space it was drawn in.
+ *
+ * This is the whole of the player's dispatch, and it is per RECORDING rather
+ * than per page: a document that states no space is drawn on a 2D canvas, and
+ * one that states `"3d"` is drawn by the scene drawer, so every mount point —
+ * the lone player below, both panes of the reviewer's validation pair — gets
+ * both spaces without knowing there are two. A document whose space this
+ * player does not draw never reaches here at all: `parseRecording` refuses it
+ * by name, and the refusal surfaces as the error paragraph a failed fetch
+ * does.
+ *
+ * There are no hooks here on purpose. The two bodies below have their own, and
+ * a component that branched before its hooks would be calling a different
+ * number of them for a 2D recording than for a 3D one.
+ */
+export function ReplayCanvas({
+  recording,
+  resources,
+  frame,
+  label,
+}: {
+  recording: AnyRecording;
+  /** What the loader decoded for THIS recording, in this recording's space. */
+  resources: ReplayResources | Replay3dResources;
+  frame: number;
+  /** Accessible label for the canvas (what is being replayed). */
+  label: string;
+}) {
+  // The pair is built by one loader from one document, so a half that does not
+  // match its recording is unreachable — but the two halves are still checked
+  // against each other here, because the alternative to a sentence is a pane
+  // drawing a recording against another one's pictures.
+  if (recording.space === "3d") {
+    if (!("assets" in resources)) return <MismatchedResources />;
+    return (
+      <Suspense fallback={<p className={styles.error}>Loading the replay…</p>}>
+        <Replay3dCanvas
+          recording={recording}
+          resources={resources}
+          frame={frame}
+          label={label}
+        />
+      </Suspense>
+    );
+  }
+  if (!("images" in resources)) return <MismatchedResources />;
+  return (
+    <Replay2dCanvas
+      recording={recording}
+      resources={resources}
+      frame={frame}
+      label={label}
+    />
+  );
+}
+
+/** What a pane says when its recording and its decoded values disagree. */
+function MismatchedResources() {
+  return (
+    <p className={styles.error}>
+      This replay cannot be played. The player decoded it in a drawing space
+      other than the one it states.
+    </p>
+  );
+}
+
+/**
+ * One 2D recording, drawn at one frame.
  *
  * The frame asked for is clamped into the recording, which is what lets a pane
  * hold on its last frame while the pane beside it — a longer recording of the same
@@ -113,7 +206,7 @@ export function useRecording(url: string | null): LoadedRecording {
  * every frame does), so a backing store of exactly that size reproduces the picture
  * the build drew, letterbox included, and CSS scales it to the pane.
  */
-export function ReplayCanvas({
+function Replay2dCanvas({
   recording,
   resources,
   frame,

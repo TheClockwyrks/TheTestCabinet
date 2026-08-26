@@ -69,6 +69,36 @@ fn structured_2d_reports_its_package_and_docs() {
 }
 
 #[test]
+fn simple_3d_reports_its_package_and_docs() {
+    let catalog = EngineCatalog::new();
+    let engine = catalog
+        .resolve(&EngineSelection::new("simple-3d"))
+        .expect("`simple-3d` resolves");
+
+    assert!(engine.provides_runtime());
+    // These three are the seeding contract: what to copy out of the host package
+    // store, what a driver binds to, and which directory is seeded as the
+    // workspace's engine documentation.
+    assert_eq!(engine.package(), Some("@test-cabinet/simple-3d"));
+    assert_eq!(engine.docs(), Some("docs"));
+}
+
+#[test]
+fn structured_3d_reports_its_package_and_docs() {
+    let catalog = EngineCatalog::new();
+    let engine = catalog
+        .resolve(&EngineSelection::new("structured-3d"))
+        .expect("`structured-3d` resolves");
+
+    assert!(engine.provides_runtime());
+    // These three are the seeding contract: what to copy out of the host package
+    // store, what a driver binds to, and which directory is seeded as the
+    // workspace's engine documentation.
+    assert_eq!(engine.package(), Some("@test-cabinet/structured-3d"));
+    assert_eq!(engine.docs(), Some("docs"));
+}
+
+#[test]
 fn an_unknown_slug_is_an_error_naming_the_valid_slugs() {
     let catalog = EngineCatalog::new();
     let err = catalog

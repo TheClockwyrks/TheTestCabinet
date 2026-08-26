@@ -413,6 +413,12 @@ function record(build: () => Script): Capture {
   const parsed = parseRecording(JSON.parse(JSON.stringify(written)) as unknown);
   if (!parsed.ok)
     throw new Error(`the player refused the recording: ${parsed.message}`);
+  // One parse reads both drawing spaces, so what it answers with is the space the
+  // document states. A 2D recorder that wrote a 3D document would otherwise reach
+  // the pixel comparison below as though nothing had changed.
+  if (parsed.recording.space === "3d") {
+    throw new Error("this engine's recorder wrote a 3D document");
+  }
   return { recording: parsed.recording, shots };
 }
 

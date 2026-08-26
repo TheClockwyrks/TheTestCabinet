@@ -28,6 +28,38 @@
   background: t.$color-surface;
 }
 
+// A 3D replay is TWO canvases in one box: the WebGL one carries the 3D
+// picture and a 2D one over it carries the HUD, which the engines composite
+// above everything in logical design coordinates. The box carries the frame
+// (rather than either canvas) so the two share one border and one radius and
+// the overlay sits exactly over the picture, with no hairline offsetting it.
+.stack {
+  position: relative;
+  display: block;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.stackCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+// Stretched over the picture rather than laid out: it is the same backing
+// store size as the canvas under it, so a HUD draw lands where the build put
+// it however wide the pane is.
+.hudCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 // A frame the player could not draw whole. Per frame, not per recording: the
 // operation that could not be reproduced is missing from THIS picture, and the
 // frame beside it may be complete.
