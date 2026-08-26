@@ -1,27 +1,26 @@
-# Folk Village Theme (`folk-village`)
+# Folk Village Theme — `v1.0.0`
 
-An **audio** asset-generation test case (`asset_kind = "music"`). It asks a model to
-compose a **warm pastoral acoustic-folk theme** for a peaceful village or town —
-gentle ambient music for a sunlit square — using only the `music` sequencer binary,
-one recorded operation at a time. There is **no target clip**; the model composes to
+An audio asset-generation test case (`asset_kind = "music"`). A model composes a
+theme for a peaceful village or town using only the `music` sequencer binary,
+one recorded operation at a time. There is no target clip; the model composes to
 match the written brief.
 
 ## What it is
 
-A **warm, pastoral, cozy** acoustic-folk cue — a fingerpicked nylon-guitar
-foundation under a lilting woodwind melody, soft sustained strings beneath, and a
-gentle hand-percussion pulse — the sound of community, comfort, and home. It is
-`44100 Hz`, **stereo**, about **30 seconds** long (up to the 30000 ms cap), and
-should come to rest so it can loop. The mood is prescribed; the key, tempo,
-structure, and instrument choices are the model's, so the case rewards compositional
-creativity over instruction-following.
+A warm, pastoral, cozy acoustic-folk cue, gentle ambient music for a sunlit
+square: a fingerpicked nylon-guitar foundation under a lilting woodwind melody,
+soft sustained strings beneath, and a gentle hand-percussion pulse, carrying a
+feeling of community, comfort, and home. It is `44100 Hz`, stereo, about 30
+seconds long and capped at 30000 ms, and should come to rest so it can loop. The
+mood is prescribed; the key, tempo, structure, and instrument choices are the
+model's, so the case rewards compositional creativity.
 
 ## Layout
 
 | File | Seeded? | Purpose |
 | --- | --- | --- |
 | `test-case.toml` | manifest | Metadata, `[audio]` (format + `instrument_bank = "gm-lite@0.1.0"`), `[tool]` (`music`), `[output]`, domain. |
-| `specs/brief.md` | **seeded** | The self-contained brief: the scene, the mood to capture, length and loop, the instrumentation (model's choice), and the stereo image. |
+| `specs/brief.md` | seeded | The self-contained brief: the scene, the mood to capture, length and loop, the instrumentation (model's choice), and the stereo image. |
 | `variants/base.toml` | — | The single default variant. |
 | `prompt.hbs` | rendered | The instruction handed to the harness (points at the brief and the tool). |
 | `description.md` | — | Site-facing blurb. |
@@ -29,16 +28,22 @@ creativity over instruction-following.
 
 ## The instrument bank
 
-The case names **`instrument_bank = "gm-lite@0.1.0"`** — a `name@version` palette
-**baked into the `music` run-container image**, not a path in this repo. The audio is
-not committed here; the run is scheduled onto the image carrying that bank, so the
-general-MIDI-flavoured palette (a grand piano, electric piano, and music box; nylon
-and electric guitars and an electric bass; violin, cello, and a string ensemble;
-trumpet, trombone, and french horn; flute, clarinet, and saxophone; marimba,
-vibraphone, and glockenspiel; a synth lead and pad; and a drum kit) is already
-present. The brief does **not** prescribe which instruments to use — that is the
-model's choice. Core emits the rendered `clip.wav` and a portable `clip.mid`
-automatically — neither is manifest-declared.
+The case names `instrument_bank = "gm-lite@0.1.0"`, a `name@version` palette
+baked into the `music` run-container image. The audio is not committed here. The
+run is scheduled onto the image carrying that bank, so its
+general-MIDI-flavoured palette is already present:
+
+- a grand piano, electric piano, and music box
+- nylon and electric guitars and an electric bass
+- violin, cello, and a string ensemble
+- trumpet, trombone, and french horn
+- flute, clarinet, and saxophone
+- marimba, vibraphone, and glockenspiel
+- a synth lead and pad
+- a drum kit
+
+Core emits the rendered `clip.wav` and a portable `clip.mid` automatically;
+neither is manifest-declared.
 
 ## Validate
 
@@ -47,6 +52,6 @@ tcab prompt --test-case folk-village --version v1.0.0 --variant base
 tcab seed   --test-case folk-village --version v1.0.0 --variant base --out-dir <dir>
 ```
 
-`prompt` renders the instruction (catching strict-mode template and manifest
-errors); `seed` writes the seeded repository so you can confirm the brief is
+`prompt` renders the instruction and catches strict-mode template and manifest
+errors. `seed` writes the seeded repository so you can confirm the brief is
 self-contained.

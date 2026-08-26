@@ -1,38 +1,40 @@
 # Spinning Coin Pickup — `v1.0.0`
 
-This is version `v1.0.0` of the **Spinning Coin Pickup** test case: an **animated**
+This is version `v1.0.0` of the **Spinning Coin Pickup** test case: an animated
 asset-generation case (`asset_kind = "sprite-sheet"`) that asks a model to draw a
-gold coin pickup spinning about its vertical axis as a **6-frame** 32×32 sprite
-sheet, using only the `draw-sheet` tool, one recorded operation at a time. There is
-**no target image** — the model draws toward the seeded brief and is reviewed
-subjectively against it.
+gold coin pickup spinning about its vertical axis as a 6-frame 32×32 sprite sheet,
+using only the `draw-sheet` tool, one recorded operation at a time. There is no
+target image; the model draws toward the seeded brief and is reviewed subjectively
+against it.
 
 `coin-spin` is the catalog slug for this case. It is a generic, reusable
-collectible asset, not tied to any specific game: a valuable rotating coin a game
-can drop into any scene as a points pickup.
+collectible asset: a valuable rotating coin a game can drop into any scene as a
+points pickup.
 
 ## What it is
 
 The six frames are one continuous turn of the coin about its vertical (up–down)
 axis: a full round face (0), a narrowing ellipse (1–2), a thin edge-on sliver (3),
-a widening ellipse (4), and back toward the face (5). Played as the `spin` sequence
-and looped, the coin appears to rotate forever. A bright white glint sweeps across
-the face as the coin catches the light and drops out on the edge-on frame. The
-brief fixes **what the coin is** — a shiny gold disc with a dark rim, a hint of an
-inner face, and a sweeping glint — and the **gold palette on transparency**, and
-leaves the exact silhouette and technique to the model.
+a widening ellipse (4), and back toward the face (5). Played as the `spin`
+sequence and looped, the coin appears to rotate forever. A bright white glint
+sweeps across the face as the coin catches the light and drops out on the edge-on
+frame.
 
-The reviewer judges the sheet as a whole — whether the frames read as one
-continuous rotation, whether the loop is clean, whether it reads as a valuable
-gold coin, whether the glint sweeps the face, and whether it stays on-palette on
-full transparency — and gives it one overall rating.
+The brief fixes what the coin is, a shiny gold disc with a dark rim, a hint of an
+inner face, and a sweeping glint, along with the gold palette on transparency. The
+exact silhouette and technique are the model's.
+
+The reviewer judges the sheet as a whole and gives it one overall rating: whether
+the frames read as one continuous rotation, whether the loop is clean, whether it
+reads as a valuable gold coin, whether the glint sweeps the face, and whether it
+stays on-palette on full transparency.
 
 ## Layout
 
 | Path | Seeded to run? | Purpose |
 | --- | --- | --- |
-| `specs/brief.md` | **Yes** | The self-contained brief (plain Markdown). |
-| `prompt.hbs` | No | Rendered into the model's prompt; not seeded. |
+| `specs/brief.md` | Yes | The self-contained brief (plain Markdown). |
+| `prompt.hbs` | No | Rendered into the model's prompt. |
 | `test-case.toml` | No | Manifest: canvas, tool, sheet, domain. |
 | `variants/` | No | One TOML file per variant (listed in `variants`). |
 | `description.md` | No | Site blurb. |
@@ -40,8 +42,8 @@ full transparency — and gives it one overall rating.
 | `README.md` | No | This overview. |
 
 A run receives the seeded brief, the `draw-sheet` binary, and six pre-seeded blank
-32×32 frames with empty action logs. There is **no target image and no operations
-schema** — the binary's `--help` is the contract, and the recorded per-frame action
+32×32 frames with empty action logs. There is no target image and no operations
+schema; the binary's `--help` is the contract, and the recorded per-frame action
 logs are the authoritative output.
 
 ## Validate
@@ -66,5 +68,5 @@ override, so the sheet never varies.
 
 This case follows semantic versioning per version folder
 (`test-cases/asset-generation/easy/coin-spin/v1.0.0/`). Each version is
-self-contained and immutable once a run references it; design revisions land as new
-version folders.
+self-contained and immutable once a run references it; design revisions land as
+new version folders.

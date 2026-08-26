@@ -1,104 +1,82 @@
 # Refract — `v1.0.0`
 
-This is version `v1.0.0` of the **Refract** test case. The implemented game is an
-original light-tracing puzzle titled **Refract**, played on a dark optical bench.
-Each board is a lattice of optical nodes — **emitters**, **lenses**, and
-**crystals** — and the player draws one beam per **channel** (`triangle`,
-`square`, `diamond`) between that channel's two emitters, threading every lens of
-that channel and spending the charge in every crystal it crosses. A board is
-solved when every beam is complete and every crystal is exactly spent.
+This is version `v1.0.0` of the **Refract** test case. The implemented game is
+an original light-tracing puzzle titled Refract, played on a dark optical bench.
+Each board is a lattice of optical nodes: emitters, lenses and crystals. The
+player draws one beam per channel (`triangle`, `square`, `diamond`) between that
+channel's two emitters, threading every lens of that channel and spending the
+charge in every crystal it crosses. A board is solved when every beam is
+complete and every crystal is exactly spent.
 
-`refract` is the catalog slug for this case, and the game's in-fiction title. The
-case belongs to the family of grid line-drawing puzzles, but the name, the look,
-the optical framing, and the rule set — three channels on one board at once,
-charge-carrying crystals shared between them, and the mutually exclusive
-diagonals that stop beams from visibly crossing — are original to The Test
-Cabinet.
+`refract` is the catalog slug for this case, and the game's in-fiction title.
+The case belongs to the family of grid line-drawing puzzles. Its name, its look,
+the optical framing and the rule set are original to The Test Cabinet: three
+channels on one board at once, charge-carrying crystals shared between them, and
+mutually exclusive diagonals that stop beams from visibly crossing.
 
 ## Why this case
 
-Refract is an `easy` end-to-end case with no physics, no opponent, and no clock.
-Its difficulty is precision rather than scale. Nine rules govern a beam and split
-into two halves that behave differently: five **limits** are checked on every
-pointer move and refuse it, and four **completion conditions** are evaluated over
-a finished board and never refuse anything. A build that confuses the two halves
-rejects the first segment of every board, because an empty beam does not yet
-satisfy a condition phrased with "exactly". Around that sit a seeded board
-generator, pointer input resolved against a hit radius, six screens across two
-modes, and a debug surface that drives the real input path rather than a side
-door into the state.
-
-It is also the case where the look is most openly the build's. The geometry is
-pinned to the figure — the stage, `CELL_PITCH`, the cell-center formula,
-`NODE_HIT_R` — and the palette, type, node artwork, and beam rendering are not
-pinned at all. What the specs do fix is legibility, because on this board
-legibility is the gameplay: channels told apart by hue _and_ by silhouette,
-emitters outlined where lenses are filled, crystals showing charges spent and
-remaining.
+Refract is an `easy` end-to-end case with no physics, no opponent and no clock.
+Its difficulty is one of precision. Nine rules govern a beam and split into two
+halves that behave differently: five limits are checked on every pointer move
+and refuse it, and four completion conditions are evaluated over a finished
+board and never refuse anything. A build that confuses the two halves rejects
+the first segment of every board, because an empty beam does not yet satisfy a
+condition phrased with "exactly". Around that sit a seeded board generator,
+pointer input resolved against a hit radius, six screens across two modes, and a
+debug surface that drives the real input path.
 
 ## The two modes
 
-Both modes ship in every build and are picked from the title menu, the way
-Carom's Solo and Versus are modes inside a variant rather than variants of their
-own. `state.mode` is `"campaign" | "cascade"` and the snapshot reports it.
+Both modes ship in every build and are picked from the title menu. `state.mode`
+is `"campaign" | "cascade"` and the snapshot reports it.
 
-| Mode         | What it is                                                                                                                                                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Campaign** | `CAMPAIGN_LENGTH` (`24`) hand-built boards in four sets of six, listed in `specs/campaign-boards.md` and opened in order as each is solved. It uses no randomness at all. It adds the `select` grid and the `complete` screen. |
-| **Cascade**  | One unbroken sequence with no last board. The build carries a seeded generator that emits a solvable board for a given seed and tier, and the tier climbs as boards are solved. Generation runs off `state.rngState`.          |
+| Mode     | What it is                                                                                                                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Campaign | `CAMPAIGN_LENGTH` (`24`) hand-built boards in four sets of six, listed in `specs/campaign-boards.md` and opened in order as each is solved. It uses no randomness at all. It adds the `select` grid and the `complete` screen. |
+| Cascade  | One unbroken sequence with no last board. The build carries a seeded generator that emits a solvable board for a given seed and tier, and the tier climbs as boards are solved. Generation runs off `state.rngState`.          |
 
-The screens union is the union of both: `title`, `howto`, `select`, `playing`,
-`solved`, `complete`. `select` and `complete` are reached in Campaign only, which
-the mode specs state, but they exist in every build. The snapshot carries the
-campaign fields (`boardIndex`, `solvedBoards`, `unlockedCount`) and the cascade
-fields (`solvedCount`, `tier`) unconditionally; a field the current mode does not
-use reports its resting value rather than going absent, so the snapshot shape is
-fixed.
-
-(The Cascade _mode_ is unrelated to the catalog's separate `cascade` test case;
-the collision is in the name only.)
+The six screens are the union of both modes: `title`, `howto`, `select`,
+`playing`, `solved`, `complete`. `select` and `complete` are reached in Campaign
+only, which the mode specs state, and they exist in every build. The snapshot
+carries the campaign fields (`boardIndex`, `solvedBoards`, `unlockedCount`) and
+the cascade fields (`solvedCount`, `tier`) unconditionally; a field the current
+mode does not use reports its resting value, so the snapshot shape is fixed. The
+Cascade mode shares its name with the catalog's separate `cascade` test case and
+nothing else.
 
 ## Engines
 
-The case supports three engines and seeds a different project for each, which is
-what the manifest's `[workspaces]` table is for:
+Refract is designed for three engines, and seeds a different project for each:
 
-| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `none`          | The toolchain configuration and `index.html`, and nothing else. There is no `src/`: the build writes the runtime — the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, the overlay, and the `window.__refract` surface — and the game on top of it. The surface additionally carries the clock, as `setAutoStep` and `advance`, because nothing outside the build owns it.                                                                                                                                                                                                                            |
-| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts` — `RefractState`, the debug surface, `BACKGROUND`, and the three functions — and its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. The engine holds the state by value: `update` is handed it as `DeepReadonly<RefractState>` and returns the next state, and the surface's operations take the state the same way (a pose returns the next state, driven through `engine.apply`; a reading returns what it read). |
-| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored at seed time, plus the same `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts` — the `GameDefinition` with its single level, the game instance whose `initialize` returns the debug surface, the game mode that runs the screens, the `RefractState` class the world holds live as its game state, and `BACKGROUND` — and the engine serves the surface from `engine.debug`. The world is live, so the surface's poses take only their own arguments and act on it at the call, and its readings return plain data.                                    |
+| Engine          | What the seeded project supplies                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `none`          | The toolchain configuration and `index.html`, and nothing else. There is no `src/`. The build writes the runtime, meaning the frame loop and its delta time, the canvas fit, keyboard and pointer input, audio, the overlay and the `window.__refract` surface, and then the game on top of it. The surface additionally carries the clock, as `setAutoStep` and `advance`, because nothing outside the build owns it.                                                                                                                                                                                                              |
+| `simple-2d`     | The [Simple 2D](/engines/simple-2d/) package, vendored at seed time, plus `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: `RefractState`, the debug surface, `BACKGROUND`, and the three functions. Its `initialize` returns the surface beside the state as `[state, debug]`, which the engine serves from `engine.debug`. The engine holds the state by value, so `update` is handed it as `DeepReadonly<RefractState>` and returns the next state, and the surface's operations take the state the same way. A pose returns the next state, driven through `engine.apply`; a reading returns what it read. |
+| `structured-2d` | The [Structured 2D](/engines/structured-2d/) package, vendored at seed time, plus the same `src/constants.ts` and `src/main.ts`. The build writes `src/game.ts`: the `GameDefinition` with its single level, the game instance whose `initialize` returns the debug surface, the game mode that runs the screens, the `RefractState` class the world holds live as its game state, and `BACKGROUND`. The engine serves the surface from `engine.debug`. The world is live, so the surface's poses take only their own arguments and act on it at the call, and its readings return plain data.                                      |
 
-The pointer belongs to the engine on both engine runs, handed to the build
-already in logical stage units with press and release edges (Simple 2D as a
-per-frame position and edges, Structured 2D as the ordered per-frame samples of
-its input system). An engineless build maps the page's pointer itself.
-`specs/controls.md` branches accordingly.
-
-The game the three projects describe is the same one, so a score recorded under
-one engine is comparable with a score recorded under another. The specs branch
-only where the deliverable genuinely differs.
+On both engine runs the pointer belongs to the engine and reaches the build
+already in logical stage units with press and release edges. Simple 2D hands it
+over as a per-frame position and edges, Structured 2D as the ordered per-frame
+samples of its input system. An engineless build maps the page's pointer itself.
+`specs/controls.md` branches accordingly. The game the three projects describe
+is the same one, so a score recorded under one engine is comparable with a score
+recorded under another.
 
 ## The single variant
 
-Refract ships **one** variant, `base` (`variants/base.toml`), and nothing in the
-seeded set branches on `variant.slug`. That is deliberate. Campaign and Cascade
-are two ways to play one game, reached from one title menu, sharing one board
-model, one rule set, one control scheme, and one snapshot shape — so making them
-variants would have seeded two builds that each shipped half a game, and would
-have split a checklist that has nothing to disagree about. A variant here would
-have to change the _rules_, as Carom's `gyre` and `multi` do, and Refract's rules
-are the case.
-
-Every spec is therefore common and seeded for every run. The `.hbs` templates
-branch on `engine.slug` alone.
+Refract ships one variant, `base` (`variants/base.toml`), and nothing in the
+seeded set branches on `variant.slug`. Campaign and Cascade are two ways to play
+one game, reached from one title menu, sharing one board model, one rule set,
+one control scheme and one snapshot shape. Every spec is therefore common and
+seeded for every run. The `.hbs` templates branch on `engine.slug` alone.
 
 ## Contents
 
 | Path             | Seeded to run? | Purpose                                                                 |
 | ---------------- | -------------- | ----------------------------------------------------------------------- |
-| `specs/`         | **Yes**        | The spec handed to the model, by concern.                               |
-| `workspaces/`    | **Yes**        | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
+| `specs/`         | Yes            | The spec handed to the model, by concern.                               |
+| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
 | `references/`    | No             | The authored, correct build, one directory per engine. Never seeded.    |
 | `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                           |
 | `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
@@ -123,43 +101,46 @@ for every run:
 | `modes/campaign.md`  | The course, its progression, and the `select` and `complete` screens.                                    |
 | `modes/cascade.md`   | The endless sequence, the generator's contract, and the tier ladder.                                     |
 
-`overview.md.hbs`, `controls.md.hbs`, `state.md.hbs`, `instrumentation.md.hbs`,
-`ui.md.hbs`, `modes/campaign.md.hbs`, and `modes/cascade.md.hbs` are Handlebars
-templates rendered on the engine axis before they land; `board.md`, `beams.md`,
-and `campaign-boards.md` are plain Markdown, identical under every engine.
-Because the branching resolves at seed time, each seeded set reads as one
-self-contained game with no alternative in view.
+`board.md`, `beams.md` and `campaign-boards.md` are plain Markdown, identical
+under every engine. `overview.md.hbs`, `controls.md.hbs`, `state.md.hbs`,
+`instrumentation.md.hbs`, `ui.md.hbs`, `modes/campaign.md.hbs` and
+`modes/cascade.md.hbs` are Handlebars templates rendered on the engine axis
+before they land. Because the branching resolves at seed time, each seeded set
+reads as one self-contained game with no alternative in view.
 
 Under `simple-2d` and `structured-2d`, every figure the specification fixes is
 exported from the seeded `src/constants.ts` under the name the specs cite, so a
 spec never restates a number the project already names. Under `none` there is no
-seeded constants module, and the requirement is that each figure is named once in
-a module of the build's own.
+seeded constants module, and each figure is named once in a module of the
+build's own.
 
 ## Assets and media
 
-This version has **no assets** and declares no reference mockups. The specs fix
-the geometry and the rules exactly and leave the bench's appearance to the build,
-drawn entirely in code, and a reviewer rates it through the domains.
+This version has no assets and declares no reference mockups. The geometry is
+pinned to the figure: the stage, `CELL_PITCH`, the cell-center formula and
+`NODE_HIT_R`. The palette, the type, the node artwork and the beam rendering are
+left to the build, drawn entirely in code and rated by a reviewer through the
+domains. What the specs do fix about the look is legibility: channels told apart
+by hue and by silhouette, emitters outlined where lenses are filled, and
+crystals showing charges spent and remaining.
 
 ## What is not built yet
 
 This case is authored but not yet complete, and the manifest reflects only what
 exists:
 
-- **No validators.** There is no `validation/` directory. The checklist points are
-  authored from the specs, but the Vitest suites that decide them — one project
-  per engine, `validation/none/`, `validation/simple-2d/`, and
-  `validation/structured-2d/` — have not been written. Until they are, no point
-  is machine-decided, no run's media is
-  produced by a validator, and there is nothing for `tcab capture-baselines` to
-  capture against the reference builds, so there is no `validation-baseline/`
-  either.
-- **Campaign board solution counts are unresolved.** All `24` boards in
-  `specs/campaign-boards.md` are verified **solvable and well formed**, which is
-  the load-bearing fact and the one the specs rest on. Two independent solvers
-  disagreed on how many solutions some boards admit, so **no spec text claims a
-  board is uniquely solvable**, and none should until the two are reconciled.
+- No validators. There is no `validation/` directory. The checklist points are
+  authored from the specs, and the Vitest suites that decide them have yet to be
+  written: one project per engine, `validation/none/`, `validation/simple-2d/`
+  and `validation/structured-2d/`. Until they exist, no point is
+  machine-decided, no run's media is produced by a validator, and
+  `tcab capture-baselines` has nothing to capture against the reference builds,
+  so there is no `validation-baseline/` either.
+- Campaign board solution counts are unresolved. All `24` boards in
+  `specs/campaign-boards.md` are verified solvable and well formed, which is the
+  load-bearing fact the specs rest on. Two independent solvers disagreed on how
+  many solutions some boards admit, so no spec text claims a board is uniquely
+  solvable, and none should until the two are reconciled.
 
 ## Versioning
 

@@ -1,21 +1,21 @@
-# Dungeon Tileset — v1.0.0
+# Dungeon Tileset — `v1.0.0`
 
 ## What it is
 
-A medium **asset-generation** case (`asset_kind = "sprite"`). The model draws a
-**top-down dungeon-crawler tileset** as one **96×96** image: a **3×3 grid of nine
-32×32 tiles** — three stone-floor variants (plain, cracked, mossy), a brick wall
+A medium asset-generation case (`asset_kind = "sprite"`). The model draws a
+top-down dungeon-crawler tileset as one 96×96 image: a 3×3 grid of nine 32×32
+tiles, made up of three stone-floor variants (plain, cracked, mossy), a brick wall
 front-face and its wall-top cap, a banded wooden door, stairs descending into the
 dark, a bone- and rubble-strewn floor, and a lit floor brazier. The set has to read
-as one cohesive dark, dank stone dungeon with a **single warm brazier accent**, and
-the floor tiles have to align edge-to-edge on the 32-pixel grid.
+as one cohesive dark, dank stone dungeon with a single warm brazier accent, and the
+floor tiles have to align edge-to-edge on the 32-pixel grid.
 
-The sprite is produced with the `draw` tool, **one operation at a time**. The
-recorded `actions.json` — not the pixels on disk — is the authoritative output; it
-is regenerated pixel-for-pixel, so the brief pins an explicit palette and full
-transparency. A reviewer scores the result against the brief across two domains:
-whether each of the nine **tiles** depicts its subject, and whether they hold
-together as one **cohesive** set.
+The sprite is produced with the `draw` tool, one operation at a time. The recorded
+`actions.json`, not the pixels on disk, is the authoritative output; the image is
+regenerated from it pixel-for-pixel, so the brief pins an explicit palette and full
+transparency. A reviewer scores the result against the brief on the case's single
+`overall` domain: whether each of the nine tiles depicts its subject, and whether
+they hold together as one cohesive set.
 
 ## Layout
 
