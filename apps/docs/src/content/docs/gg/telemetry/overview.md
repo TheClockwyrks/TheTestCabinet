@@ -22,6 +22,8 @@ Each page in this section documents one part of it.
   taxonomy, and the run-level error rollup.
 - [Code execution](/gg/telemetry/code-execution/) — what one code-shaped turn's
   program did.
+- [Shell commands](/gg/telemetry/shell-commands/) — every command line gg ran on
+  an agent's behalf, with its exit code and capped output.
 
 ## What the stream carries
 
@@ -49,6 +51,10 @@ The telemetry must let a console display:
   reply's size, the usage and cost the provider billed for it, and the provider
   that served it. The run's own usage excludes a rejected call, so this event is
   the only place its spend appears live.
+- Every shell command gg ran on an agent's behalf: one `shell` event per command
+  line, naming which of the three command paths issued it, where it ran, its
+  exit code, and the capped tails of its streams. See
+  [shell commands](/gg/telemetry/shell-commands/).
 - The message log: the exact request each turn sent and the reply it got,
   streamed as a de-duplicated pool of message bodies (`context_message`) plus one
   pointer list per turn (`prompt`), so a console reconstructs every prompt

@@ -1532,6 +1532,62 @@
       "type": "object"
     },
     {
+      "description": "One **shell command** gg ran on an agent's behalf, emitted on the stream of the agent it\nran for, from whichever of gg's three command paths issued it — the\n[`shell`](CAPABILITY_SHELL) tool, a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nprogram's `system.shell(…)`, or a hook's commands. The\n[origin](Self::Shell::origin) says which, so a command gg ran without the model asking\nstays distinguishable from one the model issued.\n\nThe streams are the process's own, captured before the shell capability's output policy\nmerged and truncated them for the model, and capped to their trailing\n[`GG_SHELL_EVENT_STREAM_CHARS`] characters. The\n[session record](crate::gg_session_record::GgSessionEntryKind)'s shell entries hold the\nfull streams; this event is the live, capped view of the same fact, and it is what the\nconsole's per-agent Shell file lists.",
+      "properties": {
+        "command": {
+          "description": "The command line, run as `sh -c <command>`.",
+          "type": "string"
+        },
+        "cwd": {
+          "$ref": "https://docs.testcabinet.ai/schema/gg/session-record.schema.json#/$defs/GgShellCwd",
+          "description": "Where it ran, expressed relative to the **agent's own** workspace root — its isolated\nworktree when it has one — on the terms [`GgShellCwd`] records."
+        },
+        "exitCode": {
+          "description": "The exit status. A timeout kill, a signal-terminated process and a process that never\nlaunched all pin as `-1`, matching the session record's convention: every consumer\nbranches on \"zero or not\", and what a reader needs from those cases is that the\ncommand did not succeed and printed whatever it printed.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "origin": {
+          "$ref": "https://docs.testcabinet.ai/schema/gg/session-record.schema.json#/$defs/GgShellOrigin",
+          "description": "Which command path issued it."
+        },
+        "stderr": {
+          "description": "The trailing [`GG_SHELL_EVENT_STREAM_CHARS`] characters of standard error.",
+          "type": "string"
+        },
+        "stderrDropped": {
+          "description": "How many leading characters the cap removed from stderr, on the terms\n[`stdout_dropped`](Self::Shell::stdout_dropped) is counted on.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stdout": {
+          "description": "The trailing [`GG_SHELL_EVENT_STREAM_CHARS`] characters of standard output.",
+          "type": "string"
+        },
+        "stdoutDropped": {
+          "description": "How many leading characters the cap removed from stdout. `0` for the ordinary\ncommand, whose output fits whole.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "shell",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "origin",
+        "command",
+        "cwd",
+        "exitCode",
+        "stdout",
+        "stderr"
+      ],
+      "type": "object"
+    },
+    {
       "description": "Token usage (and, when known, cost) accounted since the previous usage event,\n**attributed to the agent profile and model that spent it**.\nReuses the shared [`TokenCounts`] and [`Cost`] contract types so gg usage is\nreported in the same units as every other run.\n\nA gg run spans several models (one per [agent profile](GgAgentConfig)), so an unattributed\ndelta is unattributable: summed over a multi-model run it says what was spent but not on\nwhat, and no consumer can price it per token class or split it per model. Each delta\ntherefore names the profile and the concrete model that produced it, which makes the *live*\nper-model breakdown derivable from the delta stream alone — the\n[`SlotUsage`](Self::SlotUsage) rollups say the same thing, but only once an agent has\nfinished, which is too late for a run being watched. Summing the deltas of one\n`(profile_id, model_id)` key reproduces that key's rollup exactly.",
       "properties": {
         "cost": {

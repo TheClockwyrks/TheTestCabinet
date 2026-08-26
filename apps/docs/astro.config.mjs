@@ -815,6 +815,7 @@ export default defineConfig({
                     "gg/telemetry/turn-timing",
                     "gg/telemetry/context-spend",
                     "gg/telemetry/code-execution",
+                    "gg/telemetry/shell-commands",
                     "gg/telemetry/agent-surface",
                     "gg/telemetry/console",
                   ],

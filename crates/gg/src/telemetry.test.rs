@@ -371,3 +371,85 @@ fn log_prompt_carries_a_file_views_path_onto_its_pooled_definition() {
         "each message is defined once, the file view under its path"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The emitting shell decorator
+// ---------------------------------------------------------------------------
+
+/// Every command the decorated runner runs is reported as one `Shell` event on the emitter's
+/// stream — under the origin the caller stamped, with the exit code the process returned, both
+/// streams, and the working directory measured against the agent's own root.
+#[tokio::test]
+async fn the_emitting_shell_decorator_reports_every_command() {
+    use crate::tools::ShellRunner as _;
+    use test_cabinet_core::gg_session_record::{GgShellCwd, GgShellOrigin};
+
+    let dir = tempfile::tempdir().expect("the agent's root");
+    std::fs::create_dir_all(dir.path().join("web")).expect("the subdirectory");
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-9".to_string()), Box::new(sink.clone()))
+        .for_agent("agent-1", None);
+    let runner = EmittingShellRunner::new(crate::tools::real_shell(), emitter, dir.path());
+
+    runner
+        .run(crate::tools::ShellRequest {
+            command: "printf out; printf err >&2; exit 3".to_string(),
+            cwd: dir.path().join("web"),
+            timeout: std::time::Duration::from_secs(30),
+            agent_id: "agent-1".to_string(),
+            origin: GgShellOrigin::Hook,
+        })
+        .await;
+
+    let events = sink.events();
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].agent_id.as_deref(),
+        Some("agent-1"),
+        "the event lands on the stream of the agent the command ran for"
+    );
+    match &events[0].kind {
+        GgTelemetryKind::Shell {
+            origin,
+            command,
+            cwd,
+            exit_code,
+            stdout,
+            stderr,
+            stdout_dropped,
+            stderr_dropped,
+        } => {
+            assert_eq!(*origin, GgShellOrigin::Hook);
+            assert_eq!(command, "printf out; printf err >&2; exit 3");
+            assert_eq!(
+                *cwd,
+                GgShellCwd::Relative {
+                    path: "web".to_string()
+                }
+            );
+            assert_eq!(*exit_code, 3);
+            assert_eq!(stdout, "out");
+            assert_eq!(stderr, "err");
+            assert_eq!((*stdout_dropped, *stderr_dropped), (0, 0));
+        }
+        other => panic!("expected a Shell event, got {other:?}"),
+    }
+}
+
+/// A stream under the cap passes through untouched; one over it keeps the trailing
+/// [`GG_SHELL_EVENT_STREAM_CHARS`] characters — characters, so a multibyte tail is cut on a
+/// character rather than mid-encoding — and counts what was removed.
+#[test]
+fn the_shell_stream_tail_keeps_the_trailing_characters() {
+    let short = "a".repeat(GG_SHELL_EVENT_STREAM_CHARS);
+    assert_eq!(shell_stream_tail(&short), (short.clone(), 0));
+
+    let long = format!("é{}", "b".repeat(GG_SHELL_EVENT_STREAM_CHARS + 2));
+    let (tail, dropped) = shell_stream_tail(&long);
+    assert_eq!(
+        dropped, 3,
+        "the leading characters are what the cap removes"
+    );
+    assert_eq!(tail.chars().count(), GG_SHELL_EVENT_STREAM_CHARS);
+    assert!(tail.chars().all(|c| c == 'b'));
+}

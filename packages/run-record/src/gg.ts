@@ -7,6 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { GgShellCwd, GgShellOrigin } from "./gg-session-record";
 import type { CostMetrics, TokenMetrics } from "./index";
 
 /**
@@ -2980,6 +2981,47 @@ export type GgTelemetryKind =
       failure?: GgCallFailure;
     }
   | {
+      type: "shell";
+      /**
+       * Which command path issued it.
+       */
+      origin: GgShellOrigin;
+      /**
+       * The command line, run as `sh -c <command>`.
+       */
+      command: string;
+      /**
+       * Where it ran, expressed relative to the **agent's own** workspace root — its isolated
+       * worktree when it has one — on the terms [`GgShellCwd`] records.
+       */
+      cwd: GgShellCwd;
+      /**
+       * The exit status. A timeout kill, a signal-terminated process and a process that never
+       * launched all pin as `-1`, matching the session record's convention: every consumer
+       * branches on "zero or not", and what a reader needs from those cases is that the
+       * command did not succeed and printed whatever it printed.
+       */
+      exitCode: number;
+      /**
+       * The trailing [`GG_SHELL_EVENT_STREAM_CHARS`] characters of standard output.
+       */
+      stdout: string;
+      /**
+       * The trailing [`GG_SHELL_EVENT_STREAM_CHARS`] characters of standard error.
+       */
+      stderr: string;
+      /**
+       * How many leading characters the cap removed from stdout. `0` for the ordinary
+       * command, whose output fits whole.
+       */
+      stdoutDropped?: number;
+      /**
+       * How many leading characters the cap removed from stderr, on the terms
+       * [`stdout_dropped`](Self::Shell::stdout_dropped) is counted on.
+       */
+      stderrDropped?: number;
+    }
+  | {
       type: "usage";
       /**
        * The [slug](GgAgentConfig::slug) of the agent profile that spent this — the same id
@@ -4171,6 +4213,47 @@ export type GgTelemetryEvent = {
        * which never reached an implementation at all.
        */
       failure?: GgCallFailure;
+    }
+  | {
+      type: "shell";
+      /**
+       * Which command path issued it.
+       */
+      origin: GgShellOrigin;
+      /**
+       * The command line, run as `sh -c <command>`.
+       */
+      command: string;
+      /**
+       * Where it ran, expressed relative to the **agent's own** workspace root — its isolated
+       * worktree when it has one — on the terms [`GgShellCwd`] records.
+       */
+      cwd: GgShellCwd;
+      /**
+       * The exit status. A timeout kill, a signal-terminated process and a process that never
+       * launched all pin as `-1`, matching the session record's convention: every consumer
+       * branches on "zero or not", and what a reader needs from those cases is that the
+       * command did not succeed and printed whatever it printed.
+       */
+      exitCode: number;
+      /**
+       * The trailing [`GG_SHELL_EVENT_STREAM_CHARS`] characters of standard output.
+       */
+      stdout: string;
+      /**
+       * The trailing [`GG_SHELL_EVENT_STREAM_CHARS`] characters of standard error.
+       */
+      stderr: string;
+      /**
+       * How many leading characters the cap removed from stdout. `0` for the ordinary
+       * command, whose output fits whole.
+       */
+      stdoutDropped?: number;
+      /**
+       * How many leading characters the cap removed from stderr, on the terms
+       * [`stdout_dropped`](Self::Shell::stdout_dropped) is counted on.
+       */
+      stderrDropped?: number;
     }
   | {
       type: "usage";

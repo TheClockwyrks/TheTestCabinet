@@ -82,6 +82,7 @@ import { ContextFillGraph } from "./ContextFillGraph";
 import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
 import { ProgramsView } from "./ProgramsView";
+import { ShellView } from "./ShellView";
 import { RequestMetricsGraphs } from "./RequestMetricsGraphs";
 import { CompactionView } from "./CompactionView";
 import { LinkIcon, ModulesIcon } from "./ggIcons";
@@ -823,6 +824,12 @@ function FileContent({
             pool={state.messagePool}
             live={live}
           />
+        </div>
+      );
+    case "shell":
+      return (
+        <div className={panels.panelBody}>
+          <ShellView commands={state.shellCommands} live={live} />
         </div>
       );
     case "metrics":

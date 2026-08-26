@@ -2708,6 +2708,21 @@ details[open] > summary .reqCaret {
   text-overflow: ellipsis;
 }
 
+// A shell row's trailing facts — the directory the command ran in when that is not the
+// agent's own root, and the command path that issued it. Muted and unshrinkable, so the
+// command's own preview is what gives way on a narrow row. The directory can be long
+// (an absolute path outside the workspace), so it alone is capped and ellipsized.
+.shellMeta {
+  flex: 0 1 auto;
+  max-width: 12rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
 // The verdict as a small pill, tinted by status: green for a program that ran clean,
 // amber for one the compiler rejected (the model wrote something that never ran —
 // a cheaper mistake than a runtime one, and the one a reader triages first), red for

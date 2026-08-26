@@ -30,8 +30,8 @@ use std::io::Write;
 use std::sync::Arc;
 
 use test_cabinet_core::gg::{
-    GgLimitBreach, GgProgramLanguage, GgPromptRef, GgRunLimits, GgSessionSummary, GgTelemetryEvent,
-    GgTelemetryKind,
+    GG_SHELL_EVENT_STREAM_CHARS, GgLimitBreach, GgProgramLanguage, GgPromptRef, GgRunLimits,
+    GgSessionSummary, GgTelemetryEvent, GgTelemetryKind,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use time::OffsetDateTime;
@@ -434,6 +434,105 @@ impl EventSink for CapturingSink {
 /// did not touch a hundred and seventy call sites that assert nothing new.
 #[cfg(test)]
 pub type CollectingSink = CapturingSink;
+
+/// A [`ShellRunner`](crate::tools::ShellRunner) decorator that emits one
+/// [`Shell`](GgTelemetryKind::Shell) telemetry event per command an agent reaches — the live
+/// counterpart of the session capture's
+/// [`RecordingShellRunner`](crate::capture::RecordingShellRunner), applied at the same seam and
+/// for the same reason: three paths reach a command line (the `shell` tool, a
+/// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and a
+/// [hook's](crate::hooks) commands), the seam is the only place all three meet, and the
+/// [origin](crate::tools::ShellRequest::origin) the caller stamped says which path it came from.
+///
+/// The emitter it streams into is the **agent's own scoped** emitter, so each event lands on the
+/// stream of the agent the command ran for, and the workspace an emitted working directory is
+/// measured against is that agent's root — its issue worktree when it has one — on exactly the
+/// terms the capture's decorator measures them (see
+/// [`shell_cwd`](crate::capture::shell_cwd)).
+pub struct EmittingShellRunner {
+    /// The runner that actually answers — the run's shell seam, with the capture's decorator
+    /// already applied when the run is capturing.
+    inner: std::sync::Arc<dyn crate::tools::ShellRunner>,
+    /// The agent-scoped emitter every command's event is stamped by.
+    emitter: Emitter,
+    /// The agent's workspace root, which an emitted working directory is expressed relative to.
+    workspace: std::path::PathBuf,
+}
+
+/// Printed as its name and workspace alone, for the reason the capture's decorator is: a
+/// [`ToolContext`](crate::tools::ToolContext) carrying a runner has to stay printable, and
+/// neither the wrapped runner nor the emitter has anything a reader of a tool error wants.
+impl std::fmt::Debug for EmittingShellRunner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EmittingShellRunner")
+            .field("workspace", &self.workspace)
+            .finish_non_exhaustive()
+    }
+}
+
+impl EmittingShellRunner {
+    /// Wrap `inner` so every command it runs is reported on `emitter`'s stream, with working
+    /// directories measured against `workspace` — the calling agent's own root.
+    pub fn new(
+        inner: std::sync::Arc<dyn crate::tools::ShellRunner>,
+        emitter: Emitter,
+        workspace: impl Into<std::path::PathBuf>,
+    ) -> Self {
+        Self {
+            inner,
+            emitter,
+            workspace: workspace.into(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::tools::ShellRunner for EmittingShellRunner {
+    /// Run the command, then say what it did on the stream.
+    ///
+    /// The exit code pins the way the [session record's](crate::capture::RecordingShellRunner)
+    /// does — a timeout kill, a signal-terminated process and a process that never started all
+    /// read `-1` — so the two records of one command can never disagree on its verdict.
+    async fn run(&self, request: crate::tools::ShellRequest) -> crate::tools::ShellExecution {
+        let command = request.command.clone();
+        let origin = request.origin;
+        let cwd = crate::capture::shell_cwd(&self.workspace, &request.cwd);
+        let execution = self.inner.run(request).await;
+        let (stdout, stdout_dropped) = shell_stream_tail(&execution.stdout);
+        let (stderr, stderr_dropped) = shell_stream_tail(&execution.stderr);
+        self.emitter.emit(GgTelemetryKind::Shell {
+            origin,
+            command,
+            cwd,
+            exit_code: match &execution.status {
+                crate::tools::ShellStatus::Exited { code } => code.unwrap_or(-1),
+                _ => -1,
+            },
+            stdout,
+            stderr,
+            stdout_dropped,
+            stderr_dropped,
+        });
+        execution
+    }
+}
+
+/// The trailing [`GG_SHELL_EVENT_STREAM_CHARS`] characters of one stream, and how many leading
+/// characters keeping the tail removed. The ordinary command's output fits whole and passes
+/// through untouched, so the cap costs nothing where it was not needed.
+fn shell_stream_tail(stream: &str) -> (String, u64) {
+    let total = stream.chars().count();
+    if total <= GG_SHELL_EVENT_STREAM_CHARS {
+        return (stream.to_string(), 0);
+    }
+    let dropped = total - GG_SHELL_EVENT_STREAM_CHARS;
+    let start = stream
+        .char_indices()
+        .nth(dropped)
+        .map(|(index, _)| index)
+        .unwrap_or(0);
+    (stream[start..].to_string(), dropped as u64)
+}
 
 /// `n` and its noun, pluralised the English way.
 ///

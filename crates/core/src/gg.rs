@@ -23,6 +23,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use crate::gg_session_record::{GgShellCwd, GgShellOrigin};
 use crate::metrics::{Cost, TokenCounts};
 
 /// The conventional name of the single model slot a Phase 0 gg run uses. Later
@@ -100,6 +101,15 @@ pub const PARAM_MAX_LINES: &str = "maxLines";
 /// Written and required on exactly the terms [`maxLines`](PARAM_MAX_LINES) is. The tighter of the
 /// two decides, because the result has to satisfy both.
 pub const PARAM_MAX_CHARS: &str = "maxChars";
+
+/// How many trailing **characters** of each of a command's streams a
+/// [`Shell`](GgTelemetryKind::Shell) telemetry event carries.
+///
+/// Characters rather than bytes, on the same terms as [`maxChars`](PARAM_MAX_CHARS): a ceiling
+/// means the same thing whatever the output is written in. The full streams live in the
+/// [session record](crate::gg_session_record::GgSessionCommand); the telemetry cap only bounds
+/// what the live stream repeats of them.
+pub const GG_SHELL_EVENT_STREAM_CHARS: usize = 16 * 1024;
 
 /// The stable id of the read-file capability: the agent's ability to read a file in the
 /// run workspace (the `read_file` tool).
@@ -6990,6 +7000,47 @@ pub enum GgTelemetryKind {
         /// which never reached an implementation at all.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         failure: Option<GgCallFailure>,
+    },
+    /// One **shell command** gg ran on an agent's behalf, emitted on the stream of the agent it
+    /// ran for, from whichever of gg's three command paths issued it — the
+    /// [`shell`](CAPABILITY_SHELL) tool, a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
+    /// program's `system.shell(…)`, or a hook's commands. The
+    /// [origin](Self::Shell::origin) says which, so a command gg ran without the model asking
+    /// stays distinguishable from one the model issued.
+    ///
+    /// The streams are the process's own, captured before the shell capability's output policy
+    /// merged and truncated them for the model, and capped to their trailing
+    /// [`GG_SHELL_EVENT_STREAM_CHARS`] characters. The
+    /// [session record](crate::gg_session_record::GgSessionEntryKind)'s shell entries hold the
+    /// full streams; this event is the live, capped view of the same fact, and it is what the
+    /// console's per-agent Shell file lists.
+    Shell {
+        /// Which command path issued it.
+        origin: GgShellOrigin,
+        /// The command line, run as `sh -c <command>`.
+        command: String,
+        /// Where it ran, expressed relative to the **agent's own** workspace root — its isolated
+        /// worktree when it has one — on the terms [`GgShellCwd`] records.
+        cwd: GgShellCwd,
+        /// The exit status. A timeout kill, a signal-terminated process and a process that never
+        /// launched all pin as `-1`, matching the session record's convention: every consumer
+        /// branches on "zero or not", and what a reader needs from those cases is that the
+        /// command did not succeed and printed whatever it printed.
+        exit_code: i32,
+        /// The trailing [`GG_SHELL_EVENT_STREAM_CHARS`] characters of standard output.
+        stdout: String,
+        /// The trailing [`GG_SHELL_EVENT_STREAM_CHARS`] characters of standard error.
+        stderr: String,
+        /// How many leading characters the cap removed from stdout. `0` for the ordinary
+        /// command, whose output fits whole.
+        #[serde(default, skip_serializing_if = "is_zero_u64")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        stdout_dropped: u64,
+        /// How many leading characters the cap removed from stderr, on the terms
+        /// [`stdout_dropped`](Self::Shell::stdout_dropped) is counted on.
+        #[serde(default, skip_serializing_if = "is_zero_u64")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        stderr_dropped: u64,
     },
     /// Token usage (and, when known, cost) accounted since the previous usage event,
     /// **attributed to the agent profile and model that spent it**.

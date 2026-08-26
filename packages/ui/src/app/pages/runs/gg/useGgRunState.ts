@@ -46,6 +46,10 @@ import {
   GG_TURN_ERROR_TYPE_BASE,
   GG_TURN_ERROR_TYPE_LABELS,
 } from "@test-cabinet/run-record/gg";
+import type {
+  GgShellCwd,
+  GgShellOrigin,
+} from "@test-cabinet/run-record/gg-session-record";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { agentProfileName } from "./ggCatalog";
 import { apiCallSpellings } from "./ggSurfaceCalls";
@@ -454,6 +458,30 @@ export interface ProgramTurn {
   durationMs: number | null;
   // What the program finished the run with, on the one turn that did.
   finished: string | null;
+}
+
+// One shell command gg ran on an agent's behalf, folded from that agent's `shell`
+// telemetry events — the record behind the instance explorer's Shell file. The event
+// covers all three of gg's command paths (the `shell` tool, a program's
+// `system.shell(…)`, a hook's commands), so the list is what RAN rather than what the
+// model asked for; `origin` says which path each line came from.
+export interface ShellCommandEntry {
+  timestamp: string;
+  origin: GgShellOrigin;
+  command: string;
+  // Where it ran, relative to the agent's own workspace root.
+  cwd: GgShellCwd;
+  // The exit status. A timeout kill, a signal-terminated process and a process that
+  // never launched all pin as -1 — the record's convention, so "zero or not" is the
+  // whole of the verdict.
+  exitCode: number;
+  // The trailing characters of each stream, as the event capped them.
+  stdout: string;
+  stderr: string;
+  // How many leading characters the cap removed from each stream; 0 for the ordinary
+  // command, whose output fits whole.
+  stdoutDropped: number;
+  stderrDropped: number;
 }
 
 // The status a turn's error kind implies — see {@link ProgramStatus}. No kind is a clean
@@ -1411,6 +1439,11 @@ export interface DerivedGgState {
   // entries are all `success` with nothing executed — and offered only where the agent
   // answers in code.
   programs: ProgramTurn[];
+  // Every shell command gg ran on this partition's behalf, in stream order (see
+  // {@link ShellCommandEntry}). Over one agent's partition it is that agent's own
+  // command log — the instance explorer's Shell file — and it is empty for an agent
+  // that ran none.
+  shellCommands: ShellCommandEntry[];
   // Per-turn phase timings, in turn order. Unlike `prompts` these are unconditional —
   // gg reports one per turn whatever the run's capabilities, and reports one even for a
   // turn that ended abnormally.
@@ -1859,6 +1892,8 @@ export function reduceGgEvents(
   // than to the previous turn's program.
   const programs: ProgramTurn[] = [];
   let openProgram: ProgramTurn | null = null;
+  // Every shell command this partition ran, in stream order (see `ShellCommandEntry`).
+  const shellCommands: ShellCommandEntry[] = [];
   // One per `turn_timing` — the turn's three-phase wall-clock split (see `TurnTiming`).
   const turnTimings: TurnTiming[] = [];
   // Per-function API call counts, keyed `object.function` (see `DerivedGgState.apiCalls`).
@@ -2361,6 +2396,23 @@ export function reduceGgEvents(
         // reached for.
         toolCalls.set(gg.name, (toolCalls.get(gg.name) ?? 0) + 1);
         break;
+      case "shell":
+        // One command line gg ran on this agent's behalf, from whichever of the three
+        // command paths issued it. Folded as its own list rather than into the feed:
+        // the feed already carries the `tool_call`/`api_call` that asked for the two
+        // model-issued origins, and a second row per command would double them.
+        shellCommands.push({
+          timestamp: event.timestamp,
+          origin: gg.origin,
+          command: gg.command,
+          cwd: gg.cwd,
+          exitCode: gg.exitCode,
+          stdout: gg.stdout,
+          stderr: gg.stderr,
+          stdoutDropped: gg.stdoutDropped ?? 0,
+          stderrDropped: gg.stderrDropped ?? 0,
+        });
+        break;
       case "tool_result":
         // The other surface's failures, kept apart from `apiFailures` for the reason
         // `GgErrorTally.toolFailures` gives: they are two vocabularies over two
@@ -2671,6 +2723,7 @@ export function reduceGgEvents(
     messagePool,
     prompts,
     programs,
+    shellCommands,
     turnTimings,
     skills,
     memory,

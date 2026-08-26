@@ -213,6 +213,24 @@ shared workspace. While the agent is blocked it states what the agent is waiting
 on. `blocked` on its own is indistinguishable from stuck, so the wait names its
 condition: the issue it suspended for, or the subagents it is collecting.
 
+### The Shell file
+
+An agent whose profile enables the [shell capability](/gg/shell/) carries a
+`shell` file: every command line gg ran on that agent's behalf, in order, read
+from the [`shell` telemetry events](/gg/telemetry/shell-commands/) on its own
+stream. Each row leads with the command, states the directory it ran in when
+that is not the agent's own workspace root, names the command path that issued
+it, and ends with its exit code as the verdict, so the rows worth opening stand
+out. An opened row shows the command's stdout and stderr as the event capped
+them, with a note stating how much leading output the cap dropped.
+
+The file lists what ran rather than what the model asked for. A hook's command
+appears tagged `hook`, since gg ran it without the model asking, and a
+[responses-as-code](/gg/responses-as-code/overview/) program's
+`gg.shell.shell(…)` calls appear beside the `shell` tool's, tagged apart. The
+file is offered whenever the profile holds the capability, showing its own
+empty state until the first command runs.
+
 ## Modules
 
 The run read by the state it holds rather than by the agents holding it, sitting

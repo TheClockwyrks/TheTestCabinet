@@ -135,6 +135,18 @@ export function ProgramsIcon({ className }: IconProps) {
   );
 }
 
+// Shell — a terminal window with its prompt: the commands gg ran on the agent's
+// behalf, with their exit codes and output.
+export function ShellIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M7 9l3 3-3 3" />
+      <path d="M12.5 15h4.5" />
+    </Icon>
+  );
+}
+
 // Metrics — a line trending up across axes: the per-request metrics graphs
 // (throughput, cost, cache-read share, reasoning share) over the run.
 export function MetricsIcon({ className }: IconProps) {

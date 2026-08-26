@@ -38,6 +38,7 @@ import {
   ProgramsIcon,
   PromptIcon,
   RequestsIcon,
+  ShellIcon,
   TasksIcon,
   ToolsIcon,
 } from "./ggIcons";
@@ -64,6 +65,7 @@ export type AgentFileKind =
   | "context"
   | "requests"
   | "programs"
+  | "shell"
   | "metrics"
   | "compaction";
 
@@ -91,7 +93,8 @@ export function sameEntry(a: AgentEntry, b: AgentEntry): boolean {
 // before its activity for that activity to mean anything. Requests sits beside Context
 // — it is the itemized, message-level companion to the stacked Context graph — and
 // Programs sits right after it, the same turns read one level up: each reply as the
-// program it was, and whether it compiled and ran. Then
+// program it was, and whether it compiled and ran. Shell follows — what those turns
+// ran on the machine, one row per command with its exit code and output. Then
 // Metrics, the per-request over-time graphs (throughput, cost, cache-read and reasoning
 // share) that are the value-per-call companion to that same graph; Compaction follows,
 // the detail behind the Context graph's compaction markers.
@@ -103,6 +106,7 @@ const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
   "context",
   "requests",
   "programs",
+  "shell",
   "metrics",
   "compaction",
 ];
@@ -137,6 +141,11 @@ const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
   // answers in code (see {@link filesFor}). A tool-calling agent writes no programs, and a
   // file of all-green rows for it would be a statement about nothing.
   programs: [],
+  // The Shell file rides on the shell capability: every command gg ran on the agent's
+  // behalf, with its exit code and output, read from the agent's own `shell` telemetry
+  // events. An agent without the capability runs no commands of its own, so the file is
+  // hidden rather than shown perpetually empty.
+  shell: ["shell"],
   // The per-request metric graphs ride on the same intrinsic `prompt` stream the
   // Requests file does — every run makes model calls carrying tokens/cost — so the
   // file is always offered (its own graphs show an empty state until a metric has data).
@@ -158,6 +167,7 @@ const FILE_LABELS: Record<AgentFileKind, string> = {
   context: "context",
   requests: "requests",
   programs: "programs",
+  shell: "shell",
   metrics: "metrics",
   compaction: "compaction",
 };
@@ -175,6 +185,7 @@ const FILE_ICONS: Record<
   context: ContextIcon,
   requests: RequestsIcon,
   programs: ProgramsIcon,
+  shell: ShellIcon,
   metrics: MetricsIcon,
   compaction: CompactionIcon,
 };

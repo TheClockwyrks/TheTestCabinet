@@ -1296,7 +1296,7 @@ pub(crate) async fn run_with_seams(
     if orch.session_hooks.has(GgHookEvent::SessionEnd) {
         let session_ctx = ToolContext::new(invocation.workspace_dir.clone())
             .with_agent(ROOT_AGENT_ID)
-            .with_shell(orch.shell_for(&invocation.workspace_dir));
+            .with_shell(orch.shell_for(&invocation.workspace_dir, &root_emitter));
         if let Err(failure) = orch
             .session_hooks
             .fire(
@@ -1887,7 +1887,11 @@ impl Orchestrator {
     /// session is their [`seq`](test_cabinet_core::gg_session_record::GgSessionEntry::seq), which is minted
     /// from the same global counter as every other input.
     /// The [shell seam](ShellRunner) an agent rooted at `workspace` runs its commands through: the
-    /// run's, wrapped in a [`RecordingShellRunner`](crate::capture::RecordingShellRunner) whenever the run is capturing.
+    /// run's, wrapped in a [`RecordingShellRunner`](crate::capture::RecordingShellRunner) whenever
+    /// the run is capturing, and always in an
+    /// [`EmittingShellRunner`](crate::telemetry::EmittingShellRunner) so every command it runs is
+    /// reported as a [`Shell`](test_cabinet_core::gg::GgTelemetryKind::Shell) event on `emitter`'s
+    /// stream.
     ///
     /// **Per agent, not per run**, because the wrapper measures a command's working directory
     /// against a root and an agent's root is its own — an [issue worktree](crate::board), or the
@@ -1897,15 +1901,24 @@ impl Orchestrator {
     ///
     /// One `Arc` per agent per turn is the cost, which is nothing beside the model call the turn is
     /// about to make.
-    fn shell_for(&self, workspace: &Path) -> Arc<dyn ShellRunner> {
-        match &self.replay {
+    fn shell_for(&self, workspace: &Path, emitter: &Emitter) -> Arc<dyn ShellRunner> {
+        let inner: Arc<dyn ShellRunner> = match &self.replay {
             Some(recorder) => Arc::new(crate::capture::RecordingShellRunner::new(
                 Arc::clone(&self.shell),
                 Arc::clone(recorder),
                 workspace,
             )),
             None => Arc::clone(&self.shell),
-        }
+        };
+        // The telemetry decorator sits outermost, on every run: capture is a recording of the
+        // session while the `shell` event is the live stream's account of the same command, and
+        // a run whose journal could not be opened still reports what it ran. The emitter is the
+        // calling agent's own scoped stream, so the event lands on the agent the command ran for.
+        Arc::new(crate::telemetry::EmittingShellRunner::new(
+            inner,
+            emitter.clone(),
+            workspace,
+        ))
     }
 
     /// The [`git`](git::GitCapture) capture for `agent_id`: where its invocations are recorded.
@@ -3814,7 +3827,7 @@ async fn drive_agent(
         let tool_ctx = ToolContext::new(workspace_dir.clone())
             .with_vision(&model_id, Arc::clone(&orch.vision))
             .with_agent(&agent.id)
-            .with_shell(orch.shell_for(&workspace_dir));
+            .with_shell(orch.shell_for(&workspace_dir, emitter));
 
         // Who this agent is to the run's [hooks](crate::hooks): its instance id, the profile it
         // runs, the role it was dispatched in, and the isolated worktree it works in when it has
