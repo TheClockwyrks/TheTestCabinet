@@ -221,6 +221,11 @@ query is filtered by the same both-directions rule a pair of colliders is. A
 collider the resolution leaves at `"ignore"` is left out of the result, and so
 is every collider owned by an actor `ignore` names.
 
+A query given no options is on the channel `"default"` with an empty response
+map and no actor ignored. It answers every channel `"ignore"`, so what it
+finds is the colliders whose own `responses` answer `"default"` with
+`"overlap"` or `"block"`.
+
 A query is answered from the colliders as they stand when it is called and
 returns its result to the caller. The three collision events belong to the
 frame's pass.

@@ -148,9 +148,13 @@ takes no part in the frame's collision pass.
 
 At the end of the frame each component's `endPlay("destroyed")` runs and then
 the actor's, in reverse spawn order across the actors destroyed that frame. The
-actor then leaves the world and `actor:destroyed` is emitted. A destroyed pawn
-is unpossessed first, and the game mode's `pawnDied` runs after the pawn's
-`endPlay`.
+actor then leaves the world and `actor:destroyed` is emitted.
+
+A destroyed pawn is unpossessed inside `destroy`, at the mark: the seat clears
+and `possession:changed` is emitted there, so the pawn's `endPlay` observes
+`controller` as `null` and a controller is free to possess another pawn in the
+same frame. The game mode's `pawnDied` runs after that `endPlay`, against the
+controller that held the pawn at the mark.
 
 Closing a world ends play for every actor it holds: each actor's components' and
 then each actor's `endPlay("level-closed")` runs, in reverse spawn order.

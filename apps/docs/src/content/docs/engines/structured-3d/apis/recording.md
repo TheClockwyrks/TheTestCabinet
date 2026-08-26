@@ -174,6 +174,11 @@ recorder cut down carries `truncated: true`, and a player reports the flag
 beside everything else it could not reproduce, which is what lets a reviewer
 tell a picture the format could not carry from one it carried.
 
+The bound cuts the retained state rather than the operation. A recorded
+`setLights` carries every light the pipeline supplied, so a player re-issuing
+one keeps the first 64 entries itself and inherits the list the engine
+inherited.
+
 ## `DrawOp`
 
 ```ts
@@ -284,11 +289,13 @@ captured the same way, as a `texture` entry whose `path` is `text:` followed
 by the string, so a player draws the lettering from the captured pixels
 without owning the face.
 
-Capture stops once the recording holds 16 MB of asset bytes, counted over
-`data` and `src`. Captured assets keep resolving, and a further new capture
-records `{ $opaque: "MeshHandle" }` or the handle's type name, the same
-degradation a player already reports. An entry that fails to decode at replay
-is skipped and reported.
+Captured asset bytes, counted over `data` and `src`, stop at 16 MB, and the
+bound is a ceiling rather than a threshold: the capture that would take the
+holdings past it is the one refused, so 16 MB is the most a document carries.
+Captured assets keep resolving, and a further new capture records
+`{ $opaque: "MeshHandle" }` or the handle's type name, the same degradation a
+player already reports. An entry that fails to decode at replay is skipped and
+reported.
 
 ## `Resource`
 

@@ -53,6 +53,14 @@ inside `position`, `rotation`, or `scale`.
 Every actor a level declares exists before any of their `beginPlay` runs, so an
 actor finds its peers there rather than in `configure`.
 
+`LevelDefinition.actors` binds `ActorSpec<Actor>`, so a spec written inline in
+that array hands `configure` an `Actor` whatever class `type` names. A build
+that configures a subclass names the type argument on the spec value itself,
+as `ActorSpec<Wall>`, and places that value in `actors`; `configure` then
+receives a `Wall`. `world.spawn` takes its type argument from the class it is
+given, so a runtime spawn's `configure` receives the subclass with nothing
+declared.
+
 ## `LoadApi`
 
 ```ts

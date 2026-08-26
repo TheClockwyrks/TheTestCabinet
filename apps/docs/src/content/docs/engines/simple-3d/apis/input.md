@@ -43,7 +43,9 @@ interface TouchLayout {
 | `TouchLayout.actions` | The layout's own vocabulary followed by the four menu actions. |
 
 A `RegisteredAction` is the resolved form of a registration: the binding with
-its defaults filled in and its layout provenance attached.
+its defaults filled in and its layout provenance attached. There is no
+accessor returning this shape; it is the type a build names for its own table
+of what it bound, and an action is read through `value` and `pressed`.
 
 ## Registration
 

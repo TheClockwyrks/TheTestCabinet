@@ -141,6 +141,15 @@ camera, lights, or mode, and does not clear depth; those belong to the
 pipeline, and a call to `setCamera`, `setLights`, `setMode`, or `clearDepth`
 from `draw` throws, naming the rule.
 
+The vocabulary's own draw order governs a `DrawComponent`'s calls and the
+collision overlay's alike. The state setters and `clearDepth` cut a frame into
+runs, and a run's translucent draws — a material below opacity `1`, every
+billboard, a line over a translucent color — render after that run's opaque
+draws, farthest first from its camera. A draw sorts by the position its own
+call names, a `drawLine` by its first point, and two draws at equal distance
+hold their issue order, so the engine and a player replaying the recording
+order one frame the same way.
+
 ## The ticks and the pipeline
 
 Drawing belongs to the pipeline, and reading input and playing cues belong to

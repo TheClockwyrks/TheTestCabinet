@@ -153,6 +153,10 @@ interface UpdateApi {
   readonly input: {
     value(name: string): number;
     pressed(name: string): boolean;
+    pointer(): PointerSnapshot;
+    pointerPressed(): boolean;
+    pointerReleased(): boolean;
+    pointerSamples(): PointerSample[];
   };
   readonly audio: {
     play(cue: string): void;
@@ -167,9 +171,11 @@ interface UpdateApi {
 }
 ```
 
-`update` reads input, plays cues, and advances the simulation. Nothing here
-draws, so a simulation can be stepped and inspected with no drawing surface
-involved in the result.
+`update` reads input, plays cues, and advances the simulation. The action
+reads and the four pointer reads sit on the one `input` object, and what each
+resolves to is specified on the [input
+page](/engines/simple-3d/apis/input/). Nothing here draws, so a simulation can
+be stepped and inspected with no drawing surface involved in the result.
 
 ## `RenderApi`
 
@@ -267,6 +273,14 @@ the draw's position. A frame that sets its state once and clears no depth
 mid-frame is a single run, so the common case reads as it always has:
 translucent after every opaque draw. HUD draws composite last, above the 3D
 picture, in issue order across the whole frame.
+
+A draw sorts by the position its own call names: a mesh's or a geometry's
+transform position, a billboard's `position`, and a `drawLine`'s first point,
+a polyline naming no center of its own. Two translucent draws at equal
+distance hold their issue order, and a billboard is translucent whatever its
+texture carries. Those three rules decide the order of a frame's translucent
+draws, so a player re-issuing the frame's operations draws them exactly as the
+engine did.
 
 ### Animation posing
 
