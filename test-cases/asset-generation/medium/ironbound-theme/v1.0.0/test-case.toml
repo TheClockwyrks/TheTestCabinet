@@ -2,7 +2,7 @@ slug = "ironbound-theme"
 experimental = true
 name = "Ironbound Theme"
 difficulty = "medium"
-tags = ["music", "naval", "ironbound"]
+tags = ["music", "naval"]
 summary = """
 Compose the Ironbound faction theme: a ~30-second heavy industrial war-march for \
 the fleet-command game's iron-and-coal-smoke power — ponderous, grinding, and \

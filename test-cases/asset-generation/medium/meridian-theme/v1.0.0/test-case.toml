@@ -2,7 +2,7 @@ slug = "meridian-theme"
 experimental = true
 name = "Meridian Theme"
 difficulty = "medium"
-tags = ["music", "naval", "meridian"]
+tags = ["music", "naval"]
 summary = """
 Compose the Meridian faction theme: a ~30-second sleek, luminous, precise cue for \
 the fleet-command game's pearl-and-cyan energy power — elegant, agile, and cool — \

@@ -2,7 +2,7 @@ slug = "geode-theme"
 experimental = true
 name = "Geode Theme"
 difficulty = "medium"
-tags = ["music", "naval", "geode"]
+tags = ["music", "naval"]
 summary = """
 Compose the Geode faction theme: a ~30-second crystalline, resonant, otherworldly \
 cue for the fleet-command game's amethyst-and-magenta resonance power — glassy, \

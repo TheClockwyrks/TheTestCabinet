@@ -39,7 +39,7 @@ type = "full-stack"
 difficulty = "medium"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
-tags = ["tower-defense", "strategy", "2d", "gemtd"]
+tags = ["tower-defense", "strategy", "2d"]
 
 # Short site-facing abstract, shown on the test case card. Authored inline (not a
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.
