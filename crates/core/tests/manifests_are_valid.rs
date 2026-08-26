@@ -9,6 +9,8 @@
 //!   - orchestrators (`orchestrators/<slug>/…`)      via [`OrchestratorCatalog`]
 //!   - engines       (`engines/<slug>/engine.toml`)   via [`EngineCatalog`]
 //!   - harnesses     (`harnesses/<slug>/harness.toml`) via [`DefaultHarnessRegistry`]
+//!   - test-case groups (`test-case-groups/<slug>/test-case-group.toml`)
+//!     via [`TestCaseGroupCatalog`]
 //!
 //! (Model configs no longer live on disk — they are seeded into and edited in the
 //! backend store — so there is no `models/` manifest to guard here.)
@@ -25,7 +27,7 @@ use test_cabinet_core::engine::{
 };
 use test_cabinet_core::{
     BUILT_IN_SLUGS, DefaultHarnessRegistry, HarnessRegistry, HarnessSlug, OrchestratorCatalog,
-    OrchestratorSelection,
+    OrchestratorSelection, TestCaseCatalog, TestCaseGroupCatalog,
 };
 
 /// The repository root (two levels up from this crate's `Cargo.toml`).
@@ -141,4 +143,44 @@ fn every_harness_manifest_parses_and_matches_the_enum() {
         on_disk, known,
         "harnesses/ directories must match HarnessSlug::ALL exactly"
     );
+}
+
+/// Every committed test-case-group manifest must load through the same catalogue
+/// the services walk, and every member slug must resolve in the test-case
+/// catalog (which covers test cases and game jams alike). The backend's ingest
+/// enforces the same membership rule against its own checkout, rejecting an
+/// invalid group at scan time; this is the repo-side gate that catches the
+/// mistake before it is committed. Discovering the directories from disk means
+/// a newly added `test-case-groups/<slug>/` is covered without touching this
+/// test.
+///
+/// Note the member list names each case's manifest-declared **slug**, not its
+/// folder: the catalog lists cases by identity (for example the `carom/`
+/// folder's case is `pong`), and the run records that back a group's
+/// leaderboard carry that identity.
+#[test]
+fn every_test_case_group_manifest_loads() {
+    let root = repo_root();
+    let groups = TestCaseGroupCatalog::new(root.join("test-case-groups"))
+        .list()
+        .unwrap_or_else(|err| panic!("load test-case groups: {err:?}"));
+    assert!(!groups.is_empty(), "no test-case groups found");
+
+    let known: BTreeSet<String> = TestCaseCatalog::new(root.join("test-cases"))
+        .list()
+        .unwrap_or_else(|err| panic!("list the test-case catalog: {err:?}"))
+        .into_iter()
+        .map(|case| case.slug)
+        .collect();
+    for group in &groups {
+        for member in &group.cases {
+            assert!(
+                known.contains(member),
+                "test-case group `{}` names member `{member}`, which does not resolve in \
+                 the test-case catalog (member lists name a case's manifest-declared slug, \
+                 not its folder)",
+                group.slug
+            );
+        }
+    }
 }

@@ -16,4 +16,5 @@ pub mod publish_asset_reference;
 pub mod publish_reference;
 pub mod run;
 pub mod seed;
+pub mod test_case_groups;
 pub mod validate;

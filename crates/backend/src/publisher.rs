@@ -351,6 +351,16 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // through. **Replay records are never exported**; nothing here loads one.
     let gg_documents = crate::gg_docs::public_documents(inner.db.as_ref(), &inner.store).await?;
 
+    // The ingested test-case-group set, read from the store slot the whole-catalog
+    // ingest reconciles and mapped to the same wire shape `GET /test-case-groups`
+    // serves — so the public home page and the consoles render one set.
+    let test_case_groups = inner
+        .store
+        .read_test_case_groups()?
+        .into_iter()
+        .map(crate::api::TestCaseGroupOut::from)
+        .collect();
+
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
         .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
         .with_models(models)
@@ -361,6 +371,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .with_reviewer_pictures(reviewer_pictures)
         .with_comparisons(comparisons)
         .with_gg_documents(gg_documents)
+        .with_test_case_groups(test_case_groups)
         .build(generated_at)
         .await?;
     let run_count = snapshot.run_count;

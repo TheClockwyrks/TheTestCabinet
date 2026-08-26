@@ -8,7 +8,7 @@
 
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type { RunSort, SortDir } from "../../client/clients";
-import { RATINGS } from "../../ratings";
+import { RATINGS, type AestheticRating } from "../../ratings";
 import { totalTokens } from "../format";
 import { isGgRun } from "./runLinks";
 import { currentMajorMinor, majorMinorKey } from "./versions";
@@ -40,6 +40,13 @@ export interface RunQuery {
     | "unreviewed";
   /** Filter to one test-case slug (an empty string is ignored). */
   testCase?: string;
+  /** Filter to a list of test-case slugs (empty/omitted is ignored) — the home
+   * page's group-leaderboard slice: one query covers a test-case group's member
+   * cases. ANDs with every other filter, {@link testCase} included, so naming
+   * both narrows to their intersection (the semantic `api.md` documents for the
+   * backend's `testCases` param), and {@link latestVersions} composes with it as
+   * with any case slice. */
+  testCases?: string[];
   /** Filter to one model id (an empty string is ignored). */
   model?: string;
   /** Filter to one harness slug (an empty string is ignored). */
@@ -73,6 +80,11 @@ export interface RunQuery {
    * the two would silently empty the listing whenever the picked version is not
    * the current one. */
   latestVersions?: boolean;
+  /** Filter to runs whose aggregate **aesthetic** rating is exactly this tier —
+   * the equality on the backend's lifted `aesthetic` column. A run no review has
+   * rated on the aesthetic channel never matches any tier.
+   * `aesthetic: "legendary"` newest-first is the home page's showcase query. */
+  aesthetic?: AestheticRating;
   /** Case-insensitive substring across testCase/model/harness/variant, plus a gg
    * run's configuration name (what its row shows in place of a model). */
   q?: string;
@@ -135,6 +147,14 @@ function sliceIsPublished(query: RunQuery): boolean {
 function matches(summary: RunSummary, query: RunQuery): boolean {
   const { subject } = summary;
   if (query.testCase && subject.testCaseSlug !== query.testCase) return false;
+  // AND'd with `testCase` like every other filter (the backend applies both
+  // predicates independently too), so naming both narrows to their intersection.
+  // An empty list applies no filter, mirroring the empty `versions` list.
+  if (
+    query.testCases?.length &&
+    !query.testCases.includes(subject.testCaseSlug)
+  )
+    return false;
   if (query.model && subject.modelId !== query.model) return false;
   if (query.harness && subject.harnessSlug !== query.harness) return false;
   if (query.variant && subject.variant !== query.variant) return false;
@@ -148,6 +168,10 @@ function matches(summary: RunSummary, query: RunQuery): boolean {
   // it is an engineless-era run, so it reads as `none` — the same defaulting the
   // backend's deserializer and backfill apply.
   if (query.engine && (subject.engineSlug ?? "none") !== query.engine)
+    return false;
+  // A null/absent aggregate never equals a tier — the backend's NULL `aesthetic`
+  // column contract: a run no review has rated on the channel matches no filter.
+  if (query.aesthetic && (summary.aesthetic ?? null) !== query.aesthetic)
     return false;
   const q = query.q?.trim().toLowerCase();
   if (q) {

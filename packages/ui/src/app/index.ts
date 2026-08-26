@@ -55,6 +55,10 @@ export {
   type SortDir,
 } from "./data/runQuery";
 export { useTestCases, type TestCasesState } from "./data/useTestCases";
+export { useTestCaseGroups } from "./data/useTestCaseGroups";
+// The static site's local mirror of `GET /stats/cabinet` (the consoles ask the
+// backend instead).
+export { foldCabinetStats, type CabinetStats } from "./data/cabinetStats";
 export { useTestCase, type TestCaseState } from "./data/useTestCase";
 export {
   useCaseVariant,
@@ -77,6 +81,7 @@ export {
 } from "./data/models";
 export {
   type TestCaseSummary,
+  type TestCaseGroupSummary,
   type TestCaseDetail,
   type VariantSummary,
   type SeededInput,

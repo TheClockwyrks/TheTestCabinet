@@ -59,6 +59,7 @@ pub mod run_record;
 pub mod salvage;
 pub mod seeding;
 pub mod test_case;
+pub mod test_case_group;
 pub mod toolchain;
 pub mod toolchain_stage;
 pub mod validation;
@@ -178,6 +179,7 @@ pub use test_case::{
     TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec,
     WorkspaceFile, shippable_package_description,
 };
+pub use test_case_group::{TestCaseGroup, TestCaseGroupCatalog};
 pub use toolchain::{
     TOOLCHAIN_OUTPUT_LIMIT, ToolchainCommandResult, ToolchainCommands, ToolchainSmokeResult,
     ToolchainSummary, ToolchainTestRun,

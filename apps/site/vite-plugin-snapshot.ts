@@ -56,6 +56,10 @@ interface SnapshotIndex {
   // Optional so a snapshot published before comparisons existed still loads (the
   // site then has none).
   comparisonsKey?: string;
+  // Where the test-case groups live (`<prefix>/test-case-groups.json`).
+  // Optional so a snapshot published before groups existed still loads (the home
+  // page then renders no group leaderboards).
+  testCaseGroupsKey?: string;
   // Where the gg document corpus lives (`<prefix>/gg-runs.json`) — the payload the
   // public Discover surface evaluates in the browser. Optional so a snapshot published
   // before the gg export existed still loads (the site then mounts no analysis
@@ -73,6 +77,14 @@ interface SnapshotComparisonsFile {
   schemaVersion: number;
   // Wire `Comparison` shape (`@test-cabinet/run-record/comparison`); consumed as-is.
   comparisons: unknown[];
+}
+
+interface SnapshotTestCaseGroupsFile {
+  schemaVersion: number;
+  // Wire `TestCaseGroupOut` shape (`TestCaseGroupsFile` in
+  // `@test-cabinet/run-record/snapshot`), already in display order; the app
+  // consumes it as its `TestCaseGroupSummary`.
+  groups: unknown[];
 }
 
 // The gg document corpus (`gg-runs.json`): every exported gg run as one flat map of
@@ -406,6 +418,9 @@ interface AssembledSnapshot {
   // The published harness comparisons (wire `Comparison[]`), each already the full
   // read model the backend assembled. Empty when the snapshot has none.
   comparisons: unknown[];
+  // The test-case groups (wire `TestCaseGroupOut[]`), already in display order —
+  // the home page's per-group leaderboards. Empty when the snapshot predates them.
+  testCaseGroups: unknown[];
   // The gg document corpus and the instant it was exported, or null when the snapshot
   // carries none — in which case the site mounts no analysis surface. Held whole rather
   // than remapped: the app's evaluator reads these documents as they are.
@@ -663,6 +678,7 @@ const EMPTY: AssembledSnapshot = {
   testCases: [],
   models: [],
   comparisons: [],
+  testCaseGroups: [],
   ggRuns: null,
   proofMediaUrls: {},
   assetMediaUrls: {},
@@ -1288,6 +1304,21 @@ async function loadSnapshot(
     }
   }
 
+  // The test-case groups. Absent from a snapshot published before they existed,
+  // in which case the home page simply renders no group leaderboards.
+  let testCaseGroups: unknown[] = [];
+  if (index.testCaseGroupsKey) {
+    try {
+      const groupsFile = await fetchJson<SnapshotTestCaseGroupsFile>(
+        joinUrl(base, index.testCaseGroupsKey),
+      );
+      testCaseGroups = groupsFile.groups;
+    } catch {
+      // Missing/unreadable groups file: render none rather than failing the
+      // whole build.
+    }
+  }
+
   // The gg document corpus. Absent from a snapshot published before the gg export
   // existed, in which case the site mounts no analysis surface rather than an empty one.
   let ggRuns: AssembledSnapshot["ggRuns"] = null;
@@ -1315,6 +1346,7 @@ async function loadSnapshot(
     testCases: collapseCases(base, caseFiles),
     models,
     comparisons,
+    testCaseGroups,
     ggRuns,
     proofMediaUrls,
     assetMediaUrls,
@@ -1335,6 +1367,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const testCases = ${JSON.stringify(data.testCases)};`,
     `export const models = ${JSON.stringify(data.models)};`,
     `export const comparisons = ${JSON.stringify(data.comparisons)};`,
+    `export const testCaseGroups = ${JSON.stringify(data.testCaseGroups)};`,
     `export const ggRuns = ${JSON.stringify(data.ggRuns)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,

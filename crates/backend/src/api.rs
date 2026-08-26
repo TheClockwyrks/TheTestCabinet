@@ -41,6 +41,7 @@ mod models;
 mod publish_jobs;
 mod runs;
 mod stats;
+mod test_case_groups;
 mod test_cases;
 mod tournaments;
 
@@ -85,14 +86,16 @@ pub use models::{
     AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
     ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
 };
+pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 // The `/stats` response contract lives beside its folds in `crate::stats`
 // (the handlers in `api::stats` own only the corpus); re-exported here so the
 // generator names it the way it names every other response envelope.
 pub use crate::stats::{
-    ModelAccuracyOut, ModelAccuracyResponse, ProbeProviderModelOut, ProbeProviderStatsOut,
-    ProviderCallStatsOut, ProviderModelStatsOut, ProviderStatsOut, ProviderStatsResponse,
-    RacAccuracyOut, ToolCallingAccuracyOut,
+    CabinetCostOut, CabinetStatsResponse, CabinetTokensOut, CabinetWeekOut, ModelAccuracyOut,
+    ModelAccuracyResponse, ProbeProviderModelOut, ProbeProviderStatsOut, ProviderCallStatsOut,
+    ProviderModelStatsOut, ProviderStatsOut, ProviderStatsResponse, RacAccuracyOut,
+    ToolCallingAccuracyOut,
 };
 
 /// Shared application state handed to every handler.
@@ -199,10 +202,12 @@ pub fn router(state: AppState) -> Router {
         // neither path can collide with a dynamic route.
         .route("/stats/providers", get(stats::providers))
         .route("/stats/model-accuracy", get(stats::model_accuracy))
+        .route("/stats/cabinet", get(stats::cabinet))
         // Per-harness configuration (today: max parallelism). The list is an open
         // read; setting a harness's config requires a token.
         .route("/harness-config", get(harness_config::list))
         .route("/harness-config/{slug}", post(harness_config::set))
+        .route("/test-case-groups", get(test_case_groups::list))
         .route("/test-cases", get(test_cases::catalog))
         .route("/test-cases/{slug}/versions", get(test_cases::versions))
         .route(

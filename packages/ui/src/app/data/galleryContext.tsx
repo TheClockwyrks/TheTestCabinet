@@ -49,9 +49,11 @@ import type {
   DomainSummary,
   ReviewItemSummary,
   TestCaseDetail,
+  TestCaseGroupSummary,
   TestCaseSummary,
   VariantSummary,
 } from "./testCases";
+import type { CabinetStats } from "./cabinetStats";
 import type { RunQuery, RunQueryResult } from "./runQuery";
 
 /**
@@ -414,6 +416,24 @@ export interface GalleryDataInput {
   /** The catalog's load state, so the UI can tell loading and an unreachable
    * backend apart from a genuinely empty catalog. See {@link CatalogStatus}. */
   testCasesStatus: CatalogStatus;
+  /**
+   * The repo-defined test-case groups, already in display order — the home page
+   * renders one leaderboard per group (see `useTestCaseGroups`). The console
+   * fetches them from `GET /test-case-groups`; the static site reads them from
+   * the snapshot. Optional, and every consumer degrades gracefully: a host
+   * without them (or whose fetch failed) simply renders no group section.
+   */
+  testCaseGroups?: TestCaseGroupSummary[];
+  /**
+   * The cabinet's whole-of-corpus headline figures — the home page's totals
+   * band and activity chart. The console asks the backend's `GET /stats/cabinet`
+   * (whose corpus covers every recorded run, published or not); the static site
+   * folds its inlined published summaries locally with the mirrored
+   * `foldCabinetStats`. Resolves `null` when the figures cannot be produced (an
+   * unreachable backend), and is omitted by a host that cannot produce them at
+   * all; either way the home page hides the band rather than showing zeros.
+   */
+  getCabinetStats?: () => Promise<CabinetStats | null>;
   /**
    * Resolve one case in full by slug — its description, variants (prompts,
    * seeded specs, references, checklists), changelog, and errata. The detail

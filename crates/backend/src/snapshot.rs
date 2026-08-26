@@ -246,6 +246,12 @@ pub struct SnapshotBuilder {
     /// [`crate::gg_docs::public_documents`]). Empty by default, which emits an empty
     /// corpus file — the dev/single-box path and the unit tests.
     gg_documents: Vec<test_cabinet_core::gg_query::GgRunDoc>,
+    /// The ingested test-case groups to export as this snapshot's
+    /// `test-case-groups.json`, already in display order and already mapped to the
+    /// wire shape `GET /test-case-groups` serves (the publisher reads the set from
+    /// the definition store). Empty by default, which emits an empty set — the
+    /// dev/single-box path and the unit tests.
+    test_case_groups: Vec<crate::api::TestCaseGroupOut>,
 }
 
 impl SnapshotBuilder {
@@ -271,6 +277,7 @@ impl SnapshotBuilder {
             reviewer_pictures: std::collections::HashMap::new(),
             comparisons: Vec::new(),
             gg_documents: Vec::new(),
+            test_case_groups: Vec::new(),
         }
     }
 
@@ -315,6 +322,18 @@ impl SnapshotBuilder {
         comparisons: Vec<test_cabinet_core::comparison::Comparison>,
     ) -> Self {
         self.comparisons = comparisons;
+        self
+    }
+
+    /// Supply the ingested test-case groups to export as this snapshot's
+    /// `test-case-groups.json`, in the display order the store serves them. Empty
+    /// (the default) emits an empty set, which the site renders as a home page
+    /// with no group leaderboards.
+    pub fn with_test_case_groups(
+        mut self,
+        test_case_groups: Vec<crate::api::TestCaseGroupOut>,
+    ) -> Self {
+        self.test_case_groups = test_case_groups;
         self
     }
 
@@ -647,6 +666,20 @@ impl SnapshotBuilder {
             },
         )?);
 
+        // test-case-groups.json — the ingested test-case-group set, in the order
+        // `GET /test-case-groups` serves it, so the static gallery's home page
+        // renders the same leaderboards the consoles do. Every sibling object must
+        // decide about the secret scrub (see the gg-runs note below): this one
+        // deliberately does not opt in — the set is repo-authored catalog data
+        // (committed slugs and display names), never model-written content.
+        objects.push(json_object(
+            format!("{prefix}/test-case-groups.json"),
+            &TestCaseGroupsFile {
+                schema_version: SCHEMA_VERSION,
+                groups: self.test_case_groups.clone(),
+            },
+        )?);
+
         // comparisons.json — the published harness comparisons, each a full read
         // model (arms + distributions + diagnostics), plus a per-comparison file for
         // a direct fetch. Like the game-jam aggregate (and unlike the live-only
@@ -729,6 +762,7 @@ impl SnapshotBuilder {
                 comparisons_key: format!("{prefix}/comparisons.json"),
                 comparisons_prefix: format!("{prefix}/comparisons/"),
                 gg_runs_key: format!("{prefix}/gg-runs.json"),
+                test_case_groups_key: Some(format!("{prefix}/test-case-groups.json")),
             },
         )?;
 
@@ -1960,6 +1994,13 @@ pub struct SnapshotIndex {
     /// Where this snapshot's gg document corpus lives (`<prefix>/gg-runs.json`) — the
     /// payload the public Discover surface evaluates in the browser.
     pub gg_runs_key: String,
+    /// Where this snapshot's test-case-group set lives
+    /// (`<prefix>/test-case-groups.json`). Optional on the wire because it
+    /// postdates the other keys: a snapshot written before groups existed carries
+    /// none, and a reader treats the absent key as an empty group set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub test_case_groups_key: Option<String>,
 }
 
 /// The gg document corpus file (`gg-runs.json`): every exported gg run as one flat map
@@ -2014,6 +2055,19 @@ pub struct ComparisonFile {
 pub struct ModelCatalogFile {
     pub schema_version: u32,
     pub models: Vec<ModelOut>,
+}
+
+/// The test-case-group set file (`test-case-groups.json`): the ingested groups
+/// in the order `GET /test-case-groups` serves them, from which the public site
+/// renders the home page's per-group leaderboards. Repo-authored catalog data,
+/// uploaded as built (no scrubbing — see the builder's emission site).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct TestCaseGroupsFile {
+    pub schema_version: u32,
+    /// The groups, in display order — the same wire shape the live API serves.
+    pub groups: Vec<crate::api::TestCaseGroupOut>,
 }
 
 /// The flat index of run summary cards (`runs.json`), newest first.

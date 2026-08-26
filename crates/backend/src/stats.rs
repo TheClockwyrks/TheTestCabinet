@@ -1,6 +1,8 @@
 //! The pure folds behind the `/stats` endpoints: per-provider health and
 //! per-model accuracy, aggregated across every stored gg run — plus the probe
-//! store's per-provider evidence, folded from a column projection.
+//! store's per-provider evidence, folded from a column projection — and the
+//! cabinet's whole-of-corpus headline figures (`/stats/cabinet`), folded from a
+//! five-column projection over every stored run.
 //!
 //! The division of labour follows the coverage surface: the handlers in
 //! [`crate::api`] own the HTTP surface and resolve the corpus, and everything
@@ -591,4 +593,169 @@ fn fold_error_groups(acc: &mut RacAccuracyOut, by_type: &BTreeMap<String, u64>) 
         };
         *group += count;
     }
+}
+
+// --- Cabinet statistics (`GET /stats/cabinet`) -------------------------------
+
+/// One run's `/stats/cabinet` projection: its RFC 3339 start time, lifted token
+/// total, comparable cost, test-case slug, and model id — the five lifted `run`
+/// columns [`fold_cabinet_stats`] reads, projected across the **whole** corpus
+/// (every state, published or not) by [`crate::db::Db::cabinet_stat_rows`].
+pub type CabinetRunRow = (String, i64, Option<f64>, String, String);
+
+/// The `GET /stats/cabinet` response: the cabinet's headline totals plus the
+/// weekly activity series the home page charts.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CabinetStatsResponse {
+    /// Every recorded run, whatever its state or publication.
+    pub runs: u64,
+    /// The summed token totals, with the honesty counter beside the sum.
+    pub tokens: CabinetTokensOut,
+    /// The summed comparable USD cost, with the honesty counter beside the sum.
+    pub cost: CabinetCostOut,
+    /// Distinct test-case slugs across the corpus.
+    pub test_cases: u64,
+    /// Distinct model ids across the corpus.
+    pub models: u64,
+    /// Runs per ISO week (UTC Mondays), the last 26 weeks up to
+    /// now inclusive, ascending, with explicit zero entries for empty weeks so a
+    /// consumer charts the series without filling gaps.
+    pub weekly: Vec<CabinetWeekOut>,
+}
+
+/// The cabinet's token total and its unreported-run counter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CabinetTokensOut {
+    /// Total tokens across the runs that reported any.
+    pub total: u64,
+    /// Runs whose metrics reported no tokens; they contribute nothing to the
+    /// total.
+    pub unreported_runs: u64,
+}
+
+/// The cabinet's comparable-cost total and its unreported-run counter.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CabinetCostOut {
+    /// Summed comparable cost (USD) across the runs whose cost is known.
+    pub total: f64,
+    /// Runs whose comparable cost is unknown (a `NULL` lifted column); they
+    /// contribute nothing to the total.
+    pub unreported_runs: u64,
+}
+
+/// One week of the cabinet's activity series.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CabinetWeekOut {
+    /// The week's UTC Monday, as `YYYY-MM-DD`.
+    pub week_start: String,
+    /// Runs whose `started_at` falls in that ISO week.
+    pub runs: u64,
+}
+
+/// How many weeks the cabinet's activity series covers, the newest being the
+/// current (partial) week.
+const CABINET_WEEKS: i64 = 26;
+
+/// Fold the whole-corpus projection into the `/stats/cabinet` response. `now`
+/// anchors the weekly window's newest bucket and is passed in by the handler so
+/// the fold stays a pure function of its inputs.
+///
+/// Two honesty rules, both about the lifted columns rather than the records:
+///
+/// * The lifted `total_tokens` column stores `0` for a run whose metrics
+///   reported no tokens at all (the record's total is `None` — see
+///   [`TokenCounts::total`](test_cabinet_core::metrics::TokenCounts::total)),
+///   which the projection cannot tell apart from a genuine zero. A `0` is
+///   therefore counted as **unreported** — a run that truly consumed zero
+///   tokens reported nothing worth summing, so the approximation costs the
+///   total nothing and keeps the counter truthful for the overwhelmingly common
+///   case (a harness that reports no usage).
+/// * A `NULL` `cost_comparable` is an unknown cost, distinct from a free run's
+///   genuine `0.0`: unknowns are excluded from the sum and counted, never
+///   defaulted to zero.
+///
+/// The weekly series buckets each run by the UTC Monday of the ISO week its
+/// `started_at` falls in, computed in Rust (no SQL date functions — SQLite and
+/// Postgres must fold identically). A run outside the window — older than the
+/// oldest bucket, or stamped after `now`'s week by clock skew — still counts in
+/// every total but charts nowhere; so does a run whose `started_at` does not
+/// parse, since it cannot be placed in any week.
+pub fn fold_cabinet_stats(
+    rows: &[CabinetRunRow],
+    now: time::OffsetDateTime,
+) -> CabinetStatsResponse {
+    use time::format_description::well_known::Rfc3339;
+
+    let this_week = week_monday(now.to_offset(time::UtcOffset::UTC).date());
+    let mut weekly: BTreeMap<time::Date, u64> = (0..CABINET_WEEKS)
+        .map(|weeks_back| (this_week - time::Duration::weeks(weeks_back), 0))
+        .collect();
+
+    let mut tokens = CabinetTokensOut {
+        total: 0,
+        unreported_runs: 0,
+    };
+    let mut cost = CabinetCostOut {
+        total: 0.0,
+        unreported_runs: 0,
+    };
+    let mut test_cases: BTreeSet<&str> = BTreeSet::new();
+    let mut models: BTreeSet<&str> = BTreeSet::new();
+    for (started_at, total_tokens, cost_comparable, test_case_slug, model_id) in rows {
+        if *total_tokens > 0 {
+            tokens.total += *total_tokens as u64;
+        } else {
+            tokens.unreported_runs += 1;
+        }
+        match cost_comparable {
+            Some(comparable) => cost.total += comparable,
+            None => cost.unreported_runs += 1,
+        }
+        test_cases.insert(test_case_slug);
+        models.insert(model_id);
+        if let Ok(started) = time::OffsetDateTime::parse(started_at, &Rfc3339)
+            && let Some(count) =
+                weekly.get_mut(&week_monday(started.to_offset(time::UtcOffset::UTC).date()))
+        {
+            *count += 1;
+        }
+    }
+
+    CabinetStatsResponse {
+        runs: rows.len() as u64,
+        tokens,
+        cost,
+        test_cases: test_cases.len() as u64,
+        models: models.len() as u64,
+        weekly: weekly
+            .into_iter()
+            .map(|(monday, runs)| CabinetWeekOut {
+                week_start: format_week_start(monday),
+                runs,
+            })
+            .collect(),
+    }
+}
+
+/// The UTC Monday beginning `date`'s ISO week — the cabinet activity series'
+/// bucket key. Pure date math, so both database backends bucket identically.
+fn week_monday(date: time::Date) -> time::Date {
+    date - time::Duration::days(i64::from(date.weekday().number_days_from_monday()))
+}
+
+/// A bucket key as the wire's `YYYY-MM-DD`.
+fn format_week_start(monday: time::Date) -> String {
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+    const WEEK_START: &[FormatItem<'_>] = format_description!("[year]-[month]-[day]");
+    // The format has no offset/zone items, so formatting a `Date` cannot fail.
+    monday.format(WEEK_START).expect("date-only format")
 }

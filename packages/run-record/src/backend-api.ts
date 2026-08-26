@@ -62,6 +62,42 @@ export type CatalogResponse = { testCases: Array<CatalogCase> };
 export type VersionsResponse = { slug: string; versions: Array<string> };
 
 /**
+ * One test-case group as served — the manifest minus `rank`, which orders the
+ * listing server-side and deliberately does not ride the wire.
+ */
+export type TestCaseGroupOut = {
+  /**
+   * The group's stable slug.
+   */
+  slug: string;
+  /**
+   * Display name, heading the group's home-page leaderboard.
+   */
+  name: string;
+  /**
+   * Optional one-line description, or null.
+   */
+  summary: string | null;
+  /**
+   * The ordered member test-case/game-jam slugs, by manifest-declared
+   * identity (the slug run records carry).
+   */
+  cases: Array<string>;
+};
+
+/**
+ * The `GET /test-case-groups` envelope: the groups under a wrapping key so the
+ * response can grow new fields without breaking readers, like the catalog's.
+ */
+export type TestCaseGroupsResponse = {
+  /**
+   * Every ingested group, in display order (rank ascending then name, with
+   * ranked groups before unranked ones — resolved at ingest).
+   */
+  groups: Array<TestCaseGroupOut>;
+};
+
+/**
  * `GET /models` — the merged model catalog.
  */
 export type ModelCatalogResponse = { models: Array<ModelOut> };
@@ -756,4 +792,81 @@ export type ToolCallingAccuracyOut = {
    * — records that predate the total, whose rate cannot be stated.
    */
   runsWithoutCallTotals: number;
+};
+
+/**
+ * The `GET /stats/cabinet` response: the cabinet's headline totals plus the
+ * weekly activity series the home page charts.
+ */
+export type CabinetStatsResponse = {
+  /**
+   * Every recorded run, whatever its state or publication.
+   */
+  runs: number;
+  /**
+   * The summed token totals, with the honesty counter beside the sum.
+   */
+  tokens: CabinetTokensOut;
+  /**
+   * The summed comparable USD cost, with the honesty counter beside the sum.
+   */
+  cost: CabinetCostOut;
+  /**
+   * Distinct test-case slugs across the corpus.
+   */
+  testCases: number;
+  /**
+   * Distinct model ids across the corpus.
+   */
+  models: number;
+  /**
+   * Runs per ISO week (UTC Mondays), the last 26 weeks up to
+   * now inclusive, ascending, with explicit zero entries for empty weeks so a
+   * consumer charts the series without filling gaps.
+   */
+  weekly: Array<CabinetWeekOut>;
+};
+
+/**
+ * The cabinet's token total and its unreported-run counter.
+ */
+export type CabinetTokensOut = {
+  /**
+   * Total tokens across the runs that reported any.
+   */
+  total: number;
+  /**
+   * Runs whose metrics reported no tokens; they contribute nothing to the
+   * total.
+   */
+  unreportedRuns: number;
+};
+
+/**
+ * The cabinet's comparable-cost total and its unreported-run counter.
+ */
+export type CabinetCostOut = {
+  /**
+   * Summed comparable cost (USD) across the runs whose cost is known.
+   */
+  total: number;
+  /**
+   * Runs whose comparable cost is unknown (a `NULL` lifted column); they
+   * contribute nothing to the total.
+   */
+  unreportedRuns: number;
+};
+
+/**
+ * One week of the cabinet's activity series.
+ */
+export type CabinetWeekOut = {
+  /**
+   * The week's UTC Monday, as `YYYY-MM-DD`.
+   */
+  weekStart: string;
+  /**
+   * Runs whose `started_at` falls in that ISO week.
+   */
+  runs: number;
 };

@@ -59,6 +59,11 @@ pub enum Command {
     /// List the built-in engines — the runtimes a produced game can be built on.
     Engines(EnginesArgs),
 
+    /// List the test-case groups — the repo-defined sets of related cases the
+    /// home page presents — and each one's member cases.
+    #[command(name = "test-case-groups")]
+    TestCaseGroups(TestCaseGroupsArgs),
+
     /// Seed a test case version into a folder to inspect what a run's harness
     /// receives as input, without launching a container.
     Seed(SeedArgs),
@@ -310,6 +315,14 @@ pub struct OrchestratorsArgs {
 /// Arguments for `tcab engines`.
 #[derive(Debug, Args)]
 pub struct EnginesArgs {
+    /// Emit the listing as JSON instead of a human-readable table.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Arguments for `tcab test-case-groups`.
+#[derive(Debug, Args)]
+pub struct TestCaseGroupsArgs {
     /// Emit the listing as JSON instead of a human-readable table.
     #[arg(long)]
     pub json: bool,

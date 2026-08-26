@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import type { Rating } from "../../ratings";
+import type { AestheticRating, Rating } from "../../ratings";
 import { runSummaryPage } from "./runQuery";
 
 // A summary card carrying the fields the query reads. Every non-supplied field
@@ -18,6 +18,7 @@ function summary(
     tokens?: number | null;
     cost?: number | null;
     rating?: Rating | null;
+    aesthetic?: AestheticRating | null;
     ggPreset?: string | null;
   } = {},
 ): RunSummary {
@@ -54,6 +55,7 @@ function summary(
     validationLoaded: true,
     state: "completed",
     rating: fields.rating === undefined ? "great" : fields.rating,
+    aesthetic: fields.aesthetic ?? null,
     reviewCount: 0,
     links: { sourceRepo: null, playableBuild: null },
   } as unknown as RunSummary;
@@ -115,6 +117,67 @@ describe("runSummaryPage", () => {
       ids(runSummaryPage(runs, { testCase: "carom", version: "v2.0.0" })),
     ).toEqual(["b"]);
     expect(runSummaryPage(runs, { version: "" }).total).toBe(3);
+  });
+
+  // Mirrors the backend's `list_summaries_filters_by_a_test_cases_list`.
+  it("filters by a testCases list, ANDing it with the single testCase", () => {
+    // The home page's group-leaderboard slice: one query covers a test-case
+    // group's member cases; any of them matches.
+    const runs = [
+      summary("a", { testCase: "pong" }),
+      summary("b", { testCase: "meltdown" }),
+      summary("c", { testCase: "valence" }),
+    ];
+    expect(
+      ids(runSummaryPage(runs, { testCases: ["pong", "valence"] })).sort(),
+    ).toEqual(["a", "c"]);
+    // It ANDs with `testCase` — naming both narrows to their intersection, the
+    // written-down semantic the backend implements too…
+    expect(
+      ids(
+        runSummaryPage(runs, {
+          testCase: "pong",
+          testCases: ["pong", "valence"],
+        }),
+      ),
+    ).toEqual(["a"]);
+    // …which can be empty when the single case is not in the list.
+    expect(
+      runSummaryPage(runs, { testCase: "meltdown", testCases: ["pong"] }).total,
+    ).toBe(0);
+    // An empty list is no filter at all, like the empty `versions` list.
+    expect(runSummaryPage(runs, { testCases: [] }).total).toBe(3);
+  });
+
+  // Mirrors the backend's `list_summaries_test_cases_list_composes_with_latest_versions`.
+  it("the testCases list composes with latestVersions", () => {
+    // Unlike the explicit `versions` list, the case list carries no version
+    // instruction, so `latestVersions` still narrows each member to its current
+    // `major.minor`.
+    const runs = [
+      summary("a", { testCase: "pong", version: "v1.0.0" }),
+      summary("b", { testCase: "pong", version: "v2.0.0" }),
+      summary("c", { testCase: "meltdown", version: "v1.0.0" }),
+    ];
+    expect(
+      ids(runSummaryPage(runs, { testCases: ["pong"], latestVersions: true })),
+    ).toEqual(["b"]);
+  });
+
+  // Mirrors the backend's
+  // `list_summaries_filters_by_aesthetic_and_unrated_runs_never_match`.
+  it("filters by aesthetic, and unrated runs never match", () => {
+    const runs = [
+      summary("a", { aesthetic: "legendary" }),
+      summary("b", { aesthetic: "slop" }),
+      // `c` carries no aesthetic rating at all: null matches no tier.
+      summary("c", { aesthetic: null }),
+    ];
+    expect(ids(runSummaryPage(runs, { aesthetic: "legendary" }))).toEqual([
+      "a",
+    ]);
+    expect(ids(runSummaryPage(runs, { aesthetic: "slop" }))).toEqual(["b"]);
+    expect(runSummaryPage(runs, {}).total).toBe(3);
   });
 
   it("latestVersions keeps each case's current major.minor", () => {

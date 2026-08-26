@@ -427,6 +427,39 @@ async fn snapshot_emits_the_composed_model_catalog() {
 }
 
 #[tokio::test]
+async fn snapshot_emits_the_test_case_group_set() {
+    let (_tmp, store) = empty_store();
+    let group = crate::api::TestCaseGroupOut {
+        slug: "tower-defense".to_string(),
+        name: "Tower Defense".to_string(),
+        summary: Some("Mazes and waves.".to_string()),
+        cases: vec!["meltdown".to_string(), "valence".to_string()],
+    };
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_test_case_groups(vec![group])
+        .build(now())
+        .await
+        .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let groups = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/test-case-groups.json"))
+        .expect("test-case-groups.json present");
+    let body: serde_json::Value = serde_json::from_slice(&groups.bytes).unwrap();
+    assert_eq!(body["groups"][0]["slug"], "tower-defense");
+    assert_eq!(body["groups"][0]["cases"][1], "valence");
+    // The index names the file under its optional key (absent only on snapshots
+    // written before groups existed).
+    let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
+    assert_eq!(
+        index["testCaseGroupsKey"],
+        format!("{prefix}/test-case-groups.json")
+    );
+}
+
+#[tokio::test]
 async fn index_points_at_the_versioned_prefix() {
     let (_tmp, store) = empty_store();
     let snapshot = SnapshotBuilder::new(

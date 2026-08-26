@@ -547,6 +547,7 @@ fn main() -> Result<()> {
                 snap::CaseVariantRenderingOut, snap::CaseVariantOut,
                 snap::CaseMetadata,
                 snap::ModelCatalogFile,
+                snap::TestCaseGroupsFile,
                 snap::ComparisonsIndex, snap::ComparisonFile,
                 snap::GgRunsFile,
             ],
@@ -557,6 +558,7 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 berr::ErrorBody, berr::ErrorEnvelope, bapi::CatalogCase, bapi::CatalogResponse,
                 bapi::VersionsResponse,
+                bapi::TestCaseGroupOut, bapi::TestCaseGroupsResponse,
                 bapi::ModelCatalogResponse, bapi::AliasOut, bapi::ModelOut, bapi::ModelPricesOut,
                 bapi::PriceObservationOut, bapi::AliasInput, bapi::ModelConfigInput,
                 bapi::ModelSeedOut, bapi::ModelListingOut, bapi::LogoFetchInput,
@@ -570,6 +572,8 @@ fn main() -> Result<()> {
                 bapi::ProviderCallStatsOut, bapi::ProbeProviderStatsOut, bapi::ProbeProviderModelOut,
                 bapi::ModelAccuracyResponse, bapi::ModelAccuracyOut, bapi::RacAccuracyOut,
                 bapi::ToolCallingAccuracyOut,
+                bapi::CabinetStatsResponse, bapi::CabinetTokensOut, bapi::CabinetCostOut,
+                bapi::CabinetWeekOut,
             ],
         },
         // The backend's run-queue control plane (the `/jobs` namespace) — what

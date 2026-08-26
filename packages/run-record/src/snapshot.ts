@@ -7,7 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { ModelOut } from "./backend-api";
+import type { ModelOut, TestCaseGroupOut } from "./backend-api";
 import type { CodeAuthoredBasis, CodeTreeBasis } from "./code-analysis";
 import type { Comparison } from "./comparison";
 import type { GgRunDoc } from "./gg-query";
@@ -67,6 +67,13 @@ export type SnapshotIndex = {
    * payload the public Discover surface evaluates in the browser.
    */
   ggRunsKey: string;
+  /**
+   * Where this snapshot's test-case-group set lives
+   * (`<prefix>/test-case-groups.json`). Optional on the wire because it
+   * postdates the other keys: a snapshot written before groups existed carries
+   * none, and a reader treats the absent key as an empty group set.
+   */
+  testCaseGroupsKey?: string;
 };
 
 /**
@@ -869,6 +876,20 @@ export type CaseMetadata = {
 export type ModelCatalogFile = {
   schemaVersion: number;
   models: Array<ModelOut>;
+};
+
+/**
+ * The test-case-group set file (`test-case-groups.json`): the ingested groups
+ * in the order `GET /test-case-groups` serves them, from which the public site
+ * renders the home page's per-group leaderboards. Repo-authored catalog data,
+ * uploaded as built (no scrubbing — see the builder's emission site).
+ */
+export type TestCaseGroupsFile = {
+  schemaVersion: number;
+  /**
+   * The groups, in display order — the same wire shape the live API serves.
+   */
+  groups: Array<TestCaseGroupOut>;
 };
 
 /**

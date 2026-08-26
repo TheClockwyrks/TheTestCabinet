@@ -72,6 +72,11 @@ import type {
   RunSummary,
 } from "@test-cabinet/run-record/snapshot";
 import type {
+  CabinetStatsResponse,
+  TestCaseGroupOut,
+  TestCaseGroupsResponse,
+} from "@test-cabinet/run-record/backend-api";
+import type {
   BulkCancelOut,
   GgRunRequest,
   LaunchAck,
@@ -474,6 +479,17 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       }));
     },
 
+    async listTestCaseGroups(): Promise<TestCaseGroupOut[]> {
+      // Served already in display order (rank ascending then name, resolved at
+      // ingest — rank never rides the wire); unwrapped from the `groups`
+      // envelope and consumed as-is.
+      const { groups } = await getJson<TestCaseGroupsResponse>(
+        baseUrl,
+        "/test-case-groups",
+      );
+      return groups;
+    },
+
     async listVersions(slug: string): Promise<string[]> {
       const { versions } = await getJson<VersionsResponse>(
         baseUrl,
@@ -721,6 +737,12 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       // The wire shape matches `ModelAccuracy` field-for-field (camelCase),
       // no envelope to unwrap.
       return getJson<ModelAccuracy>(baseUrl, "/stats/model-accuracy");
+    },
+
+    async getCabinetStats(): Promise<CabinetStatsResponse> {
+      // The wire shape matches `CabinetStatsResponse` field-for-field
+      // (camelCase), no envelope to unwrap.
+      return getJson<CabinetStatsResponse>(baseUrl, "/stats/cabinet");
     },
 
     async listCoverageGroups(token: string): Promise<CoverageGroup[]> {
@@ -1320,6 +1342,10 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (opts?.offset != null) params.set("offset", String(opts.offset));
       if (opts?.state) params.set("state", opts.state);
       if (opts?.testCase) params.set("testCase", opts.testCase);
+      // Like `versions`, the case list rides as one comma-separated param
+      // (`testCases=meltdown,valence`), matching the backend's split-and-trim.
+      if (opts?.testCases?.length)
+        params.set("testCases", opts.testCases.join(","));
       if (opts?.model) params.set("model", opts.model);
       if (opts?.harness) params.set("harness", opts.harness);
       if (opts?.variant) params.set("variant", opts.variant);
@@ -1332,6 +1358,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       // Only sent when on: the backend defaults it off, so the common URL stays
       // free of a redundant `latestVersions=false`.
       if (opts?.latestVersions) params.set("latestVersions", "true");
+      if (opts?.aesthetic) params.set("aesthetic", opts.aesthetic);
       if (opts?.q) params.set("q", opts.q);
       if (opts?.sort) params.set("sort", opts.sort);
       if (opts?.dir) params.set("dir", opts.dir);

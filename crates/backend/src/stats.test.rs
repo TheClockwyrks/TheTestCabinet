@@ -398,3 +398,119 @@ fn probe_items_fold_per_provider_and_model() {
     assert_eq!(providerless.provider, None);
     assert_eq!(providerless.models[0].errored, 1);
 }
+
+// --- fold_cabinet_stats ------------------------------------------------------
+
+/// A Wednesday anchor for the cabinet fold: its week's Monday is 2026-08-24, so
+/// the 26-week window opens on 2026-03-02.
+fn cabinet_now() -> time::OffsetDateTime {
+    time::macros::datetime!(2026-08-26 12:00 UTC)
+}
+
+/// A cabinet projection row with everything reported.
+fn cabinet_row(
+    started_at: &str,
+    tokens: i64,
+    cost: Option<f64>,
+    case: &str,
+    model: &str,
+) -> CabinetRunRow {
+    (
+        started_at.to_string(),
+        tokens,
+        cost,
+        case.to_string(),
+        model.to_string(),
+    )
+}
+
+#[test]
+fn an_empty_cabinet_still_charts_the_full_window_of_zero_weeks() {
+    let stats = fold_cabinet_stats(&[], cabinet_now());
+    assert_eq!(stats.runs, 0);
+    assert_eq!(stats.tokens.total, 0);
+    assert_eq!(stats.tokens.unreported_runs, 0);
+    assert_eq!(stats.cost.total, 0.0);
+    assert_eq!(stats.cost.unreported_runs, 0);
+    assert_eq!(stats.test_cases, 0);
+    assert_eq!(stats.models, 0);
+    // Explicit zero entries for every week, ascending, Mondays throughout.
+    assert_eq!(stats.weekly.len(), 26);
+    assert_eq!(stats.weekly.first().unwrap().week_start, "2026-03-02");
+    assert_eq!(stats.weekly.last().unwrap().week_start, "2026-08-24");
+    assert!(stats.weekly.iter().all(|week| week.runs == 0));
+}
+
+#[test]
+fn cabinet_totals_exclude_and_count_unreported_tokens_and_cost() {
+    let rows = vec![
+        cabinet_row("2026-08-25T10:00:00Z", 1_000, Some(2.5), "pong", "sonnet"),
+        // A lifted `0` is an unreported token total (the record's `None` stores
+        // as zero), and a NULL cost is unknown: both count, neither sums.
+        cabinet_row("2026-08-25T11:00:00Z", 0, None, "pong", "opus"),
+        cabinet_row("2026-08-25T12:00:00Z", 500, Some(0.0), "meltdown", "sonnet"),
+    ];
+    let stats = fold_cabinet_stats(&rows, cabinet_now());
+    assert_eq!(stats.runs, 3);
+    assert_eq!(stats.tokens.total, 1_500);
+    assert_eq!(stats.tokens.unreported_runs, 1);
+    // A genuine 0.0 (a free run) is a known cost: summed, not counted.
+    assert_eq!(stats.cost.total, 2.5);
+    assert_eq!(stats.cost.unreported_runs, 1);
+    // Distinct identities, not row counts.
+    assert_eq!(stats.test_cases, 2);
+    assert_eq!(stats.models, 2);
+}
+
+#[test]
+fn cabinet_weekly_buckets_by_the_utc_monday_of_the_iso_week() {
+    let rows = vec![
+        // Monday and Sunday of one ISO week share its Monday bucket…
+        cabinet_row("2026-08-17T00:00:00Z", 1, None, "pong", "m"),
+        cabinet_row("2026-08-23T23:59:59Z", 1, None, "pong", "m"),
+        // …and the bucketing is on the UTC instant: late Sunday in a +02:00
+        // offset is already Monday nowhere, but 23:30+02:00 is 21:30 UTC Sunday.
+        cabinet_row("2026-08-23T23:30:00+02:00", 1, None, "pong", "m"),
+        // The current (partial) week is included…
+        cabinet_row("2026-08-26T09:00:00Z", 1, None, "pong", "m"),
+        // …a run older than the window counts in the totals but charts nowhere…
+        cabinet_row("2025-01-01T00:00:00Z", 1, None, "pong", "m"),
+        // …and so does one whose timestamp does not parse.
+        cabinet_row("not-a-timestamp", 1, None, "pong", "m"),
+    ];
+    let stats = fold_cabinet_stats(&rows, cabinet_now());
+    assert_eq!(stats.runs, 6);
+    let week = |start: &str| {
+        stats
+            .weekly
+            .iter()
+            .find(|week| week.week_start == start)
+            .unwrap_or_else(|| panic!("week {start} missing"))
+            .runs
+    };
+    assert_eq!(week("2026-08-17"), 3);
+    assert_eq!(week("2026-08-24"), 1);
+    assert_eq!(stats.weekly.iter().map(|week| week.runs).sum::<u64>(), 4);
+    // Ascending, and every entry a Monday one week apart.
+    let starts: Vec<&str> = stats
+        .weekly
+        .iter()
+        .map(|week| week.week_start.as_str())
+        .collect();
+    let mut sorted = starts.clone();
+    sorted.sort();
+    assert_eq!(starts, sorted);
+}
+
+#[test]
+fn week_monday_is_identity_on_mondays_and_floors_the_rest_of_the_week() {
+    let monday = time::macros::date!(2026 - 08 - 24);
+    assert_eq!(week_monday(monday), monday);
+    assert_eq!(week_monday(time::macros::date!(2026 - 08 - 30)), monday);
+    // A year boundary inside a week floors into the old year.
+    assert_eq!(
+        week_monday(time::macros::date!(2026 - 01 - 01)),
+        time::macros::date!(2025 - 12 - 29)
+    );
+    assert_eq!(format_week_start(monday), "2026-08-24");
+}

@@ -1373,6 +1373,25 @@ impl Db {
         Ok(rows.into_iter().collect())
     }
 
+    /// The `/stats/cabinet` projection: every stored run's start time, lifted
+    /// token total, comparable cost, case slug, and model id — five lifted
+    /// columns across the **whole** corpus (every state, published or not),
+    /// folded in Rust by [`fold_cabinet_stats`](crate::stats::fold_cabinet_stats).
+    /// No SQL aggregation or date function is used, so SQLite and Postgres fold
+    /// identically.
+    pub async fn cabinet_stat_rows(&self) -> Result<Vec<crate::stats::CabinetRunRow>> {
+        Ok(run::Entity::find()
+            .select_only()
+            .column(run::Column::StartedAt)
+            .column(run::Column::TotalTokens)
+            .column(run::Column::CostComparable)
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::ModelId)
+            .into_tuple()
+            .all(&self.conn())
+            .await?)
+    }
+
     /// The total number of published runs (the count that lands in the snapshot).
     pub async fn run_count(&self) -> Result<i64> {
         Ok(run::Entity::find()
@@ -4285,6 +4304,14 @@ pub struct SummaryFilter {
     pub state: SummaryState,
     /// Restrict to one test-case slug (`test_case_slug`).
     pub test_case: Option<String>,
+    /// Restrict to a list of test-case slugs (`test_case_slug` ∈ the list) — the
+    /// home page's group-leaderboard slice: one query covers a [test-case
+    /// group](test_cabinet_core::TestCaseGroup)'s member cases. Like every other
+    /// filter it ANDs, [`Self::test_case`] included, so naming both narrows to
+    /// their intersection (the semantic `api.md` documents and the console's
+    /// `runQuery.ts` `matches` mirrors), and [`Self::latest_versions`] composes
+    /// with it as with any case slice. An empty or absent list applies no filter.
+    pub test_cases: Option<Vec<String>>,
     /// Restrict to one model (`model_id`).
     pub model: Option<String>,
     /// Restrict to one harness (`harness_slug`).
@@ -4328,6 +4355,13 @@ pub struct SummaryFilter {
     /// is the more specific instruction, and AND'ing the two would silently empty
     /// the listing whenever the picked version is not the current one.
     pub latest_versions: bool,
+    /// Restrict to runs whose aggregate **aesthetic** rating is exactly this wire
+    /// token (`legendary`/`amazing`/`good`/`okay`/`slop`) — an equality on the
+    /// lifted `aesthetic` column. A `NULL` column (no review has rated the
+    /// channel) matches no token, so an unrated run never appears in an
+    /// aesthetic-filtered listing. `aesthetic=legendary` newest-first is the home
+    /// page's showcase query.
+    pub aesthetic: Option<String>,
     /// Free-text query matched case-insensitively (LIKE `%q%`) across
     /// `test_case_slug`, `model_id`, `harness_slug`, `variant`, and `gg_preset` —
     /// the last so a gg run is findable by the configuration name its row shows in
@@ -4467,6 +4501,17 @@ fn summary_query(filter: &SummaryFilter, scope: Option<&[CaseVersions]>) -> Sele
     }
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));
+    }
+    if let Some(test_cases) = filter.test_cases.as_deref().filter(|v| !v.is_empty()) {
+        // AND'd with `test_case` like every other filter, so naming both narrows
+        // to their intersection (see [`SummaryFilter::test_cases`]).
+        query =
+            query.filter(run::Column::TestCaseSlug.is_in(test_cases.iter().map(String::as_str)));
+    }
+    if let Some(aesthetic) = filter.aesthetic.as_deref().filter(|s| !s.is_empty()) {
+        // A NULL column never equals a token, which is the contract: a run no
+        // review has rated on the aesthetic channel matches no tier.
+        query = query.filter(run::Column::Aesthetic.eq(aesthetic));
     }
     if let Some(model) = filter.model.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::ModelId.eq(model));

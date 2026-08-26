@@ -49,6 +49,10 @@ import type {
 } from "./types";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  CabinetStatsResponse,
+  TestCaseGroupOut,
+} from "@test-cabinet/run-record/backend-api";
+import type {
   BulkCancelOut,
   GgRunRequest,
   LaunchAck,
@@ -238,6 +242,15 @@ export interface BackendClient {
   /** Per-model RaC and tool-calling accuracy across recorded gg runs
    * (`GET /stats/model-accuracy`). */
   getModelAccuracy?(): Promise<ModelAccuracy>;
+  /**
+   * The cabinet's whole-of-corpus headline figures (`GET /stats/cabinet`) — the
+   * home page's totals band and activity chart. An open read over every stored
+   * run, whatever its state or publication. Required rather than optional like
+   * the gg stats folds above: the one transport here is the backend's, which
+   * always serves it — the static site supplies the gallery-level
+   * `getCabinetStats` from its own local fold instead of a client.
+   */
+  getCabinetStats(): Promise<CabinetStatsResponse>;
 
   // Per-harness configuration (`GET /harness-config` open; the setter Bearer). The
   // list enumerates every harness with its current knobs (today: max parallelism);
@@ -254,6 +267,13 @@ export interface BackendClient {
   ): Promise<HarnessConfigEntry[]>;
 
   listTestCases(): Promise<TestCase[]>;
+  /**
+   * The repo-defined test-case groups (`GET /test-case-groups`), already in
+   * display order — the home page renders one leaderboard per group. An open
+   * read of ingested catalog data, like {@link listTestCases}; distinct from the
+   * per-account coverage groups (`listCoverageGroups`).
+   */
+  listTestCaseGroups(): Promise<TestCaseGroupOut[]>;
   listVersions(slug: string): Promise<string[]>;
   /**
    * Resolve one exact case version, with each variant's `prompt` rendered for
@@ -301,7 +321,10 @@ export interface BackendClient {
    *   equality filters (`testCase`/`model`/`harness`/`variant`/`version`/`engine`),
    *   the `versions` list (exact versions, any of which match — the case-detail
    *   Runs tab's anchored version scope; like `version` it silences
-   *   `latestVersions`), the `latestVersions` current-version restriction, a
+   *   `latestVersions`), the `testCases` list (case slugs, any of which match —
+   *   the home page's group-leaderboard slice; it ANDs with `testCase`, so naming
+   *   both narrows to their intersection), the `aesthetic` tier (an unrated run
+   *   never matches), the `latestVersions` current-version restriction, a
    *   free-text `q`, and `sort`/`dir`. Resolves the windowed summaries plus the
    *   `total` count of all matching rows (`nextCursor` is `null`).
    */
@@ -311,6 +334,7 @@ export interface BackendClient {
     offset?: number;
     state?: string;
     testCase?: string;
+    testCases?: string[];
     model?: string;
     harness?: string;
     variant?: string;
@@ -318,6 +342,7 @@ export interface BackendClient {
     versions?: string[];
     engine?: string;
     latestVersions?: boolean;
+    aesthetic?: string;
     q?: string;
     sort?: RunSort;
     dir?: SortDir;

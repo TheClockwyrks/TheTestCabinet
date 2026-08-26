@@ -846,3 +846,125 @@ fn a_partial_scan_never_prunes() {
         .unwrap();
     assert_eq!(stored_slugs(&store), ["alpha", "beta"]);
 }
+
+// --- test-case groups --------------------------------------------------------
+
+/// Write a group manifest under `<checkout>/test-case-groups/<slug>/`.
+fn write_group(checkout: &std::path::Path, slug: &str, cases: &[&str]) {
+    let members = cases
+        .iter()
+        .map(|case| format!("\"{case}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
+    write(
+        &checkout
+            .join("test-case-groups")
+            .join(slug)
+            .join("test-case-group.toml"),
+        &format!("slug = \"{slug}\"\nname = \"{slug}\"\ncases = [{members}]\n"),
+    );
+}
+
+/// Slugs of the store's ingested test-case groups, in stored (display) order.
+fn stored_group_slugs(store: &DefinitionStore) -> Vec<String> {
+    store
+        .read_test_case_groups()
+        .unwrap()
+        .into_iter()
+        .map(|group| group.slug)
+        .collect()
+}
+
+#[test]
+fn whole_catalog_ingest_reconciles_the_group_set_and_rejects_unresolved_members() {
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "alpha", "alpha");
+    write_e2e_case(checkout.path(), "beta", "beta");
+    // One valid group, and one naming a member no case declares: the invalid one
+    // is rejected with a logged error, the valid one still ingests.
+    write_group(checkout.path(), "valid", &["alpha", "beta"]);
+    write_group(checkout.path(), "dangling", &["alpha", "gamma"]);
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert!(report.test_case_groups_changed);
+    assert_eq!(stored_group_slugs(&store), ["valid"]);
+
+    // An unchanged catalogue reports the set unchanged, so the periodic ingest
+    // does not fire a gallery rebuild.
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert!(!report.test_case_groups_changed);
+}
+
+#[test]
+fn whole_catalog_ingest_rewrites_a_corrupt_group_slot() {
+    // The slot sits outside STORE_FORMAT, so a build with a different
+    // `TestCaseGroup` shape can leave bytes this build cannot parse. Re-ingest is
+    // the slot's documented repair: the scan must not abort on the unreadable
+    // slot, it must rewrite it whole and report the set changed.
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "alpha", "alpha");
+    write_group(checkout.path(), "solo", &["alpha"]);
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+
+    // Another record format: a map where this build expects a sequence.
+    write(
+        &store_dir
+            .path()
+            .join("test-case-groups")
+            .join("test-case-groups.json"),
+        "{}",
+    );
+    assert!(store.read_test_case_groups().is_err());
+
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest {
+            force: true,
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(report.test_case_groups_changed);
+    assert_eq!(stored_group_slugs(&store), ["solo"]);
+}
+
+#[test]
+fn a_partial_scan_leaves_the_group_set_alone() {
+    // A partial scan has not seen the whole catalog, so it can neither validate
+    // membership nor conclude a group is gone — the same rule as the version prune.
+    let checkout = TempDir::new().unwrap();
+    write_e2e_case(checkout.path(), "alpha", "alpha");
+    write_group(checkout.path(), "solo", &["alpha"]);
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert_eq!(stored_group_slugs(&store), ["solo"]);
+
+    std::fs::remove_dir_all(checkout.path().join("test-case-groups")).unwrap();
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest {
+            test_cases: Some(vec!["alpha".to_string()]),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(!report.test_case_groups_changed);
+    assert_eq!(stored_group_slugs(&store), ["solo"]);
+
+    // A whole-catalog scan of the same checkout reconciles the set to empty: the
+    // folder's absence declares no groups, like any other deletion.
+    let report = Ingestor::new(checkout.path(), &store)
+        .scan(&IngestRequest::default())
+        .unwrap();
+    assert!(report.test_case_groups_changed);
+    assert_eq!(stored_group_slugs(&store), Vec::<String>::new());
+}

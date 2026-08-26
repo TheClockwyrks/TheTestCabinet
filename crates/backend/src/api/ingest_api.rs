@@ -130,7 +130,11 @@ pub async fn ingest(
 /// (all `ingested`), so it always refreshes — which is exactly what an operator
 /// running `reingest-cluster.sh` to push catalog edits to the site wants.
 fn scan_changed_store(report: &IngestReport) -> bool {
-    report.test_case_versions.iter().any(|v| v.ingested)
+    // A changed test-case-group set counts too: the snapshot exports the set as
+    // its own object, so a group-only edit must republish even though no version
+    // moved. (The gg-index invalidation this gates alongside is superfluous on a
+    // group-only change but merely re-parses once, so the two triggers stay one.)
+    report.test_case_versions.iter().any(|v| v.ingested) || report.test_case_groups_changed
 }
 
 /// Reconcile `case_reference_build` from the committed reference-builds lockfile to

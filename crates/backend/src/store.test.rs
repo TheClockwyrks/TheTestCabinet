@@ -941,3 +941,56 @@ fn run_code_analysis_document_round_trips_and_guards_the_run_id() {
         BackendError::BadRequest(_)
     ));
 }
+
+/// A test-case group with the given slug, rank, and members, for the group-slot
+/// tests.
+fn group(slug: &str, rank: Option<u32>, cases: &[&str]) -> TestCaseGroup {
+    TestCaseGroup {
+        slug: slug.to_string(),
+        name: format!("{slug} name"),
+        summary: None,
+        rank,
+        cases: cases.iter().map(|c| c.to_string()).collect(),
+    }
+}
+
+#[test]
+fn test_case_groups_round_trip_in_written_order() {
+    // The slot serves the set back exactly as written: ingest writes the
+    // catalogue's display order, and neither side re-sorts.
+    let (_dir, store) = temp_store();
+    let groups = vec![
+        group("tower-defense", Some(1), &["meltdown", "valence"]),
+        group("arcade-physics", Some(2), &["pong"]),
+    ];
+    store.write_test_case_groups(&groups).unwrap();
+    assert_eq!(store.read_test_case_groups().unwrap(), groups);
+
+    // A rewrite replaces the set whole rather than merging.
+    let replacement = vec![group("sim-economy", None, &["coil"])];
+    store.write_test_case_groups(&replacement).unwrap();
+    assert_eq!(store.read_test_case_groups().unwrap(), replacement);
+}
+
+#[test]
+fn an_absent_test_case_groups_slot_reads_as_the_empty_set() {
+    // The slot is additive (no `STORE_FORMAT` bump): a store from before groups
+    // existed simply serves none.
+    let (_dir, store) = temp_store();
+    assert_eq!(store.read_test_case_groups().unwrap(), Vec::new());
+}
+
+#[test]
+fn a_test_case_groups_slot_in_another_record_format_is_an_internal_error() {
+    // Present-but-unreadable is a store problem naming the re-ingest repair, like
+    // an unreadable manifest — not an empty set, which would silently blank the
+    // home page's leaderboards.
+    let (dir, store) = temp_store();
+    let path = dir.path().join("test-case-groups/test-case-groups.json");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"not json").unwrap();
+    assert!(matches!(
+        store.read_test_case_groups().unwrap_err(),
+        BackendError::Internal(_)
+    ));
+}

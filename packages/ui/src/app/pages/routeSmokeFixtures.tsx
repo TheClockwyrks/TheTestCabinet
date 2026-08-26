@@ -16,7 +16,11 @@ import {
 } from "../data/galleryContext";
 import { runSummaryPage } from "../data/runQuery";
 import type { ModelSummary } from "../data/models";
-import type { TestCaseDetail, TestCaseSummary } from "../data/testCases";
+import type {
+  TestCaseDetail,
+  TestCaseGroupSummary,
+  TestCaseSummary,
+} from "../data/testCases";
 import { RunsRuntimeProvider } from "../runtime/runsRuntime";
 
 // The data and providers the route smoke test stands the whole app up against.
@@ -146,6 +150,35 @@ function testCaseDetail(slug: string): TestCaseDetail {
   } as unknown as TestCaseDetail;
 }
 
+// One test-case group over the stocked cases, so the home page renders a
+// populated group leaderboard on the walk.
+function testCaseGroups(): TestCaseGroupSummary[] {
+  return [
+    {
+      slug: "fixture-group",
+      name: "Fixture Group",
+      summary: "The cases the smoke test stocks.",
+      cases: [FIXTURE_IDS.slug, "spectra"],
+    },
+  ];
+}
+
+// The home page's totals band + activity chart, in the wire shape. Small and
+// literal: the page formats and charts it, nothing recomputes it.
+function cabinetStats() {
+  return {
+    runs: 2,
+    tokens: { total: 200, unreportedRuns: 1 },
+    cost: { total: 2, unreportedRuns: 0 },
+    testCases: 1,
+    models: 1,
+    weekly: [
+      { weekStart: "2026-07-27", runs: 1 },
+      { weekStart: "2026-08-03", runs: 1 },
+    ],
+  };
+}
+
 function models(): ModelSummary[] {
   return [
     {
@@ -197,8 +230,22 @@ function runSummary(id: string, slug: string): RunSummary {
     state: "completed",
     rating: "great",
     aesthetic: null,
+    score: { earned: 8, total: 10, reviews: 1 },
     validatorRated: false,
     caseName: "Carom",
+  } as unknown as RunSummary;
+}
+
+// A newer, legendary-rated run: what the home page's showcase queries for. Its
+// detail (below) is the one fixture that carries a `showcase`, so the walk
+// stages real media through the fixture's `showcaseMediaUrl` map; every other
+// detail keeps omitting the key, which is a shape the page must survive too.
+function legendarySummary(id: string): RunSummary {
+  return {
+    ...runSummary(id, FIXTURE_IDS.slug),
+    startedAt: "2026-08-03T00:00:00Z",
+    finishedAt: "2026-08-03T01:00:00Z",
+    aesthetic: "legendary",
   } as unknown as RunSummary;
 }
 
@@ -261,7 +308,19 @@ function runDetail(id: string): RunDetail {
  * a second stocked one. Each host gets its own id and the cache can't reach
  * across. */
 export function stockedGallery(runId: string): GalleryDataInput {
-  const summaries = [runSummary(runId, FIXTURE_IDS.slug)];
+  // Per-host id for the same reason `runId` is a parameter (see above).
+  const legendaryId = `${runId}-halo`;
+  const summaries = [
+    runSummary(runId, FIXTURE_IDS.slug),
+    legendarySummary(legendaryId),
+  ];
+  // The static-gallery shape of the showcase resolver: a map from run id to
+  // served file name, anything else null.
+  const showcaseUrls: Record<string, Record<string, string>> = {
+    [legendaryId]: {
+      "title.png": `https://cdn.example/media/runs/${legendaryId}/showcase/title.png`,
+    },
+  };
   return {
     producedSummaries: [],
     localIds: new Set(),
@@ -286,7 +345,22 @@ export function stockedGallery(runId: string): GalleryDataInput {
     grafanaUrl: null,
     queryRunSummaries: (query) =>
       Promise.resolve(runSummaryPage(summaries, query)),
-    readRun: (id) => Promise.resolve(runDetail(id)),
+    readRun: (id) => {
+      const detail = runDetail(id);
+      if (id !== legendaryId) return Promise.resolve(detail);
+      // Only the legendary run's detail carries a showcase (an image entry the
+      // home page's hero stages); the others deliberately omit the key.
+      return Promise.resolve({
+        ...detail,
+        showcase: {
+          description: "A **legendary** build.",
+          media: [{ file: "title.png", name: "Title screen", kind: "image" }],
+        },
+      } as RunDetail);
+    },
+    showcaseMediaUrl: (id, file) => showcaseUrls[id]?.[file] ?? null,
+    testCaseGroups: testCaseGroups(),
+    getCabinetStats: () => Promise.resolve(cabinetStats()),
   };
 }
 

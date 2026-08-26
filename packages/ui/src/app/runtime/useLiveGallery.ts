@@ -36,10 +36,12 @@ import type {
   ErrataEntry,
   SeededInput,
   TestCaseDetail,
+  TestCaseGroupSummary,
   TestCaseSummary,
   VariantRef,
   VariantSummary,
 } from "../data/testCases";
+import type { CabinetStats } from "../data/cabinetStats";
 import { useRunsRuntime } from "./runsRuntime";
 
 // The shared live gallery data source for the consoles (web and desktop). It is
@@ -437,6 +439,9 @@ export function useLiveGallery(
   // reached, distinct from a reachable-but-empty catalog.
   const [testCasesStatus, setTestCasesStatus] =
     useState<CatalogStatus>("loading");
+  const [testCaseGroups, setTestCaseGroups] = useState<TestCaseGroupSummary[]>(
+    [],
+  );
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [modelsStatus, setModelsStatus] = useState<CatalogStatus>("loading");
 
@@ -626,6 +631,25 @@ export function useLiveGallery(
     };
   }, [backend]);
 
+  // The test-case groups, fetched once per backend like the catalog above. The
+  // groups only decorate the home page (one leaderboard per group), so — unlike
+  // the catalog with its status — a failed fetch degrades to an empty set and
+  // the section simply does not render.
+  useEffect(() => {
+    setTestCaseGroups([]);
+    if (!backend) return;
+    let active = true;
+    backend
+      .listTestCaseGroups()
+      .then((groups) => {
+        if (active) setTestCaseGroups(groups);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backend]);
+
   // The model catalog, from the backend `GET /models`. Re-fetched when the runs
   // runtime bumps its refresh token, so a model created/edited/deleted in the
   // config UI (which requests a refresh) reappears without a reload.
@@ -706,6 +730,20 @@ export function useLiveGallery(
     },
     [backend],
   );
+
+  // The cabinet's headline figures, from the backend's `GET /stats/cabinet`
+  // (whose corpus covers every recorded run, published or not). Best-effort by
+  // contract: no backend, or an unreachable one, resolves null and the home
+  // page hides its totals band rather than showing zeros.
+  const getCabinetStats =
+    useCallback(async (): Promise<CabinetStats | null> => {
+      if (!backend) return null;
+      try {
+        return await backend.getCabinetStats();
+      } catch {
+        return null;
+      }
+    }, [backend]);
 
   // Resolve a run's recorded events by origin: a produced (local) run's streams
   // come from the worker (events + raw, off its output directory); any other run
@@ -814,6 +852,7 @@ export function useLiveGallery(
     runsLoading,
     testCases,
     testCasesStatus,
+    testCaseGroups,
     readTestCase,
     readCaseVariant,
     models,
@@ -821,6 +860,7 @@ export function useLiveGallery(
     canExecute: true,
     grafanaUrl,
     queryRunSummaries,
+    getCabinetStats,
     fetchRunEvents,
     readCodeAnalysis,
     readRun,

@@ -78,6 +78,22 @@ export function formatUsd(value: number | null): string {
   }).format(value);
 }
 
+// A compact USD figure for a stat tile: 48230.55 -> "$48.2K", 1204000 -> "$1.2M".
+// The one significant decimal keeps a headline figure readable where formatUsd's
+// cent precision would be noise. An unknown (null) figure reads as an em dash,
+// like formatUsd's, rather than a misleading $0.
+export function formatUsdCompact(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
+}
+
 // A run's aggregate reviewer score as "earned / total" (e.g. "12.5 / 20") — the
 // mean weight its reviews awarded over the points available. Review items are
 // integer-weighted, so a whole earned figure shows no ".0" ("12 / 20", never
@@ -134,4 +150,27 @@ export function formatTimestamp(iso: string): string {
     minute: "2-digit",
     hour12: false,
   }).format(date);
+}
+
+// A run's age for a caption ("3h ago"): the distance from `now` in its largest
+// whole unit, "just now" under a minute. Days cap the calendar-free units —
+// beyond them the figure approximates ("mo" is 30 days, "y" 365) — because a
+// caption wants a rough age, not an anniversary. An unparseable timestamp reads
+// as an em dash. `now` is injectable so callers and tests stay off the wall
+// clock.
+export function formatTimeAgo(iso: string, now: Date = new Date()): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) {
+    return "—";
+  }
+  const seconds = Math.max(0, Math.floor((now.getTime() - then) / 1000));
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  return `${Math.floor(days / 365)}y ago`;
 }

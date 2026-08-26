@@ -9,6 +9,7 @@ declare module "virtual:tcab-snapshot" {
   import type {
     SeededInput,
     TestCaseDetail,
+    TestCaseGroupSummary,
     VariantSummary,
   } from "@test-cabinet/ui/app";
   import type { Model } from "@test-cabinet/ui/client";
@@ -64,6 +65,13 @@ declare module "virtual:tcab-snapshot" {
   export const models: Model[];
   /** The published harness comparisons, each the full read model (rendered read-only). */
   export const comparisons: Comparison[];
+  /**
+   * The test-case groups (the wire `TestCaseGroupOut` shape, consumed as the
+   * app's {@link TestCaseGroupSummary}), already in display order — the home
+   * page renders one leaderboard per group. Empty when the snapshot predates
+   * them.
+   */
+  export const testCaseGroups: TestCaseGroupSummary[];
   /**
    * The exported gg **document corpus** and the instant it was taken, or null when the
    * snapshot carries none — in which case the site mounts no analysis surface.

@@ -34,7 +34,7 @@ use test_cabinet_core::review::FailureCap;
 use test_cabinet_core::test_case::{
     AudioSpec, EngineSupport, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
 };
-use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
+use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestCaseGroup, TestType, VoxelSpec};
 
 use crate::error::{BackendError, Result};
 
@@ -969,6 +969,59 @@ impl DefinitionStore {
         let slug_dir = self.root.join("test-cases").join(slug);
         let _ = std::fs::remove_dir(&slug_dir);
         Ok(())
+    }
+
+    // --- Test-case groups ----------------------------------------------------
+
+    /// Path of the store's single global test-case-group slot: one JSON file
+    /// holding the whole ingested set, under a `test-case-groups/` sibling of the
+    /// keyed `test-cases/` tree (the same relationship the folders have in the
+    /// checkout).
+    fn test_case_groups_path(&self) -> PathBuf {
+        self.root
+            .join("test-case-groups")
+            .join("test-case-groups.json")
+    }
+
+    /// Persist the ingested [test-case group](TestCaseGroup) set, replacing the
+    /// previous set whole. The set is written in the order the caller resolved
+    /// (display order — the ingest writes the catalogue's own listing), and
+    /// [`Self::read_test_case_groups`] serves it back unreordered, so the order
+    /// authored at ingest is the order the API emits.
+    ///
+    /// Serialized through [`TestCaseGroup`]'s own `Serialize`, so the slot and
+    /// the checkout loader cannot drift apart. The slot is additive — an absent
+    /// slot reads as the empty set — so it does **not** participate in
+    /// [`STORE_FORMAT`].
+    pub fn write_test_case_groups(&self, groups: &[TestCaseGroup]) -> Result<()> {
+        let path = self.test_case_groups_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, serde_json::to_vec_pretty(groups)?)?;
+        Ok(())
+    }
+
+    /// Read the ingested test-case-group set, in the display order it was written.
+    /// An absent slot is the empty set — a store from before groups existed, or
+    /// one whose checkout declares none — not an error.
+    ///
+    /// A slot that is present but does not parse was written in another record
+    /// format, reported like an unreadable manifest (see [`Self::read_manifest`]):
+    /// the repair is a re-ingest, which rewrites the slot whole.
+    pub fn read_test_case_groups(&self) -> Result<Vec<TestCaseGroup>> {
+        let path = self.test_case_groups_path();
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        serde_json::from_slice(&bytes).map_err(|error| {
+            BackendError::Internal(format!(
+                "the stored test-case-group set was written in another record \
+                 format ({error}); re-ingest the catalog"
+            ))
+        })
     }
 
     /// Path to the store-root marker recording the catalog version of the most

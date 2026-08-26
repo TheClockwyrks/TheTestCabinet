@@ -17,6 +17,7 @@
 use std::path::Path;
 
 use test_cabinet_core::test_case::{TestCaseCatalog, TestCaseVersion, is_seeded_dotfile};
+use test_cabinet_core::test_case_group::TestCaseGroupCatalog;
 
 use crate::error::{BackendError, Result};
 use crate::render;
@@ -67,6 +68,12 @@ pub struct IngestedVersion {
 pub struct IngestReport {
     /// One entry per scanned test-case version.
     pub test_case_versions: Vec<IngestedVersion>,
+    /// Whether the scan changed the store's [test-case
+    /// group](test_cabinet_core::TestCaseGroup) set. Only a whole-catalog scan
+    /// reconciles the set (a partial scan leaves it untouched and reports
+    /// `false`), and the flag is what lets a group-only edit trigger the public
+    /// snapshot refresh even though no version was re-ingested.
+    pub test_case_groups_changed: bool,
 }
 
 /// A progress event emitted as a [`Ingestor::scan_with_progress`] scan advances, so
@@ -193,6 +200,12 @@ impl<'a> Ingestor<'a> {
         // referenced definitions are spared regardless (see `prune_absent`).
         if whole_catalog {
             self.prune_absent(&report)?;
+            // A whole-catalog scan also owns the global test-case-group set: it has
+            // the complete catalog in view, so it can both cross-validate every
+            // member slug and reconcile the stored set to exactly what the checkout
+            // declares (a deleted group folder prunes the group). A partial scan
+            // must not touch the set for the same reason it must not prune.
+            report.test_case_groups_changed = self.ingest_test_case_groups()?;
         }
 
         // Stamp the marker only after a clean full scan, so a fresh store (no marker)
@@ -234,6 +247,82 @@ impl<'a> Ingestor<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Reconcile the store's global [test-case group](test_cabinet_core::TestCaseGroup)
+    /// set to the checkout's `test-case-groups/` catalogue, returning whether the
+    /// stored set changed. Called only by a whole-catalog scan (see
+    /// [`scan_with_progress`](Self::scan_with_progress)).
+    ///
+    /// Membership is cross-validated here, where the checkout's whole
+    /// [`TestCaseCatalog`] is in hand: a group naming a member the catalog cannot
+    /// resolve (cases and jams alike, by manifest-declared identity) is rejected
+    /// with a logged error while the valid groups still ingest — the repo's
+    /// `manifests_are_valid` test catches the mistake pre-commit, so meeting one
+    /// here means this backend's checkout is simply behind or ahead of the case it
+    /// names, which must not blank the rest of the home page. A checkout without
+    /// the folder declares no groups (the folder postdates most checkouts), which
+    /// reconciles the stored set to empty like any other deletion.
+    fn ingest_test_case_groups(&self) -> Result<bool> {
+        let root = self.checkout.join("test-case-groups");
+        let declared = if root.is_dir() {
+            TestCaseGroupCatalog::new(&root)
+                .list()
+                .map_err(BackendError::Core)?
+        } else {
+            Vec::new()
+        };
+        let known: std::collections::HashSet<String> =
+            TestCaseCatalog::new(self.checkout.join("test-cases"))
+                .list()
+                .map_err(BackendError::Core)?
+                .into_iter()
+                .map(|case| case.slug)
+                .collect();
+        let groups: Vec<_> = declared
+            .into_iter()
+            .filter(|group| {
+                let unresolved: Vec<&str> = group
+                    .cases
+                    .iter()
+                    .filter(|member| !known.contains(member.as_str()))
+                    .map(String::as_str)
+                    .collect();
+                if unresolved.is_empty() {
+                    return true;
+                }
+                tracing::error!(
+                    group = %group.slug,
+                    members = %unresolved.join(", "),
+                    "rejecting a test-case group: member slug(s) do not resolve in the \
+                     checkout's test-case catalog"
+                );
+                false
+            })
+            .collect();
+        // The stored set is read only to decide whether the snapshot needs
+        // refreshing. A slot that is present but unparseable (written by a build
+        // with a different `TestCaseGroup` shape, or truncated mid-write) must
+        // count as "changed" rather than abort the scan: re-ingest is the slot's
+        // documented repair (see `DefinitionStore::read_test_case_groups`), so the
+        // write below has to run precisely when the read cannot. I/O errors still
+        // propagate — the rewrite would hit them too.
+        let stored = match self.store.read_test_case_groups() {
+            Ok(stored) => Some(stored),
+            Err(BackendError::Internal(error)) => {
+                tracing::warn!(
+                    %error,
+                    "rewriting the stored test-case-group set: the slot does not parse"
+                );
+                None
+            }
+            Err(err) => return Err(err),
+        };
+        if stored.as_deref() == Some(groups.as_slice()) {
+            return Ok(false);
+        }
+        self.store.write_test_case_groups(&groups)?;
+        Ok(true)
     }
 
     /// Resolve the set of `(slug, version)` pairs to scan from the checkout.

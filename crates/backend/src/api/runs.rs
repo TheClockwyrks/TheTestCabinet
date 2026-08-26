@@ -358,13 +358,15 @@ pub async fn list(
         let filter = SummaryFilter {
             state: summary_state(params.state.as_deref()),
             test_case: params.test_case.clone(),
+            test_cases: parse_comma_list(params.test_cases.as_deref()),
             model: params.model.clone(),
             harness: params.harness.clone(),
             variant: params.variant.clone(),
             version: params.version.clone(),
-            versions: parse_versions(params.versions.as_deref()),
+            versions: parse_comma_list(params.versions.as_deref()),
             engine: params.engine.clone(),
             latest_versions: params.latest_versions.unwrap_or(false),
+            aesthetic: params.aesthetic.clone(),
             q: params.q.clone(),
         };
         let sort = parse_sort(params.sort.as_deref());
@@ -848,6 +850,12 @@ pub struct ListParams {
     /// Filter to one test-case slug (summary + offset path only). Wire: `testCase`.
     #[serde(rename = "testCase")]
     test_case: Option<String>,
+    /// Filter to a comma-separated list of test-case slugs (summary + offset path
+    /// only) — the home page's group-leaderboard slice: one query covers a
+    /// test-case group's member cases. ANDs with the other filters, `testCase`
+    /// included, so naming both narrows to their intersection. Wire: `testCases`.
+    #[serde(rename = "testCases")]
+    test_cases: Option<String>,
     /// Filter to one model id (summary + offset path only).
     model: Option<String>,
     /// Filter to one harness slug (summary + offset path only).
@@ -868,6 +876,10 @@ pub struct ListParams {
     /// Filter to one engine slug (summary + offset path only) — the slug the run
     /// was launched under, with the engineless run recording the slug `none`.
     engine: Option<String>,
+    /// Filter to runs whose aggregate aesthetic rating is exactly this tier
+    /// (`legendary`/`amazing`/`good`/`okay`/`slop`; summary + offset path only).
+    /// A run no review has rated on that channel never matches.
+    aesthetic: Option<String>,
     /// Restrict every run to its case's current `major.minor` — the newest one
     /// that case has a run for in the selected `state` slice (summary + offset
     /// path only). Ignored when `version` names an exact version. Wire:
@@ -908,11 +920,12 @@ pub struct SummaryListResponse {
     total: Option<usize>,
 }
 
-/// Split the comma-separated `versions` query param into the filter's list:
-/// entries are trimmed and empties dropped, so `v1.0.0, v1.1.0` and a trailing
-/// comma both parse. `None` (absent, or nothing but separators) applies no filter.
-fn parse_versions(versions: Option<&str>) -> Option<Vec<String>> {
-    let list: Vec<String> = versions?
+/// Split a comma-separated list query param (`versions`, `testCases`) into the
+/// filter's list: entries are trimmed and empties dropped, so `v1.0.0, v1.1.0`
+/// and a trailing comma both parse. `None` (absent, or nothing but separators)
+/// applies no filter.
+fn parse_comma_list(list: Option<&str>) -> Option<Vec<String>> {
+    let list: Vec<String> = list?
         .split(',')
         .map(str::trim)
         .filter(|s| !s.is_empty())

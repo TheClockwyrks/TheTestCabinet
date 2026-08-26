@@ -14,8 +14,8 @@ use axum::extract::State;
 use crate::error::ApiError;
 use crate::gg_docs::CatalogScores;
 use crate::stats::{
-    ModelAccuracyResponse, ProviderStatsResponse, fold_model_accuracy, fold_probe_providers,
-    fold_provider_stats,
+    CabinetStatsResponse, ModelAccuracyResponse, ProviderStatsResponse, fold_cabinet_stats,
+    fold_model_accuracy, fold_probe_providers, fold_provider_stats,
 };
 
 use super::AppState;
@@ -52,6 +52,27 @@ pub async fn model_accuracy(
 ) -> Result<Json<ModelAccuracyResponse>, ApiError> {
     let facts = facts_corpus(&state).await?;
     Ok(Json(fold_model_accuracy(&facts)))
+}
+
+/// `GET /stats/cabinet` — the cabinet's whole-of-corpus headline figures (run,
+/// token, and spend totals, distinct cases and models, and the weekly activity
+/// series), folded over **every** stored run whatever its state or publication.
+/// An open read: the figures are aggregate counts only, backing the public home
+/// page's totals band and activity chart.
+///
+/// The corpus is one five-column projection over the lifted `run` columns (see
+/// [`crate::db::Db::cabinet_stat_rows`]); the fold and the week bucketing are
+/// pure Rust in [`crate::stats`], with "now" — the anchor of the 26-week window
+/// — supplied here so the fold stays testable against a fixed instant.
+#[tracing::instrument(name = "stats.cabinet", skip(state), err(Debug))]
+pub async fn cabinet(
+    State(state): State<AppState>,
+) -> Result<Json<CabinetStatsResponse>, ApiError> {
+    let rows = state.db.cabinet_stat_rows().await.map_err(ApiError::from)?;
+    Ok(Json(fold_cabinet_stats(
+        &rows,
+        time::OffsetDateTime::now_utc(),
+    )))
 }
 
 /// Resolve the facts corpus, refreshing the index if its last reconcile has

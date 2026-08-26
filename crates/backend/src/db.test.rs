@@ -1,7 +1,7 @@
 use super::*;
 use crate::store::CaseNames;
 use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::{DomainRating, Rating};
+use test_cabinet_core::review::{AestheticRating, DomainAesthetic, DomainRating, Rating};
 use test_cabinet_core::run_record::{
     HarnessFamily, HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
 };
@@ -3074,6 +3074,181 @@ async fn list_summaries_versions_list_overrides_latest_versions() {
         summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
         ["a"]
     );
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_a_test_cases_list() {
+    // The home page's group-leaderboard slice: one query covers a test-case
+    // group's member cases; any of them matches.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "meltdown", "v1.0.0").await;
+    seed_version(&db, "c", "valence", "v1.0.0").await;
+
+    let filter = SummaryFilter {
+        test_cases: Some(vec!["pong".to_string(), "valence".to_string()]),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a", "c"]
+    );
+
+    // It ANDs with `test_case` — naming both narrows to their intersection, the
+    // written-down semantic the console's `runQuery.ts` mirrors…
+    let filter = SummaryFilter {
+        test_case: Some("pong".to_string()),
+        test_cases: Some(vec!["pong".to_string(), "valence".to_string()]),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a"]
+    );
+
+    // …which can be empty when the single case is not in the list.
+    let filter = SummaryFilter {
+        test_case: Some("meltdown".to_string()),
+        test_cases: Some(vec!["pong".to_string()]),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        Vec::<String>::new()
+    );
+
+    // An empty list is no filter at all, like the empty `versions` list.
+    let filter = SummaryFilter {
+        test_cases: Some(Vec::new()),
+        ..unpublished_filter()
+    };
+    let (_, total) = db
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(total, 3);
+}
+
+#[tokio::test]
+async fn list_summaries_test_cases_list_composes_with_latest_versions() {
+    // Unlike the explicit `versions` list, the case list carries no version
+    // instruction, so `latest_versions` still narrows each member to its current
+    // `major.minor`.
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "pong", "v2.0.0").await;
+    seed_version(&db, "c", "meltdown", "v1.0.0").await;
+
+    let filter = SummaryFilter {
+        test_cases: Some(vec!["pong".to_string()]),
+        latest_versions: true,
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["b"]
+    );
+}
+
+/// A review from `account` rating the `gameplay` domain's aesthetic channel,
+/// which maintains the lifted `run.aesthetic` column the filter matches on.
+fn review_with_aesthetic(account: &str, rating: AestheticRating) -> StoredReview {
+    StoredReview {
+        aesthetics: vec![DomainAesthetic {
+            domain: "gameplay".to_string(),
+            rating,
+        }],
+        ..review_by(account, Rating::Great)
+    }
+}
+
+#[tokio::test]
+async fn list_summaries_filters_by_aesthetic_and_unrated_runs_never_match() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_version(&db, "a", "pong", "v1.0.0").await;
+    seed_version(&db, "b", "pong", "v1.0.0").await;
+    seed_version(&db, "c", "pong", "v1.0.0").await;
+    db.add_review(
+        "a",
+        &review_with_aesthetic("u1", AestheticRating::Legendary),
+        None,
+    )
+    .await
+    .unwrap();
+    db.add_review(
+        "b",
+        &review_with_aesthetic("u1", AestheticRating::Slop),
+        None,
+    )
+    .await
+    .unwrap();
+    // `c` carries no aesthetic rating at all: its NULL column matches no tier.
+
+    let filter = SummaryFilter {
+        aesthetic: Some("legendary".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["a"]
+    );
+
+    let filter = SummaryFilter {
+        aesthetic: Some("slop".to_string()),
+        ..unpublished_filter()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["b"]
+    );
+
+    // An empty token is ignored, like the other equality filters.
+    let filter = SummaryFilter {
+        aesthetic: Some(String::new()),
+        ..unpublished_filter()
+    };
+    let (_, total) = db
+        .list_summaries(
+            &filter,
+            SummarySort::Date,
+            SortDir::Asc,
+            &CaseNames::new(),
+            50,
+            0,
+        )
+        .await
+        .unwrap();
+    assert_eq!(total, 3);
+}
+
+#[tokio::test]
+async fn cabinet_stat_rows_cover_every_recorded_run() {
+    // The `/stats/cabinet` corpus is the whole cabinet: every state, published or
+    // not — a failed run consumed real tokens and money too.
+    let db = Db::connect_in_memory().await.unwrap();
+    push_review_publish(&db, "pub", "2026-06-18T00:00:00Z").await;
+    let mut failed = record("failed");
+    failed.status.state = RunState::Catastrophic;
+    db.push(&failed, &links(), None, None).await.unwrap();
+
+    let rows = db.cabinet_stat_rows().await.unwrap();
+    assert_eq!(rows.len(), 2);
+    for (started_at, total_tokens, cost_comparable, slug, model) in &rows {
+        assert_eq!(started_at, "2026-06-17T20:40:00Z");
+        // The default record reports no tokens and no cost: the lifted columns
+        // store `0` and NULL, exactly what the fold counts as unreported.
+        assert_eq!(*total_tokens, 0);
+        assert_eq!(*cost_comparable, None);
+        assert_eq!(slug, "pong");
+        assert_eq!(model, "claude-sonnet-4-5");
+    }
 }
 
 /// Push an unpublished `pong` run recording the given engine slug, varying nothing

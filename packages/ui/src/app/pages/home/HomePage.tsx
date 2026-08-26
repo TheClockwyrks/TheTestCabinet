@@ -1,283 +1,664 @@
-import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
-import { PageLayout } from "../../components/PageLayout";
-import { PromptHeader } from "../../components/PromptHeader";
-import { ReviewerWidgets } from "./ReviewerWidgets";
-import { useAuth } from "../../../client/auth";
+import type { ShowcaseMedia } from "@test-cabinet/run-record";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   AestheticBadge,
+  ChartWidget,
   GradeBadge,
+  MetricTile,
+  Panel,
   RatingBadge,
   canonicalModelId,
+  categoricalColor,
+  timeSeriesChart,
+  type StackedSeries,
+  type TimeSeriesPoint,
 } from "@test-cabinet/ui";
+import { CabinetIcon } from "../../components/CabinetIcon";
 import { LoadingState } from "../../components/LoadingState";
-import { RunLog, useRunTable } from "../../components/RunLog";
+import { PageLayout } from "../../components/PageLayout";
+import { PromptHeader } from "../../components/PromptHeader";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
-import { useFindModel } from "../../data/useModels";
+import type { CabinetStats } from "../../data/cabinetStats";
+import { engineName } from "../../data/engines";
+import { useGalleryData, type RunDetail } from "../../data/galleryContext";
 import {
-  asGrade,
-  overallGradeOf,
-  type AestheticRating,
-  type GradeStatus,
-  type Rating,
-  worstAestheticRating,
-  worstRating,
-} from "../../data/ratings";
-import { useGalleryData } from "../../data/galleryContext";
-import { useFindReview } from "../../data/writeups";
+  bestAestheticRating,
+  bestGrade,
+  bestRating,
+  foldLeaderboardEntries,
+  mean,
+  type LeaderboardFoldEntry,
+} from "../../data/leaderboardFold";
+import { RATINGS, type Rating } from "../../data/ratings";
+import type { RunQuery, RunQueryResult } from "../../data/runQuery";
+import type { TestCaseGroupSummary } from "../../data/testCases";
+import { useFindModel } from "../../data/useModels";
+import { useTestCaseGroups } from "../../data/useTestCaseGroups";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { routes } from "../../routes";
-import { formatRunTime, formatTokenTotal, formatUsd } from "../../format";
+import {
+  formatCompact,
+  formatInteger,
+  formatTimeAgo,
+  formatUsd,
+  formatUsdCompact,
+} from "../../format";
+import { ReplayPlayer } from "../runs/replay/ReplayPlayer";
 import styles from "./HomePage.module.scss";
 
-// How many recent runs the home page shows: the featured run plus a page of the
-// log below it. Fetched in one recent-first query, not the whole cabinet.
-const RECENT_LIMIT = 20;
+// How many legendary runs the showcase stages: the newest as the hero, the rest
+// as the thumbnail row beneath it.
+const SHOWCASE_LIMIT = 5;
 
-// Home: the most recent runs, newest first, framed as the cabinet's "recent
-// results". A single featured run leads, the rest follow in the dense,
-// column-aligned run log carried over from the gallery. The recent set is one
-// server query (newest first); the log's headers can still be clicked to re-sort
-// the shown page, driven by the table's own sort state.
+// Home: the cabinet's front door. Top to bottom: the Legendary showcase (the
+// newest runs whose looks a reviewer crowned legendary, staged as playing
+// media), the whole-corpus totals band, the weekly activity chart, and one
+// leaderboard per repo-defined test-case group. The page renders identically
+// for every visitor; nothing on it is signed-in-only.
 export function HomePage() {
-  const {
-    canExecute,
-    localIds,
-    writeups: localWriteups,
-    queryRunSummaries,
-  } = useGalleryData();
-  const { token } = useAuth();
-  const { refreshToken } = useRunsRuntime();
-  const findReview = useFindReview();
-  const [recentRuns, setRecentRuns] = useState<RunSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // The most recent runs, newest first — a single page-0 query rather than the
-  // whole cabinet. The consoles draw from the union slice so a produced (still
-  // unpublished) run takes its place in that recent window by date, exactly as it
-  // does in the runs index; the public gallery holds only published runs.
-  //
-  // Re-queried on the runs runtime's refresh token as well, so a run that finishes
-  // takes its place in this window without a reload (the static site, whose runtime
-  // is the inert default, never bumps it).
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    queryRunSummaries({
-      state: "any",
-      sort: "date",
-      dir: "desc",
-      offset: 0,
-      limit: RECENT_LIMIT,
-    })
-      .then((res) => {
-        if (!active) return;
-        setRecentRuns(res.summaries);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (!active) return;
-        setRecentRuns([]);
-        setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [queryRunSummaries, refreshToken]);
-
-  // The queried window is already the newest runs of whichever slice this host
-  // draws from; re-sort defensively so the hero and the log agree on "latest".
-  const recent = useMemo(
-    () => [...recentRuns].sort(byRecencyDesc),
-    [recentRuns],
-  );
-  // The hero spotlights the latest *completed* run: a failed run produced no
-  // stats or rating, so featuring it would lead with zeros. Failed runs still
-  // appear (mixed in, recency-ordered) in the log below.
-  const featured = recent.find((r) => r.state === "completed") ?? null;
-  const rest = useMemo(
-    () => (featured ? recent.filter((r) => r.id !== featured.id) : recent),
-    [recent, featured],
-  );
-  // The recent set is small and already fetched whole, so let the table sort it
-  // client-side: the log's column headers stay live (the featured hero is still
-  // the latest completed run, resolved by recency independently below), and the
-  // fetch itself is a fixed date-desc "recent" window.
-  const table = useRunTable({ runs: rest, localIds, localWriteups });
-  // A local, unpublished writeup wins the featured rating (an in-progress edit
-  // must show before it is published); absent one, the summary's own aggregate
-  // rating stands in.
-  const featuredReview = featured
-    ? findReview(featured.id, localWriteups)
-    : undefined;
-  // On a validator-rated run the functional rating is the validators' (the
-  // summary's), whatever a local writeup says; the writeup supplies the
-  // aesthetic, which likewise wins over the summary's aggregate.
-  const featuredRating = featured
-    ? featured.validatorRated
-      ? featured.rating
-      : (worstRating(featuredReview?.ratings.map((r) => r.rating) ?? []) ??
-        featured.rating)
-    : null;
-  const featuredAesthetic = featured
-    ? (worstAestheticRating(
-        featuredReview?.aesthetics.map((r) => r.rating) ?? [],
-      ) ??
-      featured.aesthetic ??
-      null)
-    : null;
-  // A game jam carries no per-domain rating: its badge is the reviewer's
-  // whole-game overall grade, resolved the same way (a local, in-progress review
-  // first, then the summary card's aggregate) so the hero shows a jam's verdict
-  // rather than a bare dash.
-  const featuredGrade = featured
-    ? ((featuredReview && overallGradeOf(featuredReview.checklist)) ??
-      asGrade(featured.score?.overallGrade))
-    : null;
-
   return (
     <PageLayout>
       <section className={styles.terminal}>
         <PromptHeader
-          command="--recent"
+          command="--home"
           blink
           comment={
             <>// insert coin &middot; consume tokens &middot; play the result</>
           }
         />
-
-        {/* Reviewer dashboard: at-a-glance coverage + unreviewed count. Console
-            only, and only for a signed-in reviewer (the plan is per-account). */}
-        {canExecute && token && <ReviewerWidgets />}
-
-        {recent.length === 0 ? (
-          loading ? (
-            <LoadingState label="Loading runs…" />
-          ) : (
-            <p className={styles.empty}>No runs have been published yet.</p>
-          )
-        ) : (
-          <>
-            {featured && (
-              <FeaturedRun
-                run={featured}
-                // Unpublished per the console's produced worklist OR per the card
-                // itself (a queried run carries no publish timestamp until it is
-                // published), mirroring the run log's own tag.
-                local={localIds.has(featured.id) || !featured.publishedAt}
-                rating={featuredRating}
-                aesthetic={featuredAesthetic}
-                grade={featuredGrade}
-              />
-            )}
-            {rest.length > 0 && (
-              <RunLog rows={table.rows} controls={table.controls} />
-            )}
-          </>
-        )}
+        <LegendaryShowcase />
+        <CabinetPulse />
+        <GroupBoards />
       </section>
     </PageLayout>
   );
 }
 
-// Newest first, by finish time, falling back to start time when a run never
-// recorded a finish (e.g. it failed before completing).
-function byRecencyDesc(a: RunSummary, b: RunSummary): number {
-  return timestamp(b) - timestamp(a);
-}
+// ---- Legendary showcase ------------------------------------------------------
 
-function timestamp(run: RunSummary): number {
-  const value = Date.parse(run.finishedAt || run.startedAt);
-  return Number.isNaN(value) ? 0 : value;
-}
-
-// The lead run: the same vital stats as a log row but given room to breathe,
-// with cross-links into the test case and model behind it.
-function FeaturedRun({
-  run,
-  local,
-  rating,
-  aesthetic,
-  grade,
-}: {
+/** One staged run: its summary card, the carousel entry the stage shows (null
+ * when nothing is stageable), and that entry's resolved URL. */
+interface ShowcaseEntry {
   run: RunSummary;
+  media: ShowcaseMedia | null;
+  url: string | null;
+}
+
+// The entry a run's stage shows, picked from its showcase carousel: the first
+// replay (the game actually moving), else the first video, else the first
+// image. Null when the run carries no showcase or none of its media is
+// stageable — the stage then holds as the quiet placeholder. `detail?.showcase`
+// is read by truthiness: a record from before the field existed omits the key
+// entirely.
+function pickShowcaseMedia(detail: RunDetail | null): ShowcaseMedia | null {
+  const media = detail?.showcase?.media ?? [];
+  return (
+    media.find((entry) => entry.kind === "replay") ??
+    media.find((entry) => entry.kind === "video") ??
+    media.find((entry) => entry.kind === "image") ??
+    null
+  );
+}
+
+// The showcase section: the five newest legendary-rated runs, hero first. The
+// summary query slices by the lifted aesthetic aggregate; each run's staged
+// media lives on its full record (a summary carries no showcase), so the
+// details resolve in parallel — a run whose detail fetch fails still shows,
+// its stage just holds the placeholder.
+//
+// Re-queried on the runs runtime's refresh token so a console's freshly
+// finished run can take the stage without a reload (the static site's inert
+// runtime never bumps it).
+function LegendaryShowcase() {
+  const { queryRunSummaries, fetchRun, showcaseMediaUrl, localIds } =
+    useGalleryData();
+  const { refreshToken } = useRunsRuntime();
+  const [entries, setEntries] = useState<ShowcaseEntry[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    queryRunSummaries({
+      aesthetic: "legendary",
+      state: "any",
+      sort: "date",
+      dir: "desc",
+      offset: 0,
+      limit: SHOWCASE_LIMIT,
+    })
+      .then(async ({ summaries }) => {
+        const details = await Promise.allSettled(
+          summaries.map((run) => fetchRun(run.id)),
+        );
+        if (!active) return;
+        setEntries(
+          summaries.map((run, index) => {
+            const settled = details[index];
+            const media = pickShowcaseMedia(
+              settled?.status === "fulfilled" ? settled.value : null,
+            );
+            return {
+              run,
+              media,
+              // `showcaseMediaUrl` is optional (a host may serve no showcase
+              // media at all); an unresolvable file falls back to the
+              // placeholder the same way no media does.
+              url: media
+                ? (showcaseMediaUrl?.(run.id, media.file) ?? null)
+                : null,
+            };
+          }),
+        );
+      })
+      .catch(() => {
+        if (active) setEntries([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [queryRunSummaries, fetchRun, showcaseMediaUrl, refreshToken]);
+
+  // Unpublished per the console's produced worklist OR per the card itself (a
+  // queried run carries no publish timestamp until it is published), mirroring
+  // the run log's own tag.
+  const isLocal = (run: RunSummary) => localIds.has(run.id) || !run.publishedAt;
+
+  const hero = entries?.[0];
+  const thumbs = entries?.slice(1) ?? [];
+  return (
+    <section className={styles.showcase}>
+      <h2 className={styles.sectionTitle}>Legendary Showcase</h2>
+      <p className={styles.sectionHint}>
+        The newest runs whose looks reviewers rated legendary, playing
+        themselves.
+      </p>
+      {entries === null ? (
+        <LoadingState size="section" label="Loading the showcase…" />
+      ) : hero === undefined ? (
+        // The section stays even with nothing to stage, so the page keeps its
+        // shape and the tier's absence is itself visible.
+        <p className={styles.empty}>Nothing has been rated legendary yet.</p>
+      ) : (
+        <>
+          <ShowcaseHero entry={hero} local={isLocal(hero.run)} />
+          {thumbs.length > 0 && (
+            <div className={styles.thumbRow}>
+              {thumbs.map((entry) => (
+                <ShowcaseThumb
+                  key={entry.run.id}
+                  entry={entry}
+                  local={isLocal(entry.run)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+// The fixed-aspect stage a showcase entry plays on. The replay player is
+// intrinsically aspect-driven (it sizes to its recording), so the stage clamps
+// every media kind into one 16:9 box — overflow hidden, centered — and the
+// card row holds its geometry whatever each run produced.
+function ShowcaseStage({ entry }: { entry: ShowcaseEntry }) {
+  const { media, url } = entry;
+  if (media === null || url === null) {
+    // A quiet placeholder — panel surface plus the cabinet mark — so a run
+    // without stageable media (or a host that cannot serve it) still holds its
+    // place in the layout.
+    return (
+      <div className={`${styles.stage} ${styles.stagePlaceholder}`}>
+        <CabinetIcon className={styles.stageMark} />
+      </div>
+    );
+  }
+  if (media.kind === "replay") {
+    return (
+      <div className={styles.stage}>
+        <ReplayPlayer url={url} label={media.name} presentation="showcase" />
+      </div>
+    );
+  }
+  if (media.kind === "video") {
+    // A bare autoplaying, muted loop rather than `MediaView`, whose controls
+    // are unconditional — a stage that plays itself wants none.
+    return (
+      <div className={styles.stage}>
+        <video
+          className={styles.stageMedia}
+          src={url}
+          muted
+          autoPlay
+          loop
+          playsInline
+          aria-label={media.name}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className={styles.stage}>
+      <img className={styles.stageMedia} src={url} alt={media.name} />
+    </div>
+  );
+}
+
+// The hero card: the newest legendary run at full width, its stage over a
+// caption line of the run's identity. A replay stage keeps its own hover
+// scrubber, so only the inert media kinds get the whole-stage link into the
+// run; the replay's run stays one click away on "open run".
+function ShowcaseHero({
+  entry,
+  local,
+}: {
+  entry: ShowcaseEntry;
   local: boolean;
-  rating: Rating | null;
-  /** The run's aggregate aesthetic rating, shown beside the functional one; null
-   * until a reviewer rates the channel (always, for a legacy run). */
-  aesthetic: AestheticRating | null;
-  /** A game jam's whole-game overall grade, shown in place of the rating a jam
-   * does not carry. Null for every domain-rated run. */
-  grade: GradeStatus | null;
 }) {
-  const { subject, metrics } = run;
+  const { run } = entry;
+  const { subject } = run;
   const model = useFindModel()(subject.modelId, subject.harnessSlug);
   const testCaseName = useTestCaseName();
+  const caseName = testCaseName(subject.testCaseSlug);
+  const stage = <ShowcaseStage entry={entry} />;
   return (
-    <article className={styles.feature}>
-      <p className={styles.featureLabel}>
-        <span className={styles.caret}>&rsaquo;</span> latest result
-      </p>
-      <h2 className={styles.featureTest}>
-        <Link to={routes.testCaseDetail(subject.testCaseSlug)}>
-          {testCaseName(subject.testCaseSlug)}
+    <article className={styles.hero}>
+      {entry.media?.kind === "replay" ? (
+        stage
+      ) : (
+        <Link
+          to={routes.runDetail(run.id)}
+          className={styles.stageLink}
+          aria-label={`Open run: ${caseName}`}
+        >
+          {stage}
         </Link>
-        {local && <UnpublishedTag className={styles.tag} />}
-      </h2>
-      <p className={styles.featureSubject}>
-        <span className={styles.featureHarness}>{subject.harnessSlug}</span>
-        <span className={styles.featureSep}>&middot;</span>
-        <span className={styles.featureVariant}>{subject.variant}</span>
-        <span className={styles.featureSep}>&middot;</span>
-        {model ? (
-          <Link
-            to={routes.modelDetail(model.slug)}
-            className={styles.featureModel}
-          >
-            {model.name}
-          </Link>
-        ) : (
-          <span className={styles.featureModel}>
-            {canonicalModelId(subject.modelId)}
-          </span>
-        )}
-      </p>
-
-      <dl className={styles.stats}>
-        <Stat label="Tokens" value={formatTokenTotal(metrics)} />
-        <Stat label="Cost" value={formatUsd(metrics.cost.comparable)} />
-        <Stat label="Time" value={formatRunTime(metrics.runTimeSeconds)} />
-        <Stat
-          label="Rating"
-          value={
-            <span className={styles.badges}>
-              {rating ? (
-                <RatingBadge rating={rating} />
-              ) : grade ? (
-                <GradeBadge status={grade} />
-              ) : (
-                <span className={styles.noRating}>—</span>
-              )}
-              {aesthetic && <AestheticBadge rating={aesthetic} />}
+      )}
+      <div className={styles.heroCaption}>
+        <div className={styles.heroTitleRow}>
+          <h3 className={styles.heroCase}>
+            <Link to={routes.testCaseDetail(subject.testCaseSlug)}>
+              {caseName}
+            </Link>
+            {local && <UnpublishedTag className={styles.tag} />}
+          </h3>
+          <AestheticBadge rating="legendary" />
+        </div>
+        <p className={styles.heroSubject}>
+          {model ? (
+            <Link
+              to={routes.modelDetail(model.slug)}
+              className={styles.heroModel}
+            >
+              {model.name}
+            </Link>
+          ) : (
+            <span className={styles.heroModel}>
+              {canonicalModelId(subject.modelId, subject.harnessSlug)}
             </span>
-          }
-        />
-      </dl>
+          )}
+          <span className={styles.sep}>&middot;</span>
+          <span className={styles.heroHarness}>{subject.harnessSlug}</span>
+          <span className={styles.sep}>&middot;</span>
+          <span className={styles.heroTime}>
+            {formatTimeAgo(run.startedAt)}
+          </span>
+        </p>
+        <Link to={routes.runDetail(run.id)} className={styles.openRun}>
+          open run &rsaquo;
+        </Link>
+      </div>
+    </article>
+  );
+}
 
-      <Link to={routes.runDetail(run.id)} className={styles.featureCta}>
-        open run &rsaquo;
+// A thumbnail card: the same stage chain at a quarter of the row, its badges
+// overlaid on the media per the mock, and one overlay link covering the whole
+// card. A thumbnail's replay is a moving picture to click through, not a
+// player to operate, so the link sitting over its scrubber costs nothing.
+function ShowcaseThumb({
+  entry,
+  local,
+}: {
+  entry: ShowcaseEntry;
+  local: boolean;
+}) {
+  const { run } = entry;
+  const { subject } = run;
+  const model = useFindModel()(subject.modelId, subject.harnessSlug);
+  const testCaseName = useTestCaseName();
+  const caseName = testCaseName(subject.testCaseSlug);
+  const modelName =
+    model?.name ?? canonicalModelId(subject.modelId, subject.harnessSlug);
+  return (
+    <article className={styles.thumb}>
+      <ShowcaseStage entry={entry} />
+      <span className={styles.thumbBadges}>
+        <AestheticBadge rating="legendary" />
+        {local && <UnpublishedTag />}
+      </span>
+      <Link
+        to={routes.runDetail(run.id)}
+        className={styles.thumbLink}
+        aria-label={`Open run: ${caseName} — ${modelName}`}
+      >
+        <span className={styles.thumbCaption}>
+          {caseName}{" "}
+          <span className={styles.thumbModel}>&middot; {modelName}</span>
+        </span>
       </Link>
     </article>
   );
 }
 
-function Stat({ label, value }: { label: string; value: ReactNode }) {
+// ---- Totals band + activity chart --------------------------------------------
+
+// The activity chart's one-line roster, module-level so its identity is stable
+// across renders. The single series is unnamed: the widget's title already
+// names it, and `timeSeriesChart` draws no legend for one series.
+const ACTIVITY_SERIES: StackedSeries[] = [
+  { name: "", color: categoricalColor(0) },
+];
+
+// The honesty note for a total some runs could not contribute to.
+function unreportedNote(count: number, what: string): string {
+  return `${formatInteger(count)} ${count === 1 ? "run" : "runs"} reported ${what}, contributing nothing to this total.`;
+}
+
+// The cabinet's pulse: the five-tile totals band and the weekly activity chart,
+// both fed by the host's one `getCabinetStats` figure. A host without the
+// capability — or whose fetch failed or resolved null — renders neither:
+// the page quietly holds the sections back rather than showing zeros.
+function CabinetPulse() {
+  const { getCabinetStats } = useGalleryData();
+  const { refreshToken } = useRunsRuntime();
+  // undefined while resolving, null when the figures cannot be produced.
+  const [stats, setStats] = useState<CabinetStats | null | undefined>(
+    undefined,
+  );
+
+  useEffect(() => {
+    if (!getCabinetStats) {
+      setStats(null);
+      return;
+    }
+    let active = true;
+    getCabinetStats()
+      .then((value) => {
+        if (active) setStats(value);
+      })
+      .catch(() => {
+        if (active) setStats(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [getCabinetStats, refreshToken]);
+
+  const points = useMemo<TimeSeriesPoint[]>(
+    () =>
+      (stats?.weekly ?? []).map((week) => ({
+        // `weekStart` is the wire's `YYYY-MM-DD` (a UTC Monday); a bare date
+        // string parses as UTC midnight — the bucket's floored start, which is
+        // what a `TimeSeriesPoint.time` must be.
+        time: new Date(week.weekStart),
+        series: "",
+        // The wire's explicit zero entries chart as zeros deliberately,
+        // departing from the omit-empty-buckets convention elsewhere: a week
+        // the cabinet sat idle is signal, so the line must dip to the axis
+        // rather than skip the bucket.
+        value: week.runs,
+      })),
+    [stats],
+  );
+
+  if (!stats) return null;
+
+  const { tokens, cost } = stats;
   return (
-    <div className={styles.stat}>
-      <dt className={styles.statLabel}>{label}</dt>
-      <dd className={styles.statValue}>{value}</dd>
+    <>
+      <div className={styles.totals}>
+        <MetricTile label="Runs" value={formatInteger(stats.runs)} />
+        <MetricTile
+          label="Tokens"
+          value={formatCompact(tokens.total)}
+          title={
+            tokens.unreportedRuns > 0
+              ? unreportedNote(tokens.unreportedRuns, "no tokens")
+              : undefined
+          }
+        />
+        <MetricTile
+          label="Spend"
+          value={formatUsdCompact(cost.total)}
+          title={
+            cost.unreportedRuns > 0
+              ? unreportedNote(cost.unreportedRuns, "no comparable cost")
+              : undefined
+          }
+        />
+        <MetricTile label="Test cases" value={formatInteger(stats.testCases)} />
+        <MetricTile label="Models" value={formatInteger(stats.models)} />
+      </div>
+      <div className={styles.activity}>
+        <ChartWidget
+          title="Activity"
+          hint="Runs started per week, the last 26 weeks of everything recorded here."
+          spec={(palette) =>
+            timeSeriesChart(points, palette, ACTIVITY_SERIES, { y: "runs" })
+          }
+        />
+      </div>
+    </>
+  );
+}
+
+// ---- Group leaderboards ------------------------------------------------------
+
+// The page stride of a group's drain; a host may clamp it (see the advance-by-
+// what-arrived note below).
+const GROUP_PAGE_LIMIT = 200;
+// How many ranked rows a group's panel shows.
+const GROUP_BOARD_ROWS = 5;
+
+// Every run of a group's member cases, drained page by page following the
+// `drainCaseSummaries` pattern. One query covers all members via the
+// `testCases` list filter; `state: "any"` draws the consoles' union slice (the
+// fold drops non-completed runs itself), and `latestVersions` keeps each case
+// to the spec currently in play — an older minor is a different spec whose runs
+// are not comparable.
+async function drainGroupSummaries(
+  query: (q: RunQuery) => Promise<RunQueryResult>,
+  cases: readonly string[],
+): Promise<RunSummary[]> {
+  const acc: RunSummary[] = [];
+  let offset = 0;
+  for (;;) {
+    const { summaries, total } = await query({
+      testCases: [...cases],
+      latestVersions: true,
+      state: "any",
+      offset,
+      limit: GROUP_PAGE_LIMIT,
+    });
+    acc.push(...summaries);
+    // Advance by what ARRIVED, never by what was asked for: a host free to
+    // return fewer rows than requested (the backend clamps the limit) would
+    // otherwise leave a silently dropped hole in the board's corpus.
+    offset += summaries.length;
+    if (summaries.length === 0 || acc.length >= total) break;
+  }
+  return acc;
+}
+
+/** One ranked board row: the fold entry plus the figures the ranking orders on,
+ * computed once rather than inside the comparator. */
+interface GroupRow {
+  entry: LeaderboardFoldEntry;
+  /** The mean score fraction across the row's runs — the ranking figure.
+   * Cross-case point totals differ, so raw points are not comparable here. */
+  meanFraction: number;
+  best: Rating | null;
+}
+
+// Rank by mean score fraction, then best functional rating, then recency — the
+// case board's tie-break order transposed onto the cross-case fraction.
+function byFractionThenRatingThenRecency(a: GroupRow, b: GroupRow): number {
+  if (a.meanFraction !== b.meanFraction) return b.meanFraction - a.meanFraction;
+  const ra = a.best ? RATINGS.indexOf(a.best) : RATINGS.length;
+  const rb = b.best ? RATINGS.indexOf(b.best) : RATINGS.length;
+  if (ra !== rb) return ra - rb;
+  return b.entry.latestStartedAt.localeCompare(a.entry.latestStartedAt);
+}
+
+// One leaderboard per repo-defined test-case group, two across. A host that
+// supplies no groups (the set is optional gallery data) renders no section at
+// all — there is nothing to head it with.
+function GroupBoards() {
+  const groups = useTestCaseGroups();
+  if (groups.length === 0) return null;
+  return (
+    <section className={styles.boards}>
+      {groups.map((group) => (
+        <GroupBoard key={group.slug} group={group} />
+      ))}
+    </section>
+  );
+}
+
+// A group's panel: its member cases' runs drained in one filtered query, folded
+// into `(harness, model, engine)` rows, and ranked by mean score fraction.
+function GroupBoard({ group }: { group: TestCaseGroupSummary }) {
+  const { queryRunSummaries } = useGalleryData();
+  const { refreshToken } = useRunsRuntime();
+  const findModel = useFindModel();
+  const [summaries, setSummaries] = useState<RunSummary[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    drainGroupSummaries(queryRunSummaries, group.cases)
+      .then((rows) => {
+        if (active) setSummaries(rows);
+      })
+      .catch(() => {
+        if (active) setSummaries([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [queryRunSummaries, group, refreshToken]);
+
+  const { top, multiEngine } = useMemo(() => {
+    if (summaries === null) {
+      return { top: [] as GroupRow[], multiEngine: false };
+    }
+    // Keyed by engine always: a cross-case fold can meet runs under different
+    // engines, which measure different work and must never share a row.
+    const folded = foldLeaderboardEntries(summaries, {
+      keyEngine: true,
+      resolveModelName: (modelId, harnessSlug) =>
+        findModel(modelId, harnessSlug)?.name ?? null,
+    });
+    // The engine marker shows only when the group's rows actually span more
+    // than one engine — measured over every folded row, not just the shown
+    // top, so the shown rows never read as same-engine when they are not.
+    const engines = new Set(folded.map((entry) => entry.engineSlug));
+    const ranked = folded.map(
+      (entry): GroupRow => ({
+        entry,
+        meanFraction: mean(entry.fractions) ?? 0,
+        best: bestRating(entry.ratings),
+      }),
+    );
+    ranked.sort(byFractionThenRatingThenRecency);
+    return {
+      top: ranked.slice(0, GROUP_BOARD_ROWS),
+      multiEngine: engines.size > 1,
+    };
+  }, [summaries, findModel]);
+
+  return (
+    <Panel className={styles.board}>
+      <header className={styles.boardHead}>
+        <h3 className={styles.boardName}>{group.name}</h3>
+        <p className={styles.boardCases}>
+          {group.cases.map((slug, index) => (
+            <Fragment key={slug}>
+              {index > 0 && <span className={styles.sep}>&middot;</span>}
+              <Link to={routes.testCaseDetail(slug)}>{slug}</Link>
+            </Fragment>
+          ))}
+        </p>
+      </header>
+      {summaries === null ? (
+        <LoadingState size="section" label="Loading leaderboard…" />
+      ) : top.length === 0 ? (
+        <p className={styles.boardEmpty}>No scored runs in this group yet.</p>
+      ) : (
+        <div
+          className={styles.boardRows}
+          role="table"
+          aria-label={`${group.name} leaderboard`}
+        >
+          {top.map((row, index) => (
+            <GroupBoardRow
+              key={row.entry.rowKey}
+              row={row}
+              rank={index + 1}
+              multiEngine={multiEngine}
+            />
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+function GroupBoardRow({
+  row,
+  rank,
+  multiEngine,
+}: {
+  row: GroupRow;
+  rank: number;
+  multiEngine: boolean;
+}) {
+  const { entry } = row;
+  // A jam's runs carry a whole-game grade in place of a domain rating; a row
+  // never carries both, so the badge adapts exactly as the case board's does.
+  const grade = bestGrade(entry.grades);
+  const aesthetic = bestAestheticRating(entry.aesthetics);
+  return (
+    <div className={styles.boardRow} role="row">
+      <span className={styles.rank}>{rank}</span>
+      <span className={styles.model}>
+        {entry.modelName}{" "}
+        <span className={styles.harness}>
+          &middot; {entry.harnessSlug}
+          {multiEngine && entry.engineSlug !== null
+            ? ` · ${engineName(entry.engineSlug)}`
+            : ""}
+        </span>
+      </span>
+      <span className={styles.score}>
+        {Math.round(row.meanFraction * 100)}%
+      </span>
+      {/* formatUsd already renders an em dash for a pair no run of which
+          reported a comparable cost (an empty list means a null mean). */}
+      <span className={styles.cost}>{formatUsd(mean(entry.costs))}</span>
+      <span className={styles.badges}>
+        {grade ? (
+          <GradeBadge status={grade} />
+        ) : row.best ? (
+          <RatingBadge rating={row.best} />
+        ) : (
+          <span className={styles.noRating}>—</span>
+        )}
+        {aesthetic && <AestheticBadge rating={aesthetic} />}
+      </span>
     </div>
   );
 }

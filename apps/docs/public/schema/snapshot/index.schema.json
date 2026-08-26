@@ -44,6 +44,10 @@
     },
     "snapshotId": {
       "type": "string"
+    },
+    "testCaseGroupsKey": {
+      "description": "Where this snapshot's test-case-group set lives\n(`<prefix>/test-case-groups.json`). Optional on the wire because it\npostdates the other keys: a snapshot written before groups existed carries\nnone, and a reader treats the absent key as an empty group set.",
+      "type": ["string", "null"]
     }
   },
   "required": [

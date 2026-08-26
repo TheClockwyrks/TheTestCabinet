@@ -7,9 +7,11 @@ import { readTextWithProgress } from "@test-cabinet/ui/client";
 import {
   DEFAULT_ENGINE_SLUG,
   findModelByModelId,
+  foldCabinetStats,
   runSummaryPage,
   toModelSummary,
   toRunSummary,
+  type CabinetStats,
   type CaseVariantRef,
   type GalleryDataInput,
   type RunDetail,
@@ -23,6 +25,7 @@ import {
   testCases as catalogTestCases,
   models as catalogModels,
   comparisons as publishedComparisons,
+  testCaseGroups as publishedTestCaseGroups,
   ggRuns as publishedGgRuns,
   codeAnalysisUrls as publishedCodeAnalysisUrls,
   proofMediaUrls as publishedProofMediaUrls,
@@ -318,6 +321,19 @@ export function useStaticGallery(): GalleryDataInput {
     [localRuns],
   );
 
+  // The cabinet's headline figures, folded locally from the inlined published
+  // summary index with the mirror of the backend's `fold_cabinet_stats` — the
+  // static analog of the console's `GET /stats/cabinet`. The site's corpus is
+  // the published snapshot alone (the backend's additionally counts unpublished
+  // runs), so the figures are the published cabinet's. Pure and in-memory, so it
+  // never rejects; async only to satisfy the host contract. Stable identity so
+  // the home page doesn't refetch on every render.
+  const getCabinetStats = useCallback(
+    async (): Promise<CabinetStats | null> =>
+      foldCabinetStats(publishedRunSummaries, new Date()),
+    [],
+  );
+
   // A published run's proof media, resolved at build time to absolute snapshot
   // URLs keyed by run id then served file name (`<proof-id>.<ext>`). Produced
   // (local, dev-only) runs are not published, so they have no snapshot media.
@@ -399,8 +415,13 @@ export function useStaticGallery(): GalleryDataInput {
     reviews,
     runsLoading: loading,
     queryRunSummaries,
+    getCabinetStats,
     testCases,
     testCasesStatus: "ready",
+    // The test-case groups, baked into the snapshot at build time and already in
+    // display order. Empty when the snapshot predates them, and the home page
+    // then renders no group leaderboards.
+    testCaseGroups: publishedTestCaseGroups,
     readCaseVariant,
     readTestCase,
     // The model catalog is baked into the snapshot at build time, so it is always

@@ -375,6 +375,14 @@ pub enum Error {
         range: String,
     },
 
+    /// A [test-case group](crate::test_case_group) could not be loaded: the
+    /// `test-case-groups/` catalogue was unreadable, or a group's manifest was
+    /// malformed or broke an invariant (a slug disagreeing with its directory,
+    /// an empty member list, a duplicate member). The detail names the group
+    /// directory and what was wrong.
+    #[error("test-case group error: {0}")]
+    TestCaseGroup(String),
+
     /// A **gg** run was misconfigured: the gg configuration invariant does not
     /// hold. A gg run (harness [`Gg`](crate::run_record::HarnessSlug::Gg)) must
     /// carry a [capability set](crate::gg::GgCapabilitySet), and a non-gg run must

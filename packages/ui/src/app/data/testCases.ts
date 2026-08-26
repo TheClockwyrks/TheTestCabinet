@@ -283,6 +283,26 @@ export interface TestCaseSummary {
 }
 
 /**
+ * One repo-defined test-case group — a global, ordered set of related test-case
+ * slugs the home page renders a leaderboard per (NOT the per-account coverage
+ * "case group"). The wire's `TestCaseGroupOut` shape, host-agnostic: the console
+ * fetches groups from `GET /test-case-groups`, the static site reads them from
+ * the snapshot's `test-case-groups.json`; both arrive already in display order
+ * (rank ascending then name, resolved at ingest — rank never rides the wire).
+ */
+export interface TestCaseGroupSummary {
+  /** The group's stable slug. */
+  slug: string;
+  /** Display name, heading the group's home-page leaderboard. */
+  name: string;
+  /** Optional one-line description, or null. */
+  summary: string | null;
+  /** The ordered member test-case/game-jam slugs, by manifest-declared identity
+   * (the slug run records carry). */
+  cases: string[];
+}
+
+/**
  * One test case in full, across all of its published versions — what a *detail*
  * surface needs. Resolved per slug through the gallery's `fetchTestCase` (see
  * `useTestCase`) rather than held for the whole catalog, because assembling it
