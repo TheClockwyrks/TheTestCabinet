@@ -9,7 +9,10 @@
  * members.
  */
 
-import { HeadlessWebGL2Context, type ResolvedContextAttributes } from "./context";
+import {
+  HeadlessWebGL2Context,
+  type ResolvedContextAttributes,
+} from "./context";
 
 /**
  * The context-creation attributes `getContext("webgl2", ...)` accepts.
@@ -64,8 +67,14 @@ export interface Canvas {
    * canvas does once a webgl2 context exists — and by design before one
    * exists too: the diagnostics overlay never draws on the WebGL canvas.
    */
-  getContext(contextId: "webgl2", attributes?: ContextAttributes): HeadlessWebGL2Context;
-  getContext(contextId: string, attributes?: unknown): HeadlessWebGL2Context | null;
+  getContext(
+    contextId: "webgl2",
+    attributes?: ContextAttributes,
+  ): HeadlessWebGL2Context;
+  getContext(
+    contextId: string,
+    attributes?: unknown,
+  ): HeadlessWebGL2Context | null;
 }
 
 /**
@@ -86,7 +95,9 @@ const DEFAULT_WIDTH = 300;
 const DEFAULT_HEIGHT = 150;
 
 /** Resolves user attributes against the WebGL defaults; unknown keys are ignored as a browser ignores them. */
-function resolveAttributes(attributes: ContextAttributes | undefined): ResolvedContextAttributes {
+function resolveAttributes(
+  attributes: ContextAttributes | undefined,
+): ResolvedContextAttributes {
   return {
     alpha: attributes?.alpha ?? true,
     depth: attributes?.depth ?? true,
@@ -127,14 +138,28 @@ class HeadlessCanvas implements Canvas {
     this.#context?.resizeDrawingBuffer(this.#width, this.#height);
   }
 
-  getContext(contextId: "webgl2", attributes?: ContextAttributes): HeadlessWebGL2Context;
-  getContext(contextId: string, attributes?: unknown): HeadlessWebGL2Context | null;
-  getContext(contextId: string, attributes?: unknown): HeadlessWebGL2Context | null {
+  getContext(
+    contextId: "webgl2",
+    attributes?: ContextAttributes,
+  ): HeadlessWebGL2Context;
+  getContext(
+    contextId: string,
+    attributes?: unknown,
+  ): HeadlessWebGL2Context | null;
+  getContext(
+    contextId: string,
+    attributes?: unknown,
+  ): HeadlessWebGL2Context | null {
     if (contextId !== "webgl2") return null;
     if (this.#context === null) {
       // First call fixes the attributes; later calls return the same live
       // object and ignore differing attributes, per the WebGL spec.
-      this.#context = new HeadlessWebGL2Context(this, this.#width, this.#height, resolveAttributes(attributes as ContextAttributes | undefined));
+      this.#context = new HeadlessWebGL2Context(
+        this,
+        this.#width,
+        this.#height,
+        resolveAttributes(attributes as ContextAttributes | undefined),
+      );
     }
     return this.#context;
   }
@@ -147,5 +172,8 @@ class HeadlessCanvas implements Canvas {
  * HTML rule.
  */
 export function createCanvas(width: number, height: number): Canvas {
-  return new HeadlessCanvas(coerceSize(width, DEFAULT_WIDTH), coerceSize(height, DEFAULT_HEIGHT));
+  return new HeadlessCanvas(
+    coerceSize(width, DEFAULT_WIDTH),
+    coerceSize(height, DEFAULT_HEIGHT),
+  );
 }

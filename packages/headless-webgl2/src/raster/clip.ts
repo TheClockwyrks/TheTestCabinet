@@ -48,12 +48,14 @@ export interface WindowVertex {
 function lerpVertex(a: ClipVertex, b: ClipVertex, t: number): ClipVertex {
   const position = new Float64Array(4);
   for (let i = 0; i < 4; i += 1) {
-    position[i] = (a.position[i] ?? 0) + t * ((b.position[i] ?? 0) - (a.position[i] ?? 0));
+    position[i] =
+      (a.position[i] ?? 0) + t * ((b.position[i] ?? 0) - (a.position[i] ?? 0));
   }
   const count = a.varyings.length;
   const varyings = new Float64Array(count);
   for (let i = 0; i < count; i += 1) {
-    varyings[i] = (a.varyings[i] ?? 0) + t * ((b.varyings[i] ?? 0) - (a.varyings[i] ?? 0));
+    varyings[i] =
+      (a.varyings[i] ?? 0) + t * ((b.varyings[i] ?? 0) - (a.varyings[i] ?? 0));
   }
   return { position, varyings };
 }
@@ -64,7 +66,9 @@ function lerpVertex(a: ClipVertex, b: ClipVertex, t: number): ClipVertex {
  * the boundary intersection. A triangle yields 0, 3, or 4 vertices; the
  * caller fans a 4-vertex result into two triangles.
  */
-export function clipPolygonToNearPlane(vertices: readonly ClipVertex[]): ClipVertex[] {
+export function clipPolygonToNearPlane(
+  vertices: readonly ClipVertex[],
+): ClipVertex[] {
   let anyIn = false;
   let anyOut = false;
   for (const vertex of vertices) {
@@ -91,7 +95,10 @@ export function clipPolygonToNearPlane(vertices: readonly ClipVertex[]): ClipVer
  * Clips a line segment against the near plane: both behind drops the line,
  * one behind moves that endpoint to the boundary.
  */
-export function clipSegmentToNearPlane(a: ClipVertex, b: ClipVertex): readonly [ClipVertex, ClipVertex] | null {
+export function clipSegmentToNearPlane(
+  a: ClipVertex,
+  b: ClipVertex,
+): readonly [ClipVertex, ClipVertex] | null {
   const da = (a.position[3] ?? 0) - NEAR_EPS;
   const db = (b.position[3] ?? 0) - NEAR_EPS;
   if (da <= 0 && db <= 0) return null;
@@ -106,7 +113,11 @@ export function clipSegmentToNearPlane(a: ClipVertex, b: ClipVertex): readonly [
  * pre-multiplied by 1/w so the rasterizers interpolate numerators directly.
  * Pixel centers sit at +0.5, per the GL window-coordinate convention.
  */
-export function toWindow(vertex: ClipVertex, viewport: readonly [number, number, number, number], depthRange: readonly [number, number]): WindowVertex {
+export function toWindow(
+  vertex: ClipVertex,
+  viewport: readonly [number, number, number, number],
+  depthRange: readonly [number, number],
+): WindowVertex {
   const w = vertex.position[3] ?? 1;
   const invW = 1 / w;
   const ndcX = (vertex.position[0] ?? 0) * invW;

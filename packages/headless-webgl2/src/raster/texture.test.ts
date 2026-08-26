@@ -10,9 +10,24 @@ import { samplerFor } from "./texture";
  */
 
 /** A complete texture over the given image bytes, NEAREST unless told otherwise. */
-function texture(width: number, height: number, format: number, channels: number, bytes: number[], filter: number = GL.NEAREST): TextureObject {
+function texture(
+  width: number,
+  height: number,
+  format: number,
+  channels: number,
+  bytes: number[],
+  filter: number = GL.NEAREST,
+): TextureObject {
   const t = new TextureObject();
-  const image: TextureImage = { width, height, internalFormat: format, format, type: GL.UNSIGNED_BYTE, channels, data: Uint8Array.from(bytes) };
+  const image: TextureImage = {
+    width,
+    height,
+    internalFormat: format,
+    format,
+    type: GL.UNSIGNED_BYTE,
+    channels,
+    data: Uint8Array.from(bytes),
+  };
   t.image = image;
   t.minFilter = filter;
   t.magFilter = filter;
@@ -22,7 +37,13 @@ function texture(width: number, height: number, format: number, channels: number
 }
 
 /* A 2×2 RGBA test card: red, green (bottom row); blue, white (top row). */
-const CARD = texture(2, 2, GL.RGBA, 4, [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]);
+const CARD = texture(
+  2,
+  2,
+  GL.RGBA,
+  4,
+  [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255],
+);
 
 describe("completeness", () => {
   it("samples opaque black for an empty unit, matching an incomplete texture in a browser", () => {
@@ -30,7 +51,9 @@ describe("completeness", () => {
   });
 
   it("samples opaque black for a texture with no image uploaded", () => {
-    expect(Array.from(samplerFor(new TextureObject())(0.5, 0.5, 0))).toEqual([0, 0, 0, 1]);
+    expect(Array.from(samplerFor(new TextureObject())(0.5, 0.5, 0))).toEqual([
+      0, 0, 0, 1,
+    ]);
   });
 
   it("samples opaque black under the default mip-requiring min filter, because no mip chain can exist in 0.1.0", () => {
@@ -73,25 +96,48 @@ describe("NEAREST", () => {
   });
 
   it("treats a non-finite coordinate as zero rather than reading garbage", () => {
-    expect(Array.from(samplerFor(CARD)(Number.NaN, 0.25, 0))).toEqual([1, 0, 0, 1]);
+    expect(Array.from(samplerFor(CARD)(Number.NaN, 0.25, 0))).toEqual([
+      1, 0, 0, 1,
+    ]);
   });
 });
 
 describe("LINEAR", () => {
   it("returns the texel value exactly at a texel center, because both fractions are zero there", () => {
-    const t = texture(2, 2, GL.RGBA, 4, [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255], GL.LINEAR);
+    const t = texture(
+      2,
+      2,
+      GL.RGBA,
+      4,
+      [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255],
+      GL.LINEAR,
+    );
     // Texel (0, 0)'s center is (0.25, 0.25) in normalized coordinates.
     expect(Array.from(samplerFor(t)(0.25, 0.25, 0))).toEqual([1, 0, 0, 1]);
     expect(Array.from(samplerFor(t)(0.75, 0.75, 0))).toEqual([1, 1, 1, 1]);
   });
 
   it("blends the two neighbors halfway between their centers", () => {
-    const t = texture(2, 1, GL.RGBA, 4, [0, 0, 0, 255, 255, 255, 255, 255], GL.LINEAR);
+    const t = texture(
+      2,
+      1,
+      GL.RGBA,
+      4,
+      [0, 0, 0, 255, 255, 255, 255, 255],
+      GL.LINEAR,
+    );
     expect(Array.from(samplerFor(t)(0.5, 0.5, 0))).toEqual([0.5, 0.5, 0.5, 1]);
   });
 
   it("blends across the REPEAT seam using the wrapped neighbor", () => {
-    const t = texture(2, 1, GL.RGBA, 4, [0, 0, 0, 255, 255, 255, 255, 255], GL.LINEAR);
+    const t = texture(
+      2,
+      1,
+      GL.RGBA,
+      4,
+      [0, 0, 0, 255, 255, 255, 255, 255],
+      GL.LINEAR,
+    );
     t.wrapS = GL.REPEAT;
     // u = 1.0: halfway between the last texel's center and the first's again.
     expect(Array.from(samplerFor(t)(1, 0.5, 0))).toEqual([0.5, 0.5, 0.5, 1]);
@@ -101,12 +147,22 @@ describe("LINEAR", () => {
 describe("format expansion", () => {
   it("fills alpha with 1 for RGB", () => {
     const t = texture(1, 1, GL.RGB, 3, [255, 128, 0]);
-    expect(Array.from(samplerFor(t)(0.5, 0.5, 0))).toEqual([1, 128 / 255, 0, 1]);
+    expect(Array.from(samplerFor(t)(0.5, 0.5, 0))).toEqual([
+      1,
+      128 / 255,
+      0,
+      1,
+    ]);
   });
 
   it("fills green and blue with 0 for RED", () => {
     const t = texture(1, 1, GL.RED, 1, [128]);
-    expect(Array.from(samplerFor(t)(0.5, 0.5, 0))).toEqual([128 / 255, 0, 0, 1]);
+    expect(Array.from(samplerFor(t)(0.5, 0.5, 0))).toEqual([
+      128 / 255,
+      0,
+      0,
+      1,
+    ]);
   });
 
   it("broadcasts LUMINANCE to rgb with alpha 1", () => {

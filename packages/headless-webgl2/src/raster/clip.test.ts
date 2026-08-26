@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { clipPolygonToNearPlane, clipSegmentToNearPlane, NEAR_EPS, toWindow, type ClipVertex } from "./clip";
+import {
+  clipPolygonToNearPlane,
+  clipSegmentToNearPlane,
+  NEAR_EPS,
+  toWindow,
+  type ClipVertex,
+} from "./clip";
 
 /**
  * The geometry step in isolation: near-plane clipping and the viewport
@@ -10,13 +16,26 @@ import { clipPolygonToNearPlane, clipSegmentToNearPlane, NEAR_EPS, toWindow, typ
  */
 
 /** A clip vertex from plain numbers, with optional varyings. */
-function vertex(x: number, y: number, z: number, w: number, varyings: number[] = []): ClipVertex {
-  return { position: Float64Array.from([x, y, z, w]), varyings: Float64Array.from(varyings) };
+function vertex(
+  x: number,
+  y: number,
+  z: number,
+  w: number,
+  varyings: number[] = [],
+): ClipVertex {
+  return {
+    position: Float64Array.from([x, y, z, w]),
+    varyings: Float64Array.from(varyings),
+  };
 }
 
 describe("clipPolygonToNearPlane", () => {
   it("passes a triangle fully in front of the camera through untouched", () => {
-    const triangle = [vertex(0, 0, 0, 1), vertex(1, 0, 0, 1), vertex(0, 1, 0, 2)];
+    const triangle = [
+      vertex(0, 0, 0, 1),
+      vertex(1, 0, 0, 1),
+      vertex(0, 1, 0, 2),
+    ];
     const clipped = clipPolygonToNearPlane(triangle);
     expect(clipped).toHaveLength(3);
     expect(clipped[0]).toBe(triangle[0]);
@@ -24,27 +43,49 @@ describe("clipPolygonToNearPlane", () => {
   });
 
   it("drops a triangle fully behind the camera", () => {
-    expect(clipPolygonToNearPlane([vertex(0, 0, 0, 0), vertex(1, 0, 0, -1), vertex(0, 1, 0, -2)])).toHaveLength(0);
+    expect(
+      clipPolygonToNearPlane([
+        vertex(0, 0, 0, 0),
+        vertex(1, 0, 0, -1),
+        vertex(0, 1, 0, -2),
+      ]),
+    ).toHaveLength(0);
   });
 
   it("clips one behind vertex into a quad whose crossings sit on the boundary", () => {
     // b is behind (w = -1); the crossings on edges a→b and b→c land at w = ε.
-    const clipped = clipPolygonToNearPlane([vertex(0, 0, 0, 1, [0]), vertex(2, 0, 0, -1, [1]), vertex(0, 2, 0, 1, [0.5])]);
+    const clipped = clipPolygonToNearPlane([
+      vertex(0, 0, 0, 1, [0]),
+      vertex(2, 0, 0, -1, [1]),
+      vertex(0, 2, 0, 1, [0.5]),
+    ]);
     expect(clipped).toHaveLength(4);
     const ws = clipped.map((v) => v.position[3] ?? 0);
     expect(ws.filter((w) => Math.abs(w - NEAR_EPS) < 1e-12)).toHaveLength(2);
   });
 
   it("clips two behind vertices back to a triangle", () => {
-    const clipped = clipPolygonToNearPlane([vertex(0, 0, 0, 1), vertex(2, 0, 0, -1), vertex(0, 2, 0, -1)]);
+    const clipped = clipPolygonToNearPlane([
+      vertex(0, 0, 0, 1),
+      vertex(2, 0, 0, -1),
+      vertex(0, 2, 0, -1),
+    ]);
     expect(clipped).toHaveLength(3);
   });
 
   it("interpolates varyings linearly in clip space at the crossing", () => {
     // a (w=1, varying 0) → b (w=-1, varying 1): the boundary w=ε sits at
     // t = (1 - ε) / 2 of the way along, so the varying carries that t.
-    const clipped = clipPolygonToNearPlane([vertex(0, 0, 0, 1, [0]), vertex(2, 0, 0, -1, [1]), vertex(0, 2, 0, 1, [0])]);
-    const crossing = clipped.find((v) => Math.abs((v.position[3] ?? 0) - NEAR_EPS) < 1e-12 && (v.varyings[0] ?? 0) > 0.4);
+    const clipped = clipPolygonToNearPlane([
+      vertex(0, 0, 0, 1, [0]),
+      vertex(2, 0, 0, -1, [1]),
+      vertex(0, 2, 0, 1, [0]),
+    ]);
+    const crossing = clipped.find(
+      (v) =>
+        Math.abs((v.position[3] ?? 0) - NEAR_EPS) < 1e-12 &&
+        (v.varyings[0] ?? 0) > 0.4,
+    );
     expect(crossing).toBeDefined();
     expect(crossing?.varyings[0]).toBeCloseTo((1 - NEAR_EPS) / 2, 9);
   });
@@ -58,11 +99,16 @@ describe("clipSegmentToNearPlane", () => {
   });
 
   it("drops a segment fully behind", () => {
-    expect(clipSegmentToNearPlane(vertex(0, 0, 0, 0), vertex(1, 1, 0, -1))).toBeNull();
+    expect(
+      clipSegmentToNearPlane(vertex(0, 0, 0, 0), vertex(1, 1, 0, -1)),
+    ).toBeNull();
   });
 
   it("moves a behind endpoint to the boundary, keeping endpoint order", () => {
-    const clipped = clipSegmentToNearPlane(vertex(0, 0, 0, 1), vertex(2, 0, 0, -1));
+    const clipped = clipSegmentToNearPlane(
+      vertex(0, 0, 0, 1),
+      vertex(2, 0, 0, -1),
+    );
     expect(clipped).not.toBeNull();
     expect(clipped?.[0].position[3]).toBe(1);
     expect(clipped?.[1].position[3]).toBeCloseTo(NEAR_EPS, 12);

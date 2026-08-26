@@ -21,7 +21,11 @@ describe("the planes", () => {
   it("forces every alpha byte to 255 when opaque, the alpha:false buffer shape", () => {
     const fb = new DefaultFramebuffer(2, 1, true);
     expect([...fb.colorPlane]).toEqual([0, 0, 0, 255, 0, 0, 0, 255]);
-    fb.clearColorRect({ x: 0, y: 0, width: 2, height: 1 }, [0.5, 0.5, 0.5, 0], [true, true, true, true]);
+    fb.clearColorRect(
+      { x: 0, y: 0, width: 2, height: 1 },
+      [0.5, 0.5, 0.5, 0],
+      [true, true, true, true],
+    );
     expect(fb.colorPlane[3]).toBe(255);
   });
 
@@ -38,9 +42,14 @@ describe("the planes", () => {
 
   it("clears only the requested rect, clipped to the plane", () => {
     const fb = new DefaultFramebuffer(3, 3, false);
-    fb.clearColorRect({ x: 1, y: 1, width: 5, height: 1 }, [1, 1, 1, 1], [true, true, true, true]);
+    fb.clearColorRect(
+      { x: 1, y: 1, width: 5, height: 1 },
+      [1, 1, 1, 1],
+      [true, true, true, true],
+    );
     // Row 1 (the middle), columns 1..2 painted; everything else untouched.
-    const painted = (x: number, y: number): boolean => fb.colorPlane[(y * 3 + x) * 4] === 255;
+    const painted = (x: number, y: number): boolean =>
+      fb.colorPlane[(y * 3 + x) * 4] === 255;
     expect(painted(0, 1)).toBe(false);
     expect(painted(1, 1)).toBe(true);
     expect(painted(2, 1)).toBe(true);
@@ -50,7 +59,11 @@ describe("the planes", () => {
 
   it("honors the per-channel color mask", () => {
     const fb = new DefaultFramebuffer(1, 1, false);
-    fb.clearColorRect({ x: 0, y: 0, width: 1, height: 1 }, [1, 1, 1, 1], [true, false, true, false]);
+    fb.clearColorRect(
+      { x: 0, y: 0, width: 1, height: 1 },
+      [1, 1, 1, 1],
+      [true, false, true, false],
+    );
     expect([...fb.colorPlane]).toEqual([255, 0, 255, 0]);
   });
 
@@ -62,7 +75,11 @@ describe("the planes", () => {
 
   it("survives a rect entirely off the plane as a no-op", () => {
     const fb = new DefaultFramebuffer(2, 2, false);
-    fb.clearColorRect({ x: 5, y: 5, width: 2, height: 2 }, [1, 1, 1, 1], [true, true, true, true]);
+    fb.clearColorRect(
+      { x: 5, y: 5, width: 2, height: 2 },
+      [1, 1, 1, 1],
+      [true, true, true, true],
+    );
     fb.clearDepthRect({ x: -4, y: 0, width: 2, height: 2 }, 0);
     expect([...fb.colorPlane]).toEqual(Array.from({ length: 16 }, () => 0));
     expect([...fb.depthPlane]).toEqual([1, 1, 1, 1]);
@@ -88,10 +105,15 @@ describe("the supersampled planes", () => {
 
   it("scales a device-space clear rect onto the sample planes", () => {
     const fb = new DefaultFramebuffer(2, 2, false, 2);
-    fb.clearColorRect({ x: 1, y: 0, width: 1, height: 1 }, [1, 0, 0, 1], [true, true, true, true]);
+    fb.clearColorRect(
+      { x: 1, y: 0, width: 1, height: 1 },
+      [1, 0, 0, 1],
+      [true, true, true, true],
+    );
     fb.clearDepthRect({ x: 1, y: 0, width: 1, height: 1 }, 0.25);
     // Device pixel (1, 0) is sample columns 2..3 of sample rows 0..1.
-    const red = (sx: number, sy: number): boolean => fb.colorPlane[(sy * 4 + sx) * 4] === 255;
+    const red = (sx: number, sy: number): boolean =>
+      fb.colorPlane[(sy * 4 + sx) * 4] === 255;
     expect(red(1, 0)).toBe(false);
     expect(red(2, 0)).toBe(true);
     expect(red(3, 1)).toBe(true);
@@ -104,7 +126,9 @@ describe("the supersampled planes", () => {
     const fb = new DefaultFramebuffer(1, 1, false, 2);
     // Distinct subsample bytes written straight into the plane: the resolve
     // must average them (sum / 4, Math.round), channel by channel.
-    fb.colorPlane.set([10, 0, 0, 255, 20, 0, 0, 255, 30, 0, 0, 255, 41, 0, 0, 255]);
+    fb.colorPlane.set([
+      10, 0, 0, 255, 20, 0, 0, 255, 30, 0, 0, 255, 41, 0, 0, 255,
+    ]);
     const out = new Uint8Array(4);
     fb.readPixels(0, 0, 1, 1, out, 4, 0);
     // (10 + 20 + 30 + 41) / 4 = 25.25 → 25; alpha 255 exact.
@@ -113,7 +137,11 @@ describe("the supersampled planes", () => {
 
   it("resolves four agreeing subsamples to their exact byte — the interior-exactness rule", () => {
     const fb = new DefaultFramebuffer(1, 1, false, 2);
-    fb.clearColorRect({ x: 0, y: 0, width: 1, height: 1 }, [0xf2 / 255, 0xf5 / 255, 0xf7 / 255, 1], [true, true, true, true]);
+    fb.clearColorRect(
+      { x: 0, y: 0, width: 1, height: 1 },
+      [0xf2 / 255, 0xf5 / 255, 0xf7 / 255, 1],
+      [true, true, true, true],
+    );
     const out = new Uint8Array(4);
     fb.readPixels(0, 0, 1, 1, out, 4, 0);
     expect([...out]).toEqual([0xf2, 0xf5, 0xf7, 255]);
@@ -121,10 +149,16 @@ describe("the supersampled planes", () => {
 
   it("leaves out-of-bounds destination bytes untouched through the resolve path too", () => {
     const fb = new DefaultFramebuffer(2, 2, false, 2);
-    fb.clearColorRect({ x: 0, y: 0, width: 2, height: 2 }, [1, 1, 1, 1], [true, true, true, true]);
+    fb.clearColorRect(
+      { x: 0, y: 0, width: 2, height: 2 },
+      [1, 1, 1, 1],
+      [true, true, true, true],
+    );
     const out = new Uint8Array(16).fill(7);
     fb.readPixels(-1, -1, 2, 2, out, 4, 0);
-    expect([...out.subarray(0, 12)]).toEqual(Array.from({ length: 12 }, () => 7));
+    expect([...out.subarray(0, 12)]).toEqual(
+      Array.from({ length: 12 }, () => 7),
+    );
     expect([...out.subarray(12, 16)]).toEqual([255, 255, 255, 255]);
   });
 });
@@ -147,7 +181,10 @@ describe("clear and readPixels through the context", () => {
     gl.clear(gl.COLOR_BUFFER_BIT);
     const bytes = new Uint8Array(16);
     gl.readPixels(0, 0, 2, 2, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
-    expect([...bytes]).toEqual([0xf2, 0xf5, 0xf7, 255, 0xf2, 0xf5, 0xf7, 255, 0xf2, 0xf5, 0xf7, 255, 0xf2, 0xf5, 0xf7, 255]);
+    expect([...bytes]).toEqual([
+      0xf2, 0xf5, 0xf7, 255, 0xf2, 0xf5, 0xf7, 255, 0xf2, 0xf5, 0xf7, 255, 0xf2,
+      0xf5, 0xf7, 255,
+    ]);
   });
 
   it("addresses rows bottom-up: row 0 of the readback is the bottom of the canvas", () => {

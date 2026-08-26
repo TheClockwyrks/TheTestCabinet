@@ -16,7 +16,9 @@ function makeGl(): HeadlessWebGL2 {
 }
 
 /** The context as a plain method bag, for names the public type deliberately omits. */
-function methods(gl: HeadlessWebGL2): Record<string, (...args: unknown[]) => unknown> {
+function methods(
+  gl: HeadlessWebGL2,
+): Record<string, (...args: unknown[]) => unknown> {
   return gl as unknown as Record<string, (...args: unknown[]) => unknown>;
 }
 
@@ -160,7 +162,17 @@ describe("methods promoted out of the deferred list by stage 3", () => {
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
     gl.drawElements(gl.TRIANGLES, 3, gl.UNSIGNED_SHORT, 0);
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      1,
+      1,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array(4),
+    );
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, 1, 1);
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
@@ -173,8 +185,12 @@ describe("methods outside the subset", () => {
     for (const name of OUT_OF_SUBSET_METHODS) {
       expect(typeof gl[name], name).toBe("function");
       expect(() => gl[name]!(), name).toThrow(Error);
-      expect(() => gl[name]!(), name).toThrow(new RegExp(`headless-webgl2: ${name} is not implemented`));
-      expect(() => gl[name]!(), name).toThrow(/outside the 0\.1\.0 WebGL2 subset/);
+      expect(() => gl[name]!(), name).toThrow(
+        new RegExp(`headless-webgl2: ${name} is not implemented`),
+      );
+      expect(() => gl[name]!(), name).toThrow(
+        /outside the 0\.1\.0 WebGL2 subset/,
+      );
     }
   });
 });
@@ -182,44 +198,84 @@ describe("methods outside the subset", () => {
 describe("excluded enums reaching implemented methods", () => {
   it("throws for a buffer target outside ARRAY_BUFFER and ELEMENT_ARRAY_BUFFER", () => {
     const gl = makeGl();
-    expect(() => gl.bindBuffer(gl.UNIFORM_BUFFER, null)).toThrow(/bindBuffer\(UNIFORM_BUFFER\) is not implemented/);
-    expect(() => gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null)).toThrow(/PIXEL_UNPACK_BUFFER/);
+    expect(() => gl.bindBuffer(gl.UNIFORM_BUFFER, null)).toThrow(
+      /bindBuffer\(UNIFORM_BUFFER\) is not implemented/,
+    );
+    expect(() => gl.bindBuffer(gl.PIXEL_UNPACK_BUFFER, null)).toThrow(
+      /PIXEL_UNPACK_BUFFER/,
+    );
   });
 
   it("throws for a texture target outside TEXTURE_2D", () => {
     const gl = makeGl();
-    expect(() => gl.bindTexture(gl.TEXTURE_CUBE_MAP, null)).toThrow(/bindTexture\(TEXTURE_CUBE_MAP\) is not implemented/);
+    expect(() => gl.bindTexture(gl.TEXTURE_CUBE_MAP, null)).toThrow(
+      /bindTexture\(TEXTURE_CUBE_MAP\) is not implemented/,
+    );
     expect(() => gl.bindTexture(gl.TEXTURE_3D, null)).toThrow(/TEXTURE_3D/);
   });
 
   it("throws for capabilities of excluded features", () => {
     const gl = makeGl();
-    expect(() => gl.enable(gl.RASTERIZER_DISCARD)).toThrow(/enable\(RASTERIZER_DISCARD\) is not implemented/);
+    expect(() => gl.enable(gl.RASTERIZER_DISCARD)).toThrow(
+      /enable\(RASTERIZER_DISCARD\) is not implemented/,
+    );
     expect(() => gl.disable(gl.SAMPLE_COVERAGE)).toThrow(/SAMPLE_COVERAGE/);
   });
 
   it("throws for a mipmapped min filter, mipmaps being outside 0.1.0", () => {
     const gl = makeGl();
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    expect(() => gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)).toThrow(/mipmap/);
+    expect(() =>
+      gl.texParameteri(
+        gl.TEXTURE_2D,
+        gl.TEXTURE_MIN_FILTER,
+        gl.LINEAR_MIPMAP_LINEAR,
+      ),
+    ).toThrow(/mipmap/);
   });
 
   it("throws for a mip level above zero in texImage2D", () => {
     const gl = makeGl();
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    expect(() => gl.texImage2D(gl.TEXTURE_2D, 1, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null)).toThrow(/mip level/);
+    expect(() =>
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        1,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        null,
+      ),
+    ).toThrow(/mip level/);
   });
 
   it("throws for float texture uploads", () => {
     const gl = makeGl();
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    expect(() => gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.FLOAT, null)).toThrow(/pixel type other than UNSIGNED_BYTE/);
+    expect(() =>
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.FLOAT,
+        null,
+      ),
+    ).toThrow(/pixel type other than UNSIGNED_BYTE/);
   });
 
   it("throws for the DOM-source overload of texImage2D, naming the ArrayBufferView route", () => {
     const gl = makeGl();
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    expect(() => gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, {})).toThrow(/ArrayBufferView overload/);
+    expect(() =>
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, {}),
+    ).toThrow(/ArrayBufferView overload/);
   });
 
   it("throws for a stencil clear, no stencil buffer being allocated", () => {
@@ -229,17 +285,23 @@ describe("excluded enums reaching implemented methods", () => {
 
   it("throws for the MIN and MAX blend equations", () => {
     const gl = makeGl();
-    expect(() => gl.blendEquation(gl.MIN)).toThrow(/blendEquation\(MIN \| MAX\)/);
+    expect(() => gl.blendEquation(gl.MIN)).toThrow(
+      /blendEquation\(MIN \| MAX\)/,
+    );
   });
 
   it("throws for integer vertex fetch types", () => {
     const gl = makeGl();
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-    expect(() => gl.vertexAttribPointer(0, 3, gl.INT, false, 0, 0)).toThrow(/INT\/UNSIGNED_INT/);
+    expect(() => gl.vertexAttribPointer(0, 3, gl.INT, false, 0, 0)).toThrow(
+      /INT\/UNSIGNED_INT/,
+    );
   });
 
   it("throws for the WebGL2 row-length and skip pixel-store parameters", () => {
     const gl = makeGl();
-    expect(() => gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 8)).toThrow(/row-length\/skip/);
+    expect(() => gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 8)).toThrow(
+      /row-length\/skip/,
+    );
   });
 });

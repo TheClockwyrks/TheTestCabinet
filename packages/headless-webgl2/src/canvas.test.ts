@@ -62,7 +62,10 @@ describe("getContext", () => {
   });
 
   it("honors attributes on the first call and reports them from getContextAttributes", () => {
-    const gl = createCanvas(8, 8).getContext("webgl2", { alpha: false, antialias: false });
+    const gl = createCanvas(8, 8).getContext("webgl2", {
+      alpha: false,
+      antialias: false,
+    });
     expect(gl.getContextAttributes()).toEqual({
       alpha: false,
       depth: true,
@@ -112,7 +115,11 @@ describe("getContext", () => {
 
 describe("size assignment", () => {
   /** Reads one pixel as RGBA bytes off the default framebuffer. */
-  function sample(gl: ReturnType<ReturnType<typeof createCanvas>["getContext"]>, x: number, y: number): number[] {
+  function sample(
+    gl: ReturnType<ReturnType<typeof createCanvas>["getContext"]>,
+    x: number,
+    y: number,
+  ): number[] {
     const bytes = new Uint8Array(4);
     gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, bytes);
     return [...bytes];
@@ -157,7 +164,11 @@ describe("size assignment", () => {
     const canvas = createCanvas(8, 8);
     const gl = canvas.getContext("webgl2");
     canvas.width = 32;
-    expect([...(gl.getParameter(gl.VIEWPORT) as Int32Array)]).toEqual([0, 0, 8, 8]);
-    expect([...(gl.getParameter(gl.SCISSOR_BOX) as Int32Array)]).toEqual([0, 0, 8, 8]);
+    expect([...(gl.getParameter(gl.VIEWPORT) as Int32Array)]).toEqual([
+      0, 0, 8, 8,
+    ]);
+    expect([...(gl.getParameter(gl.SCISSOR_BOX) as Int32Array)]).toEqual([
+      0, 0, 8, 8,
+    ]);
   });
 });

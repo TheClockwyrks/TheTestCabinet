@@ -49,7 +49,9 @@ describe("buffers", () => {
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.bufferData(gl.ARRAY_BUFFER, 16, gl.DYNAMIC_DRAW);
     expect(gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_SIZE)).toBe(16);
-    expect(gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_USAGE)).toBe(gl.DYNAMIC_DRAW);
+    expect(gl.getBufferParameter(gl.ARRAY_BUFFER, gl.BUFFER_USAGE)).toBe(
+      gl.DYNAMIC_DRAW,
+    );
     expect([...buffer.data!]).toEqual(Array.from({ length: 16 }, () => 0));
   });
 
@@ -57,7 +59,13 @@ describe("buffers", () => {
     const gl = makeGl();
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([1, 2, 3, 4]) as Float32Array, gl.STATIC_DRAW, 1, 2);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Float32Array([1, 2, 3, 4]) as Float32Array,
+      gl.STATIC_DRAW,
+      1,
+      2,
+    );
     expect([...new Float32Array(buffer.data!.buffer)]).toEqual([2, 3]);
   });
 
@@ -65,7 +73,11 @@ describe("buffers", () => {
     const gl = makeGl();
     const buffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array([0, 0, 0, 0]), gl.STATIC_DRAW);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      new Uint8Array([0, 0, 0, 0]),
+      gl.STATIC_DRAW,
+    );
     gl.bufferSubData(gl.ARRAY_BUFFER, 1, new Uint8Array([7, 8]));
     expect([...buffer.data!]).toEqual([0, 7, 8, 0]);
     gl.bufferSubData(gl.ARRAY_BUFFER, 3, new Uint8Array([1, 2]));
@@ -199,12 +211,18 @@ describe("vertex arrays", () => {
     gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 24, 12);
     // Unbinding afterwards must not disturb the captured reference, per GL.
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    expect(gl.getVertexAttrib(2, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)).toBe(buffer);
+    expect(gl.getVertexAttrib(2, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING)).toBe(
+      buffer,
+    );
     expect(gl.getVertexAttrib(2, gl.VERTEX_ATTRIB_ARRAY_SIZE)).toBe(3);
     expect(gl.getVertexAttrib(2, gl.VERTEX_ATTRIB_ARRAY_TYPE)).toBe(gl.FLOAT);
-    expect(gl.getVertexAttrib(2, gl.VERTEX_ATTRIB_ARRAY_NORMALIZED)).toBe(false);
+    expect(gl.getVertexAttrib(2, gl.VERTEX_ATTRIB_ARRAY_NORMALIZED)).toBe(
+      false,
+    );
     expect(gl.getVertexAttrib(2, gl.VERTEX_ATTRIB_ARRAY_STRIDE)).toBe(24);
-    expect(gl.getVertexAttribOffset(2, gl.VERTEX_ATTRIB_ARRAY_POINTER)).toBe(12);
+    expect(gl.getVertexAttribOffset(2, gl.VERTEX_ATTRIB_ARRAY_POINTER)).toBe(
+      12,
+    );
   });
 
   it("refuses vertexAttribPointer with no ARRAY_BUFFER bound, the no-client-arrays rule", () => {
@@ -236,15 +254,21 @@ describe("vertex arrays", () => {
     gl.vertexAttrib4f(1, 0.5, 0.25, 0.125, 2);
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
-    expect([...(gl.getVertexAttrib(1, gl.CURRENT_VERTEX_ATTRIB) as Float32Array)]).toEqual([0.5, 0.25, 0.125, 2]);
+    expect([
+      ...(gl.getVertexAttrib(1, gl.CURRENT_VERTEX_ATTRIB) as Float32Array),
+    ]).toEqual([0.5, 0.25, 0.125, 2]);
   });
 
   it("fills the missing components of the shorter setters with 0, 0, 1", () => {
     const gl = makeGl();
     gl.vertexAttrib2f(0, 3, 4);
-    expect([...(gl.getVertexAttrib(0, gl.CURRENT_VERTEX_ATTRIB) as Float32Array)]).toEqual([3, 4, 0, 1]);
+    expect([
+      ...(gl.getVertexAttrib(0, gl.CURRENT_VERTEX_ATTRIB) as Float32Array),
+    ]).toEqual([3, 4, 0, 1]);
     gl.vertexAttrib3fv(0, [7, 8, 9]);
-    expect([...(gl.getVertexAttrib(0, gl.CURRENT_VERTEX_ATTRIB) as Float32Array)]).toEqual([7, 8, 9, 1]);
+    expect([
+      ...(gl.getVertexAttrib(0, gl.CURRENT_VERTEX_ATTRIB) as Float32Array),
+    ]).toEqual([7, 8, 9, 1]);
   });
 
   it("refuses a too-short vector for the fv setters with INVALID_VALUE", () => {
@@ -286,7 +310,17 @@ describe("textures", () => {
     const gl = makeGl();
     const texture = boundTexture(gl);
     const pixels = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      2,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      pixels,
+    );
     pixels[0] = 99;
     expect([...texture.image!.data]).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     expect(texture.image!.width).toBe(2);
@@ -297,7 +331,17 @@ describe("textures", () => {
   it("allocates zeroed storage for a null upload", () => {
     const gl = makeGl();
     const texture = boundTexture(gl);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      2,
+      2,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
     expect(texture.image!.data.length).toBe(16);
     expect([...texture.image!.data].every((byte) => byte === 0)).toBe(true);
   });
@@ -307,7 +351,17 @@ describe("textures", () => {
     const texture = boundTexture(gl);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1);
     // Two rows of one RGBA pixel each: top row 1s, bottom row 2s.
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([1, 1, 1, 1, 2, 2, 2, 2]));
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      2,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([1, 1, 1, 1, 2, 2, 2, 2]),
+    );
     expect([...texture.image!.data]).toEqual([2, 2, 2, 2, 1, 1, 1, 1]);
   });
 
@@ -315,7 +369,17 @@ describe("textures", () => {
     const gl = makeGl();
     const texture = boundTexture(gl);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([200, 100, 0, 128]));
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([200, 100, 0, 128]),
+    );
     // round(c * a / 255): round(200*128/255)=100, round(100*128/255)=50.
     expect([...texture.image!.data]).toEqual([100, 50, 0, 128]);
   });
@@ -324,38 +388,108 @@ describe("textures", () => {
     const gl = makeGl();
     const texture = boundTexture(gl);
     // 1×2 RGB with default alignment 4: each 3-byte row is padded to 4.
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 2, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([1, 2, 3, 0, 4, 5, 6, 0]));
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGB,
+      1,
+      2,
+      0,
+      gl.RGB,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([1, 2, 3, 0, 4, 5, 6, 0]),
+    );
     expect([...texture.image!.data]).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   it("refuses an upload whose data is too small with INVALID_OPERATION", () => {
     const gl = makeGl();
     boundTexture(gl);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(15));
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      2,
+      2,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array(15),
+    );
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
   });
 
   it("refuses an upload with no bound texture with INVALID_OPERATION", () => {
     const gl = makeGl();
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
   });
 
   it("refuses a mismatched internal format and format pair with INVALID_OPERATION", () => {
     const gl = makeGl();
     boundTexture(gl);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA8,
+      1,
+      1,
+      0,
+      gl.RGB,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
   });
 
   it("refuses negative sizes, nonzero borders, and negative levels with INVALID_VALUE", () => {
     const gl = makeGl();
     boundTexture(gl);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, -1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      -1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
     expect(gl.getError()).toBe(gl.INVALID_VALUE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      1,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
     expect(gl.getError()).toBe(gl.INVALID_VALUE);
-    gl.texImage2D(gl.TEXTURE_2D, -1, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      -1,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
     expect(gl.getError()).toBe(gl.INVALID_VALUE);
   });
 
@@ -363,7 +497,17 @@ describe("textures", () => {
     const gl = makeGl();
     const texture = boundTexture(gl);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 3, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([9, 8, 7]));
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.R8,
+      3,
+      1,
+      0,
+      gl.RED,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([9, 8, 7]),
+    );
     expect([...texture.image!.data]).toEqual([9, 8, 7]);
     expect(texture.image!.channels).toBe(1);
   });
@@ -375,16 +519,26 @@ describe("textures", () => {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
-    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER)).toBe(gl.NEAREST);
-    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER)).toBe(gl.NEAREST);
-    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S)).toBe(gl.CLAMP_TO_EDGE);
-    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T)).toBe(gl.MIRRORED_REPEAT);
+    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER)).toBe(
+      gl.NEAREST,
+    );
+    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER)).toBe(
+      gl.NEAREST,
+    );
+    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S)).toBe(
+      gl.CLAMP_TO_EDGE,
+    );
+    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T)).toBe(
+      gl.MIRRORED_REPEAT,
+    );
   });
 
   it("keeps GL's mipmapped default min filter faithfully on a fresh texture", () => {
     const gl = makeGl();
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER)).toBe(gl.NEAREST_MIPMAP_LINEAR);
+    expect(gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER)).toBe(
+      gl.NEAREST_MIPMAP_LINEAR,
+    );
   });
 
   it("refuses a bad wrap or mag value with INVALID_ENUM", () => {
@@ -392,7 +546,11 @@ describe("textures", () => {
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, 0x1234);
     expect(gl.getError()).toBe(gl.INVALID_ENUM);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST_MIPMAP_LINEAR);
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_MAG_FILTER,
+      gl.NEAREST_MIPMAP_LINEAR,
+    );
     expect(gl.getError()).toBe(gl.INVALID_ENUM);
   });
 
@@ -448,7 +606,9 @@ describe("shaders and programs", () => {
   it("answers getShaderParameter for type and delete status", () => {
     const gl = makeGl();
     const shader = gl.createShader(gl.VERTEX_SHADER)!;
-    expect(gl.getShaderParameter(shader, gl.SHADER_TYPE)).toBe(gl.VERTEX_SHADER);
+    expect(gl.getShaderParameter(shader, gl.SHADER_TYPE)).toBe(
+      gl.VERTEX_SHADER,
+    );
     expect(gl.getShaderParameter(shader, gl.DELETE_STATUS)).toBe(false);
     gl.deleteShader(shader);
     expect(gl.getShaderParameter(shader, gl.DELETE_STATUS)).toBe(true);
@@ -496,7 +656,9 @@ describe("shaders and programs", () => {
     gl.attachShader(program, gl.createShader(gl.VERTEX_SHADER)!);
     gl.linkProgram(program);
     expect(gl.getProgramParameter(program, gl.LINK_STATUS)).toBe(false);
-    expect(gl.getProgramInfoLog(program)).toMatch(/one vertex and one fragment shader/);
+    expect(gl.getProgramInfoLog(program)).toMatch(
+      /one vertex and one fragment shader/,
+    );
   });
 
   it("fails a link whose shaders never compiled, naming the failed stage and the fix", () => {
@@ -506,7 +668,9 @@ describe("shaders and programs", () => {
     gl.attachShader(program, gl.createShader(gl.FRAGMENT_SHADER)!);
     gl.linkProgram(program);
     expect(gl.getProgramParameter(program, gl.LINK_STATUS)).toBe(false);
-    expect(gl.getProgramInfoLog(program)).toMatch(/vertex shader has not been successfully compiled/);
+    expect(gl.getProgramInfoLog(program)).toMatch(
+      /vertex shader has not been successfully compiled/,
+    );
   });
 
   it("refuses useProgram with an unlinked program via INVALID_OPERATION and accepts null", () => {

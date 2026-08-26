@@ -17,25 +17,58 @@ import type { ScalarKind, Type } from "./ast";
 
 /** GLSL builtins that exist in ES 3.00 but sit outside the subset, each refused with its reason. */
 export const EXCLUDED_FUNCTIONS = new Map<string, string>([
-  ["texelFetch", "'texelFetch' is outside the subset; sample with texture() and normalized coordinates"],
-  ["textureSize", "'textureSize' is outside the subset; pass the size as a uniform"],
-  ["textureProj", "'textureProj' is outside the subset; divide by w yourself and call texture()"],
+  [
+    "texelFetch",
+    "'texelFetch' is outside the subset; sample with texture() and normalized coordinates",
+  ],
+  [
+    "textureSize",
+    "'textureSize' is outside the subset; pass the size as a uniform",
+  ],
+  [
+    "textureProj",
+    "'textureProj' is outside the subset; divide by w yourself and call texture()",
+  ],
   ["textureGrad", "'textureGrad' is outside the subset"],
   ["textureOffset", "'textureOffset' is outside the subset"],
-  ["dFdx", "the derivative functions (dFdx/dFdy/fwidth) are outside the subset"],
-  ["dFdy", "the derivative functions (dFdx/dFdy/fwidth) are outside the subset"],
-  ["fwidth", "the derivative functions (dFdx/dFdy/fwidth) are outside the subset"],
-  ["refract", "'refract' is outside the subset; compute it from dot() and the refraction formula"],
-  ["faceforward", "'faceforward' is outside the subset; compute it from dot() and a ternary"],
-  ["transpose", "'transpose' is outside the subset; build the transposed matrix by columns"],
-  ["inverse", "'inverse' is outside the subset; pass precomputed inverse matrices as uniforms"],
+  [
+    "dFdx",
+    "the derivative functions (dFdx/dFdy/fwidth) are outside the subset",
+  ],
+  [
+    "dFdy",
+    "the derivative functions (dFdx/dFdy/fwidth) are outside the subset",
+  ],
+  [
+    "fwidth",
+    "the derivative functions (dFdx/dFdy/fwidth) are outside the subset",
+  ],
+  [
+    "refract",
+    "'refract' is outside the subset; compute it from dot() and the refraction formula",
+  ],
+  [
+    "faceforward",
+    "'faceforward' is outside the subset; compute it from dot() and a ternary",
+  ],
+  [
+    "transpose",
+    "'transpose' is outside the subset; build the transposed matrix by columns",
+  ],
+  [
+    "inverse",
+    "'inverse' is outside the subset; pass precomputed inverse matrices as uniforms",
+  ],
   ["determinant", "'determinant' is outside the subset"],
   ["matrixCompMult", "'matrixCompMult' is outside the subset"],
   ["outerProduct", "'outerProduct' is outside the subset"],
   ["round", "'round' is outside the subset; use floor(x + 0.5)"],
   ["roundEven", "'roundEven' is outside the subset"],
   ["trunc", "'trunc' is outside the subset; use float(int(x))"],
-  ["modf", "'modf' is outside the subset (it needs an out parameter, which the subset excludes)"],
+  [
+    "modf",
+    "'modf' is outside the subset (it needs an out parameter, which the subset excludes)",
+  ],
   ["isnan", "'isnan' is outside the subset"],
   ["isinf", "'isinf' is outside the subset"],
   ["sinh", "the hyperbolic functions are outside the subset"],
@@ -59,27 +92,37 @@ export const EXCLUDED_FUNCTIONS = new Map<string, string>([
 /** True when `from` is `to` or implicitly converts to it (GLSL ES 3.00 §4.1.10: int → float, ivecN → vecN). */
 export function convertible(from: Type, to: Type): boolean {
   if (sameType(from, to)) return true;
-  if (from.kind === "scalar" && to.kind === "scalar") return from.scalar === "int" && to.scalar === "float";
+  if (from.kind === "scalar" && to.kind === "scalar")
+    return from.scalar === "int" && to.scalar === "float";
   if (from.kind === "vector" && to.kind === "vector") {
-    return from.size === to.size && from.scalar === "int" && to.scalar === "float";
+    return (
+      from.size === to.size && from.scalar === "int" && to.scalar === "float"
+    );
   }
   return false;
 }
 
 function isGen(type: Type, scalar: ScalarKind): boolean {
-  return (type.kind === "scalar" && type.scalar === scalar) || (type.kind === "vector" && type.scalar === scalar);
+  return (
+    (type.kind === "scalar" && type.scalar === scalar) ||
+    (type.kind === "vector" && type.scalar === scalar)
+  );
 }
 
 /** The float genType a value converts to, or null: float/vecN stay, int/ivecN convert. */
 function asFloatGen(type: Type): Type | null {
   if (isGen(type, "float")) return type;
   if (type.kind === "scalar" && type.scalar === "int") return FLOAT;
-  if (type.kind === "vector" && type.scalar === "int") return vec("float", type.size);
+  if (type.kind === "vector" && type.scalar === "int")
+    return vec("float", type.size);
   return null;
 }
 
 function fail(line: number, name: string, args: readonly Type[]): never {
-  throw new CompileError(line, `no overload of '${name}' matches (${args.map(typeName).join(", ")})`);
+  throw new CompileError(
+    line,
+    `no overload of '${name}' matches (${args.map(typeName).join(", ")})`,
+  );
 }
 
 /**
@@ -88,7 +131,11 @@ function fail(line: number, name: string, args: readonly Type[]): never {
  * (the caller then tries user functions); throws a named CompileError for an
  * excluded builtin or a signature mismatch.
  */
-export function resolveBuiltin(name: string, args: readonly Type[], line: number): Type | null {
+export function resolveBuiltin(
+  name: string,
+  args: readonly Type[],
+  line: number,
+): Type | null {
   const excluded = EXCLUDED_FUNCTIONS.get(name);
   if (excluded !== undefined) throw new CompileError(line, excluded);
 
@@ -139,7 +186,8 @@ export function resolveBuiltin(name: string, args: readonly Type[], line: number
       if (args.length === 2 && a !== undefined && b !== undefined) {
         const ga = asFloatGen(a);
         const gb = asFloatGen(b);
-        if (ga === null || gb === null || !sameType(ga, gb)) fail(line, name, args);
+        if (ga === null || gb === null || !sameType(ga, gb))
+          fail(line, name, args);
         return ga;
       }
       fail(line, name, args);
@@ -149,7 +197,8 @@ export function resolveBuiltin(name: string, args: readonly Type[], line: number
     /* -- componentwise, two arguments ------------------------------- */
     case "mod": {
       // mod(genT, genT) and mod(genT, float); float-only (int uses %).
-      if (args.length !== 2 || a === undefined || b === undefined) fail(line, name, args);
+      if (args.length !== 2 || a === undefined || b === undefined)
+        fail(line, name, args);
       const ga = asFloatGen(a);
       const gb = asFloatGen(b);
       if (ga === null || gb === null) fail(line, name, args);
@@ -159,9 +208,15 @@ export function resolveBuiltin(name: string, args: readonly Type[], line: number
     }
     case "min":
     case "max": {
-      if (args.length !== 2 || a === undefined || b === undefined) fail(line, name, args);
+      if (args.length !== 2 || a === undefined || b === undefined)
+        fail(line, name, args);
       // Int overloads survive only when both sides are int-shaped.
-      if (isGen(a, "int") && isGen(b, "int") && (sameType(a, b) || b.kind === "scalar")) return a;
+      if (
+        isGen(a, "int") &&
+        isGen(b, "int") &&
+        (sameType(a, b) || b.kind === "scalar")
+      )
+        return a;
       const ga = asFloatGen(a);
       const gb = asFloatGen(b);
       if (ga === null || gb === null) fail(line, name, args);
@@ -171,15 +226,18 @@ export function resolveBuiltin(name: string, args: readonly Type[], line: number
     }
     case "pow":
     case "reflect": {
-      if (args.length !== 2 || a === undefined || b === undefined) fail(line, name, args);
+      if (args.length !== 2 || a === undefined || b === undefined)
+        fail(line, name, args);
       const ga = asFloatGen(a);
       const gb = asFloatGen(b);
-      if (ga === null || gb === null || !sameType(ga, gb)) fail(line, name, args);
+      if (ga === null || gb === null || !sameType(ga, gb))
+        fail(line, name, args);
       return ga;
     }
     case "step": {
       // step(edge, x): the EDGE may be scalar, broadcast over x.
-      if (args.length !== 2 || a === undefined || b === undefined) fail(line, name, args);
+      if (args.length !== 2 || a === undefined || b === undefined)
+        fail(line, name, args);
       const ga = asFloatGen(a);
       const gb = asFloatGen(b);
       if (ga === null || gb === null) fail(line, name, args);
@@ -190,33 +248,61 @@ export function resolveBuiltin(name: string, args: readonly Type[], line: number
 
     /* -- componentwise, three arguments ----------------------------- */
     case "clamp": {
-      if (args.length !== 3 || a === undefined || b === undefined || c === undefined) fail(line, name, args);
-      if (isGen(a, "int") && isGen(b, "int") && isGen(c, "int") && sameType(b, c) && (sameType(a, b) || b.kind === "scalar")) return a;
+      if (
+        args.length !== 3 ||
+        a === undefined ||
+        b === undefined ||
+        c === undefined
+      )
+        fail(line, name, args);
+      if (
+        isGen(a, "int") &&
+        isGen(b, "int") &&
+        isGen(c, "int") &&
+        sameType(b, c) &&
+        (sameType(a, b) || b.kind === "scalar")
+      )
+        return a;
       const ga = asFloatGen(a);
       const gb = asFloatGen(b);
       const gc = asFloatGen(c);
-      if (ga === null || gb === null || gc === null || !sameType(gb, gc)) fail(line, name, args);
+      if (ga === null || gb === null || gc === null || !sameType(gb, gc))
+        fail(line, name, args);
       if (sameType(ga, gb) || gb.kind === "scalar") return ga;
       fail(line, name, args);
       break;
     }
     case "mix": {
-      if (args.length !== 3 || a === undefined || b === undefined || c === undefined) fail(line, name, args);
+      if (
+        args.length !== 3 ||
+        a === undefined ||
+        b === undefined ||
+        c === undefined
+      )
+        fail(line, name, args);
       const ga = asFloatGen(a);
       const gb = asFloatGen(b);
       const gc = asFloatGen(c);
-      if (ga === null || gb === null || gc === null || !sameType(ga, gb)) fail(line, name, args);
+      if (ga === null || gb === null || gc === null || !sameType(ga, gb))
+        fail(line, name, args);
       if (sameType(gc, ga) || gc.kind === "scalar") return ga;
       fail(line, name, args);
       break;
     }
     case "smoothstep": {
       // smoothstep(e0, e1, x): the edges may be scalar, broadcast over x.
-      if (args.length !== 3 || a === undefined || b === undefined || c === undefined) fail(line, name, args);
+      if (
+        args.length !== 3 ||
+        a === undefined ||
+        b === undefined ||
+        c === undefined
+      )
+        fail(line, name, args);
       const ga = asFloatGen(a);
       const gb = asFloatGen(b);
       const gc = asFloatGen(c);
-      if (ga === null || gb === null || gc === null || !sameType(ga, gb)) fail(line, name, args);
+      if (ga === null || gb === null || gc === null || !sameType(ga, gb))
+        fail(line, name, args);
       if (sameType(ga, gc) || ga.kind === "scalar") return gc;
       fail(line, name, args);
       break;
@@ -224,20 +310,30 @@ export function resolveBuiltin(name: string, args: readonly Type[], line: number
 
     /* -- geometric -------------------------------------------------- */
     case "length": {
-      if (args.length !== 1 || a === undefined || asFloatGen(a) === null) fail(line, name, args);
+      if (args.length !== 1 || a === undefined || asFloatGen(a) === null)
+        fail(line, name, args);
       return FLOAT;
     }
     case "distance":
     case "dot": {
-      if (args.length !== 2 || a === undefined || b === undefined) fail(line, name, args);
+      if (args.length !== 2 || a === undefined || b === undefined)
+        fail(line, name, args);
       const ga = asFloatGen(a);
       const gb = asFloatGen(b);
-      if (ga === null || gb === null || !sameType(ga, gb)) fail(line, name, args);
+      if (ga === null || gb === null || !sameType(ga, gb))
+        fail(line, name, args);
       return FLOAT;
     }
     case "cross": {
       const v3 = vec("float", 3);
-      if (args.length !== 2 || a === undefined || b === undefined || !convertible(a, v3) || !convertible(b, v3)) fail(line, name, args);
+      if (
+        args.length !== 2 ||
+        a === undefined ||
+        b === undefined ||
+        !convertible(a, v3) ||
+        !convertible(b, v3)
+      )
+        fail(line, name, args);
       return v3;
     }
 
@@ -246,23 +342,50 @@ export function resolveBuiltin(name: string, args: readonly Type[], line: number
     case "lessThanEqual":
     case "greaterThan":
     case "greaterThanEqual": {
-      if (args.length !== 2 || a === undefined || b === undefined) fail(line, name, args);
-      if (a.kind !== "vector" || b.kind !== "vector" || a.size !== b.size || a.scalar === "bool" || a.scalar !== b.scalar) fail(line, name, args);
+      if (args.length !== 2 || a === undefined || b === undefined)
+        fail(line, name, args);
+      if (
+        a.kind !== "vector" ||
+        b.kind !== "vector" ||
+        a.size !== b.size ||
+        a.scalar === "bool" ||
+        a.scalar !== b.scalar
+      )
+        fail(line, name, args);
       return vec("bool", a.size);
     }
     case "equal":
     case "notEqual": {
-      if (args.length !== 2 || a === undefined || b === undefined) fail(line, name, args);
-      if (a.kind !== "vector" || b.kind !== "vector" || a.size !== b.size || a.scalar !== b.scalar) fail(line, name, args);
+      if (args.length !== 2 || a === undefined || b === undefined)
+        fail(line, name, args);
+      if (
+        a.kind !== "vector" ||
+        b.kind !== "vector" ||
+        a.size !== b.size ||
+        a.scalar !== b.scalar
+      )
+        fail(line, name, args);
       return vec("bool", a.size);
     }
     case "any":
     case "all": {
-      if (args.length !== 1 || a === undefined || a.kind !== "vector" || a.scalar !== "bool") fail(line, name, args);
+      if (
+        args.length !== 1 ||
+        a === undefined ||
+        a.kind !== "vector" ||
+        a.scalar !== "bool"
+      )
+        fail(line, name, args);
       return BOOL;
     }
     case "not": {
-      if (args.length !== 1 || a === undefined || a.kind !== "vector" || a.scalar !== "bool") fail(line, name, args);
+      if (
+        args.length !== 1 ||
+        a === undefined ||
+        a.kind !== "vector" ||
+        a.scalar !== "bool"
+      )
+        fail(line, name, args);
       return a;
     }
 
@@ -270,11 +393,25 @@ export function resolveBuiltin(name: string, args: readonly Type[], line: number
     // The sampler argument's shape (a sampler uniform, named directly) is the
     // checker's job; the types alone are matched here.
     case "texture": {
-      if (args.length !== 2 || a?.kind !== "sampler2D" || b === undefined || !convertible(b, vec("float", 2))) fail(line, name, args);
+      if (
+        args.length !== 2 ||
+        a?.kind !== "sampler2D" ||
+        b === undefined ||
+        !convertible(b, vec("float", 2))
+      )
+        fail(line, name, args);
       return vec("float", 4);
     }
     case "textureLod": {
-      if (args.length !== 3 || a?.kind !== "sampler2D" || b === undefined || !convertible(b, vec("float", 2)) || c === undefined || !convertible(c, FLOAT)) fail(line, name, args);
+      if (
+        args.length !== 3 ||
+        a?.kind !== "sampler2D" ||
+        b === undefined ||
+        !convertible(b, vec("float", 2)) ||
+        c === undefined ||
+        !convertible(c, FLOAT)
+      )
+        fail(line, name, args);
       return vec("float", 4);
     }
 

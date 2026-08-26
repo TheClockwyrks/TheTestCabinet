@@ -147,14 +147,27 @@ export class DefaultFramebuffer {
    * bytes, so a cleared region resolves byte-exact — the letterbox-bar
    * contract survives supersampling.
    */
-  clearColorRect(rect: PixelRect, rgba: readonly [number, number, number, number], mask: readonly [boolean, boolean, boolean, boolean]): void {
+  clearColorRect(
+    rect: PixelRect,
+    rgba: readonly [number, number, number, number],
+    mask: readonly [boolean, boolean, boolean, boolean],
+  ): void {
     const clipped = this.#clip(rect);
     if (clipped === null) return;
-    const bytes = [colorByte(rgba[0]), colorByte(rgba[1]), colorByte(rgba[2]), this.opaque ? 255 : colorByte(rgba[3])] as const;
+    const bytes = [
+      colorByte(rgba[0]),
+      colorByte(rgba[1]),
+      colorByte(rgba[2]),
+      this.opaque ? 255 : colorByte(rgba[3]),
+    ] as const;
     const color = this.#color;
     const s = this.scale;
     const rowSamples = this.sampleWidth;
-    for (let row = clipped.y * s; row < (clipped.y + clipped.height) * s; row += 1) {
+    for (
+      let row = clipped.y * s;
+      row < (clipped.y + clipped.height) * s;
+      row += 1
+    ) {
       let i = (row * rowSamples + clipped.x * s) * 4;
       for (let col = 0; col < clipped.width * s; col += 1) {
         if (mask[0]) color[i] = bytes[0];
@@ -176,7 +189,11 @@ export class DefaultFramebuffer {
     const depth = this.#depth;
     const s = this.scale;
     const rowSamples = this.sampleWidth;
-    for (let row = clipped.y * s; row < (clipped.y + clipped.height) * s; row += 1) {
+    for (
+      let row = clipped.y * s;
+      row < (clipped.y + clipped.height) * s;
+      row += 1
+    ) {
       const start = row * rowSamples + clipped.x * s;
       depth.fill(v, start, start + clipped.width * s);
     }
@@ -199,7 +216,15 @@ export class DefaultFramebuffer {
    * The caller (the context) has already validated format/type, the dest view
    * type, and that `dest` is large enough — this method only moves bytes.
    */
-  readPixels(x: number, y: number, width: number, height: number, dest: Uint8Array, packAlignment: number, destOffset: number): void {
+  readPixels(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    dest: Uint8Array,
+    packAlignment: number,
+    destOffset: number,
+  ): void {
     const rowBytes = width * 4;
     const stride = Math.ceil(rowBytes / packAlignment) * packAlignment;
     // Clip the requested columns once; the same span applies to every row.
@@ -254,7 +279,11 @@ export class DefaultFramebuffer {
    * included: full stride for every row but the last, which needs only its
    * own bytes, per the GL pack arithmetic.
    */
-  static requiredBytes(width: number, height: number, packAlignment: number): number {
+  static requiredBytes(
+    width: number,
+    height: number,
+    packAlignment: number,
+  ): number {
     if (width <= 0 || height <= 0) return 0;
     const rowBytes = width * 4;
     const stride = Math.ceil(rowBytes / packAlignment) * packAlignment;

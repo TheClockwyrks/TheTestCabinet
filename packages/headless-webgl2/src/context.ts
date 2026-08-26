@@ -21,10 +21,27 @@
 
 import type { Canvas, ContextAttributes } from "./canvas";
 import { GL, type GLConstants } from "./constants";
-import { BufferObject, ProgramObject, ShaderObject, TextureObject, UniformLocationObject, VertexArrayObject, type TextureImage } from "./objects";
-import { createContextState, LIMITS, type ContextState, type TextureUnit } from "./state";
+import {
+  BufferObject,
+  ProgramObject,
+  ShaderObject,
+  TextureObject,
+  UniformLocationObject,
+  VertexArrayObject,
+  type TextureImage,
+} from "./objects";
+import {
+  createContextState,
+  LIMITS,
+  type ContextState,
+  type TextureUnit,
+} from "./state";
 import { DefaultFramebuffer } from "./raster/framebuffer";
-import { drawArraysImpl, drawElementsImpl, type DrawIo } from "./raster/pipeline";
+import {
+  drawArraysImpl,
+  drawElementsImpl,
+  type DrawIo,
+} from "./raster/pipeline";
 import { componentCount } from "./glsl/ast";
 import type { Type } from "./glsl/ast";
 import { compileStage, linkStages } from "./glsl/link";
@@ -67,11 +84,32 @@ const BLEND_FACTORS: readonly number[] = [
   GL.SRC_ALPHA_SATURATE,
 ];
 
-const DEPTH_FUNCS: readonly number[] = [GL.NEVER, GL.LESS, GL.EQUAL, GL.LEQUAL, GL.GREATER, GL.NOTEQUAL, GL.GEQUAL, GL.ALWAYS];
+const DEPTH_FUNCS: readonly number[] = [
+  GL.NEVER,
+  GL.LESS,
+  GL.EQUAL,
+  GL.LEQUAL,
+  GL.GREATER,
+  GL.NOTEQUAL,
+  GL.GEQUAL,
+  GL.ALWAYS,
+];
 
 /** Vertex fetch types inside the subset (spec §3.2); the other valid ES types throw by name. */
-const ATTRIB_TYPES: readonly number[] = [GL.FLOAT, GL.BYTE, GL.UNSIGNED_BYTE, GL.SHORT, GL.UNSIGNED_SHORT];
-const ATTRIB_TYPES_EXCLUDED: readonly number[] = [GL.INT, GL.UNSIGNED_INT, GL.HALF_FLOAT, GL.INT_2_10_10_10_REV, GL.UNSIGNED_INT_2_10_10_10_REV];
+const ATTRIB_TYPES: readonly number[] = [
+  GL.FLOAT,
+  GL.BYTE,
+  GL.UNSIGNED_BYTE,
+  GL.SHORT,
+  GL.UNSIGNED_SHORT,
+];
+const ATTRIB_TYPES_EXCLUDED: readonly number[] = [
+  GL.INT,
+  GL.UNSIGNED_INT,
+  GL.HALF_FLOAT,
+  GL.INT_2_10_10_10_REV,
+  GL.UNSIGNED_INT_2_10_10_10_REV,
+];
 
 const ATTRIB_TYPE_SIZES = new Map<number, number>([
   [GL.FLOAT, 4],
@@ -168,7 +206,12 @@ export class HeadlessWebGL2Context {
    */
   #owned = new WeakSet<object>();
 
-  constructor(canvas: Canvas, width: number, height: number, attributes: ResolvedContextAttributes) {
+  constructor(
+    canvas: Canvas,
+    width: number,
+    height: number,
+    attributes: ResolvedContextAttributes,
+  ) {
     this.canvas = canvas;
     this.#attributes = attributes;
     const defaultVao = new VertexArrayObject(LIMITS.maxVertexAttribs, true);
@@ -177,7 +220,12 @@ export class HeadlessWebGL2Context {
     // `antialias` is 2×2 supersampling: the planes hold four samples per
     // pixel and readPixels box-filters them, so edges blend while a flat
     // interior — four agreeing subsamples — stays byte-exact.
-    this.#framebuffer = new DefaultFramebuffer(width, height, !attributes.alpha, attributes.antialias ? 2 : 1);
+    this.#framebuffer = new DefaultFramebuffer(
+      width,
+      height,
+      !attributes.alpha,
+      attributes.antialias ? 2 : 1,
+    );
   }
 
   /* ------------------------------------------------------------------ */
@@ -244,7 +292,9 @@ export class HeadlessWebGL2Context {
 
   /** Throws for a call (or enum) the 0.1.0 subset excludes: loud, per the package's governing rule. */
   #notImplemented(what: string): never {
-    throw new Error(`headless-webgl2: ${what} is not implemented: it is outside the 0.1.0 WebGL2 subset, so restructure the caller to stay inside the subset rather than relying on a silent no-op`);
+    throw new Error(
+      `headless-webgl2: ${what} is not implemented: it is outside the 0.1.0 WebGL2 subset, so restructure the caller to stay inside the subset rather than relying on a silent no-op`,
+    );
   }
 
   /* ------------------------------------------------------------------ */
@@ -273,7 +323,8 @@ export class HeadlessWebGL2Context {
     const value = this.#state.capabilities.get(cap);
     if (value === undefined) {
       const excluded = CAPABILITIES_EXCLUDED.get(cap);
-      if (excluded !== undefined) this.#notImplemented(`isEnabled(${excluded})`);
+      if (excluded !== undefined)
+        this.#notImplemented(`isEnabled(${excluded})`);
       this.#recordError(GL.INVALID_ENUM);
       return false;
     }
@@ -286,7 +337,12 @@ export class HeadlessWebGL2Context {
 
   /** Stores clamped values, because GL clamps clear colors on set and queries answer the clamped form. */
   clearColor(red: number, green: number, blue: number, alpha: number): void {
-    this.#state.clearColor = [clamp01(red), clamp01(green), clamp01(blue), clamp01(alpha)];
+    this.#state.clearColor = [
+      clamp01(red),
+      clamp01(green),
+      clamp01(blue),
+      clamp01(alpha),
+    ];
   }
 
   clearDepth(depth: number): void {
@@ -317,7 +373,12 @@ export class HeadlessWebGL2Context {
     this.blendFuncSeparate(sfactor, dfactor, sfactor, dfactor);
   }
 
-  blendFuncSeparate(srcRGB: number, dstRGB: number, srcAlpha: number, dstAlpha: number): void {
+  blendFuncSeparate(
+    srcRGB: number,
+    dstRGB: number,
+    srcAlpha: number,
+    dstAlpha: number,
+  ): void {
     for (const factor of [srcRGB, dstRGB, srcAlpha, dstAlpha]) {
       if (!BLEND_FACTORS.includes(factor)) {
         this.#recordError(GL.INVALID_ENUM);
@@ -336,8 +397,13 @@ export class HeadlessWebGL2Context {
 
   blendEquationSeparate(modeRGB: number, modeAlpha: number): void {
     for (const mode of [modeRGB, modeAlpha]) {
-      if (mode === GL.MIN || mode === GL.MAX) this.#notImplemented("blendEquation(MIN | MAX)");
-      if (mode !== GL.FUNC_ADD && mode !== GL.FUNC_SUBTRACT && mode !== GL.FUNC_REVERSE_SUBTRACT) {
+      if (mode === GL.MIN || mode === GL.MAX)
+        this.#notImplemented("blendEquation(MIN | MAX)");
+      if (
+        mode !== GL.FUNC_ADD &&
+        mode !== GL.FUNC_SUBTRACT &&
+        mode !== GL.FUNC_REVERSE_SUBTRACT
+      ) {
         this.#recordError(GL.INVALID_ENUM);
         return;
       }
@@ -347,7 +413,12 @@ export class HeadlessWebGL2Context {
   }
 
   blendColor(red: number, green: number, blue: number, alpha: number): void {
-    this.#state.blendColor = [clamp01(red), clamp01(green), clamp01(blue), clamp01(alpha)];
+    this.#state.blendColor = [
+      clamp01(red),
+      clamp01(green),
+      clamp01(blue),
+      clamp01(alpha),
+    ];
   }
 
   cullFace(mode: number): void {
@@ -383,7 +454,10 @@ export class HeadlessWebGL2Context {
 
   /** Hints are validated and ignored — this rasterizer has no quality knobs to trade. */
   hint(target: number, mode: number): void {
-    if (target !== GL.GENERATE_MIPMAP_HINT && target !== GL.FRAGMENT_SHADER_DERIVATIVE_HINT) {
+    if (
+      target !== GL.GENERATE_MIPMAP_HINT &&
+      target !== GL.FRAGMENT_SHADER_DERIVATIVE_HINT
+    ) {
       this.#recordError(GL.INVALID_ENUM);
       return;
     }
@@ -448,7 +522,9 @@ export class HeadlessWebGL2Context {
       case GL.PACK_ROW_LENGTH:
       case GL.PACK_SKIP_ROWS:
       case GL.PACK_SKIP_PIXELS:
-        this.#notImplemented("pixelStorei with the WebGL2 row-length/skip parameters");
+        this.#notImplemented(
+          "pixelStorei with the WebGL2 row-length/skip parameters",
+        );
         return;
       default:
         this.#recordError(GL.INVALID_ENUM);
@@ -609,18 +685,39 @@ export class HeadlessWebGL2Context {
   /* ------------------------------------------------------------------ */
 
   clear(mask: number): void {
-    if ((mask & ~(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT | GL.STENCIL_BUFFER_BIT)) !== 0) {
+    if (
+      (mask &
+        ~(
+          GL.COLOR_BUFFER_BIT |
+          GL.DEPTH_BUFFER_BIT |
+          GL.STENCIL_BUFFER_BIT
+        )) !==
+      0
+    ) {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
-    if ((mask & GL.STENCIL_BUFFER_BIT) !== 0) this.#notImplemented("clear(STENCIL_BUFFER_BIT) — no stencil buffer is allocated");
+    if ((mask & GL.STENCIL_BUFFER_BIT) !== 0)
+      this.#notImplemented(
+        "clear(STENCIL_BUFFER_BIT) — no stencil buffer is allocated",
+      );
     const s = this.#state;
     // The scissor box bounds a clear exactly as it bounds a draw; letterbox
     // bars depend on this (scissored clears are a documented engine idiom).
     const rect =
       s.capabilities.get(GL.SCISSOR_TEST) === true
-        ? { x: s.scissor[0], y: s.scissor[1], width: s.scissor[2], height: s.scissor[3] }
-        : { x: 0, y: 0, width: this.#framebuffer.width, height: this.#framebuffer.height };
+        ? {
+            x: s.scissor[0],
+            y: s.scissor[1],
+            width: s.scissor[2],
+            height: s.scissor[3],
+          }
+        : {
+            x: 0,
+            y: 0,
+            width: this.#framebuffer.width,
+            height: this.#framebuffer.height,
+          };
     if ((mask & GL.COLOR_BUFFER_BIT) !== 0) {
       this.#framebuffer.clearColorRect(rect, s.clearColor, s.colorMask);
     }
@@ -642,7 +739,12 @@ export class HeadlessWebGL2Context {
   }
 
   isBuffer(buffer: unknown): boolean {
-    return buffer instanceof BufferObject && this.#owned.has(buffer) && buffer.everBound && !buffer.deleted;
+    return (
+      buffer instanceof BufferObject &&
+      this.#owned.has(buffer) &&
+      buffer.everBound &&
+      !buffer.deleted
+    );
   }
 
   /** Resolves a bind target to its binding slot, or null after latching the right error/throw. */
@@ -677,15 +779,34 @@ export class HeadlessWebGL2Context {
   #boundBuffer(target: number, call: string): BufferObject | null {
     const slot = this.#bufferBindingFor(target, call);
     if (slot === null) return null;
-    const buffer = slot === "array" ? this.#state.arrayBuffer : this.#state.vertexArray.elementArrayBuffer;
+    const buffer =
+      slot === "array"
+        ? this.#state.arrayBuffer
+        : this.#state.vertexArray.elementArrayBuffer;
     if (buffer === null) this.#recordError(GL.INVALID_OPERATION);
     return buffer;
   }
 
   bufferData(target: number, size: number, usage: number): void;
-  bufferData(target: number, data: ArrayBufferView | ArrayBuffer, usage: number): void;
-  bufferData(target: number, srcData: ArrayBufferView, usage: number, srcOffset: number, length?: number): void;
-  bufferData(target: number, sizeOrData: number | ArrayBufferView | ArrayBuffer | null, usage: number, srcOffset = 0, length?: number): void {
+  bufferData(
+    target: number,
+    data: ArrayBufferView | ArrayBuffer,
+    usage: number,
+  ): void;
+  bufferData(
+    target: number,
+    srcData: ArrayBufferView,
+    usage: number,
+    srcOffset: number,
+    length?: number,
+  ): void;
+  bufferData(
+    target: number,
+    sizeOrData: number | ArrayBufferView | ArrayBuffer | null,
+    usage: number,
+    srcOffset = 0,
+    length?: number,
+  ): void {
     const buffer = this.#boundBuffer(target, "bufferData");
     if (buffer === null) return;
     if (!BUFFER_USAGES.includes(usage)) {
@@ -705,16 +826,23 @@ export class HeadlessWebGL2Context {
     } else if (sizeOrData !== null && ArrayBuffer.isView(sizeOrData)) {
       const view = sizeOrData;
       // A DataView has no BYTES_PER_ELEMENT; GL treats it as bytes.
-      const elementSize = (view as { BYTES_PER_ELEMENT?: number }).BYTES_PER_ELEMENT ?? 1;
+      const elementSize =
+        (view as { BYTES_PER_ELEMENT?: number }).BYTES_PER_ELEMENT ?? 1;
       const elementCount = view.byteLength / elementSize;
       const takeElements = length ?? elementCount - srcOffset;
-      if (srcOffset < 0 || takeElements < 0 || srcOffset + takeElements > elementCount) {
+      if (
+        srcOffset < 0 ||
+        takeElements < 0 ||
+        srcOffset + takeElements > elementCount
+      ) {
         this.#recordError(GL.INVALID_VALUE);
         return;
       }
       const byteStart = view.byteOffset + srcOffset * elementSize;
       const byteLength = takeElements * elementSize;
-      buffer.data = new Uint8Array(view.buffer.slice(byteStart, byteStart + byteLength));
+      buffer.data = new Uint8Array(
+        view.buffer.slice(byteStart, byteStart + byteLength),
+      );
     } else {
       // WebGL generates INVALID_VALUE for a null data argument.
       this.#recordError(GL.INVALID_VALUE);
@@ -723,7 +851,13 @@ export class HeadlessWebGL2Context {
     buffer.usage = usage;
   }
 
-  bufferSubData(target: number, dstByteOffset: number, srcData: ArrayBufferView | ArrayBuffer, srcOffset = 0, length?: number): void {
+  bufferSubData(
+    target: number,
+    dstByteOffset: number,
+    srcData: ArrayBufferView | ArrayBuffer,
+    srcOffset = 0,
+    length?: number,
+  ): void {
     const buffer = this.#boundBuffer(target, "bufferSubData");
     if (buffer === null) return;
     if (buffer.data === null) {
@@ -735,19 +869,31 @@ export class HeadlessWebGL2Context {
       bytes = new Uint8Array(srcData);
     } else if (ArrayBuffer.isView(srcData)) {
       // A DataView has no BYTES_PER_ELEMENT; GL treats it as bytes.
-      const elementSize = (srcData as { BYTES_PER_ELEMENT?: number }).BYTES_PER_ELEMENT ?? 1;
+      const elementSize =
+        (srcData as { BYTES_PER_ELEMENT?: number }).BYTES_PER_ELEMENT ?? 1;
       const elementCount = srcData.byteLength / elementSize;
       const takeElements = length ?? elementCount - srcOffset;
-      if (srcOffset < 0 || takeElements < 0 || srcOffset + takeElements > elementCount) {
+      if (
+        srcOffset < 0 ||
+        takeElements < 0 ||
+        srcOffset + takeElements > elementCount
+      ) {
         this.#recordError(GL.INVALID_VALUE);
         return;
       }
-      bytes = new Uint8Array(srcData.buffer, srcData.byteOffset + srcOffset * elementSize, takeElements * elementSize);
+      bytes = new Uint8Array(
+        srcData.buffer,
+        srcData.byteOffset + srcOffset * elementSize,
+        takeElements * elementSize,
+      );
     } else {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
-    if (dstByteOffset < 0 || dstByteOffset + bytes.length > buffer.data.length) {
+    if (
+      dstByteOffset < 0 ||
+      dstByteOffset + bytes.length > buffer.data.length
+    ) {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
@@ -764,7 +910,13 @@ export class HeadlessWebGL2Context {
   }
 
   deleteBuffer(buffer: BufferObject | null): void {
-    if (buffer === null || !(buffer instanceof BufferObject) || !this.#owned.has(buffer) || buffer.deleted) return;
+    if (
+      buffer === null ||
+      !(buffer instanceof BufferObject) ||
+      !this.#owned.has(buffer) ||
+      buffer.deleted
+    )
+      return;
     buffer.deleted = true;
     // Deleting detaches the buffer from the context's bindings and from the
     // attachment points of the currently bound VAO, per ES 3.0 §5.1.2. Other
@@ -788,7 +940,13 @@ export class HeadlessWebGL2Context {
   }
 
   isVertexArray(vao: unknown): boolean {
-    return vao instanceof VertexArrayObject && this.#owned.has(vao) && vao.everBound && !vao.deleted && !vao.isDefault;
+    return (
+      vao instanceof VertexArrayObject &&
+      this.#owned.has(vao) &&
+      vao.everBound &&
+      !vao.deleted &&
+      !vao.isDefault
+    );
   }
 
   bindVertexArray(vao: VertexArrayObject | null): void {
@@ -796,7 +954,12 @@ export class HeadlessWebGL2Context {
       this.#state.vertexArray = this.#state.defaultVertexArray;
       return;
     }
-    if (!(vao instanceof VertexArrayObject) || !this.#owned.has(vao) || vao.deleted || vao.isDefault) {
+    if (
+      !(vao instanceof VertexArrayObject) ||
+      !this.#owned.has(vao) ||
+      vao.deleted ||
+      vao.isDefault
+    ) {
       this.#recordError(GL.INVALID_OPERATION);
       return;
     }
@@ -805,15 +968,27 @@ export class HeadlessWebGL2Context {
   }
 
   deleteVertexArray(vao: VertexArrayObject | null): void {
-    if (vao === null || !(vao instanceof VertexArrayObject) || !this.#owned.has(vao) || vao.deleted || vao.isDefault) return;
+    if (
+      vao === null ||
+      !(vao instanceof VertexArrayObject) ||
+      !this.#owned.has(vao) ||
+      vao.deleted ||
+      vao.isDefault
+    )
+      return;
     vao.deleted = true;
     // Deleting the bound VAO rebinds the default one, per spec.
-    if (this.#state.vertexArray === vao) this.#state.vertexArray = this.#state.defaultVertexArray;
+    if (this.#state.vertexArray === vao)
+      this.#state.vertexArray = this.#state.defaultVertexArray;
   }
 
   /** Validates an attribute index, latching INVALID_VALUE for one out of range. */
   #checkAttribIndex(index: number): boolean {
-    if (!Number.isInteger(index) || index < 0 || index >= LIMITS.maxVertexAttribs) {
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= LIMITS.maxVertexAttribs
+    ) {
       this.#recordError(GL.INVALID_VALUE);
       return false;
     }
@@ -832,14 +1007,24 @@ export class HeadlessWebGL2Context {
     if (attrib) attrib.enabled = false;
   }
 
-  vertexAttribPointer(index: number, size: number, type: number, normalized: boolean, stride: number, offset: number): void {
+  vertexAttribPointer(
+    index: number,
+    size: number,
+    type: number,
+    normalized: boolean,
+    stride: number,
+    offset: number,
+  ): void {
     if (!this.#checkAttribIndex(index)) return;
     if (size < 1 || size > 4 || !Number.isInteger(size)) {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
     if (!ATTRIB_TYPES.includes(type)) {
-      if (ATTRIB_TYPES_EXCLUDED.includes(type)) this.#notImplemented("vertexAttribPointer with INT/UNSIGNED_INT/HALF_FLOAT/packed fetch types");
+      if (ATTRIB_TYPES_EXCLUDED.includes(type))
+        this.#notImplemented(
+          "vertexAttribPointer with INT/UNSIGNED_INT/HALF_FLOAT/packed fetch types",
+        );
       this.#recordError(GL.INVALID_ENUM);
       return;
     }
@@ -871,7 +1056,13 @@ export class HeadlessWebGL2Context {
   }
 
   /** Writes a generic attribute value; the constant fed to a disabled array, context state per GL. */
-  #setGenericAttrib(index: number, x: number, y: number, z: number, w: number): void {
+  #setGenericAttrib(
+    index: number,
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+  ): void {
     if (!this.#checkAttribIndex(index)) return;
     const slot = this.#state.genericAttribs[index];
     if (!slot) return;
@@ -893,16 +1084,27 @@ export class HeadlessWebGL2Context {
     this.#setGenericAttrib(index, x, y, z, 1);
   }
 
-  vertexAttrib4f(index: number, x: number, y: number, z: number, w: number): void {
+  vertexAttrib4f(
+    index: number,
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+  ): void {
     this.#setGenericAttrib(index, x, y, z, w);
   }
 
-  #genericAttribFromList(index: number, values: Float32Array | number[], count: number): void {
+  #genericAttribFromList(
+    index: number,
+    values: Float32Array | number[],
+    count: number,
+  ): void {
     if (values.length < count) {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
-    const v = (i: number): number => (i < count ? Number(values[i]) : i === 3 ? 1 : 0);
+    const v = (i: number): number =>
+      i < count ? Number(values[i]) : i === 3 ? 1 : 0;
     this.#setGenericAttrib(index, v(0), v(1), v(2), v(3));
   }
 
@@ -967,7 +1169,10 @@ export class HeadlessWebGL2Context {
 
   #activeUnit(): TextureUnit {
     const unit = this.#state.textureUnits[this.#state.activeTextureUnit];
-    if (!unit) throw new Error("headless-webgl2: internal invariant broken: the active texture unit is out of range");
+    if (!unit)
+      throw new Error(
+        "headless-webgl2: internal invariant broken: the active texture unit is out of range",
+      );
     return unit;
   }
 
@@ -978,7 +1183,12 @@ export class HeadlessWebGL2Context {
   }
 
   isTexture(texture: unknown): boolean {
-    return texture instanceof TextureObject && this.#owned.has(texture) && texture.everBound && !texture.deleted;
+    return (
+      texture instanceof TextureObject &&
+      this.#owned.has(texture) &&
+      texture.everBound &&
+      !texture.deleted
+    );
   }
 
   activeTexture(unit: number): void {
@@ -1000,7 +1210,11 @@ export class HeadlessWebGL2Context {
   bindTexture(target: number, texture: TextureObject | null): void {
     if (!this.#checkTexture2dTarget(target, "bindTexture")) return;
     if (texture !== null) {
-      if (!(texture instanceof TextureObject) || !this.#owned.has(texture) || texture.deleted) {
+      if (
+        !(texture instanceof TextureObject) ||
+        !this.#owned.has(texture) ||
+        texture.deleted
+      ) {
         this.#recordError(GL.INVALID_OPERATION);
         return;
       }
@@ -1010,21 +1224,56 @@ export class HeadlessWebGL2Context {
   }
 
   deleteTexture(texture: TextureObject | null): void {
-    if (texture === null || !(texture instanceof TextureObject) || !this.#owned.has(texture) || texture.deleted) return;
+    if (
+      texture === null ||
+      !(texture instanceof TextureObject) ||
+      !this.#owned.has(texture) ||
+      texture.deleted
+    )
+      return;
     texture.deleted = true;
     for (const unit of this.#state.textureUnits) {
       if (unit.texture2d === texture) unit.texture2d = null;
     }
   }
 
-  texImage2D(target: number, level: number, internalformat: number, width: number, height: number, border: number, format: number, type: number, pixels: ArrayBufferView | null): void;
-  texImage2D(target: number, level: number, internalformat: number, format: number, type: number, source: unknown): void;
-  texImage2D(target: number, level: number, internalformat: number, a: number, b: number, c: unknown, d?: number, e?: number, f?: ArrayBufferView | null): void {
+  texImage2D(
+    target: number,
+    level: number,
+    internalformat: number,
+    width: number,
+    height: number,
+    border: number,
+    format: number,
+    type: number,
+    pixels: ArrayBufferView | null,
+  ): void;
+  texImage2D(
+    target: number,
+    level: number,
+    internalformat: number,
+    format: number,
+    type: number,
+    source: unknown,
+  ): void;
+  texImage2D(
+    target: number,
+    level: number,
+    internalformat: number,
+    a: number,
+    b: number,
+    c: unknown,
+    d?: number,
+    e?: number,
+    f?: ArrayBufferView | null,
+  ): void {
     if (d === undefined || e === undefined) {
       // The six-argument DOM-source overload. It cannot exist in Node — there
       // is no ImageBitmap/HTMLImageElement — so the engines decode images
       // themselves and upload bytes (binding decision 8).
-      throw new Error("headless-webgl2: the DOM-source overload of texImage2D is not implemented: Node has no image elements, so decode the image to RGBA bytes and upload through the ArrayBufferView overload");
+      throw new Error(
+        "headless-webgl2: the DOM-source overload of texImage2D is not implemented: Node has no image elements, so decode the image to RGBA bytes and upload through the ArrayBufferView overload",
+      );
     }
     const width = a;
     const height = b;
@@ -1048,18 +1297,27 @@ export class HeadlessWebGL2Context {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
-    if (level > 0) this.#notImplemented("texImage2D at a mip level above 0 (mipmaps are outside 0.1.0; use base-level NEAREST/LINEAR filtering)");
+    if (level > 0)
+      this.#notImplemented(
+        "texImage2D at a mip level above 0 (mipmaps are outside 0.1.0; use base-level NEAREST/LINEAR filtering)",
+      );
     if (width > LIMITS.maxTextureSize || height > LIMITS.maxTextureSize) {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
     if (type !== GL.UNSIGNED_BYTE) {
-      if (PIXEL_TYPES_KNOWN.includes(type)) this.#notImplemented("texImage2D with a pixel type other than UNSIGNED_BYTE (float and packed texture types are outside 0.1.0)");
+      if (PIXEL_TYPES_KNOWN.includes(type))
+        this.#notImplemented(
+          "texImage2D with a pixel type other than UNSIGNED_BYTE (float and packed texture types are outside 0.1.0)",
+        );
       this.#recordError(GL.INVALID_ENUM);
       return;
     }
     const layout = TEXTURE_FORMATS.get(internalformat);
-    if (layout === undefined) this.#notImplemented("texImage2D with an internal format outside RGBA/RGBA8, RGB/RGB8, RED/R8, LUMINANCE, LUMINANCE_ALPHA, and ALPHA");
+    if (layout === undefined)
+      this.#notImplemented(
+        "texImage2D with an internal format outside RGBA/RGBA8, RGB/RGB8, RED/R8, LUMINANCE, LUMINANCE_ALPHA, and ALPHA",
+      );
     if (format !== layout.format) {
       this.#recordError(GL.INVALID_OPERATION);
       return;
@@ -1074,7 +1332,15 @@ export class HeadlessWebGL2Context {
       if (unpacked === null) return;
       data = unpacked;
     }
-    const image: TextureImage = { width, height, internalFormat: internalformat, format, type, channels, data };
+    const image: TextureImage = {
+      width,
+      height,
+      internalFormat: internalformat,
+      format,
+      type,
+      channels,
+      data,
+    };
     texture.image = image;
   }
 
@@ -1086,8 +1352,17 @@ export class HeadlessWebGL2Context {
    * data. Returns null after latching the right error for a wrong view type
    * or a source too small for the rectangle.
    */
-  #unpackPixels(pixels: ArrayBufferView, width: number, height: number, channels: number, srcOffset: number): Uint8Array | null {
-    if (!(pixels instanceof Uint8Array) && !(pixels instanceof Uint8ClampedArray)) {
+  #unpackPixels(
+    pixels: ArrayBufferView,
+    width: number,
+    height: number,
+    channels: number,
+    srcOffset: number,
+  ): Uint8Array | null {
+    if (
+      !(pixels instanceof Uint8Array) &&
+      !(pixels instanceof Uint8ClampedArray)
+    ) {
       // The view type must match the pixel type, per WebGL.
       this.#recordError(GL.INVALID_OPERATION);
       return null;
@@ -1097,14 +1372,19 @@ export class HeadlessWebGL2Context {
       return null;
     }
     const rowBytes = width * channels;
-    const srcStride = Math.ceil(rowBytes / this.#state.unpackAlignment) * this.#state.unpackAlignment;
+    const srcStride =
+      Math.ceil(rowBytes / this.#state.unpackAlignment) *
+      this.#state.unpackAlignment;
     const needed = height === 0 ? 0 : srcStride * (height - 1) + rowBytes;
     if (pixels.byteLength - srcOffset < needed) {
       this.#recordError(GL.INVALID_OPERATION);
       return null;
     }
     const data = new Uint8Array(width * height * channels);
-    const src = pixels instanceof Uint8Array ? pixels : new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+    const src =
+      pixels instanceof Uint8Array
+        ? pixels
+        : new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
     for (let row = 0; row < height; row += 1) {
       const srcRow = this.#state.unpackFlipY ? height - 1 - row : row;
       const start = srcOffset + srcRow * srcStride;
@@ -1131,13 +1411,48 @@ export class HeadlessWebGL2Context {
    * UNPACK_FLIP_Y reverses the source rows within the rect while the
    * destination offsets stand.
    */
-  texSubImage2D(target: number, level: number, xoffset: number, yoffset: number, width: number, height: number, format: number, type: number, pixels: ArrayBufferView | null, srcOffset?: number): void;
-  texSubImage2D(target: number, level: number, xoffset: number, yoffset: number, format: number, type: number, source: unknown): void;
-  texSubImage2D(target: number, level: number, xoffset: number, yoffset: number, a: number, b: number, c: number | unknown, d?: number, e?: ArrayBufferView | null | unknown, f?: number): void {
-    if (d === undefined || (e !== null && e !== undefined && !ArrayBuffer.isView(e))) {
+  texSubImage2D(
+    target: number,
+    level: number,
+    xoffset: number,
+    yoffset: number,
+    width: number,
+    height: number,
+    format: number,
+    type: number,
+    pixels: ArrayBufferView | null,
+    srcOffset?: number,
+  ): void;
+  texSubImage2D(
+    target: number,
+    level: number,
+    xoffset: number,
+    yoffset: number,
+    format: number,
+    type: number,
+    source: unknown,
+  ): void;
+  texSubImage2D(
+    target: number,
+    level: number,
+    xoffset: number,
+    yoffset: number,
+    a: number,
+    b: number,
+    c: number | unknown,
+    d?: number,
+    e?: ArrayBufferView | null | unknown,
+    f?: number,
+  ): void {
+    if (
+      d === undefined ||
+      (e !== null && e !== undefined && !ArrayBuffer.isView(e))
+    ) {
       // Either the seven-argument DOM-source overload or the nine-argument
       // form with a TexImageSource where the view belongs.
-      throw new Error("headless-webgl2: the DOM-source overload of texSubImage2D is not implemented: Node has no image elements, so decode the image to RGBA bytes and upload through the ArrayBufferView overload");
+      throw new Error(
+        "headless-webgl2: the DOM-source overload of texSubImage2D is not implemented: Node has no image elements, so decode the image to RGBA bytes and upload through the ArrayBufferView overload",
+      );
     }
     const width = Number(a);
     const height = Number(b);
@@ -1155,14 +1470,20 @@ export class HeadlessWebGL2Context {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
-    if (level > 0) this.#notImplemented("texSubImage2D at a mip level above 0 (mipmaps are outside 0.1.0; use base-level NEAREST/LINEAR filtering)");
+    if (level > 0)
+      this.#notImplemented(
+        "texSubImage2D at a mip level above 0 (mipmaps are outside 0.1.0; use base-level NEAREST/LINEAR filtering)",
+      );
     const image = texture.image;
     if (xoffset + width > image.width || yoffset + height > image.height) {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
     if (type !== GL.UNSIGNED_BYTE) {
-      if (PIXEL_TYPES_KNOWN.includes(type)) this.#notImplemented("texSubImage2D with a pixel type other than UNSIGNED_BYTE (float and packed texture types are outside 0.1.0)");
+      if (PIXEL_TYPES_KNOWN.includes(type))
+        this.#notImplemented(
+          "texSubImage2D with a pixel type other than UNSIGNED_BYTE (float and packed texture types are outside 0.1.0)",
+        );
       this.#recordError(GL.INVALID_ENUM);
       return;
     }
@@ -1176,11 +1497,20 @@ export class HeadlessWebGL2Context {
       return;
     }
     const channels = image.channels;
-    const packed = this.#unpackPixels(pixels, width, height, channels, srcOffset);
+    const packed = this.#unpackPixels(
+      pixels,
+      width,
+      height,
+      channels,
+      srcOffset,
+    );
     if (packed === null) return;
     for (let row = 0; row < height; row += 1) {
       const dst = ((yoffset + row) * image.width + xoffset) * channels;
-      image.data.set(packed.subarray(row * width * channels, (row + 1) * width * channels), dst);
+      image.data.set(
+        packed.subarray(row * width * channels, (row + 1) * width * channels),
+        dst,
+      );
     }
   }
 
@@ -1191,7 +1521,13 @@ export class HeadlessWebGL2Context {
    * RGB8, R8) are accepted; the unsized spellings are INVALID_ENUM here, per
    * ES 3.0, because texStorage2D is the sized-format entry point.
    */
-  texStorage2D(target: number, levels: number, internalformat: number, width: number, height: number): void {
+  texStorage2D(
+    target: number,
+    levels: number,
+    internalformat: number,
+    width: number,
+    height: number,
+  ): void {
     if (!this.#checkTexture2dTarget(target, "texStorage2D")) return;
     const texture = this.#activeUnit().texture2d;
     if (texture === null) {
@@ -1203,19 +1539,34 @@ export class HeadlessWebGL2Context {
       this.#recordError(GL.INVALID_OPERATION);
       return;
     }
-    if (levels < 1 || width < 1 || height < 1 || width > LIMITS.maxTextureSize || height > LIMITS.maxTextureSize) {
+    if (
+      levels < 1 ||
+      width < 1 ||
+      height < 1 ||
+      width > LIMITS.maxTextureSize ||
+      height > LIMITS.maxTextureSize
+    ) {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
-    if (levels > 1) this.#notImplemented("texStorage2D with more than one level (mipmaps are outside 0.1.0; allocate a single level)");
-    if (internalformat !== GL.RGBA8 && internalformat !== GL.RGB8 && internalformat !== GL.R8) {
+    if (levels > 1)
+      this.#notImplemented(
+        "texStorage2D with more than one level (mipmaps are outside 0.1.0; allocate a single level)",
+      );
+    if (
+      internalformat !== GL.RGBA8 &&
+      internalformat !== GL.RGB8 &&
+      internalformat !== GL.R8
+    ) {
       if (TEXTURE_FORMATS.has(internalformat)) {
         // An unsized internal format is invalid here, per ES 3.0 §3.8.4 —
         // texStorage2D is the sized-format entry point.
         this.#recordError(GL.INVALID_ENUM);
         return;
       }
-      this.#notImplemented("texStorage2D with a sized internal format outside RGBA8, RGB8, and R8");
+      this.#notImplemented(
+        "texStorage2D with a sized internal format outside RGBA8, RGB8, and R8",
+      );
     }
     const layout = TEXTURE_FORMATS.get(internalformat);
     if (layout === undefined) return;
@@ -1251,17 +1602,28 @@ export class HeadlessWebGL2Context {
           texture.minFilter = param;
           return;
         }
-        if (param === GL.NEAREST_MIPMAP_NEAREST || param === GL.NEAREST_MIPMAP_LINEAR || param === GL.LINEAR_MIPMAP_NEAREST || param === GL.LINEAR_MIPMAP_LINEAR) {
+        if (
+          param === GL.NEAREST_MIPMAP_NEAREST ||
+          param === GL.NEAREST_MIPMAP_LINEAR ||
+          param === GL.LINEAR_MIPMAP_NEAREST ||
+          param === GL.LINEAR_MIPMAP_LINEAR
+        ) {
           // Binding decision 9: no mipmaps in 0.1.0 — the engines set
           // base-level filters on every texture, and a mip filter here throws
           // rather than sampling a chain that does not exist.
-          this.#notImplemented("texParameteri with a mipmapped TEXTURE_MIN_FILTER (mipmaps are outside 0.1.0; use NEAREST or LINEAR)");
+          this.#notImplemented(
+            "texParameteri with a mipmapped TEXTURE_MIN_FILTER (mipmaps are outside 0.1.0; use NEAREST or LINEAR)",
+          );
         }
         this.#recordError(GL.INVALID_ENUM);
         return;
       case GL.TEXTURE_WRAP_S:
       case GL.TEXTURE_WRAP_T:
-        if (param !== GL.CLAMP_TO_EDGE && param !== GL.REPEAT && param !== GL.MIRRORED_REPEAT) {
+        if (
+          param !== GL.CLAMP_TO_EDGE &&
+          param !== GL.REPEAT &&
+          param !== GL.MIRRORED_REPEAT
+        ) {
           this.#recordError(GL.INVALID_ENUM);
           return;
         }
@@ -1275,7 +1637,9 @@ export class HeadlessWebGL2Context {
       case GL.TEXTURE_MAX_LEVEL:
       case GL.TEXTURE_COMPARE_MODE:
       case GL.TEXTURE_COMPARE_FUNC:
-        this.#notImplemented("texParameteri with the 3D-wrap/LOD/compare parameters");
+        this.#notImplemented(
+          "texParameteri with the 3D-wrap/LOD/compare parameters",
+        );
         return;
       default:
         this.#recordError(GL.INVALID_ENUM);
@@ -1323,12 +1687,20 @@ export class HeadlessWebGL2Context {
   }
 
   isShader(shader: unknown): boolean {
-    return shader instanceof ShaderObject && this.#owned.has(shader) && !shader.deleted;
+    return (
+      shader instanceof ShaderObject &&
+      this.#owned.has(shader) &&
+      !shader.deleted
+    );
   }
 
   /** Validates a shader argument, latching INVALID_OPERATION for foreign or deleted ones. */
   #checkShader(shader: unknown): shader is ShaderObject {
-    if (!(shader instanceof ShaderObject) || !this.#owned.has(shader) || shader.deleted) {
+    if (
+      !(shader instanceof ShaderObject) ||
+      !this.#owned.has(shader) ||
+      shader.deleted
+    ) {
       this.#recordError(GL.INVALID_OPERATION);
       return false;
     }
@@ -1404,7 +1776,10 @@ export class HeadlessWebGL2Context {
    * precision before choosing shader precision qualifiers; all real math here
    * is f64, so these are lower bounds, not lies.
    */
-  getShaderPrecisionFormat(shaderType: number, precisionType: number): { rangeMin: number; rangeMax: number; precision: number } | null {
+  getShaderPrecisionFormat(
+    shaderType: number,
+    precisionType: number,
+  ): { rangeMin: number; rangeMax: number; precision: number } | null {
     if (!SHADER_TYPES.includes(shaderType)) {
       this.#recordError(GL.INVALID_ENUM);
       return null;
@@ -1425,7 +1800,13 @@ export class HeadlessWebGL2Context {
   }
 
   deleteShader(shader: ShaderObject | null): void {
-    if (shader === null || !(shader instanceof ShaderObject) || !this.#owned.has(shader) || shader.deleted) return;
+    if (
+      shader === null ||
+      !(shader instanceof ShaderObject) ||
+      !this.#owned.has(shader) ||
+      shader.deleted
+    )
+      return;
     // GL defers destruction while the shader is attached; the flag is enough
     // here because records are garbage-collected, not freed.
     shader.deleted = true;
@@ -1442,11 +1823,19 @@ export class HeadlessWebGL2Context {
   }
 
   isProgram(program: unknown): boolean {
-    return program instanceof ProgramObject && this.#owned.has(program) && !program.deleted;
+    return (
+      program instanceof ProgramObject &&
+      this.#owned.has(program) &&
+      !program.deleted
+    );
   }
 
   #checkProgram(program: unknown): program is ProgramObject {
-    if (!(program instanceof ProgramObject) || !this.#owned.has(program) || program.deleted) {
+    if (
+      !(program instanceof ProgramObject) ||
+      !this.#owned.has(program) ||
+      program.deleted
+    ) {
       this.#recordError(GL.INVALID_OPERATION);
       return false;
     }
@@ -1456,7 +1845,10 @@ export class HeadlessWebGL2Context {
   attachShader(program: ProgramObject, shader: ShaderObject): void {
     if (!this.#checkProgram(program) || !this.#checkShader(shader)) return;
     // One shader per type, and never the same shader twice, per GL.
-    if (program.attached.includes(shader) || program.attached.some((s) => s.type === shader.type)) {
+    if (
+      program.attached.includes(shader) ||
+      program.attached.some((s) => s.type === shader.type)
+    ) {
       this.#recordError(GL.INVALID_OPERATION);
       return;
     }
@@ -1496,9 +1888,12 @@ export class HeadlessWebGL2Context {
     program.attribLocations.clear();
     program.uniformLocations.clear();
     const vertex = program.attached.find((s) => s.type === GL.VERTEX_SHADER);
-    const fragment = program.attached.find((s) => s.type === GL.FRAGMENT_SHADER);
+    const fragment = program.attached.find(
+      (s) => s.type === GL.FRAGMENT_SHADER,
+    );
     if (vertex === undefined || fragment === undefined) {
-      program.infoLog = "headless-webgl2: linkProgram needs exactly one vertex and one fragment shader attached; attach both before linking";
+      program.infoLog =
+        "headless-webgl2: linkProgram needs exactly one vertex and one fragment shader attached; attach both before linking";
       return;
     }
     if (vertex.compiled === null || fragment.compiled === null) {
@@ -1506,7 +1901,11 @@ export class HeadlessWebGL2Context {
       program.infoLog = `headless-webgl2: the attached ${failed} shader has not been successfully compiled; fix its compile errors and compileShader it before linking`;
       return;
     }
-    const result = linkStages(vertex.compiled, fragment.compiled, program.boundAttribLocations);
+    const result = linkStages(
+      vertex.compiled,
+      fragment.compiled,
+      program.boundAttribLocations,
+    );
     if (!result.ok) {
       program.infoLog = result.log;
       return;
@@ -1524,7 +1923,14 @@ export class HeadlessWebGL2Context {
     for (const uniform of linked.uniforms) {
       const stride = componentCount(uniform.type);
       if (uniform.size === 1) {
-        const location = new UniformLocationObject(program, uniform.slot, uniform.type, 1, false, program.linkGeneration);
+        const location = new UniformLocationObject(
+          program,
+          uniform.slot,
+          uniform.type,
+          1,
+          false,
+          program.linkGeneration,
+        );
         program.uniformLocations.set(uniform.baseName, location);
         continue;
       }
@@ -1532,7 +1938,14 @@ export class HeadlessWebGL2Context {
       // GL lookup rules; each element location knows how much array remains
       // so the *v setters can fill from any starting element.
       for (let k = 0; k < uniform.size; k += 1) {
-        const location = new UniformLocationObject(program, uniform.slot + k * stride, uniform.type, uniform.size - k, true, program.linkGeneration);
+        const location = new UniformLocationObject(
+          program,
+          uniform.slot + k * stride,
+          uniform.type,
+          uniform.size - k,
+          true,
+          program.linkGeneration,
+        );
         program.uniformLocations.set(`${uniform.baseName}[${k}]`, location);
         if (k === 0) program.uniformLocations.set(uniform.baseName, location);
       }
@@ -1592,14 +2005,28 @@ export class HeadlessWebGL2Context {
   }
 
   deleteProgram(program: ProgramObject | null): void {
-    if (program === null || !(program instanceof ProgramObject) || !this.#owned.has(program) || program.deleted) return;
+    if (
+      program === null ||
+      !(program instanceof ProgramObject) ||
+      !this.#owned.has(program) ||
+      program.deleted
+    )
+      return;
     program.deleted = true;
     if (this.#state.program === program) this.#state.program = null;
   }
 
-  bindAttribLocation(program: ProgramObject, index: number, name: string): void {
+  bindAttribLocation(
+    program: ProgramObject,
+    index: number,
+    name: string,
+  ): void {
     if (!this.#checkProgram(program)) return;
-    if (!Number.isInteger(index) || index < 0 || index >= LIMITS.maxVertexAttribs) {
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= LIMITS.maxVertexAttribs
+    ) {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
@@ -1620,7 +2047,10 @@ export class HeadlessWebGL2Context {
     return program.attribLocations.get(name) ?? -1;
   }
 
-  getUniformLocation(program: ProgramObject, name: string): UniformLocationObject | null {
+  getUniformLocation(
+    program: ProgramObject,
+    name: string,
+  ): UniformLocationObject | null {
     if (!this.#checkProgram(program)) return null;
     if (!program.linkStatus) {
       this.#recordError(GL.INVALID_OPERATION);
@@ -1634,7 +2064,10 @@ export class HeadlessWebGL2Context {
   /* ------------------------------------------------------------------ */
 
   /** WebGLActiveInfo-shaped: a fresh `{name, size, type}` record per call, as browsers hand back. */
-  getActiveUniform(program: ProgramObject, index: number): { name: string; size: number; type: number } | null {
+  getActiveUniform(
+    program: ProgramObject,
+    index: number,
+  ): { name: string; size: number; type: number } | null {
     if (!(program instanceof ProgramObject) || !this.#owned.has(program)) {
       this.#recordError(GL.INVALID_OPERATION);
       return null;
@@ -1647,7 +2080,10 @@ export class HeadlessWebGL2Context {
     return { name: uniform.name, size: uniform.size, type: uniform.glType };
   }
 
-  getActiveAttrib(program: ProgramObject, index: number): { name: string; size: number; type: number } | null {
+  getActiveAttrib(
+    program: ProgramObject,
+    index: number,
+  ): { name: string; size: number; type: number } | null {
     if (!(program instanceof ProgramObject) || !this.#owned.has(program)) {
       this.#recordError(GL.INVALID_OPERATION);
       return null;
@@ -1667,7 +2103,12 @@ export class HeadlessWebGL2Context {
    */
   getUniform(program: ProgramObject, location: UniformLocationObject): any {
     if (!this.#checkProgram(program)) return null;
-    if (!(location instanceof UniformLocationObject) || location.program !== program || location.generation !== program.linkGeneration || program.uniformStore === null) {
+    if (
+      !(location instanceof UniformLocationObject) ||
+      location.program !== program ||
+      location.generation !== program.linkGeneration ||
+      program.uniformStore === null
+    ) {
       this.#recordError(GL.INVALID_OPERATION);
       return null;
     }
@@ -1680,12 +2121,16 @@ export class HeadlessWebGL2Context {
       case "sampler2D":
         return at(0);
       case "vector": {
-        if (type.scalar === "float") return Float32Array.from({ length: type.size }, (_, i) => at(i));
-        if (type.scalar === "int") return Int32Array.from({ length: type.size }, (_, i) => at(i));
+        if (type.scalar === "float")
+          return Float32Array.from({ length: type.size }, (_, i) => at(i));
+        if (type.scalar === "int")
+          return Int32Array.from({ length: type.size }, (_, i) => at(i));
         return Array.from({ length: type.size }, (_, i) => at(i) !== 0);
       }
       case "matrix":
-        return Float32Array.from({ length: type.size * type.size }, (_, i) => at(i));
+        return Float32Array.from({ length: type.size * type.size }, (_, i) =>
+          at(i),
+        );
       default:
         this.#recordError(GL.INVALID_OPERATION);
         return null;
@@ -1702,10 +2147,18 @@ export class HeadlessWebGL2Context {
    * program, a foreign program's location, or a location minted by an older
    * link is INVALID_OPERATION. Returns the location when a write may proceed.
    */
-  #uniformTarget(location: UniformLocationObject | null): UniformLocationObject | null {
+  #uniformTarget(
+    location: UniformLocationObject | null,
+  ): UniformLocationObject | null {
     if (location === null) return null;
     const program = this.#state.program;
-    if (program === null || !(location instanceof UniformLocationObject) || location.program !== program || location.generation !== program.linkGeneration || program.uniformStore === null) {
+    if (
+      program === null ||
+      !(location instanceof UniformLocationObject) ||
+      location.program !== program ||
+      location.generation !== program.linkGeneration ||
+      program.uniformStore === null
+    ) {
       this.#recordError(GL.INVALID_OPERATION);
       return null;
     }
@@ -1717,7 +2170,11 @@ export class HeadlessWebGL2Context {
    * Bool uniforms accept both families, samplers only the 1i family, and the
    * component count must match exactly — the GL type-matching rules.
    */
-  #uniformTypeMatches(type: Type, family: "f" | "i", components: number): boolean {
+  #uniformTypeMatches(
+    type: Type,
+    family: "f" | "i",
+    components: number,
+  ): boolean {
     if (type.kind === "sampler2D") return family === "i" && components === 1;
     if (type.kind === "scalar") {
       if (components !== 1) return false;
@@ -1733,10 +2190,16 @@ export class HeadlessWebGL2Context {
   }
 
   /** Writes one element's components, normalizing bools to 0/1 so the store is canonical. */
-  #writeUniform(location: UniformLocationObject, elementIndex: number, values: readonly number[]): void {
+  #writeUniform(
+    location: UniformLocationObject,
+    elementIndex: number,
+    values: readonly number[],
+  ): void {
     const store = location.program.uniformStore;
     if (store === null) return;
-    const isBool = (location.type.kind === "scalar" || location.type.kind === "vector") && location.type.scalar === "bool";
+    const isBool =
+      (location.type.kind === "scalar" || location.type.kind === "vector") &&
+      location.type.scalar === "bool";
     const base = location.slot + elementIndex * values.length;
     for (let i = 0; i < values.length; i += 1) {
       const value = Number(values[i]);
@@ -1745,7 +2208,11 @@ export class HeadlessWebGL2Context {
   }
 
   /** The direct (non-v) setters: exactly one element's components. */
-  #setUniform(location: UniformLocationObject | null, family: "f" | "i", values: readonly number[]): void {
+  #setUniform(
+    location: UniformLocationObject | null,
+    family: "f" | "i",
+    values: readonly number[],
+  ): void {
     const target = this.#uniformTarget(location);
     if (target === null) return;
     if (!this.#uniformTypeMatches(target.type, family, values.length)) {
@@ -1756,9 +2223,16 @@ export class HeadlessWebGL2Context {
   }
 
   /** Resolves a *v call's source view honoring the WebGL2 srcOffset/srcLength arguments. */
-  #uniformVectorData(data: Float32Array | Int32Array | number[], srcOffset: number, srcLength: number | undefined): number[] | null {
+  #uniformVectorData(
+    data: Float32Array | Int32Array | number[],
+    srcOffset: number,
+    srcLength: number | undefined,
+  ): number[] | null {
     const length = data.length;
-    const take = srcLength === undefined || srcLength === 0 ? length - srcOffset : srcLength;
+    const take =
+      srcLength === undefined || srcLength === 0
+        ? length - srcOffset
+        : srcLength;
     if (srcOffset < 0 || take < 0 || srcOffset + take > length) {
       this.#recordError(GL.INVALID_VALUE);
       return null;
@@ -1775,7 +2249,14 @@ export class HeadlessWebGL2Context {
    * INVALID_OPERATION, and elements beyond the array's end are ignored, per
    * the GL rules.
    */
-  #setUniformV(location: UniformLocationObject | null, family: "f" | "i", components: number, data: Float32Array | Int32Array | number[], srcOffset: number, srcLength: number | undefined): void {
+  #setUniformV(
+    location: UniformLocationObject | null,
+    family: "f" | "i",
+    components: number,
+    data: Float32Array | Int32Array | number[],
+    srcOffset: number,
+    srcLength: number | undefined,
+  ): void {
     const target = this.#uniformTarget(location);
     if (target === null) return;
     if (!this.#uniformTypeMatches(target.type, family, components)) {
@@ -1797,7 +2278,11 @@ export class HeadlessWebGL2Context {
     }
     const write = Math.min(elements, target.elementsRemaining);
     for (let e = 0; e < write; e += 1) {
-      this.#writeUniform(target, e, values.slice(e * components, (e + 1) * components));
+      this.#writeUniform(
+        target,
+        e,
+        values.slice(e * components, (e + 1) * components),
+      );
     }
   }
 
@@ -1805,15 +2290,30 @@ export class HeadlessWebGL2Context {
     this.#setUniform(location, "f", [x]);
   }
 
-  uniform2f(location: UniformLocationObject | null, x: number, y: number): void {
+  uniform2f(
+    location: UniformLocationObject | null,
+    x: number,
+    y: number,
+  ): void {
     this.#setUniform(location, "f", [x, y]);
   }
 
-  uniform3f(location: UniformLocationObject | null, x: number, y: number, z: number): void {
+  uniform3f(
+    location: UniformLocationObject | null,
+    x: number,
+    y: number,
+    z: number,
+  ): void {
     this.#setUniform(location, "f", [x, y, z]);
   }
 
-  uniform4f(location: UniformLocationObject | null, x: number, y: number, z: number, w: number): void {
+  uniform4f(
+    location: UniformLocationObject | null,
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+  ): void {
     this.#setUniform(location, "f", [x, y, z, w]);
   }
 
@@ -1821,52 +2321,114 @@ export class HeadlessWebGL2Context {
     this.#setUniform(location, "i", [toInt(x)]);
   }
 
-  uniform2i(location: UniformLocationObject | null, x: number, y: number): void {
+  uniform2i(
+    location: UniformLocationObject | null,
+    x: number,
+    y: number,
+  ): void {
     this.#setUniform(location, "i", [toInt(x), toInt(y)]);
   }
 
-  uniform3i(location: UniformLocationObject | null, x: number, y: number, z: number): void {
+  uniform3i(
+    location: UniformLocationObject | null,
+    x: number,
+    y: number,
+    z: number,
+  ): void {
     this.#setUniform(location, "i", [toInt(x), toInt(y), toInt(z)]);
   }
 
-  uniform4i(location: UniformLocationObject | null, x: number, y: number, z: number, w: number): void {
+  uniform4i(
+    location: UniformLocationObject | null,
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+  ): void {
     this.#setUniform(location, "i", [toInt(x), toInt(y), toInt(z), toInt(w)]);
   }
 
-  uniform1fv(location: UniformLocationObject | null, data: Float32Array | number[], srcOffset = 0, srcLength?: number): void {
+  uniform1fv(
+    location: UniformLocationObject | null,
+    data: Float32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
     this.#setUniformV(location, "f", 1, data, srcOffset, srcLength);
   }
 
-  uniform2fv(location: UniformLocationObject | null, data: Float32Array | number[], srcOffset = 0, srcLength?: number): void {
+  uniform2fv(
+    location: UniformLocationObject | null,
+    data: Float32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
     this.#setUniformV(location, "f", 2, data, srcOffset, srcLength);
   }
 
-  uniform3fv(location: UniformLocationObject | null, data: Float32Array | number[], srcOffset = 0, srcLength?: number): void {
+  uniform3fv(
+    location: UniformLocationObject | null,
+    data: Float32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
     this.#setUniformV(location, "f", 3, data, srcOffset, srcLength);
   }
 
-  uniform4fv(location: UniformLocationObject | null, data: Float32Array | number[], srcOffset = 0, srcLength?: number): void {
+  uniform4fv(
+    location: UniformLocationObject | null,
+    data: Float32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
     this.#setUniformV(location, "f", 4, data, srcOffset, srcLength);
   }
 
-  uniform1iv(location: UniformLocationObject | null, data: Int32Array | number[], srcOffset = 0, srcLength?: number): void {
+  uniform1iv(
+    location: UniformLocationObject | null,
+    data: Int32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
     this.#setUniformV(location, "i", 1, data, srcOffset, srcLength);
   }
 
-  uniform2iv(location: UniformLocationObject | null, data: Int32Array | number[], srcOffset = 0, srcLength?: number): void {
+  uniform2iv(
+    location: UniformLocationObject | null,
+    data: Int32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
     this.#setUniformV(location, "i", 2, data, srcOffset, srcLength);
   }
 
-  uniform3iv(location: UniformLocationObject | null, data: Int32Array | number[], srcOffset = 0, srcLength?: number): void {
+  uniform3iv(
+    location: UniformLocationObject | null,
+    data: Int32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
     this.#setUniformV(location, "i", 3, data, srcOffset, srcLength);
   }
 
-  uniform4iv(location: UniformLocationObject | null, data: Int32Array | number[], srcOffset = 0, srcLength?: number): void {
+  uniform4iv(
+    location: UniformLocationObject | null,
+    data: Int32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
     this.#setUniformV(location, "i", 4, data, srcOffset, srcLength);
   }
 
   /** Shared by the two matrix setters: validates, honors `transpose`, writes column-major. */
-  #setUniformMatrix(location: UniformLocationObject | null, size: 3 | 4, transpose: boolean, data: Float32Array | number[], srcOffset: number, srcLength: number | undefined): void {
+  #setUniformMatrix(
+    location: UniformLocationObject | null,
+    size: 3 | 4,
+    transpose: boolean,
+    data: Float32Array | number[],
+    srcOffset: number,
+    srcLength: number | undefined,
+  ): void {
     const target = this.#uniformTarget(location);
     if (target === null) return;
     if (!(target.type.kind === "matrix" && target.type.size === size)) {
@@ -1890,17 +2452,48 @@ export class HeadlessWebGL2Context {
       const element = values.slice(e * stride, (e + 1) * stride);
       // The store is column-major (the shader's constructor/upload order);
       // transpose=true means the data arrived row-major and is reordered here.
-      const ordered = transpose ? Array.from({ length: stride }, (_, i) => element[(i % size) * size + Math.floor(i / size)] ?? 0) : element;
+      const ordered = transpose
+        ? Array.from(
+            { length: stride },
+            (_, i) => element[(i % size) * size + Math.floor(i / size)] ?? 0,
+          )
+        : element;
       this.#writeUniform(target, e, ordered);
     }
   }
 
-  uniformMatrix3fv(location: UniformLocationObject | null, transpose: boolean, data: Float32Array | number[], srcOffset = 0, srcLength?: number): void {
-    this.#setUniformMatrix(location, 3, !!transpose, data, srcOffset, srcLength);
+  uniformMatrix3fv(
+    location: UniformLocationObject | null,
+    transpose: boolean,
+    data: Float32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
+    this.#setUniformMatrix(
+      location,
+      3,
+      !!transpose,
+      data,
+      srcOffset,
+      srcLength,
+    );
   }
 
-  uniformMatrix4fv(location: UniformLocationObject | null, transpose: boolean, data: Float32Array | number[], srcOffset = 0, srcLength?: number): void {
-    this.#setUniformMatrix(location, 4, !!transpose, data, srcOffset, srcLength);
+  uniformMatrix4fv(
+    location: UniformLocationObject | null,
+    transpose: boolean,
+    data: Float32Array | number[],
+    srcOffset = 0,
+    srcLength?: number,
+  ): void {
+    this.#setUniformMatrix(
+      location,
+      4,
+      !!transpose,
+      data,
+      srcOffset,
+      srcLength,
+    );
   }
 
   /* ------------------------------------------------------------------ */
@@ -1940,7 +2533,12 @@ export class HeadlessWebGL2Context {
    * primitive restart (an all-ones index splits assembly). Same pipeline and
    * same refusal rules as {@link drawArrays}.
    */
-  drawElements(mode: number, count: number, type: number, offset: number): void {
+  drawElements(
+    mode: number,
+    count: number,
+    type: number,
+    offset: number,
+  ): void {
     drawElementsImpl(this.#drawIo(), mode, toInt(count), type, toInt(offset));
   }
 
@@ -1955,7 +2553,16 @@ export class HeadlessWebGL2Context {
    * RGBA/UNSIGNED_BYTE combination exists for the default framebuffer, which
    * is exactly what WebGL2 guarantees.
    */
-  readPixels(x: number, y: number, width: number, height: number, format: number, type: number, pixels: ArrayBufferView | null, dstOffset = 0): void {
+  readPixels(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    format: number,
+    type: number,
+    pixels: ArrayBufferView | null,
+    dstOffset = 0,
+  ): void {
     if (width < 0 || height < 0) {
       this.#recordError(GL.INVALID_VALUE);
       return;
@@ -1968,7 +2575,10 @@ export class HeadlessWebGL2Context {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
-    if (!(pixels instanceof Uint8Array) && !(pixels instanceof Uint8ClampedArray)) {
+    if (
+      !(pixels instanceof Uint8Array) &&
+      !(pixels instanceof Uint8ClampedArray)
+    ) {
       // The dest view type must match UNSIGNED_BYTE, per WebGL.
       this.#recordError(GL.INVALID_OPERATION);
       return;
@@ -1977,13 +2587,28 @@ export class HeadlessWebGL2Context {
       this.#recordError(GL.INVALID_VALUE);
       return;
     }
-    const needed = DefaultFramebuffer.requiredBytes(width, height, this.#state.packAlignment);
+    const needed = DefaultFramebuffer.requiredBytes(
+      width,
+      height,
+      this.#state.packAlignment,
+    );
     if (pixels.length - dstOffset < needed) {
       this.#recordError(GL.INVALID_OPERATION);
       return;
     }
-    const dest = pixels instanceof Uint8Array ? pixels : new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
-    this.#framebuffer.readPixels(toInt(x), toInt(y), toInt(width), toInt(height), dest, this.#state.packAlignment, dstOffset);
+    const dest =
+      pixels instanceof Uint8Array
+        ? pixels
+        : new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength);
+    this.#framebuffer.readPixels(
+      toInt(x),
+      toInt(y),
+      toInt(width),
+      toInt(height),
+      dest,
+      this.#state.packAlignment,
+      dstOffset,
+    );
   }
 
   /** White-box seam for this package's own tests (depth planes are unreadable through the GL API). */
@@ -2145,11 +2770,16 @@ const OUT_OF_SUBSET_METHODS: readonly string[] = [
 ];
 
 function defineThrowingMethod(name: string, message: string): void {
-  const proto = HeadlessWebGL2Context.prototype as unknown as Record<string, unknown>;
+  const proto = HeadlessWebGL2Context.prototype as unknown as Record<
+    string,
+    unknown
+  >;
   // A stub must never shadow a real implementation: a name that already
   // exists on the prototype is a drift bug caught at module load.
   if (Object.prototype.hasOwnProperty.call(proto, name)) {
-    throw new Error(`headless-webgl2: internal: the stub table names ${name}, which is already implemented`);
+    throw new Error(
+      `headless-webgl2: internal: the stub table names ${name}, which is already implemented`,
+    );
   }
   Object.defineProperty(HeadlessWebGL2Context.prototype, name, {
     value: function notImplementedStub(): never {
@@ -2162,9 +2792,15 @@ function defineThrowingMethod(name: string, message: string): void {
 }
 
 for (const name of LATER_STAGE_METHODS) {
-  defineThrowingMethod(name, `headless-webgl2: ${name} is not implemented yet: it arrives in a later stage of 0.1.0 (the GLSL front end and the raster pipeline); until then the context can be created and cleared but cannot draw`);
+  defineThrowingMethod(
+    name,
+    `headless-webgl2: ${name} is not implemented yet: it arrives in a later stage of 0.1.0 (the GLSL front end and the raster pipeline); until then the context can be created and cleared but cannot draw`,
+  );
 }
 
 for (const name of OUT_OF_SUBSET_METHODS) {
-  defineThrowingMethod(name, `headless-webgl2: ${name} is not implemented: it is outside the 0.1.0 WebGL2 subset, so restructure the caller to stay inside the subset rather than relying on a silent no-op`);
+  defineThrowingMethod(
+    name,
+    `headless-webgl2: ${name} is not implemented: it is outside the 0.1.0 WebGL2 subset, so restructure the caller to stay inside the subset rather than relying on a silent no-op`,
+  );
 }

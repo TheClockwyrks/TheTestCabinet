@@ -7,7 +7,12 @@
  */
 
 import { GL } from "./constants";
-import type { BufferObject, ProgramObject, TextureObject, VertexArrayObject } from "./objects";
+import type {
+  BufferObject,
+  ProgramObject,
+  TextureObject,
+  VertexArrayObject,
+} from "./objects";
 
 /** The limits this implementation reports; fixed, not configurable, so every context answers alike. */
 export const LIMITS = {
@@ -108,7 +113,11 @@ export interface ContextState {
  * creation step — and deliberately do NOT track later canvas resizes, also
  * per spec.
  */
-export function createContextState(width: number, height: number, defaultVertexArray: VertexArrayObject): ContextState {
+export function createContextState(
+  width: number,
+  height: number,
+  defaultVertexArray: VertexArrayObject,
+): ContextState {
   return {
     errors: [],
     clearColor: [0, 0, 0, 0],
@@ -150,7 +159,11 @@ export function createContextState(width: number, height: number, defaultVertexA
     defaultVertexArray,
     program: null,
     activeTextureUnit: 0,
-    textureUnits: Array.from({ length: LIMITS.textureUnits }, () => ({ texture2d: null })),
-    genericAttribs: Array.from({ length: LIMITS.maxVertexAttribs }, () => Float64Array.from([0, 0, 0, 1])),
+    textureUnits: Array.from({ length: LIMITS.textureUnits }, () => ({
+      texture2d: null,
+    })),
+    genericAttribs: Array.from({ length: LIMITS.maxVertexAttribs }, () =>
+      Float64Array.from([0, 0, 0, 1]),
+    ),
   };
 }

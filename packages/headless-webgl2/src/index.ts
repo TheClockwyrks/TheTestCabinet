@@ -15,4 +15,8 @@
 
 export { createCanvas } from "./canvas";
 export type { Canvas, ContextAttributes } from "./canvas";
-export type { HeadlessWebGL2Context as HeadlessWebGL2, HeadlessWebGL2Context as WebGL2, ResolvedContextAttributes } from "./context";
+export type {
+  HeadlessWebGL2Context as HeadlessWebGL2,
+  HeadlessWebGL2Context as WebGL2,
+  ResolvedContextAttributes,
+} from "./context";

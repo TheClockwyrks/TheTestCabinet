@@ -50,7 +50,14 @@ describe("capabilities", () => {
   it("starts with DITHER enabled and everything else disabled, the GL initial state", () => {
     const gl = makeGl();
     expect(gl.isEnabled(gl.DITHER)).toBe(true);
-    for (const cap of [gl.BLEND, gl.CULL_FACE, gl.DEPTH_TEST, gl.SCISSOR_TEST, gl.POLYGON_OFFSET_FILL, gl.STENCIL_TEST]) {
+    for (const cap of [
+      gl.BLEND,
+      gl.CULL_FACE,
+      gl.DEPTH_TEST,
+      gl.SCISSOR_TEST,
+      gl.POLYGON_OFFSET_FILL,
+      gl.STENCIL_TEST,
+    ]) {
       expect(gl.isEnabled(cap)).toBe(false);
     }
   });
@@ -68,7 +75,9 @@ describe("getParameter", () => {
   it("names the implementation through the identity strings", () => {
     const gl = makeGl();
     expect(gl.getParameter(gl.VERSION)).toBe("WebGL 2.0 (headless-webgl2)");
-    expect(gl.getParameter(gl.SHADING_LANGUAGE_VERSION)).toBe("WebGL GLSL ES 3.00 (headless-webgl2)");
+    expect(gl.getParameter(gl.SHADING_LANGUAGE_VERSION)).toBe(
+      "WebGL GLSL ES 3.00 (headless-webgl2)",
+    );
     expect(gl.getParameter(gl.VENDOR)).toBe("test-cabinet");
     expect(gl.getParameter(gl.RENDERER)).toBe("headless-webgl2 software");
   });
@@ -81,13 +90,17 @@ describe("getParameter", () => {
     expect(gl.getParameter(gl.MAX_VARYING_VECTORS)).toBe(15);
     expect(gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS)).toBe(1024);
     expect(gl.getParameter(gl.MAX_FRAGMENT_UNIFORM_VECTORS)).toBe(1024);
-    expect([...(gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE) as Float32Array)]).toEqual([1, 1]);
+    expect([
+      ...(gl.getParameter(gl.ALIASED_LINE_WIDTH_RANGE) as Float32Array),
+    ]).toEqual([1, 1]);
   });
 
   it("reports the guaranteed readPixels format for the default framebuffer", () => {
     const gl = makeGl();
     expect(gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_FORMAT)).toBe(gl.RGBA);
-    expect(gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_TYPE)).toBe(gl.UNSIGNED_BYTE);
+    expect(gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_TYPE)).toBe(
+      gl.UNSIGNED_BYTE,
+    );
   });
 
   it("reports channel depths that follow the context attributes", () => {
@@ -95,7 +108,10 @@ describe("getParameter", () => {
     expect(withAlpha.getParameter(withAlpha.ALPHA_BITS)).toBe(8);
     expect(withAlpha.getParameter(withAlpha.DEPTH_BITS)).toBe(24);
     expect(withAlpha.getParameter(withAlpha.STENCIL_BITS)).toBe(0);
-    const opaque = createCanvas(2, 2).getContext("webgl2", { alpha: false, depth: false });
+    const opaque = createCanvas(2, 2).getContext("webgl2", {
+      alpha: false,
+      depth: false,
+    });
     expect(opaque.getParameter(opaque.ALPHA_BITS)).toBe(0);
     expect(opaque.getParameter(opaque.DEPTH_BITS)).toBe(0);
   });
@@ -117,26 +133,38 @@ describe("getParameter", () => {
 describe("viewport and scissor state", () => {
   it("starts both boxes at the full drawing buffer, the context-creation rule", () => {
     const gl = makeGl();
-    expect([...(gl.getParameter(gl.VIEWPORT) as Int32Array)]).toEqual([0, 0, 8, 8]);
-    expect([...(gl.getParameter(gl.SCISSOR_BOX) as Int32Array)]).toEqual([0, 0, 8, 8]);
+    expect([...(gl.getParameter(gl.VIEWPORT) as Int32Array)]).toEqual([
+      0, 0, 8, 8,
+    ]);
+    expect([...(gl.getParameter(gl.SCISSOR_BOX) as Int32Array)]).toEqual([
+      0, 0, 8, 8,
+    ]);
   });
 
   it("stores what viewport and scissor are given, truncated to integers", () => {
     const gl = makeGl();
     gl.viewport(1, 2, 3.9, 4.2);
-    expect([...(gl.getParameter(gl.VIEWPORT) as Int32Array)]).toEqual([1, 2, 3, 4]);
+    expect([...(gl.getParameter(gl.VIEWPORT) as Int32Array)]).toEqual([
+      1, 2, 3, 4,
+    ]);
     gl.scissor(-1, 0, 2, 2);
-    expect([...(gl.getParameter(gl.SCISSOR_BOX) as Int32Array)]).toEqual([-1, 0, 2, 2]);
+    expect([...(gl.getParameter(gl.SCISSOR_BOX) as Int32Array)]).toEqual([
+      -1, 0, 2, 2,
+    ]);
   });
 
   it("refuses a negative extent with INVALID_VALUE and keeps the prior box", () => {
     const gl = makeGl();
     gl.viewport(0, 0, -1, 4);
     expect(gl.getError()).toBe(gl.INVALID_VALUE);
-    expect([...(gl.getParameter(gl.VIEWPORT) as Int32Array)]).toEqual([0, 0, 8, 8]);
+    expect([...(gl.getParameter(gl.VIEWPORT) as Int32Array)]).toEqual([
+      0, 0, 8, 8,
+    ]);
     gl.scissor(0, 0, 4, -1);
     expect(gl.getError()).toBe(gl.INVALID_VALUE);
-    expect([...(gl.getParameter(gl.SCISSOR_BOX) as Int32Array)]).toEqual([0, 0, 8, 8]);
+    expect([...(gl.getParameter(gl.SCISSOR_BOX) as Int32Array)]).toEqual([
+      0, 0, 8, 8,
+    ]);
   });
 });
 
@@ -144,7 +172,9 @@ describe("clear values and masks", () => {
   it("clamps clear color and depth on set, the values queries then answer", () => {
     const gl = makeGl();
     gl.clearColor(2, -1, 0.5, Number.NaN);
-    expect([...(gl.getParameter(gl.COLOR_CLEAR_VALUE) as Float32Array)]).toEqual([1, 0, 0.5, 0]);
+    expect([
+      ...(gl.getParameter(gl.COLOR_CLEAR_VALUE) as Float32Array),
+    ]).toEqual([1, 0, 0.5, 0]);
     gl.clearDepth(3);
     expect(gl.getParameter(gl.DEPTH_CLEAR_VALUE)).toBe(1);
   });
@@ -152,7 +182,12 @@ describe("clear values and masks", () => {
   it("stores color and depth write masks", () => {
     const gl = makeGl();
     gl.colorMask(false, true, false, true);
-    expect(gl.getParameter(gl.COLOR_WRITEMASK)).toEqual([false, true, false, true]);
+    expect(gl.getParameter(gl.COLOR_WRITEMASK)).toEqual([
+      false,
+      true,
+      false,
+      true,
+    ]);
     gl.depthMask(false);
     expect(gl.getParameter(gl.DEPTH_WRITEMASK)).toBe(false);
   });
@@ -176,7 +211,9 @@ describe("depth state", () => {
   it("clamps the depth range to the unit interval", () => {
     const gl = makeGl();
     gl.depthRange(-0.5, 2);
-    expect([...(gl.getParameter(gl.DEPTH_RANGE) as Float32Array)]).toEqual([0, 1]);
+    expect([...(gl.getParameter(gl.DEPTH_RANGE) as Float32Array)]).toEqual([
+      0, 1,
+    ]);
   });
 });
 
@@ -210,13 +247,17 @@ describe("blend state", () => {
     const gl = makeGl();
     gl.blendEquationSeparate(gl.FUNC_SUBTRACT, gl.FUNC_REVERSE_SUBTRACT);
     expect(gl.getParameter(gl.BLEND_EQUATION_RGB)).toBe(gl.FUNC_SUBTRACT);
-    expect(gl.getParameter(gl.BLEND_EQUATION_ALPHA)).toBe(gl.FUNC_REVERSE_SUBTRACT);
+    expect(gl.getParameter(gl.BLEND_EQUATION_ALPHA)).toBe(
+      gl.FUNC_REVERSE_SUBTRACT,
+    );
   });
 
   it("clamps the constant blend color", () => {
     const gl = makeGl();
     gl.blendColor(0.25, 2, -1, 0.5);
-    expect([...(gl.getParameter(gl.BLEND_COLOR) as Float32Array)]).toEqual([0.25, 1, 0, 0.5]);
+    expect([...(gl.getParameter(gl.BLEND_COLOR) as Float32Array)]).toEqual([
+      0.25, 1, 0, 0.5,
+    ]);
   });
 });
 
@@ -307,8 +348,12 @@ describe("extensions and precision", () => {
 
   it("answers highp-float-ish precision figures for shader boilerplate", () => {
     const gl = makeGl();
-    expect(gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT)).toEqual({ rangeMin: 127, rangeMax: 127, precision: 23 });
-    expect(gl.getShaderPrecisionFormat(gl.VERTEX_SHADER, gl.MEDIUM_INT)).toEqual({ rangeMin: 31, rangeMax: 30, precision: 0 });
+    expect(
+      gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT),
+    ).toEqual({ rangeMin: 127, rangeMax: 127, precision: 23 });
+    expect(
+      gl.getShaderPrecisionFormat(gl.VERTEX_SHADER, gl.MEDIUM_INT),
+    ).toEqual({ rangeMin: 31, rangeMax: 30, precision: 0 });
   });
 
   it("latches INVALID_ENUM for a bad precision query", () => {

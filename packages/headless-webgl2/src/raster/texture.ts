@@ -40,7 +40,8 @@ import type { TextureImage, TextureObject } from "../objects";
  */
 function wrapIndex(index: number, size: number, mode: number): number {
   if (!Number.isFinite(index)) return 0;
-  if (mode === GL.CLAMP_TO_EDGE) return index < 0 ? 0 : index >= size ? size - 1 : index;
+  if (mode === GL.CLAMP_TO_EDGE)
+    return index < 0 ? 0 : index >= size ? size - 1 : index;
   if (mode === GL.REPEAT) {
     const m = index % size;
     return m < 0 ? m + size : m;
@@ -57,7 +58,12 @@ function wrapIndex(index: number, size: number, mode: number): number {
  * format per the GL fetch rules: RGB fills alpha with 1, RED fills green/blue
  * with 0, LUMINANCE broadcasts to rgb, ALPHA carries only alpha.
  */
-function fetchTexel(image: TextureImage, x: number, y: number, out: Float64Array): void {
+function fetchTexel(
+  image: TextureImage,
+  x: number,
+  y: number,
+  out: Float64Array,
+): void {
   const d = image.data;
   const base = (y * image.width + x) * image.channels;
   switch (image.format) {
@@ -106,8 +112,11 @@ function fetchTexel(image: TextureImage, x: number, y: number, out: Float64Array
 }
 
 /** Whether the texture can be sampled at all, per the completeness decision above. */
-function isComplete(texture: TextureObject | null): texture is TextureObject & { image: TextureImage } {
-  if (texture === null || texture.deleted || texture.image === null) return false;
+function isComplete(
+  texture: TextureObject | null,
+): texture is TextureObject & { image: TextureImage } {
+  if (texture === null || texture.deleted || texture.image === null)
+    return false;
   if (texture.image.width < 1 || texture.image.height < 1) return false;
   // A mip-requiring min filter with no mip chain is incomplete, per GL; the
   // only reachable mip value is the just-created default (setting one throws).

@@ -38,7 +38,13 @@ import { shadeFragment, type DrawEnv } from "./triangle";
  * exactly as triangle fragments do, so lines and polygons occlude each other
  * consistently at every sample.
  */
-function shadePixelBlock(env: DrawEnv, px: number, py: number, z: number, invW: number): void {
+function shadePixelBlock(
+  env: DrawEnv,
+  px: number,
+  py: number,
+  z: number,
+  invW: number,
+): void {
   const s = env.scale;
   for (let j = 0; j < s; j += 1) {
     const sy = py * s + j;
@@ -52,7 +58,11 @@ function shadePixelBlock(env: DrawEnv, px: number, py: number, z: number, invW: 
 }
 
 /** Rasterizes one window-space segment as a 1-device-pixel DDA walk. */
-export function rasterizeLine(env: DrawEnv, a: WindowVertex, b: WindowVertex): void {
+export function rasterizeLine(
+  env: DrawEnv,
+  a: WindowVertex,
+  b: WindowVertex,
+): void {
   if (!Number.isFinite(a.x + a.y + b.x + b.y)) return;
   // Window coordinates arrive in sample space (the viewport transform is
   // sample-scaled); the walk runs in device space, per the module header.
@@ -79,7 +89,8 @@ export function rasterizeLine(env: DrawEnv, a: WindowVertex, b: WindowVertex): v
     const z = a.z + t * (b.z - a.z);
     const invW = a.invW + t * (b.invW - a.invW);
     for (let j = 0; j < count; j += 1) {
-      varyings[j] = ((a.vow[j] ?? 0) + t * ((b.vow[j] ?? 0) - (a.vow[j] ?? 0))) / invW;
+      varyings[j] =
+        ((a.vow[j] ?? 0) + t * ((b.vow[j] ?? 0) - (a.vow[j] ?? 0))) / invW;
     }
     shadePixelBlock(env, px, py, z, invW);
   }

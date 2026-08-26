@@ -20,15 +20,24 @@ function byte(v: number): number {
   return Math.round(Math.max(0, Math.min(1, v)) * 255);
 }
 
-function makeGl(width: number, height: number, attributes?: { alpha?: boolean; antialias?: boolean }): HeadlessWebGL2 {
+function makeGl(
+  width: number,
+  height: number,
+  attributes?: { alpha?: boolean; antialias?: boolean },
+): HeadlessWebGL2 {
   return createCanvas(width, height).getContext("webgl2", attributes);
 }
 
 /** Compiles and links a program, failing the test loudly with the info logs. */
-function buildProgram(gl: HeadlessWebGL2, vertexSource: string, fragmentSource: string) {
+function buildProgram(
+  gl: HeadlessWebGL2,
+  vertexSource: string,
+  fragmentSource: string,
+) {
   const vs = gl.createShader(gl.VERTEX_SHADER);
   const fs = gl.createShader(gl.FRAGMENT_SHADER);
-  if (vs === null || fs === null) throw new Error("createShader refused a valid type");
+  if (vs === null || fs === null)
+    throw new Error("createShader refused a valid type");
   gl.shaderSource(vs, vertexSource);
   gl.compileShader(vs);
   gl.shaderSource(fs, fragmentSource);
@@ -38,14 +47,21 @@ function buildProgram(gl: HeadlessWebGL2, vertexSource: string, fragmentSource: 
   gl.attachShader(program, fs);
   gl.linkProgram(program);
   if (gl.getProgramParameter(program, gl.LINK_STATUS) !== true) {
-    throw new Error(`link failed: ${gl.getShaderInfoLog(vs)} | ${gl.getShaderInfoLog(fs)} | ${gl.getProgramInfoLog(program)}`);
+    throw new Error(
+      `link failed: ${gl.getShaderInfoLog(vs)} | ${gl.getShaderInfoLog(fs)} | ${gl.getProgramInfoLog(program)}`,
+    );
   }
   gl.useProgram(program);
   return program;
 }
 
 /** Uploads a float attribute array to a fresh buffer and points location at it. */
-function uploadAttrib(gl: HeadlessWebGL2, location: number, size: number, values: number[]): void {
+function uploadAttrib(
+  gl: HeadlessWebGL2,
+  location: number,
+  size: number,
+  values: number[],
+): void {
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(location);
@@ -53,14 +69,22 @@ function uploadAttrib(gl: HeadlessWebGL2, location: number, size: number, values
 }
 
 /** One pixel's RGBA bytes; x/y in the bottom-up framebuffer addressing readPixels uses. */
-function pixel(gl: HeadlessWebGL2, x: number, y: number): [number, number, number, number] {
+function pixel(
+  gl: HeadlessWebGL2,
+  x: number,
+  y: number,
+): [number, number, number, number] {
   const out = new Uint8Array(4);
   gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, out);
   return [out[0] ?? 0, out[1] ?? 0, out[2] ?? 0, out[3] ?? 0];
 }
 
 /** The whole framebuffer's bytes, rows bottom-up. */
-function readAll(gl: HeadlessWebGL2, width: number, height: number): Uint8Array {
+function readAll(
+  gl: HeadlessWebGL2,
+  width: number,
+  height: number,
+): Uint8Array {
   const out = new Uint8Array(width * height * 4);
   gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, out);
   return out;
@@ -79,7 +103,13 @@ void main() { o_color = u_color; }
 `;
 
 /** Builds the flat-color rig: position program + u_color set. */
-function flatColorRig(gl: HeadlessWebGL2, r: number, g: number, b: number, a: number) {
+function flatColorRig(
+  gl: HeadlessWebGL2,
+  r: number,
+  g: number,
+  b: number,
+  a: number,
+) {
   const program = buildProgram(gl, VS_POS2, FS_UNIFORM_COLOR);
   gl.uniform4f(gl.getUniformLocation(program, "u_color"), r, g, b, a);
   return program;
@@ -113,13 +143,19 @@ function renderTriangleScene(gl: HeadlessWebGL2): Uint8Array {
 }
 
 /** Whether every pixel within Chebyshev `radius` of (x, y) carries identical bytes in `img`. */
-function uniformAround(img: Uint8Array, x: number, y: number, radius: number): boolean {
+function uniformAround(
+  img: Uint8Array,
+  x: number,
+  y: number,
+  radius: number,
+): boolean {
   const center = (y * SCENE_SIZE + x) * 4;
   for (let dy = -radius; dy <= radius; dy += 1) {
     for (let dx = -radius; dx <= radius; dx += 1) {
       const nx = x + dx;
       const ny = y + dy;
-      if (nx < 0 || nx >= SCENE_SIZE || ny < 0 || ny >= SCENE_SIZE) return false;
+      if (nx < 0 || nx >= SCENE_SIZE || ny < 0 || ny >= SCENE_SIZE)
+        return false;
       const at = (ny * SCENE_SIZE + nx) * 4;
       for (let c = 0; c < 4; c += 1) {
         if (img[at + c] !== img[center + c]) return false;
@@ -132,7 +168,9 @@ function uniformAround(img: Uint8Array, x: number, y: number, radius: number): b
 describe("the interior-exactness invariant", () => {
   it("keeps every pixel two device pixels inside an edge byte-equal to the single-sample picture — the documented safe margin", () => {
     const aa = renderTriangleScene(makeGl(SCENE_SIZE, SCENE_SIZE));
-    const single = renderTriangleScene(makeGl(SCENE_SIZE, SCENE_SIZE, { antialias: false }));
+    const single = renderTriangleScene(
+      makeGl(SCENE_SIZE, SCENE_SIZE, { antialias: false }),
+    );
     let interiorCount = 0;
     const interiorColors = new Set<number>();
     for (let y = 0; y < SCENE_SIZE; y += 1) {
@@ -144,8 +182,15 @@ describe("the interior-exactness invariant", () => {
         if (!uniformAround(single, x, y, 2)) continue;
         interiorCount += 1;
         const at = (y * SCENE_SIZE + x) * 4;
-        interiorColors.add((single[at] ?? 0) | ((single[at + 1] ?? 0) << 8) | ((single[at + 2] ?? 0) << 16));
-        expect([aa[at], aa[at + 1], aa[at + 2], aa[at + 3]], `pixel (${x}, ${y})`).toEqual([single[at], single[at + 1], single[at + 2], single[at + 3]]);
+        interiorColors.add(
+          (single[at] ?? 0) |
+            ((single[at + 1] ?? 0) << 8) |
+            ((single[at + 2] ?? 0) << 16),
+        );
+        expect(
+          [aa[at], aa[at + 1], aa[at + 2], aa[at + 3]],
+          `pixel (${x}, ${y})`,
+        ).toEqual([single[at], single[at + 1], single[at + 2], single[at + 3]]);
       }
     }
     // The scene must actually exercise the claim: plenty of interior pixels,
@@ -156,16 +201,25 @@ describe("the interior-exactness invariant", () => {
 
   it("differs from the single-sample picture only within two pixels of an edge, and does differ somewhere", () => {
     const aa = renderTriangleScene(makeGl(SCENE_SIZE, SCENE_SIZE));
-    const single = renderTriangleScene(makeGl(SCENE_SIZE, SCENE_SIZE, { antialias: false }));
+    const single = renderTriangleScene(
+      makeGl(SCENE_SIZE, SCENE_SIZE, { antialias: false }),
+    );
     let differing = 0;
     for (let y = 0; y < SCENE_SIZE; y += 1) {
       for (let x = 0; x < SCENE_SIZE; x += 1) {
         const at = (y * SCENE_SIZE + x) * 4;
-        const differs = aa[at] !== single[at] || aa[at + 1] !== single[at + 1] || aa[at + 2] !== single[at + 2] || aa[at + 3] !== single[at + 3];
+        const differs =
+          aa[at] !== single[at] ||
+          aa[at + 1] !== single[at + 1] ||
+          aa[at + 2] !== single[at + 2] ||
+          aa[at + 3] !== single[at + 3];
         if (!differs) continue;
         differing += 1;
         // Anywhere the pictures disagree, an edge runs nearby.
-        expect(uniformAround(single, x, y, 2), `pixel (${x}, ${y}) differs away from any edge`).toBe(false);
+        expect(
+          uniformAround(single, x, y, 2),
+          `pixel (${x}, ${y}) differs away from any edge`,
+        ).toBe(false);
       }
     }
     // Slanted edges must blend: identical pictures would mean the antialias
@@ -199,7 +253,12 @@ describe("edge antialiasing", () => {
     // sx + sy < 15 interior rule), so it resolves red at quarter strength
     // over the blue clear — strictly between the two sides.
     const edge = pixel(gl, 4, 3);
-    expect(edge).toEqual([Math.round(255 / 4), 0, Math.round((3 * 255) / 4), 255]);
+    expect(edge).toEqual([
+      Math.round(255 / 4),
+      0,
+      Math.round((3 * 255) / 4),
+      255,
+    ]);
     // The neighbors either side of the edge stay byte-exact.
     expect(pixel(gl, 3, 3)).toEqual([255, 0, 0, 255]);
     expect(pixel(gl, 5, 3)).toEqual([0, 0, 255, 255]);
@@ -230,14 +289,24 @@ void main() { gl_Position = vec4(a_pos, 1.0); }
     // crosses the canvas: depth resolves per subsample, so the boundary
     // pixel mixes the two surfaces instead of snapping to either.
     gl.uniform4f(gl.getUniformLocation(program, "u_color"), 1, 0, 0, 1);
-    uploadAttrib(gl, 0, 3, [-1, -1, 0.5, 1, -1, 0.5, -1, 1, 0.5, -1, 1, 0.5, 1, -1, 0.5, 1, 1, 0.5]);
+    uploadAttrib(
+      gl,
+      0,
+      3,
+      [-1, -1, 0.5, 1, -1, 0.5, -1, 1, 0.5, -1, 1, 0.5, 1, -1, 0.5, 1, 1, 0.5],
+    );
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.uniform4f(gl.getUniformLocation(program, "u_color"), 0, 0, 1, 1);
     uploadAttrib(gl, 0, 3, [-1, -1, -0.5, 1, -1, -0.5, -1, 1, -0.5]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     expect(pixel(gl, 2, 2)).toEqual([0, 0, 255, 255]);
     expect(pixel(gl, 6, 6)).toEqual([255, 0, 0, 255]);
-    expect(pixel(gl, 4, 3)).toEqual([Math.round((3 * 255) / 4), 0, Math.round(255 / 4), 255]);
+    expect(pixel(gl, 4, 3)).toEqual([
+      Math.round((3 * 255) / 4),
+      0,
+      Math.round(255 / 4),
+      255,
+    ]);
   });
 
   it("carries sample coordinates in gl_FragCoord, twice the device value at scale 2", () => {
@@ -287,7 +356,16 @@ describe("supersampled clears and lines", () => {
     const drawLine = (gl: HeadlessWebGL2): Uint8Array => {
       flatColorRig(gl, 1, 0, 0, 1);
       // Row 2, columns 1..6, plus a diagonal for slope coverage.
-      uploadAttrib(gl, 0, 2, [((1 + 0.5) / 8) * 2 - 1, ((2 + 0.5) / 8) * 2 - 1, ((6 + 0.5) / 8) * 2 - 1, ((2 + 0.5) / 8) * 2 - 1, -1 + 0.5 / 4, -1 + 0.5 / 4, 1 - 0.5 / 4, 1 - 0.5 / 4]);
+      uploadAttrib(gl, 0, 2, [
+        ((1 + 0.5) / 8) * 2 - 1,
+        ((2 + 0.5) / 8) * 2 - 1,
+        ((6 + 0.5) / 8) * 2 - 1,
+        ((2 + 0.5) / 8) * 2 - 1,
+        -1 + 0.5 / 4,
+        -1 + 0.5 / 4,
+        1 - 0.5 / 4,
+        1 - 0.5 / 4,
+      ]);
       gl.drawArrays(gl.LINES, 0, 4);
       return readAll(gl, 8, 8);
     };
@@ -299,7 +377,12 @@ describe("supersampled clears and lines", () => {
     expect(Array.from(aa)).toEqual(Array.from(single));
     const gl = makeGl(8, 8);
     flatColorRig(gl, 1, 0, 0, 1);
-    uploadAttrib(gl, 0, 2, [((1 + 0.5) / 8) * 2 - 1, ((2 + 0.5) / 8) * 2 - 1, ((6 + 0.5) / 8) * 2 - 1, ((2 + 0.5) / 8) * 2 - 1]);
+    uploadAttrib(gl, 0, 2, [
+      ((1 + 0.5) / 8) * 2 - 1,
+      ((2 + 0.5) / 8) * 2 - 1,
+      ((6 + 0.5) / 8) * 2 - 1,
+      ((2 + 0.5) / 8) * 2 - 1,
+    ]);
     gl.drawArrays(gl.LINES, 0, 2);
     expect(pixel(gl, 3, 2)).toEqual([255, 0, 0, 255]);
     expect(pixel(gl, 3, 1)).toEqual([0, 0, 0, 0]);

@@ -53,7 +53,13 @@ export interface ArrayType {
   readonly length: number;
 }
 
-export type Type = ScalarType | VectorType | MatrixType | SamplerType | VoidType | ArrayType;
+export type Type =
+  | ScalarType
+  | VectorType
+  | MatrixType
+  | SamplerType
+  | VoidType
+  | ArrayType;
 
 /* Singletons for the common types, so equality-heavy code reads cleanly. */
 export const FLOAT: ScalarType = { kind: "scalar", scalar: "float" };
@@ -117,7 +123,10 @@ export function sameType(a: Type, b: Type): boolean {
     case "scalar":
       return a.scalar === (b as ScalarType).scalar;
     case "vector":
-      return a.scalar === (b as VectorType).scalar && a.size === (b as VectorType).size;
+      return (
+        a.scalar === (b as VectorType).scalar &&
+        a.size === (b as VectorType).size
+      );
     case "matrix":
       return a.size === (b as MatrixType).size;
     case "sampler2D":
@@ -137,9 +146,18 @@ export function sameType(a: Type, b: Type): boolean {
 export function glTypeEnum(type: Type): number {
   switch (type.kind) {
     case "scalar":
-      return type.scalar === "float" ? GL.FLOAT : type.scalar === "int" ? GL.INT : GL.BOOL;
+      return type.scalar === "float"
+        ? GL.FLOAT
+        : type.scalar === "int"
+          ? GL.INT
+          : GL.BOOL;
     case "vector": {
-      const base = type.scalar === "float" ? [GL.FLOAT_VEC2, GL.FLOAT_VEC3, GL.FLOAT_VEC4] : type.scalar === "int" ? [GL.INT_VEC2, GL.INT_VEC3, GL.INT_VEC4] : [GL.BOOL_VEC2, GL.BOOL_VEC3, GL.BOOL_VEC4];
+      const base =
+        type.scalar === "float"
+          ? [GL.FLOAT_VEC2, GL.FLOAT_VEC3, GL.FLOAT_VEC4]
+          : type.scalar === "int"
+            ? [GL.INT_VEC2, GL.INT_VEC3, GL.INT_VEC4]
+            : [GL.BOOL_VEC2, GL.BOOL_VEC3, GL.BOOL_VEC4];
       return base[type.size - 2] ?? GL.FLOAT_VEC4;
     }
     case "matrix":
@@ -213,7 +231,21 @@ export interface Unary extends NodeBase {
 
 export interface Binary extends NodeBase {
   readonly node: "binary";
-  readonly op: "+" | "-" | "*" | "/" | "%" | "<" | ">" | "<=" | ">=" | "==" | "!=" | "&&" | "||" | "^^";
+  readonly op:
+    | "+"
+    | "-"
+    | "*"
+    | "/"
+    | "%"
+    | "<"
+    | ">"
+    | "<="
+    | ">="
+    | "=="
+    | "!="
+    | "&&"
+    | "||"
+    | "^^";
   readonly left: Expr;
   readonly right: Expr;
 }
@@ -245,7 +277,16 @@ export interface Swizzle extends NodeBase {
   readonly components: string;
 }
 
-export type Expr = NumLit | BoolLit | Ident | Unary | Binary | Ternary | Call | IndexExpr | Swizzle;
+export type Expr =
+  | NumLit
+  | BoolLit
+  | Ident
+  | Unary
+  | Binary
+  | Ternary
+  | Call
+  | IndexExpr
+  | Swizzle;
 
 /* ------------------------------------------------------------------------ */
 /* Statements                                                               */
@@ -321,7 +362,16 @@ export interface BlockStmt extends NodeBase {
   readonly statements: readonly Stmt[];
 }
 
-export type Stmt = VarDeclStmt | AssignStmt | IfStmt | ForStmt | ReturnStmt | DiscardStmt | IncDecStmt | CallStmt | BlockStmt;
+export type Stmt =
+  | VarDeclStmt
+  | AssignStmt
+  | IfStmt
+  | ForStmt
+  | ReturnStmt
+  | DiscardStmt
+  | IncDecStmt
+  | CallStmt
+  | BlockStmt;
 
 /* ------------------------------------------------------------------------ */
 /* Declarations                                                             */

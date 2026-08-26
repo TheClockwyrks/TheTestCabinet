@@ -13,8 +13,38 @@
  *    errors deserve type-aware messages the parser cannot write.
  */
 
-import { CompileError, BOOL, FLOAT, INT, SAMPLER_2D, VOID, mat, vec } from "./ast";
-import type { AssignStmt, BlockStmt, Call, CallStmt, Declarator, DiscardStmt, Expr, ForStmt, ForUpdate, FunctionDecl, GlobalDecl, GlobalQualifier, IfStmt, IncDecStmt, ParamDecl, ReturnStmt, ShaderAst, Stmt, Type, VarDeclStmt } from "./ast";
+import {
+  CompileError,
+  BOOL,
+  FLOAT,
+  INT,
+  SAMPLER_2D,
+  VOID,
+  mat,
+  vec,
+} from "./ast";
+import type {
+  AssignStmt,
+  BlockStmt,
+  Call,
+  CallStmt,
+  Declarator,
+  DiscardStmt,
+  Expr,
+  ForStmt,
+  ForUpdate,
+  FunctionDecl,
+  GlobalDecl,
+  GlobalQualifier,
+  IfStmt,
+  IncDecStmt,
+  ParamDecl,
+  ReturnStmt,
+  ShaderAst,
+  Stmt,
+  Type,
+  VarDeclStmt,
+} from "./ast";
 import { tokenize, type Token } from "./lex";
 
 /** Type keywords the subset implements, by spelling. */
@@ -44,41 +74,98 @@ const EXCLUDED_TYPES = new Map<string, string>([
   ["uvec3", "unsigned integer types are outside the subset; use ivec3"],
   ["uvec4", "unsigned integer types are outside the subset; use ivec4"],
   ["mat2", "'mat2' is outside the subset; only the square mat3 and mat4 exist"],
-  ["mat2x2", "'mat2x2' is outside the subset; only the square mat3 and mat4 exist"],
+  [
+    "mat2x2",
+    "'mat2x2' is outside the subset; only the square mat3 and mat4 exist",
+  ],
   ["mat2x3", "non-square matrix types are outside the subset"],
   ["mat2x4", "non-square matrix types are outside the subset"],
   ["mat3x2", "non-square matrix types are outside the subset"],
-  ["mat3x3", "write 'mat3x3' as mat3; only the square mat3 and mat4 exist in the subset"],
+  [
+    "mat3x3",
+    "write 'mat3x3' as mat3; only the square mat3 and mat4 exist in the subset",
+  ],
   ["mat3x4", "non-square matrix types are outside the subset"],
   ["mat4x2", "non-square matrix types are outside the subset"],
   ["mat4x3", "non-square matrix types are outside the subset"],
-  ["mat4x4", "write 'mat4x4' as mat4; only the square mat3 and mat4 exist in the subset"],
+  [
+    "mat4x4",
+    "write 'mat4x4' as mat4; only the square mat3 and mat4 exist in the subset",
+  ],
   ["sampler3D", "'sampler3D' is outside the subset; only sampler2D exists"],
   ["samplerCube", "'samplerCube' is outside the subset; only sampler2D exists"],
-  ["sampler2DArray", "'sampler2DArray' is outside the subset; only sampler2D exists"],
-  ["sampler2DShadow", "'sampler2DShadow' is outside the subset; only sampler2D exists"],
-  ["samplerCubeShadow", "'samplerCubeShadow' is outside the subset; only sampler2D exists"],
-  ["sampler2DArrayShadow", "'sampler2DArrayShadow' is outside the subset; only sampler2D exists"],
-  ["isampler2D", "integer sampler types are outside the subset; only sampler2D exists"],
-  ["isampler3D", "integer sampler types are outside the subset; only sampler2D exists"],
-  ["isamplerCube", "integer sampler types are outside the subset; only sampler2D exists"],
-  ["isampler2DArray", "integer sampler types are outside the subset; only sampler2D exists"],
-  ["usampler2D", "integer sampler types are outside the subset; only sampler2D exists"],
-  ["usampler3D", "integer sampler types are outside the subset; only sampler2D exists"],
-  ["usamplerCube", "integer sampler types are outside the subset; only sampler2D exists"],
-  ["usampler2DArray", "integer sampler types are outside the subset; only sampler2D exists"],
+  [
+    "sampler2DArray",
+    "'sampler2DArray' is outside the subset; only sampler2D exists",
+  ],
+  [
+    "sampler2DShadow",
+    "'sampler2DShadow' is outside the subset; only sampler2D exists",
+  ],
+  [
+    "samplerCubeShadow",
+    "'samplerCubeShadow' is outside the subset; only sampler2D exists",
+  ],
+  [
+    "sampler2DArrayShadow",
+    "'sampler2DArrayShadow' is outside the subset; only sampler2D exists",
+  ],
+  [
+    "isampler2D",
+    "integer sampler types are outside the subset; only sampler2D exists",
+  ],
+  [
+    "isampler3D",
+    "integer sampler types are outside the subset; only sampler2D exists",
+  ],
+  [
+    "isamplerCube",
+    "integer sampler types are outside the subset; only sampler2D exists",
+  ],
+  [
+    "isampler2DArray",
+    "integer sampler types are outside the subset; only sampler2D exists",
+  ],
+  [
+    "usampler2D",
+    "integer sampler types are outside the subset; only sampler2D exists",
+  ],
+  [
+    "usampler3D",
+    "integer sampler types are outside the subset; only sampler2D exists",
+  ],
+  [
+    "usamplerCube",
+    "integer sampler types are outside the subset; only sampler2D exists",
+  ],
+  [
+    "usampler2DArray",
+    "integer sampler types are outside the subset; only sampler2D exists",
+  ],
 ]);
 
 /** Statement keywords GLSL has but the subset refuses, each with its named reason. */
 const EXCLUDED_STATEMENTS = new Map<string, string>([
-  ["while", "the 'while' loop is outside the subset; use a for-loop with a constant or uniform-int bound"],
-  ["do", "the 'do-while' loop is outside the subset; use a for-loop with a constant or uniform-int bound"],
+  [
+    "while",
+    "the 'while' loop is outside the subset; use a for-loop with a constant or uniform-int bound",
+  ],
+  [
+    "do",
+    "the 'do-while' loop is outside the subset; use a for-loop with a constant or uniform-int bound",
+  ],
   ["switch", "'switch' is outside the subset; use if/else chains"],
   ["case", "'case' is outside the subset; use if/else chains"],
   ["default", "'default' is outside the subset; use if/else chains"],
-  ["break", "'break' is outside the subset; bound the loop or guard the body with if"],
+  [
+    "break",
+    "'break' is outside the subset; bound the loop or guard the body with if",
+  ],
   ["continue", "'continue' is outside the subset; guard the loop body with if"],
-  ["struct", "'struct' is outside the subset; use parallel scalar/vector declarations (lights travel as parallel uniform arrays)"],
+  [
+    "struct",
+    "'struct' is outside the subset; use parallel scalar/vector declarations (lights travel as parallel uniform arrays)",
+  ],
 ]);
 
 const PRECISIONS = new Set(["lowp", "mediump", "highp"]);
@@ -94,7 +181,9 @@ class Parser {
   /* ---- token plumbing ------------------------------------------------ */
 
   private peek(ahead = 0): Token {
-    return this.tokens[Math.min(this.pos + ahead, this.tokens.length - 1)] as Token;
+    return this.tokens[
+      Math.min(this.pos + ahead, this.tokens.length - 1)
+    ] as Token;
   }
 
   private next(): Token {
@@ -105,7 +194,10 @@ class Parser {
 
   private at(text: string): boolean {
     const token = this.peek();
-    return (token.kind === "punct" || token.kind === "keyword") && token.text === text;
+    return (
+      (token.kind === "punct" || token.kind === "keyword") &&
+      token.text === text
+    );
   }
 
   private eat(text: string): boolean {
@@ -119,7 +211,10 @@ class Parser {
   private expect(text: string, context: string): Token {
     const token = this.peek();
     if (!this.at(text)) {
-      throw new CompileError(token.line, `expected '${text}' ${context}, got '${token.text}'`);
+      throw new CompileError(
+        token.line,
+        `expected '${text}' ${context}, got '${token.text}'`,
+      );
     }
     return this.next();
   }
@@ -127,7 +222,10 @@ class Parser {
   private expectIdent(context: string): Token {
     const token = this.peek();
     if (token.kind !== "ident") {
-      throw new CompileError(token.line, `expected an identifier ${context}, got '${token.text}'`);
+      throw new CompileError(
+        token.line,
+        `expected an identifier ${context}, got '${token.text}'`,
+      );
     }
     return this.next();
   }
@@ -150,7 +248,10 @@ class Parser {
     const type = this.tryType();
     if (type === null) {
       const token = this.peek();
-      throw new CompileError(token.line, `expected a type ${context}, got '${token.text}'`);
+      throw new CompileError(
+        token.line,
+        `expected a type ${context}, got '${token.text}'`,
+      );
     }
     return type;
   }
@@ -192,10 +293,17 @@ class Parser {
     let layoutLocation: number | null = null;
     if (this.eat("layout")) {
       this.expect("(", "after 'layout'");
-      this.expect("location", "in a layout qualifier (only 'location' is inside the subset)");
+      this.expect(
+        "location",
+        "in a layout qualifier (only 'location' is inside the subset)",
+      );
       this.expect("=", "in a layout qualifier");
       const num = this.peek();
-      if (num.kind !== "int") throw new CompileError(num.line, `expected an integer location in the layout qualifier, got '${num.text}'`);
+      if (num.kind !== "int")
+        throw new CompileError(
+          num.line,
+          `expected an integer location in the layout qualifier, got '${num.text}'`,
+        );
       this.next();
       layoutLocation = num.value;
       this.expect(")", "after the layout qualifier");
@@ -207,10 +315,19 @@ class Parser {
     this.eat("smooth");
     const pre = this.peek();
     if (pre.kind === "keyword" && pre.text === "flat") {
-      throw new CompileError(pre.line, "the 'flat' interpolation qualifier is outside the subset (all varyings interpolate smoothly, so use float-based varyings)");
+      throw new CompileError(
+        pre.line,
+        "the 'flat' interpolation qualifier is outside the subset (all varyings interpolate smoothly, so use float-based varyings)",
+      );
     }
-    if (pre.kind === "keyword" && (pre.text === "centroid" || pre.text === "invariant")) {
-      throw new CompileError(pre.line, `the '${pre.text}' qualifier is outside the subset`);
+    if (
+      pre.kind === "keyword" &&
+      (pre.text === "centroid" || pre.text === "invariant")
+    ) {
+      throw new CompileError(
+        pre.line,
+        `the '${pre.text}' qualifier is outside the subset`,
+      );
     }
 
     // Storage qualifier.
@@ -224,7 +341,8 @@ class Parser {
     const refusedStmt = this.peek();
     if (refusedStmt.kind === "keyword") {
       const reason = EXCLUDED_STATEMENTS.get(refusedStmt.text);
-      if (reason !== undefined) throw new CompileError(refusedStmt.line, reason);
+      if (reason !== undefined)
+        throw new CompileError(refusedStmt.line, reason);
     }
     const type = this.expectType("in a declaration");
     const nameToken = this.expectIdent("in a declaration");
@@ -232,13 +350,19 @@ class Parser {
     // A function definition: type name ( ... ) { ... }. Only valid unqualified.
     if (this.at("(")) {
       if (qualifier !== null || layoutLocation !== null) {
-        throw new CompileError(nameToken.line, `a function definition cannot carry a storage or layout qualifier`);
+        throw new CompileError(
+          nameToken.line,
+          `a function definition cannot carry a storage or layout qualifier`,
+        );
       }
       return this.parseFunction(type, nameToken);
     }
 
     if (qualifier === null) {
-      throw new CompileError(nameToken.line, `the global variable '${nameToken.text}' has no qualifier; unqualified mutable globals are outside the subset — pass values through function parameters, or declare it const`);
+      throw new CompileError(
+        nameToken.line,
+        `the global variable '${nameToken.text}' has no qualifier; unqualified mutable globals are outside the subset — pass values through function parameters, or declare it const`,
+      );
     }
 
     // Array suffix; the size expression resolves in the checker (const globals).
@@ -251,7 +375,16 @@ class Parser {
     let init: Expr | null = null;
     if (this.eat("=")) init = this.parseExpression();
     this.expect(";", "after the declaration");
-    return { node: "global", line: startLine, qualifier, type, name: nameToken.text, arraySize, layoutLocation, init };
+    return {
+      node: "global",
+      line: startLine,
+      qualifier,
+      type,
+      name: nameToken.text,
+      arraySize,
+      layoutLocation,
+      init,
+    };
   }
 
   private parseFunction(returnType: Type, nameToken: Token): FunctionDecl {
@@ -264,8 +397,14 @@ class Parser {
       } else {
         do {
           const qual = this.peek();
-          if (qual.kind === "keyword" && (qual.text === "out" || qual.text === "inout")) {
-            throw new CompileError(qual.line, `'${qual.text}' function parameters are outside the subset; parameters pass by value — return the result instead`);
+          if (
+            qual.kind === "keyword" &&
+            (qual.text === "out" || qual.text === "inout")
+          ) {
+            throw new CompileError(
+              qual.line,
+              `'${qual.text}' function parameters are outside the subset; parameters pass by value — return the result instead`,
+            );
           }
           this.eat("in"); // `in` is the value-parameter default; accepted and meaningless.
           this.eat("const");
@@ -273,7 +412,10 @@ class Parser {
           const type = this.expectType("in a function parameter");
           const param = this.expectIdent("in a function parameter");
           if (this.at("[")) {
-            throw new CompileError(param.line, "array function parameters are outside the subset; only uniform declarations may be arrays");
+            throw new CompileError(
+              param.line,
+              "array function parameters are outside the subset; only uniform declarations may be arrays",
+            );
           }
           params.push({ type, name: param.text, line: param.line });
         } while (this.eat(","));
@@ -282,10 +424,20 @@ class Parser {
     this.expect(")", "after the parameter list");
     const semicolon = this.peek();
     if (semicolon.text === ";") {
-      throw new CompileError(semicolon.line, `the function prototype for '${nameToken.text}' is outside the subset; define helper functions before their first call instead`);
+      throw new CompileError(
+        semicolon.line,
+        `the function prototype for '${nameToken.text}' is outside the subset; define helper functions before their first call instead`,
+      );
     }
     const body = this.parseBlock();
-    return { node: "function", line: nameToken.line, returnType, name: nameToken.text, params, body };
+    return {
+      node: "function",
+      line: nameToken.line,
+      returnType,
+      name: nameToken.text,
+      params,
+      body,
+    };
   }
 
   /* ---- statements ---------------------------------------------------- */
@@ -294,7 +446,8 @@ class Parser {
     const open = this.expect("{", "to open a block");
     const statements: Stmt[] = [];
     while (!this.at("}")) {
-      if (this.peek().kind === "eof") throw new CompileError(open.line, "unterminated block: missing '}'");
+      if (this.peek().kind === "eof")
+        throw new CompileError(open.line, "unterminated block: missing '}'");
       statements.push(this.parseStatement());
     }
     this.expect("}", "to close the block");
@@ -329,39 +482,84 @@ class Parser {
       const op = this.next().text as "++" | "--";
       const name = this.expectIdent(`after '${op}'`);
       this.expect(";", "after the increment/decrement");
-      return { node: "incdec", line: token.line, name: name.text, op } satisfies IncDecStmt;
+      return {
+        node: "incdec",
+        line: token.line,
+        name: name.text,
+        op,
+      } satisfies IncDecStmt;
     }
 
     // Local declaration: starts with `const`, a precision qualifier, or a type keyword.
-    const startsType = (t: Token): boolean => t.kind === "keyword" && (TYPES.has(t.text) || EXCLUDED_TYPES.has(t.text)) && t.text !== "void";
-    if (this.at("const") || startsType(token) || (token.kind === "keyword" && PRECISIONS.has(token.text) && startsType(this.peek(1)))) {
+    const startsType = (t: Token): boolean =>
+      t.kind === "keyword" &&
+      (TYPES.has(t.text) || EXCLUDED_TYPES.has(t.text)) &&
+      t.text !== "void";
+    if (
+      this.at("const") ||
+      startsType(token) ||
+      (token.kind === "keyword" &&
+        PRECISIONS.has(token.text) &&
+        startsType(this.peek(1)))
+    ) {
       return this.parseLocalDecl();
     }
     if (this.at("void")) {
-      throw new CompileError(token.line, "a nested function definition is outside the subset; define helper functions at the top level");
+      throw new CompileError(
+        token.line,
+        "a nested function definition is outside the subset; define helper functions at the top level",
+      );
     }
 
     // Everything else: an expression followed by an assignment operator, a
     // postfix increment/decrement, or nothing (a bare call).
     const expr = this.parseExpression();
     const after = this.peek();
-    if (after.text === "=" || after.text === "+=" || after.text === "-=" || after.text === "*=" || after.text === "/=") {
+    if (
+      after.text === "=" ||
+      after.text === "+=" ||
+      after.text === "-=" ||
+      after.text === "*=" ||
+      after.text === "/="
+    ) {
       const op = this.next().text as AssignStmt["op"];
       const rhs = this.parseExpression();
       this.expect(";", "after the assignment");
-      return { node: "assign", line: token.line, op, lhs: expr, rhs } satisfies AssignStmt;
+      return {
+        node: "assign",
+        line: token.line,
+        op,
+        lhs: expr,
+        rhs,
+      } satisfies AssignStmt;
     }
     if (after.text === "++" || after.text === "--") {
-      if (expr.node !== "ident") throw new CompileError(after.line, `'${after.text}' applies only to a plain int variable`);
+      if (expr.node !== "ident")
+        throw new CompileError(
+          after.line,
+          `'${after.text}' applies only to a plain int variable`,
+        );
       const op = this.next().text as "++" | "--";
       this.expect(";", "after the increment/decrement");
-      return { node: "incdec", line: token.line, name: expr.name, op } satisfies IncDecStmt;
+      return {
+        node: "incdec",
+        line: token.line,
+        name: expr.name,
+        op,
+      } satisfies IncDecStmt;
     }
     if (expr.node === "call") {
       this.expect(";", "after the call");
-      return { node: "callstmt", line: token.line, call: expr } satisfies CallStmt;
+      return {
+        node: "callstmt",
+        line: token.line,
+        call: expr,
+      } satisfies CallStmt;
     }
-    throw new CompileError(after.line, `expected an assignment or a call statement, got '${after.text}'`);
+    throw new CompileError(
+      after.line,
+      `expected an assignment or a call statement, got '${after.text}'`,
+    );
   }
 
   private parseLocalDecl(): VarDeclStmt {
@@ -373,7 +571,10 @@ class Parser {
     do {
       const name = this.expectIdent("in a declaration");
       if (this.at("[")) {
-        throw new CompileError(name.line, `the local array '${name.text}' is outside the subset; only uniform declarations may be arrays`);
+        throw new CompileError(
+          name.line,
+          `the local array '${name.text}' is outside the subset; only uniform declarations may be arrays`,
+        );
       }
       let init: Expr | null = null;
       if (this.eat("=")) init = this.parseExpression();
@@ -415,20 +616,38 @@ class Parser {
 
     const initToken = this.peek();
     if (!this.at("int")) {
-      throw new CompileError(initToken.line, "the for-loop must declare its own int counter: for (int i = ...; ...; ...)");
+      throw new CompileError(
+        initToken.line,
+        "the for-loop must declare its own int counter: for (int i = ...; ...; ...)",
+      );
     }
     const init = this.parseLocalDecl();
     if (init.declarators.length !== 1) {
-      throw new CompileError(init.line, "the for-loop counter must be a single declaration");
+      throw new CompileError(
+        init.line,
+        "the for-loop counter must be a single declaration",
+      );
     }
     const counter = init.declarators[0];
     if (counter === undefined || counter.init === null) {
-      throw new CompileError(init.line, "the for-loop counter needs an initializer: for (int i = 0; ...)");
+      throw new CompileError(
+        init.line,
+        "the for-loop counter needs an initializer: for (int i = 0; ...)",
+      );
     }
 
     const cond = this.parseExpression();
-    if (cond.node !== "binary" || (cond.op !== "<" && cond.op !== "<=" && cond.op !== ">" && cond.op !== ">=")) {
-      throw new CompileError(cond.line, "the for-loop condition must compare the counter with <, <=, >, or >= against a constant or uniform int bound");
+    if (
+      cond.node !== "binary" ||
+      (cond.op !== "<" &&
+        cond.op !== "<=" &&
+        cond.op !== ">" &&
+        cond.op !== ">=")
+    ) {
+      throw new CompileError(
+        cond.line,
+        "the for-loop condition must compare the counter with <, <=, >, or >= against a constant or uniform int bound",
+      );
     }
     this.expect(";", "after the for-loop condition");
 
@@ -451,19 +670,39 @@ class Parser {
     const opToken = this.peek();
     if (opToken.text === "++" || opToken.text === "--") {
       this.next();
-      return { name: name.text, op: opToken.text as "++" | "--", amount: null, line: token.line };
+      return {
+        name: name.text,
+        op: opToken.text as "++" | "--",
+        amount: null,
+        line: token.line,
+      };
     }
     if (opToken.text === "+=" || opToken.text === "-=") {
       this.next();
       const amount = this.parseExpression();
-      return { name: name.text, op: opToken.text as "+=" | "-=", amount, line: token.line };
+      return {
+        name: name.text,
+        op: opToken.text as "+=" | "-=",
+        amount,
+        line: token.line,
+      };
     }
-    throw new CompileError(opToken.line, `the for-loop update must be ++, --, +=, or -= on the counter, got '${opToken.text}'`);
+    throw new CompileError(
+      opToken.line,
+      `the for-loop update must be ++, --, +=, or -= on the counter, got '${opToken.text}'`,
+    );
   }
 
-  private requireCounter(name: string, counterName: string, line: number): void {
+  private requireCounter(
+    name: string,
+    counterName: string,
+    line: number,
+  ): void {
     if (name !== counterName) {
-      throw new CompileError(line, `the for-loop update must step the loop's own counter '${counterName}', got '${name}'`);
+      throw new CompileError(
+        line,
+        `the for-loop update must step the loop's own counter '${counterName}', got '${name}'`,
+      );
     }
   }
 
@@ -503,19 +742,33 @@ class Parser {
       if (token.kind !== "punct" || !ops.includes(token.text)) return left;
       this.next();
       const right = this.parseBinary(level + 1);
-      left = { node: "binary", line: token.line, op: token.text as never, left, right };
+      left = {
+        node: "binary",
+        line: token.line,
+        op: token.text as never,
+        left,
+        right,
+      };
     }
   }
 
   private parseUnary(): Expr {
     const token = this.peek();
     if (token.text === "++" || token.text === "--") {
-      throw new CompileError(token.line, `'${token.text}' inside an expression is outside the subset; increment/decrement is a statement (or the for-loop update)`);
+      throw new CompileError(
+        token.line,
+        `'${token.text}' inside an expression is outside the subset; increment/decrement is a statement (or the for-loop update)`,
+      );
     }
     if (token.text === "-" || token.text === "!" || token.text === "+") {
       this.next();
       const operand = this.parseUnary();
-      return { node: "unary", line: token.line, op: token.text as "-" | "!" | "+", operand };
+      return {
+        node: "unary",
+        line: token.line,
+        op: token.text as "-" | "!" | "+",
+        operand,
+      };
     }
     return this.parsePostfix();
   }
@@ -534,7 +787,12 @@ class Parser {
       if (token.text === ".") {
         this.next();
         const member = this.expectIdent("after '.'");
-        expr = { node: "swizzle", line: member.line, target: expr, components: member.text };
+        expr = {
+          node: "swizzle",
+          line: member.line,
+          target: expr,
+          components: member.text,
+        };
         continue;
       }
       if (token.text === "++" || token.text === "--") {
@@ -542,7 +800,10 @@ class Parser {
         // parser. Anything else (`i++ + 1`) is increment-in-expression,
         // refused by name here so the log can say why.
         if (this.peek(1).text === ";" && expr.node === "ident") return expr;
-        throw new CompileError(token.line, `'${token.text}' inside an expression is outside the subset; increment/decrement is a statement (or the for-loop update)`);
+        throw new CompileError(
+          token.line,
+          `'${token.text}' inside an expression is outside the subset; increment/decrement is a statement (or the for-loop update)`,
+        );
       }
       return expr;
     }
@@ -553,9 +814,17 @@ class Parser {
 
     if (token.kind === "int" || token.kind === "float") {
       this.next();
-      return { node: "num", line: token.line, value: token.value, isInt: token.kind === "int" };
+      return {
+        node: "num",
+        line: token.line,
+        value: token.value,
+        isInt: token.kind === "int",
+      };
     }
-    if (token.kind === "keyword" && (token.text === "true" || token.text === "false")) {
+    if (
+      token.kind === "keyword" &&
+      (token.text === "true" || token.text === "false")
+    ) {
       this.next();
       return { node: "bool", line: token.line, value: token.text === "true" };
     }
@@ -571,7 +840,11 @@ class Parser {
     if (token.kind === "keyword") {
       const excluded = EXCLUDED_TYPES.get(token.text);
       if (excluded !== undefined) throw new CompileError(token.line, excluded);
-      if (TYPES.has(token.text) && token.text !== "void" && token.text !== "sampler2D") {
+      if (
+        TYPES.has(token.text) &&
+        token.text !== "void" &&
+        token.text !== "sampler2D"
+      ) {
         this.next();
         return this.parseCall(token.text, token.line);
       }
@@ -583,7 +856,10 @@ class Parser {
       return { node: "ident", line: token.line, name: token.text };
     }
 
-    throw new CompileError(token.line, `expected an expression, got '${token.text}'`);
+    throw new CompileError(
+      token.line,
+      `expected an expression, got '${token.text}'`,
+    );
   }
 
   private parseCall(callee: string, line: number): Call {

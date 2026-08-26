@@ -10,7 +10,13 @@
  * with an info log, exactly as a browser reports it.
  */
 
-import { CompileError, componentCount, glTypeEnum, sameType, typeName } from "./ast";
+import {
+  CompileError,
+  componentCount,
+  glTypeEnum,
+  sameType,
+  typeName,
+} from "./ast";
 import type { Type } from "./ast";
 import { checkShader, type CheckedShader, type Stage } from "./check";
 import { emitStage, type StageLayout } from "./emit";
@@ -27,7 +33,11 @@ export type { CheckedShader, Stage };
  * and reused by the sampler, which is safe because generated code copies the
  * components into scalars before the next lookup.
  */
-export type SamplerFn = (u: number, v: number, lod: number) => ArrayLike<number>;
+export type SamplerFn = (
+  u: number,
+  v: number,
+  lod: number,
+) => ArrayLike<number>;
 
 /**
  * The vertex stage function. `attributes` is a flat register file of
@@ -35,7 +45,13 @@ export type SamplerFn = (u: number, v: number, lod: number) => ArrayLike<number>
  * `varyingsOut` receives `varyingComponents` floats; `positionOut` receives
  * clip-space gl_Position (x, y, z, w).
  */
-export type VertexFn = (attributes: Float64Array, uniforms: Float64Array, samplers: readonly SamplerFn[], varyingsOut: Float64Array, positionOut: Float64Array) => void;
+export type VertexFn = (
+  attributes: Float64Array,
+  uniforms: Float64Array,
+  samplers: readonly SamplerFn[],
+  varyingsOut: Float64Array,
+  positionOut: Float64Array,
+) => void;
 
 /**
  * The fragment stage function. `varyings` carries the interpolated register
@@ -43,7 +59,14 @@ export type VertexFn = (attributes: Float64Array, uniforms: Float64Array, sample
  * (x, y, z, 1/w), and `colorOut` receives the RGBA output. Returns true when
  * the fragment discarded — in which case `colorOut` must be ignored.
  */
-export type FragmentFn = (varyings: Float64Array, uniforms: Float64Array, samplers: readonly SamplerFn[], fragCoord: Float64Array, frontFacing: boolean, colorOut: Float64Array) => boolean;
+export type FragmentFn = (
+  varyings: Float64Array,
+  uniforms: Float64Array,
+  samplers: readonly SamplerFn[],
+  fragCoord: Float64Array,
+  frontFacing: boolean,
+  colorOut: Float64Array,
+) => boolean;
 
 /** One active attribute, as `getActiveAttrib`/`getAttribLocation` report it. */
 export interface LinkedAttribute {
@@ -87,7 +110,9 @@ export interface LinkedProgram {
 /* Compilation                                                              */
 /* ------------------------------------------------------------------------ */
 
-export type CompileResult = { readonly ok: true; readonly shader: CheckedShader } | { readonly ok: false; readonly log: string };
+export type CompileResult =
+  | { readonly ok: true; readonly shader: CheckedShader }
+  | { readonly ok: false; readonly log: string };
 
 /**
  * Compiles one stage: parse and check. Emission waits for link time, because
@@ -106,7 +131,9 @@ export function compileStage(source: string, stage: Stage): CompileResult {
 /* Linking                                                                  */
 /* ------------------------------------------------------------------------ */
 
-export type LinkResult = { readonly ok: true; readonly program: LinkedProgram } | { readonly ok: false; readonly log: string };
+export type LinkResult =
+  | { readonly ok: true; readonly program: LinkedProgram }
+  | { readonly ok: false; readonly log: string };
 
 /** A link failure: like CompileError but with no source line to point at. */
 class LinkError extends Error {}
@@ -117,11 +144,21 @@ class LinkError extends Error {}
  * free), matches varyings by name and type, merges the uniform tables, emits
  * both stages, and compiles the emitted JS with `new Function`.
  */
-export function linkStages(vertex: CheckedShader, fragment: CheckedShader, boundAttribLocations: ReadonlyMap<string, number>): LinkResult {
+export function linkStages(
+  vertex: CheckedShader,
+  fragment: CheckedShader,
+  boundAttribLocations: ReadonlyMap<string, number>,
+): LinkResult {
   try {
     const attributes = assignAttributeLocations(vertex, boundAttribLocations);
-    const { varyingOffsets, varyingComponents } = matchVaryings(vertex, fragment);
-    const { uniforms, uniformSlots, uniformSlotCount } = mergeUniforms(vertex, fragment);
+    const { varyingOffsets, varyingComponents } = matchVaryings(
+      vertex,
+      fragment,
+    );
+    const { uniforms, uniformSlots, uniformSlotCount } = mergeUniforms(
+      vertex,
+      fragment,
+    );
 
     const layout: StageLayout = {
       attributeLocations: new Map(attributes.map((a) => [a.name, a.location])),
@@ -137,10 +174,18 @@ export function linkStages(vertex: CheckedShader, fragment: CheckedShader, bound
 
     return {
       ok: true,
-      program: { attributes, uniforms, uniformSlotCount, varyingComponents, vertex: vertexFn, fragment: fragmentFn },
+      program: {
+        attributes,
+        uniforms,
+        uniformSlotCount,
+        varyingComponents,
+        vertex: vertexFn,
+        fragment: fragmentFn,
+      },
     };
   } catch (error) {
-    if (error instanceof LinkError) return { ok: false, log: `ERROR: ${error.message}` };
+    if (error instanceof LinkError)
+      return { ok: false, log: `ERROR: ${error.message}` };
     throw error;
   }
 }
@@ -148,18 +193,33 @@ export function linkStages(vertex: CheckedShader, fragment: CheckedShader, bound
 /** The location budget mirrors the context's MAX_VERTEX_ATTRIBS. */
 const MAX_ATTRIB_LOCATIONS = 16;
 
-function assignAttributeLocations(vertex: CheckedShader, bound: ReadonlyMap<string, number>): LinkedAttribute[] {
+function assignAttributeLocations(
+  vertex: CheckedShader,
+  bound: ReadonlyMap<string, number>,
+): LinkedAttribute[] {
   const taken = new Map<number, string>();
-  const results: { name: string; type: Type; location: number | null }[] = vertex.ins.map((info) => ({ name: info.name, type: info.type, location: null }));
+  const results: { name: string; type: Type; location: number | null }[] =
+    vertex.ins.map((info) => ({
+      name: info.name,
+      type: info.type,
+      location: null,
+    }));
 
   // Pass 1: layout(location = N) — the shader's own word, strongest.
   for (let i = 0; i < vertex.ins.length; i += 1) {
     const info = vertex.ins[i];
     const result = results[i];
-    if (info === undefined || result === undefined || info.layoutLocation === null) continue;
+    if (
+      info === undefined ||
+      result === undefined ||
+      info.layoutLocation === null
+    )
+      continue;
     const holder = taken.get(info.layoutLocation);
     if (holder !== undefined) {
-      throw new LinkError(`the attributes '${holder}' and '${info.name}' both claim location ${info.layoutLocation}`);
+      throw new LinkError(
+        `the attributes '${holder}' and '${info.name}' both claim location ${info.layoutLocation}`,
+      );
     }
     taken.set(info.layoutLocation, info.name);
     result.location = info.layoutLocation;
@@ -171,11 +231,15 @@ function assignAttributeLocations(vertex: CheckedShader, bound: ReadonlyMap<stri
     const requested = bound.get(result.name);
     if (requested === undefined) continue;
     if (requested < 0 || requested >= MAX_ATTRIB_LOCATIONS) {
-      throw new LinkError(`bindAttribLocation put '${result.name}' at ${requested}, outside 0..${MAX_ATTRIB_LOCATIONS - 1}`);
+      throw new LinkError(
+        `bindAttribLocation put '${result.name}' at ${requested}, outside 0..${MAX_ATTRIB_LOCATIONS - 1}`,
+      );
     }
     const holder = taken.get(requested);
     if (holder !== undefined) {
-      throw new LinkError(`bindAttribLocation put '${result.name}' at ${requested}, already claimed by '${holder}'`);
+      throw new LinkError(
+        `bindAttribLocation put '${result.name}' at ${requested}, already claimed by '${holder}'`,
+      );
     }
     taken.set(requested, result.name);
     result.location = requested;
@@ -187,7 +251,9 @@ function assignAttributeLocations(vertex: CheckedShader, bound: ReadonlyMap<stri
     let free = 0;
     while (taken.has(free)) free += 1;
     if (free >= MAX_ATTRIB_LOCATIONS) {
-      throw new LinkError(`the vertex shader needs more than ${MAX_ATTRIB_LOCATIONS} attribute locations`);
+      throw new LinkError(
+        `the vertex shader needs more than ${MAX_ATTRIB_LOCATIONS} attribute locations`,
+      );
     }
     taken.set(free, result.name);
     result.location = free;
@@ -205,7 +271,10 @@ function assignAttributeLocations(vertex: CheckedShader, bound: ReadonlyMap<stri
 /** Varyings vec-align to 15 vec4s worth of components, the MAX_VARYING_VECTORS the context reports. */
 const MAX_VARYING_COMPONENTS = 60;
 
-function matchVaryings(vertex: CheckedShader, fragment: CheckedShader): { varyingOffsets: Map<string, number>; varyingComponents: number } {
+function matchVaryings(
+  vertex: CheckedShader,
+  fragment: CheckedShader,
+): { varyingOffsets: Map<string, number>; varyingComponents: number } {
   const varyingOffsets = new Map<string, number>();
   let offset = 0;
 
@@ -215,10 +284,14 @@ function matchVaryings(vertex: CheckedShader, fragment: CheckedShader): { varyin
   for (const input of fragment.ins) {
     const writer = vertexOuts.get(input.name);
     if (writer === undefined) {
-      throw new LinkError(`the fragment input '${input.name}' has no matching vertex output; declare 'out ${typeName(input.type)} ${input.name}' in the vertex shader`);
+      throw new LinkError(
+        `the fragment input '${input.name}' has no matching vertex output; declare 'out ${typeName(input.type)} ${input.name}' in the vertex shader`,
+      );
     }
     if (!sameType(writer.type, input.type)) {
-      throw new LinkError(`the varying '${input.name}' is ${typeName(writer.type)} in the vertex shader but ${typeName(input.type)} in the fragment shader`);
+      throw new LinkError(
+        `the varying '${input.name}' is ${typeName(writer.type)} in the vertex shader but ${typeName(input.type)} in the fragment shader`,
+      );
     }
     varyingOffsets.set(input.name, offset);
     offset += componentCount(input.type);
@@ -232,12 +305,21 @@ function matchVaryings(vertex: CheckedShader, fragment: CheckedShader): { varyin
   }
 
   if (offset > MAX_VARYING_COMPONENTS) {
-    throw new LinkError(`the program uses ${offset} varying components, over the limit of ${MAX_VARYING_COMPONENTS} (15 vec4s)`);
+    throw new LinkError(
+      `the program uses ${offset} varying components, over the limit of ${MAX_VARYING_COMPONENTS} (15 vec4s)`,
+    );
   }
   return { varyingOffsets, varyingComponents: offset };
 }
 
-function mergeUniforms(vertex: CheckedShader, fragment: CheckedShader): { uniforms: LinkedUniform[]; uniformSlots: Map<string, number>; uniformSlotCount: number } {
+function mergeUniforms(
+  vertex: CheckedShader,
+  fragment: CheckedShader,
+): {
+  uniforms: LinkedUniform[];
+  uniformSlots: Map<string, number>;
+  uniformSlotCount: number;
+} {
   const uniforms: LinkedUniform[] = [];
   const uniformSlots = new Map<string, number>();
   const seen = new Map<string, Type>();
@@ -248,14 +330,17 @@ function mergeUniforms(vertex: CheckedShader, fragment: CheckedShader): { unifor
     if (existing !== undefined) {
       // Declared in both stages: one storage, and the types must agree.
       if (!sameType(existing, info.type)) {
-        throw new LinkError(`the uniform '${info.name}' is ${typeName(existing)} in one stage and ${typeName(info.type)} in the other`);
+        throw new LinkError(
+          `the uniform '${info.name}' is ${typeName(existing)} in one stage and ${typeName(info.type)} in the other`,
+        );
       }
       continue;
     }
     seen.set(info.name, info.type);
     uniformSlots.set(info.name, slot);
     const isArray = info.type.kind === "array";
-    const elementType: Type = info.type.kind === "array" ? info.type.element : info.type;
+    const elementType: Type =
+      info.type.kind === "array" ? info.type.element : info.type;
     uniforms.push({
       name: isArray ? `${info.name}[0]` : info.name,
       baseName: info.name,

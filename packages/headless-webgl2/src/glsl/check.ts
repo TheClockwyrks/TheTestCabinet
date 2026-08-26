@@ -12,8 +12,32 @@
  * compiler has.
  */
 
-import { BOOL, CompileError, FLOAT, INT, componentCount, mat, sameType, typeName, vec } from "./ast";
-import type { ArrayType, BlockStmt, Call, Expr, ForStmt, FunctionDecl, GlobalDecl, MatrixType, ScalarType, ShaderAst, Stmt, Type, VectorType } from "./ast";
+import {
+  BOOL,
+  CompileError,
+  FLOAT,
+  INT,
+  componentCount,
+  mat,
+  sameType,
+  typeName,
+  vec,
+} from "./ast";
+import type {
+  ArrayType,
+  BlockStmt,
+  Call,
+  Expr,
+  ForStmt,
+  FunctionDecl,
+  GlobalDecl,
+  MatrixType,
+  ScalarType,
+  ShaderAst,
+  Stmt,
+  Type,
+  VectorType,
+} from "./ast";
 import { EXCLUDED_FUNCTIONS, convertible, resolveBuiltin } from "./builtins";
 import { parse } from "./parse";
 
@@ -37,7 +61,10 @@ export interface CheckedShader {
   readonly outs: readonly GlobalInfo[];
   readonly uniforms: readonly GlobalInfo[];
   /** Const globals with their evaluated component values, for inlining. */
-  readonly consts: ReadonlyMap<string, { readonly type: Type; readonly values: readonly number[] }>;
+  readonly consts: ReadonlyMap<
+    string,
+    { readonly type: Type; readonly values: readonly number[] }
+  >;
   readonly functions: ReadonlyMap<string, FunctionDecl>;
   /** Expression type annotations; every checked Expr has an entry. */
   readonly types: WeakMap<Expr, Type>;
@@ -70,8 +97,13 @@ class Scopes {
 
   declare(name: string, symbol: VarSymbol, line: number): void {
     const top = this.stack[this.stack.length - 1];
-    if (top === undefined) throw new Error("headless-webgl2: internal: empty scope stack");
-    if (top.has(name)) throw new CompileError(line, `'${name}' is already declared in this scope`);
+    if (top === undefined)
+      throw new Error("headless-webgl2: internal: empty scope stack");
+    if (top.has(name))
+      throw new CompileError(
+        line,
+        `'${name}' is already declared in this scope`,
+      );
     top.set(name, symbol);
   }
 
@@ -89,13 +121,35 @@ class Scopes {
 /* ------------------------------------------------------------------------ */
 
 const VERTEX_BUILTINS = new Map<string, VarSymbol>([
-  ["gl_Position", { type: vec("float", 4), assignable: true, space: "builtin", constValues: null }],
-  ["gl_PointSize", { type: FLOAT, assignable: true, space: "builtin", constValues: null }],
+  [
+    "gl_Position",
+    {
+      type: vec("float", 4),
+      assignable: true,
+      space: "builtin",
+      constValues: null,
+    },
+  ],
+  [
+    "gl_PointSize",
+    { type: FLOAT, assignable: true, space: "builtin", constValues: null },
+  ],
 ]);
 
 const FRAGMENT_BUILTINS = new Map<string, VarSymbol>([
-  ["gl_FragCoord", { type: vec("float", 4), assignable: false, space: "builtin", constValues: null }],
-  ["gl_FrontFacing", { type: BOOL, assignable: false, space: "builtin", constValues: null }],
+  [
+    "gl_FragCoord",
+    {
+      type: vec("float", 4),
+      assignable: false,
+      space: "builtin",
+      constValues: null,
+    },
+  ],
+  [
+    "gl_FrontFacing",
+    { type: BOOL, assignable: false, space: "builtin", constValues: null },
+  ],
 ]);
 
 class Checker {
@@ -104,7 +158,10 @@ class Checker {
   readonly ins: GlobalInfo[] = [];
   readonly outs: GlobalInfo[] = [];
   readonly uniforms: GlobalInfo[] = [];
-  readonly consts = new Map<string, { type: Type; values: readonly number[] }>();
+  readonly consts = new Map<
+    string,
+    { type: Type; values: readonly number[] }
+  >();
   readonly functions = new Map<string, FunctionDecl>();
   readonly types = new WeakMap<Expr, Type>();
   readonly constInts = new WeakMap<Expr, number>();
@@ -124,13 +181,22 @@ class Checker {
 
     const main = this.functions.get("main");
     if (main === undefined) {
-      throw new CompileError(1, `the ${this.stage} shader has no 'void main()'`);
+      throw new CompileError(
+        1,
+        `the ${this.stage} shader has no 'void main()'`,
+      );
     }
     if (main.returnType.kind !== "void" || main.params.length > 0) {
-      throw new CompileError(main.line, "main must be declared 'void main()' with no parameters");
+      throw new CompileError(
+        main.line,
+        "main must be declared 'void main()' with no parameters",
+      );
     }
     if (this.stage === "fragment" && this.outs.length === 0) {
-      throw new CompileError(1, "the fragment shader must declare exactly one 'out vec4' color output");
+      throw new CompileError(
+        1,
+        "the fragment shader must declare exactly one 'out vec4' color output",
+      );
     }
   }
 
@@ -138,7 +204,10 @@ class Checker {
 
   private checkGlobal(decl: GlobalDecl): void {
     if (decl.type.kind === "void") {
-      throw new CompileError(decl.line, `'${decl.name}' cannot be declared void`);
+      throw new CompileError(
+        decl.line,
+        `'${decl.name}' cannot be declared void`,
+      );
     }
 
     // Arrays: uniforms only — the one place the engines need them (light
@@ -147,68 +216,134 @@ class Checker {
     let type: Type = decl.type;
     if (decl.arraySize !== null) {
       if (decl.qualifier !== "uniform") {
-        throw new CompileError(decl.line, `the array '${decl.name}' is outside the subset here; only uniform declarations may be arrays`);
+        throw new CompileError(
+          decl.line,
+          `the array '${decl.name}' is outside the subset here; only uniform declarations may be arrays`,
+        );
       }
       if (decl.type.kind === "sampler2D") {
-        throw new CompileError(decl.line, "sampler arrays are outside the subset; declare individual sampler2D uniforms");
+        throw new CompileError(
+          decl.line,
+          "sampler arrays are outside the subset; declare individual sampler2D uniforms",
+        );
       }
       const length = this.evalConstInt(decl.arraySize);
       if (length === null || length <= 0 || !Number.isInteger(length)) {
-        throw new CompileError(decl.line, `the array size of '${decl.name}' must be a constant positive integer`);
+        throw new CompileError(
+          decl.line,
+          `the array size of '${decl.name}' must be a constant positive integer`,
+        );
       }
-      type = { kind: "array", element: decl.type as ArrayType["element"], length };
+      type = {
+        kind: "array",
+        element: decl.type as ArrayType["element"],
+        length,
+      };
     }
 
-    const info: GlobalInfo = { name: decl.name, type, layoutLocation: decl.layoutLocation, line: decl.line };
+    const info: GlobalInfo = {
+      name: decl.name,
+      type,
+      layoutLocation: decl.layoutLocation,
+      line: decl.line,
+    };
 
     switch (decl.qualifier) {
       case "const": {
         if (decl.init === null) {
-          throw new CompileError(decl.line, `the const '${decl.name}' needs an initializer`);
+          throw new CompileError(
+            decl.line,
+            `the const '${decl.name}' needs an initializer`,
+          );
         }
         const initType = this.checkExpr(decl.init);
         if (!convertible(initType, type)) {
-          throw new CompileError(decl.line, `cannot initialize const ${typeName(type)} '${decl.name}' from ${typeName(initType)}`);
+          throw new CompileError(
+            decl.line,
+            `cannot initialize const ${typeName(type)} '${decl.name}' from ${typeName(initType)}`,
+          );
         }
         const values = this.evalConst(decl.init, type);
         if (values === null) {
-          throw new CompileError(decl.line, `the initializer of const '${decl.name}' must be a constant expression`);
+          throw new CompileError(
+            decl.line,
+            `the initializer of const '${decl.name}' must be a constant expression`,
+          );
         }
         this.consts.set(decl.name, { type, values });
-        this.scopes.declare(decl.name, { type, assignable: false, space: "const", constValues: values }, decl.line);
+        this.scopes.declare(
+          decl.name,
+          { type, assignable: false, space: "const", constValues: values },
+          decl.line,
+        );
         return;
       }
       case "uniform": {
         if (decl.init !== null) {
-          throw new CompileError(decl.line, `the uniform '${decl.name}' cannot have an initializer; set it with the uniform* API`);
+          throw new CompileError(
+            decl.line,
+            `the uniform '${decl.name}' cannot have an initializer; set it with the uniform* API`,
+          );
         }
         this.uniforms.push(info);
-        this.scopes.declare(decl.name, { type, assignable: false, space: "uniform", constValues: null }, decl.line);
+        this.scopes.declare(
+          decl.name,
+          { type, assignable: false, space: "uniform", constValues: null },
+          decl.line,
+        );
         return;
       }
       case "in": {
-        if (decl.init !== null) throw new CompileError(decl.line, `the input '${decl.name}' cannot have an initializer`);
+        if (decl.init !== null)
+          throw new CompileError(
+            decl.line,
+            `the input '${decl.name}' cannot have an initializer`,
+          );
         if (this.stage === "vertex") this.checkAttributeType(type, decl);
         else this.checkVaryingType(type, decl);
         this.ins.push(info);
-        this.scopes.declare(decl.name, { type, assignable: false, space: "in", constValues: null }, decl.line);
+        this.scopes.declare(
+          decl.name,
+          { type, assignable: false, space: "in", constValues: null },
+          decl.line,
+        );
         return;
       }
       case "out": {
-        if (decl.init !== null) throw new CompileError(decl.line, `the output '${decl.name}' cannot have an initializer`);
+        if (decl.init !== null)
+          throw new CompileError(
+            decl.line,
+            `the output '${decl.name}' cannot have an initializer`,
+          );
         if (this.stage === "vertex") {
           this.checkVaryingType(type, decl);
         } else {
           // The single render target: exactly one out, and it is a vec4.
           if (this.outs.length > 0) {
-            throw new CompileError(decl.line, "a second fragment output is outside the subset (multiple render targets); the fragment shader declares exactly one 'out vec4'");
+            throw new CompileError(
+              decl.line,
+              "a second fragment output is outside the subset (multiple render targets); the fragment shader declares exactly one 'out vec4'",
+            );
           }
-          if (!(type.kind === "vector" && type.scalar === "float" && type.size === 4)) {
-            throw new CompileError(decl.line, `the fragment output '${decl.name}' must be vec4, got ${typeName(type)}`);
+          if (
+            !(
+              type.kind === "vector" &&
+              type.scalar === "float" &&
+              type.size === 4
+            )
+          ) {
+            throw new CompileError(
+              decl.line,
+              `the fragment output '${decl.name}' must be vec4, got ${typeName(type)}`,
+            );
           }
         }
         this.outs.push(info);
-        this.scopes.declare(decl.name, { type, assignable: true, space: "out", constValues: null }, decl.line);
+        this.scopes.declare(
+          decl.name,
+          { type, assignable: true, space: "out", constValues: null },
+          decl.line,
+        );
         return;
       }
     }
@@ -216,20 +351,36 @@ class Checker {
 
   /** Vertex attributes: float scalars and vectors, the shapes `vertexAttribPointer` can feed. */
   private checkAttributeType(type: Type, decl: GlobalDecl): void {
-    const ok = (type.kind === "scalar" && type.scalar === "float") || (type.kind === "vector" && type.scalar === "float");
+    const ok =
+      (type.kind === "scalar" && type.scalar === "float") ||
+      (type.kind === "vector" && type.scalar === "float");
     if (!ok) {
-      throw new CompileError(decl.line, `the vertex input '${decl.name}' must be a float scalar or vector, got ${typeName(type)} (integer and matrix attributes are outside the subset)`);
+      throw new CompileError(
+        decl.line,
+        `the vertex input '${decl.name}' must be a float scalar or vector, got ${typeName(type)} (integer and matrix attributes are outside the subset)`,
+      );
     }
-    if (decl.layoutLocation !== null && (decl.layoutLocation < 0 || decl.layoutLocation > 15)) {
-      throw new CompileError(decl.line, `layout(location = ${decl.layoutLocation}) on '${decl.name}' is out of range; locations run 0..15`);
+    if (
+      decl.layoutLocation !== null &&
+      (decl.layoutLocation < 0 || decl.layoutLocation > 15)
+    ) {
+      throw new CompileError(
+        decl.line,
+        `layout(location = ${decl.layoutLocation}) on '${decl.name}' is out of range; locations run 0..15`,
+      );
     }
   }
 
   /** Varyings: float-based only, because everything interpolates smoothly (flat is outside the subset). */
   private checkVaryingType(type: Type, decl: GlobalDecl): void {
-    const ok = (type.kind === "scalar" && type.scalar === "float") || (type.kind === "vector" && type.scalar === "float");
+    const ok =
+      (type.kind === "scalar" && type.scalar === "float") ||
+      (type.kind === "vector" && type.scalar === "float");
     if (!ok) {
-      throw new CompileError(decl.line, `the varying '${decl.name}' must be a float scalar or vector, got ${typeName(type)} (int/bool varyings would need flat interpolation, which is outside the subset)`);
+      throw new CompileError(
+        decl.line,
+        `the varying '${decl.name}' must be a float scalar or vector, got ${typeName(type)} (int/bool varyings would need flat interpolation, which is outside the subset)`,
+      );
     }
   }
 
@@ -237,17 +388,29 @@ class Checker {
 
   private checkFunction(fn: FunctionDecl): void {
     if (this.functions.has(fn.name)) {
-      throw new CompileError(fn.line, `the function '${fn.name}' is already defined (overloading is outside the subset)`);
+      throw new CompileError(
+        fn.line,
+        `the function '${fn.name}' is already defined (overloading is outside the subset)`,
+      );
     }
     if (resolveBuiltinName(fn.name)) {
-      throw new CompileError(fn.line, `'${fn.name}' redefines a built-in function, which is outside the subset; pick another name`);
+      throw new CompileError(
+        fn.line,
+        `'${fn.name}' redefines a built-in function, which is outside the subset; pick another name`,
+      );
     }
     for (const param of fn.params) {
       if (param.type.kind === "sampler2D") {
-        throw new CompileError(param.line, `the sampler parameter '${param.name}' is outside the subset; name the sampler uniform directly in the texture() call`);
+        throw new CompileError(
+          param.line,
+          `the sampler parameter '${param.name}' is outside the subset; name the sampler uniform directly in the texture() call`,
+        );
       }
       if (param.type.kind === "void") {
-        throw new CompileError(param.line, `the parameter '${param.name}' cannot be void`);
+        throw new CompileError(
+          param.line,
+          `the parameter '${param.name}' cannot be void`,
+        );
       }
     }
     // Registered before the body so a self-call resolves — to a named refusal.
@@ -256,7 +419,16 @@ class Checker {
     this.currentFunction = fn;
     this.scopes.push();
     for (const param of fn.params) {
-      this.scopes.declare(param.name, { type: param.type, assignable: true, space: "local", constValues: null }, param.line);
+      this.scopes.declare(
+        param.name,
+        {
+          type: param.type,
+          assignable: true,
+          space: "local",
+          constValues: null,
+        },
+        param.line,
+      );
     }
     this.checkBlock(fn.body, false);
     this.scopes.pop();
@@ -277,18 +449,34 @@ class Checker {
         this.checkBlock(stmt);
         return;
       case "var": {
-        if (stmt.type.kind === "void") throw new CompileError(stmt.line, "a local variable cannot be void");
+        if (stmt.type.kind === "void")
+          throw new CompileError(stmt.line, "a local variable cannot be void");
         if (stmt.type.kind === "sampler2D") {
-          throw new CompileError(stmt.line, "a sampler2D can only be declared as a uniform");
+          throw new CompileError(
+            stmt.line,
+            "a sampler2D can only be declared as a uniform",
+          );
         }
         for (const decl of stmt.declarators) {
           if (decl.init !== null) {
             const initType = this.checkExpr(decl.init);
             if (!convertible(initType, stmt.type)) {
-              throw new CompileError(decl.line, `cannot initialize ${typeName(stmt.type)} '${decl.name}' from ${typeName(initType)}${initType.kind === "scalar" && initType.scalar === "float" && stmt.type.kind === "scalar" && stmt.type.scalar === "int" ? "; use int(x) to truncate" : ""}`);
+              throw new CompileError(
+                decl.line,
+                `cannot initialize ${typeName(stmt.type)} '${decl.name}' from ${typeName(initType)}${initType.kind === "scalar" && initType.scalar === "float" && stmt.type.kind === "scalar" && stmt.type.scalar === "int" ? "; use int(x) to truncate" : ""}`,
+              );
             }
           }
-          this.scopes.declare(decl.name, { type: stmt.type, assignable: !stmt.isConst, space: "local", constValues: null }, decl.line);
+          this.scopes.declare(
+            decl.name,
+            {
+              type: stmt.type,
+              assignable: !stmt.isConst,
+              space: "local",
+              constValues: null,
+            },
+            decl.line,
+          );
         }
         return;
       }
@@ -297,7 +485,10 @@ class Checker {
         const rhsType = this.checkExpr(stmt.rhs);
         if (stmt.op === "=") {
           if (!convertible(rhsType, lhsType)) {
-            throw new CompileError(stmt.line, `cannot assign ${typeName(rhsType)} to ${typeName(lhsType)}`);
+            throw new CompileError(
+              stmt.line,
+              `cannot assign ${typeName(rhsType)} to ${typeName(lhsType)}`,
+            );
           }
           return;
         }
@@ -306,14 +497,20 @@ class Checker {
         const op = stmt.op.slice(0, 1) as "+" | "-" | "*" | "/";
         const result = this.binaryType(op, lhsType, rhsType, stmt.line);
         if (!sameType(result, lhsType)) {
-          throw new CompileError(stmt.line, `'${stmt.op}' would change the type: ${typeName(lhsType)} ${op} ${typeName(rhsType)} is ${typeName(result)}`);
+          throw new CompileError(
+            stmt.line,
+            `'${stmt.op}' would change the type: ${typeName(lhsType)} ${op} ${typeName(rhsType)} is ${typeName(result)}`,
+          );
         }
         return;
       }
       case "if": {
         const condType = this.checkExpr(stmt.cond);
         if (!sameType(condType, BOOL)) {
-          throw new CompileError(stmt.cond.line, `the if condition must be bool, got ${typeName(condType)}`);
+          throw new CompileError(
+            stmt.cond.line,
+            `the if condition must be bool, got ${typeName(condType)}`,
+          );
         }
         this.checkBlock(stmt.then);
         if (stmt.else !== null) {
@@ -327,37 +524,59 @@ class Checker {
         return;
       case "return": {
         const fn = this.currentFunction;
-        if (fn === null) throw new Error("headless-webgl2: internal: return outside a function");
+        if (fn === null)
+          throw new Error(
+            "headless-webgl2: internal: return outside a function",
+          );
         if (stmt.value === null) {
           if (fn.returnType.kind !== "void") {
-            throw new CompileError(stmt.line, `'${fn.name}' returns ${typeName(fn.returnType)}; a bare return is not enough`);
+            throw new CompileError(
+              stmt.line,
+              `'${fn.name}' returns ${typeName(fn.returnType)}; a bare return is not enough`,
+            );
           }
           return;
         }
         if (fn.returnType.kind === "void") {
-          throw new CompileError(stmt.line, `'${fn.name}' is void and cannot return a value`);
+          throw new CompileError(
+            stmt.line,
+            `'${fn.name}' is void and cannot return a value`,
+          );
         }
         const valueType = this.checkExpr(stmt.value);
         if (!convertible(valueType, fn.returnType)) {
-          throw new CompileError(stmt.line, `'${fn.name}' returns ${typeName(fn.returnType)}, got ${typeName(valueType)}`);
+          throw new CompileError(
+            stmt.line,
+            `'${fn.name}' returns ${typeName(fn.returnType)}, got ${typeName(valueType)}`,
+          );
         }
         return;
       }
       case "discard": {
         if (this.stage !== "fragment") {
-          throw new CompileError(stmt.line, "'discard' is only available in the fragment shader");
+          throw new CompileError(
+            stmt.line,
+            "'discard' is only available in the fragment shader",
+          );
         }
         if (this.currentFunction?.name !== "main") {
-          throw new CompileError(stmt.line, "'discard' outside main is outside the subset; return a flag and discard in main");
+          throw new CompileError(
+            stmt.line,
+            "'discard' outside main is outside the subset; return a flag and discard in main",
+          );
         }
         return;
       }
       case "incdec": {
         const symbol = this.scopes.lookup(stmt.name);
-        if (symbol === null) throw new CompileError(stmt.line, `'${stmt.name}' is not declared`);
+        if (symbol === null)
+          throw new CompileError(stmt.line, `'${stmt.name}' is not declared`);
         this.requireAssignable(stmt.name, symbol, stmt.line);
         if (!sameType(symbol.type, INT)) {
-          throw new CompileError(stmt.line, `'${stmt.op}' applies to int, and '${stmt.name}' is ${typeName(symbol.type)}`);
+          throw new CompileError(
+            stmt.line,
+            `'${stmt.op}' applies to int, and '${stmt.name}' is ${typeName(symbol.type)}`,
+          );
         }
         return;
       }
@@ -376,23 +595,39 @@ class Checker {
    */
   private checkFor(stmt: ForStmt): void {
     const decl = stmt.init.declarators[0];
-    if (decl === undefined || decl.init === null) throw new Error("headless-webgl2: internal: for-loop shape escaped the parser");
+    if (decl === undefined || decl.init === null)
+      throw new Error(
+        "headless-webgl2: internal: for-loop shape escaped the parser",
+      );
     if (!sameType(stmt.init.type, INT)) {
-      throw new CompileError(stmt.init.line, "the for-loop counter must be int");
+      throw new CompileError(
+        stmt.init.line,
+        "the for-loop counter must be int",
+      );
     }
     const initType = this.checkExpr(decl.init);
     if (!sameType(initType, INT)) {
-      throw new CompileError(decl.line, `the for-loop counter's initializer must be int, got ${typeName(initType)}`);
+      throw new CompileError(
+        decl.line,
+        `the for-loop counter's initializer must be int, got ${typeName(initType)}`,
+      );
     }
 
     // The condition's left side must be the counter itself.
     const cond = stmt.cond;
     if (cond.left.node !== "ident" || cond.left.name !== decl.name) {
-      throw new CompileError(cond.line, `the for-loop condition must have the counter '${decl.name}' on the left`);
+      throw new CompileError(
+        cond.line,
+        `the for-loop condition must have the counter '${decl.name}' on the left`,
+      );
     }
 
     this.scopes.push();
-    this.scopes.declare(decl.name, { type: INT, assignable: false, space: "local", constValues: null }, decl.line);
+    this.scopes.declare(
+      decl.name,
+      { type: INT, assignable: false, space: "local", constValues: null },
+      decl.line,
+    );
     this.lockedCounters.add(decl.name);
     this.types.set(cond.left, INT);
 
@@ -400,12 +635,20 @@ class Checker {
     const bound = cond.right;
     const boundType = this.checkExpr(bound);
     if (!sameType(boundType, INT)) {
-      throw new CompileError(bound.line, `the for-loop bound must be int, got ${typeName(boundType)}`);
+      throw new CompileError(
+        bound.line,
+        `the for-loop bound must be int, got ${typeName(boundType)}`,
+      );
     }
     const isConstBound = this.evalConstInt(bound) !== null;
-    const isUniformBound = bound.node === "ident" && this.scopes.lookup(bound.name)?.space === "uniform";
+    const isUniformBound =
+      bound.node === "ident" &&
+      this.scopes.lookup(bound.name)?.space === "uniform";
     if (!isConstBound && !isUniformBound) {
-      throw new CompileError(bound.line, "the for-loop bound must be a constant expression or a uniform int scalar; anything else is outside the subset (it could not be proven to terminate)");
+      throw new CompileError(
+        bound.line,
+        "the for-loop bound must be a constant expression or a uniform int scalar; anything else is outside the subset (it could not be proven to terminate)",
+      );
     }
     this.types.set(cond, BOOL);
 
@@ -418,16 +661,25 @@ class Checker {
     } else {
       const amountType = this.checkExpr(update.amount);
       if (!sameType(amountType, INT)) {
-        throw new CompileError(update.line, `the for-loop step must be int, got ${typeName(amountType)}`);
+        throw new CompileError(
+          update.line,
+          `the for-loop step must be int, got ${typeName(amountType)}`,
+        );
       }
       const amount = this.evalConstInt(update.amount);
       if (amount === null || amount <= 0) {
-        throw new CompileError(update.line, "the for-loop step must be a constant positive int");
+        throw new CompileError(
+          update.line,
+          "the for-loop step must be a constant positive int",
+        );
       }
       step = update.op === "+=" ? amount : -amount;
     }
     if (upward !== step > 0) {
-      throw new CompileError(update.line, `the for-loop steps ${step > 0 ? "up" : "down"} but its condition uses '${cond.op}'; the loop would never terminate`);
+      throw new CompileError(
+        update.line,
+        `the for-loop steps ${step > 0 ? "up" : "down"} but its condition uses '${cond.op}'; the loop would never terminate`,
+      );
     }
 
     this.checkBlock(stmt.body, false);
@@ -435,13 +687,30 @@ class Checker {
     this.scopes.pop();
   }
 
-  private requireAssignable(name: string, symbol: VarSymbol, line: number): void {
+  private requireAssignable(
+    name: string,
+    symbol: VarSymbol,
+    line: number,
+  ): void {
     if (this.lockedCounters.has(name)) {
-      throw new CompileError(line, `the for-loop counter '${name}' cannot be assigned inside the loop; the fixed step is what makes the loop provably bounded`);
+      throw new CompileError(
+        line,
+        `the for-loop counter '${name}' cannot be assigned inside the loop; the fixed step is what makes the loop provably bounded`,
+      );
     }
     if (!symbol.assignable) {
-      const reason = symbol.space === "uniform" ? "a uniform" : symbol.space === "in" ? "a shader input" : symbol.space === "const" ? "a const" : "read-only";
-      throw new CompileError(line, `'${name}' is ${reason} and cannot be assigned`);
+      const reason =
+        symbol.space === "uniform"
+          ? "a uniform"
+          : symbol.space === "in"
+            ? "a shader input"
+            : symbol.space === "const"
+              ? "a const"
+              : "read-only";
+      throw new CompileError(
+        line,
+        `'${name}' is ${reason} and cannot be assigned`,
+      );
     }
   }
 
@@ -470,7 +739,10 @@ class Checker {
         const result = this.swizzleType(targetType, expr.components, expr.line);
         const seen = new Set(expr.components);
         if (seen.size !== expr.components.length) {
-          throw new CompileError(expr.line, `the swizzle '.${expr.components}' repeats a component and cannot be assigned`);
+          throw new CompileError(
+            expr.line,
+            `the swizzle '.${expr.components}' repeats a component and cannot be assigned`,
+          );
         }
         this.types.set(expr, result);
         return result;
@@ -479,18 +751,27 @@ class Checker {
         const targetType = this.checkLValue(expr.target);
         const indexType = this.checkExpr(expr.index);
         if (!sameType(indexType, INT)) {
-          throw new CompileError(expr.index.line, `the index must be int, got ${typeName(indexType)}`);
+          throw new CompileError(
+            expr.index.line,
+            `the index must be int, got ${typeName(indexType)}`,
+          );
         }
         const constIndex = this.evalConstInt(expr.index);
         if (constIndex === null) {
-          throw new CompileError(expr.index.line, "assigning through a dynamic index is outside the subset; use a constant index or a swizzle");
+          throw new CompileError(
+            expr.index.line,
+            "assigning through a dynamic index is outside the subset; use a constant index or a swizzle",
+          );
         }
         const result = this.indexedType(targetType, constIndex, expr.line);
         this.types.set(expr, result);
         return result;
       }
       default:
-        throw new CompileError(expr.line, "the left side of an assignment must be a variable, a swizzle, or a constant-indexed element");
+        throw new CompileError(
+          expr.line,
+          "the left side of an assignment must be a variable, a swizzle, or a constant-indexed element",
+        );
     }
   }
 
@@ -508,21 +789,34 @@ class Checker {
   }
 
   private lookupIdent(name: string, line: number): VarSymbol {
-    const stageBuiltins = this.stage === "vertex" ? VERTEX_BUILTINS : FRAGMENT_BUILTINS;
+    const stageBuiltins =
+      this.stage === "vertex" ? VERTEX_BUILTINS : FRAGMENT_BUILTINS;
     const builtin = stageBuiltins.get(name);
     if (builtin !== undefined) return builtin;
     if (name === "gl_FragDepth") {
-      throw new CompileError(line, "'gl_FragDepth' is outside the subset; depth comes from the interpolated position");
+      throw new CompileError(
+        line,
+        "'gl_FragDepth' is outside the subset; depth comes from the interpolated position",
+      );
     }
     if (name.startsWith("gl_")) {
-      const otherStage = (this.stage === "vertex" ? FRAGMENT_BUILTINS : VERTEX_BUILTINS).get(name);
+      const otherStage = (
+        this.stage === "vertex" ? FRAGMENT_BUILTINS : VERTEX_BUILTINS
+      ).get(name);
       if (otherStage !== undefined) {
-        throw new CompileError(line, `'${name}' does not exist in the ${this.stage} shader`);
+        throw new CompileError(
+          line,
+          `'${name}' does not exist in the ${this.stage} shader`,
+        );
       }
-      throw new CompileError(line, `the built-in '${name}' is outside the subset`);
+      throw new CompileError(
+        line,
+        `the built-in '${name}' is outside the subset`,
+      );
     }
     const symbol = this.scopes.lookup(name);
-    if (symbol === null) throw new CompileError(line, `'${name}' is not declared`);
+    if (symbol === null)
+      throw new CompileError(line, `'${name}' is not declared`);
     return symbol;
   }
 
@@ -535,10 +829,16 @@ class Checker {
       case "ident": {
         const symbol = this.lookupIdent(expr.name, expr.line);
         if (symbol.type.kind === "sampler2D") {
-          throw new CompileError(expr.line, `the sampler '${expr.name}' can only appear as the sampler argument of texture() or textureLod()`);
+          throw new CompileError(
+            expr.line,
+            `the sampler '${expr.name}' can only appear as the sampler argument of texture() or textureLod()`,
+          );
         }
         if (symbol.type.kind === "array") {
-          throw new CompileError(expr.line, `the uniform array '${expr.name}' must be indexed; it has no value of its own`);
+          throw new CompileError(
+            expr.line,
+            `the uniform array '${expr.name}' must be indexed; it has no value of its own`,
+          );
         }
         return symbol.type;
       }
@@ -546,14 +846,22 @@ class Checker {
         const operandType = this.checkExpr(expr.operand);
         if (expr.op === "!") {
           if (!sameType(operandType, BOOL)) {
-            throw new CompileError(expr.line, `'!' needs a bool, got ${typeName(operandType)} (use not() for bool vectors)`);
+            throw new CompileError(
+              expr.line,
+              `'!' needs a bool, got ${typeName(operandType)} (use not() for bool vectors)`,
+            );
           }
           return BOOL;
         }
-        if (operandType.kind === "scalar" && operandType.scalar !== "bool") return operandType;
-        if (operandType.kind === "vector" && operandType.scalar !== "bool") return operandType;
+        if (operandType.kind === "scalar" && operandType.scalar !== "bool")
+          return operandType;
+        if (operandType.kind === "vector" && operandType.scalar !== "bool")
+          return operandType;
         if (operandType.kind === "matrix") return operandType;
-        throw new CompileError(expr.line, `'${expr.op}' needs a numeric operand, got ${typeName(operandType)}`);
+        throw new CompileError(
+          expr.line,
+          `'${expr.op}' needs a numeric operand, got ${typeName(operandType)}`,
+        );
       }
       case "binary": {
         const left = this.checkExpr(expr.left);
@@ -563,13 +871,19 @@ class Checker {
       case "ternary": {
         const condType = this.checkExpr(expr.cond);
         if (!sameType(condType, BOOL)) {
-          throw new CompileError(expr.cond.line, `the ?: condition must be bool, got ${typeName(condType)}`);
+          throw new CompileError(
+            expr.cond.line,
+            `the ?: condition must be bool, got ${typeName(condType)}`,
+          );
         }
         const thenType = this.checkExpr(expr.then);
         const elseType = this.checkExpr(expr.else);
         const unified = unify(thenType, elseType);
         if (unified === null) {
-          throw new CompileError(expr.line, `the ?: branches disagree: ${typeName(thenType)} vs ${typeName(elseType)}`);
+          throw new CompileError(
+            expr.line,
+            `the ?: branches disagree: ${typeName(thenType)} vs ${typeName(elseType)}`,
+          );
         }
         return unified;
       }
@@ -581,7 +895,10 @@ class Checker {
         const targetType = this.indexTargetType(expr.target);
         const indexType = this.checkExpr(expr.index);
         if (!sameType(indexType, INT)) {
-          throw new CompileError(expr.index.line, `the index must be int, got ${typeName(indexType)}`);
+          throw new CompileError(
+            expr.index.line,
+            `the index must be int, got ${typeName(indexType)}`,
+          );
         }
         const constIndex = this.evalConstInt(expr.index);
         return this.indexedType(targetType, constIndex, expr.line);
@@ -596,7 +913,10 @@ class Checker {
     if (target.node === "ident") {
       const symbol = this.lookupIdent(target.name, target.line);
       if (symbol.type.kind === "sampler2D") {
-        throw new CompileError(target.line, "sampler arrays are outside the subset");
+        throw new CompileError(
+          target.line,
+          "sampler arrays are outside the subset",
+        );
       }
       this.types.set(target, symbol.type);
       return symbol.type;
@@ -604,60 +924,113 @@ class Checker {
     return this.checkExpr(target);
   }
 
-  private indexedType(targetType: Type, constIndex: number | null, line: number): Type {
+  private indexedType(
+    targetType: Type,
+    constIndex: number | null,
+    line: number,
+  ): Type {
     switch (targetType.kind) {
       case "array": {
-        if (constIndex !== null && (constIndex < 0 || constIndex >= targetType.length)) {
-          throw new CompileError(line, `the index ${constIndex} is out of range for ${typeName(targetType)}`);
+        if (
+          constIndex !== null &&
+          (constIndex < 0 || constIndex >= targetType.length)
+        ) {
+          throw new CompileError(
+            line,
+            `the index ${constIndex} is out of range for ${typeName(targetType)}`,
+          );
         }
         return targetType.element;
       }
       case "vector": {
-        if (constIndex !== null && (constIndex < 0 || constIndex >= targetType.size)) {
-          throw new CompileError(line, `the index ${constIndex} is out of range for ${typeName(targetType)}`);
+        if (
+          constIndex !== null &&
+          (constIndex < 0 || constIndex >= targetType.size)
+        ) {
+          throw new CompileError(
+            line,
+            `the index ${constIndex} is out of range for ${typeName(targetType)}`,
+          );
         }
-        return { kind: "scalar", scalar: targetType.scalar } satisfies ScalarType;
+        return {
+          kind: "scalar",
+          scalar: targetType.scalar,
+        } satisfies ScalarType;
       }
       case "matrix": {
-        if (constIndex !== null && (constIndex < 0 || constIndex >= targetType.size)) {
-          throw new CompileError(line, `the column ${constIndex} is out of range for ${typeName(targetType)}`);
+        if (
+          constIndex !== null &&
+          (constIndex < 0 || constIndex >= targetType.size)
+        ) {
+          throw new CompileError(
+            line,
+            `the column ${constIndex} is out of range for ${typeName(targetType)}`,
+          );
         }
         return vec("float", targetType.size);
       }
       default:
-        throw new CompileError(line, `${typeName(targetType)} cannot be indexed`);
+        throw new CompileError(
+          line,
+          `${typeName(targetType)} cannot be indexed`,
+        );
     }
   }
 
-  private swizzleType(targetType: Type, components: string, line: number): Type {
+  private swizzleType(
+    targetType: Type,
+    components: string,
+    line: number,
+  ): Type {
     if (targetType.kind !== "vector") {
-      throw new CompileError(line, `'.${components}' needs a vector, got ${typeName(targetType)} (the subset has no structs, so '.' is always a swizzle)`);
+      throw new CompileError(
+        line,
+        `'.${components}' needs a vector, got ${typeName(targetType)} (the subset has no structs, so '.' is always a swizzle)`,
+      );
     }
     if (components.length < 1 || components.length > 4) {
-      throw new CompileError(line, `the swizzle '.${components}' must pick 1 to 4 components`);
+      throw new CompileError(
+        line,
+        `the swizzle '.${components}' must pick 1 to 4 components`,
+      );
     }
     const sets = ["xyzw", "rgba", "stpq"];
-    const set = sets.find((s) => (components[0] === undefined ? false : s.includes(components[0])));
+    const set = sets.find((s) =>
+      components[0] === undefined ? false : s.includes(components[0]),
+    );
     if (set === undefined) {
-      throw new CompileError(line, `unknown swizzle component '${components[0] ?? ""}'`);
+      throw new CompileError(
+        line,
+        `unknown swizzle component '${components[0] ?? ""}'`,
+      );
     }
     for (const letter of components) {
       const position = set.indexOf(letter);
       if (position === -1) {
-        throw new CompileError(line, `the swizzle '.${components}' mixes component sets; use only one of xyzw, rgba, stpq`);
+        throw new CompileError(
+          line,
+          `the swizzle '.${components}' mixes component sets; use only one of xyzw, rgba, stpq`,
+        );
       }
       if (position >= targetType.size) {
-        throw new CompileError(line, `the swizzle '.${components}' reaches component '${letter}', which ${typeName(targetType)} does not have`);
+        throw new CompileError(
+          line,
+          `the swizzle '.${components}' reaches component '${letter}', which ${typeName(targetType)} does not have`,
+        );
       }
     }
-    if (components.length === 1) return { kind: "scalar", scalar: targetType.scalar };
+    if (components.length === 1)
+      return { kind: "scalar", scalar: targetType.scalar };
     return vec(targetType.scalar, components.length as 2 | 3 | 4);
   }
 
   /** Swizzle letters → component indices; shared with the emitter. */
   static swizzleIndices(components: string): number[] {
     const sets = ["xyzw", "rgba", "stpq"];
-    const set = sets.find((s) => (components[0] === undefined ? false : s.includes(components[0]))) ?? "xyzw";
+    const set =
+      sets.find((s) =>
+        components[0] === undefined ? false : s.includes(components[0]),
+      ) ?? "xyzw";
     return [...components].map((letter) => set.indexOf(letter));
   }
 
@@ -667,15 +1040,26 @@ class Checker {
       case "||":
       case "^^": {
         if (!sameType(left, BOOL) || !sameType(right, BOOL)) {
-          throw new CompileError(line, `'${op}' needs bool operands, got ${typeName(left)} and ${typeName(right)}`);
+          throw new CompileError(
+            line,
+            `'${op}' needs bool operands, got ${typeName(left)} and ${typeName(right)}`,
+          );
         }
         return BOOL;
       }
       case "==":
       case "!=": {
         const unified = unify(left, right);
-        if (unified === null || unified.kind === "sampler2D" || unified.kind === "array" || unified.kind === "void") {
-          throw new CompileError(line, `'${op}' cannot compare ${typeName(left)} with ${typeName(right)}`);
+        if (
+          unified === null ||
+          unified.kind === "sampler2D" ||
+          unified.kind === "array" ||
+          unified.kind === "void"
+        ) {
+          throw new CompileError(
+            line,
+            `'${op}' cannot compare ${typeName(left)} with ${typeName(right)}`,
+          );
         }
         return BOOL;
       }
@@ -686,14 +1070,25 @@ class Checker {
         const okLeft = left.kind === "scalar" && left.scalar !== "bool";
         const okRight = right.kind === "scalar" && right.scalar !== "bool";
         if (!okLeft || !okRight || unify(left, right) === null) {
-          throw new CompileError(line, `'${op}' compares numeric scalars, got ${typeName(left)} and ${typeName(right)} (use lessThan()/greaterThan() for vectors)`);
+          throw new CompileError(
+            line,
+            `'${op}' compares numeric scalars, got ${typeName(left)} and ${typeName(right)} (use lessThan()/greaterThan() for vectors)`,
+          );
         }
         return BOOL;
       }
       case "%": {
-        const isIntShape = (t: Type): boolean => (t.kind === "scalar" || t.kind === "vector") && t.scalar === "int";
-        if (!isIntShape(left) || !isIntShape(right) || unify(left, right) === null) {
-          throw new CompileError(line, `'%' applies to int operands, got ${typeName(left)} and ${typeName(right)}; use mod() for floats`);
+        const isIntShape = (t: Type): boolean =>
+          (t.kind === "scalar" || t.kind === "vector") && t.scalar === "int";
+        if (
+          !isIntShape(left) ||
+          !isIntShape(right) ||
+          unify(left, right) === null
+        ) {
+          throw new CompileError(
+            line,
+            `'%' applies to int operands, got ${typeName(left)} and ${typeName(right)}; use mod() for floats`,
+          );
         }
         return left;
       }
@@ -703,15 +1098,26 @@ class Checker {
       case "/":
         return this.arithmeticType(op, left, right, line);
       default:
-        throw new Error(`headless-webgl2: internal: unknown binary operator '${op}'`);
+        throw new Error(
+          `headless-webgl2: internal: unknown binary operator '${op}'`,
+        );
     }
   }
 
-  private arithmeticType(op: string, left: Type, right: Type, line: number): Type {
+  private arithmeticType(
+    op: string,
+    left: Type,
+    right: Type,
+    line: number,
+  ): Type {
     const reject = (): never => {
-      throw new CompileError(line, `'${op}' cannot combine ${typeName(left)} and ${typeName(right)}`);
+      throw new CompileError(
+        line,
+        `'${op}' cannot combine ${typeName(left)} and ${typeName(right)}`,
+      );
     };
-    const isBoolish = (t: Type): boolean => (t.kind === "scalar" || t.kind === "vector") && t.scalar === "bool";
+    const isBoolish = (t: Type): boolean =>
+      (t.kind === "scalar" || t.kind === "vector") && t.scalar === "bool";
     if (isBoolish(left) || isBoolish(right)) reject();
 
     // Matrix algebra: linear-algebra product for `*`, componentwise otherwise.
@@ -779,17 +1185,24 @@ class Checker {
     if (call.callee === "texture" || call.callee === "textureLod") {
       const samplerArg = call.args[0];
       if (samplerArg === undefined || samplerArg.node !== "ident") {
-        throw new CompileError(call.line, `the first argument of ${call.callee}() must name a sampler2D uniform directly`);
+        throw new CompileError(
+          call.line,
+          `the first argument of ${call.callee}() must name a sampler2D uniform directly`,
+        );
       }
       const symbol = this.scopes.lookup(samplerArg.name);
       if (symbol === null || symbol.type.kind !== "sampler2D") {
-        throw new CompileError(samplerArg.line, `'${samplerArg.name}' is not a sampler2D uniform`);
+        throw new CompileError(
+          samplerArg.line,
+          `'${samplerArg.name}' is not a sampler2D uniform`,
+        );
       }
       this.types.set(samplerArg, symbol.type);
       const argTypes: Type[] = [symbol.type];
       for (const arg of call.args.slice(1)) argTypes.push(this.checkExpr(arg));
       const result = resolveBuiltin(call.callee, argTypes, call.line);
-      if (result === null) throw new Error("headless-webgl2: internal: texture builtin vanished");
+      if (result === null)
+        throw new Error("headless-webgl2: internal: texture builtin vanished");
       return result;
     }
 
@@ -798,11 +1211,20 @@ class Checker {
     // builtin was refused at definition, so the order cannot collide.
     const userFn = this.functions.get(call.callee);
     if (userFn !== undefined) {
-      if (this.currentFunction !== null && call.callee === this.currentFunction.name) {
-        throw new CompileError(call.line, `'${call.callee}' calls itself; recursion is outside the subset`);
+      if (
+        this.currentFunction !== null &&
+        call.callee === this.currentFunction.name
+      ) {
+        throw new CompileError(
+          call.line,
+          `'${call.callee}' calls itself; recursion is outside the subset`,
+        );
       }
       if (call.args.length !== userFn.params.length) {
-        throw new CompileError(call.line, `'${call.callee}' takes ${userFn.params.length} argument(s), got ${call.args.length}`);
+        throw new CompileError(
+          call.line,
+          `'${call.callee}' takes ${userFn.params.length} argument(s), got ${call.args.length}`,
+        );
       }
       for (let i = 0; i < call.args.length; i += 1) {
         const arg = call.args[i];
@@ -810,7 +1232,10 @@ class Checker {
         if (arg === undefined || param === undefined) continue;
         const argType = this.checkExpr(arg);
         if (!convertible(argType, param.type)) {
-          throw new CompileError(arg.line, `argument ${i + 1} of '${call.callee}' must be ${typeName(param.type)}, got ${typeName(argType)}`);
+          throw new CompileError(
+            arg.line,
+            `argument ${i + 1} of '${call.callee}' must be ${typeName(param.type)}, got ${typeName(argType)}`,
+          );
         }
       }
       return userFn.returnType;
@@ -821,27 +1246,46 @@ class Checker {
     if (builtinResult !== null) return builtinResult;
 
     if (EXCLUDED_FUNCTIONS.has(call.callee)) {
-      throw new CompileError(call.line, EXCLUDED_FUNCTIONS.get(call.callee) ?? "");
+      throw new CompileError(
+        call.line,
+        EXCLUDED_FUNCTIONS.get(call.callee) ?? "",
+      );
     }
-    throw new CompileError(call.line, `unknown function '${call.callee}' (helper functions must be defined above their first call)`);
+    throw new CompileError(
+      call.line,
+      `unknown function '${call.callee}' (helper functions must be defined above their first call)`,
+    );
   }
 
   private typeConstructor(call: Call, target: Type): Type {
     const argTypes = call.args.map((arg) => {
       const argType = this.checkExpr(arg);
-      if (argType.kind === "sampler2D" || argType.kind === "array" || argType.kind === "void") {
-        throw new CompileError(arg.line, `${typeName(argType)} cannot appear in a constructor`);
+      if (
+        argType.kind === "sampler2D" ||
+        argType.kind === "array" ||
+        argType.kind === "void"
+      ) {
+        throw new CompileError(
+          arg.line,
+          `${typeName(argType)} cannot appear in a constructor`,
+        );
       }
       return argType;
     });
     if (argTypes.length === 0) {
-      throw new CompileError(call.line, `the ${typeName(target)} constructor needs arguments`);
+      throw new CompileError(
+        call.line,
+        `the ${typeName(target)} constructor needs arguments`,
+      );
     }
     const first = argTypes[0] as Type;
 
     if (target.kind === "scalar") {
       if (argTypes.length !== 1 || first.kind !== "scalar") {
-        throw new CompileError(call.line, `the ${typeName(target)} constructor takes exactly one scalar`);
+        throw new CompileError(
+          call.line,
+          `the ${typeName(target)} constructor takes exactly one scalar`,
+        );
       }
       return target;
     }
@@ -853,12 +1297,18 @@ class Checker {
       let total = 0;
       for (const argType of argTypes) {
         if (argType.kind === "matrix") {
-          throw new CompileError(call.line, `a matrix cannot appear in a ${typeName(target)} constructor`);
+          throw new CompileError(
+            call.line,
+            `a matrix cannot appear in a ${typeName(target)} constructor`,
+          );
         }
         total += componentCount(argType);
       }
       if (total !== target.size) {
-        throw new CompileError(call.line, `the ${typeName(target)} constructor needs exactly ${target.size} components, got ${total}`);
+        throw new CompileError(
+          call.line,
+          `the ${typeName(target)} constructor needs exactly ${target.size} components, got ${total}`,
+        );
       }
       return target;
     }
@@ -869,12 +1319,18 @@ class Checker {
       let total = 0;
       for (const argType of argTypes) {
         if (argType.kind === "matrix") {
-          throw new CompileError(call.line, `a matrix can only be the sole argument of a ${typeName(target)} constructor`);
+          throw new CompileError(
+            call.line,
+            `a matrix can only be the sole argument of a ${typeName(target)} constructor`,
+          );
         }
         total += componentCount(argType);
       }
       if (total !== target.size * target.size) {
-        throw new CompileError(call.line, `the ${typeName(target)} constructor needs exactly ${target.size * target.size} components (column-major), got ${total}`);
+        throw new CompileError(
+          call.line,
+          `the ${typeName(target)} constructor needs exactly ${target.size * target.size} components (column-major), got ${total}`,
+        );
       }
       return target;
     }
@@ -897,7 +1353,10 @@ class Checker {
    * anything non-constant appears. `expected` only guides int/float literal
    * acceptance; shape errors were already caught by typing.
    */
-  private evalConst(expr: Expr, expected: Type | null): (readonly number[]) | null {
+  private evalConst(
+    expr: Expr,
+    expected: Type | null,
+  ): readonly number[] | null {
     switch (expr.node) {
       case "num":
         return [expr.value];
@@ -919,18 +1378,35 @@ class Checker {
         const right = this.evalConst(expr.right, expected);
         if (left === null || right === null) return null;
         const leftType = this.types.get(expr.left);
-        const isIntOp = leftType !== undefined && (leftType.kind === "scalar" || leftType.kind === "vector") && leftType.scalar === "int" && this.types.get(expr.right) !== undefined && sameType(this.types.get(expr.right) as Type, leftType);
-        const a = left.length === 1 && right.length > 1 ? Array.from(right, () => left[0] as number) : left;
-        const b = right.length === 1 && left.length > 1 ? Array.from(left, () => right[0] as number) : right;
+        const isIntOp =
+          leftType !== undefined &&
+          (leftType.kind === "scalar" || leftType.kind === "vector") &&
+          leftType.scalar === "int" &&
+          this.types.get(expr.right) !== undefined &&
+          sameType(this.types.get(expr.right) as Type, leftType);
+        const a =
+          left.length === 1 && right.length > 1
+            ? Array.from(right, () => left[0] as number)
+            : left;
+        const b =
+          right.length === 1 && left.length > 1
+            ? Array.from(left, () => right[0] as number)
+            : right;
         if (a.length !== b.length) return null;
         const combine = (x: number, y: number): number | null => {
           switch (expr.op) {
-            case "+": return x + y;
-            case "-": return x - y;
-            case "*": return x * y;
-            case "/": return isIntOp ? Math.trunc(x / y) : x / y;
-            case "%": return x % y;
-            default: return null;
+            case "+":
+              return x + y;
+            case "-":
+              return x - y;
+            case "*":
+              return x * y;
+            case "/":
+              return isIntOp ? Math.trunc(x / y) : x / y;
+            case "%":
+              return x % y;
+            default:
+              return null;
           }
         };
         const out: number[] = [];
@@ -954,12 +1430,21 @@ class Checker {
         const want = componentCount(target);
         if (target.kind === "scalar") {
           const value = parts[0] ?? 0;
-          return [target.scalar === "int" ? Math.trunc(value) : target.scalar === "bool" ? (value === 0 ? 0 : 1) : value];
+          return [
+            target.scalar === "int"
+              ? Math.trunc(value)
+              : target.scalar === "bool"
+                ? value === 0
+                  ? 0
+                  : 1
+                : value,
+          ];
         }
         if (parts.length === 1) {
           if (target.kind === "matrix") {
             const out = new Array<number>(want).fill(0);
-            for (let i = 0; i < target.size; i += 1) out[i * target.size + i] = parts[0] as number;
+            for (let i = 0; i < target.size; i += 1)
+              out[i * target.size + i] = parts[0] as number;
             return out;
           }
           return new Array<number>(want).fill(parts[0] as number);
@@ -995,21 +1480,36 @@ function unify(a: Type, b: Type): Type | null {
 /** The type a constructor spelling builds, or null when the callee is not a type. */
 function constructorType(callee: string): Type | null {
   switch (callee) {
-    case "float": return FLOAT;
-    case "int": return INT;
-    case "bool": return BOOL;
-    case "vec2": return vec("float", 2);
-    case "vec3": return vec("float", 3);
-    case "vec4": return vec("float", 4);
-    case "ivec2": return vec("int", 2);
-    case "ivec3": return vec("int", 3);
-    case "ivec4": return vec("int", 4);
-    case "bvec2": return vec("bool", 2);
-    case "bvec3": return vec("bool", 3);
-    case "bvec4": return vec("bool", 4);
-    case "mat3": return mat(3);
-    case "mat4": return mat(4);
-    default: return null;
+    case "float":
+      return FLOAT;
+    case "int":
+      return INT;
+    case "bool":
+      return BOOL;
+    case "vec2":
+      return vec("float", 2);
+    case "vec3":
+      return vec("float", 3);
+    case "vec4":
+      return vec("float", 4);
+    case "ivec2":
+      return vec("int", 2);
+    case "ivec3":
+      return vec("int", 3);
+    case "ivec4":
+      return vec("int", 4);
+    case "bvec2":
+      return vec("bool", 2);
+    case "bvec3":
+      return vec("bool", 3);
+    case "bvec4":
+      return vec("bool", 4);
+    case "mat3":
+      return mat(3);
+    case "mat4":
+      return mat(4);
+    default:
+      return null;
   }
 }
 

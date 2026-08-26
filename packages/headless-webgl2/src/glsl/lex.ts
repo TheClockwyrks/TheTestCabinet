@@ -31,31 +31,146 @@ export interface Token {
  * the parser can refuse them by name.
  */
 const KEYWORDS = new Set([
-  "void", "float", "int", "bool", "true", "false",
-  "vec2", "vec3", "vec4", "ivec2", "ivec3", "ivec4", "bvec2", "bvec3", "bvec4",
-  "mat3", "mat4", "sampler2D",
-  "in", "out", "inout", "uniform", "const", "layout", "location",
-  "precision", "highp", "mediump", "lowp",
-  "if", "else", "for", "return", "discard",
-  "smooth", "flat", "centroid", "invariant",
+  "void",
+  "float",
+  "int",
+  "bool",
+  "true",
+  "false",
+  "vec2",
+  "vec3",
+  "vec4",
+  "ivec2",
+  "ivec3",
+  "ivec4",
+  "bvec2",
+  "bvec3",
+  "bvec4",
+  "mat3",
+  "mat4",
+  "sampler2D",
+  "in",
+  "out",
+  "inout",
+  "uniform",
+  "const",
+  "layout",
+  "location",
+  "precision",
+  "highp",
+  "mediump",
+  "lowp",
+  "if",
+  "else",
+  "for",
+  "return",
+  "discard",
+  "smooth",
+  "flat",
+  "centroid",
+  "invariant",
   // Refused constructs, kept as keywords so refusals can name them.
-  "while", "do", "switch", "case", "default", "break", "continue", "struct",
-  "uint", "uvec2", "uvec3", "uvec4",
-  "mat2", "mat2x2", "mat2x3", "mat2x4", "mat3x2", "mat3x3", "mat3x4", "mat4x2", "mat4x3", "mat4x4",
-  "sampler3D", "samplerCube", "sampler2DArray", "sampler2DShadow", "samplerCubeShadow", "sampler2DArrayShadow",
-  "isampler2D", "isampler3D", "isamplerCube", "isampler2DArray",
-  "usampler2D", "usampler3D", "usamplerCube", "usampler2DArray",
+  "while",
+  "do",
+  "switch",
+  "case",
+  "default",
+  "break",
+  "continue",
+  "struct",
+  "uint",
+  "uvec2",
+  "uvec3",
+  "uvec4",
+  "mat2",
+  "mat2x2",
+  "mat2x3",
+  "mat2x4",
+  "mat3x2",
+  "mat3x3",
+  "mat3x4",
+  "mat4x2",
+  "mat4x3",
+  "mat4x4",
+  "sampler3D",
+  "samplerCube",
+  "sampler2DArray",
+  "sampler2DShadow",
+  "samplerCubeShadow",
+  "sampler2DArrayShadow",
+  "isampler2D",
+  "isampler3D",
+  "isamplerCube",
+  "isampler2DArray",
+  "usampler2D",
+  "usampler3D",
+  "usamplerCube",
+  "usampler2DArray",
 ]);
 
 /** Multi-character punctuators, longest first so `<=` never lexes as `<` `=`. */
 const PUNCTUATORS = [
-  "<<=", ">>=",
-  "==", "!=", "<=", ">=", "&&", "||", "^^", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>",
-  "+", "-", "*", "/", "%", "<", ">", "=", "!", "?", ":", ";", ",", ".", "(", ")", "[", "]", "{", "}", "&", "|", "^", "~",
+  "<<=",
+  ">>=",
+  "==",
+  "!=",
+  "<=",
+  ">=",
+  "&&",
+  "||",
+  "^^",
+  "++",
+  "--",
+  "+=",
+  "-=",
+  "*=",
+  "/=",
+  "%=",
+  "&=",
+  "|=",
+  "^=",
+  "<<",
+  ">>",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "<",
+  ">",
+  "=",
+  "!",
+  "?",
+  ":",
+  ";",
+  ",",
+  ".",
+  "(",
+  ")",
+  "[",
+  "]",
+  "{",
+  "}",
+  "&",
+  "|",
+  "^",
+  "~",
 ];
 
 /** The punctuators that spell bitwise operations, refused by name (subset excludes bitwise ops). */
-const BITWISE = new Set(["&", "|", "^", "~", "<<", ">>", "&=", "|=", "^=", "<<=", ">>="]);
+const BITWISE = new Set([
+  "&",
+  "|",
+  "^",
+  "~",
+  "<<",
+  ">>",
+  "&=",
+  "|=",
+  "^=",
+  "<<=",
+  ">>=",
+]);
 
 function isDigit(c: string): boolean {
   return c >= "0" && c <= "9";
@@ -87,10 +202,16 @@ function stripVersion(source: string): string {
       versionLine = i;
       break;
     }
-    throw new CompileError(i + 1, "the shader must begin with '#version 300 es' before any other content");
+    throw new CompileError(
+      i + 1,
+      "the shader must begin with '#version 300 es' before any other content",
+    );
   }
   if (versionLine === -1) {
-    throw new CompileError(1, "the shader must begin with '#version 300 es' before any other content");
+    throw new CompileError(
+      1,
+      "the shader must begin with '#version 300 es' before any other content",
+    );
   }
   const out = [...lines];
   out[versionLine] = "";
@@ -129,20 +250,29 @@ export function tokenize(source: string): Token[] {
         if (text[pos] === "\n") line += 1;
         pos += 1;
       }
-      if (pos >= length) throw new CompileError(line, "unterminated block comment");
+      if (pos >= length)
+        throw new CompileError(line, "unterminated block comment");
       pos += 2;
       continue;
     }
 
     if (c === "#") {
-      throw new CompileError(line, "preprocessor directives other than '#version 300 es' are outside the subset (no #define, #ifdef, #include, ...)");
+      throw new CompileError(
+        line,
+        "preprocessor directives other than '#version 300 es' are outside the subset (no #define, #ifdef, #include, ...)",
+      );
     }
 
     if (isIdentStart(c)) {
       const start = pos;
       while (pos < length && isIdentPart(text[pos] ?? "")) pos += 1;
       const word = text.slice(start, pos);
-      tokens.push({ kind: KEYWORDS.has(word) ? "keyword" : "ident", text: word, value: 0, line });
+      tokens.push({
+        kind: KEYWORDS.has(word) ? "keyword" : "ident",
+        text: word,
+        value: 0,
+        line,
+      });
       continue;
     }
 
@@ -154,7 +284,8 @@ export function tokenize(source: string): Token[] {
         pos += 2;
         const hexStart = pos;
         while (pos < length && /[0-9a-fA-F]/.test(text[pos] ?? "")) pos += 1;
-        if (pos === hexStart) throw new CompileError(line, "hexadecimal literal with no digits");
+        if (pos === hexStart)
+          throw new CompileError(line, "hexadecimal literal with no digits");
       } else {
         while (pos < length && isDigit(text[pos] ?? "")) pos += 1;
         if (text[pos] === ".") {
@@ -168,7 +299,11 @@ export function tokenize(source: string): Token[] {
           if (text[pos] === "+" || text[pos] === "-") pos += 1;
           const expStart = pos;
           while (pos < length && isDigit(text[pos] ?? "")) pos += 1;
-          if (pos === expStart) throw new CompileError(line, "exponent with no digits in a float literal");
+          if (pos === expStart)
+            throw new CompileError(
+              line,
+              "exponent with no digits in a float literal",
+            );
         }
       }
       let spelled = text.slice(start, pos);
@@ -177,11 +312,23 @@ export function tokenize(source: string): Token[] {
         isFloat = true;
         pos += 1;
       } else if (text[pos] === "u" || text[pos] === "U") {
-        throw new CompileError(line, "unsigned integer literals ('u' suffix) are outside the subset; use a plain int");
+        throw new CompileError(
+          line,
+          "unsigned integer literals ('u' suffix) are outside the subset; use a plain int",
+        );
       }
-      const value = spelled.startsWith("0x") || spelled.startsWith("0X") ? parseInt(spelled, 16) : Number(spelled);
-      if (!Number.isFinite(value)) throw new CompileError(line, `malformed numeric literal '${spelled}'`);
-      tokens.push({ kind: isFloat ? "float" : "int", text: spelled, value, line });
+      const value =
+        spelled.startsWith("0x") || spelled.startsWith("0X")
+          ? parseInt(spelled, 16)
+          : Number(spelled);
+      if (!Number.isFinite(value))
+        throw new CompileError(line, `malformed numeric literal '${spelled}'`);
+      tokens.push({
+        kind: isFloat ? "float" : "int",
+        text: spelled,
+        value,
+        line,
+      });
       continue;
     }
 
@@ -197,10 +344,16 @@ export function tokenize(source: string): Token[] {
       throw new CompileError(line, `unexpected character '${c}'`);
     }
     if (BITWISE.has(matched)) {
-      throw new CompileError(line, `the bitwise operator '${matched}' is outside the subset`);
+      throw new CompileError(
+        line,
+        `the bitwise operator '${matched}' is outside the subset`,
+      );
     }
     if (matched === "%=") {
-      throw new CompileError(line, "the '%=' compound assignment is outside the subset");
+      throw new CompileError(
+        line,
+        "the '%=' compound assignment is outside the subset",
+      );
     }
     tokens.push({ kind: "punct", text: matched, value: 0, line });
     pos += matched.length;

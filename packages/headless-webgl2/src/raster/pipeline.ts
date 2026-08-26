@@ -19,7 +19,13 @@ import type { SamplerFn } from "../glsl/link";
 import { LIMITS, type ContextState } from "../state";
 import type { BufferObject } from "../objects";
 import type { DefaultFramebuffer } from "./framebuffer";
-import { clipPolygonToNearPlane, clipSegmentToNearPlane, NEAR_EPS, toWindow, type ClipVertex } from "./clip";
+import {
+  clipPolygonToNearPlane,
+  clipSegmentToNearPlane,
+  NEAR_EPS,
+  toWindow,
+  type ClipVertex,
+} from "./clip";
 import { rasterizeTriangle, type DrawEnv } from "./triangle";
 import { rasterizeLine, rasterizePoint } from "./line";
 import { samplerFor } from "./texture";
@@ -32,7 +38,15 @@ export interface DrawIo {
 }
 
 /** Every primitive mode the subset draws (all seven of ES 3.0's). */
-const DRAW_MODES: readonly number[] = [GL.POINTS, GL.LINES, GL.LINE_LOOP, GL.LINE_STRIP, GL.TRIANGLES, GL.TRIANGLE_STRIP, GL.TRIANGLE_FAN];
+const DRAW_MODES: readonly number[] = [
+  GL.POINTS,
+  GL.LINES,
+  GL.LINE_LOOP,
+  GL.LINE_STRIP,
+  GL.TRIANGLES,
+  GL.TRIANGLE_STRIP,
+  GL.TRIANGLE_FAN,
+];
 
 /** drawElements index types → byte size. */
 const INDEX_TYPE_SIZES = new Map<number, number>([
@@ -57,7 +71,12 @@ type AttribFetcher = (vertexIndex: number, registers: Float64Array) => void;
  * `drawArrays`: validates, then draws vertices `first .. first + count - 1`.
  * The context has already coerced the integer arguments.
  */
-export function drawArraysImpl(io: DrawIo, mode: number, first: number, count: number): void {
+export function drawArraysImpl(
+  io: DrawIo,
+  mode: number,
+  first: number,
+  count: number,
+): void {
   if (!DRAW_MODES.includes(mode)) {
     io.recordError(GL.INVALID_ENUM);
     return;
@@ -77,7 +96,13 @@ export function drawArraysImpl(io: DrawIo, mode: number, first: number, count: n
  * always-on primitive restart is honored: an index equal to the type's
  * maximum splits primitive assembly rather than addressing a vertex.
  */
-export function drawElementsImpl(io: DrawIo, mode: number, count: number, type: number, offset: number): void {
+export function drawElementsImpl(
+  io: DrawIo,
+  mode: number,
+  count: number,
+  type: number,
+  offset: number,
+): void {
   if (!DRAW_MODES.includes(mode)) {
     io.recordError(GL.INVALID_ENUM);
     return;
@@ -135,7 +160,12 @@ export function drawElementsImpl(io: DrawIo, mode: number, count: number, type: 
 /** Latching validation that a draw has a linked, executable program in use. */
 function hasRunnableProgram(io: DrawIo): boolean {
   const program = io.state.program;
-  if (program === null || !program.linkStatus || program.executable === null || program.uniformStore === null) {
+  if (
+    program === null ||
+    !program.linkStatus ||
+    program.executable === null ||
+    program.uniformStore === null
+  ) {
     io.recordError(GL.INVALID_OPERATION);
     return false;
   }
@@ -147,7 +177,14 @@ function hasRunnableProgram(io: DrawIo): boolean {
  * `first + i`); `maxVertex` is the highest vertex index any attribute fetch
  * will touch, for the up-front buffer range validation.
  */
-function executeDraw(io: DrawIo, mode: number, count: number, elements: { indices: Uint32Array; restart: number } | null, first: number, maxVertex: number): void {
+function executeDraw(
+  io: DrawIo,
+  mode: number,
+  count: number,
+  elements: { indices: Uint32Array; restart: number } | null,
+  first: number,
+  maxVertex: number,
+): void {
   const state = io.state;
   const framebuffer = io.framebuffer;
   const program = state.program;
@@ -192,7 +229,17 @@ function executeDraw(io: DrawIo, mode: number, count: number, elements: { indice
       io.recordError(GL.INVALID_OPERATION);
       return;
     }
-    fetchers.push(makeArrayFetcher(buffer, slot.type, slot.size, slot.normalized, stride, slot.offset, attribute.location));
+    fetchers.push(
+      makeArrayFetcher(
+        buffer,
+        slot.type,
+        slot.size,
+        slot.normalized,
+        stride,
+        slot.offset,
+        attribute.location,
+      ),
+    );
   }
 
   /* -- sampler units, validated before any shader runs ------------------ */
@@ -204,7 +251,9 @@ function executeDraw(io: DrawIo, mode: number, count: number, elements: { indice
       return;
     }
   }
-  const samplers: SamplerFn[] = state.textureUnits.map((unit) => samplerFor(unit.texture2d));
+  const samplers: SamplerFn[] = state.textureUnits.map((unit) =>
+    samplerFor(unit.texture2d),
+  );
 
   /* -- raster bounds: viewport ∩ scissor ∩ framebuffer, in samples ------ */
   // The rasterizers run in sample space: with the antialias attribute the
@@ -270,13 +319,20 @@ function executeDraw(io: DrawIo, mode: number, count: number, elements: { indice
   const registers = new Float64Array(LIMITS.maxVertexAttribs * 4);
   const cache = new Map<number, ClipVertex>();
   const vertexAt = (position: number): ClipVertex => {
-    const index = elements === null ? first + position : (elements.indices[position] ?? 0);
+    const index =
+      elements === null ? first + position : (elements.indices[position] ?? 0);
     const hit = cache.get(index);
     if (hit !== undefined) return hit;
     for (const fetch of fetchers) fetch(index, registers);
     const varyings = new Float64Array(executable.varyingComponents);
     const clipPosition = new Float64Array(4);
-    executable.vertex(registers, uniformStore, samplers, varyings, clipPosition);
+    executable.vertex(
+      registers,
+      uniformStore,
+      samplers,
+      varyings,
+      clipPosition,
+    );
     const vertex: ClipVertex = { position: clipPosition, varyings };
     cache.set(index, vertex);
     return vertex;
@@ -284,25 +340,41 @@ function executeDraw(io: DrawIo, mode: number, count: number, elements: { indice
 
   // The viewport transform lands vertices in sample space directly, so the
   // one transform serves both the antialiased and single-sample paths.
-  const viewport: readonly [number, number, number, number] = [vx * scale, vy * scale, vw * scale, vh * scale];
+  const viewport: readonly [number, number, number, number] = [
+    vx * scale,
+    vy * scale,
+    vw * scale,
+    vh * scale,
+  ];
   const depthRange = state.depthRange;
 
   const emitTriangle = (i0: number, i1: number, i2: number): void => {
-    const polygon = clipPolygonToNearPlane([vertexAt(i0), vertexAt(i1), vertexAt(i2)]);
+    const polygon = clipPolygonToNearPlane([
+      vertexAt(i0),
+      vertexAt(i1),
+      vertexAt(i2),
+    ]);
     if (polygon.length < 3) return;
-    const window = polygon.map((vertex) => toWindow(vertex, viewport, depthRange));
+    const window = polygon.map((vertex) =>
+      toWindow(vertex, viewport, depthRange),
+    );
     for (let k = 1; k + 1 < window.length; k += 1) {
       const a = window[0];
       const b = window[k];
       const c = window[k + 1];
-      if (a !== undefined && b !== undefined && c !== undefined) rasterizeTriangle(env, a, b, c);
+      if (a !== undefined && b !== undefined && c !== undefined)
+        rasterizeTriangle(env, a, b, c);
     }
   };
 
   const emitLine = (i0: number, i1: number): void => {
     const clipped = clipSegmentToNearPlane(vertexAt(i0), vertexAt(i1));
     if (clipped === null) return;
-    rasterizeLine(env, toWindow(clipped[0], viewport, depthRange), toWindow(clipped[1], viewport, depthRange));
+    rasterizeLine(
+      env,
+      toWindow(clipped[0], viewport, depthRange),
+      toWindow(clipped[1], viewport, depthRange),
+    );
   };
 
   const emitPoint = (i0: number): void => {
@@ -318,29 +390,35 @@ function executeDraw(io: DrawIo, mode: number, count: number, elements: { indice
         for (let i = 0; i < length; i += 1) emitPoint(start + i);
         break;
       case GL.LINES:
-        for (let i = 0; i + 1 < length; i += 2) emitLine(start + i, start + i + 1);
+        for (let i = 0; i + 1 < length; i += 2)
+          emitLine(start + i, start + i + 1);
         break;
       case GL.LINE_STRIP:
-        for (let i = 0; i + 1 < length; i += 1) emitLine(start + i, start + i + 1);
+        for (let i = 0; i + 1 < length; i += 1)
+          emitLine(start + i, start + i + 1);
         break;
       case GL.LINE_LOOP:
-        for (let i = 0; i + 1 < length; i += 1) emitLine(start + i, start + i + 1);
+        for (let i = 0; i + 1 < length; i += 1)
+          emitLine(start + i, start + i + 1);
         if (length >= 2) emitLine(start + length - 1, start);
         break;
       case GL.TRIANGLES:
-        for (let i = 0; i + 2 < length; i += 3) emitTriangle(start + i, start + i + 1, start + i + 2);
+        for (let i = 0; i + 2 < length; i += 3)
+          emitTriangle(start + i, start + i + 1, start + i + 2);
         break;
       case GL.TRIANGLE_STRIP:
         // Odd triangles swap two corners so every strip triangle keeps the
         // strip's winding, per the GL assembly rule.
         for (let i = 0; i + 2 < length; i += 1) {
-          if (i % 2 === 0) emitTriangle(start + i, start + i + 1, start + i + 2);
+          if (i % 2 === 0)
+            emitTriangle(start + i, start + i + 1, start + i + 2);
           else emitTriangle(start + i + 1, start + i, start + i + 2);
         }
         break;
       default:
         // TRIANGLE_FAN — the only remaining mode.
-        for (let i = 1; i + 1 < length; i += 1) emitTriangle(start, start + i, start + i + 1);
+        for (let i = 1; i + 1 < length; i += 1)
+          emitTriangle(start, start + i, start + i + 1);
     }
   }
 }
@@ -349,7 +427,10 @@ function executeDraw(io: DrawIo, mode: number, count: number, elements: { indice
  * Splits the drawn positions `0 .. count-1` into assembly runs at primitive
  * restart indices. drawArrays has no restart and is one run.
  */
-function segments(count: number, elements: { indices: Uint32Array; restart: number } | null): Array<readonly [number, number]> {
+function segments(
+  count: number,
+  elements: { indices: Uint32Array; restart: number } | null,
+): Array<readonly [number, number]> {
   if (elements === null) return [[0, count]];
   const out: Array<readonly [number, number]> = [];
   let start = 0;
@@ -370,13 +451,30 @@ function segments(count: number, elements: { indices: Uint32Array; restart: numb
  * conversion per the fetch type with the ES 3.0 normalization rules, and
  * the (0, 0, 0, 1) defaults for components the pointer does not supply.
  */
-function makeArrayFetcher(buffer: BufferObject, type: number, size: number, normalized: boolean, stride: number, offset: number, location: number): AttribFetcher {
+function makeArrayFetcher(
+  buffer: BufferObject,
+  type: number,
+  size: number,
+  normalized: boolean,
+  stride: number,
+  offset: number,
+  location: number,
+): AttribFetcher {
   const data = buffer.data;
-  if (data === null) throw new Error("headless-webgl2: internal invariant broken: a validated attribute buffer lost its store");
+  if (data === null)
+    throw new Error(
+      "headless-webgl2: internal invariant broken: a validated attribute buffer lost its store",
+    );
   const base = location * 4;
 
   /** Writes the fetched components plus defaults into the register file. */
-  const write = (registers: Float64Array, c0: number, c1: number, c2: number, c3: number): void => {
+  const write = (
+    registers: Float64Array,
+    c0: number,
+    c1: number,
+    c2: number,
+    c3: number,
+  ): void => {
     registers[base] = c0;
     registers[base + 1] = size > 1 ? c1 : 0;
     registers[base + 2] = size > 2 ? c2 : 0;
@@ -384,41 +482,91 @@ function makeArrayFetcher(buffer: BufferObject, type: number, size: number, norm
   };
 
   if (type === GL.FLOAT) {
-    const view = new Float32Array(data.buffer, data.byteOffset, Math.floor(data.byteLength / 4));
+    const view = new Float32Array(
+      data.buffer,
+      data.byteOffset,
+      Math.floor(data.byteLength / 4),
+    );
     return (vertex, registers) => {
       const at = (offset + vertex * stride) >> 2;
-      write(registers, view[at] ?? 0, view[at + 1] ?? 0, view[at + 2] ?? 0, view[at + 3] ?? 0);
+      write(
+        registers,
+        view[at] ?? 0,
+        view[at + 1] ?? 0,
+        view[at + 2] ?? 0,
+        view[at + 3] ?? 0,
+      );
     };
   }
   if (type === GL.UNSIGNED_BYTE) {
-    const toValue = normalized ? (v: number): number => v / 255 : (v: number): number => v;
+    const toValue = normalized
+      ? (v: number): number => v / 255
+      : (v: number): number => v;
     return (vertex, registers) => {
       const at = offset + vertex * stride;
-      write(registers, toValue(data[at] ?? 0), toValue(data[at + 1] ?? 0), toValue(data[at + 2] ?? 0), toValue(data[at + 3] ?? 0));
+      write(
+        registers,
+        toValue(data[at] ?? 0),
+        toValue(data[at + 1] ?? 0),
+        toValue(data[at + 2] ?? 0),
+        toValue(data[at + 3] ?? 0),
+      );
     };
   }
   if (type === GL.BYTE) {
     const view = new Int8Array(data.buffer, data.byteOffset, data.byteLength);
     // Signed normalization per ES 3.0: c / (2^(b-1) - 1), clamped at -1.
-    const toValue = normalized ? (v: number): number => Math.max(v / 127, -1) : (v: number): number => v;
+    const toValue = normalized
+      ? (v: number): number => Math.max(v / 127, -1)
+      : (v: number): number => v;
     return (vertex, registers) => {
       const at = offset + vertex * stride;
-      write(registers, toValue(view[at] ?? 0), toValue(view[at + 1] ?? 0), toValue(view[at + 2] ?? 0), toValue(view[at + 3] ?? 0));
+      write(
+        registers,
+        toValue(view[at] ?? 0),
+        toValue(view[at + 1] ?? 0),
+        toValue(view[at + 2] ?? 0),
+        toValue(view[at + 3] ?? 0),
+      );
     };
   }
   if (type === GL.UNSIGNED_SHORT) {
-    const view = new Uint16Array(data.buffer, data.byteOffset, Math.floor(data.byteLength / 2));
-    const toValue = normalized ? (v: number): number => v / 65535 : (v: number): number => v;
+    const view = new Uint16Array(
+      data.buffer,
+      data.byteOffset,
+      Math.floor(data.byteLength / 2),
+    );
+    const toValue = normalized
+      ? (v: number): number => v / 65535
+      : (v: number): number => v;
     return (vertex, registers) => {
       const at = (offset + vertex * stride) >> 1;
-      write(registers, toValue(view[at] ?? 0), toValue(view[at + 1] ?? 0), toValue(view[at + 2] ?? 0), toValue(view[at + 3] ?? 0));
+      write(
+        registers,
+        toValue(view[at] ?? 0),
+        toValue(view[at + 1] ?? 0),
+        toValue(view[at + 2] ?? 0),
+        toValue(view[at + 3] ?? 0),
+      );
     };
   }
   // SHORT — the only remaining stored fetch type.
-  const view = new Int16Array(data.buffer, data.byteOffset, Math.floor(data.byteLength / 2));
-  const toValue = normalized ? (v: number): number => Math.max(v / 32767, -1) : (v: number): number => v;
+  const view = new Int16Array(
+    data.buffer,
+    data.byteOffset,
+    Math.floor(data.byteLength / 2),
+  );
+  const toValue = normalized
+    ? (v: number): number => Math.max(v / 32767, -1)
+    : (v: number): number => v;
   return (vertex, registers) => {
     const at = (offset + vertex * stride) >> 1;
-    write(registers, toValue(view[at] ?? 0), toValue(view[at + 1] ?? 0), toValue(view[at + 2] ?? 0), toValue(view[at + 3] ?? 0));
+    write(
+      registers,
+      toValue(view[at] ?? 0),
+      toValue(view[at + 1] ?? 0),
+      toValue(view[at + 2] ?? 0),
+      toValue(view[at + 3] ?? 0),
+    );
   };
 }

@@ -29,15 +29,24 @@ function byte(v: number): number {
   return Math.round(Math.max(0, Math.min(1, v)) * 255);
 }
 
-function makeGl(width: number, height: number, attributes?: { alpha?: boolean; antialias?: boolean }): HeadlessWebGL2 {
+function makeGl(
+  width: number,
+  height: number,
+  attributes?: { alpha?: boolean; antialias?: boolean },
+): HeadlessWebGL2 {
   return createCanvas(width, height).getContext("webgl2", attributes);
 }
 
 /** Compiles and links a program, failing the test loudly with the info logs. */
-function buildProgram(gl: HeadlessWebGL2, vertexSource: string, fragmentSource: string) {
+function buildProgram(
+  gl: HeadlessWebGL2,
+  vertexSource: string,
+  fragmentSource: string,
+) {
   const vs = gl.createShader(gl.VERTEX_SHADER);
   const fs = gl.createShader(gl.FRAGMENT_SHADER);
-  if (vs === null || fs === null) throw new Error("createShader refused a valid type");
+  if (vs === null || fs === null)
+    throw new Error("createShader refused a valid type");
   gl.shaderSource(vs, vertexSource);
   gl.compileShader(vs);
   gl.shaderSource(fs, fragmentSource);
@@ -47,14 +56,21 @@ function buildProgram(gl: HeadlessWebGL2, vertexSource: string, fragmentSource: 
   gl.attachShader(program, fs);
   gl.linkProgram(program);
   if (gl.getProgramParameter(program, gl.LINK_STATUS) !== true) {
-    throw new Error(`link failed: ${gl.getShaderInfoLog(vs)} | ${gl.getShaderInfoLog(fs)} | ${gl.getProgramInfoLog(program)}`);
+    throw new Error(
+      `link failed: ${gl.getShaderInfoLog(vs)} | ${gl.getShaderInfoLog(fs)} | ${gl.getProgramInfoLog(program)}`,
+    );
   }
   gl.useProgram(program);
   return program;
 }
 
 /** Uploads a float attribute array to a fresh buffer and points `location` at it. */
-function uploadAttrib(gl: HeadlessWebGL2, location: number, size: number, values: number[]): void {
+function uploadAttrib(
+  gl: HeadlessWebGL2,
+  location: number,
+  size: number,
+  values: number[],
+): void {
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(location);
@@ -62,14 +78,22 @@ function uploadAttrib(gl: HeadlessWebGL2, location: number, size: number, values
 }
 
 /** One pixel's RGBA bytes, x/y in readPixels' bottom-up addressing. */
-function pixel(gl: HeadlessWebGL2, x: number, y: number): [number, number, number, number] {
+function pixel(
+  gl: HeadlessWebGL2,
+  x: number,
+  y: number,
+): [number, number, number, number] {
   const out = new Uint8Array(4);
   gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, out);
   return [out[0] ?? 0, out[1] ?? 0, out[2] ?? 0, out[3] ?? 0];
 }
 
 /** The whole framebuffer's bytes, rows bottom-up. */
-function readAll(gl: HeadlessWebGL2, width: number, height: number): Uint8Array {
+function readAll(
+  gl: HeadlessWebGL2,
+  width: number,
+  height: number,
+): Uint8Array {
   const out = new Uint8Array(width * height * 4);
   gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, out);
   return out;
@@ -140,8 +164,12 @@ void main() { o_color = vec4(v_t, 0.0, 0.0, 1.0); }
       // Both rows of the quad interior agree — the varying is constant
       // vertically, and the diagonal seam must not disturb it (the surface is
       // planar, so both triangles interpolate the same projective function).
-      expect(pixel(gl, px, 1)[0], `bottom-triangle pixel (${px}, 1)`).toBe(expected);
-      expect(pixel(gl, px, 2)[0], `top-triangle pixel (${px}, 2)`).toBe(expected);
+      expect(pixel(gl, px, 1)[0], `bottom-triangle pixel (${px}, 1)`).toBe(
+        expected,
+      );
+      expect(pixel(gl, px, 2)[0], `top-triangle pixel (${px}, 2)`).toBe(
+        expected,
+      );
     }
     // Spot-check the midpoint against the hand-derived closed form: at
     // s = 8.5/16, t = 8.5 / (256 - 127.5) = 0.06614..., nowhere near the
@@ -174,7 +202,14 @@ describe("audit: shared-edge ownership", () => {
       // A 10° phase keeps spokes off the axes so no edge is axis-aligned.
       const a0 = ((i * 60 + 10) * Math.PI) / 180;
       const a1 = (((i + 1) * 60 + 10) * Math.PI) / 180;
-      positions.push(hub[0] ?? 0, hub[1] ?? 0, (hub[0] ?? 0) + 3 * Math.cos(a0), (hub[1] ?? 0) + 3 * Math.sin(a0), (hub[0] ?? 0) + 3 * Math.cos(a1), (hub[1] ?? 0) + 3 * Math.sin(a1));
+      positions.push(
+        hub[0] ?? 0,
+        hub[1] ?? 0,
+        (hub[0] ?? 0) + 3 * Math.cos(a0),
+        (hub[1] ?? 0) + 3 * Math.sin(a0),
+        (hub[0] ?? 0) + 3 * Math.cos(a1),
+        (hub[1] ?? 0) + 3 * Math.sin(a1),
+      );
     }
     uploadAttrib(gl, 0, 2, positions);
     gl.drawArrays(gl.TRIANGLES, 0, 18);
@@ -208,7 +243,10 @@ describe("audit: readPixels row order", () => {
     const all = readAll(gl, 5, 4);
     for (let i = 0; i < all.length; i += 4) {
       const expected = i === 8 ? [255, 0, 0, 255] : [0, 0, 0, 0];
-      expect([all[i], all[i + 1], all[i + 2], all[i + 3]], `byte offset ${i}`).toEqual(expected);
+      expect(
+        [all[i], all[i + 1], all[i + 2], all[i + 3]],
+        `byte offset ${i}`,
+      ).toEqual(expected);
     }
     // The same pixel through a 1×1 read at y = 0 (the bottom), and its absence
     // at y = 3 (the top): row 0 really is the bottom of the canvas.
@@ -245,7 +283,9 @@ describe("audit: near-plane clipping", () => {
         // far above every on-screen pixel for x ≥ -0.375. So: filled iff
         // px ≥ 2 and py ≥ 4.
         const filled = px >= 2 && py >= 4;
-        expect(pixel(gl, px, py), `pixel (${px}, ${py})`).toEqual(filled ? [255, 0, 0, 255] : [0, 0, 0, 0]);
+        expect(pixel(gl, px, py), `pixel (${px}, ${py})`).toEqual(
+          filled ? [255, 0, 0, 255] : [0, 0, 0, 0],
+        );
       }
     }
   });
@@ -269,7 +309,15 @@ describe("audit: near-plane clipping", () => {
       const drawQuad = (): void => {
         gl.uniform4f(color, 0, 0, 1, 1);
         // Full-screen quad at NDC z = 0.5 → window depth 0.75.
-        uploadAttrib(gl, 0, 4, [-1, -1, 0.5, 1, 1, -1, 0.5, 1, -1, 1, 0.5, 1, -1, 1, 0.5, 1, 1, -1, 0.5, 1, 1, 1, 0.5, 1]);
+        uploadAttrib(
+          gl,
+          0,
+          4,
+          [
+            -1, -1, 0.5, 1, 1, -1, 0.5, 1, -1, 1, 0.5, 1, -1, 1, 0.5, 1, 1, -1,
+            0.5, 1, 1, 1, 0.5, 1,
+          ],
+        );
         gl.drawArrays(gl.TRIANGLES, 0, 6);
       };
       if (triangleFirst) {
@@ -288,7 +336,8 @@ describe("audit: near-plane clipping", () => {
     // Sanity that the comparison is not vacuous: both surfaces win somewhere
     // inside the triangle's covered band (red near its front edge where depth
     // ≈ 0.6, blue toward the clip boundary where depth has climbed past 0.75).
-    const bytesAt = (px: number, py: number): number[] => Array.from(first.subarray((py * 8 + px) * 4, (py * 8 + px) * 4 + 4));
+    const bytesAt = (px: number, py: number): number[] =>
+      Array.from(first.subarray((py * 8 + px) * 4, (py * 8 + px) * 4 + 4));
     expect(bytesAt(2, 4)).toEqual([255, 0, 0, 255]);
     expect(bytesAt(7, 4)).toEqual([0, 0, 255, 255]);
   });
@@ -384,7 +433,17 @@ void main() { o_color = texture(u_tex, u_uv); }
       texels[i * 4] = r;
       texels[i * 4 + 3] = 255;
     });
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 4, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, texels);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      4,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      texels,
+    );
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     const mode = wrap === "clamp" ? gl.CLAMP_TO_EDGE : gl.REPEAT;
@@ -425,14 +484,24 @@ void main() { o_color = texture(u_tex, u_uv); }
 
 describe("audit: blend equation arithmetic", () => {
   /** Clears to `dst`, draws a full quad of `src` under the given blend state, returns the pixel. */
-  function blendOnce(setup: (gl: HeadlessWebGL2) => void, dst: [number, number, number, number], src: [number, number, number, number]): [number, number, number, number] {
+  function blendOnce(
+    setup: (gl: HeadlessWebGL2) => void,
+    dst: [number, number, number, number],
+    src: [number, number, number, number],
+  ): [number, number, number, number] {
     const gl = makeGl(2, 2, { antialias: false });
     const program = buildProgram(gl, VS_POS2, FS_FLAT);
     gl.clearColor(dst[0], dst[1], dst[2], dst[3]);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
     setup(gl);
-    gl.uniform4f(gl.getUniformLocation(program, "u_color"), src[0], src[1], src[2], src[3]);
+    gl.uniform4f(
+      gl.getUniformLocation(program, "u_color"),
+      src[0],
+      src[1],
+      src[2],
+      src[3],
+    );
     uploadAttrib(gl, 0, 2, [-1, -1, 3, -1, -1, 3]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     expect(gl.getError()).toBe(gl.NO_ERROR);
@@ -573,13 +642,33 @@ void main() { o_color = texture(u_tex, v_uv) + u_tint; }
       gl.enable(gl.DEPTH_TEST);
 
       gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255]));
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        2,
+        2,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        new Uint8Array([
+          255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
+        ]),
+      );
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
       // A tilted textured quad receding in depth.
       gl.uniform4f(tint, 0, 0, 0, 0);
-      uploadAttrib(gl, 0, 4, [-0.9, -0.9, 0, 1, 2.7, -2.7, 0.9, 3, -0.9, 0.9, 0, 1, -0.9, 0.9, 0, 1, 2.7, -2.7, 0.9, 3, 2.7, 2.7, 0.9, 3]);
+      uploadAttrib(
+        gl,
+        0,
+        4,
+        [
+          -0.9, -0.9, 0, 1, 2.7, -2.7, 0.9, 3, -0.9, 0.9, 0, 1, -0.9, 0.9, 0, 1,
+          2.7, -2.7, 0.9, 3, 2.7, 2.7, 0.9, 3,
+        ],
+      );
       uploadAttrib(gl, 1, 2, [0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -587,7 +676,12 @@ void main() { o_color = texture(u_tex, v_uv) + u_tint; }
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.uniform4f(tint, 0.8, 0.1, 0.1, 0.5);
-      uploadAttrib(gl, 0, 4, [-0.5, 0, 0.1, 1, 1, 0, 0.1, -0.5, -0.5, 0.9, 0.1, 1]);
+      uploadAttrib(
+        gl,
+        0,
+        4,
+        [-0.5, 0, 0.1, 1, 1, 0, 0.1, -0.5, -0.5, 0.9, 0.1, 1],
+      );
       uploadAttrib(gl, 1, 2, [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 

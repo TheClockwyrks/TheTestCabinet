@@ -30,15 +30,24 @@ function byte(v: number): number {
  * whose claim is a *pixel-center* truth (single-sample coverage sets,
  * gl_FragCoord arithmetic) pass `antialias: false` and say why.
  */
-function makeGl(width = 8, height = 8, attributes?: { alpha?: boolean; antialias?: boolean }): HeadlessWebGL2 {
+function makeGl(
+  width = 8,
+  height = 8,
+  attributes?: { alpha?: boolean; antialias?: boolean },
+): HeadlessWebGL2 {
   return createCanvas(width, height).getContext("webgl2", attributes);
 }
 
 /** Compiles and links a program, failing the test loudly with the info logs. */
-function buildProgram(gl: HeadlessWebGL2, vertexSource: string, fragmentSource: string) {
+function buildProgram(
+  gl: HeadlessWebGL2,
+  vertexSource: string,
+  fragmentSource: string,
+) {
   const vs = gl.createShader(gl.VERTEX_SHADER);
   const fs = gl.createShader(gl.FRAGMENT_SHADER);
-  if (vs === null || fs === null) throw new Error("createShader refused a valid type");
+  if (vs === null || fs === null)
+    throw new Error("createShader refused a valid type");
   gl.shaderSource(vs, vertexSource);
   gl.compileShader(vs);
   gl.shaderSource(fs, fragmentSource);
@@ -48,14 +57,21 @@ function buildProgram(gl: HeadlessWebGL2, vertexSource: string, fragmentSource: 
   gl.attachShader(program, fs);
   gl.linkProgram(program);
   if (gl.getProgramParameter(program, gl.LINK_STATUS) !== true) {
-    throw new Error(`link failed: ${gl.getShaderInfoLog(vs)} | ${gl.getShaderInfoLog(fs)} | ${gl.getProgramInfoLog(program)}`);
+    throw new Error(
+      `link failed: ${gl.getShaderInfoLog(vs)} | ${gl.getShaderInfoLog(fs)} | ${gl.getProgramInfoLog(program)}`,
+    );
   }
   gl.useProgram(program);
   return program;
 }
 
 /** Uploads a float attribute array to a fresh buffer and points location at it. */
-function uploadAttrib(gl: HeadlessWebGL2, location: number, size: number, values: number[]): void {
+function uploadAttrib(
+  gl: HeadlessWebGL2,
+  location: number,
+  size: number,
+  values: number[],
+): void {
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(values), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(location);
@@ -63,14 +79,22 @@ function uploadAttrib(gl: HeadlessWebGL2, location: number, size: number, values
 }
 
 /** One pixel's RGBA bytes; x/y in the bottom-up framebuffer addressing readPixels uses. */
-function pixel(gl: HeadlessWebGL2, x: number, y: number): [number, number, number, number] {
+function pixel(
+  gl: HeadlessWebGL2,
+  x: number,
+  y: number,
+): [number, number, number, number] {
   const out = new Uint8Array(4);
   gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, out);
   return [out[0] ?? 0, out[1] ?? 0, out[2] ?? 0, out[3] ?? 0];
 }
 
 /** The whole framebuffer's bytes, rows bottom-up. */
-function readAll(gl: HeadlessWebGL2, width: number, height: number): Uint8Array {
+function readAll(
+  gl: HeadlessWebGL2,
+  width: number,
+  height: number,
+): Uint8Array {
   const out = new Uint8Array(width * height * 4);
   gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, out);
   return out;
@@ -102,7 +126,14 @@ void main() { o_color = u_color; }
 const FULL_QUAD = [-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1];
 
 /** Builds the flat-color rig: position program + u_color set. */
-function flatColorRig(gl: HeadlessWebGL2, r: number, g: number, b: number, a: number, vs = VS_POS2) {
+function flatColorRig(
+  gl: HeadlessWebGL2,
+  r: number,
+  g: number,
+  b: number,
+  a: number,
+  vs = VS_POS2,
+) {
   const program = buildProgram(gl, vs, FS_UNIFORM_COLOR);
   gl.uniform4f(gl.getUniformLocation(program, "u_color"), r, g, b, a);
   return program;
@@ -142,10 +173,20 @@ describe("a solid triangle", () => {
     // pixel with x + y == 7 holds subsample index sums {14, 15, 15, 16}, so
     // exactly one of its four subsamples is covered: the resolve averages one
     // filled quad against three transparent ones.
-    const edge = [Math.round(0xf2 / 4), Math.round(0xf5 / 4), Math.round(0xf7 / 4), Math.round(255 / 4)];
+    const edge = [
+      Math.round(0xf2 / 4),
+      Math.round(0xf5 / 4),
+      Math.round(0xf7 / 4),
+      Math.round(255 / 4),
+    ];
     for (let y = 0; y < 8; y += 1) {
       for (let x = 0; x < 8; x += 1) {
-        const expected = x + y < 7 ? [0xf2, 0xf5, 0xf7, 255] : x + y === 7 ? edge : [0, 0, 0, 0];
+        const expected =
+          x + y < 7
+            ? [0xf2, 0xf5, 0xf7, 255]
+            : x + y === 7
+              ? edge
+              : [0, 0, 0, 0];
         expect(pixel(gl, x, y), `pixel (${x}, ${y})`).toEqual(expected);
       }
     }
@@ -184,9 +225,35 @@ describe("the top-left fill rule", () => {
 
 describe("the depth test", () => {
   /** Draws a full-screen quad at NDC depth `z` in the given color. */
-  function drawQuadAt(gl: HeadlessWebGL2, program: ReturnType<typeof buildProgram>, z: number, r: number, g: number, b: number): void {
+  function drawQuadAt(
+    gl: HeadlessWebGL2,
+    program: ReturnType<typeof buildProgram>,
+    z: number,
+    r: number,
+    g: number,
+    b: number,
+  ): void {
     gl.uniform4f(gl.getUniformLocation(program, "u_color"), r, g, b, 1);
-    uploadAttrib(gl, 0, 3, [-1, -1, z, 1, -1, z, -1, 1, z, -1, 1, z, 1, -1, z, 1, 1, z]);
+    uploadAttrib(gl, 0, 3, [
+      -1,
+      -1,
+      z,
+      1,
+      -1,
+      z,
+      -1,
+      1,
+      z,
+      -1,
+      1,
+      z,
+      1,
+      -1,
+      z,
+      1,
+      1,
+      z,
+    ]);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
@@ -205,7 +272,9 @@ describe("the depth test", () => {
         near();
       }
       // Either order, the nearer red surface owns the picture.
-      expect(pixel(gl, 2, 2), `near first: ${nearFirst}`).toEqual([255, 0, 0, 255]);
+      expect(pixel(gl, 2, 2), `near first: ${nearFirst}`).toEqual([
+        255, 0, 0, 255,
+      ]);
     }
   });
 
@@ -416,7 +485,12 @@ describe("blending", () => {
     gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     const dst = byte(0.5) / 255;
-    expect(pixel(gl, 0, 0)).toEqual([byte(dst - 0.75), byte(dst - 0.25), byte(dst - 0), byte(1 - 1)]);
+    expect(pixel(gl, 0, 0)).toEqual([
+      byte(dst - 0.75),
+      byte(dst - 0.25),
+      byte(dst - 0),
+      byte(1 - 1),
+    ]);
   });
 
   it("reads CONSTANT_COLOR factors from blendColor", () => {
@@ -492,7 +566,19 @@ function uploadTexturedQuad(gl: HeadlessWebGL2): void {
 /** Creates a bound 2×2 RGBA NEAREST test card: red, green (bottom); blue, yellow (top). */
 function bindTestCard(gl: HeadlessWebGL2): void {
   gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255]));
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    2,
+    2,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new Uint8Array([
+      255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 255,
+    ]),
+  );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -531,7 +617,17 @@ describe("textured draws", () => {
     buildProgram(gl, VS_UV, FS_TEXTURE);
     uploadTexturedQuad(gl);
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 2, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255, 255, 255, 255, 255]));
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      2,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([0, 0, 0, 255, 255, 255, 255, 255]),
+    );
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -550,7 +646,17 @@ describe("textured draws", () => {
     buildProgram(gl, VS_UV, FS_TEXTURE);
     uploadTexturedQuad(gl);
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255]));
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([255, 0, 0, 255]),
+    );
     // No filter set: the default NEAREST_MIPMAP_LINEAR needs mips that
     // cannot exist in 0.1.0, so the texture is incomplete.
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -576,7 +682,17 @@ describe("texSubImage2D and texStorage2D", () => {
     uploadTexturedQuad(gl);
     bindTestCard(gl);
     // Repaint the top-right texel white.
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 1, 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      1,
+      1,
+      1,
+      1,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([255, 255, 255, 255]),
+    );
     expect(gl.getError()).toBe(gl.NO_ERROR);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     expect(pixel(gl, 3, 3)).toEqual([255, 255, 255, 255]);
@@ -589,12 +705,32 @@ describe("texSubImage2D and texStorage2D", () => {
     uploadAttrib(gl, 0, 2, FULL_QUAD);
     uploadAttrib(gl, 1, 2, [0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1]);
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      2,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     // Source rows: red then blue; flipped, blue lands in texture row 0.
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 2, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255, 0, 0, 255, 255]));
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      1,
+      2,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([255, 0, 0, 255, 0, 0, 255, 255]),
+    );
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     expect(pixel(gl, 0, 0)).toEqual([0, 0, 255, 255]);
     expect(pixel(gl, 0, 3)).toEqual([255, 0, 0, 255]);
@@ -603,11 +739,41 @@ describe("texSubImage2D and texStorage2D", () => {
   it("refuses a rect outside the image with INVALID_VALUE and a mismatched format with INVALID_OPERATION", () => {
     const gl = makeGl(2, 2);
     bindTestCard(gl);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 1, 1, 2, 2, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(16));
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      1,
+      1,
+      2,
+      2,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array(16),
+    );
     expect(gl.getError()).toBe(gl.INVALID_VALUE);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array(3));
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      1,
+      1,
+      gl.RGB,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array(3),
+    );
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      1,
+      1,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
     expect(gl.getError()).toBe(gl.INVALID_VALUE);
   });
 
@@ -621,10 +787,30 @@ describe("texSubImage2D and texStorage2D", () => {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     expect(pixel(gl, 0, 0)).toEqual([0, 0, 0, 0]);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 0, 0, 255]));
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      1,
+      1,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      new Uint8Array([255, 0, 0, 255]),
+    );
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     expect(pixel(gl, 0, 0)).toEqual([255, 0, 0, 255]);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      1,
+      1,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
   });
 
@@ -633,8 +819,12 @@ describe("texSubImage2D and texStorage2D", () => {
     gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
     gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA, 1, 1);
     expect(gl.getError()).toBe(gl.INVALID_ENUM);
-    expect(() => gl.texStorage2D(gl.TEXTURE_2D, 2, gl.RGBA8, 2, 2)).toThrow(/mipmaps are outside 0\.1\.0/);
-    expect(() => gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, 1, 1)).toThrow(/sized internal format outside RGBA8, RGB8, and R8/);
+    expect(() => gl.texStorage2D(gl.TEXTURE_2D, 2, gl.RGBA8, 2, 2)).toThrow(
+      /mipmaps are outside 0\.1\.0/,
+    );
+    expect(() => gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, 1, 1)).toThrow(
+      /sized internal format outside RGBA8, RGB8, and R8/,
+    );
   });
 });
 
@@ -667,7 +857,15 @@ void main() { o_color = vec4(v_t, 0.0, 0.0, 1.0); }
     // A planar quad whose left edge sits at w = 1 and right edge at w = 2
     // (clip x = ndc × w). Screen-linear interpolation would read s at
     // column s; the perspective-correct value is (s/2) / (1 - s/2).
-    uploadAttrib(gl, 0, 4, [-1, -1, 0, 1, 2, -2, 0, 2, -1, 1, 0, 1, -1, 1, 0, 1, 2, -2, 0, 2, 2, 2, 0, 2]);
+    uploadAttrib(
+      gl,
+      0,
+      4,
+      [
+        -1, -1, 0, 1, 2, -2, 0, 2, -1, 1, 0, 1, -1, 1, 0, 1, 2, -2, 0, 2, 2, 2,
+        0, 2,
+      ],
+    );
     uploadAttrib(gl, 1, 1, [0, 1, 0, 0, 1, 1]);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     expect(gl.getError()).toBe(gl.NO_ERROR);
@@ -751,7 +949,10 @@ void main() {
   function drawLit(gl: HeadlessWebGL2, colors: number[]): void {
     const program = buildProgram(gl, VS_POS2, FS_LIGHTS);
     uploadAttrib(gl, 0, 2, FULL_QUAD);
-    gl.uniform3fv(gl.getUniformLocation(program, "u_light_dirs"), [0, 0, 1, 0, 0, -1, 1, 0, 0, 0, 1, 1]);
+    gl.uniform3fv(
+      gl.getUniformLocation(program, "u_light_dirs"),
+      [0, 0, 1, 0, 0, -1, 1, 0, 0, 0, 1, 1],
+    );
     gl.uniform3fv(gl.getUniformLocation(program, "u_light_colors"), colors);
     gl.uniform3f(gl.getUniformLocation(program, "u_normal"), 0, 0, 1);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
@@ -762,7 +963,12 @@ void main() {
     drawLit(gl, [0.5, 0, 0, 0, 1, 0, 0, 0.25, 0, 0, 0, 0.25]);
     // Facing light contributes fully, the opposed and perpendicular ones
     // nothing, the diagonal one by cos 45°.
-    expect(pixel(gl, 1, 1)).toEqual([byte(0.5), 0, byte(0.25 * Math.SQRT1_2), 255]);
+    expect(pixel(gl, 1, 1)).toEqual([
+      byte(0.5),
+      0,
+      byte(0.25 * Math.SQRT1_2),
+      255,
+    ]);
   });
 
   it("responds monotonically to a light change: the dimmer setup reads darker at the same sample", () => {
@@ -788,7 +994,9 @@ describe("lines and points", () => {
     uploadAttrib(gl, 0, 2, [ndc(1, 8), ndc(2, 8), ndc(6, 8), ndc(2, 8)]);
     gl.drawArrays(gl.LINES, 0, 2);
     for (let x = 0; x < 8; x += 1) {
-      expect(pixel(gl, x, 2)[0], `column ${x}`).toBe(x >= 1 && x <= 6 ? 255 : 0);
+      expect(pixel(gl, x, 2)[0], `column ${x}`).toBe(
+        x >= 1 && x <= 6 ? 255 : 0,
+      );
     }
     // The neighboring rows stay clean: one pixel wide means one pixel wide.
     expect(pixel(gl, 3, 1)).toEqual([0, 0, 0, 0]);
@@ -809,7 +1017,14 @@ describe("lines and points", () => {
   it("closes a LINE_LOOP back to its first vertex", () => {
     const gl = makeGl(8, 8);
     flatColorRig(gl, 1, 0, 0, 1);
-    uploadAttrib(gl, 0, 2, [ndc(1, 8), ndc(1, 8), ndc(6, 8), ndc(1, 8), ndc(6, 8), ndc(6, 8)]);
+    uploadAttrib(gl, 0, 2, [
+      ndc(1, 8),
+      ndc(1, 8),
+      ndc(6, 8),
+      ndc(1, 8),
+      ndc(6, 8),
+      ndc(6, 8),
+    ]);
     gl.drawArrays(gl.LINE_LOOP, 0, 3);
     // The closing edge is the diagonal from (6,6) back to (1,1).
     expect(pixel(gl, 3, 3)[0]).toBe(255);
@@ -824,7 +1039,9 @@ describe("lines and points", () => {
     gl.drawArrays(gl.POINTS, 0, 2);
     expect(pixel(gl, 2, 5)).toEqual([255, 0, 0, 255]);
     expect(pixel(gl, 6, 1)).toEqual([255, 0, 0, 255]);
-    expect(readAll(gl, 8, 8).filter((_, i) => i % 4 === 0 && _ !== 0)).toHaveLength(2);
+    expect(
+      readAll(gl, 8, 8).filter((_, i) => i % 4 === 0 && _ !== 0),
+    ).toHaveLength(2);
   });
 
   it("depth-tests line fragments like any other fragment", () => {
@@ -832,10 +1049,25 @@ describe("lines and points", () => {
     gl.enable(gl.DEPTH_TEST);
     const program = flatColorRig(gl, 1, 0, 0, 1, VS_POS3);
     // A near quad first, then a line behind it across the same row.
-    uploadAttrib(gl, 0, 3, [-1, -1, -0.5, 1, -1, -0.5, -1, 1, -0.5, -1, 1, -0.5, 1, -1, -0.5, 1, 1, -0.5]);
+    uploadAttrib(
+      gl,
+      0,
+      3,
+      [
+        -1, -1, -0.5, 1, -1, -0.5, -1, 1, -0.5, -1, 1, -0.5, 1, -1, -0.5, 1, 1,
+        -0.5,
+      ],
+    );
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.uniform4f(gl.getUniformLocation(program, "u_color"), 0, 0, 1, 1);
-    uploadAttrib(gl, 0, 3, [ndc(0, 8), ndc(4, 8), 0.5, ndc(7, 8), ndc(4, 8), 0.5]);
+    uploadAttrib(gl, 0, 3, [
+      ndc(0, 8),
+      ndc(4, 8),
+      0.5,
+      ndc(7, 8),
+      ndc(4, 8),
+      0.5,
+    ]);
     gl.drawArrays(gl.LINES, 0, 2);
     expect(pixel(gl, 3, 4)).toEqual([255, 0, 0, 255]);
   });
@@ -889,7 +1121,11 @@ describe("primitive assembly", () => {
       flatColorRig(gl, 1, 0, 0, 1);
       uploadAttrib(gl, 0, 2, [-1, -1, 1, -1, -1, 1, 1, 1]);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new IndexArray([0, 1, 2, 2, 1, 3]), gl.STATIC_DRAW);
+      gl.bufferData(
+        gl.ELEMENT_ARRAY_BUFFER,
+        new IndexArray([0, 1, 2, 2, 1, 3]),
+        gl.STATIC_DRAW,
+      );
       gl.drawElements(gl.TRIANGLES, 6, type, 0);
       expect(gl.getError(), `type 0x${type.toString(16)}`).toBe(gl.NO_ERROR);
       expect(pixel(gl, 0, 0)).toEqual([255, 0, 0, 255]);
@@ -900,9 +1136,22 @@ describe("primitive assembly", () => {
   it("honors the always-on primitive restart index, splitting a LINE_STRIP into two runs", () => {
     const gl = makeGl(8, 8);
     flatColorRig(gl, 1, 0, 0, 1);
-    uploadAttrib(gl, 0, 2, [ndc(0, 8), ndc(0, 8), ndc(3, 8), ndc(0, 8), ndc(0, 8), ndc(3, 8), ndc(3, 8), ndc(3, 8)]);
+    uploadAttrib(gl, 0, 2, [
+      ndc(0, 8),
+      ndc(0, 8),
+      ndc(3, 8),
+      ndc(0, 8),
+      ndc(0, 8),
+      ndc(3, 8),
+      ndc(3, 8),
+      ndc(3, 8),
+    ]);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1, 0xffff, 2, 3]), gl.STATIC_DRAW);
+    gl.bufferData(
+      gl.ELEMENT_ARRAY_BUFFER,
+      new Uint16Array([0, 1, 0xffff, 2, 3]),
+      gl.STATIC_DRAW,
+    );
     gl.drawElements(gl.LINE_STRIP, 5, gl.UNSIGNED_SHORT, 0);
     expect(gl.getError()).toBe(gl.NO_ERROR);
     // Two horizontal rows; no connecting stroke between (3,0) and (0,3).
@@ -920,7 +1169,11 @@ describe("primitive assembly", () => {
     flatColorRig(gl, 1, 0, 0, 1);
     uploadAttrib(gl, 0, 2, [-1, -1, 1, -1, -1, 1, 1, 1]);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1, 2, 2, 1, 3]), gl.STATIC_DRAW);
+    gl.bufferData(
+      gl.ELEMENT_ARRAY_BUFFER,
+      new Uint16Array([0, 1, 2, 2, 1, 3]),
+      gl.STATIC_DRAW,
+    );
     gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
     const indexed = readAll(gl, 4, 4);
     const gl2 = makeGl(4, 4);
@@ -997,7 +1250,11 @@ void main() { o_color = v_color; }
     gl.drawElements(gl.TRIANGLES, 3, gl.UNSIGNED_SHORT, 0);
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1, 2]), gl.STATIC_DRAW);
+    gl.bufferData(
+      gl.ELEMENT_ARRAY_BUFFER,
+      new Uint16Array([0, 1, 2]),
+      gl.STATIC_DRAW,
+    );
     gl.drawElements(gl.TRIANGLES, 3, gl.UNSIGNED_SHORT, 1);
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
     gl.drawElements(gl.TRIANGLES, 4, gl.UNSIGNED_SHORT, 0);
@@ -1009,7 +1266,11 @@ void main() { o_color = v_color; }
     flatColorRig(gl, 1, 0, 0, 1);
     uploadAttrib(gl, 0, 2, [0, 0, 1, 1, -1, 1]);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.createBuffer());
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array([0, 1, 7]), gl.STATIC_DRAW);
+    gl.bufferData(
+      gl.ELEMENT_ARRAY_BUFFER,
+      new Uint16Array([0, 1, 7]),
+      gl.STATIC_DRAW,
+    );
     gl.drawElements(gl.TRIANGLES, 3, gl.UNSIGNED_SHORT, 0);
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
     expect(readAll(gl, 2, 2).every((b) => b === 0)).toBe(true);

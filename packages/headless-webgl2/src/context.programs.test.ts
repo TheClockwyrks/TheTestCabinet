@@ -16,11 +16,17 @@ function makeGl(): HeadlessWebGL2 {
   return createCanvas(8, 8).getContext("webgl2");
 }
 
-const VERTEX_MINIMAL = "#version 300 es\nvoid main() { gl_Position = vec4(0.0); }";
-const FRAGMENT_MINIMAL = "#version 300 es\nout vec4 o_color;\nvoid main() { o_color = vec4(1.0); }";
+const VERTEX_MINIMAL =
+  "#version 300 es\nvoid main() { gl_Position = vec4(0.0); }";
+const FRAGMENT_MINIMAL =
+  "#version 300 es\nout vec4 o_color;\nvoid main() { o_color = vec4(1.0); }";
 
 /** Compiles both stages and links them, asserting every step succeeded. */
-function buildProgram(gl: HeadlessWebGL2, vertexSource: string, fragmentSource: string) {
+function buildProgram(
+  gl: HeadlessWebGL2,
+  vertexSource: string,
+  fragmentSource: string,
+) {
   const vertex = gl.createShader(gl.VERTEX_SHADER)!;
   gl.shaderSource(vertex, vertexSource);
   gl.compileShader(vertex);
@@ -74,19 +80,29 @@ describe("compileShader through the API", () => {
   it("fails a broken shader with a line-numbered browser-shaped log, never a throw", () => {
     const gl = makeGl();
     const shader = gl.createShader(gl.FRAGMENT_SHADER)!;
-    gl.shaderSource(shader, "#version 300 es\nout vec4 o_color;\nvoid main() {\n  o_color = missing;\n}");
+    gl.shaderSource(
+      shader,
+      "#version 300 es\nout vec4 o_color;\nvoid main() {\n  o_color = missing;\n}",
+    );
     expect(() => gl.compileShader(shader)).not.toThrow();
     expect(gl.getShaderParameter(shader, gl.COMPILE_STATUS)).toBe(false);
     // Line 4 of the source, in the ERROR: 0:<line>: shape browsers use.
-    expect(gl.getShaderInfoLog(shader)).toBe("ERROR: 0:4: 'missing' is not declared");
+    expect(gl.getShaderInfoLog(shader)).toBe(
+      "ERROR: 0:4: 'missing' is not declared",
+    );
   });
 
   it("names an out-of-subset construct in the log rather than a bare syntax error", () => {
     const gl = makeGl();
     const shader = gl.createShader(gl.FRAGMENT_SHADER)!;
-    gl.shaderSource(shader, "#version 300 es\nout vec4 o_color;\nvoid main() {\n  while (true) {}\n}");
+    gl.shaderSource(
+      shader,
+      "#version 300 es\nout vec4 o_color;\nvoid main() {\n  while (true) {}\n}",
+    );
     gl.compileShader(shader);
-    expect(gl.getShaderInfoLog(shader)).toMatch(/ERROR: 0:4: .*'while' loop is outside the subset; use a for-loop/);
+    expect(gl.getShaderInfoLog(shader)).toMatch(
+      /ERROR: 0:4: .*'while' loop is outside the subset; use a for-loop/,
+    );
   });
 
   it("clears a stale failure once a corrected source recompiles", () => {
@@ -104,10 +120,15 @@ describe("compileShader through the API", () => {
   it("compiles each stage against its own built-ins, so gl_FragCoord fails in a vertex shader", () => {
     const gl = makeGl();
     const shader = gl.createShader(gl.VERTEX_SHADER)!;
-    gl.shaderSource(shader, "#version 300 es\nvoid main() { gl_Position = gl_FragCoord; }");
+    gl.shaderSource(
+      shader,
+      "#version 300 es\nvoid main() { gl_Position = gl_FragCoord; }",
+    );
     gl.compileShader(shader);
     expect(gl.getShaderParameter(shader, gl.COMPILE_STATUS)).toBe(false);
-    expect(gl.getShaderInfoLog(shader)).toMatch(/'gl_FragCoord' does not exist in the vertex shader/);
+    expect(gl.getShaderInfoLog(shader)).toMatch(
+      /'gl_FragCoord' does not exist in the vertex shader/,
+    );
   });
 });
 
@@ -131,7 +152,10 @@ describe("linkProgram through the API", () => {
     gl.shaderSource(vertex, VERTEX_MINIMAL);
     gl.compileShader(vertex);
     const fragment = gl.createShader(gl.FRAGMENT_SHADER)!;
-    gl.shaderSource(fragment, "#version 300 es\nin vec3 v_normal;\nout vec4 o_color;\nvoid main() { o_color = vec4(v_normal, 1.0); }");
+    gl.shaderSource(
+      fragment,
+      "#version 300 es\nin vec3 v_normal;\nout vec4 o_color;\nvoid main() { o_color = vec4(v_normal, 1.0); }",
+    );
     gl.compileShader(fragment);
     expect(gl.getShaderParameter(fragment, gl.COMPILE_STATUS)).toBe(true);
     const program = gl.createProgram();
@@ -139,14 +163,19 @@ describe("linkProgram through the API", () => {
     gl.attachShader(program, fragment);
     expect(() => gl.linkProgram(program)).not.toThrow();
     expect(gl.getProgramParameter(program, gl.LINK_STATUS)).toBe(false);
-    expect(gl.getProgramInfoLog(program)).toMatch(/fragment input 'v_normal' has no matching vertex output/);
+    expect(gl.getProgramInfoLog(program)).toMatch(
+      /fragment input 'v_normal' has no matching vertex output/,
+    );
     expect(program.executable).toBeNull();
   });
 
   it("honors bindAttribLocation at the next link and layout qualifiers over it", () => {
     const gl = makeGl();
     const vertex = gl.createShader(gl.VERTEX_SHADER)!;
-    gl.shaderSource(vertex, "#version 300 es\nlayout(location = 6) in vec3 a_pos;\nin vec2 a_uv;\nvoid main() { gl_Position = vec4(a_pos, a_uv.x); }");
+    gl.shaderSource(
+      vertex,
+      "#version 300 es\nlayout(location = 6) in vec3 a_pos;\nin vec2 a_uv;\nvoid main() { gl_Position = vec4(a_pos, a_uv.x); }",
+    );
     gl.compileShader(vertex);
     const fragment = gl.createShader(gl.FRAGMENT_SHADER)!;
     gl.shaderSource(fragment, FRAGMENT_MINIMAL);
@@ -183,8 +212,16 @@ describe("linkProgram through the API", () => {
       "#version 300 es\nlayout(location = 1) in vec2 a_uv;\nuniform vec4 u_lights[4];\nvoid main() { gl_Position = u_lights[0] + vec4(a_uv, 0.0, 1.0); }",
       FRAGMENT_MINIMAL,
     );
-    expect(gl.getActiveUniform(program, 0)).toEqual({ name: "u_lights[0]", size: 4, type: gl.FLOAT_VEC4 });
-    expect(gl.getActiveAttrib(program, 0)).toEqual({ name: "a_uv", size: 1, type: gl.FLOAT_VEC2 });
+    expect(gl.getActiveUniform(program, 0)).toEqual({
+      name: "u_lights[0]",
+      size: 4,
+      type: gl.FLOAT_VEC4,
+    });
+    expect(gl.getActiveAttrib(program, 0)).toEqual({
+      name: "a_uv",
+      size: 1,
+      type: gl.FLOAT_VEC2,
+    });
     expect(gl.getActiveUniform(program, 1)).toBeNull();
     expect(gl.getError()).toBe(gl.INVALID_VALUE);
     expect(gl.getActiveAttrib(program, 5)).toBeNull();
@@ -213,7 +250,9 @@ describe("linkProgram through the API", () => {
     gl.uniform1i(stale, 3);
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
     // The stale location must not have written into the re-minted store.
-    expect(gl.getUniform(program, gl.getUniformLocation(program, "u_count")!)).toBe(0);
+    expect(
+      gl.getUniform(program, gl.getUniformLocation(program, "u_count")!),
+    ).toBe(0);
   });
 });
 
@@ -245,11 +284,19 @@ describe("uniform setters", () => {
     gl.uniform2i(at("u_bv2"), 0, 7);
     expect(gl.getError()).toBe(gl.NO_ERROR);
     expect(gl.getUniform(program, at("u_f"))).toBe(0.5);
-    expect(gl.getUniform(program, at("u_v2"))).toEqual(Float32Array.from([1, 2]));
-    expect(gl.getUniform(program, at("u_v3"))).toEqual(Float32Array.from([3, 4, 5]));
-    expect(gl.getUniform(program, at("u_v4"))).toEqual(Float32Array.from([6, 7, 8, 9]));
+    expect(gl.getUniform(program, at("u_v2"))).toEqual(
+      Float32Array.from([1, 2]),
+    );
+    expect(gl.getUniform(program, at("u_v3"))).toEqual(
+      Float32Array.from([3, 4, 5]),
+    );
+    expect(gl.getUniform(program, at("u_v4"))).toEqual(
+      Float32Array.from([6, 7, 8, 9]),
+    );
     expect(gl.getUniform(program, at("u_i"))).toBe(-3);
-    expect(gl.getUniform(program, at("u_iv3"))).toEqual(Int32Array.from([10, 11, 12]));
+    expect(gl.getUniform(program, at("u_iv3"))).toEqual(
+      Int32Array.from([10, 11, 12]),
+    );
     // Bool uniforms read back as booleans, normalized from the 0/1 store.
     expect(gl.getUniform(program, at("u_b"))).toBe(true);
     expect(gl.getUniform(program, at("u_bv2"))).toEqual([false, true]);
@@ -257,7 +304,11 @@ describe("uniform setters", () => {
 
   it("accepts both setter families for bool uniforms, the GL allowance", () => {
     const gl = makeGl();
-    const program = buildProgram(gl, VERTEX_MINIMAL, "#version 300 es\nuniform bool u_b;\nout vec4 o_color;\nvoid main() { o_color = vec4(u_b ? 1.0 : 0.0); }");
+    const program = buildProgram(
+      gl,
+      VERTEX_MINIMAL,
+      "#version 300 es\nuniform bool u_b;\nout vec4 o_color;\nvoid main() { o_color = vec4(u_b ? 1.0 : 0.0); }",
+    );
     gl.useProgram(program);
     const location = gl.getUniformLocation(program, "u_b")!;
     gl.uniform1f(location, 2.5);
@@ -282,7 +333,9 @@ describe("uniform setters", () => {
     expect(gl.getUniform(program, m4)).toEqual(Float32Array.from(sixteen));
     // transpose=true delivers rows; the store must still read column-major.
     gl.uniformMatrix3fv(m3, true, [1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(gl.getUniform(program, m3)).toEqual(Float32Array.from([1, 4, 7, 2, 5, 8, 3, 6, 9]));
+    expect(gl.getUniform(program, m3)).toEqual(
+      Float32Array.from([1, 4, 7, 2, 5, 8, 3, 6, 9]),
+    );
   });
 
   it("fills a whole uniform array from the base location with one 4fv call", () => {
@@ -293,8 +346,12 @@ describe("uniform setters", () => {
     const data = Array.from({ length: 16 }, (_, i) => i + 1);
     gl.uniform4fv(lights, data);
     expect(gl.getError()).toBe(gl.NO_ERROR);
-    expect(gl.getUniform(program, gl.getUniformLocation(program, "u_lights[0]")!)).toEqual(Float32Array.from([1, 2, 3, 4]));
-    expect(gl.getUniform(program, gl.getUniformLocation(program, "u_lights[3]")!)).toEqual(Float32Array.from([13, 14, 15, 16]));
+    expect(
+      gl.getUniform(program, gl.getUniformLocation(program, "u_lights[0]")!),
+    ).toEqual(Float32Array.from([1, 2, 3, 4]));
+    expect(
+      gl.getUniform(program, gl.getUniformLocation(program, "u_lights[3]")!),
+    ).toEqual(Float32Array.from([13, 14, 15, 16]));
   });
 
   it("fills from a mid-array element location and ignores data past the array's end", () => {
@@ -305,10 +362,16 @@ describe("uniform setters", () => {
     // Three elements offered, two slots remaining: the third is ignored, per GL.
     gl.uniform4fv(fromTwo, [1, 1, 1, 1, 2, 2, 2, 2, 9, 9, 9, 9]);
     expect(gl.getError()).toBe(gl.NO_ERROR);
-    expect(gl.getUniform(program, gl.getUniformLocation(program, "u_lights[2]")!)).toEqual(Float32Array.from([1, 1, 1, 1]));
-    expect(gl.getUniform(program, gl.getUniformLocation(program, "u_lights[3]")!)).toEqual(Float32Array.from([2, 2, 2, 2]));
+    expect(
+      gl.getUniform(program, gl.getUniformLocation(program, "u_lights[2]")!),
+    ).toEqual(Float32Array.from([1, 1, 1, 1]));
+    expect(
+      gl.getUniform(program, gl.getUniformLocation(program, "u_lights[3]")!),
+    ).toEqual(Float32Array.from([2, 2, 2, 2]));
     // The elements before the starting one stayed zero.
-    expect(gl.getUniform(program, gl.getUniformLocation(program, "u_lights[0]")!)).toEqual(Float32Array.from([0, 0, 0, 0]));
+    expect(
+      gl.getUniform(program, gl.getUniformLocation(program, "u_lights[0]")!),
+    ).toEqual(Float32Array.from([0, 0, 0, 0]));
   });
 
   it("honors the WebGL2 srcOffset and srcLength window on the *v forms", () => {
@@ -349,7 +412,11 @@ describe("uniform setters", () => {
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
     gl.uniform3fv(lights, [1, 2, 3]);
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
-    gl.uniformMatrix3fv(lights, false, Array.from({ length: 9 }, () => 0));
+    gl.uniformMatrix3fv(
+      lights,
+      false,
+      Array.from({ length: 9 }, () => 0),
+    );
     expect(gl.getError()).toBe(gl.INVALID_OPERATION);
   });
 
@@ -374,7 +441,11 @@ describe("uniform setters", () => {
     gl.useProgram(program);
     gl.uniform1f(null, 1);
     gl.uniform4fv(null, [1, 2, 3, 4]);
-    gl.uniformMatrix4fv(null, false, Array.from({ length: 16 }, () => 0));
+    gl.uniformMatrix4fv(
+      null,
+      false,
+      Array.from({ length: 16 }, () => 0),
+    );
     expect(gl.getError()).toBe(gl.NO_ERROR);
 
     gl.useProgram(other);
@@ -396,13 +467,23 @@ describe("the executable the rasterizer will run", () => {
     const gl = makeGl();
     const program = buildLightsProgram(gl);
     gl.useProgram(program);
-    gl.uniform4fv(gl.getUniformLocation(program, "u_lights")!, [0.25, 0, 0, 1, 0, 0.5, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]);
+    gl.uniform4fv(
+      gl.getUniformLocation(program, "u_lights")!,
+      [0.25, 0, 0, 1, 0, 0.5, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    );
     gl.uniform1i(gl.getUniformLocation(program, "u_count")!, 2);
     gl.uniform1i(gl.getUniformLocation(program, "u_map")!, 0);
 
     const executable = program.executable!;
     const out = new Float64Array(4);
-    const discarded = executable.fragment(new Float64Array(executable.varyingComponents), program.uniformStore!, [() => [0, 0, 0, 0]], Float64Array.from([0, 0, 0, 1]), true, out);
+    const discarded = executable.fragment(
+      new Float64Array(executable.varyingComponents),
+      program.uniformStore!,
+      [() => [0, 0, 0, 0]],
+      Float64Array.from([0, 0, 0, 1]),
+      true,
+      out,
+    );
     expect(discarded).toBe(false);
     // The two counted lights sum; the third slot and the zero sampler add nothing.
     expect([...out]).toEqual([0.25, 0.5, 0, 1]);
@@ -416,14 +497,24 @@ describe("the executable the rasterizer will run", () => {
       FRAGMENT_MINIMAL,
     );
     gl.useProgram(program);
-    gl.uniformMatrix4fv(gl.getUniformLocation(program, "u_mvp")!, false, [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 1, 1, 0, 1]);
+    gl.uniformMatrix4fv(
+      gl.getUniformLocation(program, "u_mvp")!,
+      false,
+      [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 1, 1, 0, 1],
+    );
 
     const location = gl.getAttribLocation(program, "a_offset");
     const attributes = new Float64Array(16 * 4);
     attributes.set([3, 5], location * 4);
     const executable = program.executable!;
     const position = new Float64Array(4);
-    executable.vertex(attributes, program.uniformStore!, [], new Float64Array(executable.varyingComponents), position);
+    executable.vertex(
+      attributes,
+      program.uniformStore!,
+      [],
+      new Float64Array(executable.varyingComponents),
+      position,
+    );
     expect([...position]).toEqual([7, 11, 0, 1]);
   });
 });

@@ -276,7 +276,14 @@ export class UniformLocationObject {
   /** The `linkGeneration` of the link that minted this location. */
   readonly generation: number;
 
-  constructor(program: ProgramObject, slot: number, type: Type, elementsRemaining: number, partOfArray: boolean, generation: number) {
+  constructor(
+    program: ProgramObject,
+    slot: number,
+    type: Type,
+    elementsRemaining: number,
+    partOfArray: boolean,
+    generation: number,
+  ) {
     this.program = program;
     this.slot = slot;
     this.type = type;

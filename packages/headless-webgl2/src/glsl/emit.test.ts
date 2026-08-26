@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { compileStage, linkStages, type LinkedProgram, type SamplerFn } from "./link";
+import {
+  compileStage,
+  linkStages,
+  type LinkedProgram,
+  type SamplerFn,
+} from "./link";
 
 /**
  * Numeric evaluation of the emitted stage functions — the executable half of
@@ -29,18 +34,26 @@ function link(vertexSource: string, fragmentSource: string): LinkedProgram {
 }
 
 /** Links a fragment-only test program, mirroring its varying declarations into the vertex stage. */
-function fragProgram(fragmentBody: string, varyingDecls: readonly string[] = []): LinkedProgram {
+function fragProgram(
+  fragmentBody: string,
+  varyingDecls: readonly string[] = [],
+): LinkedProgram {
   const fragmentSource = `${V}${varyingDecls.map((decl) => `in ${decl};\n`).join("")}out vec4 o_color;\n${fragmentBody}`;
   return link(passthroughVertex(varyingDecls), fragmentSource);
 }
 
 /** Writes named uniform values into a fresh flat store by the linker's slots. */
-function uniformStore(program: LinkedProgram, values: Record<string, readonly number[]> = {}): Float64Array {
+function uniformStore(
+  program: LinkedProgram,
+  values: Record<string, readonly number[]> = {},
+): Float64Array {
   const store = new Float64Array(program.uniformSlotCount);
   for (const [name, components] of Object.entries(values)) {
     const uniform = program.uniforms.find((u) => u.baseName === name);
-    if (uniform === undefined) throw new Error(`no uniform '${name}' in the linked program`);
-    for (let i = 0; i < components.length; i += 1) store[uniform.slot + i] = components[i] ?? 0;
+    if (uniform === undefined)
+      throw new Error(`no uniform '${name}' in the linked program`);
+    for (let i = 0; i < components.length; i += 1)
+      store[uniform.slot + i] = components[i] ?? 0;
   }
   return store;
 }
@@ -55,7 +68,10 @@ interface FragOptions {
 }
 
 /** Invokes the fragment function once, returning the raw f64 color and the discard flag. */
-function runFrag(program: LinkedProgram, options: FragOptions = {}): { color: number[]; discarded: boolean } {
+function runFrag(
+  program: LinkedProgram,
+  options: FragOptions = {},
+): { color: number[]; discarded: boolean } {
   const varyings = new Float64Array(program.varyingComponents);
   (options.varyings ?? []).forEach((value, i) => {
     varyings[i] = value;
@@ -73,8 +89,16 @@ function runFrag(program: LinkedProgram, options: FragOptions = {}): { color: nu
 }
 
 /** One-liner for the common shape: a fragment main assigning o_color once. */
-function evalColor(expression: string, options: FragOptions = {}, prelude = "", varyingDecls: readonly string[] = []): number[] {
-  const program = fragProgram(`${prelude}\nvoid main() { o_color = ${expression}; }`, varyingDecls);
+function evalColor(
+  expression: string,
+  options: FragOptions = {},
+  prelude = "",
+  varyingDecls: readonly string[] = [],
+): number[] {
+  const program = fragProgram(
+    `${prelude}\nvoid main() { o_color = ${expression}; }`,
+    varyingDecls,
+  );
   return runFrag(program, options).color;
 }
 
@@ -84,24 +108,42 @@ function evalColor(expression: string, options: FragOptions = {}, prelude = "", 
 
 describe("expression evaluation", () => {
   it("computes float arithmetic with GLSL precedence and grouping", () => {
-    expect(evalColor("vec4(2.0 + 3.0 * 4.0, (2.0 + 3.0) * 4.0, 10.0 / 4.0, 7.0 - 0.5)")).toEqual([14, 20, 2.5, 6.5]);
+    expect(
+      evalColor(
+        "vec4(2.0 + 3.0 * 4.0, (2.0 + 3.0) * 4.0, 10.0 / 4.0, 7.0 - 0.5)",
+      ),
+    ).toEqual([14, 20, 2.5, 6.5]);
   });
 
   it("truncates int division toward zero, the GLSL rule f64 division would miss", () => {
-    expect(evalColor("vec4(float(7 / 2), float(-7 / 2), float(7 % 3), float(-7 % 3))")).toEqual([3, -3, 1, -1]);
+    expect(
+      evalColor(
+        "vec4(float(7 / 2), float(-7 / 2), float(7 % 3), float(-7 % 3))",
+      ),
+    ).toEqual([3, -3, 1, -1]);
   });
 
   it("applies unary minus componentwise and unary ! to bools", () => {
-    expect(evalColor("vec4(-vec2(1.5, -2.0), (!false) ? 1.0 : 0.0, (!true) ? 1.0 : 0.0)")).toEqual([-1.5, 2, 1, 0]);
+    expect(
+      evalColor(
+        "vec4(-vec2(1.5, -2.0), (!false) ? 1.0 : 0.0, (!true) ? 1.0 : 0.0)",
+      ),
+    ).toEqual([-1.5, 2, 1, 0]);
   });
 
   it("broadcasts a scalar over a vector in arithmetic, both sides", () => {
-    expect(evalColor("vec4(vec3(1.0, 2.0, 3.0) * 2.0, 10.0 - 1.0)")).toEqual([2, 4, 6, 9]);
-    expect(evalColor("vec4(2.0 * vec3(1.0, 2.0, 3.0), 1.0 / 4.0)")).toEqual([2, 4, 6, 0.25]);
+    expect(evalColor("vec4(vec3(1.0, 2.0, 3.0) * 2.0, 10.0 - 1.0)")).toEqual([
+      2, 4, 6, 9,
+    ]);
+    expect(evalColor("vec4(2.0 * vec3(1.0, 2.0, 3.0), 1.0 / 4.0)")).toEqual([
+      2, 4, 6, 0.25,
+    ]);
   });
 
   it("converts int literals and ivec constructors to float implicitly", () => {
-    expect(evalColor("vec4(1, vec2(2, 3) + 1, float(ivec2(9, 9).x))")).toEqual([1, 3, 4, 9]);
+    expect(evalColor("vec4(1, vec2(2, 3) + 1, float(ivec2(9, 9).x))")).toEqual([
+      1, 3, 4, 9,
+    ]);
   });
 
   it("selects through nested ternaries by the bool condition", () => {
@@ -115,11 +157,19 @@ describe("expression evaluation", () => {
   });
 
   it("evaluates comparisons, &&, ||, and ^^ over scalars", () => {
-    expect(evalColor("vec4((1.0 < 2.0 && 3.0 >= 3.0) ? 1.0 : 0.0, (1.0 > 2.0 || 5.0 != 4.0) ? 1.0 : 0.0, (true ^^ true) ? 1.0 : 0.0, (true ^^ false) ? 1.0 : 0.0)")).toEqual([1, 1, 0, 1]);
+    expect(
+      evalColor(
+        "vec4((1.0 < 2.0 && 3.0 >= 3.0) ? 1.0 : 0.0, (1.0 > 2.0 || 5.0 != 4.0) ? 1.0 : 0.0, (true ^^ true) ? 1.0 : 0.0, (true ^^ false) ? 1.0 : 0.0)",
+      ),
+    ).toEqual([1, 1, 0, 1]);
   });
 
   it("compares whole vectors with == and != by all-components equality", () => {
-    expect(evalColor("vec4(vec3(1.0, 2.0, 3.0) == vec3(1.0, 2.0, 3.0) ? 1.0 : 0.0, vec3(1.0, 2.0, 3.0) == vec3(1.0, 9.0, 3.0) ? 1.0 : 0.0, vec2(1.0) != vec2(1.0) ? 1.0 : 0.0, 1.0)")).toEqual([1, 0, 0, 1]);
+    expect(
+      evalColor(
+        "vec4(vec3(1.0, 2.0, 3.0) == vec3(1.0, 2.0, 3.0) ? 1.0 : 0.0, vec3(1.0, 2.0, 3.0) == vec3(1.0, 9.0, 3.0) ? 1.0 : 0.0, vec2(1.0) != vec2(1.0) ? 1.0 : 0.0, 1.0)",
+      ),
+    ).toEqual([1, 0, 0, 1]);
   });
 
   it("keeps a bool uniform comparable with true and false literals under ==", () => {
@@ -129,8 +179,12 @@ describe("expression evaluation", () => {
       uniform bool u_on;
       void main() { o_color = vec4(u_on == true ? 1.0 : 0.0, u_on == false ? 1.0 : 0.0, u_on ? 1.0 : 0.0, !u_on ? 1.0 : 0.0); }
     `);
-    expect(runFrag(program, { uniforms: { u_on: [1] } }).color).toEqual([1, 0, 1, 0]);
-    expect(runFrag(program, { uniforms: { u_on: [0] } }).color).toEqual([0, 1, 0, 1]);
+    expect(runFrag(program, { uniforms: { u_on: [1] } }).color).toEqual([
+      1, 0, 1, 0,
+    ]);
+    expect(runFrag(program, { uniforms: { u_on: [0] } }).color).toEqual([
+      0, 1, 0, 1,
+    ]);
   });
 });
 
@@ -143,8 +197,12 @@ describe("swizzles", () => {
     const prelude = "uniform vec4 u_v;";
     const options: FragOptions = { uniforms: { u_v: [1, 2, 3, 4] } };
     expect(evalColor("u_v.wzyx", options, prelude)).toEqual([4, 3, 2, 1]);
-    expect(evalColor("vec4(u_v.rg, u_v.ba)", options, prelude)).toEqual([1, 2, 3, 4]);
-    expect(evalColor("vec4(u_v.tp, u_v.ss)", options, prelude)).toEqual([2, 3, 1, 1]);
+    expect(evalColor("vec4(u_v.rg, u_v.ba)", options, prelude)).toEqual([
+      1, 2, 3, 4,
+    ]);
+    expect(evalColor("vec4(u_v.tp, u_v.ss)", options, prelude)).toEqual([
+      2, 3, 1, 1,
+    ]);
   });
 
   it("writes through a swizzle l-value, touching only the named components", () => {
@@ -182,7 +240,13 @@ describe("swizzles", () => {
   });
 
   it("chains a swizzle of a swizzle", () => {
-    expect(evalColor("vec4(u_v.wzy.yx, 0.0, 0.0)", { uniforms: { u_v: [1, 2, 3, 4] } }, "uniform vec4 u_v;")).toEqual([3, 4, 0, 0]);
+    expect(
+      evalColor(
+        "vec4(u_v.wzy.yx, 0.0, 0.0)",
+        { uniforms: { u_v: [1, 2, 3, 4] } },
+        "uniform vec4 u_v;",
+      ),
+    ).toEqual([3, 4, 0, 0]);
   });
 
   it("indexes a vector with a constant and with a dynamic uniform int", () => {
@@ -193,8 +257,12 @@ describe("swizzles", () => {
         o_color = vec4(v[0], v[2], v[u_i], 0.0);
       }
     `);
-    expect(runFrag(program, { uniforms: { u_i: [1] } }).color).toEqual([10, 30, 20, 0]);
-    expect(runFrag(program, { uniforms: { u_i: [2] } }).color).toEqual([10, 30, 30, 0]);
+    expect(runFrag(program, { uniforms: { u_i: [1] } }).color).toEqual([
+      10, 30, 20, 0,
+    ]);
+    expect(runFrag(program, { uniforms: { u_i: [2] } }).color).toEqual([
+      10, 30, 30, 0,
+    ]);
   });
 });
 
@@ -239,7 +307,9 @@ describe("matrix math", () => {
   });
 
   it("builds a diagonal matrix from a single scalar", () => {
-    expect(evalColor("vec4(mat3(2.0) * vec3(1.0, 1.0, 1.0), 0.0)")).toEqual([2, 2, 2, 0]);
+    expect(evalColor("vec4(mat3(2.0) * vec3(1.0, 1.0, 1.0), 0.0)")).toEqual([
+      2, 2, 2, 0,
+    ]);
   });
 
   it("extracts the upper-left of a mat4 with the mat3 constructor", () => {
@@ -249,7 +319,9 @@ describe("matrix math", () => {
     `);
     // Columns of u_m: only the 3×3 corner matters; translation must drop out.
     const m = [1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 3, 0, 100, 200, 300, 1];
-    expect(runFrag(program, { uniforms: { u_m: m } }).color).toEqual([1, 2, 3, 0]);
+    expect(runFrag(program, { uniforms: { u_m: m } }).color).toEqual([
+      1, 2, 3, 0,
+    ]);
   });
 
   it("indexes a matrix column by constant and by dynamic index", () => {
@@ -260,8 +332,12 @@ describe("matrix math", () => {
         o_color = vec4(m[1].y, m[u_c].x, m[u_c].z, 0.0);
       }
     `);
-    expect(runFrag(program, { uniforms: { u_c: [2] } }).color).toEqual([5, 7, 9, 0]);
-    expect(runFrag(program, { uniforms: { u_c: [0] } }).color).toEqual([5, 1, 3, 0]);
+    expect(runFrag(program, { uniforms: { u_c: [2] } }).color).toEqual([
+      5, 7, 9, 0,
+    ]);
+    expect(runFrag(program, { uniforms: { u_c: [0] } }).color).toEqual([
+      5, 1, 3, 0,
+    ]);
   });
 
   it("assigns a matrix column through a constant-index l-value", () => {
@@ -321,7 +397,9 @@ describe("uniform arrays and loops", () => {
     // count must exclude.
     lights.splice(0, 12, 1, 0, 0, 0.5, 0, 1, 0, 1, 0, 0, 1, 2);
     lights.splice(12, 4, 9, 9, 9, 9);
-    expect(runFrag(program, { uniforms: { u_lights: lights, u_count: [3] } }).color).toEqual([0.5, 1, 2, 1]);
+    expect(
+      runFrag(program, { uniforms: { u_lights: lights, u_count: [3] } }).color,
+    ).toEqual([0.5, 1, 2, 1]);
   });
 
   it("indexes a mat4 uniform array dynamically, the skinning-palette shape", () => {
@@ -335,8 +413,12 @@ describe("uniform arrays and loops", () => {
     const translated = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 6, 7, 1];
     bones.splice(0, 16, ...identity);
     bones.splice(2 * 16, 16, ...translated);
-    expect(runFrag(program, { uniforms: { u_bones: bones, u_bone: [0] } }).color).toEqual([1, 0, 0, 1]);
-    expect(runFrag(program, { uniforms: { u_bones: bones, u_bone: [2] } }).color).toEqual([6, 6, 7, 1]);
+    expect(
+      runFrag(program, { uniforms: { u_bones: bones, u_bone: [0] } }).color,
+    ).toEqual([1, 0, 0, 1]);
+    expect(
+      runFrag(program, { uniforms: { u_bones: bones, u_bone: [2] } }).color,
+    ).toEqual([6, 6, 7, 1]);
   });
 
   it("clamps a dynamic array index into range, the deterministic out-of-bounds rule", () => {
@@ -346,8 +428,12 @@ describe("uniform arrays and loops", () => {
       void main() { o_color = u_xs[u_i]; }
     `);
     const xs = [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3];
-    expect(runFrag(program, { uniforms: { u_xs: xs, u_i: [99] } }).color).toEqual([3, 3, 3, 3]);
-    expect(runFrag(program, { uniforms: { u_xs: xs, u_i: [-7] } }).color).toEqual([1, 1, 1, 1]);
+    expect(
+      runFrag(program, { uniforms: { u_xs: xs, u_i: [99] } }).color,
+    ).toEqual([3, 3, 3, 3]);
+    expect(
+      runFrag(program, { uniforms: { u_xs: xs, u_i: [-7] } }).color,
+    ).toEqual([1, 1, 1, 1]);
   });
 
   it("reads a constant array index without the clamp detour", () => {
@@ -355,7 +441,9 @@ describe("uniform arrays and loops", () => {
       uniform float u_xs[5];
       void main() { o_color = vec4(u_xs[0], u_xs[4], 0.0, 0.0); }
     `);
-    expect(runFrag(program, { uniforms: { u_xs: [10, 0, 0, 0, 50] } }).color).toEqual([10, 50, 0, 0]);
+    expect(
+      runFrag(program, { uniforms: { u_xs: [10, 0, 0, 0, 50] } }).color,
+    ).toEqual([10, 50, 0, 0]);
   });
 
   it("runs const-bound loops with += steps and downward -- loops", () => {
@@ -395,7 +483,9 @@ describe("uniform arrays and loops", () => {
         o_color = vec4(n, 1.0, 0.0, 0.0);
       }
     `);
-    expect(runFrag(program, { uniforms: { u_n: [0] } }).color).toEqual([0, 1, 0, 0]);
+    expect(runFrag(program, { uniforms: { u_n: [0] } }).color).toEqual([
+      0, 1, 0, 0,
+    ]);
   });
 });
 
@@ -429,7 +519,9 @@ describe("user functions", () => {
       float scaled(float x) { return x * u_scale; }
       void main() { o_color = vec4(scaled(2.0), scaled(3.0), 0.0, 0.0); }
     `);
-    expect(runFrag(program, { uniforms: { u_scale: [10] } }).color).toEqual([20, 30, 0, 0]);
+    expect(runFrag(program, { uniforms: { u_scale: [10] } }).color).toEqual([
+      20, 30, 0, 0,
+    ]);
   });
 
   it("lets a helper read varyings and gl_FragCoord", () => {
@@ -440,7 +532,9 @@ describe("user functions", () => {
       `,
       ["float v_t"],
     );
-    expect(runFrag(program, { varyings: [5], fragCoord: [100, 0, 0, 1] }).color[0]).toBe(106);
+    expect(
+      runFrag(program, { varyings: [5], fragCoord: [100, 0, 0, 1] }).color[0],
+    ).toBe(106);
   });
 
   it("returns early out of a helper through an if branch", () => {
@@ -460,7 +554,9 @@ describe("user functions", () => {
       void paint(float a) { o_color = vec4(u_tint, a); }
       void main() { paint(0.5); }
     `);
-    expect(runFrag(program, { uniforms: { u_tint: [0.1, 0.2, 0.3] } }).color).toEqual([0.1, 0.2, 0.3, 0.5]);
+    expect(
+      runFrag(program, { uniforms: { u_tint: [0.1, 0.2, 0.3] } }).color,
+    ).toEqual([0.1, 0.2, 0.3, 0.5]);
   });
 
   it("passes vectors and matrices by value, so a callee mutation stays local", () => {
@@ -482,40 +578,78 @@ describe("user functions", () => {
 
 describe("built-in functions", () => {
   it("evaluates the componentwise math library to hand-computed values", () => {
-    expect(evalColor("vec4(abs(-2.5), sign(-3.0), floor(1.7), ceil(1.2))")).toEqual([2.5, -1, 1, 2]);
-    expect(evalColor("vec4(fract(1.75), mod(-1.5, 2.0), min(3.0, 2.0), max(vec2(1.0, 5.0), 2.0).y)")).toEqual([0.75, 0.5, 2, 5]);
-    expect(evalColor("vec4(pow(2.0, 10.0), sqrt(6.25), exp2(3.0), log2(8.0))")).toEqual([1024, 2.5, 8, 3]);
-    expect(evalColor("vec4(inversesqrt(4.0), sin(0.0), cos(0.0), tan(0.0))")).toEqual([0.5, 0, 1, 0]);
+    expect(
+      evalColor("vec4(abs(-2.5), sign(-3.0), floor(1.7), ceil(1.2))"),
+    ).toEqual([2.5, -1, 1, 2]);
+    expect(
+      evalColor(
+        "vec4(fract(1.75), mod(-1.5, 2.0), min(3.0, 2.0), max(vec2(1.0, 5.0), 2.0).y)",
+      ),
+    ).toEqual([0.75, 0.5, 2, 5]);
+    expect(
+      evalColor("vec4(pow(2.0, 10.0), sqrt(6.25), exp2(3.0), log2(8.0))"),
+    ).toEqual([1024, 2.5, 8, 3]);
+    expect(
+      evalColor("vec4(inversesqrt(4.0), sin(0.0), cos(0.0), tan(0.0))"),
+    ).toEqual([0.5, 0, 1, 0]);
   });
 
   it("evaluates mod by the floor definition, so negatives wrap like GLSL and not like JS %", () => {
     // mod(-1.5, 2.0) is 0.5 in GLSL; JS -1.5 % 2.0 would be -1.5.
-    expect(evalColor("vec4(mod(-1.5, 2.0), mod(5.5, 2.0), mod(vec2(-0.25, 3.5), 1.0))")).toEqual([0.5, 1.5, 0.75, 0.5]);
+    expect(
+      evalColor(
+        "vec4(mod(-1.5, 2.0), mod(5.5, 2.0), mod(vec2(-0.25, 3.5), 1.0))",
+      ),
+    ).toEqual([0.5, 1.5, 0.75, 0.5]);
   });
 
   it("clamps, mixes, and steps with exact endpoints", () => {
-    expect(evalColor("vec4(clamp(5.0, 0.0, 1.0), clamp(-1.0, 0.0, 1.0), clamp(0.25, 0.0, 1.0), 0.0)")).toEqual([1, 0, 0.25, 0]);
+    expect(
+      evalColor(
+        "vec4(clamp(5.0, 0.0, 1.0), clamp(-1.0, 0.0, 1.0), clamp(0.25, 0.0, 1.0), 0.0)",
+      ),
+    ).toEqual([1, 0, 0.25, 0]);
     // mix's x·(1−a) + y·a form reproduces both endpoints exactly at a=0 and 1.
-    expect(evalColor("vec4(mix(3.0, 5.0, 0.0), mix(3.0, 5.0, 1.0), mix(3.0, 5.0, 0.5), mix(vec2(0.0, 10.0), vec2(1.0, 20.0), 0.5).y)")).toEqual([3, 5, 4, 15]);
-    expect(evalColor("vec4(step(1.0, 0.5), step(1.0, 1.0), smoothstep(0.0, 1.0, 0.5), smoothstep(0.0, 1.0, 2.0))")).toEqual([0, 1, 0.5, 1]);
+    expect(
+      evalColor(
+        "vec4(mix(3.0, 5.0, 0.0), mix(3.0, 5.0, 1.0), mix(3.0, 5.0, 0.5), mix(vec2(0.0, 10.0), vec2(1.0, 20.0), 0.5).y)",
+      ),
+    ).toEqual([3, 5, 4, 15]);
+    expect(
+      evalColor(
+        "vec4(step(1.0, 0.5), step(1.0, 1.0), smoothstep(0.0, 1.0, 0.5), smoothstep(0.0, 1.0, 2.0))",
+      ),
+    ).toEqual([0, 1, 0.5, 1]);
   });
 
   it("converts radians and degrees through the exact PI factors", () => {
-    const [rad, deg] = evalColor("vec4(radians(180.0), degrees(3.141592653589793), 0.0, 0.0)");
+    const [rad, deg] = evalColor(
+      "vec4(radians(180.0), degrees(3.141592653589793), 0.0, 0.0)",
+    );
     expect(rad).toBeCloseTo(Math.PI, 12);
     expect(deg).toBeCloseTo(180, 12);
   });
 
   it("computes the geometric functions against hand-checked vectors", () => {
-    expect(evalColor("vec4(length(vec3(3.0, 4.0, 0.0)), distance(vec2(1.0, 1.0), vec2(4.0, 5.0)), dot(vec3(1.0, 2.0, 3.0), vec3(4.0, 5.0, 6.0)), 0.0)")).toEqual([5, 5, 32, 0]);
-    expect(evalColor("vec4(cross(vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0)), 0.0)")).toEqual([0, 0, 1, 0]);
+    expect(
+      evalColor(
+        "vec4(length(vec3(3.0, 4.0, 0.0)), distance(vec2(1.0, 1.0), vec2(4.0, 5.0)), dot(vec3(1.0, 2.0, 3.0), vec3(4.0, 5.0, 6.0)), 0.0)",
+      ),
+    ).toEqual([5, 5, 32, 0]);
+    expect(
+      evalColor("vec4(cross(vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0)), 0.0)"),
+    ).toEqual([0, 0, 1, 0]);
     // normalize multiplies by a saved 1/len, so 3 · (1/5) carries the last-bit
     // f64 rounding of that product rather than the decimal 0.6 exactly.
     const [nx, ny, nz] = evalColor("vec4(normalize(vec3(0.0, 3.0, 4.0)), 0.0)");
     expect(nx).toBe(0);
     expect(ny).toBeCloseTo(0.6, 12);
     expect(nz).toBeCloseTo(0.8, 12);
-    expect(evalColor("vec4(reflect(vec3(1.0, -1.0, 0.0), vec3(0.0, 1.0, 0.0)), 0.0)")).toEqual([1, 1, 0, 0]);
+    expect(
+      evalColor(
+        "vec4(reflect(vec3(1.0, -1.0, 0.0), vec3(0.0, 1.0, 0.0)), 0.0)",
+      ),
+    ).toEqual([1, 1, 0, 0]);
   });
 
   it("normalizes the zero vector to the zero vector, the pinned implementation-defined choice", () => {
@@ -553,8 +687,18 @@ describe("samplers and stage built-ins", () => {
       `,
       ["vec2 v_uv"],
     );
-    const samplers: SamplerFn[] = [() => [9, 9, 9, 9], () => [9, 9, 9, 9], echoSampler];
-    expect(runFrag(program, { uniforms: { u_map: [2] }, varyings: [0.25, 0.75], samplers }).color).toEqual([0.25, 0.75, 0, 1]);
+    const samplers: SamplerFn[] = [
+      () => [9, 9, 9, 9],
+      () => [9, 9, 9, 9],
+      echoSampler,
+    ];
+    expect(
+      runFrag(program, {
+        uniforms: { u_map: [2] },
+        varyings: [0.25, 0.75],
+        samplers,
+      }).color,
+    ).toEqual([0.25, 0.75, 0, 1]);
   });
 
   it("passes the explicit lod of textureLod through to the sampler", () => {
@@ -562,7 +706,10 @@ describe("samplers and stage built-ins", () => {
       uniform sampler2D u_map;
       void main() { o_color = textureLod(u_map, vec2(0.5, 0.5), 3.0); }
     `);
-    expect(runFrag(program, { uniforms: { u_map: [0] }, samplers: [echoSampler] }).color).toEqual([0.5, 0.5, 3, 1]);
+    expect(
+      runFrag(program, { uniforms: { u_map: [0] }, samplers: [echoSampler] })
+        .color,
+    ).toEqual([0.5, 0.5, 3, 1]);
   });
 
   it("copies sampler results into scalars so two lookups in one expression stay distinct", () => {
@@ -580,7 +727,10 @@ describe("samplers and stage built-ins", () => {
       view[3] = 0;
       return view;
     };
-    const { color } = runFrag(program, { uniforms: { u_map: [0] }, samplers: [reusing] });
+    const { color } = runFrag(program, {
+      uniforms: { u_map: [0] },
+      samplers: [reusing],
+    });
     expect(color[0]).toBeCloseTo(0.3, 12);
     expect(color[1]).toBeCloseTo(3, 12);
   });
@@ -589,8 +739,14 @@ describe("samplers and stage built-ins", () => {
     const program = fragProgram(`
       void main() { o_color = vec4(gl_FragCoord.x, gl_FragCoord.y, gl_FragCoord.z, gl_FrontFacing ? 1.0 : 0.0); }
     `);
-    expect(runFrag(program, { fragCoord: [12.5, 7.5, 0.25, 1], frontFacing: true }).color).toEqual([12.5, 7.5, 0.25, 1]);
-    expect(runFrag(program, { fragCoord: [0, 0, 0, 1], frontFacing: false }).color[3]).toBe(0);
+    expect(
+      runFrag(program, { fragCoord: [12.5, 7.5, 0.25, 1], frontFacing: true })
+        .color,
+    ).toEqual([12.5, 7.5, 0.25, 1]);
+    expect(
+      runFrag(program, { fragCoord: [0, 0, 0, 1], frontFacing: false })
+        .color[3],
+    ).toBe(0);
   });
 
   it("returns the discard flag and leaves color meaningless on the discarded path", () => {
@@ -644,7 +800,13 @@ describe("the vertex stage and the executable pipeline", () => {
     const attributes = new Float64Array(16 * 4);
     attributes.set([0.5, 0.25, 99, 99], 3 * 4);
     const position = new Float64Array(4);
-    program.vertex(attributes, uniformStore(program), [], new Float64Array(program.varyingComponents), position);
+    program.vertex(
+      attributes,
+      uniformStore(program),
+      [],
+      new Float64Array(program.varyingComponents),
+      position,
+    );
     // The shader reads only xy of location 3; the 99s must never surface.
     expect([...position]).toEqual([0.5, 0.25, 0, 1]);
   });
@@ -675,7 +837,14 @@ describe("the vertex stage and the executable pipeline", () => {
     const position = new Float64Array(4);
     program.vertex(attributes, uniforms, [], varyings, position);
     const out = new Float64Array(4);
-    const discarded = program.fragment(varyings, uniforms, [], Float64Array.from([0, 0, 0, 1]), true, out);
+    const discarded = program.fragment(
+      varyings,
+      uniforms,
+      [],
+      Float64Array.from([0, 0, 0, 1]),
+      true,
+      out,
+    );
     expect(discarded).toBe(false);
     expect([...out]).toEqual([1, 0.5, 0.25, 0.5]);
   });
@@ -688,7 +857,13 @@ describe("the vertex stage and the executable pipeline", () => {
       `${V}out vec4 o_color;\nvoid main() { o_color = vec4(1.0); }`,
     );
     const position = new Float64Array(4);
-    program.vertex(new Float64Array(16 * 4), uniformStore(program), [], new Float64Array(program.varyingComponents), position);
+    program.vertex(
+      new Float64Array(16 * 4),
+      uniformStore(program),
+      [],
+      new Float64Array(program.varyingComponents),
+      position,
+    );
     expect([...position]).toEqual([0.5, 0, 0, 1]);
   });
 
@@ -715,13 +890,34 @@ describe("the vertex stage and the executable pipeline", () => {
     const run = (program: LinkedProgram): number[] => {
       const attributes = new Float64Array(16 * 4);
       attributes.set([0.3, 0.7, 0.2], 0);
-      const lights = [0.5, 0.5, 0.1, 1, 0.1, 0.9, 0.4, 1, ...new Array<number>(24).fill(0)];
-      const uniforms = uniformStore(program, { u_mvp: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1], u_lights: lights, u_count: [2] });
+      const lights = [
+        0.5,
+        0.5,
+        0.1,
+        1,
+        0.1,
+        0.9,
+        0.4,
+        1,
+        ...new Array<number>(24).fill(0),
+      ];
+      const uniforms = uniformStore(program, {
+        u_mvp: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        u_lights: lights,
+        u_count: [2],
+      });
       const varyings = new Float64Array(program.varyingComponents);
       const position = new Float64Array(4);
       program.vertex(attributes, uniforms, [], varyings, position);
       const out = new Float64Array(4);
-      program.fragment(varyings, uniforms, [], Float64Array.from([0, 0, 0, 1]), true, out);
+      program.fragment(
+        varyings,
+        uniforms,
+        [],
+        Float64Array.from([0, 0, 0, 1]),
+        true,
+        out,
+      );
       return [...position, ...out];
     };
     const first = run(link(vertexSource, fragmentSource));
@@ -777,9 +973,15 @@ describe("statement forms", () => {
         else o_color = vec4(0.0, 0.0, 1.0, 1.0);
       }
     `);
-    expect(runFrag(program, { uniforms: { u_x: [0] } }).color).toEqual([1, 0, 0, 1]);
-    expect(runFrag(program, { uniforms: { u_x: [1.5] } }).color).toEqual([0, 1, 0, 1]);
-    expect(runFrag(program, { uniforms: { u_x: [5] } }).color).toEqual([0, 0, 1, 1]);
+    expect(runFrag(program, { uniforms: { u_x: [0] } }).color).toEqual([
+      1, 0, 0, 1,
+    ]);
+    expect(runFrag(program, { uniforms: { u_x: [1.5] } }).color).toEqual([
+      0, 1, 0, 1,
+    ]);
+    expect(runFrag(program, { uniforms: { u_x: [5] } }).color).toEqual([
+      0, 0, 1, 1,
+    ]);
   });
 
   it("applies every compound assignment operator", () => {

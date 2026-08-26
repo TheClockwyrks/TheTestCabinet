@@ -125,7 +125,13 @@ function depthPasses(func: number, incoming: number, stored: number): boolean {
  * One blend factor's value for a color channel (`channel` 0–2), per the ES
  * 3.0 factor table. `src`/`dst`/`constant` are RGBA floats in [0, 1].
  */
-function rgbFactor(factor: number, channel: number, src: Float64Array, dst: Float64Array, constant: readonly [number, number, number, number]): number {
+function rgbFactor(
+  factor: number,
+  channel: number,
+  src: Float64Array,
+  dst: Float64Array,
+  constant: readonly [number, number, number, number],
+): number {
   switch (factor) {
     case GL.ZERO:
       return 0;
@@ -162,7 +168,12 @@ function rgbFactor(factor: number, channel: number, src: Float64Array, dst: Floa
 }
 
 /** The same factor's alpha-channel value; the color factors read alpha analogues, per the table. */
-function alphaFactor(factor: number, src: Float64Array, dst: Float64Array, constant: readonly [number, number, number, number]): number {
+function alphaFactor(
+  factor: number,
+  src: Float64Array,
+  dst: Float64Array,
+  constant: readonly [number, number, number, number],
+): number {
   switch (factor) {
     case GL.ZERO:
       return 0;
@@ -193,9 +204,17 @@ function alphaFactor(factor: number, src: Float64Array, dst: Float64Array, const
 }
 
 /** Applies one blend equation to a source and destination term. */
-function blendCombine(equation: number, srcValue: number, srcFactor: number, dstValue: number, dstFactor: number): number {
-  if (equation === GL.FUNC_SUBTRACT) return srcValue * srcFactor - dstValue * dstFactor;
-  if (equation === GL.FUNC_REVERSE_SUBTRACT) return dstValue * dstFactor - srcValue * srcFactor;
+function blendCombine(
+  equation: number,
+  srcValue: number,
+  srcFactor: number,
+  dstValue: number,
+  dstFactor: number,
+): number {
+  if (equation === GL.FUNC_SUBTRACT)
+    return srcValue * srcFactor - dstValue * dstFactor;
+  if (equation === GL.FUNC_REVERSE_SUBTRACT)
+    return dstValue * dstFactor - srcValue * srcFactor;
   return srcValue * srcFactor + dstValue * dstFactor;
 }
 
@@ -214,10 +233,21 @@ const DST = new Float64Array(4);
  * and its discard, then blending, masks, and the byte writes. Depth writes
  * happen only when the depth test is enabled, per the ES specification.
  */
-export function shadeFragment(env: DrawEnv, px: number, py: number, z: number, invW: number, frontFacing: boolean): void {
+export function shadeFragment(
+  env: DrawEnv,
+  px: number,
+  py: number,
+  z: number,
+  invW: number,
+  frontFacing: boolean,
+): void {
   const depth = clamp01(z);
   const index = py * env.fbWidth + px;
-  if (env.depthTest && !depthPasses(env.depthFunc, depth, env.depth[index] ?? 0)) return;
+  if (
+    env.depthTest &&
+    !depthPasses(env.depthFunc, depth, env.depth[index] ?? 0)
+  )
+    return;
 
   const fragCoord = env.fragCoord;
   fragCoord[0] = px + 0.5;
@@ -232,7 +262,14 @@ export function shadeFragment(env: DrawEnv, px: number, py: number, z: number, i
   out[1] = 0;
   out[2] = 0;
   out[3] = 0;
-  const discarded = env.fragment(env.varyings, env.uniforms, env.samplers, fragCoord, frontFacing, out);
+  const discarded = env.fragment(
+    env.varyings,
+    env.uniforms,
+    env.samplers,
+    fragCoord,
+    frontFacing,
+    out,
+  );
   if (discarded) return;
 
   // Fragment outputs clamp to [0, 1] before blending, the fixed-point rule.
@@ -255,10 +292,42 @@ export function shadeFragment(env: DrawEnv, px: number, py: number, z: number, i
     DST[2] = (color[ci + 2] ?? 0) / 255;
     DST[3] = (color[ci + 3] ?? 0) / 255;
     const k = env.blendConstant;
-    r = clamp01(blendCombine(env.blendEquationRgb, SRC[0] ?? 0, rgbFactor(env.blendSrcRgb, 0, SRC, DST, k), DST[0] ?? 0, rgbFactor(env.blendDstRgb, 0, SRC, DST, k)));
-    g = clamp01(blendCombine(env.blendEquationRgb, SRC[1] ?? 0, rgbFactor(env.blendSrcRgb, 1, SRC, DST, k), DST[1] ?? 0, rgbFactor(env.blendDstRgb, 1, SRC, DST, k)));
-    b = clamp01(blendCombine(env.blendEquationRgb, SRC[2] ?? 0, rgbFactor(env.blendSrcRgb, 2, SRC, DST, k), DST[2] ?? 0, rgbFactor(env.blendDstRgb, 2, SRC, DST, k)));
-    a = clamp01(blendCombine(env.blendEquationAlpha, SRC[3] ?? 0, alphaFactor(env.blendSrcAlpha, SRC, DST, k), DST[3] ?? 0, alphaFactor(env.blendDstAlpha, SRC, DST, k)));
+    r = clamp01(
+      blendCombine(
+        env.blendEquationRgb,
+        SRC[0] ?? 0,
+        rgbFactor(env.blendSrcRgb, 0, SRC, DST, k),
+        DST[0] ?? 0,
+        rgbFactor(env.blendDstRgb, 0, SRC, DST, k),
+      ),
+    );
+    g = clamp01(
+      blendCombine(
+        env.blendEquationRgb,
+        SRC[1] ?? 0,
+        rgbFactor(env.blendSrcRgb, 1, SRC, DST, k),
+        DST[1] ?? 0,
+        rgbFactor(env.blendDstRgb, 1, SRC, DST, k),
+      ),
+    );
+    b = clamp01(
+      blendCombine(
+        env.blendEquationRgb,
+        SRC[2] ?? 0,
+        rgbFactor(env.blendSrcRgb, 2, SRC, DST, k),
+        DST[2] ?? 0,
+        rgbFactor(env.blendDstRgb, 2, SRC, DST, k),
+      ),
+    );
+    a = clamp01(
+      blendCombine(
+        env.blendEquationAlpha,
+        SRC[3] ?? 0,
+        alphaFactor(env.blendSrcAlpha, SRC, DST, k),
+        DST[3] ?? 0,
+        alphaFactor(env.blendDstAlpha, SRC, DST, k),
+      ),
+    );
   }
 
   const mask = env.colorMask;
@@ -290,9 +359,15 @@ const DEPTH_RESOLUTION = 2 ** -23;
  * interpolated linearly in screen space, divided per fragment), screen-linear
  * depth with polygon offset, then `shadeFragment` per covered pixel.
  */
-export function rasterizeTriangle(env: DrawEnv, v0: WindowVertex, v1: WindowVertex, v2: WindowVertex): void {
+export function rasterizeTriangle(
+  env: DrawEnv,
+  v0: WindowVertex,
+  v1: WindowVertex,
+  v2: WindowVertex,
+): void {
   if (!Number.isFinite(v0.x + v0.y + v1.x + v1.y + v2.x + v2.y)) return;
-  const signedArea2 = (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
+  const signedArea2 =
+    (v1.x - v0.x) * (v2.y - v0.y) - (v1.y - v0.y) * (v2.x - v0.x);
   if (signedArea2 === 0 || !Number.isFinite(signedArea2)) return;
 
   // Facing from the original winding in y-up window space, per frontFace.
@@ -335,7 +410,9 @@ export function rasterizeTriangle(env: DrawEnv, v0: WindowVertex, v1: WindowVert
   if (env.polygonOffsetOn) {
     const dzdx = ((b.z - a.z) * (c.y - a.y) - (c.z - a.z) * (b.y - a.y)) / area;
     const dzdy = ((c.z - a.z) * (b.x - a.x) - (b.z - a.z) * (c.x - a.x)) / area;
-    offset = env.polygonOffsetFactor * Math.max(Math.abs(dzdx), Math.abs(dzdy)) + env.polygonOffsetUnits * DEPTH_RESOLUTION;
+    offset =
+      env.polygonOffsetFactor * Math.max(Math.abs(dzdx), Math.abs(dzdy)) +
+      env.polygonOffsetUnits * DEPTH_RESOLUTION;
   }
 
   // Edge ownership flags, hoisted out of the pixel loop.
@@ -363,7 +440,9 @@ export function rasterizeTriangle(env: DrawEnv, v0: WindowVertex, v1: WindowVert
       const z = la * a.z + lb * b.z + lc * c.z + offset;
       const invW = la * a.invW + lb * b.invW + lc * c.invW;
       for (let j = 0; j < count; j += 1) {
-        varyings[j] = (la * (a.vow[j] ?? 0) + lb * (b.vow[j] ?? 0) + lc * (c.vow[j] ?? 0)) / invW;
+        varyings[j] =
+          (la * (a.vow[j] ?? 0) + lb * (b.vow[j] ?? 0) + lc * (c.vow[j] ?? 0)) /
+          invW;
       }
       shadeFragment(env, px, py, z, invW, front);
     }
