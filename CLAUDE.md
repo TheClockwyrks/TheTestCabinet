@@ -158,6 +158,13 @@ Task-oriented walkthroughs:
   overridable via `TCAB_CONTAINER_IMAGE_GAME_JAM`). Discovery folds this folder into
   the same catalog as `test-cases/`, and they surface on the console's
   **Other → Game Jams** section, not the Test Cases page.
+- **Test-case groups:** [`test-case-groups/`](test-case-groups/) — one
+  `test-case-group.toml` per group (`test-case-groups/<slug>/`) declaring a
+  global, ordered set of related test-case/jam slugs, rendered on the home page
+  as one leaderboard per group. Not the per-account coverage "case group"
+  (`/coverage-groups`); the type is `TestCaseGroup`. See
+  [`test-case-groups/README.md`](test-case-groups/README.md) and
+  [`components/core/test-case-groups.md`](apps/docs/src/content/docs/components/core/test-case-groups.md).
 - **Models:** the model catalog is **owned by the backend** (SeaORM `model` /
   `model_alias` / `model_price` tables), served at `GET /models`, and baked into
   the public R2 snapshot as `models.json`. There is no `models/` directory. Any

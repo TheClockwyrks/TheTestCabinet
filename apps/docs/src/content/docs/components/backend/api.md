@@ -387,6 +387,29 @@ The driver reads this before seeding a repeated jam run so the run can be briefe
 on earlier entries. Earlier runs count whether or not they were published; only
 those that captured a README appear.
 
+## Test case groups
+
+### `GET /test-case-groups`
+
+The ingested [test-case groups](/components/core/test-case-groups/), under
+`groups`, in display order: the ordering rank is applied before serving and
+does not ride the wire. Each entry carries the group's slug, name, optional
+summary, and its member case slugs in authored order. An open read, backing the
+home page's per-group leaderboards.
+
+```jsonc
+{
+  "groups": [
+    {
+      "slug": "tower-defense",
+      "name": "Tower Defense",
+      "summary": "Mazes, waves, and tower placement.",
+      "cases": ["meltdown", "valence", "arc-foundry"]
+    }
+  ]
+}
+```
+
 ## Reviewing, publishing, and reading runs
 
 A run reaches the gallery through two mutating steps: attach one or more
@@ -573,6 +596,16 @@ The offset mode additionally accepts:
   console computes the versions in the anchored `major.minor` or major line from
   the catalog and sends the concrete list. Like `version`, it silences
   `latestVersions`.
+- Filter `testCases`, a comma-separated list of case slugs, narrowing to runs
+  matching any of them. This is the home page's group-leaderboard slice: one
+  query covers a [test-case group](/components/core/test-case-groups/)'s member
+  cases. It ANDs with the other filters, `testCase` included, so naming both
+  narrows to their intersection, and `latestVersions` composes with it as with
+  any case slice.
+- Filter `aesthetic`, one of the aesthetic tiers, narrowing to runs whose
+  aggregate aesthetic rating is exactly that tier. A run no review has rated on
+  that channel never matches. `aesthetic=legendary` newest-first is the home
+  page's showcase query.
 - Current versions `latestVersions=true`, restricting every run to its case's
   current `major.minor`: the newest one that case has a run for within the
   selected `state` slice. A case version is frozen once it has runs, so an older
@@ -942,6 +975,41 @@ the error that voided the call. An open read.
 The providers OpenRouter lists for the model, as name and context length, for
 pinning a probe to one. Requires a bearer token, because it reaches a third
 party on the caller's behalf, like the OpenRouter form fill.
+
+## Cabinet statistics
+
+### `GET /stats/cabinet`
+
+The cabinet's whole-of-corpus headline figures, folded over every stored run
+whatever its state or publication. An open read, backing the home page's totals
+band and activity chart.
+
+- `runs`: the total recorded run count.
+- `tokens`: the summed total tokens, with `unreportedRuns` counting the runs
+  whose metrics reported no tokens; those contribute nothing to the sum.
+- `cost`: the summed [comparable cost](/components/core/metrics/#cost) in USD,
+  with `unreportedRuns` counting the runs whose comparable cost is unknown;
+  those contribute nothing to the sum.
+- `testCases` and `models`: distinct test-case slugs and distinct model ids
+  across the same corpus.
+- `weekly`: runs bucketed by the UTC Monday of the ISO week they started, as
+  `weekStart` in `YYYY-MM-DD` form, covering the last 26 weeks up to now,
+  ascending. A week with no runs is present with a zero count, so a consumer
+  charts the series without filling gaps.
+
+```jsonc
+{
+  "runs": 4210,
+  "tokens": { "total": 91250000000, "unreportedRuns": 12 },
+  "cost": { "total": 48230.55, "unreportedRuns": 40 },
+  "testCases": 47,
+  "models": 63,
+  "weekly": [
+    { "weekStart": "2026-03-02", "runs": 0 },
+    { "weekStart": "2026-03-09", "runs": 118 }
+  ]
+}
+```
 
 ## Provider and accuracy statistics
 

@@ -223,11 +223,12 @@ repos:
         entry: scripts/hooks/specs-markdownlint.sh
         language: script
         # .markdownlint-cli2.yaml's globs drive the file set — test-cases/**/*.md,
-        # game-jams/**/*.md and the documentation site — mirroring `npm run lint:md`,
+        # game-jams/**/*.md, test-case-groups/**/*.md and the documentation site —
+        # mirroring `npm run lint:md`,
         # so don't pass paths; trigger whenever a linted Markdown file is staged, the
         # way rust-fmt keys off staged Rust — or whenever the rule config itself
         # changes, since that re-judges every page, not just the staged ones.
-        files: '^(test-cases/.*\.md|game-jams/.*\.md|apps/docs/src/content/docs/.*\.md|\.markdownlint-cli2\.yaml)$'
+        files: '^(test-cases/.*\.md|game-jams/.*\.md|test-case-groups/.*\.md|apps/docs/src/content/docs/.*\.md|\.markdownlint-cli2\.yaml)$'
         pass_filenames: false
 
       - id: cspell
@@ -240,5 +241,5 @@ repos:
         # one of those extensions is staged — or whenever the config or the
         # project dictionary changes, since deleting a word there can unmask a
         # spelling anywhere in the corpus, not just in what is staged.
-        files: '^(test-cases|game-jams)/.*\.(md|html|css|toml|hbs)$|^cspell\.json$|^\.cspell/'
+        files: '^(test-cases|game-jams|test-case-groups)/.*\.(md|html|css|toml|hbs)$|^cspell\.json$|^\.cspell/'
         pass_filenames: false

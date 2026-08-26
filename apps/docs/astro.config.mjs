@@ -291,6 +291,7 @@ export default defineConfig({
                 "components/core/harnesses",
                 "components/core/orchestrators",
                 "components/core/engines",
+                "components/core/test-case-groups",
                 "components/core/events",
                 "components/core/metrics",
                 "components/core/validation",

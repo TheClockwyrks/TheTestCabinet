@@ -47,6 +47,8 @@ needs a reachable backend (`TCAB_BACKEND_URL`) and a logged-in account. See
   resolved authentication mode has the credentials it needs.
 - `orchestrators` lists the built-in orchestrators and what each one does.
 - `engines` lists the built-in engines and what each one provides.
+- `test-case-groups` lists the [test-case
+  groups](/components/core/test-case-groups/) and each one's member cases.
 
 These listings accept `--json`.
 

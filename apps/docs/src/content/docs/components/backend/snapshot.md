@@ -300,6 +300,22 @@ ingest leaves them as they are.
 Schema:
 [`snapshot/case.schema.json`](https://docs.testcabinet.ai/schema/snapshot/case.schema.json).
 
+## Test-case groups
+
+The ingested [test-case group](/components/core/test-case-groups/) set is
+exported as one object, `test-case-groups.json`, under the snapshot's own
+prefix, and the snapshot's top-level `index.json` names it under an optional
+`testCaseGroupsKey`. The file carries a `schemaVersion` and the groups in the
+order [`GET /test-case-groups`](/components/backend/api/#get-test-case-groups)
+serves them, each with its slug, name, optional summary, and member case slugs,
+so the gallery's home page renders the same leaderboards the consoles do. A
+reader treats an absent key as an empty group set, which is what a snapshot
+written before groups existed carries.
+
+The builder redacts the per-run documents, and a sibling object opts into
+scrubbing when it can carry model-written content. This file is repo-authored
+catalog data, so it is uploaded as built.
+
 ## The gg document corpus
 
 Every recorded [gg](/gg/overview/) run as one flat

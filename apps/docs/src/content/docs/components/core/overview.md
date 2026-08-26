@@ -27,6 +27,8 @@ contracts the rest of the system is built around.
   strategy that decides how a run's harness sessions are conducted.
 - **[Engines](/components/core/engines/)** — the runtime a produced game is built
   on, selected independently of the test case.
+- **[Test case groups](/components/core/test-case-groups/)** — the repo-defined
+  sets of related cases the home page renders one leaderboard per.
 - **[Harness events](/components/core/events/)** — translating each harness's
   raw output into one normalized, live event stream.
 - **[Metrics](/components/core/metrics/)** — recording the run time, token, and

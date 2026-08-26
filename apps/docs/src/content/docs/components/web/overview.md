@@ -93,7 +93,13 @@ A listing re-queries whenever a run finishes, is published, is killed, or is
 deleted, so a run that completes moves from the in-progress rows into the listing
 under the filters and sort already applied.
 
-The home page fetches a recent window, and the case-scoped leaderboard and
+The home page issues bounded reads of its own: one five-run summary query
+filtered to the `legendary` aesthetic tier for its showcase, loading each
+featured run's record for its [showcase](/components/core/showcase/) media; the
+[cabinet statistics](/components/backend/api/#get-statscabinet) read for its
+totals band and activity chart; and one member-case-scoped summary query per
+[test-case group](/components/core/test-case-groups/) for its group
+leaderboards. The case-scoped leaderboard and
 metrics views fetch one bounded, case-scoped summary set. A model's Overview tab
 fetches two such sets: a model-scoped one, which its case and variant picker is
 built from, and the selected case's case-scoped one, which is the field it

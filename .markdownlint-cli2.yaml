@@ -2,9 +2,10 @@
 #
 # Scoped to the authored prose this repository ships or publishes: the test-case
 # specifications under `test-cases/**` and the game-jam briefs under
-# `game-jams/**`, which are what a case or jam version sends to a model, and the
-# documentation site under `apps/docs/src/content/docs/**`, which is the
-# authoritative documentation. See the `lint:md` script in `package.json` and the
+# `game-jams/**`, which are what a case or jam version sends to a model, the
+# test-case group definitions under `test-case-groups/**`, whose display prose
+# the home page renders, and the documentation site under
+# `apps/docs/src/content/docs/**`, which is the authoritative documentation. See the `lint:md` script in `package.json` and the
 # documentation policies in `.claude/skills/documentation/SKILL.md`.
 
 config:
@@ -34,4 +35,5 @@ gitignore: true
 globs:
   - test-cases/**/*.md
   - game-jams/**/*.md
+  - test-case-groups/**/*.md
   - apps/docs/src/content/docs/**/*.md

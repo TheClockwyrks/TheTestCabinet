@@ -3,11 +3,15 @@ title: Overview
 ---
 
 The public site lives at [testcabinet.ai](https://testcabinet.ai) and is where
-published runs are browsed and played. It is a gallery first: the home page and
-the runs index are ordered by recency, and visitors compare implementations
-above all by playing them. Each run also carries a numeric score and
-[rating](/components/core/results/#reviews) aggregated across its reviews, and
-each test case has a [leaderboard](#leaderboard). Only published runs appear.
+published runs are browsed and played. It is a gallery first: visitors compare
+implementations above all by playing them, and the runs index lists the full
+history by recency. The home page leads with a showcase of the newest runs
+rated `legendary`, the cabinet's headline totals and weekly activity, and one
+cross-case leaderboard per [test-case
+group](/components/core/test-case-groups/). Each run carries a numeric score
+and [rating](/components/core/results/#reviews), decided by its validators or
+aggregated across its reviews, and each test case has a
+[leaderboard](#leaderboard). Only published runs appear.
 
 ## How it is served
 
