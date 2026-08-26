@@ -1,0 +1,35 @@
+{
+  "name": "@test-cabinet/simple-3d",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "The Simple 3D engine: the runtime a produced 3D game is built on. An engine is created over a canvas and bound to one game, and it owns the frame loop and its replaceable clock, the letterboxed device-pixel-ratio-aware canvas fit and the frustum camera projection that maps world units into it, named input actions over keyboard bindings and touch layouts, a pointer mapped into the game's logical coordinates, an audio cue bus with its first-gesture unlock, asset loading for meshes, textures, materials, and audio under a fixed root, a diagnostics overlay, the debug surface a game returns beside its state, the write-only WebGL2 scene context the game draws through with its render modes, lights, bitmap-face HUD lettering, and the draw-command recorder inside it whose recordings replay the frames a build drew — leaving the game to write only its own simulation and rendering. Everything it does is observed by subscribing to its events rather than by reading a log it accumulates.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^0.1",
+    "@test-cabinet/headless-webgl2": "^0.1",
+    "jsdom": "^25",
+    "typescript": "^5",
+    "vitest": "^3"
+  },
+  "dependencies": {
+    "ts-essentials": "^10.2.1"
+  }
+}
