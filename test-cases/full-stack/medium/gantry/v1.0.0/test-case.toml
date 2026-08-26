@@ -5,11 +5,6 @@
 # and what a reviewer grades. The testing harness reads this file to resolve a
 # `TestCaseVersion`.
 
-# The manifest format. Format 2 is the one that names engines: it replaces the
-# single `workspace` key with a `[workspaces]` table holding one starter directory
-# per engine.
-format = 2
-
 # The case's stable identity: the definition-store key, recorded in every run.
 slug = "gantry"
 
@@ -27,7 +22,14 @@ slug = "gantry"
 #     against the real engine when it lands. Because the catalogue is closed, the
 #     engine cannot merely be *declared* ahead of itself — the version would fail
 #     to resolve — so the declaration is parked and the case ships `none`-only
-#     until then. The `engines` key below carries the restoration steps.
+#     until then. The `workspace` key below carries the restoration steps.
+#   - The validator suites. The engine manifest format (`engines` +
+#     `[workspaces]`) makes a case validator-rated, and a validator-rated case
+#     requires every graded review point to carry `validation`, `failure_cap`,
+#     and `domains` — suites this case defers until it can run at all. So the
+#     engine format itself is parked with the engine: the case declares the
+#     legacy single `workspace` and its checklist is reviewer-rated until both
+#     are restored together.
 #
 # Note that `experimental` is not what makes any of the above safe: it is read
 # off an already-resolved version, so it hides a case that is otherwise VALID.
@@ -112,50 +114,47 @@ packages = ["@test-cabinet/voxel-runtime"]
 # `engine.slug`. A root key, so it must precede the first table header.
 variants = ["variants/base.toml"]
 
-# The engines a run may select. Gantry is DESIGNED for two, but declares only
-# `none` today — see the `experimental` note. `none` supplies no runtime and no
-# `src/` at all, so the build writes the frame loop, input, audio, overlay, and
-# the `window.__gantry` surface itself. Rendering is the game's either way: the
-# workspace ships `three` and the case's `packages` runtime for the scene.
+# The starter project seeded into the root of every run. It carries the
+# Vite/TypeScript/ESLint/Prettier/Vitest configuration the `[toolchain]` commands
+# run against, an `index.html` holding the canvas, and the `three` +
+# `@test-cabinet/voxel-runtime` dependencies the scene and the produced models
+# are drawn with — that configuration and nothing else: no `src/`. Every run is
+# engineless, so the build writes the frame loop, input, audio, overlay, and the
+# `window.__gantry` surface itself. Rendering is the game's either way.
 #
-# The `simple-3d` half is PARKED, not abandoned. The engine catalogue is closed
-# (`crates/core/src/engine.rs`), so declaring a slug it does not carry makes this
-# whole version fail to resolve — and `experimental` cannot hold it, because that
-# flag is read off an already-resolved version and only hides a case that is
-# otherwise valid. The starter workspace, the specs' `engine.slug` branches, and
-# the reference notes in `variants/base.toml` are all still authored and still on
-# disk; the only thing removed is the declaration. When the engine lands, restore
-# the table below and the `[workspaces]` key beside it, and reconcile both against
-# the real contract:
+# Gantry is DESIGNED for two engines, but the whole ENGINE MANIFEST FORMAT
+# (`engines` + `[workspaces]`) is PARKED here, not abandoned, for two reasons
+# that end at the same place — see the `experimental` note:
+#
+#   - The `simple-3d` engine is not in the catalogue
+#     (`crates/core/src/engine.rs`), and declaring a slug the catalogue does not
+#     carry makes this whole version fail to resolve. `experimental` cannot hold
+#     it: that flag is read off an already-resolved version and only hides a
+#     case that is otherwise valid.
+#   - The engine format makes a case VALIDATOR-RATED, which requires every
+#     graded review point below to declare `validation`, `failure_cap`, and
+#     `domains` — and the validator suites are deferred until the case can run.
+#
+# So the case declares the legacy single `workspace` and stays reviewer-rated.
+# The `simple-3d` starter workspace (`workspaces/simple-3d`, which declares the
+# engine in its `package.json` and seeds `src/constants.ts` + `src/main.ts`,
+# leaving the build to write `src/game.ts`), the specs' `engine.slug` branches,
+# and the reference notes in `variants/base.toml` are all still authored and
+# still on disk; nothing audits for unreferenced files, so they sit inert. When
+# the engine lands, restore the engine format in place of this key — this
+# version is not frozen, so that restoration edits it in place rather than
+# minting a new one — and author the validator suites with it:
+#
+#   engines = ["none"]
 #
 #   [[engine]]
 #   slug = "simple-3d"
 #   min_version = "1.0.0"
 #
-# This version is not frozen, so that restoration edits it in place rather than
-# minting a new one.
-engines = ["none"]
-
-# The starter project seeded into the root of every run, one per engine. It
-# carries the Vite/TypeScript/ESLint/Prettier/Vitest configuration the
-# `[toolchain]` commands run against, an `index.html` holding the canvas, and the
-# `three` + `@test-cabinet/voxel-runtime` dependencies the scene and the produced
-# models are drawn with. `none` supplies that configuration and nothing else: no
-# `src/`.
-#
-# This table must name EXACTLY the engines declared above (the resolver checks
-# both directions), so the `simple-3d` entry is parked with its declaration and
-# restored alongside it:
-#
+#   [workspaces]
+#   none = "workspaces/none"
 #   "simple-3d" = "workspaces/simple-3d"
-#
-# That directory is still committed. It declares the engine in its `package.json`
-# (vendored in at seed time) and seeds the case-owned modules: `src/constants.ts`
-# (every figure the specification fixes) and `src/main.ts` (the entry), leaving
-# the build to write `src/game.ts`. Nothing audits for unreferenced files, so it
-# sits inert until the key returns.
-[workspaces]
-none = "workspaces/none"
+workspace = "workspaces/none"
 
 # How validation (and the per-run static deploy) turns a produced implementation
 # into a served site. `npm ci` is deliberate: it requires a committed lockfile.
@@ -270,13 +269,16 @@ description = "The produced voxel models and audio and the 3D scene they sit in:
 # seeded, so the model never sees it; every item restates a requirement the
 # seeded specification already states, in its vocabulary.
 #
-# NO ITEM DECLARES A `validation` SCRIPT YET, exactly as for the other cases on
-# this branch: the validation suites do not exist, and a manifest naming a script
-# not shipped under `validation/<engine>/` does not resolve. When the suites are
-# written, the mechanical points here (the editor refusals, the static forces on
-# canonical trusses — which have textbook answers to assert against — the axis
-# controller, the pendulum, the attach/release verdicts, and the failure causes)
-# are the ones to move over first.
+# NO ITEM DECLARES `validation`, `failure_cap`, or `domains` YET, and on the
+# legacy single-`workspace` format those keys are refused: the checklist is
+# reviewer-rated, exactly as for the other full-stack cases. Restoring the
+# engine format (see the `workspace` comment above) makes the case
+# validator-rated, at which point EVERY graded point must declare all three.
+# When those suites are written, the mechanical points here (the editor
+# refusals, the static forces on canonical trusses — which have textbook
+# answers to assert against — the axis controller, the pendulum, the
+# attach/release verdicts, and the failure causes) are the ones to script
+# first.
 [review]
 format = 2
 
