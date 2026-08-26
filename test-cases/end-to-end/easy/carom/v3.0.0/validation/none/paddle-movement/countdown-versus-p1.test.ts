@@ -4,10 +4,13 @@
 // specs/modes/versus.md: the pre-serve hold locks the ball, never the paddles. On
 // every `countdown` frame a movement action held moves the human-controlled
 // paddle at `PADDLE_SPEED` (720 units per second) exactly as it does in a
-// rally. So the match is started from the title with the menu keys, the screen
-// is confirmed to be the countdown with the ball still held, and a movement key
-// is pressed through the real input pipeline and held for a window that ends
-// well inside `HOLD_TIME`. The paddle's displacement over that window is
+// rally. So the match is entered from the title with the menu keys — the one
+// route to a countdown the player still controls, since every posing
+// operation (`startMatch` included) hands both paddles to the debug driver
+// and only `reset` gives them back — the screen is confirmed to be the
+// countdown with the ball still held, and a movement key is pressed through
+// the real input pipeline and held for a window that ends well inside
+// `HOLD_TIME`. The paddle's displacement over that window is
 // measured back into a speed, and the screen is read again on the frame the
 // window closes: still the countdown, the ball still waiting. A build that
 // freezes its paddles until the serve moves it nowhere here, and one that only

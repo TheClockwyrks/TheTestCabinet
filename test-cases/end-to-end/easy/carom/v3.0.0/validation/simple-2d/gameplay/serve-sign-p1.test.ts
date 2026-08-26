@@ -32,6 +32,7 @@ import {
   ball0,
   captureReplay,
   createHarness,
+  openCountdown,
   type Harness,
 } from "../harness";
 
@@ -76,8 +77,7 @@ async function nextServe(): Promise<{ vx: number; vy: number }> {
 }
 
 it("draws the serve's vertical sign afresh on every serve toward player one", async () => {
-  harness.debug.reset();
-  harness.debug.startMatch("versus");
+  await openCountdown(harness, "versus");
 
   const serves = await captureReplay(harness, "serves", async () => {
     const launches: { vx: number; vy: number }[] = [];

@@ -7,7 +7,7 @@
 // exact: while the screen is not `playing`, `target = AI_HOME_Y` and
 // `deadzone = AI_HOME_DEADZONE`, so a paddle posed far from home during the
 // countdown moves toward home at `AI_SPEED` and stops within the deadzone. The
-// match is started from the title with the menu keys so the build's own
+// match is opened on its countdown through the debug surface so the build's own
 // countdown is what runs; the AI paddle is then posed near the bottom bound and
 // handed back to the real AI, and half a second later — with the hold still
 // running — it is read: back within the deadzone of home, and the screen still
@@ -30,7 +30,7 @@ import {
   ball0,
   captureReplay,
   createHarness,
-  startWithKeys,
+  openCountdown,
   TICK_HZ,
   type Harness,
 } from "../harness";
@@ -52,7 +52,7 @@ afterEach(async () => {
 });
 
 it("returns the AI paddle home while the countdown runs (Solo)", async () => {
-  await startWithKeys(harness, "solo");
+  await openCountdown(harness, "solo");
   const opened = await harness.snapshot();
   assertEqual(opened.screen, "countdown");
   assertEqual(ball0(opened).held, true);

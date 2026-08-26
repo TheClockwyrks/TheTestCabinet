@@ -32,6 +32,7 @@ import {
   ball0,
   captureReplay,
   createHarness,
+  openCountdown,
   type Harness,
 } from "../harness";
 
@@ -76,13 +77,7 @@ async function nextServe(): Promise<{ vx: number; vy: number }> {
 }
 
 it("draws the serve's vertical sign afresh on every serve toward player one", async () => {
-  // Each level transition is honored at the end of the next advanced frame
-  // (see harness.ts), so the match is open — and the first `nextServe` reads
-  // the countdown, not the title — by the time the run starts.
-  harness.debug.reset();
-  await harness.advance(1);
-  harness.debug.startMatch("versus");
-  await harness.advance(1);
+  await openCountdown(harness, "versus");
 
   const serves = await captureReplay(harness, "serves", async () => {
     const launches: { vx: number; vy: number }[] = [];

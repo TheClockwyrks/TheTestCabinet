@@ -1679,6 +1679,21 @@ export async function startWithKeys(h: Harness, mode: Mode): Promise<void> {
   await h.tap("Enter");
 }
 
+/**
+ * Open a match on its pre-serve countdown through the debug surface alone:
+ * `reset` to a clean title, `startMatch` onto the countdown, nothing else. This
+ * is how a countdown scenario reaches its ground without driving the menus — a
+ * build with a broken menu and a working countdown must fail the navigation
+ * checks and pass the countdown ones. Because `startMatch` is a posing
+ * operation, the opened match's paddles belong to the debug driver: a scenario
+ * about the real input pipeline enters with {@link startWithKeys} instead, and
+ * one that needs the hold already expired opens with {@link startPlaying}.
+ */
+export async function openCountdown(h: Harness, mode: Mode): Promise<void> {
+  await h.debug.reset();
+  await h.debug.startMatch(mode);
+}
+
 /* ---- Goals --------------------------------------------------------------- */
 
 /**
