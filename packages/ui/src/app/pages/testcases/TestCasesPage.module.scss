@@ -138,6 +138,15 @@
   margin-bottom: t.$space-sm;
 }
 
+// Title and latest-version chip share the header's left side, baseline-aligned
+// so the smaller version figure sits on the title's text line.
+.cardHeading {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
 .cardTitle {
   margin: 0;
   font-size: t.$font-lg;
@@ -145,6 +154,14 @@
   letter-spacing: 0.04em;
   color: t.$color-accent;
   @include h.halo-glow;
+}
+
+// The case's newest published version ("v1.0.0"), muted beside the title.
+.version {
+  flex-shrink: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  @include h.halo;
 }
 
 // Difficulty badge; hue shifts from positive (easy) to accent-2 (hard).

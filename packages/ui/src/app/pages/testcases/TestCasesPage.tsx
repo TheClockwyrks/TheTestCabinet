@@ -117,7 +117,12 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
                     className={styles.card}
                   >
                     <div className={styles.cardHeader}>
-                      <h2 className={styles.cardTitle}>{testCase.name}</h2>
+                      <div className={styles.cardHeading}>
+                        <h2 className={styles.cardTitle}>{testCase.name}</h2>
+                        <span className={styles.version}>
+                          {testCase.latestVersion}
+                        </span>
+                      </div>
                       <span
                         className={styles.difficulty}
                         data-level={testCase.difficulty}

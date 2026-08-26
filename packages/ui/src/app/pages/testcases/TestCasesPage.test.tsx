@@ -59,6 +59,8 @@ function testCase(
     difficulty: "hard",
     tags: ["arcade"],
     summary: `${name} summary`,
+    versions: ["v1.2.0", "v1.0.0"],
+    latestVersion: "v1.2.0",
     ...extra,
   } as TestCaseSummary;
 }
@@ -158,6 +160,22 @@ describe("TestCasesPage", () => {
         within(nav).queryByRole("link", { name: label }),
       ).not.toBeInTheDocument();
     }
+  });
+
+  it("shows each case's latest version beside its title", () => {
+    ready([
+      testCase("Sunfront", "end-to-end"),
+      testCase("Wireworm", "end-to-end", {
+        versions: ["v2.1.0", "v1.0.0"],
+        latestVersion: "v2.1.0",
+      }),
+    ]);
+
+    renderPage("end-to-end");
+
+    // One chip per card, carrying that card's own newest version.
+    expect(screen.getByText("v1.2.0")).toBeInTheDocument();
+    expect(screen.getByText("v2.1.0")).toBeInTheDocument();
   });
 
   it("scopes the grid to the rendered tab's type", () => {
