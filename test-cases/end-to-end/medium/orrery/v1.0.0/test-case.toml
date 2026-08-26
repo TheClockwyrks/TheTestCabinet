@@ -5,14 +5,6 @@
 # and what a reviewer grades. The testing harness reads this file to resolve a
 # `TestCaseVersion`.
 
-# The manifest format. Format 2 is the one that names engines: it replaces the
-# single `workspace` key with a `[workspaces]` table holding one starter directory
-# per engine, and it is the only format under which `engines` and `[[engine]]` are
-# legal. Orrery is built two ways — with a runtime handed to it and with no
-# runtime at all — so a single starter directory could not stand for both and
-# format 1 is not an option here.
-format = 2
-
 # The case's stable identity: the definition-store key, recorded in every run.
 slug = "orrery"
 
@@ -74,8 +66,9 @@ max_runtime_hours = 6
 # Init command, run in the run container once the workspace and specs are seeded
 # and before the harness starts. It installs the seeded project's dependencies —
 # the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
-# the model's own vitest tests can draw through, and, on an engine run, the
-# vendored engine — and downloads the Playwright Chromium build (the base image
+# the model's own vitest tests can draw through, and, once the parked engine
+# format below is restored, on an engine run the vendored engine — and downloads
+# the Playwright Chromium build (the base image
 # ships the OS libraries Chromium links against, but not the browser binary), so
 # the model can build the game and look at it in a browser without any further
 # setup.
@@ -94,81 +87,49 @@ init = "npm install && npx playwright install chromium"
 # This list is a root key, so it must precede the first table header.
 variants = ["variants/base.toml"]
 
-# The engines a run of this case may select. An engine is the runtime the produced
-# game is built on — the frame loop and the delta time it hands the game, the
-# input actions a player drives it with, the audio bus, asset loading, and the
-# on-screen diagnostics. It is a *run dimension*, chosen per run alongside the
-# model, the harness, and the variant, and recorded on the run; it is not a
-# property of the game.
+# The starter project seeded into the root of every run before the specs
+# (`workspaces/none/package.json` seeds to `package.json`). It carries the
+# Vite/TypeScript/ESLint/Prettier/Vitest configuration the `[toolchain]` commands
+# below run against, and an `index.html` holding the canvas — that configuration
+# and nothing else: no `src/`. Every run is engineless, so the build writes its
+# own frame loop, canvas fit, keyboard and pointer input, audio, diagnostics
+# overlay and `window.__orrery` surface, and every figure the specification
+# fixes, from the specs alone.
 #
-# Orrery supports two, and the game is the same under both. What differs is how
-# much of the build is handed over: `simple-2d` vendors the runtime as a package
-# and seeds the modules around it (`src/constants.ts`, `src/main.ts`, and the
-# `src/game.ts` the build writes, debug surface included), while `none` supplies no
-# runtime and no `src/` at all, so the build writes the frame loop, the input, the
-# audio, the overlay and the `window.__orrery` surface itself. The POINTER the
-# editor is operated with follows that split: `simple-2d` owns it and hands the
-# build positions already in logical stage units with press and release edges,
-# while an engineless build maps the page's pointer itself — which is why
-# `specs/controls.md` branches on the engine only to say where the pointer comes
-# from.
+# Orrery is DESIGNED for two engines — `none` and `simple-2d`, the same game
+# under both — but the whole ENGINE MANIFEST FORMAT (`engines` + `[workspaces]`)
+# is PARKED here, not abandoned, for one reason that takes both halves with it:
 #
-# The game the two describe is the same one, so the review checklist below is the
-# same for either and a score recorded under one engine is comparable with a score
-# recorded under the other; the specs branch only where the deliverable differs.
+#   - The engine format makes a case VALIDATOR-RATED, which requires every
+#     graded review point below to declare `validation`, `failure_cap`, and
+#     `domains` — and this case's validator suites are not authored yet, so a
+#     manifest declaring the format does not resolve.
+#   - The `simple-2d` declaration is parked with it: the engine is in the
+#     catalogue, but `engines` and `[[engine]]` are legal only under the engine
+#     format, so an engine cannot be declared without also taking on the
+#     validator obligation above.
 #
-# `none` supplies no package and therefore carries no version, so it is named in
-# the bare `engines` list; `simple-2d` carries a range and is named in an
-# `[[engine]]` table. The range is pinned because a specification is written
-# against a runtime contract: `min_version` is the 1.0.0 API the specs are written
-# against, and there is deliberately no `max_version`, so a later 1.x or 2.x from
-# the host package store is accepted as it lands. Widening or moving a range means
-# a new case version, so the pin is the statement that THIS spec set matches THIS
-# contract.
+# So the case declares the legacy single `workspace` and stays reviewer-rated.
+# The `simple-2d` starter workspace (`workspaces/simple-2d`, which declares the
+# engine in its `package.json` — vendored in at seed time — and seeds
+# `src/constants.ts` + `src/main.ts`, leaving the build to write `src/game.ts`),
+# the specs' `engine.slug` branches, and the workspace note in
+# `variants/base.toml` are all still authored and still on disk; nothing audits
+# for unreferenced files, so they sit inert. When the validator suites are
+# authored, restore the engine format in place of this key — this version is not
+# frozen, so that restoration edits it in place rather than minting a new one —
+# together with those suites:
 #
-# What this declaration deliberately does NOT do is describe an engine. An engine
-# ships its own documentation from its own package, and seeding puts it in the run
-# for the model to read, so the specs seeded from this folder never restate an
-# engine's API and never fall out of date when it changes. Where a spec speaks of
-# the runtime it does so only to state what is specific to *this game* under it —
-# Orrery's actions and key bindings, its six cue names, and what it needs from a
-# pointer — never to teach the runtime.
+#   engines = ["none"]
 #
-# `engines` is a root key, so it must precede the first table header.
-engines = ["none"]
-
-[[engine]]
-slug = "simple-2d"
-min_version = "1.0.0"
-
-# The starter project seeded into the root of every run before the specs, one per
-# engine. Both carry the same Vite/TypeScript/ESLint/Prettier/Vitest configuration
-# the `[toolchain]` commands below run against, and an `index.html` holding the
-# canvas. What differs is how much of the build is supplied with them.
+#   [[engine]]
+#   slug = "simple-2d"
+#   min_version = "1.0.0"
 #
-#   - `none`      supplies the configuration and nothing else. There is no `src/`:
-#                 the build writes its own frame loop, canvas fit, keyboard and
-#                 pointer input, audio, diagnostics overlay and `window.__orrery`
-#                 surface, and every figure the specification fixes, from the specs
-#                 alone.
-#   - `simple-2d` declares the engine in its `package.json`, which is vendored in
-#                 at seed time so the build imports it by its bare package name,
-#                 and seeds the case-owned modules around the game:
-#                 `src/constants.ts` (every figure this specification fixes — the
-#                 stage, field, and editor geometry, the mote and part rosters, the
-#                 costs, the speeds, the action bindings, the cue names, the screen
-#                 copy; the LOOK is not among them) and `src/main.ts` (the browser
-#                 entry). The build writes `src/game.ts`: the state, the debug
-#                 surface its `initialize` returns beside that state, the three
-#                 functions, and the `BACKGROUND` color `src/main.ts` hands the
-#                 engine.
-#
-# The single variant declares no `[workspaces]` of its own, because there is no
-# second game for one to differ in. The seeded files land at the run root
-# (`workspaces/none/package.json` seeds to `package.json`).
-[workspaces]
-none = "workspaces/none"
-"simple-2d" = "workspaces/simple-2d"
+#   [workspaces]
+#   none = "workspaces/none"
+#   "simple-2d" = "workspaces/simple-2d"
+workspace = "workspaces/none"
 
 # How validation (and the per-run static deploy) turns a produced implementation
 # into a served site. These run verbatim from the build's repository root:
@@ -397,8 +358,8 @@ description = "The look and sound of the sky and the machine, which this case le
 # review item, worth one point (the default weight), so a category is worth the
 # number of items it holds. A category carries no prose of its own; each item
 # states in `description` the single observable requirement being checked. The
-# checklist is common to every run: there is one variant and the two engines
-# produce the same game, so nothing here is conditional.
+# checklist is common to every run: there is one variant and the two designed
+# engines produce the same game, so nothing here is conditional.
 #
 # The checklist is reporter-side material — never seeded into a run, so the model
 # never sees it. Every item restates a requirement the seeded specification already
@@ -406,24 +367,26 @@ description = "The look and sound of the sky and the machine, which this case le
 # build that read the specs carefully has already been told everything on this
 # list.
 #
-# NO ITEM DECLARES A `validation` SCRIPT. Every point here is decided by a reviewer
-# playing the build. That is deliberate and temporary: this case's validation
-# suites do not exist yet, and a manifest naming a script that is not shipped under
-# `validation/<engine>/` does not resolve. When those suites are written — one
-# directory per engine, `validation/none/` driving the build in Chromium through
-# `window.__orrery` and `validation/simple-2d/` running in process against the
-# vendored engine — the mechanical points here are the ones to move over first,
-# and each gains a `validation` key naming its suite. The intended shape of those
-# suites: smoke tests that pose small fixed challenges through `loadPuzzle`, drive
-# the editor through the pointer operations and real key events to place a part
-# and write a tape, and read the outcome from `snapshot`; then deeper passes that
-# `loadSolution` known machines onto fixed challenges and step them cycle by
-# cycle, asserting every sigil effect, every fault (the collision examples in
-# specs/simulation.md are written to be replayed verbatim), the metrics, and the
-# reference solutions the build itself ships. Until then this list is what a
-# reviewer works down with the build in front of them, which is why every item is
-# phrased as something a person can SEE happen rather than as an assertion over a
-# number they would have to read out of a console.
+# NO ITEM DECLARES `validation`, `failure_cap`, or `domains`, and on the legacy
+# single-`workspace` format those keys are refused: the checklist is
+# reviewer-rated, every point decided by a reviewer playing the build. Restoring
+# the engine format (see the `workspace` comment above) makes the case
+# validator-rated, at which point EVERY graded point must declare all three.
+# When the suites are written — one directory per engine, `validation/none/`
+# driving the build in Chromium through `window.__orrery` and
+# `validation/simple-2d/` running in process against the vendored engine — the
+# mechanical points here are the ones to script first. The intended shape of
+# those suites: smoke tests that pose small fixed challenges through
+# `loadPuzzle`, drive the editor through the pointer operations and real key
+# events to place a part and write a tape, and read the outcome from `snapshot`;
+# then deeper passes that `loadSolution` known machines onto fixed challenges
+# and step them cycle by cycle, asserting every sigil effect, every fault (the
+# collision examples in specs/simulation.md are written to be replayed
+# verbatim), the metrics, and the reference solutions the build itself ships.
+# Until then this list is what a reviewer works down with the build in front of
+# them, which is why every item is phrased as something a person can SEE happen
+# rather than as an assertion over a number they would have to read out of a
+# console.
 [review]
 format = 2
 

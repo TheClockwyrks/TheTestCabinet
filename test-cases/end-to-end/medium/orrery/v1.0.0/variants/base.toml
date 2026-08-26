@@ -25,8 +25,11 @@ description = "The full machine-building game: the build's own Campaign course a
 # does not resolve refuses the whole case. Declare the table here when they land,
 # exactly as Refract's base variant declares its two.
 
-# No `[workspaces]` table either. The case's common table covers both engines and
-# there is nothing variant-specific to replace it with.
+# No `[workspaces]` table either. The engine manifest format is PARKED in
+# `test-case.toml` (see its `workspace` comment), so the case declares the
+# legacy single `workspace` — and even once the format is restored, its common
+# table covers both engines and there is nothing variant-specific to replace it
+# with.
 
 # No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
 # point and every rated domain applies to every run, so they are all declared
