@@ -531,7 +531,7 @@ fn stored_manifest_carries_the_engines_the_case_declares() {
     let carom = catalog.resolve("carom", "v3.0.0").unwrap();
     let manifest = build_stored_manifest(&carom).unwrap();
     let slugs: Vec<&str> = manifest.engines.iter().map(|e| e.slug.as_str()).collect();
-    assert_eq!(slugs, vec!["none", "simple-2d"]);
+    assert_eq!(slugs, vec!["none", "simple-2d", "structured-2d"]);
     // A pinned engine keeps its floor through the store, or the gate would admit a
     // staged runtime the case's specs were never written against.
     let pinned = manifest
