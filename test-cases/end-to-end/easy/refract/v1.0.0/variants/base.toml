@@ -19,26 +19,34 @@ description = "The optical bench with both modes: the fixed twenty-four-board Ca
 # add one, it almost certainly belongs in `test-case.toml` as a common spec.
 
 # The authored correct build, one directory per supported engine, because the
-# build a reference demonstrates differs under each: `references/none` carries
-# its own runtime layer (frame loop, canvas fit, keyboard and pointer input,
-# audio, overlay, and the `window.__refract` surface), `references/simple-2d`
-# hands all of that to the engine package resolved from the repository's
-# `packages/simple-2d` and ships the game as `src/game.ts` beside the seeded
-# entry point, and `references/structured-2d` writes the game inside the
-# gameplay framework resolved from `packages/structured-2d`, as the game
-# definition, instance, mode, state, and actors `src/game.ts` exports. The game
-# any of them implements is identical, which is what makes a run on one engine
-# comparable with a run on another. The table names every engine the case
-# supports and nothing else. No reference directory is ever seeded into a run:
-# each is the authored answer, built with the case's own `[build]` commands and
-# held to the same four toolchain gates a run is.
+# build a reference demonstrates differs under each. This table must name
+# EXACTLY the engines the case supports (the resolver checks both directions),
+# and the engine manifest format is PARKED in `test-case.toml` — see the
+# `workspace` comment there — so the case supports only `none` today and the
+# two engine entries are parked with it, restored alongside the format:
+#
+#   "simple-2d" = "references/simple-2d"
+#   "structured-2d" = "references/structured-2d"
+#
+# All three reference directories stay committed on disk: `references/none`
+# carries its own runtime layer (frame loop, canvas fit, keyboard and pointer
+# input, audio, overlay, and the `window.__refract` surface),
+# `references/simple-2d` hands all of that to the engine package resolved from
+# the repository's `packages/simple-2d` and ships the game as `src/game.ts`
+# beside the seeded entry point, and `references/structured-2d` writes the game
+# inside the gameplay framework resolved from `packages/structured-2d`, as the
+# game definition, instance, mode, state, and actors `src/game.ts` exports. The
+# game any of them implements is identical, which is what makes a run on one
+# engine comparable with a run on another; nothing audits for unreferenced
+# files, so the parked two sit inert until their entries return. No reference
+# directory is ever seeded into a run: each is the authored answer, built with
+# the case's own `[build]` commands and held to the same four toolchain gates a
+# run is.
 [reference_implementation]
 none = "references/none"
-"simple-2d" = "references/simple-2d"
-"structured-2d" = "references/structured-2d"
 
-# No `[workspaces]` table either. The case's common table covers every engine and
-# there is nothing variant-specific to replace it with.
+# No workspace override either. The case's common `workspace` covers every run
+# and there is nothing variant-specific to replace it with.
 
 # No `[[review.categories]]` and no `[[domain]]`. With a single variant, every
 # point and every rated domain applies to every run, so they are all declared
