@@ -147,6 +147,7 @@ name = "Frenzy"              # display name (optional; defaults to a humanized s
 description = "..."          # optional inline prose (site-facing)
 workspace = "workspaces/frenzy" # engineless cases only; REPLACES the common workspace
 reference_implementation = "references/frenzy" # optional correct build (never seeded)
+showcase = "showcase/frenzy"    # optional demo media captured from that build (never seeded)
 
 # In place of `workspace`, for a case that names engines: one starter directory per
 # engine, replacing the case's whole `[workspaces]` table for runs of this variant.
@@ -577,10 +578,19 @@ static output must land in the same `dist/`, `build/`, or `out/` a run's build
 uses. A reference implementation is never seeded into a run: it is the authored
 answer. It is published out-of-band by
 [`tcab publish-reference`](/components/cli/overview/#commands), whose served URL
-the backend records per engine, and shown on the case page's Reference tab. It
+the backend records per engine, and offered from the case page's Play tab. It
 is also what
 [`tcab capture-baselines`](/components/cli/overview/#commands) drives to
 synthesize the baseline half of the validation media.
+
+`showcase` names a directory, likewise resolved against the version folder,
+holding the variant's [case showcase](/components/core/showcase/#the-case-showcase):
+a `showcase.md` description, a `showcase.toml` media carousel, and the media
+files themselves, captured from the reference implementation. It is the
+presentation the catalog's preview stage and the case page's Play tab render.
+Like the reference implementation it is never seeded into a run, and the
+showcase page defines the directory format and the validation applied at
+resolution.
 
 ## Sub-items
 

@@ -61,6 +61,8 @@ media/runs/<run-id>/showcase/<file>
 media/runs/<run-id>/code-analysis/v<generation>.json
 media/cases/<slug>/<version>/references/<scope>/<digest>-<view>.png
 media/cases/<slug>/<version>/validation-baseline/<engine>/<variant>/<digest>-<file>
+media/cases/<slug>/<version>/showcase/<variant>/<digest>-<file>
+files/cases/<slug>/<version>/workspace/<digest>-<basename>
 pfp/<account-id>
 ```
 
@@ -173,10 +175,12 @@ arrives at the gallery as JSON.
 ## Case media
 
 A case-metadata file names its media the same way: `references[]` for the
-rendered reference baselines and `validationBaselines[]` for the committed
-validation baselines, under `media/cases/<slug>/<version>/`. A version with a
-published run is [frozen](/development/frozen-versions/), so re-uploading its
-baselines on every publish would be waste.
+rendered reference baselines, `validationBaselines[]` for the committed
+validation baselines, and each variant's `showcase` for its authored [case
+showcase](/components/core/showcase/#the-case-showcase) media, under
+`media/cases/<slug>/<version>/`. A version with a published run is
+[frozen](/development/frozen-versions/), so re-uploading its baselines on every
+publish would be waste.
 
 A reference image is rendered from a committed mockup at ingest rather than
 committed as bytes, so a re-ingest on a different browser build can legitimately
@@ -192,6 +196,21 @@ new key and are uploaded. The key is derived from the source bytes, so the
 decision is made before any work happens: a video baseline already in the bucket
 costs neither an upload nor a transcode. Computing the digest needs only a local
 store read.
+
+Showcase media follows the same content-addressed rule, and its videos the
+same transcode rule as run media: a `.webm` entry is published as `.mp4`, with
+the entry's `file` keeping its authored spelling while its `key` ends `.mp4`,
+so a reader follows the key rather than composing one from the name.
+
+## Case files
+
+A case version's starter-workspace files are published under
+`files/cases/<slug>/<version>/workspace/`, content-addressed like case media
+and keyed by digest plus base name. They sit under their own prefix because
+they are not media: they are the text files a run is seeded with, served with
+text content types so the gallery's Inputs viewer can display a fetched file
+rather than download it. Variants sharing the case's common workspace resolve
+to identical bytes and collapse onto one key, uploaded once.
 
 ## Reviewer pictures
 
@@ -283,6 +302,16 @@ engine its run recorded. A variant also names its deployed reference
 implementations: a `referenceBuilds` map of engine slug to URL for playable
 builds, or a `referenceSheet` of published frame indices whose object keys the
 site derives itself. The file carries no mockup HTML and no host paths.
+
+A variant carries its authored `showcase` when it declares one: the
+description, verbatim markdown, and the media carousel with each entry naming
+the [published object](#case-media) its bytes live at. It also carries
+`workspaceFiles`, the starter-workspace files a run of it is seeded with, each
+pairing the run-root-relative destination path with the [published
+key](#case-files) of its bytes; the engineless set rides the variant and each
+`engineRenderings` entry carries the set for its engine, matching the
+prompt-and-specs split. Only the addressing is inlined, so the site's Inputs
+tab fetches a starter file when it is opened.
 
 Only a version that at least one published run built is emitted. The site keys
 lookups by `(slug, version)` from each run's subject, so it fetches exactly the

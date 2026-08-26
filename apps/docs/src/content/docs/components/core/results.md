@@ -90,16 +90,15 @@ match. It upserts each URL and prunes any the lockfile no longer lists.
 
 A version's `GET /test-cases/{slug}/versions/{version}` response carries each
 variant's `referenceBuilds` map, keyed by engine, and the public snapshot
-serializes it as the same field. On the case page it appears as a Reference tab,
-shown for a case whose selected variant has a recorded build, embedding the game
-inline with a fullscreen toggle and a switch between engines when more than one
-is recorded.
+serializes it as the same field. On the case page it appears on the landing
+Play tab, as a launch panel opening the build recorded for the page's anchored
+variant and engine.
 
 ### Script references (asset generation)
 
 An asset-generation case has no `[build]` table and produces no site, so it
-records no Pages URL. It uses the same `reference_implementation` key and the
-same Reference tab.
+records no Pages URL. It uses the same `reference_implementation` key, and its
+published frames appear on the case page's Reference tab.
 
 Its reference is a `draw.sh` containing nothing but calls to the case's drawing
 binary, drawing the correct sheet the same one-operation-at-a-time way a model

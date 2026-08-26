@@ -94,8 +94,9 @@ from what that version declares.
 version, each version's variant names, and each version's supported engines —
 and the layout resolves the selected coordinate through the same
 `readCaseVariant` a run's Inputs surface uses. The tabs that render the
-deliverable itself (Inputs, Reviewing, Reference) render exactly that resolved
-coordinate, and the header's Run action launches it.
+deliverable itself (the Play landing tab, Inputs, Reviewing, and an asset
+case's reference-sheet tab) render exactly that resolved coordinate, and the
+header's Run action launches it.
 
 The tabs that aggregate runs (Runs, Leaderboard, Metrics) scope relative to the
 anchored coordinate rather than selecting one of their own. Each carries a
@@ -110,8 +111,11 @@ query string (`?scope=`, `?engines=`, `?variants=`) and travel across tabs, so
 the run list and the boards describe the same cohort.
 
 The whole-history tabs (Changelog, Errata) cover every version regardless of the
-anchor, and the Overview tab shows the case's description with a note when the
-anchored version is not the one the description accompanies.
+anchor, and the landing tab shows the case's description with a note when the
+anchored version is not the one the description accompanies. The landing tab is
+labelled Play when the anchored variant has a
+[showcase](/components/core/showcase/#the-case-showcase) or a recorded
+reference build, and Overview otherwise.
 
 ## Asset viewers
 

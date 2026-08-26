@@ -176,7 +176,13 @@ The catalog: every ingested case and its available versions, under `testCases`.
 Experimental versions are included only when the backend is configured to offer
 them. Each entry also carries the display metadata a listing renders, the name,
 test type, asset shape, difficulty, tags, and summary, read from the case's
-latest visible version.
+latest visible version, plus the case's
+[showcase](/components/core/showcase/#the-case-showcase) preview when that
+version has one: the first variant, in manifest order, that declares a
+showcase, with the media list the catalog's preview stage loops. The preview
+carries only the addressing; each file is fetched from the [showcase
+route](#get-test-casesslugversionsversionshowcasevariantfile), and the
+description rides the resolved version's variant.
 
 ```jsonc
 {
@@ -189,23 +195,33 @@ latest visible version.
       "assetKind": "sprite",
       "difficulty": "easy",
       "tags": ["arcade"],
-      "summary": "A duel of angles."
+      "summary": "A duel of angles.",
+      // The showcase preview, or null when no variant of the latest visible
+      // version declares a showcase.
+      "showcase": {
+        "version": "v1.1.0",
+        "variant": "base",
+        "media": [
+          { "file": "ai-block.json.gz", "name": "The AI blocks a shot", "kind": "replay" }
+        ]
+      }
     }
   ]
 }
 ```
 
 This is the **summary** half of the catalog contract, and it is deliberately
-self-sufficient: a client renders a whole catalog grid from this one request.
-Anything heavier than a card — the description, the variants with their prompts,
+self-sufficient: a client renders the whole catalog listing, preview stage
+included, from this one request.
+Anything heavier — the description, the variants with their prompts,
 seeded specs, references and checklists, plus the changelog and errata — lives on
 [`GET /test-cases/{slug}/versions/{version}`](#get-test-casesslugversionsversion)
 and is fetched only for the case a visitor opens. Folding that detail into the
 listing costs a request per version *and* per variant, for every case in the
-catalog, before the grid can paint.
+catalog, before the listing can paint.
 
 A case whose latest manifest cannot be read is omitted from this listing rather
-than failing it, so one unreadable sidecar costs that case's card and not the
+than failing it, so one unreadable sidecar costs that case's entry and not the
 whole catalog.
 
 Schema:
@@ -280,7 +296,15 @@ A representative response:
       // Variant-specific reviewer checklist items, for the consoles' guided
       // review. Empty when the variant declares none. On an engine-format
       // version each graded point carries its `domains` and `failureCap`.
-      "reviewItems": []
+      "reviewItems": [],
+      // The variant's authored showcase, or null when it declares none. Each
+      // media file is fetched from the showcase route below.
+      "showcase": {
+        "description": "…the authored showcase.md, verbatim markdown…",
+        "media": [
+          { "file": "ai-block.json.gz", "name": "The AI blocks a shot", "kind": "replay" }
+        ]
+      }
     }
   ],
   // True when the version is on the engine-supported manifest format, which
@@ -377,6 +401,17 @@ is the case-scoped invariant counterpart to a run's own validation media. The
 engine is part of the address because a variant has one reference implementation
 per [engine](/components/core/engines/), and a run is only comparable against
 the one it was itself built on.
+
+### `GET /test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`
+
+Fetch one media file of a variant's authored
+[case showcase](/components/core/showcase/#the-case-showcase), where `{file}` is
+the plain file name the carousel declares. The case-side counterpart of a run's
+`GET /runs/{id}/showcase/{file}`, addressed by case, version, and variant
+because the showcase is authored material committed with the version rather
+than run output. The content type follows the extension. Only a file the
+variant's stored carousel lists resolves, and `showcase.toml` is never served.
+The catalog preview and the resolved version's `showcase` fields point here.
 
 ### `GET /game-jams/{slug}/prior-readmes?model=`
 

@@ -108,6 +108,39 @@ places the model against. Only a run's detail page loads that run's full
 time](/components/backend/api/#get-runsid). Lightweight `RunSummary` cards back
 every list, card, leaderboard, and metric.
 
+## The test cases section
+
+`/test-cases` is a master-detail catalog: an index of every visible case beside
+a preview stage. The search field and the test-type tabs narrow the index. A
+row shows the case's name, latest version, and difficulty, and marks a case
+that has a [showcase](/components/core/showcase/#the-case-showcase); selecting
+one fills the stage with the case's showcase media, summary, and tags, plus a
+link opening the case. The stage loops the first media and offers the rest as
+a filmstrip, and a case with no showcase shows a placeholder. On a narrow
+viewport the stage sits above the index.
+
+A case's detail page lands on its Play tab, shaped like a run's: the anchored
+variant's showcase, a panel launching the deployed [reference
+build](/components/core/results/#reference-implementations) for the anchored
+variant and engine, and the case description. The tab is labelled Play when the
+anchored variant has a showcase or a recorded reference build, and Overview
+otherwise. An asset-generation case whose reference is a published frame sheet
+shows the sheet on a separate Reference tab.
+
+The Inputs tab shows everything a run of the anchored coordinate is seeded
+with, as a file tree beside a persistent viewer: the rendered prompt, the
+seeded specs, the starter-project workspace files, the shipped packages, and
+the seeded reference media, grouped by role. A workspace file's body is fetched
+when it is opened, because a starter project can be large and most readers
+never open one. The same view answers a run's and a game jam's Inputs tab with
+the inputs that run was seeded with, a jam's prior-entry READMEs included. The
+Changelog tab takes the same tree-and-viewer layout, the versions in the rail
+with the anchored one initially selected.
+
+The Reviewing tab shows how runs of the case are scored: the scoring domains
+and the weighted reviewer checklist. The rating scales themselves are described
+once, on the About section's Ratings tab, and the Reviewing intro links there.
+
 ## The runs section
 
 `/runs` is a strip of linkable tabs, each its own route. Tests is the all-runs

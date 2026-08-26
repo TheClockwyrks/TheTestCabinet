@@ -8,7 +8,7 @@ A test case variant's
 [reference implementation](/components/core/results/#reference-implementations)
 is the authored, correct build of the case: the answer key. Publishing one is a
 pull flow: deploy the build, commit the lockfile, then re-ingest so the backend
-reads it onto the case page's Reference tab.
+reads it onto the case page's Play tab.
 
 An asset-generation case publishes differently; see
 [Asset-generation references](#asset-generation-references). The policy for which
@@ -62,7 +62,7 @@ alias, reads the served URL back from `wrangler`, and writes it into
 `test-cases/reference-builds.lock.json` under the `--env` key. `--engine <slug>`
 narrows a run to one engine. The backends ingest that lockfile from their own git
 checkout, which is what lands each URL on the variant's `referenceBuilds` and the
-Reference tab.
+case page's Play tab.
 
 ## Asset-generation references
 

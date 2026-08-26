@@ -8,7 +8,7 @@ A [reference implementation](/components/core/results/#reference-implementations
 is the authored, in-repo, correct static build of a test-case variant on one
 [engine](/components/core/engines/). It is authored under the case's version
 folder (by convention `references/<engine>/<variant>/`), declared by a variant's
-optional `reference_implementation` key, and shown on the case page's Reference
+optional `reference_implementation` key, and offered from the case page's Play
 tab. It is kept out of every run's seed, so it is deployed out-of-band by a
 person.
 
@@ -16,8 +16,8 @@ The unit both commands here work in is the variant-on-an-engine pair, because th
 build a reference demonstrates differs under each engine: an engineless one
 carries its own runtime, an engine-backed one hands the same surfaces to the
 engine it is built on. A variant supporting two engines therefore has two reference
-builds, each deployed and recorded on its own, and the case page's Reference tab
-offers a switch between them.
+builds, each deployed and recorded on its own, and the case page's Play tab
+launches the one recorded for the page's anchored engine.
 
 `tcab publish-reference` builds each targeted reference project with
 the case's own [`[build]` commands](/testing/end-to-end/manifests/), scrubs the
@@ -216,7 +216,7 @@ The backend then loads the lockfile, reads the entries for its own `TCAB_ENV`,
 and reconciles its `case_reference_build` table to match, upserting each URL and
 pruning any it no longer lists. The version's API response and the public
 snapshot then carry each variant's `referenceBuilds`, keyed by engine, and the
-case page shows the Reference tab.
+case page's Play tab offers the build.
 
 A lockfile that is missing, or an environment absent from it, leaves the table
 untouched.
