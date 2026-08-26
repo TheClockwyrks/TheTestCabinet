@@ -2,7 +2,10 @@ use super::*;
 
 use std::collections::HashMap;
 
-use crate::store::{StoredBuild, StoredCase, StoredErratum, StoredReviewItem, StoredVariant};
+use crate::store::{
+    StoredBuild, StoredCase, StoredErratum, StoredReviewItem, StoredShowcase, StoredShowcaseMedia,
+    StoredVariant,
+};
 
 /// A minimal end-to-end manifest with two variants (`base` and `extra`), enough to
 /// exercise [`version_response`]'s per-variant reference-build fold. The prompt
@@ -19,6 +22,7 @@ fn manifest() -> StoredManifest {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        showcase: None,
     };
     StoredManifest {
         toolchain: None,
@@ -596,6 +600,87 @@ fn a_catalog_entry_carries_the_asset_shape_the_catalog_tabs_partition_on() {
 
     assert_eq!(entry.test_type, TestType::AssetGeneration);
     assert_eq!(entry.asset_kind, AssetKind::SpriteSheet);
+}
+
+/// A one-entry stored showcase for `file`, for the fold/preview tests.
+fn stored_showcase(file: &str) -> StoredShowcase {
+    StoredShowcase {
+        description: "A demo game.".to_string(),
+        media: vec![StoredShowcaseMedia {
+            file: file.to_string(),
+            name: "The title screen".to_string(),
+            kind: test_cabinet_core::MediaKind::Image,
+            key: format!("showcase/base/{file}"),
+        }],
+    }
+}
+
+#[test]
+fn a_variant_showcase_is_folded_onto_the_resolved_version() {
+    // A stored showcase must reach the wire on exactly the variant that declares
+    // it: description plus the carousel (file, caption, kind) — and nothing else.
+    // The store-relative key in particular stays behind: a client fetches the bytes
+    // through the showcase route, never by artifact key.
+    let mut manifest = manifest();
+    manifest.variants[0].showcase = Some(stored_showcase("title.png"));
+
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new(), None).unwrap();
+
+    let base = response.variants.iter().find(|v| v.slug == "base").unwrap();
+    let showcase = base.showcase.as_ref().expect("base carries its showcase");
+    assert_eq!(showcase.description, "A demo game.");
+    assert_eq!(showcase.media.len(), 1);
+    assert_eq!(showcase.media[0].file, "title.png");
+    assert_eq!(showcase.media[0].name, "The title screen");
+    assert_eq!(showcase.media[0].kind, test_cabinet_core::MediaKind::Image);
+    let serialized = serde_json::to_value(&showcase.media[0]).unwrap();
+    assert!(
+        serialized.get("key").is_none(),
+        "the store-relative key must not leak onto the wire",
+    );
+    // The variant without one exports none.
+    let extra = response
+        .variants
+        .iter()
+        .find(|v| v.slug == "extra")
+        .unwrap();
+    assert!(extra.showcase.is_none());
+}
+
+#[test]
+fn a_catalog_entry_carries_the_first_showcase_bearing_variants_preview() {
+    // The catalog preview comes from the latest version's first variant (manifest
+    // order) that declares a showcase — here both do, so `base` wins — addressed by
+    // the version and variant the media belongs to.
+    let mut manifest = manifest();
+    manifest.variants[0].showcase = Some(stored_showcase("title.png"));
+    manifest.variants[1].showcase = Some(stored_showcase("other.png"));
+
+    let entry = catalog_case(
+        "carom".to_string(),
+        vec!["v1.0.0".to_string(), "v1.0.1".to_string()],
+        &manifest,
+    );
+
+    let showcase = entry.showcase.expect("the listing carries the preview");
+    assert_eq!(showcase.version, "v1.0.1");
+    assert_eq!(showcase.variant, "base");
+    assert_eq!(showcase.media.len(), 1);
+    assert_eq!(showcase.media[0].file, "title.png");
+
+    // Declared on the second variant only: manifest order decides, not slug order.
+    let mut manifest = self::manifest();
+    manifest.variants[1].showcase = Some(stored_showcase("other.png"));
+    let entry = catalog_case("carom".to_string(), vec!["v1.0.1".to_string()], &manifest);
+    assert_eq!(entry.showcase.unwrap().variant, "extra");
+
+    // No variant declares one: the card renders its placeholder stage.
+    let entry = catalog_case(
+        "carom".to_string(),
+        vec!["v1.0.1".to_string()],
+        &self::manifest(),
+    );
+    assert!(entry.showcase.is_none());
 }
 
 /// The prompt template both engine-rendering tests render. A case's real

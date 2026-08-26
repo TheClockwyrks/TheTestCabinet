@@ -12,6 +12,9 @@ description = "The obstacles sway and rotate, so the ball bounces off tilted, or
 # and snapshot field are the `gyre` branch of `specs/instrumentation.md.hbs`. So gyre
 # declares no `spec` of its own.
 
+# Curated demo media for this variant, captured from the reference build below.
+showcase = "showcase/gyre"
+
 # The authored, *correct* static build of this variant, one per engine — see
 # `variants/base.toml` for what a reference implementation is and how it is
 # published. Under `none` the build carries its own runtime in `src/host.ts`;

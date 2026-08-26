@@ -1,0 +1,15 @@
+[[media]]
+file = "ai-block.json.gz"
+name = "The AI blocks a shot amid the moving obstacles"
+
+[[media]]
+file = "obstacles-spin.json.gz"
+name = "The obstacles rotating in place"
+
+[[media]]
+file = "tilted-bounce.json.gz"
+name = "A shot deflecting off a tilted face"
+
+[[media]]
+file = "mid-match-hud.png"
+name = "The field and HUD mid-match"

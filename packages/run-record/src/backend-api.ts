@@ -7,7 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
-import type { AssetKind, HarnessFamily, TestType } from "./index";
+import type { AssetKind, HarnessFamily, MediaKind, TestType } from "./index";
 
 /**
  * The `error` member of an [`ErrorEnvelope`]: a stable machine-readable code and
@@ -19,6 +19,45 @@ export type ErrorBody = { code: string; message: string };
  * The JSON body of an error response: `{ "error": { "code", "message" } }`.
  */
 export type ErrorEnvelope = { error: ErrorBody };
+
+/**
+ * One entry of a served showcase carousel: the file name the showcase route
+ * addresses the bytes by, its caption, and the kind of media it holds.
+ */
+export type ShowcaseMediaOut = {
+  /**
+   * The media file's name in the showcase directory (a plain file name).
+   */
+  file: string;
+  /**
+   * The short caption for the entry.
+   */
+  name: string;
+  /**
+   * Whether the file is a still image, a video clip, or a replay recording.
+   */
+  kind: MediaKind;
+};
+
+/**
+ * A case's catalog showcase preview: which version and variant the media
+ * belongs to, plus the carousel entries themselves — everything a listing card
+ * needs to address the media without resolving the full version.
+ */
+export type CatalogShowcaseOut = {
+  /**
+   * The version the showcase was read from (the case's latest visible one).
+   */
+  version: string;
+  /**
+   * The variant that declares it.
+   */
+  variant: string;
+  /**
+   * The media carousel, in declared order.
+   */
+  media: Array<ShowcaseMediaOut>;
+};
 
 /**
  * One entry of the catalog listing: a case, its visible versions, and the
@@ -55,6 +94,16 @@ export type CatalogCase = {
    * The short plain-text abstract a card shows, when the case declares one.
    */
   summary: string | null;
+  /**
+   * The case's catalog **showcase preview**, when its latest visible version
+   * has one: the first variant (manifest order) of that version that declares
+   * a showcase, with the media list a card's preview stage loops. `null` when
+   * no variant of the latest version declares one. Only the addressing rides
+   * here (the description lives on the resolved version's variant); each
+   * media file is fetched from
+   * `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`.
+   */
+  showcase: CatalogShowcaseOut | null;
 };
 
 export type CatalogResponse = { testCases: Array<CatalogCase> };

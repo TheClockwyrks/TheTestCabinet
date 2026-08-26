@@ -105,6 +105,7 @@ fn frenzy() -> Variant {
         domains: vec![],
         voxel: None,
         reference_impls: Default::default(),
+        showcase: None,
     }
 }
 
@@ -310,6 +311,7 @@ fn strict_mode_rejects_unknown_variables() {
         domains: vec![],
         voxel: None,
         reference_impls: Default::default(),
+        showcase: None,
     };
     assert!(
         render_prompt(&version, &variant, &[], None).is_err(),

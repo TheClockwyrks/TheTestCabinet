@@ -87,6 +87,7 @@ fn variant(slug: &str, engines: &[&str]) -> Variant {
         review_items: Vec::new(),
         domains: Vec::new(),
         voxel: None,
+        showcase: None,
         // Keyed by engine, as resolution produces it: a variant has one reference
         // build per engine, and both commands work in that pair.
         reference_impls: engines

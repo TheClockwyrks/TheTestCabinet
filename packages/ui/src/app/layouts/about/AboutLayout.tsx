@@ -7,7 +7,7 @@ import styles from "./AboutLayout.module.scss";
 
 // The About section's tabs. Each is its own route, so which tab reads as active
 // is driven by the page that rendered the layout.
-export type AboutTab = "about" | "testing" | "metrics";
+export type AboutTab = "about" | "testing" | "ratings" | "metrics";
 
 interface AboutLayoutProps {
   /** Which tab the rendering page represents. */
@@ -18,12 +18,13 @@ interface AboutLayoutProps {
 
 // Shared chrome for the About section: the tab navigation, mirrored from the
 // test-case detail pages. Each tab is a distinct URL so a section is linkable,
-// so the bar uses NavLink rather than in-page state. The three tab pages stay
-// thin and never duplicate this.
+// so the bar uses NavLink rather than in-page state. The tab pages stay thin
+// and never duplicate this.
 export function AboutLayout({ tab, children }: AboutLayoutProps) {
   const tabs: { key: AboutTab; label: string; to: string }[] = [
     { key: "about", label: "About", to: routes.about() },
     { key: "testing", label: "Testing", to: routes.aboutTesting() },
+    { key: "ratings", label: "Ratings", to: routes.aboutRatings() },
     { key: "metrics", label: "Metrics", to: routes.aboutMetrics() },
   ];
 

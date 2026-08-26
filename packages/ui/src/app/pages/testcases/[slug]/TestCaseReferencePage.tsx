@@ -1,37 +1,24 @@
-import { ReferencePlayable } from "../../../components/PlayableEmbed";
+import { Navigate, useLocation } from "react-router";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
+import { routes } from "../../../routes";
 import { ReferenceSheetView } from "./ReferenceSheetView";
 
-// The Reference tab (`/test-cases/:slug/reference`): the authored, in-repo,
-// versioned *correct* answer for the selected variant. What that is depends on what
-// the case produces, so this tab renders one of two things:
+// The Reference tab (`/test-cases/:slug/reference`): the published reference
+// FRAMES of an asset-generation variant — the rendered sheet plus the action log
+// each frame was drawn from, published to the snapshot bucket. There is nothing
+// to embed, so they are rendered natively — see `ReferenceSheetView`.
 //
-//   • An end-to-end / full-stack variant's reference is a deployed static build, so
-//     it is embedded inline. It is the case-variant analogue of a run's Play tab —
-//     but where a run's build is unedited model code shown behind a caveat, a
-//     reference implementation is the correct build (already redacted at publish),
-//     so it loads inline with a fullscreen toggle and no caveat. A variant has one
-//     such build per engine; which one is shown follows the page's ANCHORED engine
-//     (switched in the header, like every other tab), and an anchored engine with
-//     no published build degrades to a placeholder naming the ones that have one.
-//   • An asset-generation variant's reference is *data*, not a page: the rendered
-//     frames plus the action log each was drawn from, published to the snapshot
-//     bucket. There is nothing to embed, so they are rendered natively — see
-//     `ReferenceSheetView`.
-//
-// A variant carries at most one of the two signals in practice (a case is a single
-// test type), so the branch is a genuine either/or rather than a precedence
-// decision; `referenceBuilds` is checked first only because it is the older shape.
-//
-// The layout only surfaces this tab for a variant carrying one of them, so reaching
-// it normally means one is present. A hand-typed URL (or a variant switch to one
-// with neither) still resolves here, where `ReferencePlayable` degrades to a short
-// "no reference implementation" placeholder.
+// This tab used to also host an end-to-end / full-stack variant's deployed
+// reference BUILD. That embed now lives on the detail landing tab's Play surface
+// (beside the showcase carousel), so a coordinate without a `referenceSheet` —
+// whether it has builds, or nothing at all — no longer has a Reference tab, and a
+// hand-typed URL (or a variant switch to such a coordinate) redirects to the
+// landing rather than rendering a duplicate or an empty page. The redirect keeps
+// the query string, so the anchored coordinate survives the hop.
 export function TestCaseReferencePage() {
   return (
     <TestCaseDetailLayout tab="reference">
-      {({ testCase, variant, version, engine }) =>
-        Object.keys(variant.referenceBuilds).length === 0 &&
+      {({ testCase, variant, version }) =>
         variant.referenceSheet ? (
           <ReferenceSheetView
             testCase={testCase}
@@ -40,14 +27,19 @@ export function TestCaseReferencePage() {
             referenceSheet={variant.referenceSheet}
           />
         ) : (
-          <ReferencePlayable
-            referenceBuilds={variant.referenceBuilds}
-            variantName={variant.name}
-            engine={engine}
-            version={version}
-          />
+          <RedirectToLanding slug={testCase.slug} />
         )
       }
     </TestCaseDetailLayout>
+  );
+}
+
+// The redirect target for a sheetless coordinate. A component (rather than an
+// inline `<Navigate>`) because the current search string is read with a hook,
+// and the layout's children prop is a plain render function.
+function RedirectToLanding({ slug }: { slug: string }) {
+  const { search } = useLocation();
+  return (
+    <Navigate to={{ pathname: routes.testCaseDetail(slug), search }} replace />
   );
 }

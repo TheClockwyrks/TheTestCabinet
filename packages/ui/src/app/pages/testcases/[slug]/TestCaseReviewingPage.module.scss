@@ -1,19 +1,20 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/halo" as h;
 
-// The Reviewing tab body: the read-only grading rubric (scoring domains, the
-// rating scale, and the reviewer checklist) for a case's selected variant. The
-// checklist itself is styled by the shared ReviewChecklist component; these styles
-// cover only the surrounding rubric chrome.
+// The Reviewing tab body: the read-only grading rubric (scoring domains and the
+// reviewer checklist) for a case's selected variant. The rating scales live on
+// About → Ratings, which carries the color-coded rows this file used to hold.
+// The checklist itself is styled by the shared ReviewChecklist component; these
+// styles cover only the surrounding rubric chrome.
 
 .intro {
   margin: 0;
   color: t.$color-text-muted;
 }
 
-// A rubric section (Scoring domains, Rating scale) set off from the intro and the
-// checklist below it, matching the spacing the Verdict tab puts between its own
-// domains block and checklist.
+// A rubric section (Scoring domains) set off from the intro and the checklist
+// below it, matching the spacing the Verdict tab puts between its own domains
+// block and checklist.
 .rubric {
   margin-top: t.$space-xl;
 }
@@ -29,9 +30,9 @@
   font-size: t.$font-sm;
 }
 
-// A definition list of term + description rows (a domain and what it covers, or a
-// rating tier and what it means), each with the same left rule the Verdict tab's
-// domain rows carry so the two surfaces read as kin.
+// A definition list of term + description rows (a domain and what it covers),
+// each with the same left rule the Verdict tab's domain rows carry so the two
+// surfaces read as kin.
 .defList {
   list-style: none;
   margin: 0;
@@ -48,50 +49,6 @@
   font-size: t.$font-sm;
   border-left: 3px solid t.$color-border;
   padding: t.$space-xs 0 t.$space-xs t.$space-md;
-}
-
-// A rating-scale row carries its tier's own color on the left rule (the same
-// `--tcab-rating-*` tokens the RatingBadge uses as its primary color), so the scale
-// reads as the color-coded ladder it is rather than a stack of neutral rules. Only
-// rating rows set `data-rating`; the scoring-domain rows keep the default border.
-.defRow[data-rating] {
-  border-left-color: var(--rating-color);
-}
-.defRow[data-rating="flawless"] {
-  --rating-color: var(--tcab-rating-flawless);
-}
-.defRow[data-rating="great"] {
-  --rating-color: var(--tcab-rating-great);
-}
-.defRow[data-rating="passable"] {
-  --rating-color: var(--tcab-rating-passable);
-}
-.defRow[data-rating="scuffed"] {
-  --rating-color: var(--tcab-rating-scuffed);
-}
-.defRow[data-rating="broken"] {
-  --rating-color: var(--tcab-rating-broken);
-}
-
-// The aesthetic scale's rows, colored by the `--tcab-aesthetic-*` tokens the
-// AestheticBadge uses (Legendary takes its primary shimmer color).
-.defRow[data-aesthetic] {
-  border-left-color: var(--rating-color);
-}
-.defRow[data-aesthetic="legendary"] {
-  --rating-color: var(--tcab-aesthetic-legendary);
-}
-.defRow[data-aesthetic="amazing"] {
-  --rating-color: var(--tcab-aesthetic-amazing);
-}
-.defRow[data-aesthetic="good"] {
-  --rating-color: var(--tcab-aesthetic-good);
-}
-.defRow[data-aesthetic="okay"] {
-  --rating-color: var(--tcab-aesthetic-okay);
-}
-.defRow[data-aesthetic="slop"] {
-  --rating-color: var(--tcab-aesthetic-slop);
 }
 
 .defTerm {

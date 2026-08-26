@@ -18,6 +18,14 @@ description = "The optical bench with both modes: the fixed twenty-four-board Ca
 # spec, and no spec of any other kind, to put here. If you came to this file to
 # add one, it almost certainly belongs in `test-case.toml` as a common spec.
 
+# What the game looks like played correctly, shown before anyone runs it: a
+# short video of a three-channel board drawn from empty to solved, plus stills
+# of the title screen, a fresh board, a live mid-draw trace, and the solved
+# bench — all captured from `references/none` driven through its own
+# `window.__refract` pointer path. `showcase/base/showcase.toml` lists the
+# media; `showcase/base/showcase.md` carries the description.
+showcase = "showcase/base"
+
 # The authored correct build, one directory per supported engine, because the
 # build a reference demonstrates differs under each. This table must name
 # EXACTLY the engines the case supports (the resolver checks both directions),

@@ -54,6 +54,19 @@ export const FIXTURE_IDS = {
 
 // ---- Catalog -----------------------------------------------------------------
 
+// The one case-side showcase carousel the stocked catalog carries (on the carom
+// case): one image and one replay entry, so both media shapes render on the walk.
+// The other cases deliberately omit the key — a host that predates the field is a
+// shape the pages must survive too.
+const CASE_SHOWCASE_MEDIA = [
+  { file: "title.png", name: "Title screen", kind: "image" },
+  {
+    file: "rally.json.gz",
+    name: "A rally through the obstacles",
+    kind: "replay",
+  },
+] as const;
+
 // One case per test type the catalog partitions on, so the type tabs, the
 // type-specific detail tabs (the adversarial Arena), and the Other section's game
 // jams all have something to render.
@@ -72,6 +85,14 @@ function testCases(): TestCaseSummary[] {
       name: "Carom",
       testType: "end-to-end",
       assetKind: null,
+      // The catalog showcase preview (latest version, first variant with one),
+      // so the catalog's preview stage renders real media through the stocked
+      // host's `caseShowcaseMediaUrl`.
+      showcase: {
+        version: "v2.0.0",
+        variant: "base",
+        media: [...CASE_SHOWCASE_MEDIA],
+      },
     },
     {
       ...base,
@@ -145,6 +166,21 @@ function testCaseDetail(slug: string): TestCaseDetail {
         domains: [],
         validatorRated: false,
         referenceBuilds: {},
+        // The variant-level half of the case showcase: the description the Play
+        // tab renders beside the same two-entry carousel the catalog previews.
+        showcase: {
+          description: "Captured from the reference implementation.",
+          media: [...CASE_SHOWCASE_MEDIA],
+        },
+        // Starter-workspace refs for the Inputs file tree: one file the host can
+        // serve and one it cannot (`url: null`), so both states render.
+        workspace: [
+          {
+            path: "src/main.ts",
+            url: "https://cdn.example/files/cases/carom/v2.0.0/workspace/digest-main.ts",
+          },
+          { path: "index.html", url: null },
+        ],
       },
     ],
   } as unknown as TestCaseDetail;
@@ -321,6 +357,18 @@ export function stockedGallery(runId: string): GalleryDataInput {
       "title.png": `https://cdn.example/media/runs/${legendaryId}/showcase/title.png`,
     },
   };
+  // The case-side counterpart, keyed the way the static gallery keys it: a
+  // `<slug>/<version>/<variant>` subject then the authored file name. It stages
+  // the carom fixture's two-entry carousel (the catalog preview and the detail
+  // Play tab both resolve through this); anything else null.
+  const caseShowcaseUrls: Record<string, Record<string, string>> = {
+    [`${FIXTURE_IDS.slug}/v2.0.0/base`]: Object.fromEntries(
+      CASE_SHOWCASE_MEDIA.map((media) => [
+        media.file,
+        `https://cdn.example/media/cases/${FIXTURE_IDS.slug}/v2.0.0/showcase/base/${media.file}`,
+      ]),
+    ),
+  };
   return {
     producedSummaries: [],
     localIds: new Set(),
@@ -359,6 +407,8 @@ export function stockedGallery(runId: string): GalleryDataInput {
       } as RunDetail);
     },
     showcaseMediaUrl: (id, file) => showcaseUrls[id]?.[file] ?? null,
+    caseShowcaseMediaUrl: (slug, version, variant, file) =>
+      caseShowcaseUrls[`${slug}/${version}/${variant}`]?.[file] ?? null,
     testCaseGroups: testCaseGroups(),
     getCabinetStats: () => Promise.resolve(cabinetStats()),
   };

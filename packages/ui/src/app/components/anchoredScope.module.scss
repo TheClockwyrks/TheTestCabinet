@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/halo" as h;
 
 // The anchored-scope control row the Runs, Leaderboard and Metrics tabs carry:
 // the version segments and the engine/variant wideners, laid out as one wrapping
@@ -25,4 +26,5 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: t.$color-text-muted;
+  @include h.halo;
 }

@@ -224,6 +224,16 @@ async function toVariantSummary(
     // the images and action logs live in the snapshot bucket). Null on a backend
     // that predates the field, so the tab simply never appears.
     referenceSheet: v.referenceSheet ?? null,
+    // The variant's authored showcase (description + media carousel), carried
+    // through verbatim; the media bytes resolve through the gallery's
+    // `caseShowcaseMediaUrl`. Null when the variant declares none or the backend
+    // predates the field, and the Play surfaces then show no showcase.
+    showcase: v.showcase ?? null,
+    // The variant's effective starter-workspace files, already selected for
+    // `engine` and resolved to artifact URLs by the transport (the resolved
+    // version is one consistent rendering, workspace included). Empty when the
+    // case seeds none for the engine or the backend predates the tables.
+    workspace: v.workspace ?? [],
   };
 }
 
@@ -321,6 +331,11 @@ async function fetchTestCases(
         summary: tc.summary,
         versions,
         latestVersion: versions[0]!,
+        // The catalog showcase preview (latest version, first variant in
+        // manifest order that declares one), carried through verbatim; null on
+        // a backend that predates the field, and the catalog then renders its
+        // placeholder stage.
+        showcase: tc.showcase ?? null,
       };
     });
 }
@@ -520,6 +535,30 @@ export function useLiveGallery(
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
     [backendUrl, workerUrl, workerClient, localIds],
+  );
+
+  // A CASE variant's authored showcase media — the case-side counterpart of the
+  // run showcase above. Case-scoped like the validation baseline below (the
+  // showcase is committed with the version, not produced by a run), so there is
+  // no published-vs-local split: the backend's case-scoped showcase route is the
+  // single source, and a host with no backend resolves null (the surfaces then
+  // degrade exactly like the run showcase).
+  const caseShowcaseMediaUrl = useCallback(
+    (
+      slug: string,
+      version: string,
+      variant: string,
+      file: string,
+    ): string | null => {
+      if (!backendUrl) return null;
+      const path =
+        `/test-cases/${encodeURIComponent(slug)}` +
+        `/versions/${encodeURIComponent(version)}` +
+        `/showcase/${encodeURIComponent(variant)}` +
+        `/${encodeURIComponent(file)}`;
+      return joinPath(backendUrl, path);
+    },
+    [backendUrl],
   );
 
   // A run's whole-tree download resolves differently from the media above: it is
@@ -868,6 +907,7 @@ export function useLiveGallery(
     assetMediaUrl,
     validationMediaUrl,
     showcaseMediaUrl,
+    caseShowcaseMediaUrl,
     validationBaselineUrl,
     referenceMediaUrl,
     runArchiveUrl,

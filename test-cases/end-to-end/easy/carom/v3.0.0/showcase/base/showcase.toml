@@ -1,0 +1,15 @@
+[[media]]
+file = "ai-block.json.gz"
+name = "The AI runs down and blocks a shot"
+
+[[media]]
+file = "bank-shot-beats-ai.json.gz"
+name = "A bank shot off the wall beats the AI"
+
+[[media]]
+file = "spin-curve.json.gz"
+name = "Spin curving a flight"
+
+[[media]]
+file = "mid-match-hud.png"
+name = "The field and HUD mid-match"

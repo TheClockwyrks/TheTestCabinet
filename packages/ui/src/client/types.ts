@@ -440,6 +440,12 @@ export interface TestCase {
   tags: string[];
   /** The short plain-text abstract a card shows, or null. */
   summary: string | null;
+  /** The case's catalog showcase preview — the latest visible version's first
+   * variant (manifest order) that declares a showcase, with the media list a
+   * card's preview stage loops. Null when no variant of the latest version
+   * declares one, and absent on a backend that predates the field; either way
+   * the card renders its placeholder stage. */
+  showcase?: CatalogShowcase | null;
 }
 
 // A reference for a view, resolved to an absolute media URL. A rendered mockup or
@@ -494,6 +500,73 @@ export interface VariantInfo {
   // the variant, and absent on a backend that predates the field. Mutually
   // exclusive with `referenceBuilds` in practice: a case is one test type.
   referenceSheet?: ReferenceSheet | null;
+  // The variant's authored SHOWCASE, when it declares one: a description plus a
+  // media carousel captured from the reference implementation, committed with the
+  // version and served by the backend's case-scoped showcase route (resolved
+  // through the gallery's `caseShowcaseMediaUrl`). Null when the variant declares
+  // none, and absent on a backend that predates the field — either way the Play
+  // surfaces simply show no showcase.
+  showcase?: CaseShowcase | null;
+  // The variant's EFFECTIVE starter-workspace files (its own override when it
+  // declares one, else the case's common workspace) for the engine the version
+  // was resolved for — a starter project is written against a runtime, so the
+  // set genuinely differs per engine. Each file carries the run-root-relative
+  // path it is seeded at and the absolute artifact URL its bytes are fetched
+  // from lazily. Empty when the case seeds no starter file for the engine, and
+  // absent on a backend that predates the field.
+  workspace?: WorkspaceFileRef[];
+}
+
+/** One entry of a case variant's showcase carousel: the file name the showcase
+ * route addresses the bytes by, its caption, and the kind of media it holds.
+ * Carried as the contract's own {@link MediaKind} (a `.json.gz` replay is
+ * re-drawn onto a canvas rather than loaded as a media file). */
+export interface ShowcaseMediaRef {
+  /** The media file's name in the showcase directory (a plain file name). */
+  file: string;
+  /** The short caption for the entry. */
+  name: string;
+  /** Whether the file is a still image, a video clip, or a replay recording. */
+  kind: MediaKind;
+}
+
+/** A case variant's authored showcase: the description plus the media carousel
+ * captured from the reference implementation — the case-side counterpart of a
+ * run's showcase, authored and committed with the version rather than produced
+ * by a run. The media bytes are fetched through the host's
+ * `caseShowcaseMediaUrl` resolver. */
+export interface CaseShowcase {
+  /** The showcase description — the authored `showcase.md`, verbatim Markdown. */
+  description: string;
+  /** The media carousel, in declared order (2–10 entries as authored). */
+  media: ShowcaseMediaRef[];
+}
+
+/** A case's catalog showcase preview: which version and variant the media
+ * belongs to, plus the carousel entries themselves — everything a listing
+ * card's preview stage needs to address the media (through
+ * `caseShowcaseMediaUrl`) without resolving the full version. Derived from the
+ * case's latest version: its first variant (manifest order) that declares a
+ * showcase. */
+export interface CatalogShowcase {
+  /** The version the showcase was read from (the case's latest visible one). */
+  version: string;
+  /** The variant that declares it. */
+  variant: string;
+  /** The media carousel, in declared order. */
+  media: ShowcaseMediaRef[];
+}
+
+/** One starter-workspace file a run of a variant is seeded with: the
+ * run-root-relative path it lands at and the absolute URL its bytes are served
+ * from, or null when the host cannot serve them (the Inputs tree then shows
+ * presence only). Only the addressing is carried — a starter project can be
+ * large and most readers never open it, so the bytes are fetched lazily. */
+export interface WorkspaceFileRef {
+  /** The run-root-relative destination path the file is seeded at. */
+  path: string;
+  /** The absolute URL serving the file's bytes, or null when unavailable. */
+  url: string | null;
 }
 
 /** The published reference frames of one asset-generation case variant. */

@@ -1896,6 +1896,10 @@ impl VersionBody {
                     // records none for any engine — the publisher, not the driver,
                     // resolves them from the on-disk case definition.
                     reference_impls: Default::default(),
+                    // The showcase is site-facing presentation material of the same
+                    // stripe — never seeded, no part in executing a run — so the
+                    // wire `VariantBody` omits it too.
+                    showcase: None,
                 })
                 .collect(),
             common_references: self.common_references.iter().map(reference_from).collect(),

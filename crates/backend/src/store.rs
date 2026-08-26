@@ -640,6 +640,38 @@ pub struct StoredVariant {
     /// before the field existed.
     #[serde(default)]
     pub voxel: Option<VoxelSpec>,
+    /// The variant's authored showcase, when it declares one. Defaulted for
+    /// manifests stored before the field existed.
+    #[serde(default)]
+    pub showcase: Option<StoredShowcase>,
+}
+
+/// A variant's authored [showcase](test_cabinet_core::test_case::CaseShowcase)
+/// persisted in a [`StoredManifest`]: the description (inlined — it is bounded
+/// text, like a variant's own description) plus the ordered media carousel. The
+/// media bytes themselves ride the copied version tree; each entry names its
+/// store-relative artifact key.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredShowcase {
+    /// The showcase description — `showcase.md`'s contents, verbatim.
+    pub description: String,
+    /// The media carousel, in declared order. Always 1–10 entries (validated at
+    /// resolution, before ingest ever sees the case).
+    pub media: Vec<StoredShowcaseMedia>,
+}
+
+/// One entry of a [`StoredShowcase`]'s media carousel.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredShowcaseMedia {
+    /// The media file's name in the showcase directory itself (a plain file name —
+    /// no subdirectories). What the serving route addresses the entry by.
+    pub file: String,
+    /// The short caption for the entry.
+    pub name: String,
+    /// The kind of media the file holds, inferred from its name at resolution.
+    pub kind: test_cabinet_core::MediaKind,
+    /// Store-relative artifact key of the media bytes.
+    pub key: String,
 }
 
 /// A reference persisted in a [`StoredManifest`]. The served media lives under the
@@ -1369,6 +1401,42 @@ impl DefinitionStore {
         let path = self.reference_path(slug, version, scope, file);
         std::fs::read(&path)
             .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{file}` not stored")))
+    }
+
+    /// Read one media file of a variant's authored
+    /// [showcase](StoredShowcase) — the case-side counterpart of
+    /// [`read_run_showcase`](Self::read_run_showcase), addressed by variant and
+    /// the plain file name the carousel declares.
+    ///
+    /// The manifest is the gate: only a file the variant's stored showcase
+    /// actually lists resolves, and its bytes are read by the entry's own
+    /// store-relative key, so a crafted name can never address an arbitrary
+    /// artifact. `showcase.toml` is refused outright (the manifest is authoring
+    /// input, mirroring the run-side rule), as is any name that is not a single,
+    /// traversal-free path segment.
+    pub fn read_case_showcase(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        file: &str,
+    ) -> Result<Vec<u8>> {
+        if !is_safe_segment(variant) || !is_safe_segment(file) || file == "showcase.toml" {
+            return Err(BackendError::BadRequest(
+                "invalid showcase variant or file".to_string(),
+            ));
+        }
+        let manifest = self.read_manifest(slug, version)?;
+        let entry = manifest
+            .variants
+            .iter()
+            .find(|v| v.slug == variant)
+            .and_then(|v| v.showcase.as_ref())
+            .and_then(|showcase| showcase.media.iter().find(|media| media.file == file))
+            .ok_or_else(|| {
+                BackendError::NotFound(format!("showcase `{variant}/{file}` not stored"))
+            })?;
+        self.read_artifact(slug, version, &entry.key)
     }
 
     /// Read a stored **baseline** validation media file for a version:

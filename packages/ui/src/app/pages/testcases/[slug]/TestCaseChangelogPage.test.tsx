@@ -90,7 +90,7 @@ describe("TestCaseChangelogPage", () => {
     });
   });
 
-  it("lists every version newest-first with the anchored entry expanded", async () => {
+  it("lists every version newest-first with the anchored entry staged", async () => {
     catalog.mockReturnValue({
       testCases: [
         testCase({
@@ -105,25 +105,26 @@ describe("TestCaseChangelogPage", () => {
     renderChangelog();
 
     // Nothing anchors the page, so it opens on the latest version — whose entry
-    // starts expanded (its body is in the DOM); the others stay collapsed.
+    // is on the stage (its body is in the DOM); the others' bodies are not
+    // rendered until selected.
     expect(await screen.findByText("Proof clips are now WebM.")).toBeTruthy();
     expect(screen.queryByText("Introduced.")).toBeNull();
 
-    // The newest version leads: its entry's toggle precedes the older one in
-    // document order (Node.DOCUMENT_POSITION_FOLLOWING === 4 when `older` follows
-    // `newer`).
+    // The newest version leads: its rail row precedes the older one in document
+    // order (Node.DOCUMENT_POSITION_FOLLOWING === 4 when `older` follows
+    // `newer`). Both stay buttons named by their version.
     const newer = screen.getByRole("button", { name: /v1\.0\.1/ });
     const older = screen.getByRole("button", { name: /v1\.0\.0/ });
     expect(
       newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(newer.getAttribute("aria-expanded")).toBe("true");
-    expect(older.getAttribute("aria-expanded")).toBe("false");
+    expect(newer.getAttribute("aria-current")).toBe("true");
+    expect(older.getAttribute("aria-current")).toBeNull();
   });
 
-  it("expands the anchored version's entry when an older version is anchored", async () => {
+  it("stages the anchored version's entry when an older version is anchored", async () => {
     // The tab is whole-history — every version stays listed — but the entry the
-    // reader came for is the anchored version's, so that one starts open.
+    // reader came for is the anchored version's, so that one starts selected.
     catalog.mockReturnValue({
       testCases: [
         testCase({

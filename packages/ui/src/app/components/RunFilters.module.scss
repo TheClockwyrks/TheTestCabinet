@@ -2,6 +2,7 @@
 @use "../styles/surfaces" as s;
 @use "../styles/breakpoints" as bp;
 @use "../styles/forms" as f;
+@use "../styles/halo" as h;
 
 // The filter bar: a full-width search field with the facet row beneath it. The
 // facets wrap, so a narrow viewport stacks them rather than scrolling sideways.
@@ -91,6 +92,7 @@
   color: t.$color-text-muted;
   cursor: pointer;
   user-select: none;
+  @include h.halo;
 
   input {
     accent-color: t.$color-accent;
@@ -113,6 +115,7 @@
   border: t.$border-hairline solid transparent;
   border-radius: t.$radius-sm;
   cursor: pointer;
+  @include h.halo;
 
   &:hover,
   &:focus-visible {

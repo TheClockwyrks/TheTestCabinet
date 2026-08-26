@@ -89,6 +89,7 @@ export const routes = {
     `/models/${encodeURIComponent(slug)}/edit`,
   about: (): string => "/about",
   aboutTesting: (): string => "/about/testing",
+  aboutRatings: (): string => "/about/ratings",
   aboutMetrics: (): string => "/about/metrics",
   // Settings routes (consoles only; the static site never links to them). The
   // base path redirects to Appearance, the section's first tab.
@@ -393,6 +394,7 @@ export const routePatterns = {
   modelProbes: "/models/:modelId/probes",
   about: "/about",
   aboutTesting: "/about/testing",
+  aboutRatings: "/about/ratings",
   aboutMetrics: "/about/metrics",
   settings: "/settings",
   settingsAppearance: "/settings/appearance",

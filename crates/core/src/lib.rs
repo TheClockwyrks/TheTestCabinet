@@ -1807,15 +1807,17 @@ fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String>
     Some(format!("{}\n\n…(README truncated)", &readme[..end]))
 }
 
-/// The largest showcase description captured into a run record, in bytes. The
-/// description is a store-page blurb; this cap keeps a pathological one from
-/// bloating the record blob. A longer description is truncated on a char boundary
-/// with a trailing marker.
-const MAX_SHOWCASE_DESCRIPTION_BYTES: usize = 64 * 1024;
+/// The largest showcase description, in bytes. The description is a store-page
+/// blurb; this cap keeps a pathological one from bloating every store downstream.
+/// The run-side capture truncates a longer one on a char boundary with a trailing
+/// marker; the case-side resolution (an authored, committed showcase — see
+/// `test_case::Variant::showcase`) hard-fails instead.
+pub(crate) const MAX_SHOWCASE_DESCRIPTION_BYTES: usize = 64 * 1024;
 
-/// The most media entries captured from a showcase carousel. Excess entries are
-/// dropped with a warning — the carousel is a highlight reel, not an archive.
-const MAX_SHOWCASE_MEDIA_ENTRIES: usize = 10;
+/// The most media entries a showcase carousel may hold. The run-side capture
+/// drops the excess with a warning — the carousel is a highlight reel, not an
+/// archive — while the case-side resolution hard-fails on it.
+pub(crate) const MAX_SHOWCASE_MEDIA_ENTRIES: usize = 10;
 
 /// The largest media file a showcase carousel entry may name, in bytes. An entry
 /// naming a larger file is dropped with a warning, since the file travels the
@@ -1824,22 +1826,26 @@ const MAX_SHOWCASE_MEDIA_ENTRIES: usize = 10;
 /// directory it uploads, so a file the capture refused never ships either.
 pub const MAX_SHOWCASE_MEDIA_FILE_BYTES: u64 = 25 * 1024 * 1024;
 
-/// The shape of `showcase/showcase.toml`: the ordered carousel, one `[[media]]`
-/// table per entry. Deliberately lenient about unknown keys — the manifest is
+/// The shape of a `showcase.toml`: the ordered carousel, one `[[media]]` table
+/// per entry. Shared by the run-side capture (a model-written
+/// `showcase/showcase.toml` in the produced tree) and the case-side resolution
+/// (an authored showcase directory a variant declares — see
+/// `test_case::Variant::showcase`), so the two showcases stay one format.
+/// Deliberately lenient about unknown keys — the run-side manifest is
 /// model-written, and a stray extra key is not worth losing the whole showcase.
 #[derive(serde::Deserialize)]
-struct ShowcaseManifest {
+pub(crate) struct ShowcaseManifest {
     #[serde(default)]
-    media: Vec<ShowcaseManifestEntry>,
+    pub(crate) media: Vec<ShowcaseManifestEntry>,
 }
 
-/// One `[[media]]` table of `showcase/showcase.toml`.
+/// One `[[media]]` table of a `showcase.toml`.
 #[derive(serde::Deserialize)]
-struct ShowcaseManifestEntry {
-    /// The media file's name in `showcase/` itself (no subdirectories).
-    file: String,
-    /// The model's short caption for the entry.
-    name: String,
+pub(crate) struct ShowcaseManifestEntry {
+    /// The media file's name in the showcase directory itself (no subdirectories).
+    pub(crate) file: String,
+    /// The short caption for the entry.
+    pub(crate) name: String,
 }
 
 /// Capture a run's [showcase](RunShowcase) from the collected tree's `showcase/`

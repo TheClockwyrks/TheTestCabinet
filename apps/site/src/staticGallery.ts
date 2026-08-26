@@ -32,6 +32,7 @@ import {
   assetMediaUrls as publishedAssetMediaUrls,
   validationMediaUrls as publishedValidationMediaUrls,
   showcaseMediaUrls as publishedShowcaseMediaUrls,
+  caseShowcaseMediaUrls as publishedCaseShowcaseMediaUrls,
   validationBaselineUrls as publishedValidationBaselineUrls,
   referenceMediaUrls as publishedReferenceMediaUrls,
 } from "virtual:tcab-snapshot";
@@ -177,6 +178,10 @@ export function useStaticGallery(): GalleryDataInput {
         ...variant,
         prompt: rendering.prompt,
         seededInputs: rendering.seededInputs,
+        // The starter workspace is engine-keyed exactly as the prompt and specs
+        // are (a starter project is written against a runtime), so the
+        // rendering's set replaces the variant's engineless one too.
+        workspace: rendering.workspace,
       };
     },
     [],
@@ -375,6 +380,25 @@ export function useStaticGallery(): GalleryDataInput {
     [],
   );
 
+  // A CASE variant's authored showcase media (the carousel captured from the
+  // reference implementation) — the case-side counterpart of the run showcase
+  // above, resolved at build time and keyed case-scoped by a
+  // `<slug>/<version>/<variant>` subject key then the authored file name (a
+  // video's `.webm` request resolving to its published `.mp4`). Null for a
+  // variant with no published showcase, and the surfaces then degrade exactly
+  // like the run showcase.
+  const caseShowcaseMediaUrl = useCallback(
+    (
+      slug: string,
+      version: string,
+      variant: string,
+      file: string,
+    ): string | null =>
+      publishedCaseShowcaseMediaUrls[`${slug}/${version}/${variant}`]?.[file] ??
+      null,
+    [],
+  );
+
   // A published reference build's *baseline* validation media (the reference
   // implementation's declared outputs), resolved at build time and keyed case-scoped
   // by a `<slug>/<version>/<engine>/<variant>` subject key then the flat
@@ -457,6 +481,7 @@ export function useStaticGallery(): GalleryDataInput {
     assetMediaUrl,
     validationMediaUrl,
     showcaseMediaUrl,
+    caseShowcaseMediaUrl,
     validationBaselineUrl,
     referenceMediaUrl,
   };

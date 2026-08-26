@@ -221,6 +221,7 @@ fn manifest() -> StoredManifest {
             review_items: vec![],
             domains: vec![],
             voxel: None,
+            showcase: None,
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),

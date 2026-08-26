@@ -1,0 +1,177 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+@use "../styles/breakpoints" as bp;
+@use "../styles/halo" as h;
+
+// The grouped tree + persistent viewer (see InputBrowser.tsx). Two surface
+// panels side by side — the rail a narrow index column, the viewer taking the
+// rest — on the same translucent card treatment as every other surface, so the
+// pair reads as one instrument rather than a sidebar bolted onto a page.
+
+.browser {
+  display: flex;
+  gap: t.$space-md;
+  align-items: flex-start;
+
+  // On a phone the panes stack, rail above viewer, each full width.
+  @include bp.below(t.$bp-md) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+// The index rail: a panel-surfaced column of group headings and row buttons.
+// Sized like the gg explorer's sidebar so the console's tree views line up.
+.rail {
+  flex: 0 0 auto;
+  width: 17rem;
+  max-width: 40%;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  padding: t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  overflow-x: hidden;
+
+  @include bp.below(t.$bp-md) {
+    width: auto;
+    max-width: none;
+  }
+}
+
+.group {
+  min-width: 0;
+}
+
+// A group heading: the label with its entry count, in the same small-caps
+// register the accordion used for its kind tags.
+.groupHeading {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-xs;
+}
+
+.groupLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.groupCount {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+// One row: a full-width button so the whole line is the hit target, indented
+// under its group heading. Long paths wrap rather than clip — a rail entry the
+// visitor cannot read cannot be chosen.
+.row {
+  width: 100%;
+  display: block;
+  padding: t.$space-2xs t.$space-sm;
+  border: none;
+  background: none;
+  border-radius: t.$radius-sm;
+  color: t.$color-text;
+  font: inherit;
+  font-size: t.$font-sm;
+  font-family: var(--ttc-font);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 8%, transparent);
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: -1px;
+  }
+}
+
+// The selected row reads filled in the accent, so what the viewer is showing is
+// obvious from the rail alone.
+.rowActive {
+  background: color-mix(in srgb, t.$color-accent 16%, transparent);
+
+  &:hover {
+    background: color-mix(in srgb, t.$color-accent 20%, transparent);
+  }
+}
+
+// The viewer: the persistent stage beside the rail, on the same panel surface.
+.viewer {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  overflow: hidden;
+}
+
+// The viewer's header row: the selected entry's path on the left (the same
+// accent-glow path register as the accordion headers this view replaced), its
+// kind chip on the right.
+.viewerHeader {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-md;
+  border-bottom: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 22%, transparent);
+}
+
+.viewerPath {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--ttc-font);
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  overflow-wrap: anywhere;
+}
+
+.viewerTag {
+  flex: none;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.viewerBody {
+  padding: t.$space-md;
+  overflow-x: auto;
+}
+
+// Image bodies (seeded image assets and reference screenshots) fill the pane;
+// the Markdown renderer styles its own prose and code blocks.
+.viewerBody img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: t.$radius-sm;
+}
+
+// The empty state, out on the backdrop like the accordion's was.
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// A muted aside inside the viewer body (see InputViewerNote).
+.note {
+  margin: 0;
+  color: t.$color-text-muted;
+}

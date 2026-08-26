@@ -35,6 +35,7 @@ fn base_variant() -> Variant {
         domains: vec![],
         voxel: None,
         reference_impls: Default::default(),
+        showcase: None,
     }
 }
 

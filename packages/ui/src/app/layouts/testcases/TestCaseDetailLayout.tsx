@@ -116,12 +116,22 @@ export function TestCaseDetailLayout({
     );
   }
 
+  // The landing tab is the case's Play surface whenever the anchored
+  // coordinate has something to play — an authored showcase carousel or a
+  // published reference build — and stays the plain Overview description
+  // otherwise. Only the LABEL follows the coordinate; the tab id and route
+  // stay "overview" at /test-cases/:slug, so links and the active-tab logic
+  // never move.
+  const playable =
+    resolved.variant !== undefined &&
+    ((resolved.variant.showcase?.media.length ?? 0) > 0 ||
+      Object.keys(resolved.variant.referenceBuilds).length > 0);
   // Tab links carry the current query string so switching tabs preserves the
   // anchored coordinate (and any scope widening) across the page.
   const tabs: { key: DetailTab; label: string; to: string }[] = [
     {
       key: "overview",
-      label: "Overview",
+      label: playable ? "Play" : "Overview",
       to: routes.testCaseDetail(testCase.slug),
     },
     {
@@ -172,24 +182,18 @@ export function TestCaseDetailLayout({
       to: routes.testCaseArena(testCase.slug),
     });
   }
-  // The Reference tab is shown when the ANCHORED coordinate's variant has a
-  // published reference implementation, in either of the two shapes one takes:
+  // The Reference tab is shown only when the ANCHORED coordinate's variant has
+  // published reference FRAMES (`referenceSheet` — asset-generation cases),
+  // which have no page to embed and so are rendered natively from the snapshot
+  // bucket. A deployed reference BUILD (`referenceBuilds`) no longer earns its
+  // own tab: it folds into the landing tab's Play surface, whose label above
+  // already advertises it.
   //
-  //   • `referenceBuilds` — the deployed static sites (end-to-end and full-stack
-  //     cases), one per engine of the anchored version.
-  //   • `referenceSheet`  — the published reference FRAMES (asset-generation
-  //     cases), which have no page to embed and so are rendered natively from the
-  //     snapshot bucket.
-  //
-  // A reference is published per (version, variant), so switching either adds or
-  // removes the tab; a coordinate with neither (the common case) shows no tab at
-  // all. While the coordinate is still resolving the tab is simply not offered
-  // yet — the strip below renders only once the resolution settles.
-  const referenceable =
-    resolved.variant &&
-    (Object.keys(resolved.variant.referenceBuilds).length > 0 ||
-      resolved.variant.referenceSheet);
-  if (referenceable) {
+  // A reference is published per (version, variant), so switching either adds
+  // or removes the tab; a coordinate without frames (the common case) shows no
+  // tab at all. While the coordinate is still resolving the tab is simply not
+  // offered yet — the strip below renders only once the resolution settles.
+  if (resolved.variant?.referenceSheet) {
     tabs.push({
       key: "reference",
       label: "Reference",

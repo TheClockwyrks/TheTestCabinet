@@ -135,6 +135,17 @@
           "description": "The case's display name, from its latest visible version.",
           "type": "string"
         },
+        "showcase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CatalogShowcaseOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The case's catalog **showcase preview**, when its latest visible version\nhas one: the first variant (manifest order) of that version that declares\na showcase, with the media list a card's preview stage loops. `null` when\nno variant of the latest version declares one. Only the addressing rides\nhere (the description lives on the resolved version's variant); each\nmedia file is fetched from\n`/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`."
+        },
         "slug": {
           "type": "string"
         },
@@ -169,6 +180,47 @@
         "difficulty",
         "tags"
       ],
+      "type": "object"
+    },
+    "CatalogShowcaseOut": {
+      "description": "A case's catalog showcase preview: which version and variant the media\nbelongs to, plus the carousel entries themselves — everything a listing card\nneeds to address the media without resolving the full version.",
+      "properties": {
+        "media": {
+          "description": "The media carousel, in declared order.",
+          "items": {
+            "$ref": "#/$defs/ShowcaseMediaOut"
+          },
+          "type": "array"
+        },
+        "variant": {
+          "description": "The variant that declares it.",
+          "type": "string"
+        },
+        "version": {
+          "description": "The version the showcase was read from (the case's latest visible one).",
+          "type": "string"
+        }
+      },
+      "required": ["version", "variant", "media"],
+      "type": "object"
+    },
+    "ShowcaseMediaOut": {
+      "description": "One entry of a served showcase carousel: the file name the showcase route\naddresses the bytes by, its caption, and the kind of media it holds.",
+      "properties": {
+        "file": {
+          "description": "The media file's name in the showcase directory (a plain file name).",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind",
+          "description": "Whether the file is a still image, a video clip, or a replay recording."
+        },
+        "name": {
+          "description": "The short caption for the entry.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name", "kind"],
       "type": "object"
     }
   },

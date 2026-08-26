@@ -716,6 +716,43 @@
       "required": ["script", "outputs"],
       "type": "object"
     },
+    "ShowcaseMediaOut": {
+      "description": "One entry of a served showcase carousel: the file name the showcase route\naddresses the bytes by, its caption, and the kind of media it holds.",
+      "properties": {
+        "file": {
+          "description": "The media file's name in the showcase directory (a plain file name).",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind",
+          "description": "Whether the file is a still image, a video clip, or a replay recording."
+        },
+        "name": {
+          "description": "The short caption for the entry.",
+          "type": "string"
+        }
+      },
+      "required": ["file", "name", "kind"],
+      "type": "object"
+    },
+    "ShowcaseOut": {
+      "description": "A variant's authored showcase as the resolved version serves it.",
+      "properties": {
+        "description": {
+          "description": "The showcase description — the authored `showcase.md`, verbatim markdown.",
+          "type": "string"
+        },
+        "media": {
+          "description": "The media carousel, in declared order.",
+          "items": {
+            "$ref": "#/$defs/ShowcaseMediaOut"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["description", "media"],
+      "type": "object"
+    },
     "SpecKind": {
       "description": "What role a seeded spec file plays, so a reader can tell an instruction the\nmodel reads from an executable starter it edits and runs.\n\nThis is a **presentation** distinction only — every kind is seeded identically\n(copied to its `dest`) and the harness treats them the same. It exists so the\nInputs surfaces can tag a starter script (for example the Blender case's\n`build.py`, whose `dest` deliberately coincides with `[output].actions`)\ndistinctly from a prose spec.",
       "oneOf": [
@@ -1048,6 +1085,17 @@
             "$ref": "#/$defs/ReviewItemOut"
           },
           "type": "array"
+        },
+        "showcase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShowcaseOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The variant's authored **showcase**, when it declares one: the description\nplus the media carousel captured from the reference implementation, shown\non the case's Play tab. `null` when the variant declares none. Each media\nfile is fetched from\n`/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`."
         },
         "slug": {
           "type": "string"

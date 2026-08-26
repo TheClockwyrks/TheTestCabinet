@@ -25,9 +25,9 @@ use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
     StoredContract, StoredDomain, StoredErratum, StoredInstrumentation, StoredManifest,
     StoredMatch, StoredOutput, StoredProof, StoredReference, StoredReplay, StoredReviewItem,
-    StoredReviewOutput, StoredReviewValidation, StoredSandbox, StoredSimulation, StoredSpec,
-    StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspace, StoredWorkspaceFile,
-    reference_in, write_manifest_in,
+    StoredReviewOutput, StoredReviewValidation, StoredSandbox, StoredShowcase, StoredShowcaseMedia,
+    StoredSimulation, StoredSpec, StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspace,
+    StoredWorkspaceFile, reference_in, write_manifest_in,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -544,6 +544,11 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                     .collect(),
                 domains: variant.domains.iter().map(stored_domain).collect(),
                 voxel: variant.voxel.clone(),
+                showcase: variant
+                    .showcase
+                    .as_ref()
+                    .map(|showcase| stored_showcase(root, showcase))
+                    .transpose()?,
             })
         })
         .collect::<Result<Vec<_>>>()?;
@@ -813,6 +818,33 @@ fn stored_workspace(
     Ok(StoredWorkspaceFile {
         source: relative_key(root, &file.source_path)?,
         dest: to_forward_slash(&file.dest),
+    })
+}
+
+/// Build a [`StoredShowcase`] from a variant's resolved
+/// [showcase](test_cabinet_core::test_case::CaseShowcase): the description is
+/// inlined, and each media entry is keyed by its **store-relative** path exactly
+/// as a spec or a workspace file is — the bytes themselves ride the copied
+/// version tree (`copy_tree`), so keying is all the upload there is.
+fn stored_showcase(
+    root: &Path,
+    showcase: &test_cabinet_core::test_case::CaseShowcase,
+) -> Result<StoredShowcase> {
+    let media = showcase
+        .media
+        .iter()
+        .map(|media| -> Result<StoredShowcaseMedia> {
+            Ok(StoredShowcaseMedia {
+                file: media.file.clone(),
+                name: media.name.clone(),
+                kind: media.kind,
+                key: relative_key(root, &media.source_path)?,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(StoredShowcase {
+        description: showcase.description.clone(),
+        media,
     })
 }
 

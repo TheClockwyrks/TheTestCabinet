@@ -544,6 +544,7 @@ fn main() -> Result<()> {
                 snap::CaseReferenceOut,
                 snap::CaseValidationBaselineOut, snap::CaseSeededInputOut,
                 snap::CasePackageOut, snap::CaseReferenceSheetOut,
+                snap::CaseShowcaseMediaOut, snap::CaseShowcaseOut, snap::CaseWorkspaceFileOut,
                 snap::CaseVariantRenderingOut, snap::CaseVariantOut,
                 snap::CaseMetadata,
                 snap::ModelCatalogFile,
@@ -556,7 +557,9 @@ fn main() -> Result<()> {
         TsModule {
             file: "backend-api.ts",
             decls: ts_decls![&cfg;
-                berr::ErrorBody, berr::ErrorEnvelope, bapi::CatalogCase, bapi::CatalogResponse,
+                berr::ErrorBody, berr::ErrorEnvelope,
+                bapi::ShowcaseMediaOut, bapi::CatalogShowcaseOut,
+                bapi::CatalogCase, bapi::CatalogResponse,
                 bapi::VersionsResponse,
                 bapi::TestCaseGroupOut, bapi::TestCaseGroupsResponse,
                 bapi::ModelCatalogResponse, bapi::AliasOut, bapi::ModelOut, bapi::ModelPricesOut,

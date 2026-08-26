@@ -1,5 +1,10 @@
 import type { Plugin } from "vite";
-import type { AssetKind, AssetSheet, TestType } from "@test-cabinet/run-record";
+import type {
+  AssetKind,
+  AssetSheet,
+  MediaKind,
+  TestType,
+} from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 
 // Build-time data source: the public R2 snapshot.
@@ -237,10 +242,17 @@ interface SnapshotCaseFile {
     // that vendors a runtime, keyed by engine slug. `prompt`/`seededInputs` above
     // are the engineless rendering, which is also what a run on the `none` engine
     // received, so the engineless engine is deliberately absent here. Absent
-    // entirely on a snapshot written before the field existed.
+    // entirely on a snapshot written before the field existed. Each rendering
+    // also carries the variant's effective starter-workspace file set for its
+    // engine (`workspaceFiles`, absent on snapshots written before the field) —
+    // the per-engine half of the variant-level `workspaceFiles` below.
     engineRenderings?: Record<
       string,
-      { prompt: string; seededInputs?: SnapshotSeededInput[] }
+      {
+        prompt: string;
+        seededInputs?: SnapshotSeededInput[];
+        workspaceFiles?: SnapshotWorkspaceFile[];
+      }
     >;
     // The variant's own reviewer checklist items (additive to the common ones).
     reviewItems?: SnapshotReviewItem[];
@@ -257,6 +269,28 @@ interface SnapshotCaseFile {
     // bucket. Null/absent when the variant has no published asset reference (every
     // end-to-end variant, and any snapshot written before the field existed).
     referenceSheet?: { frames: number[] } | null;
+    // The variant's authored SHOWCASE (`CaseShowcaseOut`): the description plus
+    // the media carousel captured from the reference implementation, each entry
+    // naming the authored file (what the UI keys the entry by) and the published
+    // object key (a `.webm` clip published as `.mp4`, everything else verbatim).
+    // Null when the variant declares none; absent on snapshots written before
+    // the field existed.
+    showcase?: {
+      description: string;
+      media: Array<{
+        file: string;
+        name: string;
+        kind: MediaKind;
+        key: string;
+      }>;
+    } | null;
+    // The variant's effective starter-workspace files for the ENGINELESS
+    // rendering (`CaseWorkspaceFileOut[]`): the run-root-relative destination
+    // each file is seeded at and the published object key its bytes live under
+    // (the bytes are fetched lazily — a starter project can be large). The
+    // per-engine sets ride on each `engineRenderings` entry. Absent on snapshots
+    // written before the field existed.
+    workspaceFiles?: SnapshotWorkspaceFile[];
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
   // The runtime packages this case ships into every run (case-level), each with a
@@ -311,6 +345,16 @@ interface SnapshotErratum {
   resolvedIn: string | null;
   variant: string | null;
   review: string | null;
+}
+
+// One starter-workspace file in case metadata (`CaseWorkspaceFileOut`): the
+// run-root-relative destination it is seeded at and the snapshot-relative object
+// key its bytes were published under. Unlike a seeded spec the body is NOT
+// inlined — a starter project can be large and most readers never open it, so
+// the site fetches a file lazily by its resolved URL.
+interface SnapshotWorkspaceFile {
+  dest: string;
+  key: string;
 }
 
 // One seeded spec file inlined in case metadata: the run-workspace path it lands
@@ -441,6 +485,13 @@ interface AssembledSnapshot {
   // video's `.webm` request resolving to its published `.mp4`). The app's
   // `showcaseMediaUrl(runId, file)` reads this.
   showcaseMediaUrls: Record<string, Record<string, string>>;
+  // Resolved CASE showcase media URLs (a variant's authored carousel, captured
+  // from the reference implementation), keyed by a `<slug>/<version>/<variant>`
+  // subject key then by the authored file name (a video's `.webm` request
+  // resolving to its published `.mp4`). Case-scoped like the baselines below —
+  // the showcase is committed with the version, not produced by a run. The
+  // app's `caseShowcaseMediaUrl(slug, version, variant, file)` reads this.
+  caseShowcaseMediaUrls: Record<string, Record<string, string>>;
   // Resolved code-analysis document URLs, keyed by run id — one URL per run, not a
   // map of files, because a run has exactly one analysis. The app's
   // `readCodeAnalysis(runId)` fetches this on demand.
@@ -585,10 +636,38 @@ interface AssembledPackage {
 }
 
 // One variant's prompt and seeded specs as rendered under one engine — the pair a
-// run's Inputs tab shows, chosen by the engine that run recorded.
+// run's Inputs tab shows, chosen by the engine that run recorded — plus the
+// variant's effective starter-workspace file set for that engine (a starter
+// project is written against a runtime, so the set genuinely differs per engine).
 interface AssembledRendering {
   prompt: string;
   seededInputs: AssembledSeededInput[];
+  workspace: AssembledWorkspaceFile[];
+}
+
+// One starter-workspace file the app consumes (mirrors `WorkspaceFileRef` in the
+// UI's client types): the run-root-relative path it is seeded at and the
+// absolute snapshot URL its bytes are fetched from lazily.
+interface AssembledWorkspaceFile {
+  path: string;
+  url: string | null;
+}
+
+// A variant's authored showcase the app consumes (mirrors `CaseShowcase` in the
+// UI's client types): the description plus the media carousel, each entry keyed
+// by its authored file name. The bytes themselves resolve through
+// `caseShowcaseMediaUrls`, which is where the published object keys go.
+interface AssembledShowcase {
+  description: string;
+  media: AssembledShowcaseMedia[];
+}
+
+// One showcase carousel entry (mirrors `ShowcaseMediaRef` in the UI's client
+// types) — the addressing only, never the object key.
+interface AssembledShowcaseMedia {
+  file: string;
+  name: string;
+  kind: MediaKind;
 }
 
 interface AssembledVariant {
@@ -625,6 +704,15 @@ interface AssembledVariant {
   // the Reference tab; the frame images and action logs themselves are resolved
   // through `referenceMediaUrls` below. Null when the variant has none.
   referenceSheet: { frames: number[] } | null;
+  // The variant's authored showcase (description + carousel), or null when it
+  // declares none (and for snapshots written before the field existed). The
+  // media bytes resolve through `caseShowcaseMediaUrls`.
+  showcase: AssembledShowcase | null;
+  // The variant's effective starter-workspace files for the ENGINELESS
+  // rendering, each resolved to an absolute snapshot URL fetched lazily by the
+  // Inputs tab. The per-engine sets ride on `engineRenderings`. Empty when the
+  // case seeds none (and for snapshots written before the field existed).
+  workspace: AssembledWorkspaceFile[];
 }
 
 interface AssembledTestCase {
@@ -669,6 +757,17 @@ interface AssembledTestCase {
   // snapshot that predates the field), in which case the asset Reference tab shows
   // the still reference frames without animating them.
   sheet: AssetSheet | null;
+  // The case's catalog SHOWCASE PREVIEW (mirrors `CatalogShowcase` in the UI's
+  // client types): the latest version's first variant (manifest order) that
+  // declares a showcase, with the media list the catalog's preview stage loops.
+  // Each mapped version derives its own; `collapseCases` keeps the newest
+  // version's (its spread), which is exactly the latest-version rule. Null when
+  // no variant declares one, and the catalog renders its placeholder stage.
+  showcase: {
+    version: string;
+    variant: string;
+    media: AssembledShowcaseMedia[];
+  } | null;
 }
 
 const EMPTY: AssembledSnapshot = {
@@ -684,6 +783,7 @@ const EMPTY: AssembledSnapshot = {
   assetMediaUrls: {},
   validationMediaUrls: {},
   showcaseMediaUrls: {},
+  caseShowcaseMediaUrls: {},
   codeAnalysisUrls: {},
   validationBaselineUrls: {},
   referenceMediaUrls: {},
@@ -833,6 +933,20 @@ function mapSeededInputs(
   }));
 }
 
+// Resolve one starter-workspace file set to the shape the app consumes: the
+// seeded path plus the absolute URL of its published object, fetched lazily by
+// the Inputs tab (the bodies are deliberately not inlined — a starter project
+// can be large and most readers never open it).
+function mapWorkspaceFiles(
+  base: string,
+  files: SnapshotWorkspaceFile[] | undefined,
+): AssembledWorkspaceFile[] {
+  return (files ?? []).map((file) => ({
+    path: file.dest,
+    url: joinUrl(base, file.key),
+  }));
+}
+
 // The engines one version's inputs can be read under here. A case's prompt and
 // `.hbs` specs branch on the selected engine, so a version that supports more than
 // one has more than one set of inputs — and the snapshot publishes the engineless
@@ -899,6 +1013,10 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       engineRenderings[engine] = {
         prompt: rendering.prompt,
         seededInputs: mapSeededInputs(rendering.seededInputs),
+        // The effective starter-workspace set for this engine — a starter
+        // project is written against a runtime, so each rendering carries its
+        // own.
+        workspace: mapWorkspaceFiles(base, rendering.workspaceFiles),
       };
     }
     // The verdict ids this version's errata exclude from scoring for this variant
@@ -980,8 +1098,40 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       // objects they address are resolved into absolute URLs in `loadSnapshot`,
       // where the snapshot base is in hand.
       referenceSheet: variant.referenceSheet ?? null,
+      // The variant's authored showcase — the addressing only (file/name/kind);
+      // the published object keys go into `caseShowcaseMediaUrls`, built in
+      // `loadSnapshot` from the same per-version case files.
+      showcase: variant.showcase
+        ? {
+            description: variant.showcase.description,
+            media: variant.showcase.media.map((media) => ({
+              file: media.file,
+              name: media.name,
+              kind: media.kind,
+            })),
+          }
+        : null,
+      // The engineless starter-workspace set (what a run on the `none` engine is
+      // seeded with), matching the engineless prompt/specs above; the per-engine
+      // sets ride on `engineRenderings`.
+      workspace: mapWorkspaceFiles(base, variant.workspaceFiles),
     };
   });
+  // The catalog showcase preview: this version's first variant (manifest order)
+  // that declares a showcase with media to show. `collapseCases` spreads the
+  // newest mapped version into the collapsed case, so the preview the catalog
+  // renders is the LATEST version's — the same first-variant-with-a-showcase
+  // rule the backend's catalog applies.
+  const showcaseVariant = variants.find(
+    (variant) => (variant.showcase?.media.length ?? 0) > 0,
+  );
+  const showcase = showcaseVariant?.showcase
+    ? {
+        version: file.version,
+        variant: showcaseVariant.slug,
+        media: showcaseVariant.showcase.media,
+      }
+    : null;
   return {
     slug: file.slug,
     name: file.name,
@@ -1030,6 +1180,7 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       name: d.name,
       description: d.description,
     })),
+    showcase,
   };
 }
 
@@ -1129,6 +1280,7 @@ async function loadSnapshot(
   const assetMediaUrls: Record<string, Record<string, string>> = {};
   const validationMediaUrls: Record<string, Record<string, string>> = {};
   const showcaseMediaUrls: Record<string, Record<string, string>> = {};
+  const caseShowcaseMediaUrls: Record<string, Record<string, string>> = {};
   const codeAnalysisUrls: Record<string, string> = {};
   const validationBaselineUrls: Record<string, Record<string, string>> = {};
   const referenceMediaUrls: Record<string, Record<string, string>> = {};
@@ -1244,6 +1396,25 @@ async function loadSnapshot(
     }
   }
 
+  // The case-scoped SHOWCASE media (a variant's authored carousel), keyed by a
+  // `<slug>/<version>/<variant>` subject key then the authored file name the UI
+  // requests (a video's `.webm` request resolving to its published `.mp4` key).
+  // Built from the per-version case files like the baselines above, so the
+  // catalog preview (latest version) and an older version's Play tab both
+  // resolve their own media.
+  for (const file of caseFiles) {
+    for (const variant of file.variants) {
+      const media = variant.showcase?.media;
+      if (!media?.length) continue;
+      const subjectKey = `${file.slug}/${file.version}/${variant.slug}`;
+      const byFile = caseShowcaseMediaUrls[subjectKey] ?? {};
+      for (const entry of media) {
+        byFile[entry.file] = joinUrl(base, entry.key);
+      }
+      caseShowcaseMediaUrls[subjectKey] = byFile;
+    }
+  }
+
   // The case-scoped **asset-reference** media, keyed the same way: subject key then
   // the file below the variant's prefix. Unlike every map above, these keys are not
   // listed in the snapshot — only the published frame INDICES are — so they are
@@ -1353,6 +1524,7 @@ async function loadSnapshot(
     codeAnalysisUrls,
     validationMediaUrls,
     showcaseMediaUrls,
+    caseShowcaseMediaUrls,
     validationBaselineUrls,
     referenceMediaUrls,
   };
@@ -1374,6 +1546,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const codeAnalysisUrls = ${JSON.stringify(data.codeAnalysisUrls)};`,
     `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,
     `export const showcaseMediaUrls = ${JSON.stringify(data.showcaseMediaUrls)};`,
+    `export const caseShowcaseMediaUrls = ${JSON.stringify(data.caseShowcaseMediaUrls)};`,
     `export const validationBaselineUrls = ${JSON.stringify(data.validationBaselineUrls)};`,
     `export const referenceMediaUrls = ${JSON.stringify(data.referenceMediaUrls)};`,
   ].join("\n");

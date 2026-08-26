@@ -104,6 +104,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             }],
             domains: vec![],
             voxel: None,
+            showcase: None,
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
@@ -479,6 +480,89 @@ fn validation_baseline_reads_committed_case_scoped_media() {
             .unwrap_err(),
         BackendError::BadRequest(_)
     ));
+}
+
+#[test]
+fn case_showcase_serves_only_manifest_listed_media() {
+    let (_dir, store) = temp_store();
+    // A variant showcase persisted the way ingest writes it: the description and
+    // carousel on the manifest, the media bytes in the copied version tree under
+    // the entries' store-relative keys.
+    let mut manifest = sample_manifest("pong", "v1.0.0");
+    manifest.variants[0].showcase = Some(StoredShowcase {
+        description: "A demo game.".to_string(),
+        media: vec![StoredShowcaseMedia {
+            file: "title.png".to_string(),
+            name: "The title screen".to_string(),
+            kind: test_cabinet_core::MediaKind::Image,
+            key: "showcase/base/title.png".to_string(),
+        }],
+    });
+    store.write_manifest(&manifest).unwrap();
+    let media_path = store
+        .version_dir("pong", "v1.0.0")
+        .join("showcase/base/title.png");
+    std::fs::create_dir_all(media_path.parent().unwrap()).unwrap();
+    std::fs::write(&media_path, b"png:title").unwrap();
+    // A neighbouring file in the same directory that the carousel does not list —
+    // present on disk, but not addressable through the showcase route.
+    std::fs::write(media_path.with_file_name("outtake.png"), b"png:outtake").unwrap();
+
+    assert_eq!(
+        store
+            .read_case_showcase("pong", "v1.0.0", "base", "title.png")
+            .unwrap(),
+        b"png:title",
+    );
+    // The manifest is the gate: an unlisted file, an unknown variant, and a variant
+    // with no showcase all 404 even when bytes happen to sit on disk.
+    assert!(matches!(
+        store
+            .read_case_showcase("pong", "v1.0.0", "base", "outtake.png")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    assert!(matches!(
+        store
+            .read_case_showcase("pong", "v1.0.0", "gyre", "title.png")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+}
+
+#[test]
+fn case_showcase_rejects_unsafe_segments_and_the_manifest_file() {
+    let (_dir, store) = temp_store();
+    for (variant, file) in [
+        ("..", "title.png"),
+        ("base", ".."),
+        ("base", "a/b.png"),
+        // The showcase manifest is authoring input, mirroring the run-side rule
+        // that `showcase.toml` is never served.
+        ("base", "showcase.toml"),
+    ] {
+        assert!(
+            matches!(
+                store
+                    .read_case_showcase("pong", "v1.0.0", variant, file)
+                    .unwrap_err(),
+                BackendError::BadRequest(_)
+            ),
+            "`{variant}/{file}` should be refused before any store read",
+        );
+    }
+}
+
+#[test]
+fn a_stored_variant_from_before_the_showcase_field_still_deserializes() {
+    // A manifest written before the field existed carries no `showcase` key on its
+    // variants; the field must default to `None` rather than fail the read.
+    let mut manifest = sample_manifest("pong", "v1.0.0");
+    manifest.variants[0].showcase = None;
+    let mut serialized = serde_json::to_value(&manifest.variants[0]).unwrap();
+    serialized.as_object_mut().unwrap().remove("showcase");
+    let variant: StoredVariant = serde_json::from_value(serialized).unwrap();
+    assert_eq!(variant.showcase, None);
 }
 
 #[test]

@@ -180,6 +180,10 @@
     color: t.$color-positive;
   }
 
+  &[data-level="medium"] {
+    color: t.$color-warning;
+  }
+
   &[data-level="hard"] {
     color: t.$color-accent-2;
   }
@@ -221,4 +225,230 @@
 .error {
   color: t.$color-accent-2;
   @include h.halo-glow;
+}
+
+// ---- Index + stage split -----------------------------------------------------
+// The catalog's master-detail layout: the index of rows on the left, the sticky
+// preview pane on the right. Below the medium breakpoint the panes stack, the
+// preview first (`order: -1`) so the stage stays in view while the index
+// scrolls under it.
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 30rem);
+  gap: t.$space-lg;
+  align-items: start;
+
+  @include bp.below(t.$bp-md) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+// The index: one selectable row per case, stacked. Presented as a listbox (the
+// rows are its options), so the selection reads to assistive tech the way it
+// looks.
+.index {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// One index row: a full-width button styled as a quiet panel — name and version
+// on the left, the difficulty badge flush right — that borrows the card's neon
+// treatment when selected.
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  width: 100%;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  text-align: left;
+  cursor: pointer;
+  color: t.$color-text;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+
+  &[aria-selected="true"] {
+    border-color: t.$color-accent;
+    box-shadow: inset 0 0 1.5rem
+      color-mix(in srgb, t.$color-accent 8%, transparent);
+  }
+}
+
+// A row's left side: title, latest-version chip, and the showcase marker,
+// baseline-aligned so the smaller chips sit on the title's text line.
+.rowHeading {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The row's case name — the card title's look at index scale.
+.rowTitle {
+  margin: 0;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  @include h.halo-glow;
+}
+
+// The small play glyph marking a case whose showcase the preview can stage.
+.marker {
+  flex-shrink: 0;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  @include h.halo;
+}
+
+// The preview pane: a card-like panel that sticks while the index scrolls.
+// Below the medium breakpoint it unsticks and moves above the index.
+.preview {
+  position: sticky;
+  top: t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  min-width: 0;
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  box-shadow: inset 0 0 1.5rem
+    color-mix(in srgb, t.$color-accent 8%, transparent);
+
+  @include bp.below(t.$bp-md) {
+    position: static;
+    order: -1;
+  }
+}
+
+// The fixed-aspect stage the preview leads with: 16:9, clipped and centered, so
+// the pane holds one geometry whatever the selected case stages (mirrors the
+// home page's showcase stage).
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+
+  // The replay player mounts its own figure; let it fill the stage's box.
+  > * {
+    max-width: 100%;
+    max-height: 100%;
+  }
+}
+
+.stageMedia {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+// A case without stageable media (or a host that cannot serve it) holds the
+// quiet placeholder: panel surface plus the cabinet mark.
+.stagePlaceholder {
+  color: t.$color-text-muted;
+}
+
+.stageMark {
+  width: 20%;
+  max-width: 6rem;
+  opacity: 0.5;
+}
+
+// The filmstrip under the stage: a capped, non-interactive glance at the rest
+// of the showcase carousel.
+.filmstrip {
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
+// One filmstrip cell, stage-shaped in miniature. Holds either the image itself
+// or the play glyph for a media kind with no cheap still.
+.filmThumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 6rem;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+}
+
+.filmImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.filmGlyph {
+  font-size: t.$font-sm;
+  white-space: nowrap;
+}
+
+// The "+n more" tail when the carousel outruns the strip's three cells.
+.filmMore {
+  font-size: t.$font-sm;
+  white-space: nowrap;
+  color: t.$color-text-muted;
+}
+
+// The preview's identity line: title + version left, difficulty badge right,
+// matching the index rows' geometry at card-title scale.
+.previewHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.previewHeading {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.previewTitle {
+  margin: 0;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  @include h.halo-glow;
+}
+
+// The link into the case's detail page (mirrors the home page's "open run ›").
+.openCase {
+  align-self: flex-start;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: t.$color-accent;
+  @include h.halo-glow;
+
+  &:hover {
+    text-decoration: none;
+    text-shadow:
+      0 0 0.5rem t.$color-accent,
+      0 0 1.5rem color-mix(in srgb, t.$color-accent 60%, transparent);
+  }
 }

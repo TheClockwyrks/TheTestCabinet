@@ -30,6 +30,7 @@ fn variant() -> Variant {
         domains: vec![],
         voxel: None,
         reference_impls: Default::default(),
+        showcase: None,
     }
 }
 

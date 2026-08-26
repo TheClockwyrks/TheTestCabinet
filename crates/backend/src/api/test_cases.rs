@@ -92,6 +92,19 @@ pub async fn catalog(State(state): State<AppState>) -> Result<Json<CatalogRespon
 /// manifest of its latest one. Split out from [`catalog`] so the metadata a card
 /// renders can be covered without standing up a store.
 fn catalog_case(slug: String, versions: Vec<String>, manifest: &StoredManifest) -> CatalogCase {
+    // The catalog preview: the latest version's first variant (manifest order)
+    // that declares a showcase. `None` when no variant of the latest version has
+    // one — the card renders its placeholder stage.
+    let showcase = manifest.variants.iter().find_map(|variant| {
+        variant
+            .showcase
+            .as_ref()
+            .map(|showcase| CatalogShowcaseOut {
+                version: manifest.version.clone(),
+                variant: variant.slug.clone(),
+                media: showcase.media.iter().map(showcase_media_out).collect(),
+            })
+    });
     CatalogCase {
         slug,
         versions,
@@ -101,6 +114,7 @@ fn catalog_case(slug: String, versions: Vec<String>, manifest: &StoredManifest) 
         difficulty: manifest.difficulty.clone(),
         tags: manifest.tags.clone(),
         summary: manifest.summary.clone(),
+        showcase,
     }
 }
 
@@ -354,6 +368,25 @@ pub async fn validation_baseline(
     let bytes = state
         .store
         .read_validation_baseline(&slug, &version, &engine, &variant, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `GET /test-cases/{slug}/versions/{version}/showcase/{variant}/{file}` — one
+/// media file of a variant's authored **showcase** (`{file}` is the plain file
+/// name the carousel declares — a `.png` still, a `.webm` clip, or a `.json.gz`
+/// replay recording). The case-side counterpart of [`run_showcase`], served
+/// case-scoped because the showcase is authored material committed with the
+/// version, not run output. The content type follows the extension. The store
+/// resolves only a file the variant's stored showcase actually lists — and never
+/// `showcase.toml`, which is authoring input.
+pub async fn case_showcase(
+    State(state): State<AppState>,
+    Path((slug, version, variant, file)): Path<(String, String, String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_case_showcase(&slug, &version, &variant, &file)
         .map_err(ApiError::from)?;
     Ok(bytes_response(&file, bytes))
 }
@@ -626,6 +659,7 @@ fn version_response(
                     .map(|frames| ReferenceSheetOut {
                         frames: frames.clone(),
                     }),
+                showcase: v.showcase.as_ref().map(showcase_out),
             })
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
@@ -898,6 +932,26 @@ fn package_out(name: &str) -> PackageOut {
     }
 }
 
+/// Map a variant's stored showcase to its wire shape.
+fn showcase_out(showcase: &crate::store::StoredShowcase) -> ShowcaseOut {
+    ShowcaseOut {
+        description: showcase.description.clone(),
+        media: showcase.media.iter().map(showcase_media_out).collect(),
+    }
+}
+
+/// Map one stored showcase media entry to its wire shape. The store-relative
+/// `key` deliberately stays behind: a client addresses the bytes by the showcase
+/// route (`/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`),
+/// never by artifact key.
+fn showcase_media_out(media: &crate::store::StoredShowcaseMedia) -> ShowcaseMediaOut {
+    ShowcaseMediaOut {
+        file: media.file.clone(),
+        name: media.name.clone(),
+        kind: media.kind,
+    }
+}
+
 /// Map a stored workspace file to the wire `{source, dest}` shape.
 fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
     WorkspaceOut {
@@ -1107,6 +1161,29 @@ pub struct CatalogCase {
     pub tags: Vec<String>,
     /// The short plain-text abstract a card shows, when the case declares one.
     pub summary: Option<String>,
+    /// The case's catalog **showcase preview**, when its latest visible version
+    /// has one: the first variant (manifest order) of that version that declares
+    /// a showcase, with the media list a card's preview stage loops. `null` when
+    /// no variant of the latest version declares one. Only the addressing rides
+    /// here (the description lives on the resolved version's variant); each
+    /// media file is fetched from
+    /// `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`.
+    pub showcase: Option<CatalogShowcaseOut>,
+}
+
+/// A case's catalog showcase preview: which version and variant the media
+/// belongs to, plus the carousel entries themselves — everything a listing card
+/// needs to address the media without resolving the full version.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CatalogShowcaseOut {
+    /// The version the showcase was read from (the case's latest visible one).
+    pub version: String,
+    /// The variant that declares it.
+    pub variant: String,
+    /// The media carousel, in declared order.
+    pub media: Vec<ShowcaseMediaOut>,
 }
 
 #[derive(Serialize)]
@@ -1420,6 +1497,37 @@ struct VariantOut {
     /// the case triple and its index (see `test_cabinet_core::asset_reference`), so
     /// the client builds them against the `snapshotUrl` from `GET /config`.
     reference_sheet: Option<ReferenceSheetOut>,
+    /// The variant's authored **showcase**, when it declares one: the description
+    /// plus the media carousel captured from the reference implementation, shown
+    /// on the case's Play tab. `null` when the variant declares none. Each media
+    /// file is fetched from
+    /// `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`.
+    showcase: Option<ShowcaseOut>,
+}
+
+/// A variant's authored showcase as the resolved version serves it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ShowcaseOut {
+    /// The showcase description — the authored `showcase.md`, verbatim markdown.
+    description: String,
+    /// The media carousel, in declared order.
+    media: Vec<ShowcaseMediaOut>,
+}
+
+/// One entry of a served showcase carousel: the file name the showcase route
+/// addresses the bytes by, its caption, and the kind of media it holds.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ShowcaseMediaOut {
+    /// The media file's name in the showcase directory (a plain file name).
+    pub file: String,
+    /// The short caption for the entry.
+    pub name: String,
+    /// Whether the file is a still image, a video clip, or a replay recording.
+    pub kind: test_cabinet_core::MediaKind,
 }
 
 /// One variant's published reference frames.

@@ -634,6 +634,27 @@ export interface GalleryDataInput {
    */
   showcaseMediaUrl?: (runId: string, file: string) => string | null;
   /**
+   * Resolve the loadable URL for one media file of a **case variant's** authored
+   * showcase — the case-side counterpart of {@link showcaseMediaUrl}. Unlike a
+   * run's showcase this is **case-scoped** (keyed by slug/version/variant, like
+   * {@link referenceMediaUrl}), because the showcase is authored material
+   * committed with the version, not run output: the consoles point at the
+   * backend's `/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}`
+   * route, the static site at the snapshot's published objects (where a video's
+   * `.webm` name resolves to its published `.mp4`). `file` is the plain file
+   * name the variant's {@link VariantSummary.showcase} carousel (or the case's
+   * {@link TestCaseSummary.showcase} preview) carries.
+   *
+   * Omitted (or returning null) by a host that serves no case showcase media, and
+   * the surfaces degrade exactly like the run showcase ("not available here").
+   */
+  caseShowcaseMediaUrl?: (
+    slug: string,
+    version: string,
+    variant: string,
+    file: string,
+  ) => string | null;
+  /**
    * Resolve the URL to download a run's entire produced tree from as one gzip tar
    * (source, build, media, and logs), or null when the host cannot serve it.
    *

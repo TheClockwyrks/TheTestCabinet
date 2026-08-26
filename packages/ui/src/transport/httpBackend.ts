@@ -21,6 +21,8 @@ import type {
   AssetPreview,
   AuthResult,
   BackendIdentity,
+  CaseShowcase,
+  CatalogShowcase,
   Domain,
   Erratum,
   HarnessConfigEntry,
@@ -183,6 +185,12 @@ interface CatalogEntry {
   difficulty: string;
   tags: string[];
   summary: string | null;
+  // The case's catalog showcase preview (the latest visible version's first
+  // variant, in manifest order, that declares one), with the media list a card's
+  // preview stage loops. The wire shape matches the client's `CatalogShowcase`
+  // exactly, so it is carried through verbatim. Null when no variant of the
+  // latest version declares one; absent on a backend that predates the field.
+  showcase?: CatalogShowcase | null;
 }
 
 // `GET /test-cases/{slug}/versions` — the versions for one case, wrapped in
@@ -190,6 +198,14 @@ interface CatalogEntry {
 interface VersionsResponse {
   slug: string;
   versions: string[];
+}
+
+// One starter-workspace file in a resolved version: its store-relative `source`
+// artifact key (what the version artifacts route serves the bytes by) and the
+// run-root-relative `dest` it is seeded at.
+interface WorkspaceFileDescriptor {
+  source: string;
+  dest: string;
 }
 
 // A spec descriptor in a resolved version (its store-relative `source` key and
@@ -264,6 +280,12 @@ interface ResolvedVersion {
   // Known-issue errata recorded for this version. Absent on a backend that
   // predates the field.
   errata?: Erratum[];
+  // The case's COMMON starter-workspace files, keyed by engine slug (the
+  // engineless set under "none") — a starter project is written against a
+  // runtime, so a case ships one set per engine. A variant that declares its own
+  // `workspace` (below) replaces this set entirely. Absent on a backend that
+  // predates the tables.
+  workspace?: Record<string, WorkspaceFileDescriptor[]>;
   variants: {
     slug: string;
     name: string;
@@ -285,6 +307,16 @@ interface ResolvedVersion {
     // snapshot bucket. Null when none is published; absent on a backend that
     // predates the field (which is why the whole feature degrades to "no tab").
     referenceSheet?: { frames: number[] } | null;
+    // The variant's own starter-workspace override (same per-engine keying as
+    // the version-level `workspace`), replacing the common set for this variant
+    // when declared. Null/absent when the variant inherits the common workspace.
+    workspace?: Record<string, WorkspaceFileDescriptor[]> | null;
+    // The variant's authored showcase: the description plus the media carousel,
+    // each entry addressed by plain file name against the backend's case-scoped
+    // showcase route. The wire shape matches the client's `CaseShowcase`
+    // exactly, so it is carried through verbatim. Null when the variant declares
+    // none; absent on a backend that predates the field.
+    showcase?: CaseShowcase | null;
   }[];
 }
 
@@ -450,6 +482,18 @@ function ladderPath(id: string, suffix = ""): string {
   return `/ladders/${encodeURIComponent(id)}${suffix}`;
 }
 
+// The backend route serving one raw artifact of a case version by its
+// store-relative key. The key is a `{*path}` wildcard on the backend (it holds
+// slashes), so each segment is escaped individually rather than the key whole.
+function versionArtifactPath(
+  slug: string,
+  version: string,
+  source: string,
+): string {
+  const key = source.split("/").map(encodeURIComponent).join("/");
+  return `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/artifacts/${key}`;
+}
+
 export function createHttpBackend(baseUrl: string): BackendClient {
   return {
     async identity(): Promise<BackendIdentity> {
@@ -476,6 +520,10 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         difficulty: e.difficulty,
         tags: e.tags,
         summary: e.summary,
+        // The catalog showcase preview, verbatim (the wire shape is the
+        // client's). Null on a backend that predates the field, so the catalog
+        // simply renders its placeholder stage.
+        showcase: e.showcase ?? null,
       }));
     },
 
@@ -578,6 +626,29 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // backend that predates the field, so the Reference tab simply never
           // appears rather than pointing at objects that were never published.
           referenceSheet: v.referenceSheet ?? null,
+          // The variant's authored showcase, verbatim (the wire shape is the
+          // client's); the media bytes are addressed separately through the
+          // gallery's `caseShowcaseMediaUrl`. Null when the variant declares
+          // none or the backend predates the field.
+          showcase: v.showcase ?? null,
+          // The variant's EFFECTIVE starter workspace: its own override when it
+          // declares one, else the case's common set — the same fallback a
+          // run's seed applies — selected for the engine this resolution named
+          // (the backend keys the sets by engine slug, the engineless one under
+          // "none", matching the `engine` a caller passes here). Each file
+          // resolves to the version artifacts route on the backend base, so the
+          // Inputs tree fetches a starter file lazily. Empty when the case
+          // seeds no starter file for the engine or the backend predates the
+          // tables.
+          workspace: ((v.workspace ?? r.workspace)?.[engine] ?? []).map(
+            (file) => ({
+              path: file.dest,
+              url: joinUrl(
+                baseUrl,
+                versionArtifactPath(r.slug, r.version, file.source),
+              ),
+            }),
+          ),
         })),
       };
     },

@@ -17,7 +17,10 @@ use test_cabinet_core::validation::{
 };
 
 use crate::db::StoredReview;
-use crate::store::{StoredBuild, StoredCheck, StoredManifest, StoredReference, StoredVariant};
+use crate::store::{
+    StoredBuild, StoredCheck, StoredManifest, StoredReference, StoredShowcase, StoredShowcaseMedia,
+    StoredVariant, StoredWorkspace, StoredWorkspaceFile,
+};
 
 /// The per-run document object for `run_id`.
 ///
@@ -215,6 +218,7 @@ fn manifest() -> StoredManifest {
             review_items: vec![],
             domains: vec![],
             voxel: None,
+            showcase: None,
         }],
         common_references: vec![StoredReference {
             view: "gameplay".to_string(),
@@ -1006,6 +1010,7 @@ async fn case_metadata_renders_template_specs_per_variant() {
         review_items: vec![],
         domains: vec![],
         voxel: None,
+        showcase: None,
     });
 
     let (_tmp, store) = empty_store();
@@ -1536,6 +1541,286 @@ async fn case_metadata_exports_validation_baselines_keyed_by_engine_variant_and_
     assert_eq!(baselines[0]["variant"], "base");
     assert_eq!(baselines[0]["file"], "spin__still.png");
     assert_eq!(baselines[0]["key"], key);
+}
+
+/// A stored showcase whose carousel is `files`, each entry keyed under the
+/// variant's `showcase/base/` dir the way ingest writes it.
+fn stored_showcase(files: &[(&str, MediaKind)]) -> StoredShowcase {
+    StoredShowcase {
+        description: "A demo game.".to_string(),
+        media: files
+            .iter()
+            .map(|(file, kind)| StoredShowcaseMedia {
+                file: file.to_string(),
+                name: format!("Caption for {file}"),
+                kind: *kind,
+                key: format!("showcase/base/{file}"),
+            })
+            .collect(),
+    }
+}
+
+#[tokio::test]
+async fn case_metadata_exports_variant_showcases_and_names_media_by_key() {
+    // A variant's authored showcase: the description and carousel reach the case
+    // document, and each media file is published under the content-stable,
+    // digest-keyed case-media prefix — exactly as a validation baseline is.
+    let mut m = manifest();
+    m.variants[0].showcase = Some(stored_showcase(&[
+        ("title.png", MediaKind::Image),
+        ("rally.json.gz", MediaKind::Replay),
+    ]));
+    let (_tmp, store) = empty_store();
+    let showcase_dir = store.version_dir(&m.slug, &m.version).join("showcase/base");
+    std::fs::create_dir_all(&showcase_dir).unwrap();
+    std::fs::write(showcase_dir.join("title.png"), b"png:title").unwrap();
+    std::fs::write(showcase_dir.join("rally.json.gz"), b"\x1f\x8bgz:rally").unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    let png_key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-title.png",
+        content_digest(b"png:title")
+    );
+    let png = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == png_key)
+        .expect("showcase still exported under the case-media prefix");
+    assert_eq!(png.content_type, "image/png");
+    assert_eq!(png.bytes, b"png:title");
+    // A replay recording travels gzip-framed, labelled so the player is handed
+    // the JSON inside.
+    let replay_key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-rally.json.gz",
+        content_digest(b"\x1f\x8bgz:rally")
+    );
+    let replay = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == replay_key)
+        .expect("showcase recording exported");
+    assert_eq!(replay.content_encoding.as_deref(), Some("gzip"));
+
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let showcase = &parsed["variants"][0]["showcase"];
+    assert_eq!(showcase["description"], "A demo game.");
+    let media = showcase["media"].as_array().unwrap();
+    assert_eq!(media.len(), 2);
+    assert_eq!(media[0]["file"], "title.png");
+    assert_eq!(media[0]["name"], "Caption for title.png");
+    assert_eq!(media[0]["kind"], "image");
+    assert_eq!(media[0]["key"], serde_json::json!(png_key));
+    assert_eq!(media[1]["kind"], "replay");
+    assert_eq!(media[1]["key"], serde_json::json!(replay_key));
+}
+
+#[tokio::test]
+async fn a_variant_without_a_showcase_exports_null() {
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert!(parsed["variants"][0]["showcase"].is_null());
+}
+
+#[tokio::test]
+async fn showcase_webm_is_transcoded_to_mp4_with_the_authored_name_kept() {
+    let Some(webm) = make_test_webm() else {
+        eprintln!("skipping: ffmpeg/libvpx unavailable");
+        return;
+    };
+    let mut m = manifest();
+    m.variants[0].showcase = Some(stored_showcase(&[("play.webm", MediaKind::Video)]));
+    let (_tmp, store) = empty_store();
+    let showcase_dir = store.version_dir(&m.slug, &m.version).join("showcase/base");
+    std::fs::create_dir_all(&showcase_dir).unwrap();
+    std::fs::write(showcase_dir.join("play.webm"), &webm).unwrap();
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    // Published as an iOS-playable mp4, keyed by a digest of the **source** bytes
+    // (decided before the transcode, so an unchanged clip skips the ffmpeg run on
+    // the next refresh); the metadata keeps the authored `.webm` name.
+    let key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-play.mp4",
+        content_digest(&webm)
+    );
+    let clip = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == key)
+        .expect("showcase clip published as mp4");
+    assert_eq!(clip.content_type, "video/mp4");
+    assert_eq!(&clip.bytes[4..8], b"ftyp", "transcoded bytes are not mp4");
+
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let media = &parsed["variants"][0]["showcase"]["media"][0];
+    assert_eq!(media["file"], "play.webm");
+    assert_eq!(media["kind"], "video");
+    assert_eq!(media["key"], serde_json::json!(key));
+}
+
+#[tokio::test]
+async fn existing_showcase_media_is_referenced_without_re_uploading() {
+    // A showcase file already in the bucket under its content key is referenced by
+    // the metadata but not re-uploaded — the same dedup a validation baseline gets.
+    let mut m = manifest();
+    m.variants[0].showcase = Some(stored_showcase(&[("title.png", MediaKind::Image)]));
+    let (_tmp, store) = empty_store();
+    let showcase_dir = store.version_dir(&m.slug, &m.version).join("showcase/base");
+    std::fs::create_dir_all(&showcase_dir).unwrap();
+    std::fs::write(showcase_dir.join("title.png"), b"png:title").unwrap();
+
+    let key = format!(
+        "media/cases/pong/v1.0.0/showcase/base/{}-title.png",
+        content_digest(b"png:title")
+    );
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .with_existing_media(std::collections::HashSet::from([key.clone()]))
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    assert!(
+        !snapshot.objects.iter().any(|o| o.key == key),
+        "an already-published showcase file must not be re-uploaded",
+    );
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert_eq!(
+        parsed["variants"][0]["showcase"]["media"][0]["key"],
+        serde_json::json!(key)
+    );
+}
+
+#[tokio::test]
+async fn case_metadata_exports_workspace_files_engineless_and_per_engine() {
+    // The starter workspace reaches the case document as lazy addressing — dest +
+    // published object key — for the engineless set on the variant itself and for
+    // each declared engine's set on its rendering, with the bytes published once
+    // under the content-addressed files prefix with a text content type.
+    let mut m = manifest();
+    m.engines = vec![
+        test_cabinet_core::EngineSupport::unbounded(test_cabinet_core::engine::NONE_SLUG),
+        test_cabinet_core::EngineSupport::unbounded("simple-2d"),
+    ];
+    m.workspace = StoredWorkspace(std::collections::BTreeMap::from([
+        (
+            "none".to_string(),
+            vec![StoredWorkspaceFile {
+                source: "workspaces/none/src/main.ts".to_string(),
+                dest: "src/main.ts".to_string(),
+            }],
+        ),
+        (
+            "simple-2d".to_string(),
+            vec![
+                StoredWorkspaceFile {
+                    source: "workspaces/simple-2d/src/main.ts".to_string(),
+                    dest: "src/main.ts".to_string(),
+                },
+                StoredWorkspaceFile {
+                    source: "workspaces/simple-2d/package.json".to_string(),
+                    dest: "package.json".to_string(),
+                },
+            ],
+        ),
+    ]));
+    let (_tmp, store) = empty_store();
+    for (key, body) in [
+        // The two engines' `main.ts` are byte-identical, so they collapse onto one
+        // published object.
+        ("workspaces/none/src/main.ts", "console.log(1)"),
+        ("workspaces/simple-2d/src/main.ts", "console.log(1)"),
+        ("workspaces/simple-2d/package.json", "{}"),
+    ] {
+        let path = store.version_dir(&m.slug, &m.version).join(key);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, body).unwrap();
+    }
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    // `main.ts` is published exactly once even though both engines seed it: the
+    // key is a digest of the bytes plus the base name, and identical bytes share
+    // one object. A TypeScript source deliberately serves as plain text.
+    let main_key = format!(
+        "files/cases/pong/v1.0.0/workspace/{}-main.ts",
+        content_digest(b"console.log(1)")
+    );
+    let main_objects: Vec<_> = snapshot
+        .objects
+        .iter()
+        .filter(|o| o.key == main_key)
+        .collect();
+    assert_eq!(main_objects.len(), 1, "identical bytes publish one object");
+    assert_eq!(main_objects[0].content_type, "text/plain; charset=utf-8");
+    let package_key = format!(
+        "files/cases/pong/v1.0.0/workspace/{}-package.json",
+        content_digest(b"{}")
+    );
+    let package = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == package_key)
+        .expect("workspace package.json exported");
+    assert_eq!(package.content_type, "application/json");
+
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    // The variant-level set is the engineless (`none`) workspace…
+    let engineless = parsed["variants"][0]["workspaceFiles"].as_array().unwrap();
+    assert_eq!(engineless.len(), 1);
+    assert_eq!(engineless[0]["dest"], "src/main.ts");
+    assert_eq!(engineless[0]["key"], serde_json::json!(main_key));
+    // …and each engine rendering carries its own.
+    let rendering = &parsed["variants"][0]["engineRenderings"]["simple-2d"];
+    let files = rendering["workspaceFiles"].as_array().unwrap();
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0]["dest"], "src/main.ts");
+    assert_eq!(files[0]["key"], serde_json::json!(main_key));
+    assert_eq!(files[1]["dest"], "package.json");
+    assert_eq!(files[1]["key"], serde_json::json!(package_key));
 }
 
 /// Generate a tiny real `.webm` clip with ffmpeg, or `None` if ffmpeg (or a VP8

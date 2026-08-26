@@ -407,6 +407,74 @@ fn ingest_tolerates_a_variant_reference_implementation_key() {
 }
 
 #[test]
+fn a_variant_showcase_survives_ingest_and_its_media_is_served_from_the_store() {
+    // A case whose `base` variant declares a showcase: the stored manifest must
+    // carry the description and the carousel (order, kinds, and each entry keyed by
+    // its store-relative path), and after a real scan the store must serve the
+    // media bytes back through the manifest-gated showcase read.
+    let dir = TempDir::new().expect("temp dir");
+    let version = dir.path().join("test-cases/end-to-end/easy/demo/v1.0.0");
+    write(&version.join("prompt.hbs"), "Build it.");
+    write(&version.join("changelog.md"), "Introduced.");
+    write(
+        &version.join("test-case.toml"),
+        "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [[domain]]\nid = \"gameplay\"\ndescription = \"Core gameplay.\"\n",
+    );
+    write(
+        &version.join("variants/base.toml"),
+        "slug = \"base\"\nshowcase = \"showcase/base\"\n",
+    );
+    write(
+        &version.join("showcase/base/showcase.md"),
+        "A demo game. Media captured from the reference implementation.\n",
+    );
+    write(
+        &version.join("showcase/base/showcase.toml"),
+        "[[media]]\nfile = \"title.png\"\nname = \"The title screen\"\n\n\
+         [[media]]\nfile = \"rally.json.gz\"\nname = \"A rally\"\n",
+    );
+    write(&version.join("showcase/base/title.png"), "png:title");
+    write(&version.join("showcase/base/rally.json.gz"), "gz:rally");
+
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(dir.path().join("test-cases"));
+    let resolved = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let manifest = build_stored_manifest(&resolved).expect("build the stored manifest");
+
+    let showcase = manifest.variants[0]
+        .showcase
+        .as_ref()
+        .expect("the declared showcase survives into the stored manifest");
+    assert!(showcase.description.starts_with("A demo game."));
+    // Declared order, inferred kinds, and store-relative keys — the same keying a
+    // spec or a workspace file gets, since the bytes ride the copied version tree.
+    assert_eq!(showcase.media.len(), 2);
+    assert_eq!(showcase.media[0].file, "title.png");
+    assert_eq!(showcase.media[0].name, "The title screen");
+    assert_eq!(showcase.media[0].kind, test_cabinet_core::MediaKind::Image);
+    assert_eq!(showcase.media[0].key, "showcase/base/title.png");
+    assert_eq!(showcase.media[1].kind, test_cabinet_core::MediaKind::Replay);
+    assert_eq!(showcase.media[1].key, "showcase/base/rally.json.gz");
+
+    // The full scan copies the tree and writes the manifest; the store then serves
+    // the media through the manifest-gated read the showcase route uses.
+    let store_dir = TempDir::new().unwrap();
+    let store = DefinitionStore::open(store_dir.path()).unwrap();
+    Ingestor::new(dir.path(), &store)
+        .scan(&IngestRequest::default())
+        .expect("scan ingests the showcase-bearing case");
+    assert_eq!(
+        store
+            .read_case_showcase("demo", "v1.0.0", "base", "title.png")
+            .expect("the showcase media is served from the store"),
+        b"png:title",
+    );
+}
+
+#[test]
 fn stored_manifest_carries_performance_specs() {
     // A performance case's `[contract]` (input/output), per-scenario `[sandbox]`
     // (fuel_limit), and the held-out `[[case]]` scored set must survive into the

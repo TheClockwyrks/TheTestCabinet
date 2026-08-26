@@ -5,7 +5,7 @@
 // dev and when no snapshot URL is configured.
 declare module "virtual:tcab-snapshot" {
   import type { RunSummary } from "@test-cabinet/run-record/snapshot";
-  import type { StoredReview } from "@test-cabinet/ui/client";
+  import type { StoredReview, WorkspaceFileRef } from "@test-cabinet/ui/client";
   import type {
     SeededInput,
     TestCaseDetail,
@@ -47,7 +47,15 @@ declare module "virtual:tcab-snapshot" {
   export interface SnapshotVariant extends VariantSummary {
     engineRenderings: Record<
       string,
-      { prompt: string; seededInputs: SeededInput[] }
+      {
+        prompt: string;
+        seededInputs: SeededInput[];
+        /** The variant's effective starter-workspace set for this engine — a
+         * starter project is written against a runtime, so each rendering
+         * carries its own (the engineless set is the variant's own
+         * `workspace`). */
+        workspace: WorkspaceFileRef[];
+      }
     >;
   }
 
@@ -105,6 +113,15 @@ declare module "virtual:tcab-snapshot" {
    * video's `.webm` request resolving to its published `.mp4`).
    */
   export const showcaseMediaUrls: Record<string, Record<string, string>>;
+  /**
+   * Resolved **case** showcase media URLs (a variant's authored carousel,
+   * captured from the reference implementation), keyed by a
+   * `<slug>/<version>/<variant>` subject key then by the authored file name (a
+   * video's `.webm` request resolving to its published `.mp4`). Case-scoped,
+   * like the validation baselines — the showcase is committed with the version,
+   * not produced by a run.
+   */
+  export const caseShowcaseMediaUrls: Record<string, Record<string, string>>;
   /**
    * Resolved code-analysis document URLs, keyed by run id — one per run, since a run
    * has exactly one analysis.

@@ -1083,6 +1083,16 @@ struct ManifestVariant {
     /// [`ManifestReferenceImplementation`].
     #[serde(default)]
     reference_implementation: Option<ManifestReferenceImplementation>,
+    /// Optional **showcase**: a directory, relative to the version folder, holding
+    /// the authored presentation of this variant — `showcase.md` (a description)
+    /// plus `showcase.toml` (an ordered media carousel in the same `[[media]]`
+    /// shape a run's produced showcase uses) and the media files themselves, flat.
+    /// The media are captured from the reference implementation, so like it they
+    /// are **never seeded into a run** — the showcase is site-facing material the
+    /// catalog and case pages present. `None` leaves the variant with no showcase.
+    /// See [`Variant::showcase`] for the resolved form and the validation applied.
+    #[serde(default)]
+    showcase: Option<PathBuf>,
 }
 
 /// A variant's `reference_implementation` key, in either of the two forms the
@@ -3231,6 +3241,49 @@ pub struct Variant {
     /// than indexing. Empty when the variant declares no reference implementation.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reference_impls: BTreeMap<String, PathBuf>,
+    /// The authored showcase for this variant, when it declares one — the
+    /// description and media carousel (captured from the reference implementation)
+    /// the catalog and case pages present. Like the reference implementation it is
+    /// authored material that is **never seeded into a run**. `None` when the
+    /// variant declares no `showcase`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub showcase: Option<CaseShowcase>,
+}
+
+/// A test-case variant's authored showcase: the case-side counterpart of a run's
+/// produced showcase (see `RunShowcase`), presenting the *case* rather than one
+/// model's attempt at it.
+///
+/// Resolved from the directory a variant's `showcase` key names — `showcase.md`
+/// (the description) plus `showcase.toml` (the ordered media carousel, in the
+/// same `[[media]]` shape the run showcase uses). Unlike the run-side capture,
+/// which is model-written at run time and degrades leniently, this showcase is
+/// authored and committed, so every problem hard-fails resolution.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaseShowcase {
+    /// The showcase description — `showcase.md`'s contents, verbatim.
+    pub description: String,
+    /// The media carousel, in declared order. Always 1–10 entries.
+    pub media: Vec<CaseShowcaseMedia>,
+}
+
+/// One entry of a [`CaseShowcase`]'s media carousel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaseShowcaseMedia {
+    /// The media file's name in the showcase directory itself (a plain file name —
+    /// no subdirectories).
+    pub file: String,
+    /// The short caption for the entry.
+    pub name: String,
+    /// The kind of media the file holds, inferred from its name (see
+    /// [`MediaKind::from_path`]).
+    pub kind: MediaKind,
+    /// Absolute host path to the media file inside the version folder, carried —
+    /// like a [`ReferenceView::source_path`] — so a publisher or server knows
+    /// which file's bytes to ship.
+    pub source_path: PathBuf,
 }
 
 /// A reference view a test case declares as a visual target.
@@ -7390,6 +7443,21 @@ impl TestCaseCatalog {
                 None => {}
             }
 
+            // A variant's showcase, when declared, is the authored presentation of
+            // the case — a description plus a small media carousel captured from
+            // the reference implementation. Like the reference implementation it is
+            // host-side material that never seeds into a run (it takes no part in
+            // the seed-dest `claim`s below), so resolving it costs a run nothing;
+            // it is hard-validated here so a typo, a malformed manifest, or an
+            // oversized file fails resolution rather than a later publish.
+            let showcase = match &variant.showcase {
+                Some(rel) => {
+                    let dir = resolve_inside(rel, "variant showcase")?;
+                    Some(resolve_showcase(&variant.slug, rel, &dir, &invalid)?)
+                }
+                None => None,
+            };
+
             // A variant's `[voxel]`, when declared, replaces the case's common
             // volume for this variant (the size axis behind half/base/double
             // variants). It is meaningful only for a voxel case: a variant of any
@@ -7745,6 +7813,7 @@ impl TestCaseCatalog {
                 domains: variant_domains,
                 voxel,
                 reference_impls,
+                showcase,
             });
         }
 
@@ -8090,6 +8159,136 @@ fn spec_default_dest(source: &Path) -> PathBuf {
     } else {
         source.to_path_buf()
     }
+}
+
+/// Resolve a variant's authored showcase directory (the `showcase` key — see
+/// [`ManifestVariant::showcase`]) into a [`CaseShowcase`].
+///
+/// `rel` is the directory as the manifest declared it (for error messages) and
+/// `dir` its resolved host path inside the version folder. The directory holds
+/// `showcase.md` (the description), `showcase.toml` (the ordered media carousel,
+/// parsed with the shared [`crate::ShowcaseManifest`] so the case-side and
+/// run-side showcases stay one format), and the media files themselves, flat.
+///
+/// Unlike the run-side capture in `lib.rs` — which reads a *model-written*
+/// showcase at run time and therefore degrades leniently, truncating and
+/// dropping — this showcase is authored and committed, so every problem is a
+/// manifest error: a missing or empty description, a description over
+/// [`crate::MAX_SHOWCASE_DESCRIPTION_BYTES`], an unparsable manifest, an empty
+/// carousel or one over [`crate::MAX_SHOWCASE_MEDIA_ENTRIES`], an entry that does
+/// not name a plain existing file in the directory, a file named by more than
+/// one entry, a file over
+/// [`crate::MAX_SHOWCASE_MEDIA_FILE_BYTES`], or a name whose extension names no
+/// known [`MediaKind`] all hard-fail resolution.
+fn resolve_showcase(
+    variant_slug: &str,
+    rel: &Path,
+    dir: &Path,
+    invalid: &impl Fn(String) -> Error,
+) -> Result<CaseShowcase> {
+    let invalid = |detail: String| {
+        invalid(format!(
+            "variant `{variant_slug}` showcase `{}`: {detail}",
+            rel.display()
+        ))
+    };
+    if !dir.is_dir() {
+        return Err(invalid("the directory does not exist".to_string()));
+    }
+
+    let description = match std::fs::read_to_string(dir.join("showcase.md")) {
+        Ok(text) => text,
+        Err(err) => {
+            return Err(invalid(format!("showcase.md could not be read: {err}")));
+        }
+    };
+    if description.trim().is_empty() {
+        return Err(invalid("showcase.md is empty".to_string()));
+    }
+    if description.len() > crate::MAX_SHOWCASE_DESCRIPTION_BYTES {
+        return Err(invalid(format!(
+            "showcase.md is {} bytes, over the {}-byte cap",
+            description.len(),
+            crate::MAX_SHOWCASE_DESCRIPTION_BYTES
+        )));
+    }
+
+    let manifest = match std::fs::read_to_string(dir.join("showcase.toml")) {
+        Ok(text) => text,
+        Err(err) => {
+            return Err(invalid(format!("showcase.toml could not be read: {err}")));
+        }
+    };
+    let manifest: crate::ShowcaseManifest = toml::from_str(&manifest)
+        .map_err(|err| invalid(format!("showcase.toml could not be parsed: {err}")))?;
+
+    if manifest.media.is_empty() {
+        return Err(invalid(
+            "showcase.toml declares no [[media]] entries; a showcase carries at least one"
+                .to_string(),
+        ));
+    }
+    if manifest.media.len() > crate::MAX_SHOWCASE_MEDIA_ENTRIES {
+        return Err(invalid(format!(
+            "showcase.toml declares {} [[media]] entries, over the cap of {}",
+            manifest.media.len(),
+            crate::MAX_SHOWCASE_MEDIA_ENTRIES
+        )));
+    }
+    let mut media = Vec::with_capacity(manifest.media.len());
+    for entry in manifest.media {
+        // An entry names a plain file in the showcase directory itself — no
+        // subdirectories, no traversal — which is also the invariant that keeps
+        // every downstream serving route for it a flat namespace. The `..` check
+        // matches the run showcase's (any name *containing* `..` is refused).
+        if entry.file.is_empty() || entry.file.contains(['/', '\\']) || entry.file.contains("..") {
+            return Err(invalid(format!(
+                "media entry `{}` does not name a plain file in the showcase directory",
+                entry.file
+            )));
+        }
+        if media
+            .iter()
+            .any(|resolved: &CaseShowcaseMedia| resolved.file == entry.file)
+        {
+            return Err(invalid(format!(
+                "showcase.toml declares media file `{}` more than once",
+                entry.file
+            )));
+        }
+        let source_path = dir.join(&entry.file);
+        let metadata = match std::fs::metadata(&source_path) {
+            Ok(metadata) if metadata.is_file() => metadata,
+            _ => {
+                return Err(invalid(format!(
+                    "media file `{}` does not exist in the showcase directory",
+                    entry.file
+                )));
+            }
+        };
+        if metadata.len() > crate::MAX_SHOWCASE_MEDIA_FILE_BYTES {
+            return Err(invalid(format!(
+                "media file `{}` is {} bytes, over the {}-byte cap",
+                entry.file,
+                metadata.len(),
+                crate::MAX_SHOWCASE_MEDIA_FILE_BYTES
+            )));
+        }
+        let Some(kind) = MediaKind::from_path(Path::new(&entry.file)) else {
+            return Err(invalid(format!(
+                "media file `{}` has an extension naming no known media kind \
+                 (png/jpg/jpeg/webp/gif, webm/mp4, or json.gz)",
+                entry.file
+            )));
+        };
+        media.push(CaseShowcaseMedia {
+            file: entry.file,
+            name: entry.name,
+            kind,
+            source_path,
+        });
+    }
+    Ok(CaseShowcase { description, media })
 }
 
 /// Resolve and validate a sprite-sheet case's `[sheet]` table.
@@ -8718,3 +8917,7 @@ mod engine_tests;
 #[cfg(test)]
 #[path = "test_case.toolchain.test.rs"]
 mod toolchain_tests;
+
+#[cfg(test)]
+#[path = "test_case.showcase.test.rs"]
+mod showcase_tests;

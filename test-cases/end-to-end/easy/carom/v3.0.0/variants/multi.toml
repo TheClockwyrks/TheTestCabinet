@@ -14,6 +14,9 @@ description = "Three independent balls that collide with each other — each wit
 # `specs/modes/single-player.md.hbs`, `specs/state.md.hbs` and
 # `specs/instrumentation.md.hbs`). So multi declares no `spec` of its own.
 
+# Curated demo media for this variant, captured from the reference build below.
+showcase = "showcase/multi"
+
 # The authored, *correct* static build of this variant, one per engine — see
 # `variants/base.toml` for what a reference implementation is and how it is
 # published. Under `none` the build carries its own runtime in `src/host.ts`;

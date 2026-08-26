@@ -149,8 +149,53 @@ describe("createBackendExec catalog listing", () => {
         difficulty: "easy",
         tags: ["arcade"],
         summary: "A duel of angles.",
+        // A backend that predates catalog showcases reads as "no preview", so
+        // the catalog renders its placeholder stage.
+        showcase: null,
       },
     ]);
+  });
+
+  // The catalog showcase preview rides the same single listing request; its wire
+  // shape is the client's, so it travels verbatim.
+  it("carries the catalog showcase preview through the listing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          testCases: [
+            {
+              slug: "carom",
+              versions: ["v3.0.0"],
+              name: "Carom",
+              testType: "end-to-end",
+              difficulty: "easy",
+              tags: [],
+              summary: null,
+              showcase: {
+                version: "v3.0.0",
+                variant: "base",
+                media: [
+                  { file: "title.png", name: "Title screen", kind: "image" },
+                  { file: "rally.json.gz", name: "A rally", kind: "replay" },
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+
+    const cases = await createHttpBackend(BACKEND).listTestCases();
+
+    expect(cases[0]!.showcase).toEqual({
+      version: "v3.0.0",
+      variant: "base",
+      media: [
+        { file: "title.png", name: "Title screen", kind: "image" },
+        { file: "rally.json.gz", name: "A rally", kind: "replay" },
+      ],
+    });
   });
 
   // A backend that predates the asset-shape field must not make the catalog's
@@ -355,6 +400,154 @@ describe("engine dimension", () => {
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]![1].body));
     expect(body).not.toHaveProperty("engine");
+  });
+});
+
+describe("case showcase and starter workspace", () => {
+  // The shared frame of a resolved version; each test overrides the variants and
+  // workspace tables it is about.
+  function resolvedVersionBody(overrides: Record<string, unknown>) {
+    return {
+      slug: "carom",
+      version: "v3.0.0",
+      name: "Carom",
+      difficulty: "easy",
+      tags: [],
+      summary: null,
+      description: null,
+      changelog: "",
+      maxRuntimeSeconds: 1800,
+      testType: "end-to-end",
+      engines: [{ slug: "none" }, { slug: "simple-2d" }],
+      checks: [],
+      variants: [],
+      ...overrides,
+    };
+  }
+
+  function variantBody(overrides: Record<string, unknown> = {}) {
+    return {
+      slug: "base",
+      name: "Base",
+      description: null,
+      prompt: "Build the thing.",
+      specs: [],
+      ...overrides,
+    };
+  }
+
+  // The variant's authored showcase travels verbatim (its wire shape is the
+  // client's); a backend that predates the field reads as "no showcase" rather
+  // than leaving the surfaces undefined-sensitive.
+  it("maps a variant's showcase and reads a missing one as null", async () => {
+    const showcase = {
+      description: "Captured from the reference implementation.",
+      media: [
+        { file: "title.png", name: "Title screen", kind: "image" },
+        { file: "rally.json.gz", name: "A rally", kind: "replay" },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          resolvedVersionBody({
+            variants: [
+              variantBody({ showcase }),
+              variantBody({ slug: "gyre", name: "Gyre" }),
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const info = await createHttpBackend(BACKEND).resolveVersion(
+      "carom",
+      "v3.0.0",
+      "none",
+    );
+
+    expect(info.variants[0]!.showcase).toEqual(showcase);
+    expect(info.variants[1]!.showcase).toBeNull();
+  });
+
+  // The effective workspace is the variant's own override when it declares one,
+  // else the case's common set — the same fallback a run's seed applies — and the
+  // engine the caller resolved for selects which per-engine directory travels.
+  // Each file resolves to the version artifacts route on the backend base, so the
+  // Inputs tree can fetch a starter file lazily.
+  it("resolves the effective starter workspace for the requested engine", async () => {
+    const workspace = {
+      none: [{ source: "workspace/none/index.html", dest: "index.html" }],
+      "simple-2d": [
+        { source: "workspace/simple-2d/src/main.ts", dest: "src/main.ts" },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          resolvedVersionBody({
+            workspace,
+            variants: [
+              variantBody(),
+              variantBody({
+                slug: "gyre",
+                name: "Gyre",
+                workspace: {
+                  "simple-2d": [
+                    {
+                      source: "workspace-gyre/simple-2d/src/main.ts",
+                      dest: "src/main.ts",
+                    },
+                  ],
+                },
+              }),
+            ],
+          }),
+        ),
+      ),
+    );
+
+    const info = await createHttpBackend(BACKEND).resolveVersion(
+      "carom",
+      "v3.0.0",
+      "simple-2d",
+    );
+
+    // The common set, selected by the resolved engine's directory.
+    expect(info.variants[0]!.workspace).toEqual([
+      {
+        path: "src/main.ts",
+        url: `${BACKEND}/test-cases/carom/versions/v3.0.0/artifacts/workspace/simple-2d/src/main.ts`,
+      },
+    ]);
+    // A variant's override REPLACES the common set entirely.
+    expect(info.variants[1]!.workspace).toEqual([
+      {
+        path: "src/main.ts",
+        url: `${BACKEND}/test-cases/carom/versions/v3.0.0/artifacts/workspace-gyre/simple-2d/src/main.ts`,
+      },
+    ]);
+  });
+
+  // A backend that predates the workspace tables — or a case that seeds no
+  // starter file for the engine — reads as an empty set, never undefined.
+  it("reads an absent workspace as empty", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(resolvedVersionBody({ variants: [variantBody()] })),
+      ),
+    );
+
+    const info = await createHttpBackend(BACKEND).resolveVersion(
+      "carom",
+      "v3.0.0",
+      "none",
+    );
+
+    expect(info.variants[0]!.workspace).toEqual([]);
   });
 });
 

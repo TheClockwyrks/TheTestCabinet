@@ -1,0 +1,19 @@
+[[media]]
+file = "solving-a-board.webm"
+name = "A three-channel board drawn from empty to solved"
+
+[[media]]
+file = "fresh-board.png"
+name = "A fresh board: emitters, lenses, and a two-charge crystal"
+
+[[media]]
+file = "mid-draw.png"
+name = "The square beam mid-draw, the trace still live"
+
+[[media]]
+file = "solved.png"
+name = "Every beam complete and every charge spent"
+
+[[media]]
+file = "title.png"
+name = "The title screen"

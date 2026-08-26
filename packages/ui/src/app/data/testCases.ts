@@ -4,7 +4,14 @@ import type {
   ModelSpec,
   TestType,
 } from "@test-cabinet/run-record";
-import type { AssetKind, Erratum, ReferenceSheet } from "../../client";
+import type {
+  AssetKind,
+  CaseShowcase,
+  CatalogShowcase,
+  Erratum,
+  ReferenceSheet,
+  WorkspaceFileRef,
+} from "../../client";
 import type { FailureCap } from "../../ratings";
 
 export type { Erratum, ErratumSeverity } from "../../client";
@@ -12,6 +19,18 @@ export type { Erratum, ErratumSeverity } from "../../client";
  * catalog records them. Re-exported from the client wire shape so the catalog and
  * the transports cannot drift on it. */
 export type { ReferenceSheet } from "../../client";
+/** A variant's authored showcase (description + media carousel captured from the
+ * reference implementation), one carousel entry, a case's catalog showcase
+ * preview, and one starter-workspace file reference — as the catalog records
+ * them. Re-exported from the client wire shapes (the same drift rule as
+ * {@link ReferenceSheet}): the media bytes resolve through the gallery's
+ * `caseShowcaseMediaUrl`, a workspace file's through its own `url`. */
+export type {
+  CaseShowcase,
+  CatalogShowcase,
+  ShowcaseMediaRef,
+  WorkspaceFileRef,
+} from "../../client";
 
 // The test-case catalog's site-facing shapes. The data itself is assembled by
 // each host and injected through the gallery data source (see galleryContext):
@@ -244,6 +263,25 @@ export interface VariantSummary {
    * end-to-end/full-stack variant, whose reference is a {@link referenceBuilds}
    * instead. The two are mutually exclusive in practice: a case is one test type. */
   referenceSheet: ReferenceSheet | null;
+  /** The variant's authored **showcase**, when it declares one: the description
+   * plus the 2–10-entry media carousel captured from the reference
+   * implementation, committed with the version. Drives the detail page's Play
+   * tab (and, at the listing level, the catalog's preview stage — see
+   * {@link TestCaseSummary.showcase}). The media bytes resolve through the
+   * host's `caseShowcaseMediaUrl`; a host that omits the resolver degrades
+   * exactly like the run showcase ("not available here"). `null` when the
+   * variant declares none, and absent on a host that predates the field —
+   * either way the Play surfaces show no showcase. */
+  showcase?: CaseShowcase | null;
+  /** The variant's **effective** starter-workspace files (its own override when
+   * it declares one, else the case's common workspace) for the engine this
+   * summary was rendered for — the starter project a run is seeded with, newly
+   * surfaced on the Inputs tab's file tree. Each entry carries the
+   * run-root-relative path and a lazily-fetched URL (the consoles point at the
+   * backend's version artifacts route, the static site at the snapshot's
+   * published objects). Empty when the case seeds no starter file for the
+   * engine, and absent on a host that predates the field. */
+  workspace?: WorkspaceFileRef[];
 }
 
 /**
@@ -280,6 +318,15 @@ export interface TestCaseSummary {
   versions: string[];
   /** The newest version (first of `versions`). */
   latestVersion: string;
+  /** The case's catalog **showcase preview** — the latest version's first
+   * variant (manifest order) that declares a showcase, with the media list the
+   * catalog's preview stage loops (only the addressing rides here; the
+   * description lives on the resolved variant — see
+   * {@link VariantSummary.showcase}). The media bytes resolve through the
+   * host's `caseShowcaseMediaUrl`. `null` when no variant of the latest version
+   * declares one, and absent on a host that predates the field — either way the
+   * catalog renders its placeholder stage. */
+  showcase?: CatalogShowcase | null;
 }
 
 /**

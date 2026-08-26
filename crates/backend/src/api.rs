@@ -87,7 +87,10 @@ pub use models::{
     ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
 };
 pub use test_case_groups::{TestCaseGroupOut, TestCaseGroupsResponse};
-pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
+pub use test_cases::{
+    CatalogCase, CatalogResponse, CatalogShowcaseOut, ShowcaseMediaOut, VersionResponse,
+    VersionsResponse,
+};
 // The `/stats` response contract lives beside its folds in `crate::stats`
 // (the handlers in `api::stats` own only the corpus); re-exported here so the
 // generator names it the way it names every other response envelope.
@@ -252,6 +255,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/test-cases/{slug}/versions/{version}/validation-baseline/{engine}/{variant}/{file}",
             get(test_cases::validation_baseline),
+        )
+        // One media file of a variant's authored showcase (a `.png` still, `.webm`
+        // clip, or `.json.gz` replay captured from the reference implementation),
+        // served case-scoped — the case-side counterpart of a run's showcase files.
+        // `showcase.toml` is authoring input and is never served. A read.
+        .route(
+            "/test-cases/{slug}/versions/{version}/showcase/{variant}/{file}",
+            get(test_cases::case_showcase),
         )
         // The gameplay READMEs of earlier runs of a game jam (matched on the same
         // harness + model), oldest first. The driver reads this before seeding a

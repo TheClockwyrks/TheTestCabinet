@@ -263,22 +263,30 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // Learn what is already uploaded so the builder references those objects instead of
     // re-reading, re-transcoding and re-uploading them. The whole `media/` prefix is
     // listed in one pass — it also covers the reference sheets `tcab publish-reference`
-    // writes, which are simply never looked up here.
+    // writes, which are simply never looked up here — and the `files/` prefix with it,
+    // covering a case version's content-addressed starter-workspace files
+    // (`files/cases/<slug>/<version>/…`).
     //
     // Only when R2 is configured — the dev path has no bucket to list, and re-uploads
     // nothing anyway. A list failure is not fatal: fall back to an empty set (re-export
     // everything) rather than abort the whole refresh, so a transient list error
     // degrades to the old behavior.
     let existing_media = match &inner.r2 {
-        Some(r2) => match r2.list_keys("media/").await {
-            Ok(keys) => keys.into_iter().collect(),
-            Err(err) => {
-                tracing::warn!(
-                    "listing existing snapshot media failed ({err}); re-exporting all run and case media"
-                );
-                std::collections::HashSet::new()
+        Some(r2) => {
+            let mut keys = std::collections::HashSet::new();
+            for prefix in ["media/", "files/"] {
+                match r2.list_keys(prefix).await {
+                    Ok(listed) => keys.extend(listed),
+                    Err(err) => {
+                        tracing::warn!(
+                            "listing existing snapshot `{prefix}` objects failed ({err}); \
+                             re-exporting everything under it"
+                        );
+                    }
+                }
             }
-        },
+            keys
+        }
         None => std::collections::HashSet::new(),
     };
 

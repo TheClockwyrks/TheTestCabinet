@@ -99,6 +99,26 @@ const MEDIA_PREFIX: &str = "media/runs";
 /// [frozen]: https://docs.testcabinet.ai/development/frozen-versions/
 const CASE_MEDIA_PREFIX: &str = "media/cases";
 
+/// The bucket prefix a **case version's** starter-workspace file bytes are
+/// published under — likewise **outside** any single snapshot's prefix, and
+/// content-addressed exactly as [`CASE_MEDIA_PREFIX`] objects are (the key
+/// carries a [`content_digest`] of the bytes plus the file's base name), so an
+/// unchanged file keeps its key across refreshes and a changed one mints a new
+/// key. Its own prefix rather than `media/cases` because these are not media:
+/// they are the text files a run is seeded with, published so the static
+/// gallery's Inputs tab can fetch a starter file lazily the way the live console
+/// fetches it over the artifact route.
+const CASE_FILES_PREFIX: &str = "files/cases";
+
+/// A version's exported starter-workspace sets, keyed by variant slug and then by
+/// [engine](test_cabinet_core::engine) slug — what
+/// [`SnapshotBuilder::case_workspace_files`] collects and [`case_metadata`] folds
+/// onto each variant.
+type VariantWorkspaceFiles = std::collections::HashMap<
+    String,
+    std::collections::BTreeMap<String, Vec<CaseWorkspaceFileOut>>,
+>;
+
 /// The bucket prefix a published run's **JSON document** is stored under — likewise
 /// **outside** any single snapshot's prefix, and the reason a refresh's upload cost
 /// tracks changed runs rather than all of them.
@@ -214,9 +234,10 @@ pub struct SnapshotBuilder {
     /// a variant absent from its inner map, simply exports `referenceSheet: null`).
     reference_sheets:
         std::collections::HashMap<(String, String), std::collections::HashMap<String, Vec<u32>>>,
-    /// The set of media object keys (`media/runs/<id>/<kind>/<file>`) already present
-    /// in the bucket, so the builder references an existing media object rather than
-    /// re-reading and re-uploading its bytes. Populated from the bucket before a real
+    /// The set of media object keys (`media/runs/<id>/<kind>/<file>`) — and the
+    /// case-workspace file keys under [`CASE_FILES_PREFIX`] — already present in the
+    /// bucket, so the builder references an existing object rather than re-reading
+    /// and re-uploading its bytes. Populated from the bucket before a real
     /// refresh (see [`Self::with_existing_media`]); empty by default, which makes the
     /// builder upload every run's media as it did before this optimization — the
     /// correct behavior for the dev/single-box path (no R2) and the unit tests.
@@ -354,7 +375,8 @@ impl SnapshotBuilder {
     }
 
     /// Supply the set of media object keys already present in the bucket (from
-    /// [`R2Client::list_keys`](test_cabinet_core::r2::R2Client::list_keys) over `MEDIA_PREFIX`).
+    /// [`R2Client::list_keys`](test_cabinet_core::r2::R2Client::list_keys) over the
+    /// `media/` and `files/` prefixes).
     /// For any run-media object whose stable key is in this set, the builder emits the
     /// snapshot metadata pointing at it but does **not** read the source bytes or
     /// re-upload it — so unchanged media is exported exactly once across all snapshots,
@@ -634,6 +656,8 @@ impl SnapshotBuilder {
             let (references, reference_objects) = self.case_references(manifest);
             let (validation_baselines, baseline_objects) =
                 self.case_validation_baselines(manifest).await;
+            let (showcases, showcase_objects) = self.case_showcases(manifest).await;
+            let (workspace_files, workspace_objects) = self.case_workspace_files(manifest);
             let variant_reference_builds = self
                 .reference_builds
                 .get(&(manifest.slug.clone(), manifest.version.clone()));
@@ -649,10 +673,14 @@ impl SnapshotBuilder {
                     validation_baselines,
                     variant_reference_builds,
                     variant_reference_sheets,
+                    &showcases,
+                    &workspace_files,
                 )?,
             )?);
             objects.extend(reference_objects);
             objects.extend(baseline_objects);
+            objects.extend(showcase_objects);
+            objects.extend(workspace_objects);
         }
 
         // models.json — the composed model catalog (curated ⋃ derived-from-runs,
@@ -1184,6 +1212,205 @@ impl SnapshotBuilder {
             }
         }
         (metas, objects)
+    }
+
+    /// Collect a version's authored variant **showcases**: one exported
+    /// [`CaseShowcaseOut`] per variant that declares one (keyed by variant slug),
+    /// plus the media objects to upload.
+    ///
+    /// Media is published under the content-stable [`CASE_MEDIA_PREFIX`], keyed by
+    /// a digest of the **source** bytes — exactly as a validation baseline is — so
+    /// an unchanged file is referenced without an upload, and, for a video, without
+    /// the ffmpeg run. A `.webm` clip is transcoded to `.mp4` for the public
+    /// gallery with the metadata's `file` kept as authored (mirroring
+    /// [`Self::case_validation_baselines`]); a transcode failure publishes the raw
+    /// webm under its own name so the key never lies about its bytes. An entry
+    /// whose bytes are missing from the store is skipped with a warning rather than
+    /// failing the whole snapshot, like a missing reference baseline.
+    async fn case_showcases(
+        &self,
+        manifest: &StoredManifest,
+    ) -> (
+        std::collections::HashMap<String, CaseShowcaseOut>,
+        Vec<SnapshotObject>,
+    ) {
+        let (slug, version) = (&manifest.slug, &manifest.version);
+        let mut showcases = std::collections::HashMap::new();
+        let mut objects = Vec::new();
+        for variant in &manifest.variants {
+            let Some(showcase) = variant.showcase.as_ref() else {
+                continue;
+            };
+            let mut metas = Vec::new();
+            for media in &showcase.media {
+                let Ok(raw) = self.store.read_artifact(slug, version, &media.key) else {
+                    tracing::warn!(
+                        slug = %slug,
+                        version = %version,
+                        variant = %variant.slug,
+                        file = %media.file,
+                        "showcase media missing from the store; omitting from case metadata"
+                    );
+                    continue;
+                };
+                let prefix = format!(
+                    "{CASE_MEDIA_PREFIX}/{slug}/{version}/showcase/{}",
+                    variant.slug
+                );
+                // The published name is decided from the authored one, so the whole
+                // key — digest included — is known before any transcoding happens. A
+                // video publishes as `.mp4` — decided from the entry's [`MediaKind`],
+                // as [`Self::run_proofs`] does — while an authored `.mp4` already
+                // carries that name and needs no transcode.
+                let digest = content_digest(&raw);
+                let published_name = if media.kind == test_cabinet_core::MediaKind::Video {
+                    let stem = media
+                        .file
+                        .rsplit_once('.')
+                        .map_or(media.file.as_str(), |(stem, _)| stem);
+                    format!("{stem}.mp4")
+                } else {
+                    media.file.clone()
+                };
+                let key = format!("{prefix}/{digest}-{published_name}");
+                // Already published from byte-identical source: reference it without
+                // re-uploading, and — the expensive half — without re-transcoding.
+                if self.existing_media.contains(&key) {
+                    metas.push(CaseShowcaseMediaOut {
+                        file: media.file.clone(),
+                        name: media.name.clone(),
+                        kind: media.kind,
+                        key,
+                    });
+                    continue;
+                }
+
+                let (published_file, bytes) = if published_name != media.file {
+                    match transcode_webm_to_mp4(&raw).await {
+                        Some(mp4) => (published_name, mp4),
+                        None => {
+                            tracing::warn!(
+                                slug = %slug,
+                                version = %version,
+                                variant = %variant.slug,
+                                file = %media.file,
+                                "webm→mp4 transcode unavailable; publishing raw showcase webm (not iOS-playable)"
+                            );
+                            (media.file.clone(), raw)
+                        }
+                    }
+                } else {
+                    (media.file.clone(), raw)
+                };
+                // Re-derive the key from what was actually produced, exactly as a
+                // baseline does: on the transcode-failure path the raw webm never
+                // occupies the `.mp4` key, so a later refresh that *can* transcode
+                // still publishes the mp4.
+                let key = format!("{prefix}/{digest}-{published_file}");
+                objects.push(SnapshotObject::media(key.clone(), bytes, &published_file));
+                metas.push(CaseShowcaseMediaOut {
+                    file: media.file.clone(),
+                    name: media.name.clone(),
+                    kind: media.kind,
+                    key,
+                });
+            }
+            // Zero surviving media means the showcase is unreachable on the live
+            // plane (resolution requires at least one entry, and every entry here
+            // was missing from the store); keep it unreachable in the snapshot
+            // rather than exporting an empty carousel.
+            if metas.is_empty() {
+                continue;
+            }
+            showcases.insert(
+                variant.slug.clone(),
+                CaseShowcaseOut {
+                    description: showcase.description.clone(),
+                    media: metas,
+                },
+            );
+        }
+        (showcases, objects)
+    }
+
+    /// Collect a version's starter-workspace files: the exported
+    /// [`CaseWorkspaceFileOut`] sets keyed by variant slug and then by
+    /// [engine](test_cabinet_core::engine) slug, plus the file objects to upload.
+    ///
+    /// Each variant's effective workspace is its own override when it declares one,
+    /// else the case's common workspace — the same fallback a run's seed applies.
+    /// The bytes are published under the content-addressed [`CASE_FILES_PREFIX`]
+    /// with text content labels ([`workspace_file_labels`]); because variants
+    /// typically share the common workspace, identical bytes collapse onto one
+    /// key, and the object is emitted once. A file whose bytes are missing from
+    /// the store is skipped with a warning rather than failing the snapshot.
+    fn case_workspace_files(
+        &self,
+        manifest: &StoredManifest,
+    ) -> (VariantWorkspaceFiles, Vec<SnapshotObject>) {
+        let (slug, version) = (&manifest.slug, &manifest.version);
+        let mut by_variant = std::collections::HashMap::new();
+        let mut objects = Vec::new();
+        let mut emitted = std::collections::HashSet::new();
+        // One read+digest per distinct source: variants routinely share the common
+        // workspace (and engines share files), so without this the same bytes would
+        // be re-read and re-hashed once per variant×engine combination. A missing
+        // file memoizes as `None` so it is not re-probed either.
+        let mut sources: std::collections::HashMap<&str, Option<(String, Vec<u8>)>> =
+            std::collections::HashMap::new();
+        for variant in &manifest.variants {
+            let workspace = variant.workspace.as_ref().unwrap_or(&manifest.workspace);
+            let mut by_engine = std::collections::BTreeMap::new();
+            for (engine, files) in &workspace.0 {
+                let mut metas = Vec::new();
+                for file in files {
+                    let source = sources.entry(file.source.as_str()).or_insert_with(|| {
+                        self.store
+                            .read_artifact(slug, version, &file.source)
+                            .ok()
+                            .map(|bytes| (content_digest(&bytes), bytes))
+                    });
+                    let Some((digest, bytes)) = source else {
+                        tracing::warn!(
+                            slug = %slug,
+                            version = %version,
+                            variant = %variant.slug,
+                            file = %file.source,
+                            "workspace file missing from the store; omitting from case metadata"
+                        );
+                        continue;
+                    };
+                    // Keyed by digest plus base name: the digest is what addresses
+                    // the bytes (two `index.ts` under different directories do not
+                    // collide), the base name is what keeps the bucket listable by
+                    // a person.
+                    let base_name = file.dest.rsplit('/').next().unwrap_or(&file.dest);
+                    let key = format!(
+                        "{CASE_FILES_PREFIX}/{slug}/{version}/workspace/{digest}-{base_name}"
+                    );
+                    // Variants sharing the common workspace (and engines sharing a
+                    // file) collapse onto the same key; emit the object once — and
+                    // not at all when a prior refresh already uploaded it (the
+                    // existing-keys listing covers [`CASE_FILES_PREFIX`] too).
+                    if emitted.insert(key.clone()) && !self.existing_media.contains(&key) {
+                        let labels = workspace_file_labels(base_name);
+                        objects.push(SnapshotObject {
+                            key: key.clone(),
+                            bytes: bytes.clone(),
+                            content_type: labels.content_type.to_string(),
+                            content_encoding: labels.content_encoding.map(str::to_string),
+                        });
+                    }
+                    metas.push(CaseWorkspaceFileOut {
+                        dest: file.dest.clone(),
+                        key,
+                    });
+                }
+                by_engine.insert(engine.clone(), metas);
+            }
+            by_variant.insert(variant.slug.clone(), by_engine);
+        }
+        (by_variant, objects)
     }
 
     /// Collect a run's published media: the `assetMedia[]` metadata entries
@@ -1856,6 +2083,31 @@ fn media_labels(file: &str) -> ContentLabels {
         "wav" => ContentLabels::plain("audio/wav"),
         "mid" | "midi" => ContentLabels::plain("audio/midi"),
         _ => ContentLabels::plain("application/octet-stream"),
+    }
+}
+
+/// The labels a published starter-workspace file is served under, from its name.
+///
+/// A starter project is text by nature — sources, configs, docs — so the
+/// fallback is `text/plain` rather than the octet-stream a media file would
+/// default to: the gallery's Inputs viewer fetches these to *display* them, and
+/// a browser handed octet-stream downloads instead. Extensions with a truer text
+/// type get it; TypeScript deliberately maps to `text/plain` (its registered
+/// type is a legacy video format, and no browser executes a fetched starter
+/// file anyway).
+fn workspace_file_labels(file: &str) -> ContentLabels {
+    let extension = std::path::Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    match extension.to_ascii_lowercase().as_str() {
+        "js" | "mjs" | "cjs" | "jsx" => ContentLabels::plain("text/javascript; charset=utf-8"),
+        "json" => ContentLabels::plain("application/json"),
+        "html" => ContentLabels::plain("text/html; charset=utf-8"),
+        "css" => ContentLabels::plain("text/css; charset=utf-8"),
+        "md" => ContentLabels::plain("text/markdown; charset=utf-8"),
+        "svg" => ContentLabels::plain("image/svg+xml"),
+        _ => ContentLabels::plain("text/plain; charset=utf-8"),
     }
 }
 
@@ -2774,6 +3026,65 @@ pub struct CaseVariantOut {
     /// the `case_reference_sheet` table at ingest, and folded in here at export — never
     /// resolved from the manifest and never seeded into a run.
     pub reference_sheet: Option<CaseReferenceSheetOut>,
+    /// The variant's authored **showcase**, when it declares one: the description
+    /// plus the media carousel captured from the reference implementation, shown
+    /// on the static gallery's catalog preview and Play tab. `null` when the
+    /// variant declares none — and treated as optional by the site, so a snapshot
+    /// written before the field existed still loads.
+    pub showcase: Option<CaseShowcaseOut>,
+    /// The variant's effective starter-workspace files for the **engineless**
+    /// rendering (what a run on the `none` engine is seeded with), each naming the
+    /// published object its bytes live at, so the static gallery's Inputs tab can
+    /// fetch a starter file lazily — the static mirror of the live artifact route.
+    /// The per-engine sets ride on [`CaseVariantRenderingOut::workspace_files`].
+    /// Empty for a case that seeds no engineless workspace.
+    #[serde(default)]
+    pub workspace_files: Vec<CaseWorkspaceFileOut>,
+}
+
+/// A variant's authored showcase as case metadata exports it — the case-side
+/// counterpart of a run's `showcaseMedia[]`, but authored and committed with the
+/// version rather than produced by a run.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseShowcaseOut {
+    /// The showcase description — the authored `showcase.md`, verbatim markdown.
+    pub description: String,
+    /// The media carousel, in declared order.
+    pub media: Vec<CaseShowcaseMediaOut>,
+}
+
+/// One entry of an exported case showcase: `file` is the authored file name the
+/// UI keys the entry by (kept as authored even when the published bytes are a
+/// transcode); `key` is the snapshot-relative object key holding the media as
+/// published (a `.webm` clip transcoded to `.mp4`, everything else verbatim).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseShowcaseMediaOut {
+    /// The media file's authored name in the showcase directory.
+    pub file: String,
+    /// The short caption for the entry.
+    pub name: String,
+    /// Whether the file is a still image, a video clip, or a replay recording.
+    pub kind: test_cabinet_core::MediaKind,
+    /// The snapshot-relative object key of the published bytes.
+    pub key: String,
+}
+
+/// One starter-workspace file as case metadata exports it: the run-root-relative
+/// destination the file is seeded at, and the published object key its bytes
+/// live under. Only the addressing is inlined — the bytes are fetched lazily,
+/// because a starter project can be large and most readers never open it.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseWorkspaceFileOut {
+    /// The run-root-relative destination path the file is seeded at.
+    pub dest: String,
+    /// The snapshot-relative object key of the file's bytes.
+    pub key: String,
 }
 
 /// One variant's prompt and seeded specs rendered for one engine that vendors a
@@ -2787,6 +3098,11 @@ pub struct CaseVariantRenderingOut {
     /// The variant's complete seeded spec set in seed order, each body rendered for
     /// this variant on this engine.
     pub seeded_inputs: Vec<CaseSeededInputOut>,
+    /// The variant's effective starter-workspace files for this engine, each
+    /// naming the published object its bytes live at — the per-engine half of
+    /// [`CaseVariantOut::workspace_files`].
+    #[serde(default)]
+    pub workspace_files: Vec<CaseWorkspaceFileOut>,
 }
 
 /// One variant's published reference frames, as exported in case metadata.
@@ -3047,6 +3363,7 @@ fn render_case_prompt(
 /// Both are rendered once engineless and once per declared engine that vendors a
 /// runtime, because the templates branch on the selected engine (see
 /// [`CaseVariantOut::engine_renderings`]).
+#[allow(clippy::too_many_arguments)]
 fn case_metadata(
     store: &DefinitionStore,
     manifest: &StoredManifest,
@@ -3056,6 +3373,8 @@ fn case_metadata(
         &std::collections::HashMap<String, std::collections::BTreeMap<String, String>>,
     >,
     reference_sheets: Option<&std::collections::HashMap<String, Vec<u32>>>,
+    showcases: &std::collections::HashMap<String, CaseShowcaseOut>,
+    workspace_files: &VariantWorkspaceFiles,
 ) -> Result<CaseMetadata, BackendError> {
     let variants = manifest
         .variants
@@ -3094,6 +3413,11 @@ fn case_metadata(
                     CaseVariantRenderingOut {
                         prompt: render_case_prompt(manifest, v, Some(&resolved))?,
                         seeded_inputs: seeded_inputs(store, manifest, v, Some(&resolved)),
+                        workspace_files: workspace_files
+                            .get(&v.slug)
+                            .and_then(|by_engine| by_engine.get(&support.slug))
+                            .cloned()
+                            .unwrap_or_default(),
                     },
                 );
             }
@@ -3115,6 +3439,14 @@ fn case_metadata(
                         frames: frames.clone(),
                     },
                 ),
+                showcase: showcases.get(&v.slug).cloned(),
+                // The engineless workspace — what a run on the `none` engine is
+                // seeded with, matching the engineless prompt/spec rendering above.
+                workspace_files: workspace_files
+                    .get(&v.slug)
+                    .and_then(|by_engine| by_engine.get(test_cabinet_core::engine::NONE_SLUG))
+                    .cloned()
+                    .unwrap_or_default(),
             })
         })
         .collect::<Result<Vec<_>, BackendError>>()?;

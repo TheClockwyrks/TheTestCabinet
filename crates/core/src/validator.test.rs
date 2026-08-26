@@ -73,6 +73,7 @@ fn bare_variant() -> crate::test_case::Variant {
         domains: Vec::new(),
         voxel: None,
         reference_impls: Default::default(),
+        showcase: None,
     }
 }
 
@@ -434,6 +435,7 @@ fn base_variant() -> crate::test_case::Variant {
         domains: vec![],
         voxel: None,
         reference_impls: Default::default(),
+        showcase: None,
     }
 }
 

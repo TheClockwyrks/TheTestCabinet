@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { TestCaseDetail, VariantSummary } from "../../../data/testCases";
 import { routePatterns, routes } from "../../../routes";
@@ -95,6 +95,14 @@ function testCase(extra: Partial<TestCaseDetail> = {}): TestCaseDetail {
   } as TestCaseDetail;
 }
 
+// Where a sheetless coordinate's redirect lands: the detail landing route,
+// probed so a test can assert both the arrival and that the query string (the
+// anchored coordinate) survived the hop.
+function LandingProbe() {
+  const { search } = useLocation();
+  return <p>landing{search}</p>;
+}
+
 function renderReference(search = "", slug = "lattice-belt") {
   return render(
     <MemoryRouter initialEntries={[routes.testCaseReference(slug) + search]}>
@@ -103,6 +111,7 @@ function renderReference(search = "", slug = "lattice-belt") {
           path={routePatterns.testCaseReference}
           element={<TestCaseReferencePage />}
         />
+        <Route path={routePatterns.testCaseDetail} element={<LandingProbe />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -200,32 +209,11 @@ describe("TestCaseReferencePage", () => {
     expect(screen.queryByText("Animated sequences")).toBeNull();
   });
 
-  it("still embeds a deployed reference build for an end-to-end variant", async () => {
-    catalog.mockReturnValue({
-      testCases: [testCase({ testType: "end-to-end", sheet: null })],
-      status: "ready",
-    });
-    seedGalleryData(
-      variant({
-        referenceBuilds: { none: "https://ref.example/carom/base/" },
-      }),
-    );
-    renderReference();
-
-    const frame = await screen.findByTitle(
-      "Reference implementation for Base on None",
-    );
-    expect(frame.getAttribute("src")).toBe("https://ref.example/carom/base/");
-    // The engine follows the page header's anchor; the embed carries no switch
-    // of its own.
-    expect(screen.queryByRole("radiogroup")).toBeNull();
-  });
-
-  it("embeds the build of the anchored engine", async () => {
-    // A variant has one reference build per engine, because the build a reference
-    // demonstrates differs under each. Which one is shown follows the page's
-    // anchored engine — selected in the header, carried in `?engine=` — so the
-    // Reference tab always shows the same rendering every other tab describes.
+  it("redirects a builds-only variant to the detail landing, keeping the anchor", async () => {
+    // A deployed reference BUILD no longer has a tab of its own — it folds into
+    // the landing tab's Play surface — so a hand-typed /reference URL (or a
+    // variant switch to a builds-only coordinate) lands there, with the query
+    // string (the anchored coordinate) intact.
     catalog.mockReturnValue({
       testCases: [
         testCase({
@@ -239,62 +227,24 @@ describe("TestCaseReferencePage", () => {
     seedGalleryData(
       variant({
         referenceBuilds: {
-          none: "https://ref.example/carom/base/none/",
           "simple-2d": "https://ref.example/carom/base/simple-2d/",
         },
       }),
     );
     renderReference("?engine=simple-2d");
 
-    expect(
-      (
-        await screen.findByTitle(
-          "Reference implementation for Base on Simple 2D",
-        )
-      ).getAttribute("src"),
-    ).toBe("https://ref.example/carom/base/simple-2d/");
-  });
-
-  it("names the engines with builds when the anchored engine has none", async () => {
-    // The version supports both engines but only one build is published; the
-    // anchored engine without one gets a placeholder pointing at the header
-    // rather than a blank embed or another engine's build.
-    catalog.mockReturnValue({
-      testCases: [
-        testCase({
-          testType: "end-to-end",
-          sheet: null,
-          enginesByVersion: { "v1.0.0": ["none", "simple-2d"] },
-        }),
-      ],
-      status: "ready",
-    });
-    seedGalleryData(
-      variant({
-        referenceBuilds: {
-          "simple-2d": "https://ref.example/carom/base/simple-2d/",
-        },
-      }),
-    );
-    renderReference();
-
-    expect(
-      await screen.findByText(/No reference build for None at v1\.0\.0/),
-    ).toBeTruthy();
-    expect(screen.getByText(/published for Simple 2D/)).toBeTruthy();
+    expect(await screen.findByText("landing?engine=simple-2d")).toBeTruthy();
     expect(document.querySelector("iframe")).toBeNull();
   });
 
-  it("shows the no-reference placeholder when the variant declares neither", async () => {
-    // Only reachable by hand-typed URL (the layout hides the tab), but it must not
-    // render an empty embed.
+  it("redirects to the detail landing when the variant declares no reference at all", async () => {
+    // Only reachable by hand-typed URL (the layout offers no tab), but it must
+    // not dead-end on an empty page — which is also what a backend old enough to
+    // send no `referenceSheet` field produces.
     catalog.mockReturnValue({ testCases: [testCase()], status: "ready" });
     seedGalleryData(variant());
     renderReference();
 
-    expect(await screen.findByText(/No reference implementation/)).toBeTruthy();
-    // …and the layout offers no tab to reach it by — which is also what a backend
-    // old enough to send no `referenceSheet` at all produces.
-    expect(screen.queryByRole("link", { name: "Reference" })).toBeNull();
+    expect(await screen.findByText("landing")).toBeTruthy();
   });
 });

@@ -44,7 +44,10 @@ vi.mock("../../data/galleryContext", () => ({
 
 // A resolved rendering named after the coordinates it was asked for, so a test
 // can tell from the body alone which coordinate the layout actually resolved.
-function variantSummary(ref: CaseVariantRef): VariantSummary {
+function variantSummary(
+  ref: CaseVariantRef,
+  extra: Partial<VariantSummary> = {},
+): VariantSummary {
   return {
     slug: ref.variant,
     name: "Base",
@@ -58,6 +61,7 @@ function variantSummary(ref: CaseVariantRef): VariantSummary {
     validatorRated: false,
     referenceBuilds: {},
     referenceSheet: null,
+    ...extra,
   } as VariantSummary;
 }
 
@@ -164,6 +168,66 @@ describe("TestCaseDetailLayout", () => {
       "true",
     );
     await screen.findByText("body v1.0.0/base/none");
+  });
+
+  // The landing tab's label follows what the resolved coordinate can offer:
+  // "Play" when there is something to play, the plain "Overview" otherwise. The
+  // route and tab id never move, so both labels resolve to the same link.
+  it("labels the landing tab Overview when the coordinate has nothing to play", async () => {
+    renderLayout();
+    await screen.findByText("body v2.0.0/base/none");
+
+    const landing = screen.getByRole("link", { name: "Overview" });
+    expect(landing.getAttribute("href")).toBe("/test-cases/carom");
+    expect(screen.queryByRole("link", { name: "Play" })).toBeNull();
+  });
+
+  it("labels the landing tab Play when the coordinate has showcase media", async () => {
+    host.fetchCaseVariant = vi.fn(async (ref: CaseVariantRef) =>
+      variantSummary(ref, {
+        showcase: {
+          description: "Captured from the reference implementation.",
+          media: [{ file: "title.png", name: "Title screen", kind: "image" }],
+        },
+      }),
+    );
+    renderLayout();
+    await screen.findByText("body v2.0.0/base/none");
+
+    const landing = screen.getByRole("link", { name: "Play" });
+    expect(landing.getAttribute("href")).toBe("/test-cases/carom");
+    expect(screen.queryByRole("link", { name: "Overview" })).toBeNull();
+  });
+
+  // A reference BUILD no longer earns its own tab: it folds into the landing
+  // tab's Play surface, which the label advertises.
+  it("labels the landing tab Play for reference builds and offers no Reference tab", async () => {
+    host.fetchCaseVariant = vi.fn(async (ref: CaseVariantRef) =>
+      variantSummary(ref, {
+        referenceBuilds: { none: "https://ref.example/carom/base/" },
+      }),
+    );
+    renderLayout();
+    await screen.findByText("body v2.0.0/base/none");
+
+    expect(screen.getByRole("link", { name: "Play" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Reference" })).toBeNull();
+  });
+
+  // Published reference FRAMES (asset-generation cases) are the one shape that
+  // still gets the Reference tab — and frames alone are nothing to "play", so
+  // the landing label stays Overview.
+  it("offers the Reference tab only for a variant with a reference sheet", async () => {
+    host.fetchCaseVariant = vi.fn(async (ref: CaseVariantRef) =>
+      variantSummary(ref, { referenceSheet: { frames: [0, 1] } }),
+    );
+    renderLayout();
+    await screen.findByText("body v2.0.0/base/none");
+
+    expect(
+      screen.getByRole("link", { name: "Reference" }).getAttribute("href"),
+    ).toBe("/test-cases/carom/reference");
+    expect(screen.getByRole("link", { name: "Overview" })).toBeInTheDocument();
   });
 
   // Which tabs exist (Reference) is a fact about the resolved coordinate, so

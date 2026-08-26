@@ -41,8 +41,10 @@ repos:
         # renders of a case's authored mockups (a full-detail gameplay frame is a
         # large PNG). `reference-impl/<variant>/assets/` holds the sprites, particle
         # systems, and audio the reference build produced with the asset-generation
-        # tools (a music bed is several MB of WAV). All are generated wholesale and
-        # tracked deliberately.
+        # tools (a music bed is several MB of WAV). A case version's `showcase/`
+        # dirs hold the per-variant showcase media captured from the reference
+        # implementation (a solve video is over a megabyte). All are generated
+        # wholesale and tracked deliberately.
         #
         # `crates/gg/src/sandbox/guests/` and `crates/gg/src/sandbox/checkers/` USED
         # TO BE EXEMPT HERE, and removing them is the point rather than tidying: those
@@ -66,7 +68,7 @@ repos:
         # there and ignores everything else, plus a whole-directory ignore for
         # `guests/`. That one is about WHETHER a generated artifact may be committed at
         # all; this one is about how big anything may be, anywhere.
-        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/'
+        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/|^test-cases/.*/showcase/'
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names

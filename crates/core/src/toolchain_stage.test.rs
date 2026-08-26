@@ -82,6 +82,7 @@ fn variant() -> Variant {
         domains: Vec::new(),
         voxel: None,
         reference_impls: Default::default(),
+        showcase: None,
     }
 }
 

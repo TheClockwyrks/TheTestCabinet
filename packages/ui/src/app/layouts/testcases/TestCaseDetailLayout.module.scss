@@ -69,6 +69,10 @@
     color: t.$color-positive;
   }
 
+  &[data-level="medium"] {
+    color: t.$color-warning;
+  }
+
   &[data-level="hard"] {
     color: t.$color-accent-2;
   }

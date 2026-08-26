@@ -12,6 +12,9 @@ description = "Fixed obstacles and a single ball — the reference game."
 # obstacles, and one ball served toward the receiver. So base declares no `spec`
 # of its own.
 
+# Curated demo media for this variant, captured from the reference build below.
+showcase = "showcase/base"
+
 # The authored, *correct* static build of this variant — the case-variant analogue
 # of a run's `links.playableBuild`. It names a directory (resolved against the
 # version folder) holding a buildable web project; it is built out-of-band with

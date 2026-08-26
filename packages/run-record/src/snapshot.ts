@@ -677,6 +677,64 @@ export type CaseReferenceSheetOut = {
 };
 
 /**
+ * One entry of an exported case showcase: `file` is the authored file name the
+ * UI keys the entry by (kept as authored even when the published bytes are a
+ * transcode); `key` is the snapshot-relative object key holding the media as
+ * published (a `.webm` clip transcoded to `.mp4`, everything else verbatim).
+ */
+export type CaseShowcaseMediaOut = {
+  /**
+   * The media file's authored name in the showcase directory.
+   */
+  file: string;
+  /**
+   * The short caption for the entry.
+   */
+  name: string;
+  /**
+   * Whether the file is a still image, a video clip, or a replay recording.
+   */
+  kind: MediaKind;
+  /**
+   * The snapshot-relative object key of the published bytes.
+   */
+  key: string;
+};
+
+/**
+ * A variant's authored showcase as case metadata exports it — the case-side
+ * counterpart of a run's `showcaseMedia[]`, but authored and committed with the
+ * version rather than produced by a run.
+ */
+export type CaseShowcaseOut = {
+  /**
+   * The showcase description — the authored `showcase.md`, verbatim markdown.
+   */
+  description: string;
+  /**
+   * The media carousel, in declared order.
+   */
+  media: Array<CaseShowcaseMediaOut>;
+};
+
+/**
+ * One starter-workspace file as case metadata exports it: the run-root-relative
+ * destination the file is seeded at, and the published object key its bytes
+ * live under. Only the addressing is inlined — the bytes are fetched lazily,
+ * because a starter project can be large and most readers never open it.
+ */
+export type CaseWorkspaceFileOut = {
+  /**
+   * The run-root-relative destination path the file is seeded at.
+   */
+  dest: string;
+  /**
+   * The snapshot-relative object key of the file's bytes.
+   */
+  key: string;
+};
+
+/**
  * One variant's prompt and seeded specs rendered for one engine that vendors a
  * runtime — the per-engine half of [`CaseVariantOut`].
  */
@@ -690,6 +748,12 @@ export type CaseVariantRenderingOut = {
    * this variant on this engine.
    */
   seededInputs: Array<CaseSeededInputOut>;
+  /**
+   * The variant's effective starter-workspace files for this engine, each
+   * naming the published object its bytes live at — the per-engine half of
+   * [`CaseVariantOut::workspace_files`].
+   */
+  workspaceFiles: Array<CaseWorkspaceFileOut>;
 };
 
 /**
@@ -771,6 +835,23 @@ export type CaseVariantOut = {
    * resolved from the manifest and never seeded into a run.
    */
   referenceSheet: CaseReferenceSheetOut | null;
+  /**
+   * The variant's authored **showcase**, when it declares one: the description
+   * plus the media carousel captured from the reference implementation, shown
+   * on the static gallery's catalog preview and Play tab. `null` when the
+   * variant declares none — and treated as optional by the site, so a snapshot
+   * written before the field existed still loads.
+   */
+  showcase: CaseShowcaseOut | null;
+  /**
+   * The variant's effective starter-workspace files for the **engineless**
+   * rendering (what a run on the `none` engine is seeded with), each naming the
+   * published object its bytes live at, so the static gallery's Inputs tab can
+   * fetch a starter file lazily — the static mirror of the live artifact route.
+   * The per-engine sets ride on [`CaseVariantRenderingOut::workspace_files`].
+   * Empty for a case that seeds no engineless workspace.
+   */
+  workspaceFiles: Array<CaseWorkspaceFileOut>;
 };
 
 /**

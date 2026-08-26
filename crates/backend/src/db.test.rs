@@ -6191,6 +6191,7 @@ fn validator_manifest() -> crate::store::StoredManifest {
             review_items: vec![],
             domains: vec![domain("versus")],
             voxel: None,
+            showcase: None,
         }],
         common_references: vec![],
         common_proofs: vec![],
