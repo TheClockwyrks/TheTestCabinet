@@ -531,15 +531,23 @@ fn stored_manifest_carries_the_engines_the_case_declares() {
     let carom = catalog.resolve("carom", "v3.0.0").unwrap();
     let manifest = build_stored_manifest(&carom).unwrap();
     let slugs: Vec<&str> = manifest.engines.iter().map(|e| e.slug.as_str()).collect();
-    assert_eq!(slugs, vec!["none", "simple-2d"]);
+    assert_eq!(slugs, vec!["none", "simple-2d", "structured-2d"]);
     // A pinned engine keeps its floor through the store, or the gate would admit a
-    // staged runtime the case's specs were never written against.
-    let pinned = manifest
-        .engines
-        .iter()
-        .find(|e| e.slug == "simple-2d")
-        .expect("declared");
-    assert_eq!(pinned.min_version, Some("1.0.0".parse().unwrap()));
+    // staged runtime the case's specs were never written against. Every engine the
+    // case pins is checked, so adding a column to the case cannot quietly lose one
+    // of the floors on the way through ingest.
+    for slug in ["simple-2d", "structured-2d"] {
+        let pinned = manifest
+            .engines
+            .iter()
+            .find(|e| e.slug == slug)
+            .unwrap_or_else(|| panic!("`{slug}` is declared"));
+        assert_eq!(
+            pinned.min_version,
+            Some("1.0.0".parse().unwrap()),
+            "`{slug}` keeps its declared floor through the store"
+        );
+    }
 
     // And the whole set survives the JSON round-trip the on-disk sidecar takes.
     let json = serde_json::to_string(&manifest).unwrap();
