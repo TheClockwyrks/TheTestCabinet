@@ -20,7 +20,10 @@ import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
-import type { CabinetStats } from "../../data/cabinetStats";
+import {
+  trimLeadingIdleWeeks,
+  type CabinetStats,
+} from "../../data/cabinetStats";
 import { engineName } from "../../data/engines";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
 import {
@@ -44,7 +47,7 @@ import {
   formatInteger,
   formatTimeAgo,
   formatUsd,
-  formatUsdCompact,
+  formatUsdExact,
 } from "../../format";
 import { ReplayPlayer } from "../runs/replay/ReplayPlayer";
 import styles from "./HomePage.module.scss";
@@ -363,6 +366,23 @@ const ACTIVITY_SERIES: StackedSeries[] = [
   { name: "", color: categoricalColor(0) },
 ];
 
+// The activity tooltip's week label ("Week of Aug 24, 2026"). UTC, because the
+// bucket keys are UTC Mondays and a local-zone render would shift some of them
+// onto a Sunday.
+const ACTIVITY_WEEK_LABEL = new Intl.DateTimeFormat("en-US", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+// The activity chart counts whole runs, so fractional gridline ticks (which
+// Plot generates freely when the peak week is small) label nothing real —
+// only the integer ticks get a label.
+function activityTick(value: number): string {
+  return Number.isInteger(value) ? formatInteger(value) : "";
+}
+
 // The honesty note for a total some runs could not contribute to.
 function unreportedNote(count: number, what: string): string {
   return `${formatInteger(count)} ${count === 1 ? "run" : "runs"} reported ${what}, contributing nothing to this total.`;
@@ -400,18 +420,27 @@ function CabinetPulse() {
 
   const points = useMemo<TimeSeriesPoint[]>(
     () =>
-      (stats?.weekly ?? []).map((week) => ({
+      // The wire covers the last year; the axis opens at the first week that
+      // actually saw a run rather than padding a younger corpus with leading
+      // zeros (see trimLeadingIdleWeeks).
+      trimLeadingIdleWeeks(stats?.weekly ?? []).map((week) => {
         // `weekStart` is the wire's `YYYY-MM-DD` (a UTC Monday); a bare date
         // string parses as UTC midnight — the bucket's floored start, which is
         // what a `TimeSeriesPoint.time` must be.
-        time: new Date(week.weekStart),
-        series: "",
-        // The wire's explicit zero entries chart as zeros deliberately,
-        // departing from the omit-empty-buckets convention elsewhere: a week
-        // the cabinet sat idle is signal, so the line must dip to the axis
-        // rather than skip the bucket.
-        value: week.runs,
-      })),
+        const time = new Date(week.weekStart);
+        return {
+          time,
+          series: "",
+          // The wire's explicit zero entries chart as zeros deliberately,
+          // departing from the omit-empty-buckets convention elsewhere: a week
+          // the cabinet sat idle is signal, so the line must dip to the axis
+          // rather than skip the bucket.
+          value: week.runs,
+          title: `Week of ${ACTIVITY_WEEK_LABEL.format(time)}\n${formatInteger(
+            week.runs,
+          )} ${week.runs === 1 ? "run" : "runs"} started`,
+        };
+      }),
     [stats],
   );
 
@@ -433,7 +462,7 @@ function CabinetPulse() {
         />
         <MetricTile
           label="Spend"
-          value={formatUsdCompact(cost.total)}
+          value={formatUsdExact(cost.total)}
           title={
             cost.unreportedRuns > 0
               ? unreportedNote(cost.unreportedRuns, "no comparable cost")
@@ -446,9 +475,12 @@ function CabinetPulse() {
       <div className={styles.activity}>
         <ChartWidget
           title="Activity"
-          hint="Runs started per week, the last 26 weeks of everything recorded here."
+          hint="Runs started per week, from the first recorded week within the last year."
           spec={(palette) =>
-            timeSeriesChart(points, palette, ACTIVITY_SERIES, { y: "runs" })
+            timeSeriesChart(points, palette, ACTIVITY_SERIES, {
+              y: "runs",
+              yTickFormat: activityTick,
+            })
           }
         />
       </div>

@@ -13,9 +13,9 @@ import { totalTokens } from "../format";
  * `GET /stats/cabinet`, which the static fold below reproduces. */
 export type CabinetStats = CabinetStatsResponse;
 
-// How many weeks the activity series covers, the newest being the current
-// (partial) week. Mirrors the backend's `CABINET_WEEKS`.
-const CABINET_WEEKS = 26;
+// How many weeks the activity series covers — a year, the newest being the
+// current (partial) week. Mirrors the backend's `CABINET_WEEKS`.
+const CABINET_WEEKS = 52;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
@@ -88,6 +88,20 @@ export function foldCabinetStats(
       runs: weekly.get(ms) ?? 0,
     })),
   };
+}
+
+/**
+ * Open the activity chart's axis at the first week that actually saw a run:
+ * drop the leading zero weeks the fixed window pads a younger (or quieter)
+ * corpus with, keeping every zero after that first active week (an idle week
+ * mid-history is signal). A series with no active week at all is returned
+ * whole — the flat zero line honestly shows a year of quiet.
+ */
+export function trimLeadingIdleWeeks(
+  weekly: CabinetStats["weekly"],
+): CabinetStats["weekly"] {
+  const first = weekly.findIndex((week) => week.runs > 0);
+  return first === -1 ? weekly : weekly.slice(first);
 }
 
 // The UTC-Monday-midnight instant (epoch ms) beginning the ISO week `ms` falls

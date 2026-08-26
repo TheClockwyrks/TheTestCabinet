@@ -820,7 +820,7 @@ export type CabinetStatsResponse = {
    */
   models: number;
   /**
-   * Runs per ISO week (UTC Mondays), the last 26 weeks up to
+   * Runs per ISO week (UTC Mondays), the last 52 weeks up to
    * now inclusive, ascending, with explicit zero entries for empty weeks so a
    * consumer charts the series without filling gaps.
    */

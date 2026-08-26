@@ -619,7 +619,7 @@ pub struct CabinetStatsResponse {
     pub test_cases: u64,
     /// Distinct model ids across the corpus.
     pub models: u64,
-    /// Runs per ISO week (UTC Mondays), the last 26 weeks up to
+    /// Runs per ISO week (UTC Mondays), the last 52 weeks up to
     /// now inclusive, ascending, with explicit zero entries for empty weeks so a
     /// consumer charts the series without filling gaps.
     pub weekly: Vec<CabinetWeekOut>,
@@ -660,9 +660,9 @@ pub struct CabinetWeekOut {
     pub runs: u64,
 }
 
-/// How many weeks the cabinet's activity series covers, the newest being the
-/// current (partial) week.
-const CABINET_WEEKS: i64 = 26;
+/// How many weeks the cabinet's activity series covers — a year, the newest
+/// being the current (partial) week.
+const CABINET_WEEKS: i64 = 52;
 
 /// Fold the whole-corpus projection into the `/stats/cabinet` response. `now`
 /// anchors the weekly window's newest bucket and is passed in by the handler so

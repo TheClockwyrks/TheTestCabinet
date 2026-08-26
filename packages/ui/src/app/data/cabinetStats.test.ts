@@ -3,12 +3,13 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import {
   foldCabinetStats,
   formatWeekStart,
+  trimLeadingIdleWeeks,
   weekMondayUtcMs,
 } from "./cabinetStats";
 
 // The same Wednesday anchor the backend's fold tests use (`cabinet_now` in
 // crates/backend/src/stats.test.rs): its week's Monday is 2026-08-24, so the
-// 26-week window opens on 2026-03-02.
+// 52-week window opens on 2025-09-01.
 const NOW = new Date("2026-08-26T12:00:00Z");
 
 // A summary carrying only the fields the fold reads. `tokens` is the uncached
@@ -53,9 +54,9 @@ describe("foldCabinetStats", () => {
     expect(stats.testCases).toBe(0);
     expect(stats.models).toBe(0);
     // Explicit zero entries for every week, ascending, Mondays throughout.
-    expect(stats.weekly).toHaveLength(26);
-    expect(stats.weekly[0]!.weekStart).toBe("2026-03-02");
-    expect(stats.weekly[25]!.weekStart).toBe("2026-08-24");
+    expect(stats.weekly).toHaveLength(52);
+    expect(stats.weekly[0]!.weekStart).toBe("2025-09-01");
+    expect(stats.weekly[51]!.weekStart).toBe("2026-08-24");
     expect(stats.weekly.every((week) => week.runs === 0)).toBe(true);
   });
 
@@ -140,5 +141,29 @@ describe("weekMondayUtcMs", () => {
       Date.parse("2025-12-29T00:00:00Z"),
     );
     expect(formatWeekStart(monday)).toBe("2026-08-24");
+  });
+});
+
+describe("trimLeadingIdleWeeks", () => {
+  const week = (weekStart: string, runs: number) => ({ weekStart, runs });
+
+  it("opens at the first active week, keeping later idle weeks", () => {
+    const weekly = [
+      week("2026-08-03", 0),
+      week("2026-08-10", 2),
+      week("2026-08-17", 0),
+      week("2026-08-24", 1),
+    ];
+    expect(trimLeadingIdleWeeks(weekly)).toEqual(weekly.slice(1));
+  });
+
+  it("returns an already-active series whole", () => {
+    const weekly = [week("2026-08-17", 3), week("2026-08-24", 0)];
+    expect(trimLeadingIdleWeeks(weekly)).toEqual(weekly);
+  });
+
+  it("returns an all-idle series whole, so the quiet year still charts", () => {
+    const weekly = [week("2026-08-17", 0), week("2026-08-24", 0)];
+    expect(trimLeadingIdleWeeks(weekly)).toEqual(weekly);
   });
 });

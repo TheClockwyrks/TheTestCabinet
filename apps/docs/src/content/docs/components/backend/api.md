@@ -993,7 +993,7 @@ band and activity chart.
 - `testCases` and `models`: distinct test-case slugs and distinct model ids
   across the same corpus.
 - `weekly`: runs bucketed by the UTC Monday of the ISO week they started, as
-  `weekStart` in `YYYY-MM-DD` form, covering the last 26 weeks up to now,
+  `weekStart` in `YYYY-MM-DD` form, covering the last 52 weeks up to now,
   ascending. A week with no runs is present with a zero count, so a consumer
   charts the series without filling gaps.
 

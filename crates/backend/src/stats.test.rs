@@ -402,7 +402,7 @@ fn probe_items_fold_per_provider_and_model() {
 // --- fold_cabinet_stats ------------------------------------------------------
 
 /// A Wednesday anchor for the cabinet fold: its week's Monday is 2026-08-24, so
-/// the 26-week window opens on 2026-03-02.
+/// the 52-week window opens on 2025-09-01.
 fn cabinet_now() -> time::OffsetDateTime {
     time::macros::datetime!(2026-08-26 12:00 UTC)
 }
@@ -435,8 +435,8 @@ fn an_empty_cabinet_still_charts_the_full_window_of_zero_weeks() {
     assert_eq!(stats.test_cases, 0);
     assert_eq!(stats.models, 0);
     // Explicit zero entries for every week, ascending, Mondays throughout.
-    assert_eq!(stats.weekly.len(), 26);
-    assert_eq!(stats.weekly.first().unwrap().week_start, "2026-03-02");
+    assert_eq!(stats.weekly.len(), 52);
+    assert_eq!(stats.weekly.first().unwrap().week_start, "2025-09-01");
     assert_eq!(stats.weekly.last().unwrap().week_start, "2026-08-24");
     assert!(stats.weekly.iter().all(|week| week.runs == 0));
 }

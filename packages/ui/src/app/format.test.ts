@@ -1,21 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { formatTimeAgo, formatUsdCompact } from "./format";
+import { formatTimeAgo, formatUsdExact } from "./format";
 
-describe("formatUsdCompact", () => {
-  it("compacts large figures to one significant decimal", () => {
-    expect(formatUsdCompact(48230.55)).toBe("$48.2K");
-    expect(formatUsdCompact(1_204_000)).toBe("$1.2M");
-    expect(formatUsdCompact(91_250_000_000)).toBe("$91.3B");
-  });
-
-  it("keeps sub-thousand figures uncompacted", () => {
-    expect(formatUsdCompact(0)).toBe("$0");
-    expect(formatUsdCompact(950)).toBe("$950");
-    expect(formatUsdCompact(48.23)).toBe("$48.2");
+describe("formatUsdExact", () => {
+  it("renders full dollars and cents with exactly two decimals", () => {
+    expect(formatUsdExact(48230.55)).toBe("$48,230.55");
+    expect(formatUsdExact(1_204_000)).toBe("$1,204,000.00");
+    expect(formatUsdExact(48.2)).toBe("$48.20");
+    expect(formatUsdExact(0)).toBe("$0.00");
+    expect(formatUsdExact(0.004)).toBe("$0.00");
   });
 
   it("renders an unknown figure as an em dash", () => {
-    expect(formatUsdCompact(null)).toBe("—");
+    expect(formatUsdExact(null)).toBe("—");
   });
 });
 

@@ -62,7 +62,7 @@ pub async fn model_accuracy(
 ///
 /// The corpus is one five-column projection over the lifted `run` columns (see
 /// [`crate::db::Db::cabinet_stat_rows`]); the fold and the week bucketing are
-/// pure Rust in [`crate::stats`], with "now" — the anchor of the 26-week window
+/// pure Rust in [`crate::stats`], with "now" — the anchor of the 52-week window
 /// — supplied here so the fold stays testable against a fixed instant.
 #[tracing::instrument(name = "stats.cabinet", skip(state), err(Debug))]
 pub async fn cabinet(

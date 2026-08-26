@@ -78,19 +78,20 @@ export function formatUsd(value: number | null): string {
   }).format(value);
 }
 
-// A compact USD figure for a stat tile: 48230.55 -> "$48.2K", 1204000 -> "$1.2M".
-// The one significant decimal keeps a headline figure readable where formatUsd's
-// cent precision would be noise. An unknown (null) figure reads as an em dash,
-// like formatUsd's, rather than a misleading $0.
-export function formatUsdCompact(value: number | null): string {
+// A USD figure with exactly two decimals, never compacted: 48230.55 ->
+// "$48,230.55", 5 -> "$5.00". The Spend tile's headline formatter — a money
+// total reads as dollars and cents, and the fixed precision keeps the tile
+// stable as the total grows. An unknown (null) figure reads as an em dash,
+// like formatUsd's, rather than a misleading $0.00.
+export function formatUsdExact(value: number | null): string {
   if (value === null) {
     return "—";
   }
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    notation: "compact",
-    maximumFractionDigits: 1,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 

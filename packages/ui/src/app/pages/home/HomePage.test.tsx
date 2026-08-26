@@ -316,7 +316,7 @@ describe("the totals band and activity chart", () => {
 
     expect(await screen.findByText("1,234")).toBeTruthy();
     expect(screen.getByText("553K")).toBeTruthy();
-    expect(screen.getByText("$48.2K")).toBeTruthy();
+    expect(screen.getByText("$48,230.55")).toBeTruthy();
     // "Test cases" (sentence case) is the tile's label; the topbar's nav link
     // is "Test Cases", so the query stays unambiguous.
     expect(screen.getByText("Test cases")).toBeTruthy();
