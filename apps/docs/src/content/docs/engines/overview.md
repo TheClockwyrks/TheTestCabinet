@@ -26,12 +26,12 @@ A run selects one of these engines.
 | [Simple 2D](/engines/simple-2d/overview/) | `simple-2d` | Frame, input, audio, assets, and diagnostics for a 2D game that writes its own simulation and rendering. |
 | [Structured 2D](/engines/structured-2d/overview/) | `structured-2d` | A gameplay framework of worlds, levels, game modes, actors, and controllers, with engine-owned rendering and collision, around a 2D game written in TypeScript. |
 
-The remaining engines are designed and awaiting implementation, so they document
-their intent and stay outside the set a run selects from: [Simple
-3D](/engines/simple-3d/overview/), [Structured
-3D](/engines/structured-3d/overview/), [Decoupled
-2D](/engines/decoupled-2d/overview/), and [Decoupled
-3D](/engines/decoupled-3d/overview/).
+The remaining engines are designed and awaiting implementation, so they stay
+outside the set a run selects from. [Simple 3D](/engines/simple-3d/overview/)
+and [Structured 3D](/engines/structured-3d/overview/) are documented in full,
+as the specification their runtimes must satisfy. [Decoupled
+2D](/engines/decoupled-2d/overview/) and [Decoupled
+3D](/engines/decoupled-3d/overview/) document their intent.
 
 ## Families and dimensionality
 
