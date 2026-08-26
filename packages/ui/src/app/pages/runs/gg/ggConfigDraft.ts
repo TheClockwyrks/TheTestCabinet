@@ -885,7 +885,7 @@ function singleAgentDraft(agent: GgAgentDraft): GgConfigDraft {
             {
               agentId: agent.id,
               description:
-                "Itself — a single-agent configuration has one profile to delegate to, dispatch issues to and review with.",
+                "Itself: a single-agent configuration has one profile to delegate to, dispatch issues to and review with.",
               scopes: SUBAGENT_SCOPES.map((scope) => scope.value),
             },
           ]
@@ -1328,16 +1328,16 @@ export function fsmStatesError(
   const name = agent.name.trim() || "this";
   const states = agentStates(agent);
   if (!states.length) {
-    return `The \`${name}\` agent is a state machine but declares no states — an FSM agent has no turns of its own, so there would be nothing to run.`;
+    return `The \`${name}\` agent is a state machine but declares no states. An FSM agent has no turns of its own, so there would be nothing to run.`;
   }
   const seen = new Set<string>();
   for (const state of states) {
     const stateName = state.name.trim();
     if (!stateName) {
-      return `The \`${name}\` machine has a state with no name — a transition addresses a state by name, so every state needs one.`;
+      return `The \`${name}\` machine has a state with no name. A transition addresses a state by name, so every state needs one.`;
     }
     if (seen.has(stateName)) {
-      return `The \`${name}\` machine declares the \`${stateName}\` state more than once — a transition to it would have no single answer.`;
+      return `The \`${name}\` machine declares the \`${stateName}\` state more than once, so a transition to it would have no single answer.`;
     }
     seen.add(stateName);
   }
@@ -1345,10 +1345,10 @@ export function fsmStatesError(
     const stateName = state.name.trim();
     const runs = agents.find((a) => a.id === state.agentId);
     if (!runs) {
-      return `The \`${name}\` machine's \`${stateName}\` state runs no agent this configuration declares — pick the profile it should run.`;
+      return `The \`${name}\` machine's \`${stateName}\` state runs no agent this configuration declares. Pick the profile it should run.`;
     }
     if (isFsmShell(runs)) {
-      return `The \`${name}\` machine's \`${stateName}\` state runs \`${runs.name.trim()}\`, which is itself a state machine — a machine cannot be a state of another machine. Name one of its states' agents instead.`;
+      return `The \`${name}\` machine's \`${stateName}\` state runs \`${runs.name.trim()}\`, which is itself a state machine, and a machine cannot be a state of another machine. Name one of its states' agents instead.`;
     }
     for (const edge of state.transitions) {
       if (!seen.has(edge.to.trim())) {
@@ -1389,7 +1389,7 @@ export function fsmStatesWarnings(
   for (const state of states) {
     if (!reachable.has(state.name.trim())) {
       warnings.push(
-        `The \`${state.name.trim()}\` state is unreachable from \`${states[0]!.name.trim()}\` — it is kept, but nothing can enter it.`,
+        `The \`${state.name.trim()}\` state is unreachable from \`${states[0]!.name.trim()}\`. It is kept, but nothing can enter it.`,
       );
     }
   }
@@ -2197,7 +2197,7 @@ export function capabilityGrantWarning(
   // thing on the screen.
   const [all, one] =
     agent.mode === "rac" ? ["operations", "operation"] : ["tools", "tool"];
-  return `All ${all} disabled — this capability is on, but every ${one} it offers has been withheld, so the agent can never use it. Turn a feature back on, or turn the capability off.`;
+  return `All ${all} disabled. This capability is on, but every ${one} it offers has been withheld, so the agent can never use it. Turn a feature back on, or turn the capability off.`;
 }
 
 /** `agent`'s allowlists with a whole feature bundle granted (`on`) or taken back. */
@@ -2225,7 +2225,7 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
       // The two ceilings a run cannot be conducted without. Every other empty field is
       // that ceiling unarmed, which is a setting rather than a gap.
       if (spec.required) {
-        return `${spec.label} is required — every run has one, and gg supplies no figure for it.`;
+        return `${spec.label} is required: every run has one, and gg supplies no figure for it.`;
       }
       continue;
     }
@@ -2429,7 +2429,7 @@ export function loopDetectionWarning(
     return null;
   }
   if (minOffenders <= windowWords) return null;
-  return `The detector needs ${minOffenders} distinct repeated words in a window that only holds ${windowWords}, so it could never trip on repetition — only the reply ceiling would ever fire.`;
+  return `The detector needs ${minOffenders} distinct repeated words in a window that only holds ${windowWords}, so it could never trip on repetition, and only the reply ceiling would ever fire.`;
 }
 
 /**
@@ -2541,7 +2541,7 @@ export function hookErrors(hooks: ReadonlyArray<GgHookDraft>): string | null {
     const raw = hook.timeoutSecs.trim();
     const label = hook.name.trim() || hook.command.trim();
     if (!raw) {
-      return `The \`${label}\` hook needs a timeout — gg has no ceiling of its own to run it under.`;
+      return `The \`${label}\` hook needs a timeout, since gg has no ceiling of its own to run it under.`;
     }
     const value = Number(raw);
     if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
@@ -2579,9 +2579,9 @@ export function agentSaveError(
   if (!agent) return null;
   if (!agent.name.trim()) return "This agent needs a name.";
   if (!isValidAgentSlug(agent.slug))
-    return "A slug is lowercase letters and digits in groups separated by single hyphens — the model is shown this name and passes it back.";
+    return "A slug is lowercase letters and digits in groups separated by single hyphens. The model is shown this name and passes it back.";
   if (draft.agents.filter((a) => a.slug === agent.slug).length > 1)
-    return "Another agent in this configuration carries this slug — the model would be shown one name for two profiles.";
+    return "Another agent in this configuration carries this slug, so the model would be shown one name for two profiles.";
   const ownSlots = agent.modelSlots.map((slot) => slot.name.trim());
   if (ownSlots.some((name) => !name)) return "Every model slot needs a name.";
   if (new Set(ownSlots).size !== ownSlots.length)
@@ -2644,10 +2644,10 @@ export function slotMappingError(draft: GgConfigDraft): string | null {
       const agent = draft.agents.find((a) => a.id === target.agentId);
       const declared = agent?.modelSlots.find((s) => s.id === target.slotId);
       if (!agent || !declared) {
-        return `The \`${slot.name.trim()}\` configuration slot fills a slot that no longer exists — point it at a slot one of this configuration's agents declares, or remove it.`;
+        return `The \`${slot.name.trim()}\` configuration slot fills a slot that no longer exists. Point it at a slot one of this configuration's agents declares, or remove it.`;
       }
       if (declared.passthrough) {
-        return `The \`${declared.name.trim()}\` slot on \`${agent.name.trim()}\` is passthrough and is also filled by the \`${slot.name.trim()}\` configuration slot, so a launch would ask for it twice — clear the passthrough, or drop the mapping.`;
+        return `The \`${declared.name.trim()}\` slot on \`${agent.name.trim()}\` is passthrough and is also filled by the \`${slot.name.trim()}\` configuration slot, so a launch would ask for it twice. Clear the passthrough, or drop the mapping.`;
       }
       const k = key(target.agentId, target.slotId);
       fills.set(k, (fills.get(k) ?? 0) + 1);
@@ -2668,15 +2668,15 @@ export function slotMappingError(draft: GgConfigDraft): string | null {
       if (!referenced.has(slot.id)) continue;
       const count = fills.get(key(agent.id, slot.id)) ?? 0;
       if (count > 1) {
-        return `The \`${slot.name.trim()}\` slot on \`${agent.name.trim()}\` is filled by ${count} configuration slots — exactly one launch input supplies each binding.`;
+        return `The \`${slot.name.trim()}\` slot on \`${agent.name.trim()}\` is filled by ${count} configuration slots, and exactly one launch input supplies each binding.`;
       }
       if (count === 0 && !slot.passthrough) {
-        return `The \`${slot.name.trim()}\` slot on \`${agent.name.trim()}\` reaches no launch input — map a configuration slot onto it, or mark it passthrough.`;
+        return `The \`${slot.name.trim()}\` slot on \`${agent.name.trim()}\` reaches no launch input. Map a configuration slot onto it, or mark it passthrough.`;
       }
       if (slot.passthrough) {
         const exposedAs = passthroughSlotName(agent.slug, slot.name.trim());
         if (exposed.has(exposedAs)) {
-          return `Two launch inputs would be named \`${exposedAs}\` — rename the configuration slot, since a passthrough slot takes its name from the agent that declares it.`;
+          return `Two launch inputs would be named \`${exposedAs}\`. Rename the configuration slot, since a passthrough slot takes its name from the agent that declares it.`;
         }
         exposed.add(exposedAs);
       }
@@ -2710,11 +2710,11 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
   }
   const slugs = draft.agents.map((a) => a.slug);
   if (new Set(slugs).size !== slugs.length) {
-    return "Two agent profiles carry the same slug, so the model would be shown one name for two profiles — rename one of them, or override the imported profile's slug.";
+    return "Two agent profiles carry the same slug, so the model would be shown one name for two profiles. Rename one of them, or override the imported profile's slug.";
   }
   const malformed = draft.agents.find((a) => !isValidAgentSlug(a.slug));
   if (malformed) {
-    return `The \`${malformed.name.trim()}\` agent's slug must be lowercase letters and digits in groups separated by single hyphens — the model is shown this name and passes it back.`;
+    return `The \`${malformed.name.trim()}\` agent's slug must be lowercase letters and digits in groups separated by single hyphens. The model is shown this name and passes it back.`;
   }
 
   const slotError = slotMappingError(draft);
@@ -2728,10 +2728,10 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
       if (agent.modelSource === "model-slot") {
         const slot = agent.modelSlots.find((s) => s.id === agent.modelSlotId);
         if (!slot) {
-          return `The \`${agent.name.trim()}\` agent defers to a model slot it doesn't declare — pick one of its slots, or pin the agent a model.`;
+          return `The \`${agent.name.trim()}\` agent defers to a model slot it doesn't declare. Pick one of its slots, or pin the agent a model.`;
         }
       } else if (!agent.modelId.trim()) {
-        return `The \`${agent.name.trim()}\` agent pins no model — choose one, or bind it to a model slot.`;
+        return `The \`${agent.name.trim()}\` agent pins no model. Choose one, or bind it to a model slot.`;
       }
       const loop = loopDetectionError(agent.loopDetection);
       if (loop) {
@@ -2764,7 +2764,7 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
       // honour and so does this, because "which one?" is the whole of what an operator
       // needs to know to fix it.
       const cap = capabilitySpec(failed[0]);
-      return `${failed[1]!.replace(/\.$/, "")} — the \`${agent.name.trim()}\` agent's ${cap?.name ?? failed[0]} capability.`;
+      return `${failed[1]!.replace(/\.$/, "")}, on the \`${agent.name.trim()}\` agent's ${cap?.name ?? failed[0]} capability.`;
     }
   }
 

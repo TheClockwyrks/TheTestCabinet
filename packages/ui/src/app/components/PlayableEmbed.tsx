@@ -252,7 +252,7 @@ export function ReferencePlayable({
     return (
       <div className={styles.placeholder}>
         No reference build for {engineName(engine)} at {version}. Builds are
-        published for {published.map(engineName).join(", ")} — switch the engine
+        published for {published.map(engineName).join(", ")}. Switch the engine
         in the header to view one.
       </div>
     );

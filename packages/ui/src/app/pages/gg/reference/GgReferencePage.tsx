@@ -152,7 +152,7 @@ export function GgReferencePage({ tab }: GgReferencePageProps) {
           // has nothing to ask, and a fetch that never happened must not read as one that
           // went wrong.
           <p className={styles.empty}>
-            No backend to read the reference from — this surface needs a console
+            No backend to read the reference from. This surface needs a console
             pointed at a deployment.
           </p>
         )}

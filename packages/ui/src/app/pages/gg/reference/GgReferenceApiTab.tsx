@@ -361,7 +361,7 @@ export function GgReferenceApiTab({
             This deployment&apos;s document for the{" "}
             {PROGRAM_LANGUAGE_NAMES[language]} arm of gg {arm.ggVersion} is
             empty. That is a broken projection rather than an arm gg does not
-            have — the documents are written by <code>gg reference --out</code>{" "}
+            have. The documents are written by <code>gg reference --out</code>{" "}
             and read from the directory <code>TCAB_GG_REFERENCE</code> names.
           </p>
         ) : selected ? (
@@ -394,14 +394,14 @@ export function GgReferenceApiTab({
                   {arm.ggVersion} carries nothing called{" "}
                   <code>{requested}</code>. The eleven SDKs are idiomatic rather
                   than transliterations, so a name one arm spells this way
-                  another may spell differently — or may not declare at all.
-                  Pick one from the list.
+                  another may spell differently, or may not declare at all. Pick
+                  one from the list.
                 </>
               ) : (
                 <>
                   Nothing on the {PROGRAM_LANGUAGE_NAMES[language]} arm of gg{" "}
                   {arm.ggVersion} could be opened: its entries name modules the
-                  document does not declare. That is a broken projection — the
+                  document does not declare. That is a broken projection; the
                   documents are written by <code>gg reference --out</code>.
                 </>
               )}

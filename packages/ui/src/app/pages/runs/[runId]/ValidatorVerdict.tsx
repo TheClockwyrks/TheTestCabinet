@@ -138,7 +138,7 @@ export function ValidatorVerdict({
         by its script, and each failing point caps the domains it affects at its
         failure cap. Reviewers rate only the aesthetic channel
         {overallAesthetic
-          ? ` — ${AESTHETIC_META[overallAesthetic].label.toLowerCase()} here, the worst any reviewer gave any domain.`
+          ? `: ${AESTHETIC_META[overallAesthetic].label.toLowerCase()} here, the worst any reviewer gave any domain.`
           : "; no reviewer has rated it yet."}
       </p>
 

@@ -125,7 +125,7 @@ function StatsContent({ model }: { model: ModelSummary }) {
           <h2 className={styles.sectionTitle}>Accuracy</h2>
           {accuracyState.status === "error" ? (
             <p className={styles.accuracyNote}>
-              Couldn&apos;t load accuracy statistics — {accuracyState.message}
+              Couldn&apos;t load accuracy statistics. {accuracyState.message}
             </p>
           ) : (
             accuracy && (

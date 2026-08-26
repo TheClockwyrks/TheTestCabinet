@@ -256,7 +256,7 @@ export function ComparisonDetailPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to view a comparison — comparisons are saved to your account.
+          Sign in to view a comparison. Comparisons are saved to your account.
         </p>
       </PageLayout>
     );
@@ -423,14 +423,15 @@ export function ComparisonDetailPage() {
               {publishResult.skipped
                 .map((s) => `${s.runId} (${s.reason})`)
                 .join(", ")}
-              — this comparison is only partially published.
+              {". "}
+              This comparison is only partially published.
             </>
           )}
         </p>
       )}
       {canExecute && !canTrigger && totalMissing > 0 && (
         <p className={`${exec.notice} ${exec.warn}`}>
-          No worker connected — open the connections drawer (the gear in the top
+          No worker connected. Open the connections drawer (the gear in the top
           bar) to add a worker before triggering the {totalMissing} still-
           missing run{totalMissing === 1 ? "" : "s"}.
         </p>
@@ -470,7 +471,7 @@ export function ComparisonDetailPage() {
           {confounds.map(({ armLabel, confound }, i) => (
             <p key={i}>
               <strong>{armLabel}</strong>: {confound.variable} varied across
-              this arm&rsquo;s runs — {confound.values.join(", ")}. This
+              this arm&rsquo;s runs as {confound.values.join(", ")}. This
               arm&rsquo;s runs are not a clean comparison against the others.
             </p>
           ))}
@@ -567,7 +568,7 @@ export function ComparisonDetailPage() {
                 </div>
                 <span className={styles.meterLabel}>
                   {a.passRate.passed}/{a.passRate.n} passed (
-                  {Math.round(a.passRate.rate * 100)}%) — Wilson{" "}
+                  {Math.round(a.passRate.rate * 100)}%), Wilson{" "}
                   {Math.round(a.passRate.wilsonLow * 100)}%–
                   {Math.round(a.passRate.wilsonHigh * 100)}%
                 </span>
@@ -582,7 +583,7 @@ export function ComparisonDetailPage() {
       <ChartWidget
         title="Tool-call diagnostics"
         chartTitle="Tool calls by arm, including consumed tools"
-        hint="Includes recognized-but-consumed tool calls (e.g. todo tools) that emit no workspace event but still cost real API round-trips — the why behind a cost gap."
+        hint="Includes recognized-but-consumed tool calls (e.g. todo tools) that emit no workspace event but still cost real API round-trips, which is often the why behind a cost gap."
         spec={
           toolCallData.segments.length === 0
             ? undefined

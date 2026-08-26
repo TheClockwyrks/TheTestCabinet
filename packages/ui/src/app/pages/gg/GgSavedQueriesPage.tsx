@@ -218,7 +218,7 @@ export function GgSavedQueriesPage() {
 
       {!token ? (
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to save queries — they are kept on your account. The corpus
+          Sign in to save queries. They are kept on your account, and the corpus
           they run over is deployment-wide either way.
         </p>
       ) : loading ? (
@@ -226,7 +226,7 @@ export function GgSavedQueriesPage() {
       ) : saved.length === 0 ? (
         <p className={styles.empty}>
           Nothing saved yet. Compose a question in Discover and use its Save
-          control — the text comes across, so a relative range stays relative.
+          control. The text comes across, so a relative range stays relative.
         </p>
       ) : (
         <div className={styles.list}>

@@ -45,7 +45,7 @@
   margin: 0;
   font-size: t.$font-xl;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 .tags {
@@ -157,16 +157,7 @@
 
 .tabActive {
   color: t.$color-accent;
-  // Keep the inherited readability halo (the `.tab` `h.halo` dark layers) and
-  // back the accent glow with it — `var(--ttc-glow)` alone has no contrast where
-  // an active label lands over the warm sun. Merged into one declaration because
-  // a bare `text-shadow` would override the halo the `.tab` mixin set. (Mirrors
-  // `.comment` in PromptHeader.module.scss.)
-  text-shadow:
-    0 0 0.5rem t.$color-bg,
-    0 0 0.4rem t.$color-bg,
-    0 0 0.25rem t.$color-bg,
-    var(--ttc-glow);
+  @include h.halo-glow;
   border-bottom-color: t.$color-accent;
 }
 

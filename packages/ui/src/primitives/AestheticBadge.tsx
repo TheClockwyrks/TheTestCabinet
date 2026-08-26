@@ -21,7 +21,7 @@ export function AestheticBadge({ rating, className }: AestheticBadgeProps) {
     <span
       className={`${styles.badge}${className ? ` ${className}` : ""}`}
       data-aesthetic={rating}
-      title={`Aesthetic — ${meta.description}`}
+      title={`Aesthetic: ${meta.description}`}
       aria-label={`Aesthetic: ${meta.label}`}
     >
       {meta.label}

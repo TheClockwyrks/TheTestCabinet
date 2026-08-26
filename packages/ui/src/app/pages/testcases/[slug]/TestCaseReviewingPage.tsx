@@ -33,8 +33,8 @@ export function TestCaseReviewingPage() {
           <Panel>
             <p className={styles.intro}>
               {model.validatorRated
-                ? "How a run of this variant is graded. This version is validator-rated: every checklist point below is decided by its validator, and each failing point caps the domains it names at its failure cap — a run's functional rating is the lowest cap among its failures, Flawless with none, and its points are the validated points that passed. A reviewer rates only how the build looks and feels, per domain, on the aesthetic scale. This is the rubric only — no run is attached, so nothing is marked."
-                : "How a run of this variant is graded. A reviewer rates each scoring domain on the five-tier scale and works the weighted checklist below one item at a time. This is the rubric only — no run is attached, so nothing is marked."}
+                ? "How a run of this variant is graded. This version is validator-rated: every checklist point below is decided by its validator, and each failing point caps the domains it names at its failure cap. A run's functional rating is the lowest cap among its failures, Flawless with none, and its points are the validated points that passed. A reviewer rates only how the build looks and feels, per domain, on the aesthetic scale. This is the rubric only, with no run attached, so nothing is marked."
+                : "How a run of this variant is graded. A reviewer rates each scoring domain on the five-tier scale and works the weighted checklist below one item at a time. This is the rubric only, with no run attached, so nothing is marked."}
             </p>
 
             {model.domains.length > 0 && (

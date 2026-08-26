@@ -82,7 +82,7 @@ function ProbesContent({ model }: { model: ModelSummary }) {
         />
       ) : (
         <p className={styles.notice}>
-          Sign in to run probes — use the account control in the top bar. The
+          Sign in to run probes, using the account control in the top bar. The
           probe history below is public.
         </p>
       )}
@@ -201,7 +201,9 @@ function ProbeTriggerForm({
 
   const samplesNum = Number.parseInt(samples, 10);
   const samplesOk =
-    Number.isInteger(samplesNum) && samplesNum >= 1 && samplesNum <= MAX_SAMPLES;
+    Number.isInteger(samplesNum) &&
+    samplesNum >= 1 &&
+    samplesNum <= MAX_SAMPLES;
   const maxTokensNum = Number.parseInt(maxTokens, 10);
   const maxTokensOk =
     Number.isInteger(maxTokensNum) &&
@@ -250,7 +252,7 @@ function ProbeTriggerForm({
                 <option key={p.name} value={p.name}>
                   {p.contextLength === null
                     ? p.name
-                    : `${p.name} — ${formatCompact(p.contextLength)} ctx`}
+                    : `${p.name} · ${formatCompact(p.contextLength)} ctx`}
                 </option>
               ))}
             </select>
@@ -341,7 +343,7 @@ const VERDICT_META: Record<string, { label: string; title: string }> = {
   ready: {
     label: "Ready",
     title:
-      "Every probed scenario passed at least 80% of its calls — correct calls under open docviews, and docview-before-call discipline",
+      "Every probed scenario passed at least 80% of its calls: correct calls under open docviews, and docview-before-call discipline",
   },
   "not-ready": {
     label: "Not ready",
@@ -700,8 +702,8 @@ function ProbeRequests({ requests }: { requests: ModelProbeRequest[] }) {
         </div>
       ))}
       <p className={styles.rawNote}>
-        Each request also offers the submit_program tool — its one string
-        parameter is the program to run — and forces tool_choice to it, exactly
+        Each request also offers the submit_program tool, whose one string
+        parameter is the program to run, and forces tool_choice to it, exactly
         as gg sends it.
       </p>
     </div>

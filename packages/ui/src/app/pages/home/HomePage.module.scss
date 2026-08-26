@@ -36,7 +36,7 @@
 
   .caret {
     color: t.$color-accent;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 
@@ -68,7 +68,7 @@
 
 .featureHarness {
   color: t.$color-accent-2;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 .featureVariant {
@@ -87,7 +87,7 @@
 
   &:hover {
     color: t.$color-accent;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 
@@ -115,7 +115,7 @@
   font-size: t.$font-lg;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 .featureCta {
@@ -125,7 +125,7 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 
   &:hover {
     text-decoration: none;

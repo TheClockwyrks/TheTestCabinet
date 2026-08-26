@@ -119,11 +119,11 @@ export function climberStatusLabel(
     case "walled":
       return `Walled at rung ${at}`;
     case "awaitingReview":
-      return `Rung ${at} — waiting on your review`;
+      return `Rung ${at}, waiting on your review`;
     case "climbing":
       return null;
     case "toppedOut":
-      return `Topped out — all ${rungCount} rungs cleared`;
+      return `Topped out: all ${rungCount} rungs cleared`;
   }
 }
 
@@ -179,7 +179,7 @@ export function describeLadderTopUp(result: TopUpResult): string {
     return "This ladder is disabled, so nothing was enqueued. Enable it to let it climb.";
   }
   if (result.skipped === "busy") {
-    return "A top-up for this ladder was already running — nothing was enqueued twice.";
+    return "A top-up for this ladder was already running, so nothing was enqueued twice.";
   }
   if (result.enqueued > 0) {
     const runs = `${result.enqueued} run${result.enqueued === 1 ? "" : "s"}`;
@@ -194,7 +194,7 @@ export function describeLadderTopUp(result: TopUpResult): string {
     );
   }
   return (
-    "Nothing left to enqueue — every climber is at its rung's target, walled, " +
+    "Nothing left to enqueue: every climber is at its rung's target, walled, " +
     "held, or topped out."
   );
 }
@@ -230,7 +230,7 @@ export function ladderStatusNote(
 ): string | null {
   if (paused) {
     return (
-      "Disabled: this ladder will not enqueue anything until you enable it — which a " +
+      "Disabled: this ladder will not enqueue anything until you enable it, which a " +
       "new ladder never has been. Whatever is already queued is untouched."
     );
   }
@@ -241,7 +241,7 @@ export function ladderStatusNote(
     return (
       `Nobody is climbing: ${progress.climbersWalled} walled, ` +
       `${progress.climbersToppedOut} topped out, and the rest held. This ladder has ` +
-      "answered its question — promote a climber past a wall, release a hold, or add " +
+      "answered its question. Promote a climber past a wall, release a hold, or add " +
       "rungs to ask a harder one."
     );
   }
@@ -253,7 +253,7 @@ export function ladderStatusNote(
       `Waiting on you: ${progress.runsOutstanding} of ${progress.bufferTarget} ` +
       "buffered runs are outstanding (in flight, or finished and unreviewed), so a " +
       "top-up deliberately enqueues nothing until you review some. A rung's verdict " +
-      "is your review — nothing else can decide it."
+      "is your review, and nothing else can decide it."
     );
   }
   return null;
@@ -952,7 +952,7 @@ export function LadderPage() {
         );
         setNote(
           outcome === null
-            ? `Override cleared — ${climber.model} is back to whatever the gate says on that rung.`
+            ? `Override cleared. ${climber.model} is back to whatever the gate says on that rung.`
             : `${climber.model} ${outcome === "advanced" ? "promoted past" : "walled at"} that rung by hand. The gate's own verdict is kept beside yours.`,
         );
         await refresh();
@@ -1031,7 +1031,7 @@ export function LadderPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to view a ladder — a rung is decided by <em>your</em> reviews,
+          Sign in to view a ladder. A rung is decided by <em>your</em> reviews,
           so there is nothing to show without an account.
         </p>
       </PageLayout>
@@ -1072,7 +1072,7 @@ export function LadderPage() {
         <div className={styles.emptyState}>
           <p className={styles.empty}>
             This ladder has no rungs yet. Edit it to pin the cases you want
-            climbed, easiest first — the order is the climb.
+            climbed, easiest first. The order is the climb.
           </p>
           <Link
             className={exec.primary}
@@ -1110,7 +1110,7 @@ export function LadderPage() {
             </span>
             <span
               className={styles.summaryStat}
-              title="Completed runs of this ladder you have not reviewed, on every rung its climbers have reached — a rung the gate has already decided keeps the runs nobody looked at. On a ladder your review is the verdict, so these are also what decides the undecided rungs."
+              title="Completed runs of this ladder you have not reviewed, on every rung its climbers have reached. A rung the gate has already decided keeps the runs nobody looked at. On a ladder your review is the verdict, so these are also what decides the undecided rungs."
             >
               <strong>{progress.runsUnreviewed}</strong> to review
             </span>
@@ -1142,7 +1142,7 @@ export function LadderPage() {
                 }
                 title={
                   ladder?.paused
-                    ? "This ladder is disabled, so it can enqueue nothing. Enable it — that tops it up too."
+                    ? "This ladder is disabled, so it can enqueue nothing. Enable it, which tops it up too."
                     : "Enqueue the next runs this climb needs, up to the review buffer."
                 }
                 onClick={() => void topUp(true)}
@@ -1178,7 +1178,7 @@ export function LadderPage() {
                 type="button"
                 className={exec.danger}
                 disabled={busy || !backend?.haltAllLadder}
-                title="Disable, and cancel every job this ladder launched — runs already executing included."
+                title="Disable, and cancel every job this ladder launched, runs already executing included."
                 onClick={() => void halt(true)}
               >
                 Halt all

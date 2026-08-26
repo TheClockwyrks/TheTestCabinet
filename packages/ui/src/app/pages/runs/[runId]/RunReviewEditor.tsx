@@ -78,13 +78,13 @@ const STATUSES: VerdictStatus[] = ["pass", "fail"];
 // label so a reviewer is reminded what each tier means without leaving the form.
 // Built from the shared RATING_META so it stays in lockstep with the tiers.
 const RATING_CRITERIA = RATINGS.map(
-  (rt) => `${RATING_META[rt].label} — ${RATING_META[rt].description}`,
+  (rt) => `${RATING_META[rt].label}: ${RATING_META[rt].description}`,
 ).join("\n\n");
 
 // The same reminder for the aesthetic scale, beside each domain's Aesthetic
 // picker on a validator-rated run.
 const AESTHETIC_CRITERIA = AESTHETIC_RATINGS.map(
-  (rt) => `${AESTHETIC_META[rt].label} — ${AESTHETIC_META[rt].description}`,
+  (rt) => `${AESTHETIC_META[rt].label}: ${AESTHETIC_META[rt].description}`,
 ).join("\n\n");
 
 /** Format a point weight as `1 pt` / `2 pts`. */
@@ -139,7 +139,7 @@ function GradeChoice({
             role="radio"
             aria-checked={selected}
             aria-label={`${meta.label} (${meta.points} ${meta.points === 1 ? "pt" : "pts"})`}
-            title={`${meta.label} — ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
+            title={`${meta.label}, ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
             disabled={disabled}
             tabIndex={disabled ? -1 : selected || (!value && i === 0) ? 0 : -1}
             className={`${styles.verdictOption} ${styles.gradeOption}${
@@ -767,9 +767,9 @@ export function RunReviewEditor({
                   }`}
                   title={
                     disabled
-                      ? "Excluded from scoring by an erratum — not rated"
+                      ? "Excluded from scoring by an erratum, so it is not rated"
                       : selected && isAuto
-                        ? "Auto-set from this run's debug script — click to override"
+                        ? "Auto-set from this run's debug script; click to override"
                         : undefined
                   }
                   onClick={() =>
@@ -811,7 +811,7 @@ export function RunReviewEditor({
               type="button"
               className={styles.verdictRestore}
               onClick={() => restoreAutoVerdicts([verdictId])}
-              title={`Restore this verdict to ${VERDICT_META[auto.get(verdictId)!.status].label} — what this run's debug script decided. Your note is kept.`}
+              title={`Restore this verdict to ${VERDICT_META[auto.get(verdictId)!.status].label}, what this run's debug script decided. Your note is kept.`}
               aria-label="Restore this verdict to the automated validation's result"
             >
               Restore
@@ -1021,7 +1021,7 @@ export function RunReviewEditor({
     return (
       <Panel>
         <p className={`${styles.notice} ${styles.warn}`}>
-          No worker connected — connect the worker that produced this run (the
+          No worker connected. Connect the worker that produced this run (the
           gear in the top bar) to review and publish it.
         </p>
       </Panel>
@@ -1272,7 +1272,7 @@ export function RunReviewEditor({
               The functional rating and score above were decided by this
               run&rsquo;s validators and are not yours to change. Rate how the
               build <em>looks and feels</em> in each domain below, and write it
-              up. The run can be published now, with or without this review — an
+              up. The run can be published now, with or without this review; an
               aesthetic review can be added later.
             </p>
           )}
@@ -1354,8 +1354,8 @@ export function RunReviewEditor({
                   disabled={busy}
                   title={
                     jam
-                      ? "Mark the whole run unplayable — grade every category and the overall as Broken"
-                      : "Mark the whole run unplayable — set every checklist item to Fail and every rating to Broken"
+                      ? "Mark the whole run unplayable: grade every category and the overall as Broken"
+                      : "Mark the whole run unplayable: set every checklist item to Fail and every rating to Broken"
                   }
                   aria-label={
                     jam
@@ -1414,7 +1414,7 @@ export function RunReviewEditor({
                       ? undefined
                       : jam
                         ? it.title
-                        : `${it.title} — ${anyFail ? "some Fail" : "all Pass"}`;
+                        : `${it.title}: ${anyFail ? "some Fail" : "all Pass"}`;
                     const subItems = it.graded ? [] : (it.subItems ?? []);
                     const expanded = isCurrent && subItems.length > 0;
                     return (
@@ -1655,7 +1655,7 @@ export function RunReviewEditor({
                 rows={2}
                 value={editNote}
                 onChange={(e) => setEditNote(e.target.value)}
-                placeholder="Briefly explain what you changed and why — required, and saved to this review's edit history."
+                placeholder="Briefly explain what you changed and why. Required, and saved to this review's edit history."
               />
             </label>
           )}
@@ -1667,7 +1667,7 @@ export function RunReviewEditor({
             <fieldset className={styles.ratings}>
               <legend className={styles.fieldLabel}>Overall grade</legend>
               <p className={styles.notice}>
-                Your grade for the whole game — how good is this entry overall?
+                Your grade for the whole game. How good is this entry overall?
                 Required.
               </p>
               <GradeChoice
@@ -1853,7 +1853,7 @@ export function RunReviewEditor({
             ? "Sign in to publish"
             : soloReady
               ? validatorRated && !aestheticsTouched
-                ? "Publish without an aesthetic review — one can be added later"
+                ? "Publish without an aesthetic review; one can be added later"
                 : undefined
               : validatorRated
                 ? "Finish the aesthetic review (a tier for every domain and a writeup), or clear it to publish without one"
@@ -1890,7 +1890,7 @@ export function RunReviewEditor({
                   : validatorRated &&
                       reviews.length === 0 &&
                       !submittedThisSession
-                    ? "Publish without an aesthetic review — one can be added later"
+                    ? "Publish without an aesthetic review; one can be added later"
                     : undefined
             }
           >

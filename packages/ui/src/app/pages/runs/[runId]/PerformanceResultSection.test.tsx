@@ -64,7 +64,7 @@ describe("PerformanceResultBody", () => {
     expect(screen.getByText("2,210,000")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /all 2 held-out scenarios reproduced the reference oracle/,
+        /All 2 held-out scenarios reproduced the reference oracle/,
       ),
     ).toBeInTheDocument();
   });

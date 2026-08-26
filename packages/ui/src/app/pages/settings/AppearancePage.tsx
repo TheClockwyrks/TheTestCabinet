@@ -23,8 +23,8 @@ export function AppearancePage() {
           <div className={styles.label}>
             <h2 className={styles.title}>Synthwave sun</h2>
             <p className={styles.description}>
-              Show or hide the banded sun behind the gallery. The choice persists
-              across visits.
+              Show or hide the banded sun behind the gallery. The choice
+              persists across visits.
             </p>
           </div>
           <SegmentedControl
@@ -44,7 +44,7 @@ export function AppearancePage() {
           <div className={styles.label}>
             <h2 className={styles.title}>Event feed</h2>
             <p className={styles.description}>
-              Choose how harness activity is laid out — both while a run streams
+              Choose how harness activity is laid out, both while a run streams
               live and on a finished run's Events tab. The preview shows the
               selected style.
             </p>

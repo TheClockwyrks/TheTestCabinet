@@ -159,7 +159,7 @@ function HookRow({
         <label className={`${runExec.field} ${gg.hookField}`}>
           <FieldLabel
             label="Name"
-            hint="An operator's label, shown wherever gg reports this hook running or blocking. Optional — gg falls back to describing what it runs."
+            hint="An operator's label, shown wherever gg reports this hook running or blocking. Optional; gg falls back to describing what it runs."
           />
           <input
             className={runExec.input}
@@ -190,7 +190,7 @@ function HookRow({
       <p className={gg.hookBlocking}>
         {blocks
           ? "This event can be blocked: a hook that refuses stops the operation, and the reason it gives is what the model reads."
-          : "This event cannot be blocked — whatever the hook says, the operation goes ahead."}
+          : "This event cannot be blocked: whatever the hook says, the operation goes ahead."}
       </p>
 
       {hook.kind === "command" && (
@@ -211,7 +211,7 @@ function HookRow({
           <label className={gg.capParamField}>
             <FieldLabel
               label="Working directory"
-              hint="Relative to gg's working directory, or absolute. Blank runs it in the agent's workspace root — which for an agent working in an isolated worktree is that worktree."
+              hint="Relative to gg's working directory, or absolute. Blank runs it in the agent's workspace root, which for an agent working in an isolated worktree is that worktree."
             />
             <input
               className={runExec.input}
@@ -223,7 +223,7 @@ function HookRow({
           </label>
           <CapField
             label="Timeout (seconds)"
-            hint="How long it may run before it is killed. Required: gg has no ceiling of its own to run a hook that declares none under, so a new hook opens on a generous figure — a hook command is typically a build or a test suite — and you keep it or change it."
+            hint="How long it may run before it is killed. Required: gg has no ceiling of its own to run a hook that declares none under. A new hook opens on a generous figure, since a hook command is typically a build or a test suite, and you keep it or change it."
             // A configuration presents a list of hooks, each with a timeout, so the
             // reset says which hook's — the same way the row's Remove control does.
             resetLabel={`timeout for the ${hook.name.trim() || event?.label || hook.event} hook`}
@@ -297,7 +297,7 @@ function HookRow({
         <label className={gg.capParamField}>
           <FieldLabel
             label="Script"
-            hint="Run with the event as its sole argument, a JSON string. A `#!` line chooses the interpreter; without one it is run by `sh`. It must exit 0 and print one decision object on stdout — a non-zero exit or unreadable output is the hook itself failing, which stops the run."
+            hint="Run with the event as its sole argument, a JSON string. A `#!` line chooses the interpreter; without one it is run by `sh`. It must exit 0 and print one decision object on stdout. A non-zero exit or unreadable output is the hook itself failing, which stops the run."
           />
           <textarea
             className={runExec.input}

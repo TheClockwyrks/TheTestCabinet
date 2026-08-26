@@ -235,7 +235,7 @@ export function GgAgentEditPage() {
       <PageLayout>
         {header}
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to author gg agents — they are saved to your account.
+          Sign in to author gg agents. They are saved to your account.
         </p>
       </PageLayout>
     );

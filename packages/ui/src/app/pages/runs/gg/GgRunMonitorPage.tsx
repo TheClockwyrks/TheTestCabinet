@@ -55,7 +55,7 @@ export function GgRunMonitorPage() {
     ...statusPhase(status, sawSession),
     note:
       sessionEndStatus && status.kind === "running"
-        ? `gg session ended: ${sessionEndStatus} — finalizing…`
+        ? `gg session ended: ${sessionEndStatus}. Finalizing…`
         : null,
     action:
       status.kind === "running" && jobId ? (
@@ -73,7 +73,7 @@ export function GgRunMonitorPage() {
 
       {!worker && (
         <p className={`${runExec.notice} ${runExec.warn}`}>
-          No worker connected — the live stream comes from the worker that ran
+          No worker connected. The live stream comes from the worker that ran
           this job.
         </p>
       )}
@@ -99,7 +99,7 @@ export function GgRunMonitorPage() {
             {/* Terminal outcome + a link to the produced run. */}
             {status.kind === "done" && status.outcome.kind === "completed" && (
               <p className={`${runExec.notice} ${runExec.ok}`}>
-                Run complete — state {status.outcome.record.status.state}.{" "}
+                Run complete: state {status.outcome.record.status.state}.{" "}
                 <Link to={routes.runDetail(status.outcome.record.id)}>
                   Open the run
                 </Link>{" "}

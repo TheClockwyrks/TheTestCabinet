@@ -439,7 +439,7 @@ export function GgConfigEditPage() {
       <PageLayout>
         {header}
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit gg configurations — they are saved to your account.
+          Sign in to edit gg configurations. They are saved to your account.
         </p>
       </PageLayout>
     );

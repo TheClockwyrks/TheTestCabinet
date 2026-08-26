@@ -20,7 +20,11 @@ export function TestCaseArenaPage() {
   return (
     <TestCaseDetailLayout tab="arena">
       {({ testCase, variant, isLatest }) => (
-        <ArenaContent testCase={testCase} variant={variant} isLatest={isLatest} />
+        <ArenaContent
+          testCase={testCase}
+          variant={variant}
+          isLatest={isLatest}
+        />
       )}
     </TestCaseDetailLayout>
   );
@@ -47,7 +51,7 @@ function ArenaContent({
       <section className={styles.section}>
         <Panel>
           <p className={styles.muted}>
-            The arena is not available here — it runs head-to-head matches on a
+            The arena is not available here. It runs head-to-head matches on a
             connected worker, for adversarial test cases only.
           </p>
         </Panel>
@@ -313,7 +317,7 @@ function QuickMatchPanel({
           />
           {result.replay == null ? (
             <p className={styles.muted}>
-              No replay is available — a controller failed to load.
+              No replay is available: a controller failed to load.
             </p>
           ) : !launched ? (
             <button

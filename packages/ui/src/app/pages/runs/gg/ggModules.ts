@@ -914,8 +914,8 @@ function moduleDivergences(
           declared: declared.scope,
           observed: "nothing inherited",
           note:
-            "These instances have no spawner to inherit from — or their spawner organizes " +
-            "its memories differently — so each one fell back to a store of its own.",
+            "These instances have no spawner to inherit from, or their spawner organizes " +
+            "its memories differently, so each one fell back to a store of its own.",
         });
       }
       break;

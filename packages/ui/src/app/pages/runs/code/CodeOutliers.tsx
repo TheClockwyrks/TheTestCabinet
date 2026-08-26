@@ -70,7 +70,7 @@ export function CodeOutliers({
     label: worstLabels[index]!,
     value: symbol.cyclomatic,
     title: [
-      `${symbol.name} — ${analysis.files[symbol.file]?.path ?? "?"}:${symbol.line}`,
+      `${symbol.name} · ${analysis.files[symbol.file]?.path ?? "?"}:${symbol.line}`,
       `cyclomatic ${symbol.cyclomatic} · cognitive ${symbol.cognitive}`,
       `${symbol.lines} lines · nesting ${symbol.maxNesting} · ${symbol.parameters} parameters`,
     ].join("\n"),

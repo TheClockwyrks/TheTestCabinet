@@ -74,7 +74,7 @@ export function ReviewingPage() {
       <SettingsLayout tab="reviewing">
         <Panel>
           <p className={styles.muted}>
-            Sign in to change your reviewing settings — they are saved to your
+            Sign in to change your reviewing settings. They are saved to your
             account. Use the account control in the top bar to register or log
             in.
           </p>

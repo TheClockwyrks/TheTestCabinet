@@ -67,17 +67,9 @@
   }
 }
 
-// The active tab keeps the `.tab` halo and backs the accent glow with it — a bare
-// `text-shadow` would replace the halo the mixin set, leaving the label with no
-// contrast where it lands over the backdrop's warm sun. (Same declaration, and the
-// same reason, as the catalog's `.tabActive`.)
 .tabActive {
   color: t.$color-accent;
-  text-shadow:
-    0 0 0.5rem t.$color-bg,
-    0 0 0.4rem t.$color-bg,
-    0 0 0.25rem t.$color-bg,
-    var(--ttc-glow);
+  @include h.halo-glow;
   border-bottom-color: t.$color-accent;
 }
 
@@ -244,7 +236,7 @@
   font-family: monospace;
   font-size: t.$font-lg;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
   overflow-wrap: anywhere;
 }
 

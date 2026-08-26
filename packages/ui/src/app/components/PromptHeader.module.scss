@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/halo" as h;
 
 .hero {
   margin-bottom: t.$space-lg;
@@ -74,18 +75,11 @@
 .comment {
   margin: t.$space-sm 0 0;
   color: t.$color-accent-2;
-  // The muted comment sits lower than the prompt, so on narrow/tall viewports
-  // the backdrop's warm sun/grid/terrain rise directly behind it — colors close
-  // to this accent, against which the accent `--ttc-glow` alone offers no
-  // contrast. Back the accent glow with the dark readability halo (same layered
-  // dark glow as `h.halo`, in the background color) so every glyph lifts off any
-  // background regardless of how the scene animates. Merged into one declaration
-  // because the halo mixin's `text-shadow` would otherwise override the glow.
-  text-shadow:
-    0 0 0.5rem t.$color-bg,
-    0 0 0.4rem t.$color-bg,
-    0 0 0.25rem t.$color-bg,
-    var(--ttc-glow);
+  // The muted comment sits lower than the prompt, so on narrow/tall viewports the
+  // backdrop's warm sun, grid and terrain rise directly behind it in colors close
+  // to this accent. The halo behind the glow keeps every glyph legible however the
+  // scene animates.
+  @include h.halo-glow;
 }
 
 // The comment line when the header carries trailing controls: the prose keeps the

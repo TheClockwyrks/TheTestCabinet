@@ -1,4 +1,5 @@
 @use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
 @use "../../styles/surfaces" as s;
 
 // The gg analysis section's styles: the aggregate query builder's panels and
@@ -177,7 +178,7 @@
   color: t.$color-accent;
   font-family: var(--ttc-display);
   font-size: t.$font-xl;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
   font-variant-numeric: tabular-nums;
 }
 

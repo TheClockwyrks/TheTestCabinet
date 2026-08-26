@@ -46,7 +46,7 @@ function FullscreenOverlay({
       className={styles.viewerFullscreen}
       role="dialog"
       aria-modal="true"
-      aria-label={`${label} — expanded`}
+      aria-label={`${label}, expanded`}
     >
       <button
         type="button"

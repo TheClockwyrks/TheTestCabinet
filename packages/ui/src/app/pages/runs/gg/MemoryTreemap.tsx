@@ -39,7 +39,7 @@ export function MemoryTreemap({ tiles }: { tiles: MemoryTile[] }) {
     label: tile.name,
     value: tile.value,
     detail: numberFmt.format(tile.value),
-    description: `${tile.name} — ${numberFmt.format(tile.value)} characters, ${numberFmt.format(tile.lines)} lines${
+    description: `${tile.name}: ${numberFmt.format(tile.value)} characters, ${numberFmt.format(tile.lines)} lines${
       tile.live ? "" : " (deleted)"
     }${tile.byAnother ? " (written by another holder)" : ""}`,
     muted: !tile.live,

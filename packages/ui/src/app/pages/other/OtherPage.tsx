@@ -152,7 +152,7 @@ function GameJamsList({
   if (status === "error") {
     return (
       <p className={styles.error}>
-        Couldn&apos;t reach the backend — the game-jam catalog is unavailable.
+        Couldn&apos;t reach the backend, so the game-jam catalog is unavailable.
       </p>
     );
   }

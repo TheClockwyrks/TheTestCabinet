@@ -1179,7 +1179,7 @@ describe("GgRunMonitorPage", () => {
     // now named for the one module the file is about rather than for both halves.
     expect(
       screen.getByText(
-        "Retained verbatim across 1 compaction — the memories carried over.",
+        "Retained verbatim across 1 compaction: the memories carried over.",
       ),
     ).toBeInTheDocument();
   });
@@ -1574,7 +1574,7 @@ describe("GgRunMonitorPage", () => {
     expect(row).toHaveTextContent(/^0×gg\.files\.writeFile$/);
     expect(row).toHaveAttribute(
       "title",
-      "gg.files.writeFile was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
+      "gg.files.writeFile was offered, 0 calls. This agent was bound to it and did not use it, which is a different finding from one it was not offered.",
     );
     // And the words the figure replaced are gone from the row entirely — not moved into the
     // hover text, which is where a replaced wording usually survives. The tooltip says the
@@ -2702,9 +2702,7 @@ describe("GgRunMonitorPage", () => {
       within(memories).getByText("1 store · 2 of 2 instances · 1.4k/turn"),
     ).toBeInTheDocument();
     expect(
-      within(memories).getByText(
-        /One store — memories-1 — bound by 2 instances/,
-      ),
+      within(memories).getByText(/One store, memories-1, bound by 2 instances/),
     ).toBeInTheDocument();
 
     // And the contents, framed so it is unmistakable that they are the agent's rather than

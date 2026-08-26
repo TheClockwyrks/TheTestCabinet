@@ -206,7 +206,7 @@ export function describeTopUp(result: TopUpResult): string {
     return "This plan is paused, so nothing was enqueued. Resume it to let it refill.";
   }
   if (result.skipped === "busy") {
-    return "A top-up for this plan was already running — nothing was enqueued twice.";
+    return "A top-up for this plan was already running, so nothing was enqueued twice.";
   }
   if (result.enqueued > 0) {
     const runs = `${result.enqueued} run${result.enqueued === 1 ? "" : "s"}`;
@@ -220,7 +220,7 @@ export function describeTopUp(result: TopUpResult): string {
       `${result.bufferTarget} outstanding). Review some runs and top up again.`
     );
   }
-  return "Nothing left to enqueue — every cell is at its target.";
+  return "Nothing left to enqueue: every cell is at its target.";
 }
 
 /**
@@ -267,7 +267,7 @@ export function planStatusNote(
   if (coverage.runsMissing === 0) {
     if (coverage.runsUnreviewed === 0) return held.trim() || null;
     return (
-      `Every cell is at its target — satisfied partly by ${coverage.runsUnreviewed} ` +
+      `Every cell is at its target, satisfied partly by ${coverage.runsUnreviewed} ` +
       `run${coverage.runsUnreviewed === 1 ? "" : "s"} you have not reviewed yet.${held}`
     );
   }
@@ -448,7 +448,7 @@ export function MatrixSection({
                   {cell.pending > 0 && (
                     <span
                       className={styles.cellNote}
-                      title="Held back by the queue — its harness is at its parallelism cap, or a game jam is already running on this model. Not stuck."
+                      title="Held back by the queue, because its harness is at its parallelism cap or a game jam is already running on this model. Not stuck."
                     >
                       {cell.pending} pending
                     </span>
@@ -529,8 +529,8 @@ export function ReviewQueue({
       </ol>
       {queue.truncated && (
         <p className={exec.muted}>
-          More are waiting behind these — the queue is walked from the front,
-          not paged.
+          More are waiting behind these. The queue is walked from the front, not
+          paged.
         </p>
       )}
     </section>
@@ -787,7 +787,7 @@ export function CoveragePlanPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to view a coverage plan — plans are saved to your account.
+          Sign in to view a coverage plan. Plans are saved to your account.
         </p>
       </PageLayout>
     );
@@ -820,7 +820,7 @@ export function CoveragePlanPage() {
       {note && <p className={`${exec.notice} ${exec.ok}`}>{note}</p>}
       {!canTrigger && (
         <p className={`${exec.notice} ${exec.warn}`}>
-          No worker connected — open the connections drawer (the gear in the top
+          No worker connected. Open the connections drawer (the gear in the top
           bar) to add a worker before triggering runs by hand. Topping up needs
           no worker; the backend enqueues those itself.
         </p>
@@ -871,7 +871,7 @@ export function CoveragePlanPage() {
             {coverage.runsPending > 0 && (
               <span
                 className={styles.summaryStat}
-                title="In-flight runs the queue is deliberately holding back — the harness is at its parallelism cap, or a game jam is already running on that model. A subset of the runs in flight, not an addition to them."
+                title="In-flight runs the queue is deliberately holding back, because the harness is at its parallelism cap or a game jam is already running on that model. A subset of the runs in flight, not an addition to them."
               >
                 <strong>{coverage.runsPending}</strong> pending
               </span>
@@ -925,7 +925,7 @@ export function CoveragePlanPage() {
                 type="button"
                 className={exec.danger}
                 disabled={busy || !backend?.haltAllCoveragePlan}
-                title="Pause, and cancel every job this plan launched — runs already executing included."
+                title="Pause, and cancel every job this plan launched, runs already executing included."
                 onClick={() => void halt(true)}
               >
                 Halt all

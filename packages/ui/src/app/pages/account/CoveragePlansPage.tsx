@@ -119,8 +119,8 @@ export function CoveragePlansPage() {
         />
         <AccountTabs active="coverage" />
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to use coverage plans — they are saved to your account. Use
-          the account control in the top bar to register or log in.
+          Sign in to use coverage plans. They are saved to your account. Use the
+          account control in the top bar to register or log in.
         </p>
       </PageLayout>
     );
@@ -147,7 +147,7 @@ export function CoveragePlansPage() {
         <div className={styles.emptyState}>
           <p className={styles.empty}>
             You have no coverage plans yet. Create one to declare the cases and
-            harness/model combinations you want covered — reference reusable
+            harness/model combinations you want covered. Reference reusable
             groups from the Groups tab, or pin one-off entries directly.
           </p>
           <Link className={exec.primary} to={routes.accountCoveragePlanNew()}>

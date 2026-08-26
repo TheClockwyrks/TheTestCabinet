@@ -68,7 +68,7 @@ function BackendStatusLine() {
   return (
     <p className={`${styles.notice} ${styles.ok}`}>
       Connected to {backend.url}
-      {id?.version ? ` (v${id.version})` : ""} —{" "}
+      {id?.version ? ` (v${id.version})` : ""}:{" "}
       {id?.storeReady ? "store ready" : "store not ready"}.
     </p>
   );

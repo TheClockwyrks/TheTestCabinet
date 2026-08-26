@@ -93,7 +93,7 @@ export function GroupsPage() {
         />
         <AccountTabs active="groups" />
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to manage coverage groups — they are saved to your account.
+          Sign in to manage coverage groups. They are saved to your account.
         </p>
       </PageLayout>
     );

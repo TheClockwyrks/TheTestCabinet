@@ -107,17 +107,32 @@ export interface ReplayClock {
   readonly setSpeed: (speed: number) => void;
 }
 
+/** How a clock behaves at the two ends of the timeline. */
+export interface ReplayClockOptions {
+  /**
+   * Start running rather than stopped on frame 0.
+   *
+   * A reviewer's page can carry several clocks, and one that played every
+   * recording it mounted would be unreadable, so the review surfaces leave this
+   * off and let the reviewer choose what to watch. A showcase carousel stages one
+   * recording at a time and turns it on.
+   */
+  readonly autoPlay?: boolean;
+  /** Wrap to frame 0 at the end of the timeline rather than coming to rest. */
+  readonly loop?: boolean;
+}
+
 /**
  * Drive a frame index over `timeline` from an animation-frame loop.
- *
- * Playback starts stopped and showing frame 0. A run's review page can carry
- * several of these, and a page that started playing every replay it mounted would
- * be unreadable — the reviewer chooses which comparison to watch.
  */
-export function useReplayClock(timeline: readonly number[]): ReplayClock {
+export function useReplayClock(
+  timeline: readonly number[],
+  options: ReplayClockOptions = {},
+): ReplayClock {
+  const { autoPlay = false, loop = false } = options;
   const frames = timeline.length;
   const [frame, setFrame] = useState(0);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(autoPlay);
   const [speed, setSpeed] = useState(1);
 
   // A live mirror of the position for the loop, so advancing the frame does not
@@ -142,14 +157,14 @@ export function useReplayClock(timeline: readonly number[]): ReplayClock {
     frameRef.current = 0;
     spentRef.current = 0;
     setFrame(0);
-    setPlaying(false);
-  }, [frames]);
+    setPlaying(autoPlay);
+  }, [frames, autoPlay]);
 
   useEffect(() => {
     if (!playing || frames === 0) return;
     let raf = 0;
     let last = performance.now();
-    const loop = (now: number) => {
+    const step = (now: number) => {
       spentRef.current += Math.min(now - last, LONGEST_STEP_MS) * speed;
       last = now;
       // Advance as many frames as the elapsed time paid for. A reviewer watching at
@@ -158,29 +173,34 @@ export function useReplayClock(timeline: readonly number[]): ReplayClock {
       // land on is complete whether or not the ones passed over were drawn.
       const durations = timelineRef.current;
       let next = frameRef.current;
+      // A looping clock wraps past the last frame; one that does not stops on it.
+      // The step count is capped at the timeline's length so a long real-time gap
+      // costs at most one pass rather than spinning.
+      let steps = 0;
       while (
-        next < frames - 1 &&
+        (loop ? steps < frames : next < frames - 1) &&
         spentRef.current >= (durations[next] ?? NOMINAL_FRAME_MS)
       ) {
         spentRef.current -= durations[next] ?? NOMINAL_FRAME_MS;
-        next += 1;
+        next = next + 1 >= frames ? 0 : next + 1;
+        steps += 1;
       }
       if (next !== frameRef.current) {
         frameRef.current = next;
         setFrame(next);
       }
-      if (next >= frames - 1) {
-        // Stop ON the last frame rather than looping. The pair is evidence a
-        // reviewer reads: it should come to rest where the build did, and Play from
-        // there restarts deliberately.
+      if (!loop && next >= frames - 1) {
+        // Stop ON the last frame. The pair is evidence a reviewer reads: it should
+        // come to rest where the build did, and Play from there restarts
+        // deliberately.
         setPlaying(false);
         return;
       }
-      raf = requestAnimationFrame(loop);
+      raf = requestAnimationFrame(step);
     };
-    raf = requestAnimationFrame(loop);
+    raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [playing, speed, frames]);
+  }, [playing, speed, frames, loop]);
 
   const seek = useCallback(
     (to: number) => {

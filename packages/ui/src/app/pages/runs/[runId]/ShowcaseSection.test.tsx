@@ -32,11 +32,20 @@ vi.mock("../PlayableSection", () => ({
 }));
 
 // The replay player fetches and decodes a recording; the showcase's contract is
-// only that a replay entry mounts it on the resolved URL.
+// that a replay entry mounts it on the resolved URL, in the presentation that
+// plays itself and keeps its transport off the layout.
 vi.mock("../replay/ReplayPlayer", () => ({
-  ReplayPlayer: ({ url, label }: { url: string; label: string }) => (
+  ReplayPlayer: ({
+    url,
+    label,
+    presentation,
+  }: {
+    url: string;
+    label: string;
+    presentation?: string;
+  }) => (
     <p>
-      replay player {label} @ {url}
+      replay player {label} @ {url} as {presentation}
     </p>
   ),
 }));
@@ -76,12 +85,12 @@ describe("the showcase section", () => {
     expect(thumbs[0]?.getAttribute("aria-selected")).toBe("true");
   });
 
-  it("mounts the replay player on a selected replay entry", () => {
+  it("stages a selected replay entry in the self-playing presentation", () => {
     render(<ShowcaseSection run={run} showcase={showcase()} />);
     fireEvent.click(screen.getByRole("tab", { name: "Show A round" }));
     expect(
       screen.getByText(
-        "replay player A round @ https://cdn.example/media/runs/run-1/showcase/clip.json.gz",
+        "replay player A round @ https://cdn.example/media/runs/run-1/showcase/clip.json.gz as showcase",
       ),
     ).toBeTruthy();
   });

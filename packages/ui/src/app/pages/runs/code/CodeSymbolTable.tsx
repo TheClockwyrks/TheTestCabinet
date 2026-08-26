@@ -107,7 +107,7 @@ export function CodeSymbolTable({
     return (
       <div className={styles.symbols}>
         <p className={styles.empty}>
-          No functions were scored in {scope} — nothing here was in a language
+          No functions were scored in {scope}. Nothing here was in a language
           the analyzer parses.
         </p>
       </div>
@@ -137,7 +137,7 @@ export function CodeSymbolTable({
         <caption className={styles.tableCaption}>
           {formatCodeNumber(symbols.length)}{" "}
           {symbols.length === 1 ? "function" : "functions"} in {scope}
-          {hidden > 0 && ` — showing the first ${MAX_SYMBOL_ROWS}`}
+          {hidden > 0 && `, showing the first ${MAX_SYMBOL_ROWS}`}
         </caption>
         <thead>
           <tr>

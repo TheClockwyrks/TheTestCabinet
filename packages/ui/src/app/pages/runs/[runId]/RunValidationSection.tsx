@@ -174,7 +174,7 @@ function AssetValidationTable({ run }: { run: RunRecord }) {
                       }
                     >
                       divergence {(frame.cheatDivergence * 100).toFixed(1)}%
-                      {drewOutsideTool ? " — drew outside the tool" : ""}
+                      {drewOutsideTool ? " (drew outside the tool)" : ""}
                     </span>
                   )}
                 </td>

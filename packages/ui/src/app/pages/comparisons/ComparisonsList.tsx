@@ -29,7 +29,7 @@ export function ComparisonsList() {
     return (
       <Panel>
         <p className={styles.empty}>
-          Sign in to use harness comparisons — they are saved to your account.
+          Sign in to use harness comparisons. They are saved to your account.
           Use the account control in the top bar to register or log in.
         </p>
       </Panel>
@@ -57,7 +57,7 @@ export function ComparisonsList() {
         <p className={styles.empty}>
           No comparisons yet.{" "}
           {canExecute ? "Create one to run" : "A comparison runs"} the same case
-          under several configurations — harnesses, gg configurations, or both —
+          under several configurations (harnesses, gg configurations, or both)
           and publishes the cost, token, and score spread side by side.
         </p>
       </div>

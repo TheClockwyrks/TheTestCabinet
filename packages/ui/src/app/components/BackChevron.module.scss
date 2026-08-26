@@ -25,6 +25,6 @@
 
   &:hover {
     text-decoration: none;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }

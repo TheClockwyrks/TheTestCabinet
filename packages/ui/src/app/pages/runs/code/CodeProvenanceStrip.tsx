@@ -54,7 +54,7 @@ function authoredFact(summary: CodeAnalysisSummary): Fact {
       return {
         label: "Authored set",
         value: "Inferred",
-        note: "The seed commit was not recorded, so the tree's root commit was used — inferred from its message.",
+        note: "The seed commit was not recorded, so the tree's root commit was inferred from its message and used instead.",
         tone: "caution",
       };
     case "allFiles":
@@ -92,7 +92,7 @@ function languageFact(summary: CodeAnalysisSummary): Fact {
     value: names.length > 0 ? names.join(" + ") : "Nothing",
     note:
       names.length > 0
-        ? "Everything else in the tree — JSON, Markdown, CSS, HTML — is counted for size only."
+        ? "Everything else in the tree (JSON, Markdown, CSS, HTML) is counted for size only."
         : "No file in the tree was in a language the analyzer parses, so only size figures were produced.",
     tone: names.length > 0 ? "ok" : "caution",
   };
@@ -112,7 +112,7 @@ function notices(summary: CodeAnalysisSummary): string[] {
             ? "the symbol budget was exhausted, so later files contributed no per-function complexity"
             : "a content-derived cap fired";
     out.push(
-      `Truncated — ${reason}. A truncated analysis is excluded from aggregation by default.`,
+      `Truncated: ${reason}. A truncated analysis is excluded from aggregation by default.`,
     );
   }
   if (notes.filesRefused > 0) {

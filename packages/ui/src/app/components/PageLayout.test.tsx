@@ -25,7 +25,7 @@ function renderLayout() {
 // The desktop nav and the mobile sheet render the same link set, so scope every
 // lookup to the inline nav rather than matching a label twice.
 function sectionNav(): HTMLElement {
-  return screen.getAllByRole("navigation")[0];
+  return screen.getAllByRole("navigation")[0]!;
 }
 
 describe("PageLayout section nav", () => {

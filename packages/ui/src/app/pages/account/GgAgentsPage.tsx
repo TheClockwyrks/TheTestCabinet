@@ -117,7 +117,7 @@ export function GgAgentsPage() {
 
       {!token ? (
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to save your own gg agents — they are saved to your account.
+          Sign in to save your own gg agents. They are saved to your account.
         </p>
       ) : loading ? (
         <LoadingState size="section" label="Loading agents…" />

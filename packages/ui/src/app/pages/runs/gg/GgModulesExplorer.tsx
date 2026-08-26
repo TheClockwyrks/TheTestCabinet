@@ -186,8 +186,8 @@ export function GgModulesExplorer({
     return (
       <div className={panels.panelBody}>
         <p className={panels.empty}>
-          No modules yet — the stores the run's agents hold (their memories,
-          task lists, skills, its board) appear here as gg opens them.
+          No modules yet. The stores the run's agents hold (their memories, task
+          lists, skills, its board) appear here as gg opens them.
         </p>
       </div>
     );
@@ -474,14 +474,14 @@ function KindOverview({
                 : "—"
             }
             sub={perTurnSub}
-            title="What this kind costs the windows carrying it, every turn — a module's block in the window is re-sent on every request its holder makes, so a store three running agents hold is paid for three times a turn."
+            title="What this kind costs the windows carrying it, every turn. A module's block in the window is re-sent on every request its holder makes, so a store three running agents hold is paid for three times a turn."
           />
           {reportsContents && (
             <ModuleStat
               label="holding nothing"
               value={`${empty} of ${instances.length}`}
               sub={empty > 0 ? "never written to" : "all in use"}
-              title="Stores whose contents never arrived — the capability was given, the tools were offered, and nothing was put in them."
+              title="Stores whose contents never arrived: the capability was given, the tools were offered, and nothing was put in them."
             />
           )}
         </ModuleStats>

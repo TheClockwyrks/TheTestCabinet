@@ -202,7 +202,7 @@ function codeCell(code: RunSummary["code"]): ReactNode {
       <span
         className={`${styles.num} ${styles.noRating}`}
         data-label="Code"
-        title="Not measured — code analysis is not backfilled, so runs from before it shipped carry no figures. This is not a claim that the run wrote no code."
+        title="Not measured. Code analysis is not backfilled, so runs from before it shipped carry no figures. This is not a claim that the run wrote no code."
       >
         &mdash;
       </span>
@@ -215,7 +215,7 @@ function codeCell(code: RunSummary["code"]): ReactNode {
     code.treeBasis === "postValidation"
       ? "measured after validation built the tree"
       : null,
-    code.truncated ? "truncated — a cap stopped the analysis short" : null,
+    code.truncated ? "truncated: a cap stopped the analysis short" : null,
   ].filter((caveat): caveat is string => caveat !== null);
   const title = [
     `${code.codeLines.toLocaleString("en-US")} lines of code (analyzer v${code.analyzerVersion})`,

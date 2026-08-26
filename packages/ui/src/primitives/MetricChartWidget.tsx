@@ -188,7 +188,7 @@ export function MetricChartWidget({
     <ChartWidget
       title={title}
       chartTitle={`${title} by harness & model${
-        barMode === "meanByModel" ? "" : " — per run"
+        barMode === "meanByModel" ? "" : " (per run)"
       }`}
       actions={actions}
       spec={empty && ordered.length === 0 ? undefined : spec}

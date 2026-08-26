@@ -81,7 +81,7 @@ function describe(
     child.kind === "dir"
       ? `, ${formatCodeNumber(child.files)} ${child.files === 1 ? "file" : "files"}`
       : "";
-  return `${child.name} — ${kind}, ${format(value)}${files}`;
+  return `${child.name}: ${kind}, ${format(value)}${files}`;
 }
 
 export function CodeExplorer({
@@ -131,7 +131,7 @@ export function CodeExplorer({
         label: `+${folded.length} more`,
         value: rest,
         detail: area.format(rest),
-        description: `${folded.length} smaller entries, ${area.format(rest)} between them — listed in the table below`,
+        description: `${folded.length} smaller entries, ${area.format(rest)} between them, listed in the table below`,
       });
     }
   }
@@ -277,7 +277,7 @@ export function CodeExplorer({
                         title={
                           entry.sizeOnlyReason
                             ? `Counted for size only: ${entry.sizeOnlyReason}`
-                            : "Counted for size only — no front end parses this language"
+                            : "Counted for size only: no front end parses this language"
                         }
                       >
                         size only

@@ -58,6 +58,7 @@
   margin: 0;
   font-size: t.$font-sm;
   color: t.$color-negative;
+  @include h.halo;
 }
 
 .controls {

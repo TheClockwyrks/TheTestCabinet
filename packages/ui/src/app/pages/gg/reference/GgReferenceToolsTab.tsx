@@ -141,8 +141,8 @@ export function GgReferenceToolsTab({ reference }: { reference: GgReference }) {
       ) : (
         <div className={panels.panelBody}>
           <p className={styles.empty}>
-            No tool named <code>{requested}</code> in gg {reference.ggVersion} —
-            it may have been renamed or dropped since that link was written.
+            No tool named <code>{requested}</code> in gg {reference.ggVersion}.
+            It may have been renamed or dropped since that link was written.
             Pick one from the list.
           </p>
         </div>

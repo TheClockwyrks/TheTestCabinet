@@ -91,7 +91,7 @@ a.row {
 
   a.row:hover & {
     opacity: 1;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 
@@ -131,7 +131,7 @@ a.row:hover .logo {
   font-weight: 700;
   color: t.$color-accent;
   text-overflow: ellipsis;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 .provider {

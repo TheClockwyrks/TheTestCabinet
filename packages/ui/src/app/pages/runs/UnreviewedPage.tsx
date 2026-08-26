@@ -75,13 +75,7 @@ export function UnreviewedPage() {
     <PageLayout>
       <PromptHeader
         command="--runs/unreviewed"
-        comment={
-          <>
-            // completed runs nobody has reviewed yet — a validator-rated run
-            already carries its functional rating and can be published as is;
-            its aesthetic review can be added later
-          </>
-        }
+        comment="// completed runs nobody has reviewed yet"
         actions={canStop ? <StopRunsControls /> : undefined}
       />
 
@@ -92,7 +86,7 @@ export function UnreviewedPage() {
           <LoadingState size="section" label="Loading runs…" />
         ) : (
           <p className={styles.empty}>
-            Nothing to review — every completed run has at least one review.
+            Nothing to review; every completed run has at least one review.
           </p>
         )
       ) : (

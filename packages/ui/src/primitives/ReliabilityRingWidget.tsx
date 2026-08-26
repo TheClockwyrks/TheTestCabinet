@@ -85,7 +85,7 @@ export function ReliabilityRingWidget({
       </header>
       {totalRuns === 0 ? (
         <p className={styles.empty}>
-          No runs yet — the reliability breakdown appears once this model has
+          No runs yet. The reliability breakdown appears once this model has
           runs.
         </p>
       ) : (

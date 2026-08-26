@@ -50,8 +50,10 @@ const VARIANT_PARAM = "variant";
 // stable across renders. Each returns null for a run that did not report the
 // figure, which keeps it out of the average and out of the field rather than
 // dragging either toward zero.
-const costValue = (run: RunSummary): number | null => run.metrics.cost.comparable;
-const tokensValue = (run: RunSummary): number | null => totalTokens(run.metrics);
+const costValue = (run: RunSummary): number | null =>
+  run.metrics.cost.comparable;
+const tokensValue = (run: RunSummary): number | null =>
+  totalTokens(run.metrics);
 // A run's reviewer score as a fraction of the points on offer. A checklist with
 // nothing on offer has no fraction to contribute, so it is unreported rather than
 // a perfect (or zero) score.
@@ -87,7 +89,9 @@ function OverviewContent({ model }: { model: ModelSummary }) {
     useCohortSelection(options);
 
   if (loading) {
-    return <LoadingState size="section" label={`Loading ${model.name} runs…`} />;
+    return (
+      <LoadingState size="section" label={`Loading ${model.name} runs…`} />
+    );
   }
 
   if (!testCase || !variant) {
@@ -218,8 +222,7 @@ function CohortPicker({
         >
           {options.map((option) => (
             <option key={option.slug} value={option.slug}>
-              {option.name} ({option.runs}{" "}
-              {option.runs === 1 ? "run" : "runs"})
+              {option.name} ({option.runs} {option.runs === 1 ? "run" : "runs"})
             </option>
           ))}
         </select>
@@ -483,9 +486,10 @@ function ComparisonBlock({
       ) : (
         <Panel className={styles.comparisons}>
           <p className={styles.sectionLede}>
-            Measured against the {others} other {others === 1 ? "model" : "models"}{" "}
-            with completed runs of {cohortLabel} — each model reduced to its own
-            mean, so a model run many times does not count many times.
+            Measured against the {others} other{" "}
+            {others === 1 ? "model" : "models"} with completed runs of{" "}
+            {cohortLabel}. Each model is reduced to its own mean, so a model run
+            many times does not count many times.
           </p>
           <Standing
             label="Cost per run"
@@ -561,9 +565,7 @@ function Tile({ label, value }: { label: string; value: string }) {
   return (
     <div className={styles.tile} role="listitem">
       <span className={styles.tileLabel}>{label}</span>
-      <span
-        className={`${styles.tileValue}${muted ? ` ${styles.muted}` : ""}`}
-      >
+      <span className={`${styles.tileValue}${muted ? ` ${styles.muted}` : ""}`}>
         {value}
       </span>
     </div>

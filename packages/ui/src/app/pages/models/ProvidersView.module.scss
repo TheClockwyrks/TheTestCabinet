@@ -6,15 +6,6 @@
   font-family: var(--ttc-font);
 }
 
-// The honesty line: how much of the run corpus carries provider attribution at
-// all. Muted — it qualifies the figures below rather than being one.
-.scanned {
-  margin: 0 0 t.$space-lg;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  @include h.halo;
-}
-
 .section {
   margin-bottom: t.$space-xl;
 }
@@ -59,7 +50,7 @@
 .providerName {
   font-size: t.$font-lg;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 .providerSummary {

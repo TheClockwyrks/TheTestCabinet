@@ -28,7 +28,11 @@
 // with a span, the parser resynchronises, and the partial tree still drives completion
 // and highlighting. A parser that bailed on the first bad token would blank the field
 // sidebar exactly when the operator most needs it.
-import type { GgAggFunc, GgCompareOp, GgIntervalUnit } from "@test-cabinet/run-record/gg-query";
+import type {
+  GgAggFunc,
+  GgCompareOp,
+  GgIntervalUnit,
+} from "@test-cabinet/run-record/gg-query";
 import {
   AGG_FUNCS,
   type AggNode,
@@ -103,7 +107,7 @@ class Parser {
       if (token.kind === "error") {
         this.error(token, `Unexpected character ${JSON.stringify(token.text)}`);
       } else if (token.kind === "string" && token.unterminated) {
-        this.error(token, "Unterminated string — add a closing quote");
+        this.error(token, "Unterminated string; add a closing quote");
       }
     }
 
@@ -230,7 +234,10 @@ class Parser {
       // A lexer `error` token already carries its own diagnostic; a second one pointing
       // at the same character is noise.
       if (head.kind !== "error") {
-        this.error(head, `Expected a field or a search term, found ${describe(head)}`);
+        this.error(
+          head,
+          `Expected a field or a search term, found ${describe(head)}`,
+        );
       }
       // Always consume something, or an unreadable token spins the AND loop forever.
       this.next();
@@ -245,7 +252,8 @@ class Parser {
     if (op.kind === "op") {
       this.next();
       const value = this.parseLiteral();
-      if (!value) this.error(this.peek(), `Expected a value after \`${op.text}\``);
+      if (!value)
+        this.error(this.peek(), `Expected a value after \`${op.text}\``);
       return {
         kind: "compare",
         field,
@@ -259,7 +267,11 @@ class Parser {
     // No operator followed, so the thing that looked like a field was a bare term.
     return {
       kind: "text",
-      value: { raw: field.name, quoted: field.raw.startsWith('"'), span: field.span },
+      value: {
+        raw: field.name,
+        quoted: field.raw.startsWith('"'),
+        span: field.span,
+      },
       span: field.span,
     };
   }
@@ -287,7 +299,10 @@ class Parser {
         values.push(value);
         if (isKeyword(this.peek(), "or")) {
           this.next();
-        } else if (this.peek().kind !== "rparen" && this.peek().kind !== "eof") {
+        } else if (
+          this.peek().kind !== "rparen" &&
+          this.peek().kind !== "eof"
+        ) {
           // Keep going anyway — a missing separator is a typo mid-edit, and dropping the
           // rest of the list would blank the result the operator is looking at.
           this.error(this.peek(), "Expected `or` between values, or `)`");
@@ -295,7 +310,8 @@ class Parser {
       }
       if (this.peek().kind === "rparen") this.next();
       else this.error(this.peek(), "Expected `)`");
-      if (values.length === 0) this.error(this.span(start), "An empty `(...)` matches nothing");
+      if (values.length === 0)
+        this.error(this.span(start), "An empty `(...)` matches nothing");
       return { kind: "oneOf", field, values, span: this.span(start) };
     }
 
@@ -331,7 +347,8 @@ class Parser {
       return null;
     }
     const value = this.parseLiteral();
-    if (!value) this.error(this.peek(), "Expected a range bound (a value or `*`)");
+    if (!value)
+      this.error(this.peek(), "Expected a range bound (a value or `*`)");
     return value;
   }
 
@@ -372,12 +389,20 @@ class Parser {
     const token = this.peek();
     if (token.kind === "string") {
       this.next();
-      return { raw: token.value, quoted: true, span: { start: token.start, end: token.end } };
+      return {
+        raw: token.value,
+        quoted: true,
+        span: { start: token.start, end: token.end },
+      };
     }
     if (token.kind === "word") {
       this.next();
       this.checkRelativeDate(token);
-      return { raw: token.text, quoted: false, span: { start: token.start, end: token.end } };
+      return {
+        raw: token.text,
+        quoted: false,
+        span: { start: token.start, end: token.end },
+      };
     }
     return null;
   }
@@ -401,7 +426,7 @@ class Parser {
     if (RELATIVE_DATE.test(token.text)) return;
     this.error(
       token,
-      `\`${token.text}\` is not a relative date — use e.g. \`now-30d\`, \`now-1h\`, \`now+15m\`. A month is not a fixed width, so there is no \`M\``,
+      `\`${token.text}\` is not a relative date; use e.g. \`now-30d\`, \`now-1h\`, \`now+15m\`. A month is not a fixed width, so there is no \`M\``,
     );
   }
 
@@ -449,7 +474,8 @@ class Parser {
       return this.parseLimit(start);
     }
     this.error(head, "Expected `stats`, `sort` or `limit` after `|`");
-    while (this.peek().kind !== "eof" && this.peek().kind !== "pipe") this.next();
+    while (this.peek().kind !== "eof" && this.peek().kind !== "pipe")
+      this.next();
     return { kind: "error", span: this.span(start) };
   }
 
@@ -466,7 +492,10 @@ class Parser {
       break;
     }
     if (aggs.length === 0) {
-      this.error(this.span(start), "`stats` needs at least one aggregation, e.g. `count()`");
+      this.error(
+        this.span(start),
+        "`stats` needs at least one aggregation, e.g. `count()`",
+      );
     }
 
     const groupBy: GroupNode[] = [];
@@ -481,7 +510,8 @@ class Parser {
         }
         break;
       }
-      if (groupBy.length === 0) this.error(this.peek(), "Expected a field after `by`");
+      if (groupBy.length === 0)
+        this.error(this.peek(), "Expected a field after `by`");
       if (groupBy.length > GG_MAX_GROUP_KEYS) {
         // Rejected rather than clamped silently: bucket cardinality is the *product* of
         // the keys' cardinalities, and a fourth key that vanished without a word would
@@ -490,7 +520,7 @@ class Parser {
         const last = groupBy[groupBy.length - 1]!;
         this.error(
           { start: extra.span.start, end: last.span.end },
-          `At most ${GG_MAX_GROUP_KEYS} group-by keys — a visualization binds the first two and a table the third`,
+          `At most ${GG_MAX_GROUP_KEYS} group-by keys: a visualization binds the first two and a table the third`,
         );
       }
     }
@@ -511,7 +541,10 @@ class Parser {
     const lowered = funcText.toLowerCase() as GgAggFunc;
     const func = AGG_FUNCS.includes(lowered) ? lowered : null;
     if (!func) {
-      this.error(head, `Unknown aggregation \`${funcText}\` — one of ${AGG_FUNCS.join(", ")}`);
+      this.error(
+        head,
+        `Unknown aggregation \`${funcText}\`; use one of ${AGG_FUNCS.join(", ")}`,
+      );
     }
 
     let field: FieldRef | null = null;
@@ -525,7 +558,10 @@ class Parser {
     }
 
     if (func && func !== "count" && !field) {
-      this.error(this.span(start), `\`${func}\` needs a field, e.g. \`${func}(score)\``);
+      this.error(
+        this.span(start),
+        `\`${func}\` needs a field, e.g. \`${func}(score)\``,
+      );
     }
     if (func === "count" && field) {
       // Harmless rather than wrong: `count()` aggregates the documents themselves, so a
@@ -564,7 +600,10 @@ class Parser {
         this.next();
         interval = this.parseInterval();
       } else {
-        this.error(this.peek(), "Expected `,` and an interval, e.g. `bucket(started, 1d)`");
+        this.error(
+          this.peek(),
+          "Expected `,` and an interval, e.g. `bucket(started, 1d)`",
+        );
       }
       if (this.peek().kind === "rparen") this.next();
       else this.error(this.peek(), "Expected `)`");
@@ -573,7 +612,10 @@ class Parser {
 
     const field = this.parseFieldRef();
     if (!field) {
-      this.error(this.peek(), `Expected a field to group by, found ${describe(this.peek())}`);
+      this.error(
+        this.peek(),
+        `Expected a field to group by, found ${describe(this.peek())}`,
+      );
       return null;
     }
     return { kind: "field", field, span: this.span(start) };
@@ -594,7 +636,10 @@ class Parser {
     // and the message names the spellings that work.
     const match = /^(\d+)([mhdw])$/.exec(token.text);
     if (!match) {
-      this.error(token, `\`${token.text}\` is not an interval — use e.g. \`15m\`, \`1h\`, \`1d\`, \`1w\``);
+      this.error(
+        token,
+        `\`${token.text}\` is not an interval; use e.g. \`15m\`, \`1h\`, \`1d\`, \`1w\``,
+      );
       this.next();
       return null;
     }
@@ -652,5 +697,7 @@ class Parser {
 
 /** How a token reads inside a diagnostic. */
 function describe(token: Token): string {
-  return token.kind === "eof" ? "the end of the query" : JSON.stringify(token.text);
+  return token.kind === "eof"
+    ? "the end of the query"
+    : JSON.stringify(token.text);
 }

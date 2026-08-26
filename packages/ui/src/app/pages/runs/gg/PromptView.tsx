@@ -115,7 +115,7 @@ export function PromptView({
 function emptyPromptNote(live: boolean, hasBrief: boolean): string {
   if (live) return "Waiting for the first request…";
   if (hasBrief)
-    return "The exact prompt isn’t recorded for this run — only the brief above is available.";
+    return "The exact prompt isn’t recorded for this run; only the brief above is available.";
   return "The exact prompt isn’t recorded for this run.";
 }
 

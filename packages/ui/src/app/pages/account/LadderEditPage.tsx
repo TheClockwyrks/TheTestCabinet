@@ -226,7 +226,7 @@ export function LadderEditPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit ladders — they are saved to your account.
+          Sign in to edit ladders. They are saved to your account.
         </p>
       </PageLayout>
     );

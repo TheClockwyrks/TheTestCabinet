@@ -297,7 +297,7 @@ function ScopedRunLog({
             </p>
           ) : narrowed ? (
             <p className={styles.empty}>
-              No runs of {subjectName} in this scope yet — widening the scope
+              No runs of {subjectName} in this scope yet. Widening the scope
               above may show more.
             </p>
           ) : (

@@ -91,7 +91,7 @@ function GgVizCard({ viz }: { viz: Exclude<GgViz, { kind: "tiles" }> }) {
       // The accessible name says how much of the result is in the picture, because
       // a screen reader gets the figure as one opaque image and the caption below
       // it is the only place the omissions are otherwise stated.
-      chartTitle={`${viz.title} — ${viz.note.shown} ${
+      chartTitle={`${viz.title}: ${viz.note.shown} ${
         viz.note.shown === 1 ? "bucket" : "buckets"
       }`}
       hint={noteText(viz.note)}
@@ -158,5 +158,5 @@ function noteText(note: GgVizNote): string | undefined {
     parts.push(`${note.hiddenSeries} further series left uncolored`);
   }
   if (parts.length === 0) return undefined;
-  return `${parts.join(" · ")} — the table below has every row.`;
+  return `${parts.join(" · ")}. The table below has every row.`;
 }

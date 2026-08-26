@@ -7,16 +7,20 @@ import type {
 import { Markdown, Panel } from "@test-cabinet/ui";
 import { MediaView } from "../../../components/MediaView";
 import { useGalleryData } from "../../../data/galleryContext";
+import { ReplayPlayer } from "../replay/ReplayPlayer";
 import { PlayableSection } from "../PlayableSection";
 import { FullscreenViewport } from "./FullscreenViewport";
 import styles from "./ShowcaseSection.module.scss";
 
-// One carousel entry on the stage: the media itself (dispatched by kind — an
-// image, a video with native controls, or a replay in the scrubbing player) under
-// its caption. An image gets the shared fullscreen expand; a replay carries its
-// own transport and a video its native fullscreen, so neither needs one. A file
-// the host cannot serve (no resolver, or nothing behind the name) reads as a
-// note rather than a broken viewer.
+// One carousel entry on the stage: the media itself under its caption. An image
+// gets the shared fullscreen expand; a video carries its native fullscreen and a
+// replay plays itself. A file the host cannot serve (no resolver, or nothing
+// behind the name) reads as a note rather than a broken viewer.
+//
+// A replay is staged in the player's `showcase` presentation rather than through
+// {@link MediaView}: it belongs beside the screenshots as another picture of the
+// game running, so it plays on a loop and keeps its scrubber off the layout,
+// which is what lets the stage hold one height as the carousel steps.
 function ShowcaseStage({
   entry,
   url,
@@ -30,6 +34,8 @@ function ShowcaseStage({
         <p className={styles.unavailable}>
           {entry.name} ({entry.file}) is not available here.
         </p>
+      ) : entry.kind === "replay" ? (
+        <ReplayPlayer url={url} label={entry.name} presentation="showcase" />
       ) : entry.kind === "image" ? (
         <FullscreenViewport
           label={entry.name}

@@ -2651,7 +2651,7 @@ async function streamPublish(
   // connection dropped before the publish reported an outcome.
   if (!terminal) {
     throw new Error(
-      "The publish stream ended before reporting a result — retry to observe it.",
+      "The publish stream ended before reporting a result. Retry to observe it.",
     );
   }
   return terminal;

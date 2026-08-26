@@ -47,9 +47,7 @@ export function GroupEditPage() {
     let active = true;
     setLoading(true);
     setError(null);
-    Promise.resolve(
-      editing ? (backend.listCoverageGroups?.(token) ?? []) : [],
-    )
+    Promise.resolve(editing ? (backend.listCoverageGroups?.(token) ?? []) : [])
       .then((groups) => {
         if (!active) return;
         if (editing) {
@@ -122,7 +120,7 @@ export function GroupEditPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit coverage groups — they are saved to your account.
+          Sign in to edit coverage groups. They are saved to your account.
         </p>
       </PageLayout>
     );

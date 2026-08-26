@@ -369,6 +369,7 @@
   text-transform: none;
   letter-spacing: normal;
   font-weight: 400;
+  @include h.halo;
 }
 
 // A raw reply/message verbatim: wrapped, capped in height, scrolling within its

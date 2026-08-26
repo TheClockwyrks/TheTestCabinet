@@ -45,10 +45,12 @@ function draw(text: string) {
 
 /** The x coordinates of each drawn polyline, in the order the path visits them. */
 function lineXs(container: HTMLElement): number[][] {
-  return [...container.querySelectorAll('[aria-label="line"] path')].map((path) => {
-    const d = path.getAttribute("d") ?? "";
-    return [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => Number(m[1]));
-  });
+  return [...container.querySelectorAll('[aria-label="line"] path')].map(
+    (path) => {
+      const d = path.getAttribute("d") ?? "";
+      return [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)].map((m) => Number(m[1]));
+    },
+  );
 }
 
 describe("a date histogram", () => {
@@ -129,7 +131,7 @@ describe("the panel's framing", () => {
     );
     const note = screen.getByText(/never charted as zero/);
     expect(note.textContent).toContain("1 bucket had no value");
-    expect(note.textContent).toContain("the table below has every row");
+    expect(note.textContent).toContain("The table below has every row");
   });
 
   it("carries no apologetic subtitle when it drew everything", () => {

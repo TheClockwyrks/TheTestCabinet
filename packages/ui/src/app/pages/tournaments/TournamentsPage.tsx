@@ -70,7 +70,7 @@ export function TournamentsList() {
     return (
       <Panel>
         <p className={styles.empty}>
-          No tournaments yet — run one from a case&rsquo;s Arena tab.
+          No tournaments yet. Run one from a case&rsquo;s Arena tab.
         </p>
       </Panel>
     );

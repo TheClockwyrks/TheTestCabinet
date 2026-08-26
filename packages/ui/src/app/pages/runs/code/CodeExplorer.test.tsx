@@ -80,7 +80,9 @@ const DOCUMENT = {
 describe("CodeExplorer", () => {
   it("opens on the produced tree and lists its children with rolled-up figures", () => {
     render(<CodeExplorer document={DOCUMENT} />);
-    expect(screen.getByText("Everything in the produced tree")).toBeInTheDocument();
+    expect(
+      screen.getByText("Everything in the produced tree"),
+    ).toBeInTheDocument();
     const src = screen.getByRole("button", { name: "src/" });
     const row = src.closest("tr")!;
     // src holds three files and 430 code lines between them.
@@ -92,9 +94,7 @@ describe("CodeExplorer", () => {
   // the rectangle is the way into it.
   it("drills into a directory from the map and back from the breadcrumb", () => {
     render(<CodeExplorer document={DOCUMENT} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: /^src — directory/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^src: directory/ }));
     expect(screen.getByText("Inside src")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Produced tree" }));

@@ -209,8 +209,8 @@ export function GgDashboardsPage() {
           </label>
 
           <p className={styles.fieldLabel}>
-            Panels — a title, TCQ text, and how many of the twelve columns it
-            spans.
+            Panels. Each carries a title, TCQ text, and how many of the twelve
+            columns it spans.
           </p>
           {draft.panels.map((panel, index) => (
             <div className={styles.panelRow} key={index}>
@@ -321,7 +321,7 @@ export function GgDashboardsPage() {
       <p className={exec.sectionLabel}>Your dashboards</p>
       {!token ? (
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to save your own dashboards — they are kept on your account.
+          Sign in to save your own dashboards. They are kept on your account.
           The built-in board above queries the same deployment-wide corpus
           either way.
         </p>

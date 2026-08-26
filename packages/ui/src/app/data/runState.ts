@@ -39,7 +39,7 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Catastrophic failure",
         chip: "catastrophic",
         description:
-          "The model claimed completion, but the output could not be built or evaluated — it produced no playable build. Its broken source is kept so the failure can be inspected.",
+          "The model claimed completion, but the output could not be built or evaluated, so it produced no playable build. Its broken source is kept so the failure can be inspected.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -48,7 +48,7 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Timed out",
         chip: "timed out",
         description:
-          "The run hit its maximum runtime and was stopped before the model finished — it never converged on a result.",
+          "The run hit its maximum runtime and was stopped before the model finished. It never converged on a result.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -57,7 +57,7 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Harness error",
         chip: "harness",
         description:
-          "The model drove the agent harness to exit early (a non-zero exit). It produced no evaluable output, so it releases no code or build — it is recorded only as a per-model harness-error statistic. (A subscription auth-token refresh can also surface here; those are not published.)",
+          "The model drove the agent harness to exit early (a non-zero exit). It produced no evaluable output, so it releases no code or build and is recorded only as a per-model harness-error statistic. A subscription auth-token refresh can also surface here; those are not published.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -66,7 +66,7 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Execution ceiling reached",
         chip: "ceiling",
         description:
-          "The harness stopped the run on one of the execution ceilings its configuration armed — a turn count, a wall-clock budget, a spend, or a tolerance for failing turns. The model spent its whole allowance without finishing, so the run releases no code or build and is recorded as a per-model statistic. It is never retried, because a second attempt on the same configuration reaches the same ceiling.",
+          "The harness stopped the run on one of the execution ceilings its configuration armed: a turn count, a wall-clock budget, a spend, or a tolerance for failing turns. The model spent its whole allowance without finishing, so the run releases no code or build and is recorded as a per-model statistic. It is never retried, because a second attempt on the same configuration reaches the same ceiling.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -75,7 +75,7 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Harness hung",
         chip: "hung",
         description:
-          "The agent harness stopped producing output entirely and was stopped as hung — it neither finished nor failed. Like a harness error it releases no code or build and is recorded only as a per-model statistic.",
+          "The agent harness stopped producing output entirely and was stopped as hung, having neither finished nor failed. Like a harness error it releases no code or build and is recorded only as a per-model statistic.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -93,7 +93,7 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Canceled",
         chip: "canceled",
         description:
-          "An operator stopped this run before it finished. Everything it streamed up to that point is kept so it can be inspected, but it reached no outcome — it is not a model result and is never published.",
+          "An operator stopped this run before it finished. Everything it streamed up to that point is kept so it can be inspected, but it reached no outcome. It is not a model result and is never published.",
         isFailure: true,
         isPublishableFailure: false,
       };

@@ -244,18 +244,64 @@ export function ReplayTransport({ clock }: { clock: ReplayClock }) {
 }
 
 /**
- * A whole player for one recording: fetch it, draw it, and give the reviewer the
- * transport.
+ * The scrubber alone, laid over the bottom of a canvas.
  *
- * This is what a lone replay renders as — a declared proof captured as a
- * recording, a reference shot that is one. The reviewer's side-by-side comparison
- * does not use it, because its two panes have to share one clock; it composes the
- * same parts itself.
+ * It appears while the pointer is over the replay or the control has focus, and
+ * takes no space of its own, so a carousel stepping between a picture and a replay
+ * keeps one height.
  */
-export function ReplayPlayer({ url, label }: { url: string; label: string }) {
+function ReplayScrub({ clock, label }: { clock: ReplayClock; label: string }) {
+  return (
+    <input
+      className={styles.overlayScrub}
+      type="range"
+      min={0}
+      max={Math.max(0, clock.frames - 1)}
+      step={1}
+      value={clock.frame}
+      disabled={clock.frames === 0}
+      aria-label={`Scrub ${label}`}
+      onChange={(e) => clock.seek(Number(e.target.value))}
+    />
+  );
+}
+
+/** How a player presents one recording. */
+export type ReplayPresentation =
+  /** Stopped on frame 0 under the full transport: play/pause, scrub, speed. */
+  | "transport"
+  /** Playing on a loop, with the scrubber laid over the canvas on hover. */
+  | "showcase";
+
+/**
+ * A whole player for one recording: fetch it, draw it, and drive it.
+ *
+ * This is what a lone replay renders as: a declared proof captured as a recording,
+ * a reference shot that is one, an entry in a run's showcase carousel. The
+ * reviewer's side-by-side comparison does not use it, because its two panes have
+ * to share one clock; it composes the same parts itself.
+ *
+ * The `showcase` presentation is for a replay standing in for a screenshot. It
+ * plays itself, loops, and keeps the transport out of the layout: what the visitor
+ * came for is the game moving, and a bar under it both invites a decision nobody
+ * needs to make and changes the stage's height as the carousel steps.
+ */
+export function ReplayPlayer({
+  url,
+  label,
+  presentation = "transport",
+}: {
+  url: string;
+  label: string;
+  presentation?: ReplayPresentation;
+}) {
+  const showcase = presentation === "showcase";
   const { recording, resources, error, loading } = useRecording(url);
   const timeline = useMemo(() => timelineFor([recording]), [recording]);
-  const clock = useReplayClock(timeline);
+  const clock = useReplayClock(timeline, {
+    autoPlay: showcase,
+    loop: showcase,
+  });
 
   if (error !== null) {
     return (
@@ -269,14 +315,34 @@ export function ReplayPlayer({ url, label }: { url: string; label: string }) {
     return <p className={styles.error}>This replay recorded no frames.</p>;
   }
 
+  const canvas = (
+    <ReplayCanvas
+      recording={recording}
+      resources={resources}
+      frame={clock.frame}
+      label={label}
+    />
+  );
+
+  if (showcase) {
+    return (
+      // Scrubbing stops the clock, so leaving the replay hands it back: the
+      // visitor gets the moving picture they arrived at without pressing anything.
+      <div
+        className={styles.stage}
+        onPointerLeave={() => {
+          if (!clock.playing) clock.toggle();
+        }}
+      >
+        {canvas}
+        <ReplayScrub clock={clock} label={label} />
+      </div>
+    );
+  }
+
   return (
     <div className={styles.player}>
-      <ReplayCanvas
-        recording={recording}
-        resources={resources}
-        frame={clock.frame}
-        label={label}
-      />
+      {canvas}
       <ReplayTransport clock={clock} />
     </div>
   );

@@ -303,7 +303,7 @@ export function ModelConfigPage() {
 
       {seedError && (
         <p className={`${styles.notice} ${styles.warn}`}>
-          Could not seed from that run ({seedError}) — fill the fields in by
+          Could not seed from that run ({seedError}). Fill the fields in by
           hand.
         </p>
       )}
@@ -340,7 +340,7 @@ export function ModelConfigPage() {
           <span className={styles.fieldHint}>
             Fill replaces the name, provider, and description below with what
             OpenRouter publishes. Prices, the context window, and the input
-            modalities are recorded automatically — they are never edited here.
+            modalities are recorded automatically and are never edited here.
           </span>
           {fillError && (
             <span className={styles.fillError} role="alert">
@@ -377,7 +377,7 @@ export function ModelConfigPage() {
         <div className={styles.aliasBlock}>
           <span className={styles.fieldLabel}>Model ids by harness family</span>
           <span className={styles.fieldHint}>
-            Pair each model id with the harness family it works with — a Claude
+            Pair each model id with the harness family it works with: a Claude
             Code slug (e.g. <code>claude-opus-4-8</code>) under Claude Code, an
             OpenRouter slug (e.g. <code>anthropic/claude-opus-4.8</code>) under
             Others. The run form offers a harness only the slugs in its family.

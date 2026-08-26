@@ -1277,7 +1277,7 @@ describe("importing a saved agent", () => {
     const complaints = screen.getAllByText(/Another profile carries the slug/);
     expect(complaints).toHaveLength(2);
     expect(complaints[0]).toHaveTextContent(
-      "rename one of them, or override the imported profile’s slug",
+      "Rename one of them, or override the imported profile’s slug",
     );
     // The tab strip says how many rows to look at, so the fault is findable from any tab.
     expect(
@@ -1682,7 +1682,7 @@ describe("the configuration's launch inputs", () => {
       screen.getAllByText(/reaches no launch input, so its bindings would run/),
     ).toHaveLength(2);
     // A launch would ask for nothing at all, which is the other half of the same fault.
-    expect(screen.getByText(/a launch asks for no model at all/)).toBeVisible();
+    expect(screen.getByText(/A launch asks for no model at all/)).toBeVisible();
     expect(
       screen
         .getAllByRole("tab")

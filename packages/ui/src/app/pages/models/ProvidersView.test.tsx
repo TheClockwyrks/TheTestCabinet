@@ -156,16 +156,9 @@ describe("the Providers tab", () => {
   it("renders run evidence per provider with probe evidence separated", async () => {
     renderProviders({ getProviderStats: vi.fn().mockResolvedValue(STATS) });
 
-    // The honesty line: how much of the corpus can speak to providers at all.
-    expect(
-      await screen.findByText(
-        /12 gg runs scanned · 3 with provider attribution/,
-      ),
-    ).toBeTruthy();
-
     // Run evidence: the provider block, with the catalog name resolved for a
     // covered id and the raw id kept for an uncurated one.
-    expect(screen.getByText("Run evidence")).toBeTruthy();
+    expect(await screen.findByText("Run evidence")).toBeTruthy();
     expect(screen.getAllByText("DeepInfra").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Claude X").length).toBe(2);
     expect(screen.getByText("mistral/uncurated")).toBeTruthy();
@@ -193,9 +186,6 @@ describe("the Providers tab", () => {
   it("says when the corpus carries no provider attribution", async () => {
     renderProviders({ getProviderStats: vi.fn().mockResolvedValue(EMPTY) });
     expect(await screen.findByText(/No provider data yet/)).toBeTruthy();
-    expect(
-      screen.getByText(/12 gg runs scanned · 0 with provider attribution/),
-    ).toBeTruthy();
   });
 
   it("surfaces a failed load as an error, not an empty corpus", async () => {
@@ -204,7 +194,7 @@ describe("the Providers tab", () => {
     });
     expect(
       await screen.findByText(
-        /Couldn't load provider statistics — backend down/,
+        /Couldn't load provider statistics\. backend down/,
       ),
     ).toBeTruthy();
   });

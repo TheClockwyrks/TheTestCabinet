@@ -15,7 +15,7 @@ export function SkillsList({ skills }: SkillsListProps) {
   if (skills.length === 0) {
     return (
       <p className={styles.empty}>
-        No skills offered — the skills capability streams the catalog at session
+        No skills offered. The skills capability streams the catalog at session
         start when it is enabled.
       </p>
     );

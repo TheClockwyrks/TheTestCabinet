@@ -200,7 +200,7 @@ describe("contextTooltip", () => {
 
   it("gives the whole turn's composition, not just the hovered band", () => {
     const tip = contextTooltip(snap, sources, "assistant");
-    expect(tip).toContain("Turn 12 — 20,000 tokens");
+    expect(tip).toContain("Turn 12: 20,000 tokens");
     expect(tip).toContain("System: 3,000");
     expect(tip).toContain("Assistant: 5,000");
     expect(tip).toContain("Tool output: 12,000");

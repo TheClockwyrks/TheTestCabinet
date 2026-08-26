@@ -173,9 +173,9 @@ export function ProjectExplorer({ board, issueReviews }: ProjectExplorerProps) {
     return (
       <div className={panels.panelBody}>
         <p className={panels.empty}>
-          No epics or issues yet — the project-management board streams the
-          run's shared epics and issues here as the model decomposes and
-          dispatches the work.
+          No epics or issues yet. The project-management board streams the run's
+          shared epics and issues here as the model decomposes and dispatches
+          the work.
         </p>
       </div>
     );
@@ -561,7 +561,7 @@ function ReviewDetail({
 
         {round.phase === "requested" && (
           <p className={panels.empty}>
-            The reviewers are looking at this attempt's diff — no verdict yet.
+            The reviewers are looking at this attempt's diff. No verdict yet.
           </p>
         )}
 

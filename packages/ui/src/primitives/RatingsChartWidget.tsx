@@ -174,7 +174,7 @@ export function RatingsChartWidget({
       chartTitle={`${title} by model`}
       actions={actions}
       spec={models.length === 0 ? undefined : spec}
-      empty={`No reviewed runs of ${variantName} yet — ratings appear once runs have been reviewed.`}
+      empty={`No reviewed runs of ${variantName} yet. Ratings appear once runs have been reviewed.`}
     />
   );
 }

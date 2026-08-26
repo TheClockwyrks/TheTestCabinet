@@ -323,7 +323,7 @@ export function ComparisonEditPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to create or edit a comparison — they are saved to your
+          Sign in to create or edit a comparison. Comparisons are saved to your
           account.
         </p>
       </PageLayout>
@@ -622,7 +622,7 @@ export function ComparisonEditPage() {
             {!savable && (
               <span className={styles.empty}>
                 Name the comparison, pick its test, and give every configuration
-                its model — at least two.
+                its model. At least two are needed.
               </span>
             )}
           </div>

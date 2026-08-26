@@ -189,7 +189,7 @@ function ProgramEntry({
           <>
             <div className={panels.reqSectionLabel}>Program</div>
             <p className={panels.reqEmptyResponse}>
-              No program — the reply made no {SUBMIT_PROGRAM_TOOL} call.
+              No program. The reply made no {SUBMIT_PROGRAM_TOOL} call.
             </p>
           </>
         ) : (

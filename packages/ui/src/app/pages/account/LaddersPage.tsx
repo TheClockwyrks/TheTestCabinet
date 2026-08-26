@@ -131,7 +131,7 @@ export function LaddersPage() {
           message:
             `Delete the ladder “${name}”? This removes its rungs, every climber's ` +
             `recorded verdicts, and their steering, and cannot be undone. Runs it ` +
-            `already launched are left alone — halt it first if you want those stopped.`,
+            `already launched are left alone; halt it first if you want those stopped.`,
           confirmLabel: "Delete ladder",
         }))
       ) {
@@ -157,7 +157,7 @@ export function LaddersPage() {
         <PromptHeader command="--ladders" comment={<>// your ladders</>} />
         <AccountTabs active="ladders" />
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to use ladders — they are saved to your account, and a rung is
+          Sign in to use ladders. They are saved to your account, and a rung is
           gated on <em>your</em> reviews. Use the account control in the top bar
           to register or log in.
         </p>
@@ -188,7 +188,7 @@ export function LaddersPage() {
             You have no ladders yet. A ladder is an ordered climb: pin the cases
             you want attempted easiest-first, point a set of models at it, and
             each model climbs on its own until its runs stop clearing the bar
-            you set — so you find out where each one&rsquo;s wall is instead of
+            you set, so you find out where each one&rsquo;s wall is instead of
             paying for a full matrix.
           </p>
           <Link className={exec.primary} to={routes.accountLadderNew()}>

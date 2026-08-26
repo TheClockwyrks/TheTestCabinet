@@ -232,7 +232,7 @@ export function ReviewItemBrowser({
             const mark = !decided ? index + 1 : anyFail ? "✕" : "✓";
             const title = !decided
               ? undefined
-              : `${it.title} — ${anyFail ? "some Fail" : "all Pass"}`;
+              : `${it.title}: ${anyFail ? "some Fail" : "all Pass"}`;
             const subItems = it.graded ? [] : (it.subItems ?? []);
             const expanded = isCurrent && subItems.length > 0;
             return (
@@ -423,7 +423,7 @@ export function ReviewItemBrowser({
               >
                 {slotStatus === "pass" ? "✓" : "✗"}
               </span>{" "}
-              {VERDICT_META[slotStatus].label} — decided by this run&rsquo;s
+              {VERDICT_META[slotStatus].label}, decided by this run&rsquo;s
               validators.
             </>
           ) : (

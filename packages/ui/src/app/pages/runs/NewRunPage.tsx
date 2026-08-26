@@ -541,7 +541,7 @@ export function NewRunPage() {
 
       {!worker && (
         <p className={`${styles.notice} ${styles.warn}`}>
-          No worker connected — open the connections drawer (the gear in the top
+          No worker connected. Open the connections drawer (the gear in the top
           bar) to add a worker server to run on.
         </p>
       )}
@@ -554,12 +554,13 @@ export function NewRunPage() {
       )}
       {sel.noBackend && (
         <p className={`${styles.notice} ${styles.warn}`}>
-          No backend configured — the test-case catalog comes from the backend.
+          No backend configured, and the test-case catalog comes from the
+          backend.
         </p>
       )}
       {signedOut && (
         <p className={`${styles.notice} ${styles.warn}`}>
-          Sign in to launch a run — the backend attributes each enqueued run to
+          Sign in to launch a run. The backend attributes each enqueued run to
           your account. Use the account control in the top bar to register or
           log in, then launch.
         </p>
@@ -861,7 +862,7 @@ export function NewRunPage() {
                     onChange={(e) =>
                       updateCombination(combo.id, { provider: e.target.value })
                     }
-                    title="How this harness reaches the model — the model id is launched with this provider's routing prefix."
+                    title="How this harness reaches the model. The model id is launched with this provider's routing prefix."
                   >
                     {PROVIDERS.map((p) => (
                       <option key={p.id} value={p.id}>

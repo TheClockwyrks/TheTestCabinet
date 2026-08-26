@@ -73,7 +73,7 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
 
       {status === "error" && (
         <p className={styles.error}>
-          Couldn&apos;t reach the backend — the test-case catalog is
+          Couldn&apos;t reach the backend, so the test-case catalog is
           unavailable.
         </p>
       )}

@@ -405,7 +405,7 @@ describe("programs file", () => {
       />,
     );
     expect(
-      screen.getByText("No program — the reply made no submit_program call."),
+      screen.getByText("No program. The reply made no submit_program call."),
     ).toBeInTheDocument();
     expect(screen.queryByText("not a program")).toBeNull();
   });

@@ -270,7 +270,7 @@ function TurnEntry({
           </ul>
         ) : (
           <p className={panels.reqEmptyResponse}>
-            No assistant message — the turn produced only a stop.
+            No assistant message. The turn produced only a stop.
           </p>
         )}
       </div>

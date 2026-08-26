@@ -152,7 +152,7 @@ function MemoryRecord({
           {entry.byAnother && (
             <span
               className={styles.memoryForeignTag}
-              title="Written by another agent holding this same memory instance — its revisions are on that agent's stream."
+              title="Written by another agent holding this same memory instance. Its revisions are on that agent's stream."
             >
               another holder
             </span>
@@ -258,7 +258,7 @@ export function MemoriesList({ memory }: MemoriesListProps) {
   if (!memory) {
     return (
       <p className={styles.empty}>
-        No memories yet — the memories capability streams the model's
+        No memories yet. The memories capability streams the model's
         self-curated notes here as it writes them.
       </p>
     );
@@ -298,7 +298,7 @@ export function MemoriesList({ memory }: MemoriesListProps) {
           </span>
           <span className={styles.memoryScopeNote}>
             {scopeLabel}
-            {writable ? "" : " — this agent may read them, not change them"}
+            {writable ? "" : " (this agent may read them, not change them)"}
           </span>
         </div>
       ) : null}

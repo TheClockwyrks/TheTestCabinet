@@ -98,9 +98,7 @@ export function tooltipFor(timing: TurnTiming, hovered: Phase): string {
     const mark = phase.key === hovered.key ? "▸ " : "   ";
     return `${mark}${phase.label}: ${formatMs(ms)}${share}`;
   });
-  return [`Turn ${timing.turn} — ${formatMs(total)} total`, ...lines].join(
-    "\n",
-  );
+  return [`Turn ${timing.turn}: ${formatMs(total)} total`, ...lines].join("\n");
 }
 
 // The turns in frame: `size` of them ending at `start`, clamped so the frame never
@@ -203,8 +201,8 @@ export function TurnTimingGraph({ timings }: { timings: TurnTiming[] }) {
   if (timings.length === 0) {
     return (
       <p className={styles.metricEmpty}>
-        Not recorded for this run — gg reports where a turn&apos;s time went
-        once per turn.
+        Not recorded for this run. gg reports where a turn&apos;s time went once
+        per turn.
       </p>
     );
   }

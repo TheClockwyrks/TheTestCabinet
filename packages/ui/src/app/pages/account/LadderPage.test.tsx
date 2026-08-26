@@ -215,7 +215,7 @@ describe("climberStatusLabel", () => {
         climber({ status: "toppedOut", currentRung: undefined }),
         3,
       ),
-    ).toBe("Topped out — all 3 rungs cleared");
+    ).toBe("Topped out: all 3 rungs cleared");
   });
 });
 

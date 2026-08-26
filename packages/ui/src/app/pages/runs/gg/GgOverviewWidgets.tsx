@@ -684,7 +684,7 @@ export function ErrorsWidget({
           label="errored turns"
           value={turns === 0 ? null : failed}
           sub={errorRatePhrase(errors)}
-          title="Turns whose declared work could not be carried out — a failed model call, a program that did not compile, threw, or hit a sandbox ceiling, or a turn that declared no work at all. A tool call that failed inside a program that carried on is not one."
+          title="Turns whose declared work could not be carried out: a failed model call, a program that did not compile, threw, or hit a sandbox ceiling, or a turn that declared no work at all. A tool call that failed inside a program that carried on is not one."
         />
         {/* The counter gg's own consecutive-error ceiling is enforced on: a scope reading
             "2 of 40 turns" is a different animal depending on whether those two were
@@ -708,7 +708,7 @@ export function ErrorsWidget({
             label="looping replies"
             value={loopAborts}
             sub={discardedOutputPhrase(errors) ?? "discarded, then retried"}
-            title="Replies loop detection abandoned mid-stream before this scope got one it could use, and how much generation they cost. Not errors — each was retried and the turn is judged on what the retry produced. The output was billed by the provider and is deliberately absent from the recorded cost, in words and characters because an abandoned stream reports no tokens."
+            title="Replies loop detection abandoned mid-stream before this scope got one it could use, and how much generation they cost. These are not errors: each was retried and the turn is judged on what the retry produced. The output was billed by the provider and is deliberately absent from the recorded cost, in words and characters because an abandoned stream reports no tokens."
           />
         )}
       </div>
@@ -726,8 +726,8 @@ export function ErrorsWidget({
           className={styles.spendGroupLabel}
           title={
             surface === "api"
-              ? "Calls this agent's own programs were thrown, by class — the failures the MODEL met and had to write around, including the call the membrane refused before it ran. A different population from the turn errors above: a call that failed inside a program that carried on is not an errored turn."
-              : "Dispatched tool calls that failed, by class — what gg ran and what it returned. A different population from the turn errors above: a call that failed on a turn the agent went on to complete is not an errored turn."
+              ? "Calls this agent's own programs were thrown, by class: the failures the MODEL met and had to write around, including the call the membrane refused before it ran. A different population from the turn errors above, because a call that failed inside a program that carried on is not an errored turn."
+              : "Dispatched tool calls that failed, by class: what gg ran and what it returned. A different population from the turn errors above, because a call that failed on a turn the agent went on to complete is not an errored turn."
           }
         >
           Failed {surface === "api" ? "API" : "tool"} calls

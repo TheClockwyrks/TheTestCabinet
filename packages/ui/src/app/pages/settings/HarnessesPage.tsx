@@ -9,7 +9,10 @@ import {
   type HarnessAuthApi,
   type HarnessAuthMode,
 } from "../../data/galleryContext";
-import { useHarnessConfig, type HarnessConfigApi } from "../../data/useHarnessConfig";
+import {
+  useHarnessConfig,
+  type HarnessConfigApi,
+} from "../../data/useHarnessConfig";
 import type { HarnessConfigEntry } from "../../../client/types";
 import styles from "./HarnessesPage.module.scss";
 
@@ -103,7 +106,11 @@ function HarnessesBody({
   // flight. Errors surface inline. `adopt` writes the refreshed list back to the
   // right piece of state (config vs. auth), so either half updates independently.
   const run = useCallback(
-    async <T,>(slug: string, op: () => Promise<T>, adopt: (result: T) => void) => {
+    async <T,>(
+      slug: string,
+      op: () => Promise<T>,
+      adopt: (result: T) => void,
+    ) => {
       setBusy(slug);
       setError(null);
       try {
@@ -140,14 +147,14 @@ function HarnessesBody({
       <Panel className={styles.intro}>
         <p className={styles.muted}>
           Tune how each harness runs. <strong>Max parallelism</strong> caps how
-          many runs of a harness the Test Cabinet drives at once — extra runs wait
-          as <em>pending</em> until a slot frees.
+          many runs of a harness the Test Cabinet drives at once. Extra runs
+          wait as <em>pending</em> until a slot frees.
           {auth ? (
             <>
               {" "}
-              <strong>Authentication</strong> chooses how each harness authenticates
-              the runs you launch on the local cluster; keys are stored on this
-              machine and applied to the cluster.
+              <strong>Authentication</strong> chooses how each harness
+              authenticates the runs you launch on the local cluster; keys are
+              stored on this machine and applied to the cluster.
             </>
           ) : null}
         </p>
@@ -191,7 +198,11 @@ function HarnessesBody({
           }
           onSetMode={(mode) =>
             auth &&
-            run(harness.slug, () => auth.setAuthMode(harness.slug, mode), setAuths)
+            run(
+              harness.slug,
+              () => auth.setAuthMode(harness.slug, mode),
+              setAuths,
+            )
           }
           onSetKey={(key) =>
             auth &&
@@ -305,10 +316,8 @@ function ParallelismRow({
 
   const trimmed = draft.trim();
   const parsed = trimmed === "" ? null : Number(trimmed);
-  const valid =
-    parsed === null || (Number.isInteger(parsed) && parsed >= 1);
-  const changed =
-    (current == null ? "" : String(current)) !== trimmed;
+  const valid = parsed === null || (Number.isInteger(parsed) && parsed >= 1);
+  const changed = (current == null ? "" : String(current)) !== trimmed;
 
   return (
     <section className={styles.row}>
@@ -316,7 +325,7 @@ function ParallelismRow({
         <span className={styles.rowTitle}>Max parallelism</span>
         <span className={styles.hint}>
           {current == null
-            ? "No limit — runs of this harness are dispatched as capacity allows."
+            ? "No limit: runs of this harness are dispatched as capacity allows."
             : `At most ${current} run${current === 1 ? "" : "s"} of this harness at once.`}
         </span>
       </div>
@@ -390,7 +399,9 @@ function AuthRows({
       <section className={styles.row}>
         <div className={styles.label}>
           <span className={styles.rowTitle}>Method</span>
-          <span className={styles.hint}>How this harness authenticates runs.</span>
+          <span className={styles.hint}>
+            How this harness authenticates runs.
+          </span>
         </div>
         {modeOptions.length > 1 ? (
           <SegmentedControl

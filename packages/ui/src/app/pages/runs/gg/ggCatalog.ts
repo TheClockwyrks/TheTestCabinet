@@ -193,12 +193,12 @@ export const AGENT_MODES: ReadonlyArray<{
     value: "fsm",
     label: "FSM",
     purpose:
-      "A state machine over the configuration's other profiles. It is not a worker: it has no turns of its own, so it is given no model, no prompt, no roster and no capabilities — each state runs the profile it names, with that profile's configuration.",
+      "A state machine over the configuration's other profiles. It is not a worker: it has no turns of its own, so it is given no model, no prompt, no roster and no capabilities. Each state runs the profile it names, with that profile's configuration.",
   },
 ];
 
 export const AGENT_MODE_HINT =
-  "How this agent is implemented — and so what it can be configured with. Tools and RaC are two ways of driving the same capabilities, and swapping between them is the single biggest lever a study has. A state machine is not a worker at all: it takes no turns, so it is asked for no model, no prompt and no roster, and its configuration is the machine.";
+  "How this agent is implemented, and so what it can be configured with. Tools and RaC are two ways of driving the same capabilities, and swapping between them is the single biggest lever a study has. A state machine is not a worker at all: it takes no turns, so it is asked for no model, no prompt and no roster, and its configuration is the machine.";
 
 // The agent types a capability is offered under when its [spec](CapSpec.modes) names
 // none: both of the types a real worker can be. A machine is never in this list — it
@@ -341,7 +341,7 @@ export function paramApplies(
 // third arm was. A withholding set records the switches it takes away, because a member it
 // does not name is one gg offers.
 const EXHAUSTIVE_TOGGLES_HINT =
-  "Every switch here is recorded, on or off — gg arms none of them for you.";
+  "Every switch here is recorded, on or off. gg arms none of them for you.";
 const WITHHOLDING_TOGGLES_HINT =
   "Only the ones you switch off are recorded; anything left on is offered.";
 
@@ -438,7 +438,7 @@ export const READ_MODE_OPTIONS = [
 // What each read mode does — the detail lifted off the picker's option labels into
 // the field's help tooltip.
 export const READ_MODE_HINT =
-  "Unlimited returns the whole file in one call. Default cap returns the line cap unless the model asks for more, which is always honoured — no mode can refuse a whole-file read.";
+  "Unlimited returns the whole file in one call. Default cap returns the line cap unless the model asks for more, which is always honoured, and no mode can refuse a whole-file read.";
 
 // The read modes that apply the line cap — everything except `unlimited`, which
 // returns the whole file and never reads it.
@@ -493,12 +493,12 @@ export const HOOK_EVENTS: ReadonlyArray<{
   {
     value: "pre-compact",
     label: "Pre-compact",
-    hint: "Before a compaction condenses an agent's window. Cannot block — the window is full, and refusing would leave the agent no room to work — and cannot insert, since the window it would insert into is the one being rewritten.",
+    hint: "Before a compaction condenses an agent's window. Cannot block, because the window is full and refusing would leave the agent no room to work, and cannot insert, since the window it would insert into is the one being rewritten.",
   },
   {
     value: "post-compact",
     label: "Post-compact",
-    hint: "After a compaction has rewritten an agent's window. Cannot block, but may insert into the rebuilt context — the one moment a run can put back something the compaction dropped.",
+    hint: "After a compaction has rewritten an agent's window. Cannot block, but may insert into the rebuilt context. This is the one moment a run can put back something the compaction dropped.",
   },
   {
     value: "agent-start",
@@ -518,7 +518,7 @@ export const HOOK_EVENTS: ReadonlyArray<{
   {
     value: "session-end",
     label: "Session end",
-    hint: "Once per run, after the root agent has finished. Cannot block and cannot insert — there is no session left to affect. This is where a run reports on itself.",
+    hint: "Once per run, after the root agent has finished. Cannot block and cannot insert, since there is no session left to affect. This is where a run reports on itself.",
   },
 ];
 
@@ -569,17 +569,17 @@ export const HOOK_KINDS: ReadonlyArray<{
   {
     value: "command",
     label: "Command",
-    hint: "Run a command line. It receives no input — the checks that are already commands read the workspace rather than being told about it. A non-zero exit blocks (on an event that can block), and the output is shown to the model either way, through the agent's own offloading policy.",
+    hint: "Run a command line. It receives no input: the checks that are already commands read the workspace rather than being told about it. A non-zero exit blocks (on an event that can block), and the output is shown to the model either way, through the agent's own offloading policy.",
   },
   {
     value: "built-in",
     label: "Built-in",
-    hint: "Run one of gg's own hook scripts. Same contract as a custom script — the event as one JSON argument, a decision object on stdout, exit 0 — with the source coming from gg. Each is meant to be read and copied into a custom hook.",
+    hint: "Run one of gg's own hook scripts. Same contract as a custom script (the event as one JSON argument, a decision object on stdout, exit 0), with the source coming from gg. Each is meant to be read and copied into a custom hook.",
   },
   {
     value: "custom",
     label: "Custom",
-    hint: "Run a script you provide. gg writes it to the run's workspace, makes it executable, and runs it with the event as its sole argument; a `#!` line chooses the interpreter and a script without one is run by `sh`. It must exit 0 and print one decision object on stdout — a non-zero exit or unreadable output is the hook itself failing, which stops the run.",
+    hint: "Run a script you provide. gg writes it to the run's workspace, makes it executable, and runs it with the event as its sole argument; a `#!` line chooses the interpreter and a script without one is run by `sh`. It must exit 0 and print one decision object on stdout. A non-zero exit or unreadable output is the hook itself failing, which stops the run.",
   },
 ];
 
@@ -704,7 +704,7 @@ export const PROGRAM_LANGUAGE_OPTIONS: ReadonlyArray<{
 ];
 
 export const PROGRAM_LANGUAGE_HINT =
-  "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed — the same signatures, annotations included — so an A/B across the two measures what checking a program before it runs is worth. Python is its own guest, a committed CPython, and its programs are checked by nothing before they run. Ruby is compiled to JavaScript by a committed Opal before it crosses, so its programs are read and refused before they run without their types ever being checked — the one arm that separates compiling a program from typing it. PureScript is compiled and fully type-checked by a real `purs` in the run image, against a library set gg carries, so it is the other end of that axis: a wrong argument shape, a missing case or a missing instance costs a diagnostic rather than a turn. Java is the only arm whose program passes through two compilers — `javac` and then TeaVM — inside a JVM gg keeps warm between programs, so it is both type-checked and the most expensive arm to compile, and a class outside TeaVM's classlib is a located compile error rather than a run-time surprise. Kotlin rides that same road from bytecode onwards and is the A/B against it: the same two compilers, the same guest and the same classlib, so what differs between the pair is the language and its SDK rather than the toolchain — a program here is a Kotlin script, and its surface expresses every optional argument as a default passed by name where Java's needs an overload. Rust and Swift are a different shape rather than a different language: neither ships a guest at all, because their compilers produce the program rather than something that later reads one, so each turn compiles the component it is then evaluated by. Rust's is the cheapest compile of any checked arm and its programs are ~25 KB; Swift's reply is compiled byte for byte, with no wrapper and no line offset, and is the one arm that pays more to instantiate a program than to compile it. C++ is the third of that shape and the cheapest of the three per turn, because the prelude its programs are compiled against is precompiled once per machine — its reply is compiled byte for byte too, it is the only arm whose guest has working exceptions, and it is the only one where undefined behavior can end a program with nothing to say about why. C# is neither shape: Roslyn compiles the reply to an IL assembly on the host in about a third of a second, the bytes cross as base64, and a committed guest holding a Mono IL interpreter and the whole .NET class library loads them — so it is type-checked like a compiled arm, costs one compiler and no engine work per turn like an interpreted one, and has the best error surface of any of them, because an unhandled exception arrives with its type, its message and its managed stack. There is no default: gg drives no run in a language nobody chose, so a code agent has to name one and a launch that omits it is refused.";
+  "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed, the same signatures and annotations included, so an A/B across the two measures what checking a program before it runs is worth. Python is its own guest, a committed CPython, and its programs are checked by nothing before they run. Ruby is compiled to JavaScript by a committed Opal before it crosses, so its programs are read and refused before they run without their types ever being checked. It is the one arm that separates compiling a program from typing it. PureScript is compiled and fully type-checked by a real `purs` in the run image, against a library set gg carries, so it is the other end of that axis: a wrong argument shape, a missing case or a missing instance costs a diagnostic rather than a turn. Java is the only arm whose program passes through two compilers, `javac` and then TeaVM, inside a JVM gg keeps warm between programs, so it is both type-checked and the most expensive arm to compile, and a class outside TeaVM's classlib is a located compile error rather than a run-time surprise. Kotlin rides that same road from bytecode onwards and is the A/B against it: the same two compilers, the same guest and the same classlib, so what differs between the pair is the language and its SDK rather than the toolchain. A program here is a Kotlin script, and its surface expresses every optional argument as a default passed by name where Java's needs an overload. Rust and Swift are a different shape rather than a different language: neither ships a guest at all, because their compilers produce the program rather than something that later reads one, so each turn compiles the component it is then evaluated by. Rust's is the cheapest compile of any checked arm and its programs are ~25 KB; Swift's reply is compiled byte for byte, with no wrapper and no line offset, and is the one arm that pays more to instantiate a program than to compile it. C++ is the third of that shape and the cheapest of the three per turn, because the prelude its programs are compiled against is precompiled once per machine. Its reply is compiled byte for byte too, it is the only arm whose guest has working exceptions, and it is the only one where undefined behavior can end a program with nothing to say about why. C# is neither shape: Roslyn compiles the reply to an IL assembly on the host in about a third of a second, the bytes cross as base64, and a committed guest holding a Mono IL interpreter and the whole .NET class library loads them, so it is type-checked like a compiled arm, costs one compiler and no engine work per turn like an interpreted one, and has the best error surface of any of them, because an unhandled exception arrives with its type, its message and its managed stack. There is no default: gg drives no run in a language nobody chose, so a code agent has to name one and a launch that omits it is refused.";
 
 // Which SDK types a documentation lookup opens beside the function it was asked for —
 // three INDEPENDENT toggles rather than one three-way arm, because what a return type
@@ -720,23 +720,23 @@ export const DOC_VIEW_TYPES_OPTIONS: ReadonlyArray<{
 }> = [
   {
     value: "return",
-    label: "return — the types the signature hands back",
+    label: "return: the types the signature hands back",
     hint: "Lands the agent on what it can do with the value it is about to get. A fresh capability starts it on.",
   },
   {
     value: "parameters",
-    label: "parameters — the types its arguments declare",
+    label: "parameters: the types its arguments declare",
     seedOff: true,
     hint: "The one of the three a fresh capability starts switched off: an argument's type is already written into the signature the agent is reading, so opening it is more context up front against fewer follow-up lookups. Like the other two, what the run does with it is whatever this switch says.",
   },
   {
     value: "errors",
-    label: "errors — the failures its documentation declares it throws",
+    label: "errors: the failures its documentation declares it throws",
     hint: "The error types the function's own documentation comment names, in whatever tag its language declares one with. It is the one source that is not in the signature at all, so nothing else in this list can reach it. A fresh capability starts it on.",
   },
 ];
 
-export const DOC_VIEW_TYPES_HINT = `Opening a function's documentation also opens SDK types beside it, as views of their own — each source switched on its own, and what one open places is the union of them. Always exactly one level: a type's own view never drags in a further type. ${EXHAUSTIVE_TOGGLES_HINT}`;
+export const DOC_VIEW_TYPES_HINT = `Opening a function's documentation also opens SDK types beside it, as views of their own, each source switched on its own, and what one open places is the union of them. Always exactly one level: a type's own view never drags in a further type. ${EXHAUSTIVE_TOGGLES_HINT}`;
 
 // --- Loop detection ---------------------------------------------------------------
 //
@@ -757,7 +757,7 @@ export const DOC_VIEW_TYPES_HINT = `Opening a function's documentation also open
 // streaming transport, and a streamed turn is accounted from the stream's own usage chunk
 // rather than from a completed response body.
 export const LOOP_DETECTION_HINT =
-  "Watch this agent's replies as they arrive and abandon one that has degenerated into repetition, retrying the turn as though the request had failed — so a runaway costs one truncated reply instead of a full output cap, and never enters the agent's context. Arming it also moves this agent onto gg's streaming transport, which is what makes a partial reply visible at all; every other agent in the run is untouched. Off unless you arm it, per agent: the detector is worth its transport change on a model observed to loop, and nothing at all on one that never has.";
+  "Watch this agent's replies as they arrive and abandon one that has degenerated into repetition, retrying the turn as though the request had failed, so a runaway costs one truncated reply instead of a full output cap and never enters the agent's context. Arming it also moves this agent onto gg's streaming transport, which is what makes a partial reply visible at all; every other agent in the run is untouched. Off unless you arm it, per agent: the detector is worth its transport change on a model observed to loop, and nothing at all on one that never has.";
 
 // The knobs of the window rule, in the order they read as a sentence: how far back the
 // detector looks, how often a word must recur to be suspicious, how many such words make
@@ -786,13 +786,13 @@ export const LOOP_DETECTION_SPECS: ReadonlyArray<LoopDetectionSpec> = [
     key: "windowWords",
     label: "Window (words)",
     authored: 256,
-    hint: "How many of the most recent words the detector looks back over. A word is a whitespace-separated run of characters — plus a fixed-width slice whenever a run exceeds gg's internal cap, which is what makes a whitespace-free loop (`a();a();a();…`) detectable rather than one unbounded word.",
+    hint: "How many of the most recent words the detector looks back over. A word is a whitespace-separated run of characters, plus a fixed-width slice whenever a run exceeds gg's internal cap, which is what makes a whitespace-free loop (`a();a();a();…`) detectable rather than one unbounded word.",
   },
   {
     key: "repeatThreshold",
     label: "Repeats before suspicious",
     authored: 32,
-    hint: "How many times one word may occur inside the window before it counts as an offender — strictly more than this makes one. Raising it tolerates denser legitimate repetition (a data literal, a long table) at the cost of catching a loop later. 32 is a word occupying more than an eighth of a 256-word window.",
+    hint: "How many times one word may occur inside the window before it counts as an offender; strictly more than this makes one. Raising it tolerates denser legitimate repetition (a data literal, a long table) at the cost of catching a loop later. 32 is a word occupying more than an eighth of a 256-word window.",
   },
   {
     key: "minOffenders",
@@ -804,7 +804,7 @@ export const LOOP_DETECTION_SPECS: ReadonlyArray<LoopDetectionSpec> = [
     key: "minSaturatedRun",
     label: "Saturated words before abandoning",
     authored: 3000,
-    hint: "How many consecutive words must arrive while the window stays saturated before the reply is abandoned. This is the term that separates a loop from legitimately repetitive content: a tilemap literal or a long table saturates the window and then ENDS, while a loop saturates it and never stops. 0 abandons as soon as the window saturates — the unmodified frequency rule, and a deliberate setting rather than a mistake.",
+    hint: "How many consecutive words must arrive while the window stays saturated before the reply is abandoned. This is the term that separates a loop from legitimately repetitive content: a tilemap literal or a long table saturates the window and then ENDS, while a loop saturates it and never stops. 0 abandons as soon as the window saturates, which is the unmodified frequency rule and a deliberate setting rather than a mistake.",
   },
   {
     key: "maxResponseChars",
@@ -842,7 +842,7 @@ export const MODULE_KINDS: ReadonlyArray<{
   {
     value: "memories",
     label: "Memories",
-    hint: "The memory instance, live — the same notes, not a copy of a summary of them.",
+    hint: "The memory instance, live: the same notes, not a copy of a summary of them.",
   },
   {
     value: "tasks",
@@ -1007,51 +1007,51 @@ export const BUILT_IN_SKILL_OPTIONS: ReadonlyArray<{
 }> = [
   {
     value: "gg-filesystem",
-    label: "gg-filesystem — reading, writing and editing workspace files",
+    label: "gg-filesystem: reading, writing and editing workspace files",
   },
-  { value: "gg-shell", label: "gg-shell — running shell commands" },
+  { value: "gg-shell", label: "gg-shell: running shell commands" },
   {
     value: "gg-project",
-    label: "gg-project — the epic/issue board other agents implement from",
+    label: "gg-project: the epic/issue board other agents implement from",
   },
   {
     value: "gg-tasks",
-    label: "gg-tasks — the agent's own blocked-by task list",
+    label: "gg-tasks: the agent's own blocked-by task list",
   },
   {
     value: "gg-memory",
-    label: "gg-memory — memories that outlive the conversation",
+    label: "gg-memory: memories that outlive the conversation",
   },
   {
     value: "gg-skills",
-    label: "gg-skills — reading skills, including this one",
+    label: "gg-skills: reading skills, including this one",
   },
   {
     value: "gg-context",
     label:
-      "gg-context — evicting, archiving, searching and compacting its window",
+      "gg-context: evicting, archiving, searching and compacting its window",
   },
   {
     value: "gg-delegation",
-    label: "gg-delegation — spawning child agents and handing its session on",
+    label: "gg-delegation: spawning child agents and handing its session on",
   },
   {
     value: "gg-docs",
     label:
-      "gg-docs — finding a function by keyword and reclaiming what it read (code mode)",
+      "gg-docs: finding a function by keyword and reclaiming what it read (code mode)",
   },
   {
     value: "gg-views",
     label:
-      "gg-views — showing itself a file, a value or a signature (code mode)",
+      "gg-views: showing itself a file, a value or a signature (code mode)",
   },
   {
     value: "gg-programs",
-    label: "gg-programs — fetching a program it already ran (code mode)",
+    label: "gg-programs: fetching a program it already ran (code mode)",
   },
   {
     value: "gg-session",
-    label: "gg-session — the one call that ends its session",
+    label: "gg-session: the one call that ends its session",
   },
 ];
 
@@ -1063,7 +1063,7 @@ export const BUILT_IN_SKILL_OPTIONS: ReadonlyArray<{
 // only when this agent really holds at least one of its functions, so the list is a
 // ceiling rather than a roster: switching nothing off on an agent with no board still
 // yields no `gg-project`.
-export const BUILT_IN_SKILLS_HINT = `Skills gg writes itself, one per family of the functions this agent has — generated from its live tools rather than authored, so they cannot describe a tool it was not given. Under tool calling a built-in's body is the family's real tool definitions and parameters; under responses-as-code it opens a documentation view per function on the turn after it is used. A family is offered only when the agent holds at least one of its functions, and a skill of the same name in the skills directory replaces it. Switching one off withholds it from this agent entirely — the family's functions still work, the manual for them is simply not there. ${WITHHOLDING_TOGGLES_HINT}`;
+export const BUILT_IN_SKILLS_HINT = `Skills gg writes itself, one per family of the functions this agent has, generated from its live tools rather than authored, so they cannot describe a tool it was not given. Under tool calling a built-in's body is the family's real tool definitions and parameters; under responses-as-code it opens a documentation view per function on the turn after it is used. A family is offered only when the agent holds at least one of its functions, and a skill of the same name in the skills directory replaces it. Switching one off withholds it from this agent entirely. The family's functions still work; the manual for them is simply not there. ${WITHHOLDING_TOGGLES_HINT}`;
 
 // The bounds a freshly enabled tasks or project-management capability is written with,
 // the same figures `GgCapabilityConfig::enabled` authors (`crates/core/src/gg.rs`). Every
@@ -1139,7 +1139,7 @@ export const SEARCHING_MEMORY_STRATEGY = ["keyword-search"] as const;
 // What each memory strategy does — the detail lifted off the picker's option labels
 // into the field's help tooltip.
 export const MEMORY_STRATEGY_HINT =
-  "Scratchpad keeps every memory's body in the context window, bounded by a count and a per-note character ceiling (and by an aggregate budget, if you set one — there is no default). Markdown pins only an index of slugs and descriptions, and the model reads a memory's contents on demand; the index length is what bounds the population. Keyword search pins nothing at all — the model finds a memory with `search_memories` and reads it back. Under every strategy the memories live inside gg, never on disk.";
+  "Scratchpad keeps every memory's body in the context window, bounded by a count and a per-note character ceiling (and by an aggregate budget, if you set one; there is no default). Markdown pins only an index of slugs and descriptions, and the model reads a memory's contents on demand; the index length is what bounds the population. Keyword search pins nothing at all: the model finds a memory with `search_memories` and reads it back. Under every strategy the memories live inside gg, never on disk.";
 
 // The two shapes the tasks list can take (`crates/gg/src/tasks.rs`): the default
 // **simple** mode is a bare title/description to-do list, while **issues** mode
@@ -1174,12 +1174,12 @@ export const SUBAGENT_SCOPES: ReadonlyArray<{
   {
     value: "implementer",
     label: "Implementer",
-    hint: "May be named as an issue's `agent` — the profile gg dispatches to do the work, and re-dispatches for each retry and review round.",
+    hint: "May be named as an issue's `agent`: the profile gg dispatches to do the work, and re-dispatches for each retry and review round.",
   },
   {
     value: "reviewer",
     label: "Reviewer",
-    hint: "May be named among an issue's `reviewers` — the profiles that must each approve the finished work before the issue is accepted.",
+    hint: "May be named among an issue's `reviewers`: the profiles that must each approve the finished work before the issue is accepted.",
   },
 ];
 
@@ -1253,7 +1253,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Shell",
     group: "Models & tools",
     purpose:
-      "Run shell commands in the run container — build, test, drive tooling.",
+      "Run shell commands in the run container: build, test, drive tooling.",
     defaultOn: true,
     implementationLabel: "Output mode",
     implementationOptions: SHELL_OUTPUT_OPTIONS,
@@ -1303,7 +1303,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         required: true,
         defaultValue: String(AUTHORED_READ_LINE_CAP),
         showWhenImplementation: CAPPED_READ_MODES,
-        hint: "Lines per call under a capped read mode. Written under the unlimited mode too, which reads it under neither name — so switching the picker to a capped mode is one click rather than a retype.",
+        hint: "Lines per call under a capped read mode. Written under the unlimited mode too, which reads it under neither name, so switching the picker to a capped mode is one click rather than a retype.",
       },
     ],
     tools: ["read_file"],
@@ -1325,7 +1325,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Edit file",
     group: "Filesystem",
     purpose:
-      "Patch a file by exact, unique string replacement — the alternative to rewriting it whole.",
+      "Patch a file by exact, unique string replacement, the alternative to rewriting it whole.",
     defaultOn: true,
     tools: ["edit_file"],
     operations: ["files.edit_file"],
@@ -1432,7 +1432,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "number",
         required: true,
         defaultValue: String(AUTHORED_PROGRAMS_KEPT),
-        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get` by the id each was acknowledged with. Older ones are dropped, and asking for one says which ids are still held (and their turns). `0` keeps every program of the session — the setting for a study that reads them all back, spelled as a figure like every other.",
+        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get` by the id each was acknowledged with. Older ones are dropped, and asking for one says which ids are still held (and their turns). `0` keeps every program of the session, the setting for a study that reads them all back, spelled as a figure like every other.",
       },
       {
         key: "idLength",
@@ -1440,7 +1440,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "number",
         required: true,
         defaultValue: String(AUTHORED_PROGRAM_ID_LENGTH),
-        hint: "How many characters the id assigned to each program is — the body of the `submit_program` acknowledgement, and what `programs.get` takes. Ids are scoped to the one agent, and 4 characters is about 1.7 million of them, so a longer value (up to 32) only matters for an agent that runs thousands of programs in one session; shorter than 2 is refused.",
+        hint: "How many characters the id assigned to each program is: the body of the `submit_program` acknowledgement, and what `programs.get` takes. Ids are scoped to the one agent, and 4 characters is about 1.7 million of them, so a longer value (up to 32) only matters for an agent that runs thousands of programs in one session; shorter than 2 is refused.",
       },
     ],
     // No `tools`, for the reason `modes` gives: there are no programs in a tool-calling
@@ -1501,7 +1501,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "fraction",
         required: true,
         defaultValue: String(AUTHORED_SUMMARY_HEADROOM),
-        hint: "Fraction of the window held back from the agent so the summarization call — which reads the whole thread and writes a summary — fits. This also defines the trigger: a compaction fires once the window is 1 − headroom full (the working window is full and only the headroom remains).",
+        hint: "Fraction of the window held back from the agent so the summarization call, which reads the whole thread and writes a summary, fits. This also defines the trigger: a compaction fires once the window is 1 − headroom full (the working window is full and only the headroom remains).",
       },
       {
         // Optional to gg — an absent `maxRetries` is none — but seeded here all the same,
@@ -1529,7 +1529,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         // One of the three params whose absence is the setting, so it carries no
         // [required] flag and no seeded value: a new configuration that asked for a
         // summarizer model nobody chose would be the form deciding the arm.
-        hint: "The model that condenses the thread instead of the agent. Take it from a model slot to pick it when the run is launched, or pin one here. Left unset, the agent condenses on its own model — which is a setting rather than a gap, and the one every configuration that names no summarizer runs under.",
+        hint: "The model that condenses the thread instead of the agent. Take it from a model slot to pick it when the run is launched, or pin one here. Left unset, the agent condenses on its own model, which is a setting rather than a gap and the one every configuration that names no summarizer runs under.",
       },
     ],
     tools: ["compact"],
@@ -1540,7 +1540,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Agent-managed context",
     group: "Context",
     purpose:
-      "The agent reclaims window space itself: evicting file views, archiving thread sections, and — under responses as code — closing the views it opened.",
+      "The agent reclaims window space itself: evicting file views, archiving thread sections, and, under responses as code, closing the views it opened.",
     params: [
       {
         key: "topFileViews",
@@ -1548,7 +1548,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "number",
         required: true,
         defaultValue: String(AUTHORED_TOP_FILE_VIEWS),
-        hint: "How many of the agent's largest file views its prompt names when it is asked to reclaim window space — the shortlist it evicts from, rather than a ceiling on how many views it may hold.",
+        hint: "How many of the agent's largest file views its prompt names when it is asked to reclaim window space: the shortlist it evicts from, rather than a ceiling on how many views it may hold.",
       },
       {
         // The one param gg reads a figure out of a document that does not write it, so
@@ -1558,7 +1558,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Signal at",
         kind: "percent",
         defaultValue: String(AUTHORED_SIGNAL_THRESHOLD_PERCENT),
-        hint: "How full the window has to be, as a percentage, before the agent is shown the context-usage block at all. The share is of the window the agent may actually fill — the model's window less whatever an enabled Compaction holds back — which is the same figure the block then reports. Below it there is no block, since a block reporting a window that is 6% full costs tokens to ask for a reclaim worth nothing. Set 0 to show it every turn.",
+        hint: "How full the window has to be, as a percentage, before the agent is shown the context-usage block at all. The share is of the window the agent may actually fill, the model's window less whatever an enabled Compaction holds back, which is the same figure the block then reports. Below it there is no block, since a block reporting a window that is 6% full costs tokens to ask for a reclaim worth nothing. Set 0 to show it every turn.",
       },
     ],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
@@ -1587,7 +1587,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Close views",
         tools: [],
         operations: ["views.close"],
-        hint: "Responses as code only — a tool-calling agent reclaims file views with the eviction slider and has no text views to close.",
+        hint: "Responses as code only. A tool-calling agent reclaims file views with the eviction slider and has no text views to close.",
       },
     ],
   },
@@ -1600,7 +1600,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     // on every use, or any combination — and gg ships twelve of its own, so the
     // capability is worth enabling in a workspace that authored none.
     purpose:
-      "Skills — prose, code, or both — catalogued in the prompt and pinned once read.",
+      "Skills, prose or code or both, catalogued in the prompt and pinned once read.",
     defaultOn: true,
     params: [
       {
@@ -1609,7 +1609,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "text",
         required: true,
         defaultValue: AUTHORED_SKILLS_DIR,
-        hint: "Where this agent reads its authored skills from. A skills library belongs to the agent, so each profile names its own directory and two profiles naming one directory share the load. Relative paths are joined onto the workspace; an absolute path is used as-is. A `<name>.md` file there is a prose skill; a `<name>/` directory is one too, with its front matter and body in a required `skill.md` beside an optional `skill.<ext>` (a module the agent's programs import) and `on-use.<ext>` (a script gg runs on every use). The extension is the program language of the agent using it — `skill.ts` for a TypeScript agent — so a directory may carry one per language.",
+        hint: "Where this agent reads its authored skills from. A skills library belongs to the agent, so each profile names its own directory and two profiles naming one directory share the load. Relative paths are joined onto the workspace; an absolute path is used as-is. A `<name>.md` file there is a prose skill; a `<name>/` directory is one too, with its front matter and body in a required `skill.md` beside an optional `skill.<ext>` (a module the agent's programs import) and `on-use.<ext>` (a script gg runs on every use). The extension is the program language of the agent using it, `skill.ts` for a TypeScript agent, so a directory may carry one per language.",
       },
       {
         key: "builtIns",
@@ -1664,7 +1664,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "number",
         required: true,
         defaultValue: String(AUTHORED_MEMORY_MAX_LEN_PER),
-        hint: "Character ceiling on any one note's body, read under every strategy — though the two file-shaped ones keep their bodies out of the window, so a larger figure costs the window nothing there. A code memory's module and its on-use script are not bodies and are charged to neither this nor the total: they are a capability the agent gains, not context it carries. 0 for unlimited.",
+        hint: "Character ceiling on any one note's body, read under every strategy, though the two file-shaped ones keep their bodies out of the window, so a larger figure costs the window nothing there. A code memory's module and its on-use script are not bodies and are charged to neither this nor the total: they are a capability the agent gains, not context it carries. 0 for unlimited.",
       },
       {
         key: "maxTotalLen",
@@ -1673,7 +1673,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         required: true,
         defaultValue: String(AUTHORED_MEMORY_MAX_TOTAL_LEN),
         showWhenImplementation: SCRATCHPAD_MEMORY_STRATEGY,
-        hint: "Character ceiling across all note bodies together — the budget for what the window carries. A fresh capability writes 0, which is no aggregate ceiling: the per-note ceiling and the count are what bound a scratchpad unless you set one here.",
+        hint: "Character ceiling across all note bodies together: the budget for what the window carries. A fresh capability writes 0, which is no aggregate ceiling: the per-note ceiling and the count are what bound a scratchpad unless you set one here.",
       },
       {
         key: "maxLenIndex",
@@ -1682,7 +1682,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         required: true,
         defaultValue: String(AUTHORED_MEMORY_MAX_LEN_INDEX),
         showWhenImplementation: INDEXED_MEMORY_STRATEGY,
-        hint: "Character ceiling on the pinned index. A create whose entry would not fit is refused, so this is what bounds how many memories a markdown run can hold. 0 for unlimited, which is what a fresh capability writes because it selects the scratchpad — set a figure when you move to the markdown strategy.",
+        hint: "Character ceiling on the pinned index. A create whose entry would not fit is refused, so this is what bounds how many memories a markdown run can hold. 0 for unlimited, which is what a fresh capability writes because it selects the scratchpad. Set a figure when you move to the markdown strategy.",
       },
       {
         key: "maxLenDescription",
@@ -1690,7 +1690,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "number",
         required: true,
         defaultValue: String(AUTHORED_MEMORY_MAX_LEN_DESCRIPTION),
-        hint: "Character ceiling on a memory's one-line description, read under every strategy. A description is an index line, not a body — under the markdown strategy the window pays for every one of them on every turn, and under the others it is what a search result or a linked-holder notice shows. 0 for unlimited.",
+        hint: "Character ceiling on a memory's one-line description, read under every strategy. A description is an index line, not a body. Under the markdown strategy the window pays for every one of them on every turn, and under the others it is what a search result or a linked-holder notice shows. 0 for unlimited.",
       },
       {
         key: "maxResults",
@@ -1699,7 +1699,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         required: true,
         defaultValue: String(AUTHORED_MEMORY_MAX_RESULTS),
         showWhenImplementation: SEARCHING_MEMORY_STRATEGY,
-        hint: "How many memories one `search_memories` call reports. 0 for unlimited, which is what a fresh capability writes because it selects the scratchpad — set a figure when you move to keyword search.",
+        hint: "How many memories one `search_memories` call reports. 0 for unlimited, which is what a fresh capability writes because it selects the scratchpad. Set a figure when you move to keyword search.",
       },
     ],
     tools: [
@@ -1729,7 +1729,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
           "memories.edit_memory",
           "memories.delete_memory",
         ],
-        hint: "Off leaves memories append-only — the model can write new notes but not edit or delete one.",
+        hint: "Off leaves memories append-only: the model can write new notes but not edit or delete one.",
       },
     ],
   },
@@ -1781,7 +1781,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Task dependencies",
         tools: ["set_blocked_by"],
         operations: ["tasks.set_blocked_by"],
-        hint: "Off makes the list flat — tasks can't be marked blocked-by one another.",
+        hint: "Off makes the list flat: tasks can't be marked blocked-by one another.",
       },
       {
         label: "Revise tasks",
@@ -1819,7 +1819,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "number",
         required: true,
         defaultValue: String(AUTHORED_MAX_RETRIES),
-        hint: "How many times gg re-dispatches an issue whose assigned agent ended without finishing — a spent turn ceiling, a breached limit, a model error — before marking the issue failed. 0 is a setting: one attempt, and a failure is final.",
+        hint: "How many times gg re-dispatches an issue whose assigned agent ended without finishing (a spent turn ceiling, a breached limit, a model error) before marking the issue failed. 0 is a setting: one attempt, and a failure is final.",
       },
       {
         key: "mergeAgentId",
@@ -1827,7 +1827,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "agent",
         required: true,
         defaultValue: ROOT_PROFILE_ID,
-        hint: "Every issue works in its own git worktree, merged back when it is accepted; when that merge conflicts with work another issue landed first, this agent is dispatched into the workspace to resolve it and finish the merge. It must have the Shell capability, and the board has one — so a configuration with a board names it.",
+        hint: "Every issue works in its own git worktree, merged back when it is accepted; when that merge conflicts with work another issue landed first, this agent is dispatched into the workspace to resolve it and finish the merge. It must have the Shell capability, and the board has one, so a configuration with a board names it.",
       },
       {
         // The board's one optional param: a set that requires no reviewers is a board
@@ -1836,7 +1836,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "reviewers",
         label: "Reviewers required",
         kind: "boolean",
-        hint: "On, filing an issue requires naming one or more reviewers — from the agents this one lists with the Reviewer scope. Either way, every reviewer an issue names must approve the work before the issue is accepted and merged.",
+        hint: "On, filing an issue requires naming one or more reviewers from the agents this one lists with the Reviewer scope. Either way, every reviewer an issue names must approve the work before the issue is accepted and merged.",
       },
     ],
     tools: [
@@ -1865,7 +1865,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Issue creation",
         tools: ["create_epic", "create_issue"],
         operations: ["board.create_epic", "board.create_issue"],
-        hint: "Off gives this agent read-only access to the board — it still sees it and waits on issues, but files no new work.",
+        hint: "Off gives this agent read-only access to the board: it still sees it and waits on issues, but files no new work.",
       },
       {
         label: "Revise the board",
@@ -1884,7 +1884,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Subagents",
     group: "Delegation",
     purpose:
-      "Spawn other agents — run in parallel, block on them, message them, receive their return value.",
+      "Spawn other agents: run in parallel, block on them, message them, receive their return value.",
     params: [
       // The parallelism cap is deliberately **not** here: it bounds the whole run's
       // concurrency (including the agents a board dispatches, with no subagents
@@ -1909,7 +1909,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Inter-agent messaging",
         tools: ["send_message"],
         operations: ["delegation.send_message"],
-        hint: "Off leaves spawn-and-wait only — agents can't message one another mid-run.",
+        hint: "Off leaves spawn-and-wait only: agents can't message one another mid-run.",
       },
     ],
   },
@@ -1936,7 +1936,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Fork",
     group: "Delegation",
     purpose:
-      "Let this agent run a copy of itself — a child that opens knowing everything its parent knew.",
+      "Let this agent run a copy of itself: a child that opens knowing everything its parent knew.",
     defaultOn: false,
     tools: ["fork"],
     operations: ["delegation.fork"],
@@ -1959,7 +1959,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "States",
         kind: "states",
         required: true,
-        hint: "The machine, in order — the first state is the one it enters. Each state runs an agent profile this configuration declares (never another machine), and each transition names the state it leads to, when the model should take it, and which modules travel with it. A transition carries only the modules it names; one that names none starts its successor on nothing. A new transition is pre-filled with History.",
+        hint: "The machine, in order; the first state is the one it enters. Each state runs an agent profile this configuration declares (never another machine), and each transition names the state it leads to, when the model should take it, and which modules travel with it. A transition carries only the modules it names; one that names none starts its successor on nothing. A new transition is pre-filled with History.",
       },
     ],
     // Declared so the analyze page can name the transition under the machine that buys it,
@@ -2232,21 +2232,21 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     kind: "count",
     required: true,
     defaultValue: String(AUTHORED_MAX_PARALLEL),
-    hint: "How many of the run's agents may run at once, counting the root and every subagent, issue implementer and reviewer. An agent spawned while the pool is full queues for a slot rather than being refused, so this stops nothing — it only serializes the run. A suspended agent (waiting on its subagents or an issue) frees its slot, and takes priority over any not-yet-started agent when one opens up. Every run has a pool, so this one is always written.",
+    hint: "How many of the run's agents may run at once, counting the root and every subagent, issue implementer and reviewer. An agent spawned while the pool is full queues for a slot rather than being refused, so this stops nothing and only serializes the run. A suspended agent (waiting on its subagents or an issue) frees its slot, and takes priority over any not-yet-started agent when one opens up. Every run has a pool, so this one is always written.",
   },
   {
     key: "maxTurns",
     label: "Max turns per agent",
     kind: "count",
     placeholder: "unbounded",
-    hint: "Absent means unbounded — the host caps the run's wall-clock, so gg imposes no turn backstop unless you set one. An agent that reaches a set ceiling ends exhausted.",
+    hint: "Absent means unbounded: the host caps the run's wall-clock, so gg imposes no turn backstop unless you set one. An agent that reaches a set ceiling ends exhausted.",
   },
   {
     key: "maxRuntimeSecs",
     label: "Runtime (seconds)",
     kind: "count",
     placeholder: "no ceiling",
-    hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. Empty arms no such ceiling — the host caps the run's wall-clock either way. A run that spends a ceiling you set ends timed_out.",
+    hint: "Wall-clock budget for the whole run, observed by every agent at its own turn boundary. Empty arms no such ceiling, and the host caps the run's wall-clock either way. A run that spends a ceiling you set ends timed_out.",
   },
   {
     key: "maxConsecutiveErrors",
@@ -2254,7 +2254,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     kind: "count",
     placeholder: "no ceiling",
     defaultValue: String(AUTHORED_MAX_CONSECUTIVE_ERRORS),
-    hint: "How many error turns in a row end an agent. Seeded as a guardrail into a fresh configuration; clear the field to unarm the ceiling, and a run whose model errors every turn spends its turns, its runtime or its cost instead. A turn is an error when the work it declared could not be carried out — a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
+    hint: "How many error turns in a row end an agent. Seeded as a guardrail into a fresh configuration; clear the field to unarm the ceiling, and a run whose model errors every turn spends its turns, its runtime or its cost instead. A turn is an error when the work it declared could not be carried out: a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.",
   },
   {
     key: "maxErrorRate",
@@ -2262,7 +2262,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     kind: "fraction",
     placeholder: "no ceiling",
     defaultValue: String(AUTHORED_MAX_ERROR_RATE),
-    hint: "The fraction of an agent's recent turns that may be errors, breached only strictly above this — at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all. Seeded with its window as a guardrail into a fresh configuration; clear both fields to unarm.",
+    hint: "The fraction of an agent's recent turns that may be errors, breached only strictly above this, so at 0.5 over a window of ten, five errors is not a breach and six is. Needs a window; either alone is no ceiling at all. Seeded with its window as a guardrail into a fresh configuration; clear both fields to unarm.",
   },
   {
     key: "errorRateWindow",
@@ -2285,6 +2285,6 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     kind: "mib",
     required: true,
     defaultValue: String(AUTHORED_REPLAY_MAX_MIB),
-    hint: "Ceiling on the session capture journal gg writes as it runs — the one thing a run that hangs leaves behind. Crossing it stops capture and marks the record truncated; the run itself continues. Every run writes the journal, so this one is always written, and it has no unbounded setting: 0 would stop capture before its first line and is refused.",
+    hint: "Ceiling on the session capture journal gg writes as it runs, the one thing a run that hangs leaves behind. Crossing it stops capture and marks the record truncated; the run itself continues. Every run writes the journal, so this one is always written, and it has no unbounded setting: 0 would stop capture before its first line and is refused.",
   },
 ];

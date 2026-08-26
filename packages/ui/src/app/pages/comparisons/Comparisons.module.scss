@@ -49,7 +49,7 @@
   min-width: 0;
   font-size: t.$font-xl;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

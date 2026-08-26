@@ -142,7 +142,7 @@ export function UnpublishedPage() {
           <p className={styles.empty}>
             {filters.activeCount > 0
               ? "No unpublished runs match those filters."
-              : "Nothing waiting to publish — every reviewed run is public."}
+              : "Nothing waiting to publish; every reviewed run is public."}
           </p>
         )
       ) : (

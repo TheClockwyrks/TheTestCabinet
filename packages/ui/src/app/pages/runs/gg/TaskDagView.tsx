@@ -30,12 +30,20 @@ function derive(
     (id) => byId.get(id)?.status !== "done",
   );
   if (incomplete.length) return { state: "blocked", incomplete };
-  return { state: task.status === "in_progress" ? "active" : "ready", incomplete: [] };
+  return {
+    state: task.status === "in_progress" ? "active" : "ready",
+    incomplete: [],
+  };
 }
 
 // The buckets, in the order they are shown: what's happening now, then what can be
 // picked up, then what's waiting, then what's finished.
-const GROUP_ORDER: readonly TaskState[] = ["active", "ready", "blocked", "done"];
+const GROUP_ORDER: readonly TaskState[] = [
+  "active",
+  "ready",
+  "blocked",
+  "done",
+];
 const GROUP_LABELS: Record<TaskState, string> = {
   active: "In progress",
   ready: "Ready",
@@ -47,7 +55,7 @@ export function TaskDagView({ tasks }: TaskDagViewProps) {
   if (tasks.length === 0) {
     return (
       <p className={styles.empty}>
-        No tasks yet — the model builds its to-do list as it plans, and the tasks
+        No tasks yet. The model builds its to-do list as it plans, and the tasks
         capability streams it here.
       </p>
     );
@@ -70,25 +78,36 @@ export function TaskDagView({ tasks }: TaskDagViewProps) {
         <section key={state} className={styles.taskGroup}>
           <h3 className={styles.taskGroupHead}>
             {GROUP_LABELS[state]}
-            <span className={styles.taskGroupCount}>{groups[state].length}</span>
+            <span className={styles.taskGroupCount}>
+              {groups[state].length}
+            </span>
           </h3>
           <ul className={styles.taskList}>
             {groups[state].map((task) => {
               const { incomplete } = derive(task, byId);
               return (
-                <li key={task.id} className={styles.taskRow} data-task-state={state}>
+                <li
+                  key={task.id}
+                  className={styles.taskRow}
+                  data-task-state={state}
+                >
                   <span className={styles.taskBadge} data-task-state={state}>
                     {state}
                   </span>
                   <div className={styles.taskBody}>
                     <div className={styles.taskHead}>
-                      <span className={styles.taskTitle} data-status={task.status}>
+                      <span
+                        className={styles.taskTitle}
+                        data-status={task.status}
+                      >
                         {task.title}
                       </span>
                       <span className={styles.taskId}>{task.id}</span>
                     </div>
                     {task.description && (
-                      <span className={styles.taskDesc}>{task.description}</span>
+                      <span className={styles.taskDesc}>
+                        {task.description}
+                      </span>
                     )}
                     {task.blockedBy.length > 0 && (
                       <Blockers

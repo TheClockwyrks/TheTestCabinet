@@ -163,7 +163,7 @@ export function AgentIdentity({
             data-outcome={node.worktreeOutcome ?? "pending"}
             title={
               node.worktreeOutcome
-                ? `worktree ${node.worktree} — ${WORKTREE_OUTCOME[node.worktreeOutcome]}`
+                ? `worktree ${node.worktree}: ${WORKTREE_OUTCOME[node.worktreeOutcome]}`
                 : `isolated worktree ${node.worktree}`
             }
           >

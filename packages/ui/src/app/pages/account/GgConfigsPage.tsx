@@ -136,8 +136,8 @@ export function GgConfigsPage() {
           so "Your configurations" would be labelling the only thing there is. */}
       {!token ? (
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to register your own gg configurations — they are saved to
-          your account.
+          Sign in to register your own gg configurations. They are saved to your
+          account.
         </p>
       ) : loading ? (
         <LoadingState size="section" label="Loading configurations…" />

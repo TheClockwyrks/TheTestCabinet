@@ -758,7 +758,7 @@ export function GgConfigEditor({
           <section className={gg.limitsWidget}>
             <p className={runExec.sectionLabel}>
               Run limits
-              <HelpTip text="The ceilings a run is bounded by, applied to every agent whatever its type. A run stopped by one records which one stopped it. Leaving a field empty leaves that ceiling unarmed — gg arms none nobody wrote — except the two every run has: the agent pool and the capture journal, which are always written." />
+              <HelpTip text="The ceilings a run is bounded by, applied to every agent whatever its type. A run stopped by one records which one stopped it. Leaving a field empty leaves that ceiling unarmed, since gg arms none nobody wrote. The two exceptions every run has are the agent pool and the capture journal, which are always written." />
             </p>
             <div className={gg.limitGrid}>
               {RUN_LIMIT_SPECS.map((spec) => (
@@ -815,7 +815,7 @@ export function GgConfigEditor({
           <section className={gg.limitsWidget}>
             <p className={runExec.sectionLabel}>
               Session hooks
-              <HelpTip text="Commands and scripts gg runs at the run's two ends: before the root agent's first turn, and after its last. Session start may put text in front of the root; session end can neither block nor insert — it is where a run reports on itself. The model is never told a hook exists." />
+              <HelpTip text="Commands and scripts gg runs at the run's two ends: before the root agent's first turn, and after its last. Session start may put text in front of the root; session end can neither block nor insert, and is where a run reports on itself. The model is never told a hook exists." />
             </p>
             <GgHookList
               hooks={value.hooks}
@@ -945,7 +945,7 @@ export function GgConfigEditor({
           {value.modelSlots.length === 0 && (
             <p className={`${runExec.muted} ${gg.backdropNote}`}>
               No configuration slots. Each agent&rsquo;s own slots then reach
-              the launch form on their own — a configuration slot is how one
+              the launch form on their own. A configuration slot is how one
               launch input fills several agents&rsquo; slots at once.
             </p>
           )}
@@ -972,7 +972,7 @@ export function GgConfigEditor({
             </p>
             {launchInputs.length === 0 ? (
               <p className={runExec.muted}>
-                Nothing — a launch asks for no model at all, so every agent runs
+                Nothing. A launch asks for no model at all, so every agent runs
                 on the model its own binding pins.
               </p>
             ) : (
@@ -996,7 +996,7 @@ export function GgConfigEditor({
               >
                 <code>{view.slot.name.trim() || "unnamed"}</code> on{" "}
                 <code>{view.agent.name.trim() || view.agent.slug}</code> reaches
-                no launch input, so its bindings would run on no model — fill it
+                no launch input, so its bindings would run on no model. Fill it
                 with a configuration slot above, or mark it passthrough on that
                 agent.
               </p>
@@ -1008,7 +1008,7 @@ export function GgConfigEditor({
               >
                 <code>{view.slot.name.trim() || "unnamed"}</code> on{" "}
                 <code>{view.agent.name.trim() || view.agent.slug}</code> reaches
-                the launch form more than once — one binding takes exactly one
+                the launch form more than once. One binding takes exactly one
                 launch input, so clear its passthrough or drop a configuration
                 slot that fills it.
               </p>
@@ -1123,7 +1123,7 @@ export function GgConfigEditor({
                   {duplicateSlug && (
                     <p className={gg.fieldError}>
                       Another profile carries the slug <code>{agent.slug}</code>
-                      , so a reference to either would name both — rename one of
+                      , so a reference to either would name both. Rename one of
                       them, or override the imported profile&rsquo;s slug.
                     </p>
                   )}

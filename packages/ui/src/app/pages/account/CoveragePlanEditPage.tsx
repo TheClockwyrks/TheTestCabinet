@@ -201,7 +201,7 @@ export function CoveragePlanEditPage() {
           </div>
         </header>
         <p className={`${exec.notice} ${exec.warn}`}>
-          Sign in to edit coverage plans — they are saved to your account.
+          Sign in to edit coverage plans. They are saved to your account.
         </p>
       </PageLayout>
     );
@@ -270,7 +270,7 @@ export function CoveragePlanEditPage() {
           <p className={styles.fieldHint}>
             A top-up walks the cells in the order above, skips the ones already
             at their target, and enqueues whole cases at a time until the buffer
-            is full — so a case&rsquo;s repeats arrive together and can be
+            is full, so a case&rsquo;s repeats arrive together and can be
             reviewed against each other. Pausing and halting live on the
             plan&rsquo;s dashboard.
           </p>
@@ -278,8 +278,8 @@ export function CoveragePlanEditPage() {
           <p className={exec.sectionLabel}>Model groups</p>
           {comboGroups.length === 0 ? (
             <p className={styles.empty}>
-              No model groups yet — create some on the Groups tab, or pin
-              one-off combinations below.
+              No model groups yet. Create some on the Groups tab, or pin one-off
+              combinations below.
             </p>
           ) : (
             <div className={styles.groupPicks}>
@@ -308,7 +308,7 @@ export function CoveragePlanEditPage() {
           <p className={exec.sectionLabel}>Case groups</p>
           {caseGroupsList.length === 0 ? (
             <p className={styles.empty}>
-              No case groups yet — create some on the Groups tab, or pin one-off
+              No case groups yet. Create some on the Groups tab, or pin one-off
               cases below.
             </p>
           ) : (

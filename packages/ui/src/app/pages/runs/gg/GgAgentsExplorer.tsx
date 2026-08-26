@@ -636,7 +636,7 @@ function ModulesFolder({
                       file that answers it in full is one click further. */}
                   <span
                     className={cx(panels.fsMeta, panels.fsMetaTrailing)}
-                    title={`${module.id} — held at once by ${concurrentHolders(
+                    title={`${module.id}, held at once by ${concurrentHolders(
                       module,
                     )
                       .map((holder) => holder.agentId)
@@ -649,7 +649,7 @@ function ModulesFolder({
                 isCarried(module) && (
                   <span
                     className={cx(panels.fsMeta, panels.fsMetaTrailing)}
-                    title={`${module.id} — passed through ${module.holders
+                    title={`${module.id}, passed through ${module.holders
                       .map((holder) => holder.agentId)
                       .join(" → ")}, one at a time`}
                   >
@@ -705,7 +705,7 @@ function ModuleFile({
       <div className={panels.panelBody}>
         <p className={panels.empty}>
           This instance is not holding a {moduleKindLabel(kind).toLowerCase()}{" "}
-          module — a succession may have dropped it, or its profile may never
+          module. A succession may have dropped it, or its profile may never
           have enabled one.
         </p>
       </div>
@@ -1050,8 +1050,8 @@ function AgentCallsPanel({
           className={panels.toolsRate}
           title={
             (asApis
-              ? "API function calls per assistant response — "
-              : "Tool and function calls per assistant response — ") +
+              ? "API function calls per assistant response: "
+              : "Tool and function calls per assistant response: ") +
             `${callRatePhrase(totalCalls, responses)}. A proxy for efficiency: ` +
             "an agent that does more per round trip spends fewer responses, less latency, " +
             "and less context reaching the same place."
@@ -1187,8 +1187,8 @@ function ToolSurface({
           title={
             "Every tool this instance was offered, after its capabilities, its allowlist " +
             "and the modules it bound were resolved. A tool it did not use reads a real 0× " +
-            "and is dimmed, not dropped — offered and unused is a different finding from " +
-            "never offered."
+            "and is dimmed, not dropped, because offered and unused is a different " +
+            "finding from never offered."
           }
         >
           {used} of {tools.length} called
@@ -1252,8 +1252,8 @@ function ApiSurface({
           title={
             "The modules this instance's programs are bound against. Every call a program " +
             "makes is recorded under the function the model wrote, so each row carries its " +
-            "own figure — a view, an ending and a documentation lookup are counted exactly " +
-            "as a file read is — and a function it was offered and did not use reads a " +
+            "own figure. A view, an ending and a documentation lookup are counted exactly " +
+            "as a file read is, and a function it was offered and did not use reads a " +
             "real 0× rather than an absence."
           }
         >

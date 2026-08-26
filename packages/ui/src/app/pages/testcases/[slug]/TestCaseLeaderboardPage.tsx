@@ -500,12 +500,12 @@ function ReviewLeaderboard({ ctx }: { ctx: DetailTabContext }) {
           <p className={styles.empty}>
             {narrowed ? (
               <>
-                No scored runs of {variant.name} in the selected scope — widen
+                No scored runs of {variant.name} in the selected scope. Widen
                 the scope, or review a run of this one.
               </>
             ) : (
               <>
-                No scored runs of {variant.name} yet — the leaderboard ranks
+                No scored runs of {variant.name} yet. The leaderboard ranks
                 models once their runs have been reviewed.
               </>
             )}
@@ -635,9 +635,9 @@ function PerformanceLeaderboard({ ctx }: { ctx: DetailTabContext }) {
       <section className={styles.section}>
         <Panel>
           <p className={styles.empty}>
-            No correct runs of {cohort} yet — the leaderboard ranks models by
-            the fuel of their best correct engine, and only a correct engine
-            earns a fuel score.
+            No correct runs of {cohort} yet. The leaderboard ranks models by the
+            fuel of their best correct engine, and only a correct engine earns a
+            fuel score.
           </p>
         </Panel>
       </section>
@@ -651,8 +651,8 @@ function PerformanceLeaderboard({ ctx }: { ctx: DetailTabContext }) {
     <section className={styles.section}>
       <Panel>
         <p>
-          Ranked by total fuel — lower is better. Each model counts once, at its
-          most efficient correct run of {version}.
+          Ranked by total fuel, where lower is better. Each model counts once,
+          at its most efficient correct run of {version}.
         </p>
         <div className={styles.wrap}>
           <div

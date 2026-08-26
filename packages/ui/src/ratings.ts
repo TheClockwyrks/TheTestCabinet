@@ -76,7 +76,7 @@ export const RATING_META: Record<Rating, RatingMeta> = {
   passable: {
     label: "Passable",
     description:
-      "Implemented to spec and playable, but with rough edges beyond the minor issues of a great run — noticeable, though not enough to deviate from the spec or impair playability.",
+      "Implemented to spec and playable, but with rough edges beyond the minor issues of a great run. They are noticeable, though not enough to deviate from the spec or impair playability.",
   },
   scuffed: {
     label: "Scuffed",
@@ -101,7 +101,7 @@ export const AESTHETIC_META: Record<AestheticRating, RatingMeta> = {
   legendary: {
     label: "Legendary",
     description:
-      "Exceptionally beautiful — reserved for a build whose look and feel stand above anything the case has seen. Amazing is the normal maximum.",
+      "Exceptionally beautiful, reserved for a build whose look and feel stand above anything the case has seen. Amazing is the normal maximum.",
   },
   amazing: {
     label: "Amazing",
@@ -121,7 +121,7 @@ export const AESTHETIC_META: Record<AestheticRating, RatingMeta> = {
   slop: {
     label: "Slop",
     description:
-      "Careless or ugly presentation — clashing, broken, or missing visuals and feel that actively detract from playing.",
+      "Careless or ugly presentation: clashing, broken, or missing visuals and feel that actively detract from playing.",
   },
 };
 

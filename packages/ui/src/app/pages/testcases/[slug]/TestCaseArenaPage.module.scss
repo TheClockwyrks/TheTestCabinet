@@ -1,4 +1,5 @@
 @use "../../../styles/tokens" as t;
+@use "../../../styles/halo" as h;
 @use "../../../styles/surfaces" as s;
 @use "../../../styles/forms" as f;
 
@@ -19,6 +20,7 @@
 .muted {
   color: t.$color-text-muted;
   margin: 0 0 t.$space-md;
+  @include h.halo;
 }
 
 // A two-up grid of labelled selects, mirroring the run-execution form.

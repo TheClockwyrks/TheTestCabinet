@@ -177,7 +177,7 @@ export function RunMonitorPage() {
 
       {!worker && (
         <p className={`${styles.notice} ${styles.warn}`}>
-          No worker connected — the live stream comes from the worker that ran
+          No worker connected. The live stream comes from the worker that ran
           this job.
         </p>
       )}
@@ -201,7 +201,7 @@ export function RunMonitorPage() {
       )}
       {status.kind === "done" && status.outcome.kind === "completed" && (
         <p className={`${styles.notice} ${styles.ok}`}>
-          Run complete — state {status.outcome.record.status.state}, loaded{" "}
+          Run complete: state {status.outcome.record.status.state}, loaded{" "}
           {String(status.outcome.record.validation.loaded)}.{" "}
           <Link to={routes.runDetail(status.outcome.record.id)}>
             Open the run to review and publish it.

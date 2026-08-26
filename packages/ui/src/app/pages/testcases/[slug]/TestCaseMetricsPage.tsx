@@ -343,7 +343,7 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
             {narrowed ? (
               <>
                 Need at least {MIN_RUNS} runs of {variant.name} in the selected
-                scope to chart a distribution — widen the scope.
+                scope to chart a distribution. Widen the scope.
               </>
             ) : (
               <>
@@ -378,7 +378,7 @@ export function MetricsContent({ ctx }: { ctx: DetailTabContext }) {
             sort={sort}
             tieBreak={tieBreak}
             actions={sortControl}
-            empty={`No scored runs of ${variant.name} yet — points appear once runs have been reviewed.`}
+            empty={`No scored runs of ${variant.name} yet. Points appear once runs have been reviewed.`}
           />
           <MetricChartWidget
             title="Average tokens"

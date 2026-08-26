@@ -38,7 +38,7 @@ export function ProvidersView() {
   if (state.status === "unavailable") {
     return (
       <p className={styles.empty}>
-        Provider statistics need a connected backend — they aren&apos;t part of
+        Provider statistics need a connected backend. They aren&apos;t part of
         the static gallery.
       </p>
     );
@@ -46,7 +46,7 @@ export function ProvidersView() {
   if (state.status === "error") {
     return (
       <p className={styles.empty}>
-        Couldn&apos;t load provider statistics — {state.message}
+        Couldn&apos;t load provider statistics. {state.message}
       </p>
     );
   }
@@ -56,21 +56,8 @@ export function ProvidersView() {
 
   return (
     <div className={styles.view}>
-      {/* The honesty line: how much of the corpus can say anything about
-          providers at all. Provider attribution is recorded per model call, so
-          runs recorded before it existed carry none — absent data reads as
-          absent, never as a zero. */}
-      <p className={styles.scanned}>
-        {formatCompact(stats.runsScanned)} gg runs scanned ·{" "}
-        {formatCompact(stats.runsWithProviderData)} with provider attribution
-      </p>
-
       {noEvidence ? (
-        <p className={styles.empty}>
-          No provider data yet. Providers are recorded per model call on newly
-          recorded gg runs — older runs carry none — and no probes have been
-          run.
-        </p>
+        <p className={styles.empty}>No provider data yet.</p>
       ) : (
         <>
           {stats.providers.length > 0 && (
@@ -90,7 +77,7 @@ export function ProvidersView() {
             <section className={styles.section}>
               <h2 className={styles.sectionTitle}>Probe evidence</h2>
               <p className={styles.sectionNote}>
-                From readiness probes — synthetic completion calls, not recorded
+                From readiness probes: synthetic completion calls, not recorded
                 runs.
               </p>
               {stats.probes.map((entry) => (
@@ -142,7 +129,11 @@ function ProviderBlock({
           <span>ERRORS</span>
         </div>
         {entry.models.map((row) => (
-          <div className={styles.row} role="row" key={row.modelId ?? "\u0000unknown"}>
+          <div
+            className={styles.row}
+            role="row"
+            key={row.modelId ?? "\u0000unknown"}
+          >
             <span className={row.modelId == null ? styles.muted : undefined}>
               {nameOf(row.modelId)}
             </span>

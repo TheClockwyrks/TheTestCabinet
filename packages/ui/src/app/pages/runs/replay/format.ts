@@ -553,7 +553,7 @@ export function parseRecording(data: unknown): RecordingParse {
   if (!isRecord(data)) {
     return {
       ok: false,
-      message: "This file is not an engine replay — it is not a JSON object.",
+      message: "This file is not an engine replay: it is not a JSON object.",
     };
   }
   if (!isNumber(data.format)) {

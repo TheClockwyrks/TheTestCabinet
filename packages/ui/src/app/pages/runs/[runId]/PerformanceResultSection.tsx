@@ -29,7 +29,7 @@ const MIN_FIELD_FOR_PERCENTILE = 5;
  */
 function overshootDetail(fuel: number, fuelLimit: number | null): string {
   if (fuelLimit === null || fuelLimit <= 0) {
-    return `correct, but ${formatInteger(fuel)} fuel — over the ceiling`;
+    return `correct, but ${formatInteger(fuel)} fuel, over the ceiling`;
   }
   const pct = Math.round(((fuel - fuelLimit) / fuelLimit) * 100);
   return `correct, but ${pct}% over the ${formatInteger(fuelLimit)} fuel ceiling`;
@@ -174,7 +174,7 @@ function PerformanceRankPanel({ run, fuel }: { run: RunRecord; fuel: number }) {
           <MetricTile
             label="Field"
             value={`${fieldSize} ${fieldSize === 1 ? "model" : "models"} ranked`}
-            title="How many distinct models have a correct run of this scenario set — too few for a meaningful percentile yet."
+            title="How many distinct models have a correct run of this scenario set. Too few for a meaningful percentile yet."
           />
         )}
       </div>
@@ -182,7 +182,7 @@ function PerformanceRankPanel({ run, fuel }: { run: RunRecord; fuel: number }) {
         <p className={styles.secondary}>
           This model already has a more efficient run of this scenario set
           (best: {formatInteger(modelBestFuel)} fuel), so this run is a slower
-          duplicate — it does not change the model's leaderboard position.
+          duplicate that does not change the model's leaderboard position.
         </p>
       ) : null}
     </Panel>
@@ -335,23 +335,23 @@ export function PerformanceResultBody({
   // test failed, say so — the stress scenarios were skipped, not run-and-wrong.
   const passLine = correct
     ? nSmoke > 0
-      ? `Correct — reproduced the reference oracle's exact state on every held-out scenario: all ${nSmoke} smoke ${
+      ? `Correct. Reproduced the reference oracle's exact state on every held-out scenario: all ${nSmoke} smoke ${
           nSmoke === 1 ? "test" : "tests"
         } and all ${nStress} stress ${nStress === 1 ? "scenario" : "scenarios"}.`
-      : `Correct — all ${total} held-out ${
+      : `Correct. All ${total} held-out ${
           total === 1 ? "scenario" : "scenarios"
         } reproduced the reference oracle's exact state.`
     : total === 0
-      ? "Incorrect — this run produced no scored result."
+      ? "Incorrect. This run produced no scored result."
       : nSmoke > 0 && !smokeAllPass
-        ? `Incorrect — ${smokePass} of ${nSmoke} smoke ${
+        ? `Incorrect. ${smokePass} of ${nSmoke} smoke ${
             nSmoke === 1 ? "test" : "tests"
           } passed. The stress scenarios run only after every smoke test passes, so they were not run.`
-        : `Incorrect — ${stressPass} of ${nStress} stress ${
+        : `Incorrect. ${stressPass} of ${nStress} stress ${
             nStress === 1 ? "scenario" : "scenarios"
           } passed within the fuel ceiling; a run earns a fuel score only when every one does.${
             stressOver > 0
-              ? ` ${stressOver} produced the correct answer but ran over the ceiling — see how far over below.`
+              ? ` ${stressOver} produced the correct answer but ran over the ceiling; see how far over below.`
               : ""
           }`;
 
@@ -371,7 +371,7 @@ export function PerformanceResultBody({
         <MetricTile
           label="Total fuel"
           value={totalFuel === null ? "—" : formatInteger(totalFuel)}
-          title="Lower is better — the fuel a correct engine consumed across the stress scenarios (smoke tests are not metered)."
+          title="Lower is better. The fuel a correct engine consumed across the stress scenarios (smoke tests are not metered)."
         />
       </div>
 
@@ -386,7 +386,7 @@ export function PerformanceResultBody({
             in isolation (a belt, a side-load, a splitter, an inserter, an
             assembler). Every smoke test must pass before the stress scenarios
             run, so a broken engine is caught immediately. Graded on correctness
-            only — fuel is not scored here.
+            only; fuel is not scored here.
           </p>
           <ScenarioTable
             rows={smokeRows}
@@ -406,7 +406,7 @@ export function PerformanceResultBody({
           ) : null}
           <p className={styles.secondary}>
             {stressSkipped
-              ? "The large held-out scenarios whose fuel total is the score — not run this time, because a smoke test failed first."
+              ? "The large held-out scenarios whose fuel total is the score. They were not run this time, because a smoke test failed first."
               : "The large held-out scenarios whose fuel total is the score. Correctness is a gate: only a correct engine earns a fuel score, and lower fuel is better."}
           </p>
           <ScenarioTable

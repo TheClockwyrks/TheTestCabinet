@@ -1130,15 +1130,7 @@
 
 .tabActive {
   color: t.$color-accent;
-  // Keep the inherited readability halo and back the accent glow with it —
-  // `var(--ttc-glow)` alone has no contrast where an active label lands over the
-  // backdrop's warm sun. One declaration, because a bare `text-shadow` would
-  // override the halo `.tab` set.
-  text-shadow:
-    0 0 0.5rem t.$color-bg,
-    0 0 0.4rem t.$color-bg,
-    0 0 0.25rem t.$color-bg,
-    var(--ttc-glow);
+  @include h.halo-glow;
   border-bottom-color: t.$color-accent;
 }
 

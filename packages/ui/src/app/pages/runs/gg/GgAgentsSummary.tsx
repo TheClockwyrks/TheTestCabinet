@@ -76,8 +76,8 @@ const numberFmt = new Intl.NumberFormat("en-US");
 function callRateTitle(agent: GgAgentSummary): string {
   return (
     (agent.calls.surface === "api"
-      ? "API function calls per assistant response — "
-      : "Tool and function calls per assistant response — ") +
+      ? "API function calls per assistant response: "
+      : "Tool and function calls per assistant response: ") +
     `${callRatePhrase(agent.calls.totalCalls, agent.turns)}, ` +
     "summed over every instance of this agent. " +
     "A proxy for efficiency: an agent that does more per round trip spends fewer responses, " +
@@ -188,7 +188,7 @@ export function GgAgentsSummary({
   if (summaries.length === 0) {
     return (
       <p className={styles.empty}>
-        No agents yet — the run has not announced its configuration.
+        No agents yet. The run has not announced its configuration.
       </p>
     );
   }
@@ -554,7 +554,7 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
       ? "Dimmed entries read a real 0×: offered, and not used."
       : null,
     shown.some((entry) => entry.offeredBy < surface.reportingInstances)
-      ? `A fraction marks an entry only some of the ${plural(surface.reportingInstances, "instance")} were offered — where an instance stands in its state machine gates what it may call.`
+      ? `A fraction marks an entry only some of the ${plural(surface.reportingInstances, "instance")} were offered, because where an instance stands in its state machine gates what it may call.`
       : null,
   ].filter((note): note is string => note != null);
 
@@ -701,7 +701,7 @@ function entryTitle(
 ): string {
   const outcome = surfaceCallPhrase(qualified, count);
   if (entry.offeredBy >= instances) return outcome;
-  return `${outcome} Offered to ${entry.offeredBy} of the ${plural(instances, "instance")} that reported a surface — an instance's position in its state machine gates what it may call, so an entry only some of them were offered is a fact about where they stood rather than an inconsistency.`;
+  return `${outcome} Offered to ${entry.offeredBy} of the ${plural(instances, "instance")} that reported a surface. An instance's position in its state machine gates what it may call, so an entry only some of them were offered is a fact about where they stood rather than an inconsistency.`;
 }
 
 // The instances themselves, each a chip that opens it in the Instances explorer — the way
@@ -780,12 +780,12 @@ const SHARING_LABELS: Record<GgAgentModuleSharing, string> = {
 // `carried`, the one that a holder count alone gets wrong.
 const SHARING_HINTS: Record<GgAgentModuleSharing, string> = {
   agent:
-    "One store, bound by every instance of this agent at once — what one writes, the others read. This is the only shape whose contents belong to the agent rather than to an instance.",
+    "One store, bound by every instance of this agent at once: what one writes, the others read. This is the only shape whose contents belong to the agent rather than to an instance.",
   instance:
     "Every instance holds a store of its own. Nothing here belongs to the agent, so nothing is shown: any single rendering would be a lie about the other instances.",
   carried:
-    "One store, but held one instance at a time — a succession handed it on. It reads as several holders and is not sharing: only ever one of them had it.",
-  run: "The store these instances bind reaches beyond this agent — the run's board, or a store a spawner of another profile owns.",
+    "One store, but held one instance at a time, a succession having handed it on. It reads as several holders and is not sharing: only ever one of them had it.",
+  run: "The store these instances bind reaches beyond this agent, to the run's board or to a store a spawner of another profile owns.",
   mixed:
     "Several stores, at least one of them genuinely shared: some instances bound it and some did not. Usually worth opening.",
 };
@@ -957,7 +957,7 @@ function sharingSentence(row: GgAgentModuleSummary): string {
   const stores = row.instances.length;
   switch (row.sharing) {
     case "agent":
-      return `One store — ${first?.id} — bound by ${plural(row.holdingInstances, "instance")} of this agent at once: what one writes, the next reads.`;
+      return `One store, ${first?.id}, bound by ${plural(row.holdingInstances, "instance")} of this agent at once: what one writes, the next reads.`;
     case "carried": {
       const holders = first?.holders ?? [];
       const from = holders[0]?.agentId ?? "its first holder";
@@ -965,13 +965,13 @@ function sharingSentence(row: GgAgentModuleSummary): string {
       return `One store, held one instance at a time: ${first?.id} passed from ${from} to ${to}, so only ever one instance had it.`;
     }
     case "run":
-      return `${first?.id} reaches beyond this agent — ${plural(first?.holders.length ?? 0, "holder")} across the run — so it is the run's state rather than this agent's.`;
+      return `${first?.id} reaches beyond this agent, to ${plural(first?.holders.length ?? 0, "holder")} across the run, so it is the run's state rather than this agent's.`;
     case "instance":
       return row.holdingInstances === 1
         ? `The one instance holding ${label} has a store of its own.`
         : `${plural(stores, "store")} for ${plural(row.holdingInstances, "instance")}: every instance's ${label} is its own, so there is nothing here that belongs to the agent.`;
     case "mixed":
-      return `${plural(stores, "store")} across ${plural(row.holdingInstances, "instance")} — some bound a shared one and some did not.`;
+      return `${plural(stores, "store")} across ${plural(row.holdingInstances, "instance")}: some bound a shared one and some did not.`;
   }
 }
 
@@ -1000,7 +1000,7 @@ function AgentScopedStore({
       aria-label={`${agent.name} agent-scoped ${row.kind}`}
     >
       <span className={styles.agentScopedLabel}>
-        Agent-scoped — one store, read here once for the whole agent rather than
+        Agent-scoped: one store, read here once for the whole agent rather than
         once per instance
       </span>
       {/* The same strip the store carries on the other two surfaces, read from no holder
@@ -1158,7 +1158,7 @@ function AgentStats({ agent }: { agent: GgAgentSummary }) {
           agent.errors.turns === 0 ? "—" : numberFmt.format(agent.errors.errors)
         }
         sub={errorRatePhrase(agent.errors)}
-        title="Turns whose declared work could not be carried out — a failed model call, a program that did not compile, threw, or hit a sandbox ceiling, or a turn that declared no work at all. A tool call that failed inside a program that carried on is not one."
+        title="Turns whose declared work could not be carried out: a failed model call, a program that did not compile, threw, or hit a sandbox ceiling, or a turn that declared no work at all. A tool call that failed inside a program that carried on is not one."
       />
       <Stat
         label="cost each"
@@ -1246,7 +1246,7 @@ function statusSummary(counts: Record<GgAgentStatus, number>): string {
 // list means — a view is material the agent asked for, not a place material came from.
 const ATTRIBUTION_EMPTY: Record<AttributionView, string> = {
   views:
-    "This agent opened no views — it neither asked to see a file nor showed itself a value.",
+    "This agent opened no views. It neither asked to see a file nor showed itself a value.",
   tools: "Nothing in this agent's window came from a tool.",
   sources: "Nothing in this agent's window was attributed to a context band.",
 };

@@ -50,7 +50,7 @@
   min-width: 0;
   font-size: t.$font-xl;
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -83,6 +83,7 @@
 }
 
 .summaryStat {
+  @include h.halo;
   color: t.$color-text-muted;
   font-family: var(--ttc-font);
   font-size: t.$font-md;

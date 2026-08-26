@@ -129,4 +129,27 @@ describe("the clock", () => {
     expect(result.current.speed).toBe(4);
     expect(result.current.frame).toBe(3);
   });
+
+  it("starts running where the caller asked it to play itself", () => {
+    const { result } = renderHook(() =>
+      useReplayClock(timelineFor([recordingOf(4, 16)]), { autoPlay: true }),
+    );
+    expect(result.current.playing).toBe(true);
+    expect(result.current.frame).toBe(0);
+  });
+
+  it("plays the next recording too, so a stepped carousel keeps moving", () => {
+    const first = timelineFor([recordingOf(10, 16)]);
+    const second = timelineFor([recordingOf(4, 16)]);
+    const { result, rerender } = renderHook(
+      ({ timeline }: { timeline: readonly number[] }) =>
+        useReplayClock(timeline, { autoPlay: true }),
+      { initialProps: { timeline: first } },
+    );
+    act(() => result.current.seek(8));
+    expect(result.current.playing).toBe(false);
+    rerender({ timeline: second });
+    expect(result.current.frame).toBe(0);
+    expect(result.current.playing).toBe(true);
+  });
 });

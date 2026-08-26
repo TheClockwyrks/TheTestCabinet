@@ -39,15 +39,14 @@
 
   &:hover {
     text-decoration: none;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 
 .harness {
   font-size: t.$font-lg;
   color: t.$color-accent-2;
-  text-shadow: var(--ttc-glow);
-  @include h.halo;
+  @include h.halo-glow;
 }
 
 .subjectRow {
@@ -65,7 +64,7 @@
 
 .variant {
   color: t.$color-accent-2;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 // The engine reads as loudly as the variant beside it: the two together are what
@@ -73,7 +72,7 @@
 // the other.
 .engine {
   color: t.$color-accent-2;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 // The model name links to its detail page. It lifts out of the muted subject
@@ -84,7 +83,7 @@
 
   &:hover {
     text-decoration: none;
-    text-shadow: var(--ttc-glow);
+    @include h.halo-glow;
   }
 }
 
@@ -218,16 +217,7 @@
 
 .tabActive {
   color: t.$color-accent;
-  // Keep the inherited readability halo (the `.tab` `h.halo` dark layers) and
-  // back the accent glow with it — `var(--ttc-glow)` alone has no contrast where
-  // an active label lands over the warm sun. Merged into one declaration because
-  // a bare `text-shadow` would override the halo the `.tab` mixin set. (Mirrors
-  // `.comment` in PromptHeader.module.scss.)
-  text-shadow:
-    0 0 0.5rem t.$color-bg,
-    0 0 0.4rem t.$color-bg,
-    0 0 0.25rem t.$color-bg,
-    var(--ttc-glow);
+  @include h.halo-glow;
   border-bottom-color: t.$color-accent;
 }
 

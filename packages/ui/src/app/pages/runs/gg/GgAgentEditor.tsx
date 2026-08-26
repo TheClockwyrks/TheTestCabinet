@@ -505,7 +505,7 @@ export function GgAgentEditor({
             <label className={`${runExec.field} ${gg.agentIdField}`}>
               <span className={runExec.fieldLabel}>
                 Slug
-                <HelpTip text="The name the model is shown and passes back when it spawns, dispatches or transitions to this profile — and the name the run's telemetry, its record and the query language key on afterwards. The model reads it, so it is lowercase letters and digits in groups separated by single hyphens, unique within the configuration, and worth making it say what the profile is for. Nothing in the configuration points at it, so renaming it here changes this one name and nothing else." />
+                <HelpTip text="The name the model is shown and passes back when it spawns, dispatches or transitions to this profile, and the name the run's telemetry, its record and the query language key on afterwards. The model reads it, so it is lowercase letters and digits in groups separated by single hyphens, unique within the configuration, and worth making it say what the profile is for. Nothing in the configuration points at it, so renaming it here changes this one name and nothing else." />
               </span>
               <input
                 className={runExec.input}
@@ -619,7 +619,7 @@ export function GgAgentEditor({
                 <label className={`${runExec.field} ${gg.cacheTtlField}`}>
                   <FieldLabel
                     label="Prompt cache"
-                    hint="How long this agent asks the provider to keep its stable cache entries — its opening context and the cached points a later turn reads. The one-hour lifetime is charged a higher write premium (on Anthropic, 2× the input rate against 5 minutes' 1.25×), and is only read back by an agent whose turns are long enough, or spread far enough apart, that five minutes would have expired before the next one."
+                    hint="How long this agent asks the provider to keep its stable cache entries: its opening context and the cached points a later turn reads. The one-hour lifetime is charged a higher write premium (on Anthropic, 2× the input rate against 5 minutes' 1.25×), and is only read back by an agent whose turns are long enough, or spread far enough apart, that five minutes would have expired before the next one."
                   />
                   <select
                     className={runExec.select}
@@ -898,7 +898,7 @@ export function GgAgentEditor({
         <section className={gg.rosterWidget}>
           <p className={runExec.sectionLabel}>
             Opening turn
-            <HelpTip text="Before this agent's first turn, gg writes and runs one program of its own: a documentation search naming every listed module, which leaves the module's brief and function list in the window, and then a documentation view opened per listed function, which puts its full signature there. Listing a module and opening a function's documentation are independent — a function's documentation can be opened without its module being listed, and a listed module opens no function on its own. Leaving both lists empty seeds no program at all." />
+            <HelpTip text="Before this agent's first turn, gg writes and runs one program of its own: a documentation search naming every listed module, which leaves the module's brief and function list in the window, and then a documentation view opened per listed function, which puts its full signature there. Listing a module and opening a function's documentation are independent. A function's documentation can be opened without its module being listed, and a listed module opens no function on its own. Leaving both lists empty seeds no program at all." />
             {/* One reset for the tab as a whole: the two lists are one setting, seeded to
                 the same default a fresh agent gets, and the control shows itself exactly
                 while they have moved off it. Sat beside the section label rather than in a
@@ -915,7 +915,7 @@ export function GgAgentEditor({
             brief and the list of its functions in the window; opening a
             function&rsquo;s documentation puts its full signature there. The
             two are independent, and only what this agent holds can be listed or
-            opened — the rest is dropped when the agent is saved.
+            opened. The rest is dropped when the agent is saved.
           </p>
           <div className={gg.capList}>
             {GG_MODULES.map((module) => {
@@ -1000,8 +1000,8 @@ export function GgAgentEditor({
           <p className={`${runExec.muted} ${gg.backdropNote}`}>
             The models this agent is handed at launch. Its own binding, and
             every capability that picks a model of its own, defers to one of
-            these — which is what lets one saved agent be run against a
-            different model each time instead of baking one in.
+            these, which is what lets one saved agent be run against a different
+            model each time instead of baking one in.
           </p>
           {agent.modelSlots.map((slot) => {
             // What will put a model in this slot when the run starts. A passthrough slot
@@ -1060,7 +1060,7 @@ export function GgAgentEditor({
                     />
                     <span className={gg.featureName}>Passthrough</span>
                     <HelpTip
-                      text={`A passthrough slot is asked for at launch on its own, under \`${agent.slug || "<slug>"}.${slot.name.trim() || "<slot name>"}\` — so this agent's model is chosen separately from every other agent's. A slot that is not passthrough is filled by one of the configuration's own slots naming it, which is how several agents are run off one launch input. A slot reaches the launch form one way or the other, and never both.`}
+                      text={`A passthrough slot is asked for at launch on its own, under \`${agent.slug || "<slug>"}.${slot.name.trim() || "<slot name>"}\`, so this agent's model is chosen separately from every other agent's. A slot that is not passthrough is filled by one of the configuration's own slots naming it, which is how several agents are run off one launch input. A slot reaches the launch form one way or the other, and never both.`}
                     />
                   </label>
                   {!readOnly && (
@@ -1121,8 +1121,8 @@ export function GgAgentEditor({
             <code>spawn_subagent</code>), <strong>Implementer</strong>{" "}
             (assignable as an issue&rsquo;s agent), and{" "}
             <strong>Reviewer</strong> (namable among an issue&rsquo;s
-            reviewers). The three are independent. Describe when to use a target
-            — the description is what this agent sees.
+            reviewers). The three are independent. Describe when to use a
+            target; the description is what this agent sees.
           </p>
           <div className={gg.subagentList}>
             {config.agents.map((target) => {
@@ -1190,7 +1190,7 @@ export function GgAgentEditor({
         <section className={gg.rosterWidget}>
           <p className={runExec.sectionLabel}>
             Hooks
-            <HelpTip text="Commands and scripts gg runs around what this agent does — a file write, a shell command, a compaction, and its own start and stop. A hook can stop the operation it precedes and put text in front of the model. The model is never told a hook exists, is offered no tool for one, and cannot decline one." />
+            <HelpTip text="Commands and scripts gg runs around what this agent does: a file write, a shell command, a compaction, and its own start and stop. A hook can stop the operation it precedes and put text in front of the model. The model is never told a hook exists, is offered no tool for one, and cannot decline one." />
           </p>
           <GgHookList
             hooks={agent.hooks}

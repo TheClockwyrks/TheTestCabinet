@@ -267,9 +267,7 @@ function renderActivity(
       <DonutChartWidget
         framed={false}
         title="Test cases"
-        segments={categorySegments(stats.testCases, (s) =>
-          testCaseName(s.key),
-        )}
+        segments={categorySegments(stats.testCases, (s) => testCaseName(s.key))}
         total={stats.windowReviews}
         centerLabel="reviews"
         emptyMessage="No reviewed test cases yet."
@@ -288,7 +286,7 @@ function renderActivity(
         segments={ratingSegments}
         total={ratingTotal}
         centerLabel="rated"
-        emptyMessage="No domain-rated reviews yet — game jams are graded, not rated."
+        emptyMessage="No domain-rated reviews yet. Game jams are graded, not rated."
       />
     </div>
   );

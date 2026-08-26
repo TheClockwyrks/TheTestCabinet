@@ -180,7 +180,7 @@ describe("RunReviewEditor on a validator-rated run", () => {
     expect(
       screen.getByRole("button", { name: "AI paddle tracks the ball (Solo)" }),
     ).toBeTruthy();
-    expect(screen.getByText(/Pass — decided by this run/)).toBeTruthy();
+    expect(screen.getByText(/Pass, decided by this run/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "← Previous" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Next →" })).toBeTruthy();
 
@@ -206,15 +206,19 @@ describe("RunReviewEditor on a validator-rated run", () => {
     await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
 
     // Landing on the first point: the passed serve, read from the record.
-    expect(screen.getByText("Pass — decided by this run’s validators.", {
-      exact: false,
-    })).toBeTruthy();
+    expect(
+      screen.getByText("Pass, decided by this run’s validators.", {
+        exact: false,
+      }),
+    ).toBeTruthy();
 
     // Stepping forward shows the failed AI point, still with no control.
     fireEvent.click(screen.getByRole("button", { name: "Next →" }));
-    expect(screen.getByText("Fail — decided by this run’s validators.", {
-      exact: false,
-    })).toBeTruthy();
+    expect(
+      screen.getByText("Fail, decided by this run’s validators.", {
+        exact: false,
+      }),
+    ).toBeTruthy();
     expect(screen.queryByRole("radiogroup")).toBeNull();
     // The last point: nothing further to step to.
     expect(

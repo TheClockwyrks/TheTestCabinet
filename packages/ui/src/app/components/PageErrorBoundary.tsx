@@ -66,7 +66,7 @@ class ErrorBoundary extends Component<
           <h1 className={styles.title}>This page hit an error</h1>
           <p className={styles.body}>
             Something on this page failed to render. The rest of the app still
-            works — use the navigation above, or reload to try again.
+            works. Use the navigation above, or reload to try again.
           </p>
           {/* The message, not the stack: enough to recognize and report the
               failure without turning the page into a debugger. The full error and

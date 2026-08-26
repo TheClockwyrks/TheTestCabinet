@@ -308,7 +308,7 @@ export function contextTooltip(
     return `${mark}${CONTEXT_SOURCE_LABELS[source]}: ${numberFmt.format(tokens)}${share}`;
   });
   return [
-    `Turn ${snapshot.turn} — ${numberFmt.format(total)} tokens${fullness}`,
+    `Turn ${snapshot.turn}: ${numberFmt.format(total)} tokens${fullness}`,
     ...rows,
   ].join("\n");
 }
@@ -408,7 +408,7 @@ export function ContextFillGraph({
   if (!latest) {
     return (
       <p className={styles.empty}>
-        No context breakdown yet — gg streams a per-source breakdown of the
+        No context breakdown yet. gg streams a per-source breakdown of the
         window on every turn.
       </p>
     );

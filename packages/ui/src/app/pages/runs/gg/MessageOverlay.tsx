@@ -85,7 +85,7 @@ function MessageOverlay({
         className={panels.overlayPanel}
         role="dialog"
         aria-modal="true"
-        aria-label={`${label} — fullscreen`}
+        aria-label={`${label}, fullscreen`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className={panels.overlayHead}>

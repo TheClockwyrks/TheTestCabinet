@@ -124,7 +124,7 @@ export function GgModuleHeader({
             data-carried=""
             title={`passed through ${module.holders
               .map((other) => other.agentId)
-              .join(" → ")} — only ever one of them held it`}
+              .join(" → ")}, only ever one of them holding it`}
           >
             handed on
           </span>
@@ -158,7 +158,6 @@ export function GgModuleHeader({
         </p>
         {detail === "full" && <ModuleCost module={module} holder={holder} />}
       </div>
-
 
       {/* The store's life on the left, everyone in it on the right — the same pairing
           the line above uses, for the same reason: they are one row's worth of facts. */}
@@ -224,7 +223,7 @@ function HolderChip({
   holder: GgModuleHolder;
   onOpen?: (agentId: string) => void;
 }) {
-  const title = `${holder.agentId} (${holder.profile}) — ${moduleOriginLabel(
+  const title = `${holder.agentId} (${holder.profile}): ${moduleOriginLabel(
     module,
     holder,
   )}, ${holder.writable ? "read/write" : "read-only"}`;
@@ -371,7 +370,7 @@ function ModuleCost({
     // file of every agent is a sentence nobody reads twice.
     <p
       className={panels.moduleCost}
-      title="What this store costs the windows carrying it every turn — a module's block in the window is re-sent on every request its holder makes."
+      title="What this store costs the windows carrying it every turn. A module's block in the window is re-sent on every request its holder makes."
     >
       {mine && (
         <>
@@ -559,7 +558,7 @@ function BoardContents({ issues }: { issues: GgBoardIssue[] }) {
     <div className={panels.moduleStack}>
       {issues.length === 0 ? (
         <p className={panels.empty}>
-          Nothing on the board yet — issues appear here as the model decomposes
+          Nothing on the board yet. Issues appear here as the model decomposes
           the work.
         </p>
       ) : (
@@ -623,7 +622,7 @@ function ArchiveContents({
   if (entries.length === 0) {
     return (
       <p className={panels.empty}>
-        Nothing archived — the agent has not moved any of its thread out of the
+        Nothing archived. The agent has not moved any of its thread out of the
         window yet.
       </p>
     );
@@ -680,12 +679,11 @@ export function RetainedNote({ count, what }: { count: number; what: string }) {
   if (count === 0) return null;
   return (
     <p className={panels.retainedNote}>
-      Retained verbatim across {count} compaction{count === 1 ? "" : "s"} — the{" "}
+      Retained verbatim across {count} compaction{count === 1 ? "" : "s"}: the{" "}
       {what} carried over.
     </p>
   );
 }
-
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);

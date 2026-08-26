@@ -117,8 +117,8 @@ export function ReferenceSheetView({
         <Panel>
           <h2 className={styles.heading}>Animated sequences</h2>
           <p className={styles.note}>
-            Each named animation, played from the reference frames — the motion
-            a run of this variant is judged against.
+            Each named animation, played from the reference frames: the motion a
+            run of this variant is judged against.
           </p>
           <div className={styles.sequenceGrid}>
             {sequences.map((sequence) => (
@@ -151,9 +151,9 @@ export function ReferenceSheetView({
       <Panel>
         <h2 className={styles.heading}>Reference frames</h2>
         <p className={styles.note}>
-          Every published frame, and the recorded action log it was drawn from —
-          the authoritative output, since a run is scored on the operations it
-          issued, not just the pixels they produced.
+          Every published frame, and the recorded action log it was drawn from.
+          The log is the authoritative output, since a run is scored on the
+          operations it issued, not just the pixels they produced.
         </p>
         <div className={styles.frameGrid}>
           {frames.map((frame) => (

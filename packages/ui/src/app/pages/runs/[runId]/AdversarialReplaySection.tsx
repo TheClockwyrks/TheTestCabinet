@@ -116,7 +116,7 @@ function ReplaySection({
       <h2 className={styles.heading}>Match results</h2>
 
       <p className={styles.notice}>
-        The submission was replayed against each reference opponent — the
+        The submission was replayed against each reference opponent: the
         baselines and evaluation algorithms. Launch any match below to watch the
         model&rsquo;s controller actually play it.
       </p>
@@ -196,7 +196,7 @@ function MatchRecord({ match }: { match: ReplayMatchView }) {
       <dt className={styles.recordTerm}>Score</dt>
       <dd>
         <span className={styles.scoreRed}>Red {match.redScore}</span>
-        {" — "}
+        {" · "}
         <span className={styles.scoreBlue}>Blue {match.blueScore}</span>
       </dd>
 

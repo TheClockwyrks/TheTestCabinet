@@ -286,7 +286,7 @@ export function GgFsmStatesField({
                       ))}
                       {edge.transfer.length === 0 && (
                         <span className={gg.fsmReset}>
-                          carries nothing — the next state starts fresh
+                          carries nothing, so the next state starts fresh
                         </span>
                       )}
                     </div>

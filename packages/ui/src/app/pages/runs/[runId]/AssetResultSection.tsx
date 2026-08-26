@@ -69,8 +69,8 @@ function FrameSignals({ frame }: { frame: AssetFrameView }) {
           <span className={drewOutsideTool ? styles.notLoaded : styles.loaded}>
             {(frame.cheatDivergence * 100).toFixed(1)}%
             {drewOutsideTool
-              ? " — drew outside the tool"
-              : " — matches recorded actions"}
+              ? " (drew outside the tool)"
+              : " (matches recorded actions)"}
           </span>
         )}
       </dd>
@@ -80,7 +80,7 @@ function FrameSignals({ frame }: { frame: AssetFrameView }) {
         {frame.operationCount}
         {frame.actionsUrl ? (
           <>
-            {" — "}
+            {" · "}
             <a href={frame.actionsUrl} target="_blank" rel="noreferrer">
               action log
             </a>
@@ -246,7 +246,7 @@ export function FrameGrid({ frames }: { frames: AssetFrameView[] }) {
                     }
                   >
                     {(frame.cheatDivergence * 100).toFixed(1)}%
-                    {drewOutsideTool ? " — outside tool" : ""}
+                    {drewOutsideTool ? " (outside tool)" : ""}
                   </span>
                 )}
               </td>

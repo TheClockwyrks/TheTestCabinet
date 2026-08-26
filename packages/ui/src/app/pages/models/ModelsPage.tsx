@@ -237,7 +237,8 @@ export function ModelsPage({ tab = "models" }: ModelsPageProps) {
           <LoadingState label="Loading models…" />
         ) : status === "error" ? (
           <p className={styles.empty}>
-            Couldn&apos;t reach the backend — the model catalog is unavailable.
+            Couldn&apos;t reach the backend, so the model catalog is
+            unavailable.
           </p>
         ) : models.length === 0 ? (
           <p className={styles.empty}>No models are in the catalog yet.</p>

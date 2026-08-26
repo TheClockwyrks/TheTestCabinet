@@ -1,4 +1,5 @@
 @use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
 @use "../../styles/surfaces" as s;
 
 // Styles specific to the ladder surfaces (the list, the editor, and the climb
@@ -109,7 +110,7 @@
 
 .focusOn {
   color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
+  @include h.halo-glow;
 }
 
 // The climb-order weight beside the star. Narrow: it holds a single digit in

@@ -99,8 +99,7 @@ export function CompactionView({
     return (
       <p className={panels.empty}>
         No compactions yet. When the window nears its limit, gg summarizes the
-        thread and restarts it from the summary — each boundary is recorded
-        here.
+        thread and restarts it from the summary. Each boundary is recorded here.
       </p>
     );
   }
@@ -136,8 +135,8 @@ export function CompactionView({
           <span className={panels.summaryLabel}>Summary</span>
           {c.summaryFallback && (
             <span className={panels.summaryFallback}>
-              Summarization failed — the summary degraded to gg&rsquo;s fallback
-              note.
+              Summarization failed, so the summary degraded to gg&rsquo;s
+              fallback note.
             </span>
           )}
           <p className={panels.summaryText}>{c.summary}</p>

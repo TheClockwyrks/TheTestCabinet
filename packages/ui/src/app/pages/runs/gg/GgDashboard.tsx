@@ -602,7 +602,7 @@ function ErrorsRow({ errors }: { errors: GgErrorTally }) {
           different animal depending on whether those two were adjacent. */}
       <div
         className={styles.card}
-        title="The longest unbroken run of errored turns any single agent reached — the counter gg's consecutive-error ceiling is enforced on. A peak over agents, not a streak across the whole run, whose turns interleave."
+        title="The longest unbroken run of errored turns any single agent reached, which is the counter gg's consecutive-error ceiling is enforced on. A peak over agents, not a streak across the whole run, whose turns interleave."
       >
         <span className={styles.cardLabel}>Max consecutive errors</span>
         <span className={styles.metricValue}>
@@ -743,7 +743,7 @@ function RuntimeRow({
           parallelism != null
             ? `${formatRuntime(agentMs)} of active agent time in ${formatRuntime(
                 wallMs ?? 0,
-              )} of wall clock — ${parallelism.toFixed(
+              )} of wall clock: ${parallelism.toFixed(
                 1,
               )} agents working at once on average`
             : undefined
@@ -771,7 +771,7 @@ function RuntimeRow({
           agentCount > 0
             ? `Summed across the ${agentCount} ${
                 agentCount === 1 ? "agent" : "agents"
-              } that have run — the count beneath is how many are working right now, not how many contributed to the total`
+              } that have run. The count beneath is how many are working right now, not how many contributed to the total`
             : undefined
         }
       >
@@ -784,7 +784,7 @@ function RuntimeRow({
 
       <div
         className={styles.card}
-        title="Time agents spent suspended rather than working — waiting on the subagents they fanned out, or on a board issue"
+        title="Time agents spent suspended rather than working, waiting on the subagents they fanned out or on a board issue"
       >
         <span className={styles.cardLabel}>Waiting</span>
         <span className={styles.metricValue}>{formatRuntime(suspendedMs)}</span>
@@ -799,7 +799,7 @@ function RuntimeRow({
           mistake for a run that simply has no ceiling. */}
       <div
         className={styles.card}
-        title="The test case's own max_runtime_hours — the ceiling the host stops the run at, measured against the wall clock beside it (setup excluded)"
+        title="The test case's own max_runtime_hours: the ceiling the host stops the run at, measured against the wall clock beside it (setup excluded)"
       >
         <span className={styles.cardLabel}>Time limit</span>
         <span className={styles.metricValue}>

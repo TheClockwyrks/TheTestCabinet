@@ -254,7 +254,7 @@ describe("GgAgentEditPage", () => {
     expect(screen.getByRole("button", { name: "Create agent" })).toBeDisabled();
     expect(
       screen.getByText(
-        /reaches no launch input — map a configuration slot onto it, or mark it passthrough\./,
+        /reaches no launch input\. Map a configuration slot onto it, or mark it passthrough\./,
       ),
     ).toBeVisible();
 

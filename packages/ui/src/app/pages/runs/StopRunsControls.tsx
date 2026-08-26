@@ -130,8 +130,8 @@ export function StopRunsControls() {
         message:
           `Kill ${count(running, "run")} already executing? Their work is ` +
           "discarded and each is recorded as canceled. This cannot be undone. " +
-          "Runs still waiting in the queue are left alone — the dispatcher will " +
-          "start claiming them immediately.",
+          "Runs still waiting in the queue are left alone, and the dispatcher " +
+          "will start claiming them immediately.",
         confirmLabel: "Kill active",
       },
       disabled: running === 0,
@@ -144,7 +144,7 @@ export function StopRunsControls() {
       confirm: {
         title: "Stop all runs",
         message:
-          `Stop everything — ${count(waiting, "run")} waiting and ` +
+          `Stop everything: ${count(waiting, "run")} waiting and ` +
           `${count(running, "run")} already executing? The executing ones lose ` +
           "their work and every one is recorded as canceled. This cannot be undone.",
         confirmLabel: "Stop all",
@@ -221,8 +221,7 @@ function describeSweep(result: BulkCancelOut): string {
       : result.includedActive
         ? "executing run"
         : "waiting run";
-  if (result.canceled === 0)
-    return `Nothing to cancel — no ${noun}s were left.`;
+  if (result.canceled === 0) return `Nothing to cancel: no ${noun}s were left.`;
   return `Canceled ${count(result.canceled, noun)}.`;
 }
 

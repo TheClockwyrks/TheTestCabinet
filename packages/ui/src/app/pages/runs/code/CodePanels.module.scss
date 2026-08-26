@@ -497,6 +497,7 @@
   display: flex;
   align-items: center;
   gap: t.$space-xs;
+  @include h.halo;
 }
 
 .error {

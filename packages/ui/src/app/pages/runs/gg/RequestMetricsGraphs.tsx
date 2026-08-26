@@ -251,7 +251,7 @@ export function tooltipFor(
   value: number,
 ): string {
   return [
-    `Turn ${prompt.turn} — ${metric.formatValue(value)}`,
+    `Turn ${prompt.turn}: ${metric.formatValue(value)}`,
     ...(metric.detail?.(prompt) ?? []),
   ].join("\n");
 }
@@ -269,7 +269,7 @@ export function RequestMetricsGraphs({
   if (prompts.length === 0 && timings.length === 0) {
     return (
       <p className={styles.empty}>
-        No requests yet — each metric gains a data point per model call.
+        No requests yet. Each metric gains a data point per model call.
       </p>
     );
   }

@@ -27,7 +27,7 @@ const numberFmt = new Intl.NumberFormat("en-US");
  */
 export function surfaceCallPhrase(name: string, count: number): string {
   if (count === 0)
-    return `${name} was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.`;
+    return `${name} was offered, 0 calls. This agent was bound to it and did not use it, which is a different finding from one it was not offered.`;
   const times = `${numberFmt.format(count)} time${count === 1 ? "" : "s"}`;
   return `${name} was called ${times}.`;
 }

@@ -48,7 +48,7 @@ describe("tooltipFor", () => {
       "throughput",
       prompt(9, { output: 1_200, reasoning: 300 }, { durationMs: 15_000 }),
     );
-    expect(tip.split("\n")[0]).toBe("Turn 9 — 100 tok/s");
+    expect(tip.split("\n")[0]).toBe("Turn 9: 100 tok/s");
   });
 
   it("gives throughput's two halves — what was generated, and over how long", () => {
@@ -68,7 +68,7 @@ describe("tooltipFor", () => {
         { cost: { comparable: 0.041, actual: 0.041 } },
       ),
     );
-    expect(tip).toContain("Turn 4 — $0.0410");
+    expect(tip).toContain("Turn 4: $0.0410");
     expect(tip).toContain("32,000 tokens in, 800 tokens out");
     // The two figures agree, so there is nothing to distinguish.
     expect(tip).not.toContain("provider charged");
@@ -81,7 +81,7 @@ describe("tooltipFor", () => {
     );
     // The point plots the comparable figure; the tip keeps it from being read as
     // the invoice.
-    expect(tip).toContain("Turn 5 — $0.0500");
+    expect(tip).toContain("Turn 5: $0.0500");
     expect(tip).toContain("the provider charged $0.0300");
   });
 
@@ -90,20 +90,20 @@ describe("tooltipFor", () => {
       "cacheRead",
       prompt(7, { cachedInput: 45_000, uncachedInput: 5_000 }),
     );
-    expect(cache).toContain("Turn 7 — 90%");
+    expect(cache).toContain("Turn 7: 90%");
     expect(cache).toContain("45,000 cached of 50,000 tokens sent");
 
     const reasoning = tipFor(
       "reasoning",
       prompt(7, { output: 750, reasoning: 250 }),
     );
-    expect(reasoning).toContain("Turn 7 — 25%");
+    expect(reasoning).toContain("Turn 7: 25%");
     expect(reasoning).toContain("250 reasoning of 1,000 tokens generated");
   });
 
   it("counts a request that cached nothing as 0%, with its figures intact", () => {
     const tip = tipFor("cacheRead", prompt(1, { uncachedInput: 8_000 }));
-    expect(tip).toContain("Turn 1 — 0%");
+    expect(tip).toContain("Turn 1: 0%");
     expect(tip).toContain("0 cached of 8,000 tokens sent");
   });
 });

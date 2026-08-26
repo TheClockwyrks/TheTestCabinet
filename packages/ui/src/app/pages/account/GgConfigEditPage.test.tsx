@@ -1115,7 +1115,7 @@ describe("a configuration's launch inputs", () => {
     expect(save).toBeDisabled();
     expect(
       screen.getByText(
-        /reaches no launch input — map a configuration slot onto it, or mark it passthrough\./,
+        /reaches no launch input\. Map a configuration slot onto it, or mark it passthrough\./,
       ),
     ).toBeVisible();
     // Said again on the tab where the mapping is edited, beside the picture it breaks.
@@ -1123,7 +1123,7 @@ describe("a configuration's launch inputs", () => {
     expect(
       screen.getByText(/reaches no launch input, so its bindings would run/),
     ).toBeVisible();
-    expect(screen.getByText(/a launch asks for no model at all/)).toBeVisible();
+    expect(screen.getByText(/A launch asks for no model at all/)).toBeVisible();
     expect(createGgConfig).not.toHaveBeenCalled();
   });
 });
@@ -1233,7 +1233,7 @@ describe("an import that lands on a slug a profile already carries", () => {
     ).toBeDisabled();
     expect(
       screen.getByText(
-        /Two agent profiles carry the same slug.*rename one of them, or override the imported profile's slug\./,
+        /Two agent profiles carry the same slug.*Rename one of them, or override the imported profile's slug\./,
       ),
     ).toBeVisible();
     // Both of the rows it is about say so, because either one is where it gets fixed.

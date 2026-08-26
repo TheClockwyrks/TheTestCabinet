@@ -28,6 +28,32 @@
   background: t.$color-surface;
 }
 
+// The showcase stage: the canvas with the scrubber laid over it. The overlay is
+// positioned, so the stage is exactly as tall as the picture and a carousel
+// stepping between a screenshot and a replay holds its height.
+.stage {
+  position: relative;
+  min-width: 0;
+}
+
+// Revealed on hover, or whenever the control itself has focus so it stays
+// reachable from the keyboard.
+.overlayScrub {
+  position: absolute;
+  left: t.$space-sm;
+  right: t.$space-sm;
+  bottom: t.$space-sm;
+  width: auto;
+  accent-color: t.$color-accent;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+
+  .stage:hover &,
+  &:focus-visible {
+    opacity: 1;
+  }
+}
+
 // A frame the player could not draw whole. Per frame, not per recording: the
 // operation that could not be reproduced is missing from THIS picture, and the
 // frame beside it may be complete.
