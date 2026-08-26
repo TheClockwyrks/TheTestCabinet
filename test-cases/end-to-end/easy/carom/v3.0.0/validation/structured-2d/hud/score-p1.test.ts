@@ -5,9 +5,9 @@
 // build's. So the scores are posed at 7-9 through `setScore` and a frame of the
 // live match is rendered, and the frame's text draws are read back, each placed
 // in logical units through the transform and alignment the build drew it with.
-// The digit must be drawn as a run of its own — a label around it is fine, a
-// second digit in the same run is not — with the run's midpoint on its side of
-// the field's center.
+// The score must be drawn as a run whose digits read as that score — a label
+// around it and zero padding (`07`) are fine, the other score's digit in the
+// same run is not — with the run's midpoint on its side of the field's center.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { FIELD_CX } from "../../src/constants";
@@ -42,7 +42,7 @@ it("draws player one's score left of the field's center", async () => {
 
   assertDeepEqual(h.snapshot().score, { p1: P1_SCORE, p2: P2_SCORE });
   const runs = drawnTextSpans(h).filter(
-    (span) => span.text.replace(/\D/g, "") === String(P1_SCORE),
+    (span) => Number.parseInt(span.text.replace(/\D/g, ""), 10) === P1_SCORE,
   );
   assertGreaterThan(runs.length, 0);
   assertEqual(

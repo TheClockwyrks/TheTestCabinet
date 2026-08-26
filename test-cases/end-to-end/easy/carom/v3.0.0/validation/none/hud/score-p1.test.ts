@@ -3,10 +3,10 @@
 // specs/overview.md: during a match the two scores are drawn near the top of the
 // field, player one's left of center. The scores are posed at 7-9 through the
 // surface, so the two numbers are distinct and neither is the 0 a fresh match
-// draws everywhere, and the next frame's text is read: a run whose digits are
-// exactly `7`, anchored left of `FIELD_CX`. The anchor is mapped through
-// whatever transform the build drew under (`textDraws`), so a HUD drawn at a
-// translated origin reads the same as one drawn in field coordinates.
+// draws everywhere, and the next frame's text is read: a run whose digits read
+// as `7` (zero padding included), anchored left of `FIELD_CX`. The anchor is
+// mapped through whatever transform the build drew under (`textDraws`), so a HUD
+// drawn at a translated origin reads the same as one drawn in field coordinates.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
@@ -39,7 +39,7 @@ it("draws player one's score left of center", async () => {
   await captureStill(h, "hud");
 
   const runs = textDraws(calls).filter(
-    (run) => run.text.replace(/\D/g, "") === String(SCORE.p1),
+    (run) => Number.parseInt(run.text.replace(/\D/g, ""), 10) === SCORE.p1,
   );
   assertGreaterThan(runs.length, 0);
   assertEqual(
