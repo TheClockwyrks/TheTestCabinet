@@ -50,6 +50,27 @@ ARG WRANGLER_VERSION=4.40.3
 # rustup toolchain and the build's target/ are BuildKit cache mounts, so a source
 # change recompiles only what changed instead of re-downloading the toolchain and
 # rebuilding every dependency from scratch.
+#
+# THE RUSTUP CACHE IS NOT SHARED WITH THE gg STAGE, and that is a correctness
+# requirement rather than a preference. rust-toolchain.toml pins an exact compiler,
+# which the `rust:1-bookworm` base image does not necessarily ship — and a cache mount
+# over /usr/local/rustup hides whatever it *does* ship, so against a cold cache rustup
+# fetches the pinned toolchain here. gg-build fetches it too (its first `rustc` runs
+# inside install-gg-toolchains.sh), and the two stages start at the same moment: a
+# `--target backend` build depends on both. rustup stages a component download at a
+# content-hash-named `<hash>.partial` under RUSTUP_HOME and takes no cross-process
+# lock, so two rustups fetching one toolchain into one shared mount collide on that
+# exact path — whichever renames it into place first leaves the other renaming
+# something that is no longer there, and the build dies with
+#
+#   error: component download failed for rustc-<triple>: could not rename 'downloaded'
+#   file from '/usr/local/rustup/downloads/<hash>.partial' to
+#   '/usr/local/rustup/downloads/<hash>': No such file or directory (os error 2)
+#
+# A distinct `id` per stage gives each its own RUSTUP_HOME: the toolchain is fetched
+# once per stage per cold builder and never again. `sharing=locked` covers the other
+# way in — two concurrent builds of the SAME stage (the cargo registry and target/
+# mounts need no such flag, because cargo does take a lock over both).
 FROM docker.io/library/rust:1-bookworm AS build
 WORKDIR /src
 COPY . .
@@ -59,7 +80,7 @@ COPY . .
 ARG TCAB_BUILD_COMMIT
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/usr/local/rustup \
+    --mount=type=cache,target=/usr/local/rustup,id=rustup-services,sharing=locked \
     --mount=type=cache,target=/src/target \
     # Refresh the COPYed sources' mtimes before building. BuildKit preserves the
     # mtimes a file had in the build context and replays them verbatim when the
@@ -143,12 +164,16 @@ ARG TCAB_BUILD_COMMIT
 # .NET — and `purs` and `uv` are found on PATH. This is the root user's, so name it once
 # here rather than in the RUN below, where a `cd` into a package would lose it.
 ENV PATH=/root/.local/bin:$PATH
-# The registry/git/rustup caches are shared with the build stage (read-mostly; this
-# stage additionally `rustup target add`s the musl target into the shared rustup
-# cache, which is additive). The `target/` cache, however, gets its OWN id: this
-# stage and the build stage can run in parallel, and cargo locks a whole target dir,
-# so a shared mount would serialise the two builds on that lock — a distinct id lets
-# them proceed independently (glibc services vs static-musl gg).
+# The registry and git caches are shared with the build stage, which is safe because
+# cargo locks both. The `rustup` and `target/` caches are NOT: each gets its OWN id,
+# for two different reasons. This stage and the build stage run in parallel, and cargo
+# locks a whole target dir, so a shared `target/` would serialise the two builds on
+# that lock — a distinct id lets them proceed independently (glibc services vs
+# static-musl gg). rustup, by contrast, locks nothing at all, and two rustups fetching
+# the pinned toolchain into one mount race on a single `<hash>.partial` and fail the
+# build outright; the build stage's header states that one in full. This stage's own
+# rustup writes are the wasm32 and musl targets `rustup target add`s in, which land in
+# this id and are wanted nowhere else.
 #
 # The toolchains land in a CACHE MOUNT (/root/.local) rather than in a layer, and that
 # is a size decision rather than a speed one. Installed they are ~1.9 GB — Swift alone
@@ -163,7 +188,7 @@ ENV PATH=/root/.local/bin:$PATH
 # reason.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/usr/local/rustup \
+    --mount=type=cache,target=/usr/local/rustup,id=rustup-gg,sharing=locked \
     --mount=type=cache,target=/src/target,id=gg-target \
     --mount=type=cache,target=/root/.local,id=gg-toolchains \
     --mount=type=cache,target=/root/.cache,id=gg-toolchain-downloads \
