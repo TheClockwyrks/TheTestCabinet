@@ -92,6 +92,28 @@ validator observes after the real systems run.
 
 ## Validators
 
+### Validators assert the specification, not the reference
+
+Every assertion a validator makes traces to a statement in the case's rendered
+specs, exactly or through an honest tolerance. The reference implementation is
+one conformant build and **never** the source of an assertion. Behavior the
+reference exhibits but the specs leave unstated is a design choice, and a
+validator that asserts it fails other builds that satisfy every stated
+requirement.
+
+A spec can leave a choice to the build: how state maps onto an engine's
+constructs, when within a frame an effect becomes visible, whether a value is
+stored or derived. A validator passes every design that honors the stated
+behavior, probing at the point the spec fixes it, such as reading a pose's
+arrangement after an advanced frame rather than the intermediate state of one
+design.
+
+A validator that needs behavior the specs leave unstated calls for a spec
+change first. Decide whether the behavior is a requirement. If it is, state it
+in the specs, designed around the behavior rather than around an engine or the
+reference's architecture, and assert the now-stated behavior. If it is not,
+the validator has nothing to assert.
+
 ### One requirement per validator
 
 A validator decides one requirement in one direction. A build with a working
@@ -144,12 +166,12 @@ Every validated review item declares the
 its domains are held to while the item fails. The cap expresses what the miss
 costs a player.
 
-| Cap        | Use when the validator failing                                                                                                        |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `broken`   | Makes it impossible to play the game as intended.                                                                                     |
-| `scuffed`  | Makes the game unplayable along an optional path the player can avoid, or makes normal play unpleasant.                               |
-| `passable` | Affects gameplay without making the game unplayable or dramatically changing how it plays.                                            |
-| `great`    | Leaves the standard flow of gameplay unaffected.                                                                                      |
+| Cap        | Use when the validator failing                                                                          |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| `broken`   | Makes it impossible to play the game as intended.                                                       |
+| `scuffed`  | Makes the game unplayable along an optional path the player can avoid, or makes normal play unpleasant. |
+| `passable` | Affects gameplay without making the game unplayable or dramatically changing how it plays.              |
+| `great`    | Leaves the standard flow of gameplay unaffected.                                                        |
 
 `flawless` is never a cap. A validator only fails on a deviation from the
 specification, and a deviation always costs something.
@@ -164,6 +186,8 @@ When designing or revising a case's debug API and validators:
 - The shared harness owns every compound sequence, built from atomic
   operations.
 - `snapshot()` reports every field an operation can set.
+- Each assertion traces to a statement in the specs, not to the reference
+  implementation, and every spec-honoring design passes.
 - Each validator decides one requirement in one direction, and each edge case
   has its own validator.
 - Each validator reaches its scenario through the debug API alone and drives
