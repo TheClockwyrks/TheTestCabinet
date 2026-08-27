@@ -53,7 +53,11 @@ afterEach(() => {
 it("serves the ball at the base serve speed", async () => {
   const { debug } = harness;
   debug.reset();
+  await harness.advance(1);
   debug.startMatch("versus");
+  // One advanced frame settles each screen change (specs/instrumentation.md),
+  // so everything below acts on the open match.
+  await harness.advance(1);
 
   const launched = await captureReplay(harness, "serve", async () => {
     await harness.advance(HELD_TICKS);

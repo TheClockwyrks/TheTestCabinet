@@ -54,8 +54,8 @@ it("bounces a moving ball off a waiting one without moving it", async () => {
   h.debug.reset();
   await h.advance(1);
   h.debug.startMatch("versus");
-  // The frame that opens the match world: a level transition is honored at the
-  // end of the next advanced frame, and every pose below acts on the open match.
+  // One advanced frame settles the screen change (specs/instrumentation.md),
+  // and every pose below acts on the open match.
   await h.advance(1);
   // The frame the match opened on: the holds run from here, and the launch the
   // final assertion counts to is measured against it.

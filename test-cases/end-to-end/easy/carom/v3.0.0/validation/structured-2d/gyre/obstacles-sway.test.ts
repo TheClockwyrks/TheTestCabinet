@@ -54,7 +54,11 @@ afterEach(() => {
 it("sways both obstacles vertically on the specified sinusoid, in anti-phase", async () => {
   const { debug } = harness;
   debug.reset();
+  await harness.advance(1);
   debug.startMatch("versus");
+  // One advanced frame settles each screen change (specs/instrumentation.md),
+  // so everything below acts on the open match.
+  await harness.advance(1);
 
   await captureReplay(harness, "sway", async () => {
     for (const t of [0, PEAK_SWAY_T]) {

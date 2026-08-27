@@ -31,9 +31,10 @@ afterEach(() => {
 });
 
 it("opens the how-to-play screen from the menu and names the movement keys", async () => {
-  // The game opens on the title, so this `reset` is a pose in place rather than
-  // a level transition, and the first tap's edge reaches the title world whole.
+  // One advanced frame settles the reset (specs/instrumentation.md), so the
+  // first tap's edge reaches the settled title world whole.
   h.debug.reset();
+  await h.advance(1);
   await h.tap("ArrowDown"); // SOLO -> VERSUS
   await h.tap("ArrowDown"); // VERSUS -> HOW TO PLAY
   await h.tap("Enter");

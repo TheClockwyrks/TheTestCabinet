@@ -40,8 +40,8 @@ it("launches every ball at the base launch speed", async () => {
   h.debug.reset();
   await h.advance(1);
   h.debug.startMatch("versus");
-  // The frame that opens the match world: a level transition is honored at the
-  // end of the next advanced frame, so the clip below records the countdown.
+  // One advanced frame settles the screen change (specs/instrumentation.md),
+  // so the clip below records the countdown.
   await h.advance(1);
 
   const launched = await captureReplay(h, "launch", async () => {

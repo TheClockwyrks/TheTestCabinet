@@ -48,12 +48,13 @@ afterEach(() => {
 it("advances on the runtime's frame loop with nothing stepping it", async () => {
   const { debug } = harness;
   debug.startMatch("solo");
+  // One advanced frame settles the screen change (specs/instrumentation.md),
+  // so the serve reads an open countdown; the build's own serve then launches
+  // the ball on the frame after, so the travel below is measured on a ball
+  // already in flight.
+  await harness.advance(1);
   debug.serve();
-  // Two frames: `startMatch` is a level transition, honored at the end of the
-  // first, with the held `serve` applied as the match world opens; the build's
-  // own serve then launches the ball on the second, so the travel below is
-  // measured on a ball already in flight.
-  await harness.advance(2);
+  await harness.advance(1);
 
   const before = harness.snapshot();
   captureStill(harness, "before");

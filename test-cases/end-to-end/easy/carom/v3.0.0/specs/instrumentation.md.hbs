@@ -59,10 +59,12 @@ driven from code behaves exactly like one played by hand. A reading takes no
 arguments and returns plain data, read off the world at the instant of the call.
 A pose that changes the screen takes effect no later than the end of the next
 advanced frame. It may land at the call or ride a level transition the engine
-honors as the frame ends; a caller reads its arrangement after advancing a
-frame. Where the surface's implementation lives under `src/` is yours to
-decide; the type your instance declares for it, the `D` of its
-`GameInstance<D>`, is the surface this file specifies.
+honors as the frame ends, and `reset` may rebuild its screen the same way even
+when called on the title. A caller advances one frame after such a pose before
+it poses, presses a key, or reads further, and each operation acts on the
+screen that is current at its own call. Where the surface's implementation
+lives under `src/` is yours to decide; the type your instance declares for it,
+the `D` of its `GameInstance<D>`, is the surface this file specifies.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
@@ -489,10 +491,11 @@ handful of frames to run the real collision, and reads the result from
 
 `snapshot` returns:
 {{else}}
-A typical scenario calls `startMatch("versus")`, then `setPaddle` and `setBall`
-to arrange the exact contact wanted, advances the engine a handful of frames to
-run the real collision, and reads the result from `snapshot()`. A caller holds
-the surface as `engine.debug`, the same value `initialize` returned.
+A typical scenario calls `startMatch("versus")`, advances a frame to open the
+match, then `setPaddle` and `setBall` to arrange the exact contact wanted,
+advances the engine a handful of frames to run the real collision, and reads
+the result from `snapshot()`. A caller holds the surface as `engine.debug`, the
+same value `initialize` returned.
 
 ## Snapshot shape
 

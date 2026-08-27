@@ -41,7 +41,11 @@ afterEach(() => {
 it("rotates both obstacles about their own centers at OBSTACLE_SPIN_RATE", async () => {
   const { debug } = harness;
   debug.reset();
+  await harness.advance(1);
   debug.startMatch("versus");
+  // One advanced frame settles each screen change (specs/instrumentation.md),
+  // so everything below acts on the open match.
+  await harness.advance(1);
 
   const samples: ObstaclePose[][] = [];
   await captureReplay(harness, "spin", async () => {
