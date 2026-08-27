@@ -71,12 +71,12 @@ playable embed. A run with no playable build opens on its Verdict tab instead.
 
 The Verdict tab shows the functional rating, the aesthetic rating when there is
 one, and the score first, then the per-item checklist breakdown and each
-review's writeup and per-domain ratings, attributed to its reviewer. On a
-validator-rated run the checklist breakdown is a read-only browser of the
-automated items: a rail listing every item, each item's validator verdict and
-per-verdict assertions, and the implementation's replay beside the reference
-baseline's, scrubbed together. Every visitor sees the browser, alongside the
-aesthetic ratings the reviewers gave.
+review's writeup and ratings, attributed to its reviewer. On a validator-rated
+run the checklist breakdown is a read-only browser of the automated items: a
+rail listing every item, each item's verdict, per-verdict assertions, failure
+cap, and validator script detail, and the implementation's replay beside the
+reference baseline's, scrubbed together. Every visitor sees the browser,
+alongside the run-wide aesthetic tier each reviewer gave.
 
 ## Playing and cloning
 
@@ -112,8 +112,10 @@ game jam carries a whole-game overall grade in place of a domain rating, and its
 rows show that grade.
 
 A run's score is carried on its projection row. A validator-rated run's score
-is its validators' earned share of the declared checklist weight. A legacy run's
-reviews each contribute their earned share, averaged across the run's reviews.
+is its validators' earned share of the declared checklist weight while the run
+has no reviews, and the average of its reviews' effective scores once it has
+any. A legacy run's reviews each contribute their earned share, averaged across
+the run's reviews.
 
 A [performance](/testing/performance/overview/) case carries no reviewer score,
 because it is graded by the harness on correctness and then on the fuel a
@@ -130,8 +132,9 @@ placement and percentile against this field.
 
 A run carries short, hand-written writeups, headed by the run's overall
 [ratings](/components/core/results/#ratings) and score, with each review's
-per-domain ratings and the per-item checklist breakdown alongside, attributed to
-its reviewer. A writeup is curatorial: it calls out known-broken elements,
+run-wide aesthetic tier alongside, attributed to its reviewer. A legacy run's
+reviews also show their per-domain functional ratings and per-item checklist
+breakdown. A writeup is curatorial: it calls out known-broken elements,
 caveats, and things worth noticing, so a visitor knows what to expect before
 playing.
 

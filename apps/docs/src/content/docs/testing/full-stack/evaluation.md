@@ -6,10 +6,10 @@ A full-stack run is scored exactly as an
 [end-to-end](/testing/end-to-end/evaluation/) run is: an automated validation
 pass that catches gross failures cheaply, then a hand-written review by a person
 who plays the build. On a validator-rated case version the validators decide the
-score and the functional rating and the reviewer rates aesthetics per scoring
-domain; on a legacy version the reviewer assigns the score in points and the
-functional rating. What full-stack adds is that the reviewer also judges the
-assets the model produced.
+score and the functional rating and the reviewer rates the run's aesthetics
+with one run-wide tier; on a legacy version the reviewer assigns the score in
+points and the functional rating. What full-stack adds is that the reviewer
+also judges the assets the model produced.
 
 This page covers the differences. Read
 [End to End → Evaluation](/testing/end-to-end/evaluation/) for the shared
@@ -35,19 +35,20 @@ is the scored output.
 ## Review
 
 The review carries the same things an end-to-end review does. On a
-validator-rated run that is a writeup and an aesthetic rating (legendary,
-amazing, good, okay, or slop) per `[[domain]]` in the run's effective set. On a
-legacy run it is a writeup, a functional rating (flawless, great, passable,
-scuffed, or broken) per domain, and a checklist of pass/fail verdicts, one per
-`[[review_item]]` or one per sub-item for an item that declares them. On either
-channel the overall rating is the worst across the domains.
+validator-rated run that is a writeup, one run-wide aesthetic rating (legendary,
+amazing, good, okay, or slop) covering how the whole build looks, sounds, and
+feels, and optionally overrides of validator verdicts. On a legacy run it is a
+writeup, a functional rating (flawless, great, passable, scuffed, or broken)
+per domain, and a checklist of pass/fail verdicts, one per `[[review_item]]` or
+one per sub-item for an item that declares them. The overall functional rating
+is the worst across the domains.
 
 The reviewer is judging assets the model produced rather than assets the case
 provided, so the quality of the art, the sprite motion, the particle effects,
-and the sound is part of the experience being rated. A case makes this explicit
-by wording its review items and scoring domains to cover the asset dimensions
-that matter: a domain or item for the art direction, for the feel of the
-effects, for the audio. A build whose code is solid but whose assets are
+and the sound is part of the experience being rated. That quality lands in the
+run-wide aesthetic rating, and a case can also word its review items to cover
+the asset behavior that must hold: an item for the art direction, for the feel
+of the effects, for the audio. A build whose code is solid but whose assets are
 placeholder rectangles or silence is unfinished work and is rated as such.
 
 ## Scoring

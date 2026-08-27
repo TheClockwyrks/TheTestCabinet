@@ -474,27 +474,39 @@ notification fires, and no retry is enqueued.
 ### `POST /runs/{id}/reviews`
 
 Submit a [review](/components/core/results/#reviews) for a produced run: the
-per-domain functional `ratings`, the per-domain `aesthetics`, the markdown
+per-domain functional `ratings`, the run-wide `aesthetic` tier, the markdown
 `writeup`, the checklist verdicts, and an `editNote`. Which of them a run
-accepts follows its case version. A validator-rated run takes an `aesthetics`
-entry for every effective domain and refuses `ratings`, since the functional
-rating is the validators'; its checklist verdicts are the validators' and the
-body carries none. A legacy run takes `ratings` and the checklist verdicts and
-refuses `aesthetics`. The review is attributed to the account the bearer token
+accepts follows its case version. A validator-rated run requires the single
+`aesthetic` tier and refuses `ratings`, since the functional verdicts are the
+validators'; its `checklist` is optional and partial, carrying only the points
+the reviewer overrides. A legacy run takes `ratings` and the full checklist and
+refuses `aesthetic`. The review is attributed to the account the bearer token
 resolves to; the reviewer identity is taken from the token rather than the
 body. A run carries many reviews, one per account, and re-submitting from the
 same account updates that account's own review.
 
+On a validator-rated run each `checklist` entry is the reviewer's verdict for
+one declared verdict id, an item id or an `<item>.<sub>` composite, with a
+binary `pass` or `fail` status and an optional note. Points not listed keep the
+validators' verdicts: the review's effective checklist is the validators'
+verdicts overlaid with its overrides, and an override may also decide a point
+the validators left undecided. Overriding is the exception, for a validator
+whose precondition could not be met or a build that clearly does the right
+thing despite broken instrumentation. The run's score and functional rating
+fold overrides in as [`GET /runs/{id}`](#get-runsid) specifies.
+
 A re-submission that changes the review is an edit. It requires a non-empty
 `editNote`, keeps the original `reviewedAt`, stamps `editedAt`, and records the
 prior-to-new diff as a public revision, covering the functional ratings, the
-aesthetic ratings, the verdicts, and the writeup. A re-submission that changes
+aesthetic rating, the verdicts, and the writeup. A re-submission that changes
 nothing is a no-op.
 
 `404` if the run is unknown. `422` when the review carries no rating on either
 channel and no checklist verdict, when the writeup is empty, when it rates a
-channel the run's case version does not accept or leaves a domain on the
-accepted channel unrated, or when an edit arrives without a note. Schema:
+channel the run's case version does not accept, when a legacy review leaves a
+functional domain unrated, when a validator-rated review omits its `aesthetic`
+tier or a checklist entry names an undeclared id or a non-binary status, or
+when an edit arrives without a note. Schema:
 [`backend-api/review.schema.json`](https://docs.testcabinet.ai/schema/backend-api/review.schema.json).
 
 ### `POST /runs/{id}/publish`
@@ -638,9 +650,9 @@ The offset mode additionally accepts:
   narrows to their intersection, and `latestVersions` composes with it as with
   any case slice.
 - Filter `aesthetic`, one of the aesthetic tiers, narrowing to runs whose
-  aggregate aesthetic rating is exactly that tier. A run no review has rated on
-  that channel never matches. `aesthetic=legendary` newest-first is the home
-  page's showcase query.
+  aggregate aesthetic rating, the worst run-wide tier across their reviews, is
+  exactly that tier. A run no review has rated on that channel never matches.
+  `aesthetic=legendary` newest-first is the home page's showcase query.
 - Current versions `latestVersions=true`, restricting every run to its case's
   current `major.minor`: the newest one that case has a run for within the
   selected `state` slice. A case version is frozen once it has runs, so an older
@@ -675,27 +687,30 @@ The offset mode additionally accepts:
 One stored run, as `{ record, reviews, published, links, rating, aesthetic,
 validatorRated, score }`: its record with links populated, the array of reviews
 it carries with each reviewer's identity, whether it is published, its links,
-and the run's ratings and score. Each review carries the `ratings` or
-`aesthetics` its run's channel accepts. `404` if unknown. The same shape is
-what the default projection of [`GET /runs`](#get-runs) lists per row.
+and the run's ratings and score. Each review carries the `ratings` or the
+run-wide `aesthetic` its run's channel accepts. `404` if unknown. The same
+shape is what the default projection of [`GET /runs`](#get-runs) lists per row.
 
 - `validatorRated`: whether the run's case version is
   [validator-rated](/testing/end-to-end/evaluation/#rating-channels), so a
   consumer can show the run's points and functional rating from the record
-  immediately, offer publish without a review, and ask a reviewer for
-  aesthetics only.
+  immediately, offer publish without a review, and pre-fill a review from the
+  validators' verdicts.
 - `rating`: the run's **functional** rating. On a validator-rated run the
-  validator-decided rating, present from completion and never changed by a
-  review; on a legacy run the review aggregate. Composed with the toolchain
-  gate either way. `null` while unset — a legacy run with no review.
-- `aesthetic`: the run's aggregate **aesthetic** rating, the worst any reviewer
-  gave any domain. `null` when no review has rated that channel: every legacy
-  run, and an unreviewed validator-rated one.
+  validators' rating while the run has no reviews, present from completion,
+  and the worst of its reviews' effective ratings once it has any; on a legacy
+  run the review aggregate. Composed with the toolchain gate either way. `null`
+  while unset — a legacy run with no review.
+- `aesthetic`: the run's aggregate **aesthetic** rating, the worst run-wide
+  tier across its reviews. `null` when no review has rated that channel: every
+  legacy run, and an unreviewed validator-rated one.
 - `score`: the run's points against its case version's checklist weights — the
   same `{ earned, total, reviews, overallGrade }` the summary card carries. On
-  a validator-rated run the validator-decided score (`reviews` is `0`), present
-  from completion; on a legacy run the mean across its reviews, `null` while
-  unreviewed. `null` when the run's case version is not ingested.
+  a validator-rated run the validators' score while the run has no reviews
+  (`reviews` is `0`), present from completion, and the mean of its reviews'
+  effective scores once it has any, with `reviews` counting them; on a legacy
+  run the mean across its reviews, `null` while unreviewed. `null` when the
+  run's case version is not ingested.
 
 The four are always present (`null` rather than omitted when unset), so a
 consumer reads them without defaulting. The functional rating and the score
@@ -709,16 +724,19 @@ validator-rated run's detail and its card never disagree.
   "validatorRated": true,
   "rating": "great",
   "aesthetic": "amazing",
-  "score": { "earned": 66, "total": 68, "reviews": 0, "overallGrade": null },
+  "score": { "earned": 64, "total": 68, "reviews": 1, "overallGrade": null },
   "reviews": [
     {
       "reviewerId": "acct_7yq…",
       "reviewer": "Ada",
       "username": "ada",
       "ratings": [],
-      "aesthetics": [{ "domain": "single-player", "rating": "amazing" }],
+      "aesthetic": "amazing",
       "writeup": "Plays well, but…",
-      "checklist": [],
+      // A validator-rated review's checklist holds only its overrides.
+      "checklist": [
+        { "id": "controls.ai", "status": "fail", "note": "Precondition unmet." }
+      ],
       "reviewedAt": "2026-06-21T18:00:00Z"
     }
   ],

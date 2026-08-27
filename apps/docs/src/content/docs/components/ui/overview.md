@@ -193,11 +193,11 @@ if (!(await confirm({ title: "Delete run", message: "…" }))) return;
 ```
 
 Both take an optional `details` node that lands in the dialog's scrollable
-detail region. The reviewer's bulk restore of validator verdicts uses it to list
-every point the restore would change and which way each verdict would flip
-(`describeAutoVerdictRestore`), because by the time a reviewer reaches for that
-control they cannot be expected to hold in mind which of their own calls the
-machine disagrees with.
+detail region. The reviewer's bulk restore of validator verdicts uses it on
+legacy and validator-rated reviews alike to list every point the restore would
+change and which way each verdict would flip (`describeAutoVerdictRestore`),
+because by the time a reviewer reaches for that control they cannot be expected
+to hold in mind which of their own calls the machine disagrees with.
 
 ## Theming
 

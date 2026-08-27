@@ -64,4 +64,4 @@ best rating, then by recency.
 The top five rows are shown. Each row carries the model, the harness, the mean
 score as a percentage, the mean comparable cost, and the row's best rating,
 with the aesthetic rating beside it when the row has one. A game jam member
-contributes its whole-game grade in place of a domain rating.
+contributes its whole-game grade in place of a functional rating.

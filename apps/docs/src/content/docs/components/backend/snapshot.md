@@ -13,9 +13,10 @@ A run's row carries every headline figure a listing needs — outcome, functiona
 rating, aesthetic rating, whether the run is validator-rated, and score — so
 ranking and paging the published set costs no document fetch. The score and a
 validator-rated run's functional rating are the figures not readable from a run
-record alone, because the checklist point weights, domains, and failure caps
-live in the case catalog rather than on the record, so they are computed where
-both are in hand and written to the row.
+record alone: the checklist point weights, domains, and failure caps live in
+the case catalog rather than on the record, and a review may override validator
+verdicts, so the figures are computed where the record, the catalog, and the
+reviews are all in hand and written to the row.
 
 The bucket holds documents for published runs. A produced run that has not been
 published is private, and a run that can never be published, such as an
@@ -83,11 +84,22 @@ and the links the detail page needs. Every run here is published, so the
 document carries no publication flag. Each review entry includes the reviewer's
 id and display name, and the key of their [profile
 picture](#reviewer-pictures) when they have one, so the site can attribute a
-writeup and per-domain ratings to the person who wrote them. The site computes
-a legacy run's score and functional rating from this array, and any run's
-aesthetic rating; a validator-rated run's score and functional rating come from
-its record and case version. When the run captured a
-normalized [event
+writeup and its ratings to the person who wrote them. The site computes a
+legacy run's score and functional rating from this array, and any run's
+aesthetic rating as the worst run-wide tier across its reviews. A
+validator-rated run's figures start from the verdicts on its record and case
+version: each review's effective checklist is the validators' verdicts overlaid
+with that review's overrides, the run's score is the average of its reviews'
+effective scores and its functional rating the worst of their effective
+ratings, and the validators' own figures stand while the run has no reviews.
+
+A validator-rated review entry carries its run-wide `aesthetic` tier and, in
+`checklist`, only the verdicts it overrides. The per-domain `aesthetics` array
+is a compatibility field the builder no longer emits; a reader resolves a
+review's tier as `aesthetic` when set, falling back to the worst tier in
+`aesthetics`.
+
+When the run captured a normalized [event
 stream](/components/core/events/) it is included as `events`. Raw harness output
 is never published.
 
@@ -120,10 +132,11 @@ backend's own stored copy is left intact; only this public export is rewritten.
     {
       "reviewerId": "acct_3kd…",
       "reviewer": "Bao",
-      "aesthetics": [
-        { "domain": "single-player", "rating": "amazing" }
+      "aesthetic": "amazing",
+      "checklist": [
+        { "id": "controls.ai", "status": "fail", "note": "Precondition unmet." }
       ],
-      "writeup": "A validator-rated run's review rates aesthetics only.",
+      "writeup": "Gorgeous art; overrode one point whose precondition was unmet.",
       "reviewedAt": "2026-08-24T09:00:00Z"
     }
   ],

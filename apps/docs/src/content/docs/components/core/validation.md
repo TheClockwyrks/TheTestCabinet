@@ -13,13 +13,14 @@ build's [instrumentation](/testing/end-to-end/instrumentation/) in a browser.
 
 Validation assesses part of an implementation, not all of it. A game's feel and
 quality are graded by a person playing the build and writing its
-[review](/components/core/results/#reviews), which is where the per-domain
-aesthetic ratings come from. What validation can decide, it decides: an
+[review](/components/core/results/#reviews), which is where the run-wide
+aesthetic rating comes from. What validation can decide, it decides: an
 objective point backed by a validator is scored from that validator's result.
 On a [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
-verdicts are final and, through each item's failure cap, decide the run's
-functional rating. On a legacy run they are pre-filled into the reviewer's
-checklist and overridable there, and the reviewer gives the functional rating.
+verdicts decide the run's functional rating through each item's failure cap,
+and a reviewer may override any of them, which folds into that review's own
+figures. On a legacy run they are pre-filled into the reviewer's checklist and
+overridable there, and the reviewer gives the functional rating.
 
 ## Load check
 
@@ -250,13 +251,13 @@ so a missing module, a call that threw, a malformed return, or a declared output
 the build never produced synthesizes a failed verdict for that point. A validator
 suite that raised before running any check is this case: the module contract it
 imports is one the case requires of every build. The verdict is recorded like any
-auto verdict, and on a legacy run the reviewer may override it. The run itself stays
-reviewable: a build that loads is scored down by exactly the points its checks could
-not answer, and on a validator-rated run each such point applies its failure cap.
+auto verdict, and a reviewer may override it. The run itself stays reviewable: a
+build that loads is scored down by exactly the points its checks could not
+answer, and on a validator-rated run each such point applies its failure cap.
 
 Two outcomes are held apart, and both leave the point undecided rather than
-synthesizing a verdict: on a validator-rated run it lowers no rating, and on a
-legacy run it is left for the reviewer to decide by hand.
+synthesizing a verdict: an undecided point lowers no rating, counts toward
+neither side of the score, and is left for a reviewer to decide.
 
 The first is an unmet precondition. A setup often searches the model's own world
 for a place to pose its scenario, such as a blind corner in an invented maze or a
@@ -286,8 +287,8 @@ recorded on the run record's own `toolchain` block, beside the validation summar
 A `typecheck` that ran and exited non-zero gates the run: its functional rating
 is `broken` and its score zero, because code that does not compile is not
 reviewable. The gate is applied where a run's functional rating and score are
-derived, from its validators on a validator-rated run and from its reviews on a
-legacy run, so validator and reviewer verdicts are stored as written. Every
+derived, from its validators and reviews, so validator and reviewer verdicts
+are stored as written. Every
 other toolchain command is recorded and gates nothing, and a typecheck that
 never ran leaves the run ungated.
 

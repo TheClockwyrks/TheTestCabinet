@@ -65,10 +65,11 @@ These listings accept `--json`.
 - `review <run-id> [--writeup writeup.md]` submits a
   [review](/components/core/results/#reviews) for a produced run, attributed to
   the logged-in account, from a writeup the reviewer authored locally. It
-  defaults to `writeup.md` in the working directory. The writeup carries
-  `aesthetic.<domain>` ratings for a validator-rated run and `rating.<domain>`
-  ratings with checklist verdicts for a legacy run. A run may carry several
-  reviews, one per account.
+  defaults to `writeup.md` in the working directory. For a validator-rated run
+  the writeup carries a single run-wide `aesthetic` rating and may carry
+  `review.<id>` lines overriding individual validator verdicts; for a legacy
+  run it carries `rating.<domain>` ratings with checklist verdicts. A run may
+  carry several reviews, one per account.
 - `publish <run-id>...` does self-review and publish in one step: it submits the
   operator's own review from a `<run-id>.md` writeup in the working directory,
   enqueues the publish, and prints the release's live progress until it

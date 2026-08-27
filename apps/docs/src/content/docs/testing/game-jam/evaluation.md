@@ -48,9 +48,9 @@ by that score, the same points-based ranking every other type uses.
 Separately from the categories, the reviewer gives the game one overall grade on
 the same five-level scale: a holistic read of the whole entry. It is supplied
 directly rather than derived from the category grades, and it becomes the run's
-rating badge on the site in place of the per-domain rating a jam does not carry.
+rating badge on the site in place of the functional rating a jam does not carry.
 When a run has more than one review, the displayed overall grade is the worst
-any reviewer gave, mirroring how a domain-scored run's overall rating is the
+any reviewer gave, mirroring how a domain-scored run's functional rating is the
 worst across its domains.
 
 The overall grade rides the ordinary review checklist under the reserved id

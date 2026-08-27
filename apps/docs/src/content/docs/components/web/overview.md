@@ -158,8 +158,8 @@ unmounted, since it holds nothing unreviewed or unpublished.
   from a subscription auth-token refresh before it is released.
 - Unreviewed: completed runs no account has reviewed yet
   ([`state=unreviewed`](/components/backend/api/#get-runs)), including
-  validator-rated runs already publishable on their functional rating, since an
-  aesthetic review can be added to those at any time; the queue that needs a
+  validator-rated runs already publishable on their functional rating, since a
+  review can be added to those at any time; the queue that needs a
   first pass.
 - Unpublished: runs that have cleared the publish gate but have not been released
   ([`state=publishable`](/components/backend/api/#get-runs)), which is the publish
@@ -171,14 +171,17 @@ record carries one, and the playable embed. A run with no playable build opens
 on Verdict, which then leads the strip as before.
 
 On a [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
-Verdict panel shows the points and the functional rating from the run record
-the moment the run completes, with a per-domain breakdown naming each failing
-item and the cap it applied, and a read-only browser of the automated items: a
-rail listing every item, each item's validator verdict and per-verdict
-assertions, and the implementation's replay beside the reference baseline's,
+Verdict panel is one unified layout, shown the moment the run completes: the
+header's badges and points, a compact strip of one functional rating badge per
+domain, and a single browser of the automated items. The browser is the one
+per-item surface. Its rail lists every item with its pass/fail mark, and each
+item shows its verdict and per-verdict assertions, the failure cap and affected
+domains when a scored point fails, the validator script's detail, path, and
+ran state, and the implementation's replay beside the reference baseline's,
 scrubbed together. The browser is informational, so every visitor sees it, the
-public gallery included. The review form asks only for a per-domain aesthetic
-tier and the writeup, and Publish is offered whether or not a review exists. On
+public gallery included. The review form asks for one run-wide aesthetic tier
+and the writeup, and lets the reviewer override any point's verdict inline on
+the pre-filled checklist; Publish is offered whether or not a review exists. On
 a legacy run the panel is the guided review: the checklist takes verdicts, the
 form takes the per-domain functional rating, and Publish waits on a review.
 

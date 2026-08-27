@@ -121,11 +121,11 @@ sub_items = [
   { id = "moving", title = "Imparts spin while moving" },
 ]
 
-# COMMON scoring domains, rated for EVERY variant. Each is rated independently
-# on the run's rating channels (functional and aesthetic); the run's OVERALL
-# rating on a channel is the WORST across the run variant's EFFECTIVE domain set
-# (these plus any the run's variant declares). At least one common domain is
-# required.
+# COMMON scoring domains, rated for EVERY variant. Each carries its own
+# functional rating; the run's OVERALL functional rating is the WORST across
+# the run variant's EFFECTIVE domain set (these plus any the run's variant
+# declares). The aesthetic rating is run-wide and names no domain. At least one
+# common domain is required.
 [[domain]]
 id = "single-player"         # stable slug, recorded with the per-domain rating
 name = "Single Player"       # display name (optional; defaults to a humanized id)
@@ -362,16 +362,16 @@ description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
   whole item, or on each sub-item when the item declares `sub_items` (an
   item-level key beside `sub_items` is rejected, since a sub-divided item is
   rated per sub-item). A legacy version rejects both keys wherever they appear.
-- `[[domain]]` declares a scoring domain the reviewer rates independently, by a
-  stable `id` recorded with the per-domain rating, an optional `name` defaulting
-  to a humanized `id`, and a required non-empty `description` telling the
-  reviewer what they are rating. At least one common domain is required, and
-  every variant is rated on all of them. A variant may declare additional
-  domains, so the effective set for a run is the common domains plus that
-  variant's own; ids must be unique across that set. A domain is rated on the
-  run's [rating channels](/testing/end-to-end/evaluation/#rating-channels), and
-  the run's overall rating on each channel is the worst across the effective
-  set. See
+- `[[domain]]` declares a scoring domain rated independently, by a stable `id`
+  recorded with the per-domain rating, an optional `name` defaulting to a
+  humanized `id`, and a required non-empty `description` telling the reviewer
+  what the domain covers. At least one common domain is required, and every
+  variant is rated on all of them. A variant may declare additional domains, so
+  the effective set for a run is the common domains plus that variant's own;
+  ids must be unique across that set. A domain carries a
+  [functional rating](/testing/end-to-end/evaluation/#rating-channels), and the
+  run's overall functional rating is the worst across the effective set; the
+  aesthetic rating is run-wide and names no domain. See
   [Scoring](/testing/end-to-end/evaluation/#scoring).
 
 ## The starter project
@@ -745,23 +745,22 @@ validation = { script = "validation/scoring-point.mjs", outputs = [
   a scenario through under an engine — and may not sit on a graded
   [game-jam](/testing/game-jam/overview/) category, which has no pass/fail to
   decide. Weights and sub-item scoring are
-  unchanged: automation decides the same verdicts a human would. On a
-  validator-rated version the verdict is final and read-only; on a legacy
-  version it is pre-filled in a distinguishable color the reviewer can override.
+  unchanged: automation decides the same verdicts a human would. On either kind
+  of version the verdict is pre-filled in a distinguishable color and the
+  reviewer can override it, overriding being the exception (see
+  [Evaluation](/testing/end-to-end/evaluation/#review)).
 
 A script that cannot be driven against a conformant build fails the verdict it
 backs. The handle being missing, a call throwing, a malformed return, or a
 declared output never being produced each count, and the failed verdict is
-recorded like any other auto verdict, overridable by the reviewer on a legacy
-version only. See
+recorded like any other auto verdict, overridable by the reviewer. See
 [load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing).
 A script whose precondition could not be met in the world the model invented
-decides nothing: on a validator-rated version the point lowers no rating, and
-on a legacy version it is left for the reviewer. A host
-with no browser
-degrades entirely, exactly as a check does. Which properties a script asserts is
-reporter-side detail: the seeded spec states the observable requirement and
-mandates the instrument.
+decides nothing: on a validator-rated version the point lowers no rating until
+a reviewer decides it, and on a legacy version it is left for the reviewer. A
+host with no browser degrades entirely, exactly as a check does. Which
+properties a script asserts is reporter-side detail: the seeded spec states the
+observable requirement and mandates the instrument.
 
 ## The categories grammar (`format = 2`)
 
@@ -830,9 +829,9 @@ scoring, validation, and the reviewer UI treat both grammars identically:
   run's functional rating is in
   [Evaluation](/testing/end-to-end/evaluation/#the-validator-decided-functional-rating).
 - A category is a grouping rather than a domain roll-up. `[[domain]]` blocks
-  stay for the per-domain ratings, and a mode-specific category is simply named
-  so the checklist reads by mode. The reviewer UI renders categories as a
-  collapsible accordion.
+  stay for the per-domain functional ratings, and a mode-specific category is
+  simply named so the checklist reads by mode. The reviewer UI renders
+  categories as a collapsible accordion.
 
 ## Errata
 

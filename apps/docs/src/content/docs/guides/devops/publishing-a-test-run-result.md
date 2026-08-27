@@ -48,7 +48,8 @@ its record is already stored on the backend.
   refuses a legacy run with no review. On the solo path below, a `<run-id>.md`
   writeup in the working directory supplies it: a valid rating per domain and a
   non-empty body. A validator-rated run needs none, and a writeup beside it
-  supplies the aesthetic rating. Write the review first; see
+  supplies the run-wide aesthetic rating and any verdict overrides. Write the
+  review first; see
   [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/).
 
 The public release is the per-run GitHub repository and the Cloudflare Pages

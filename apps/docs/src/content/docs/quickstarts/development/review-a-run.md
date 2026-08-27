@@ -4,14 +4,16 @@ title: Review a Run
 
 ## Overview
 
-A review is a writeup and a rating for each of the case's scoring domains,
-authored after playing the build. On a
+A review is a writeup and a rating, authored after playing the build. On a
 [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run the
-validators have decided the checklist, the functional rating, and the score, so
-the review rates aesthetics. On a legacy run the review rates function and adds
-a verdict on each reviewer-checklist item; those verdicts and the items' point
-weights produce the review's score, averaged across the run's reviews. On either
-channel the run's overall rating is the worst across its reviews.
+validators have decided the checklist, the functional rating, and the score,
+so the review rates the run's aesthetics with a single tier and may override
+individual checklist verdicts, which recomputes that review's score and
+functional rating. On a legacy run the review rates function per scoring
+domain and adds a verdict on each reviewer-checklist item; those verdicts and
+the items' point weights produce the review's score. Either way a run's score
+averages across its reviews and its rating is the worst across them; a
+validator-rated run with no reviews keeps the validators' own figures.
 
 Every review is attributed to the account that wrote it and a run carries one
 review per account. Publishing a legacy run requires at least one review; a
@@ -27,15 +29,17 @@ The [desktop app](/components/tauri/overview/) and the
 its build, and fill in the review editor:
 
 - Read the checklist. Items are presented one at a time, with a rail of every
-  item alongside. On a validator-rated run each item shows the validator's
-  verdict, assertions, and media read-only. On a legacy run each item shows its
-  point weight and takes a pass or fail verdict plus an optional note, and
-  answered ones are marked done. When the item declares them, the case's
-  expected reference is shown beside the agent's submitted
-  [proof](/components/core/validation/#proofs).
-- Rate each scoring domain, on the aesthetic scale for a validator-rated run and
-  the functional scale for a legacy run, and write the prose writeup. Saving the
-  review requires every domain rated, and on a legacy run every item answered.
+  item alongside. On a validator-rated run each item arrives pre-filled with
+  the validator's verdict, shown desaturated until you override it, alongside
+  its assertions and media; untouched items keep the validators' verdicts. On
+  a legacy run each item shows its point weight and takes a pass or fail
+  verdict plus an optional note, and answered ones are marked done. When the
+  item declares them, the case's expected reference is shown beside the
+  agent's submitted [proof](/components/core/validation/#proofs).
+- Rate the run: one aesthetic tier for the whole build on a validator-rated
+  run, or each scoring domain on the functional scale on a legacy run, and
+  write the prose writeup. Saving the review requires the rating, and on a
+  legacy run every domain rated and every item answered.
 
 The web console submits the review and publishes as two actions; the desktop app
 offers a single action that does both. A run's Proof tab lists every proof the
@@ -46,10 +50,10 @@ build submitted, browsable independent of the checklist.
 Re-submitting from the same account updates that account's review in place. Use
 Edit review on your own review to revise a verdict, a rating, or the writeup.
 
-On a legacy run a verdict [automated validation](/components/core/validation/)
-decided is recoverable in an edit: a point whose answer differs from the
-machine's carries a Restore control, and the checklist rail's Restore validator
-verdicts puts every overridden point back at once, keeping the notes. See
+A verdict [automated validation](/components/core/validation/) decided is
+recoverable in an edit: a point whose answer differs from the machine's
+carries a Restore control, and the checklist rail's Restore validator verdicts
+puts every overridden point back at once, keeping the notes. See
 [overriding and restoring an automated verdict](/guides/development/reviewing-test-run-results/#overriding-and-restoring-an-automated-verdict).
 
 An edit that changes something requires a short note explaining what changed.
@@ -67,20 +71,24 @@ tcab review <run-id> --writeup writeup.md
 ```
 
 `--writeup` defaults to `writeup.md` in the working directory. The file opens
-with YAML frontmatter followed by the prose body. For a validator-rated run the
-frontmatter carries an `aesthetic.<domain>` line per scoring domain:
+with YAML frontmatter followed by the prose body. For a validator-rated run
+the frontmatter carries one bare `aesthetic` line rating the whole run, plus
+an optional `review.<id>` line per verdict override, with a binary `pass` or
+`fail` status and any remainder kept as the note:
 
 ```markdown
 ---
-aesthetic.single-player: amazing
-aesthetic.versus: good
+aesthetic: good
+review.obstacle-bank: pass the validator's precondition never armed the bank
 ---
 
 Clean pixel art and a satisfying paddle thunk. The versus screen reuses the solo
 layout without adjusting for two players, so it feels cramped.
 ```
 
-Each aesthetic rating is one of:
+Legacy per-domain `aesthetic.<domain>` lines still parse and collapse to the
+worst tier named. The review is rejected while the aesthetic tier is missing
+or a `rating.*` line is present. The aesthetic rating is one of:
 
 - `legendary`: exceptionally beautiful; reserved for a build that stands out
   from every other run of the case.

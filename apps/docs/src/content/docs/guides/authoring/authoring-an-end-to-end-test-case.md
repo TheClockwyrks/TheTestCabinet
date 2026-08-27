@@ -174,9 +174,9 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/).
   A point may pair an expected `reference` view with a submitted `proof`.
   Checklist entries are reporter-side and stay out of the seeded set.
 - `[[domain]]` entries are the scoring domains. The validators rate each on the
-  functional scale through the failure caps, and a reviewer rates each on the
-  aesthetic scale: the build's visuals, polish, and feel. The run's overall
-  rating on each channel is the worst across the effective set.
+  functional scale through the failure caps, and the run's functional rating is
+  the worst across the effective set. A reviewer rates the run's aesthetics as
+  a whole: how the build looks, sounds, and feels to play.
 
 ### 7. Write the non-seeded docs
 

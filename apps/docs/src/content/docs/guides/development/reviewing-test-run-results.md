@@ -13,10 +13,12 @@ build's visuals, polish, and feel.
 What the reviewer rates depends on the run. A
 [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run, one
 whose case version is on the engine format, already carries a functional rating
-and score decided by its validators, so the reviewer supplies the per-domain
-[aesthetic rating](#rate-each-domain) and nothing else. A legacy run, one whose
-case version is on the `workspace` spelling, is rated by its reviewers: the
-per-domain [functional rating](#rate-a-legacy-run) and the checklist verdicts.
+and score decided by its validators, so the reviewer supplies the run-wide
+[aesthetic rating](#rate-the-run) and may
+[override](#overriding-and-restoring-an-automated-verdict) any checklist
+verdict. A legacy run, one whose case version is on the `workspace` spelling,
+is rated by its reviewers: the per-domain
+[functional rating](#rate-a-legacy-run) and the checklist verdicts.
 
 A review is curatorial, authored by a person after playing the build, so it sits
 outside the [run record](/components/core/run-records/) contract. Every review is
@@ -53,13 +55,15 @@ Validation also decides the checklist items through the case's
 [validators](/testing/end-to-end/instrumentation/), and fails any whose check
 the build's
 [debug API](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing)
-was too broken to answer. On a validator-rated run those verdicts are final,
-and the Verdict panel shows the points, the functional rating, and a per-domain
-breakdown naming each failing item and the cap it applied. On a legacy run they
-arrive pre-filled as failed, and overriding one is the exception, for a build
-that clearly does the right thing regardless.
+was too broken to answer. On a validator-rated run the Verdict tab shows the
+points, the functional rating and score, and a compact strip of the per-domain
+functional ratings, with every per-item detail in the item browser below. The
+verdicts and figures are the validators', though a reviewer may
+[override](#overriding-and-restoring-an-automated-verdict) any point's verdict.
+On a legacy run they arrive pre-filled as failed, and overriding one is the
+exception, for a build that clearly does the right thing regardless.
 
-What is left to you is the subjective judgement: the per-domain ratings of how
+What is left to you is the subjective judgement: one run-wide rating of how
 the build looks, how polished it is, and how it feels to play. A run that fails
 to load, or arrives with most of its checks auto-failed, is a clear negative
 signal. A clean load says only that the page rendered.
@@ -90,11 +94,14 @@ each decided by the case's validators (see the manifest's
 [`review_item`s](/testing/end-to-end/manifests/)). The checklist is
 reporter-side material and is never seeded into a run.
 
-On a validator-rated run the checklist is read-only. Each item shows the
-validator's verdict, its assertions, and the media it captured, together with
-the item's domains and failure cap, and the review editor offers no control
-over it. Read it to understand what the build got wrong before rating how it
-looks and feels.
+On a validator-rated run the checklist lives in the Verdict tab's item
+browser, visible to every visitor, the public gallery included. Each item
+shows the validator's verdict, its assertions, and the media it captured
+beside the case's reference, together with the validator script's detail and
+whether it ran. A failing scored point also names its failure cap and the
+domains it affects. Read it to understand what the build got wrong before
+rating how it looks and feels, and override a verdict only where the
+machine's call is wrong.
 
 ### Legacy checklist
 
@@ -117,11 +124,22 @@ weight. An erratum may retire a point from scoring entirely; see
 
 ### Overriding and restoring an automated verdict
 
-On a legacy run a point the case
-[instruments](/testing/end-to-end/instrumentation/) arrives already answered by
-validation, shown **desaturated** to mark it as the machine's call rather than
-yours. Click it to override where the build clearly does the right
-thing regardless; the option fills in full color to show the verdict is now yours.
+A point validation answered arrives already filled in the review editor, shown
+**desaturated** to mark it as the machine's call rather than yours. Click it to
+override; the option fills in full color to show the verdict is now yours.
+Overriding is the exception, for a validator whose precondition could not be
+met, or a build that clearly does the right thing despite broken
+instrumentation.
+
+On a validator-rated run every point arrives this way, and a reviewer may also
+decide a point the validators left undecided. Overrides need not be complete:
+a point left untouched keeps the validators' verdict and is not part of the
+review. The review's effective checklist is the validators' verdicts overlaid
+with its overrides, and from it come that review's score and per-domain
+functional ratings under the same failure-cap rule. The run's score is the
+average of its reviews' effective scores and its functional rating the worst
+of their effective ratings; while the run has no reviews the validators' own
+figures stand.
 
 An override is undoable at any time, including in a later edit of an
 already-submitted review: an overridden point grows a **Restore** control beside its
@@ -137,19 +155,25 @@ keeps no memory of having been auto-set.
 
 ## Write the review
 
-A review file is Markdown with YAML frontmatter: a rating for each scoring domain
-and a non-empty body. On a validator-rated run each domain's aesthetic rating
-is an `aesthetic.<domain>:` line and the frontmatter carries nothing else:
+A review file is Markdown with YAML frontmatter carrying the ratings and a
+non-empty body. On a validator-rated run the frontmatter carries one bare
+`aesthetic:` line rating the whole run, plus a `review.<id>: <status> [note]`
+line for each verdict the review overrides. An override names a declared
+verdict id (a sub-item uses the composite `<item id>.<sub-item id>`) with a
+binary `pass` or `fail` status:
 
 ```markdown
 ---
-aesthetic.single-player: amazing
-aesthetic.versus: good
+aesthetic: good
+review.obstacle-bank: pass the validator's precondition never armed the bank
 ---
 
 Clean pixel art and a satisfying paddle thunk. The versus screen reuses the solo
 layout without adjusting for two players, so it feels cramped.
 ```
+
+Legacy per-domain `aesthetic.<domain>:` lines still parse and collapse to the
+worst tier named.
 
 On a legacy run each domain's functional rating is a `rating.<domain>:` line.
 Checklist verdicts follow as `review.<id>: <status> [note]` lines, and a
@@ -174,23 +198,21 @@ file is also hand-editable, and because the CLI paths read it from disk:
 `tcab review` reads `writeup.md` (or the `--writeup` path), and `tcab publish`
 reads `<run-id>.md` from the working directory.
 
-A review of a validator-rated run is rejected while any declared domain is
-missing its aesthetic rating, and if it carries a `rating.*` line, since the
-functional rating is the validators' to give. A legacy run cannot be published
-while any declared domain is unrated or any declared checklist item or sub-item
-is missing its verdict.
+A review of a validator-rated run is rejected while the aesthetic tier is
+missing, and if it carries a `rating.*` line, since the functional rating is
+the validators' to give. A legacy run cannot be published while any declared
+domain is unrated or any declared checklist item or sub-item is missing its
+verdict.
 
-## Rate each domain
+## Rate the run
 
 The writeup is the short prose the site shows before the playable build. The
-ratings travel with it in the frontmatter. Rate each
-[domain](/terminology/#domain) in the run variant's effective set independently,
-choosing one of five tiers. The effective set is the case's common domains plus
-any the run's variant declares.
+ratings travel with it in the frontmatter.
 
-On a validator-rated run you rate aesthetics: how the build looks, sounds, and
-feels to play, judged as a game rather than against the spec, since the
-validators have already decided how faithfully the spec was met.
+On a validator-rated run you rate aesthetics once for the whole run: how the
+build looks, sounds, and feels to play, judged as a game rather than against
+the spec, since the validators have already decided how faithfully the spec
+was met. Choose one of five tiers:
 
 - `legendary`: exceptionally beautiful. Reserved for a build whose look and
   feel stand out from every other run of the case; most amazing builds are not
@@ -203,13 +225,14 @@ validators have already decided how faithfully the spec was met.
 - `slop`: scuffed or broken presentation. Placeholder art, jarring motion or
   audio, or a look that gets in the way of playing.
 
-The run's overall aesthetic rating is the worst across its domains, so an
-amazing mode cannot mask a slop one.
+The run's overall aesthetic rating is the worst across its reviews.
 
 ### Rate a legacy run
 
-On a legacy run you rate function, how faithfully each domain implements the
-spec:
+On a legacy run you rate function, how faithfully each
+[domain](/terminology/#domain) implements the spec. Rate each domain in the
+run variant's effective set independently, the case's common domains plus any
+the run's variant declares, choosing one of five tiers:
 
 - `flawless`: implemented to spec with no noticeable bugs.
 - `great`: to spec, with minor issues that leave playability intact.

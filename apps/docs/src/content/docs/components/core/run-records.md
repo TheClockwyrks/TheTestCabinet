@@ -153,9 +153,10 @@ status.
 The run's terminal state, with enough detail to understand a failure. One of:
 
 - `completed`: the harness exited cleanly and the run produced a usable,
-  evaluable implementation. Scored on the reviewer checklist: by its validators
-  on a [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run,
-  by its reviewers on a legacy run.
+  evaluable implementation. Scored on the reviewer checklist: on a
+  [validator-rated](/testing/end-to-end/evaluation/#rating-channels) run by its
+  validators, overlaid with any reviewer overrides, and on a legacy run by its
+  reviewers.
 - `catastrophic`: the harness exited cleanly, meaning the model claimed
   completion, but the output did not build or load, so there was no playable
   build and nothing to evaluate. A publishable model failure with no review

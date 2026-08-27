@@ -9,8 +9,8 @@ requires, drives the build into the states each checklist item needs and decides
 its verdict, synthesizing the evidence as it goes. On a
 [validator-rated](#rating-channels) case version the validators also decide the
 run's functional rating and its score, so both stand the moment the run
-completes. The review is where subjective judgement is made: the aesthetic
-rating per scoring domain, covering the build's visuals, polish, and feel.
+completes. The review is where subjective judgement is made: one run-wide
+aesthetic rating covering how the whole build looks, sounds, and feels to play.
 
 The mechanism behind each stage lives under Core:
 [Validation](/components/core/validation/) for the automated pass and
@@ -66,7 +66,8 @@ harness resets the build to a known start, calls the case's control operations
 to establish the item's precondition, steps the real simulation forward, and
 reads the result back, both synthesizing the proof media and deciding the
 verdict. Every review item a case declares carries such a script, so behavior is
-decided by the case's validators and a reviewer is never asked to decide it.
+decided by the case's validators; a reviewer may [override](#review) a verdict,
+and doing so is the exception.
 
 The debug API is load-bearing rather than informational: a build that does not
 expose the contract the case declares, or whose API is non-conformant, fails
@@ -78,21 +79,22 @@ functional rating; the aesthetic rating stays human.
 
 ## Rating channels
 
-A run carries up to two ratings, each a five-tier scale over the run's
-effective domain set, meaning the case's common
-[`[[domain]]`](/testing/end-to-end/manifests/)s plus any the run's variant
-declares. A domain's rating on either channel is one tier, and the run's overall
-rating on a channel is the worst across its domains, so a flawless mode cannot
-mask a broken one.
+A run carries up to two ratings, each a five-tier scale.
 
-- The functional rating says how faithfully the build implements the spec. Its
-  tiers, best to worst, are `flawless`, `great`, `passable`, `scuffed`, and
-  `broken`.
-- The aesthetic rating says how the build looks, sounds, and feels to play. Its
-  tiers, best to worst, are `legendary`, `amazing`, `good`, `okay`, and `slop`.
-  `amazing` is the normal maximum, a build with nothing to fault; `legendary` is
-  reserved for a build that is exceptionally beautiful, and the site marks its
-  badge distinctly.
+- The functional rating says how faithfully the build implements the spec. It
+  is rated per domain over the run's effective domain set, meaning the case's
+  common [`[[domain]]`](/testing/end-to-end/manifests/)s plus any the run's
+  variant declares. Each domain's rating is one tier, and the run's overall
+  functional rating is the worst across its domains, so a flawless mode cannot
+  mask a broken one. Its tiers, best to worst, are `flawless`, `great`,
+  `passable`, `scuffed`, and `broken`.
+- The aesthetic rating says how the whole build looks, sounds, and feels to
+  play. It is one tier over the run, since visuals, audio, and feel are
+  properties of the build rather than of any one mode. Its tiers, best to
+  worst, are `legendary`, `amazing`, `good`, `okay`, and `slop`. `amazing` is
+  the normal maximum, a build with nothing to fault; `legendary` is reserved
+  for a build that is exceptionally beautiful, and the site marks its badge
+  distinctly.
 
 Which channel a person supplies depends on the case version. A case version is
 validator-rated when it is on the engine-supported manifest format (the
@@ -100,7 +102,7 @@ validator-rated when it is on the engine-supported manifest format (the
 [starter project](/testing/end-to-end/manifests/#the-starter-project)) and is
 not a game jam. A run is validator-rated when its case version is. On a
 validator-rated run the validators decide the functional rating and reviewers
-supply only the aesthetic rating. On a legacy run, one whose case version spells
+supply the aesthetic rating. On a legacy run, one whose case version spells
 its starter project as a single `workspace`, the reviewer's rating is the
 functional rating and the run has no aesthetic rating. Legacy runs, which
 include every run recorded before the engine format existed, keep behaving
@@ -139,30 +141,45 @@ The rating is derived from the run record alone:
 
 The score is derived the same way, from the validator verdicts and the item
 weights, and needs no review. Both are shown on the run the moment it completes,
-with a per-domain breakdown naming each failing point and its cap, and a
-validator-rated run may be published with no review at all. A blatantly broken
-build reaches the gallery with its functional rating and score and costs no
-reviewer time.
+and a validator-rated run may be published with no review at all. A blatantly
+broken build reaches the gallery with its functional rating and score and costs
+no reviewer time.
+
+The run's Verdict tab presents the evidence in a single per-item browser, shown
+to every visitor including the public gallery. Each point shows its verdict,
+the failure cap and the domains a failure lowers, the validator script's detail
+and path and whether it ran, and the reference-vs-run media; an item rail marks
+each point pass or fail as the at-a-glance overview, and a compact strip shows
+each effective domain's functional rating. The figures and per-domain ratings
+shown are the effective ones, with any review [overrides](#review) folded in.
 
 ## Review
 
 The [review](/components/core/results/#reviews) is a person playing the finished
-build and writing it up. On a validator-rated run it carries two things.
+build and writing it up. On a validator-rated run it carries three things.
 
 - A short writeup the site shows before the playable build.
-- An aesthetic rating per effective domain, chosen on the
-  `legendary`-to-`slop` scale. Every effective domain must be rated before the
-  review can be submitted. The run's overall aesthetic rating is the worst
-  across the domains within a review, then the worst across its reviews.
+- One aesthetic rating for the whole run, chosen on the `legendary`-to-`slop`
+  scale. It must be supplied before the review can be submitted, and the run's
+  overall aesthetic rating is the worst across its reviews.
+- Optionally, checklist overrides, as follows.
 
-The checklist on a validator-rated run is machine-decided. The reviewer sees
-each point's validator verdict, assertions, and media read-only; a review
-carries no checklist verdicts of its own and no override exists. The same
-read-only item browser is shown to every visitor of the run's Verdict tab,
-the public gallery included, because it is an exhibit of the evidence rather
-than a reviewer control. A review on a
-validator-rated run carries no functional rating either, since the functional
-rating is not the reviewer's to give.
+Every checklist point arrives in the review form pre-filled with the verdict
+the run's validators decided, marked as machine-set and shown in a
+distinguishable color, and the reviewer may override any of them: a binary
+pass or fail against the point's verdict id, with an optional note. A reviewer
+may also decide a point the validators left undecided, such as one whose
+precondition could not be met. Overriding is the exception: an unmet
+precondition, or a build that clearly does the right thing despite broken
+instrumentation. Points the review leaves untouched keep the validators'
+verdicts, and a review naming an undeclared verdict id, or carrying a verdict
+that is not binary, is refused.
+
+A review's effective checklist is the validators' verdicts overlaid with that
+review's overrides. The review carries no functional rating of its own; its
+functional figures derive from its effective checklist (see
+[Scoring](#scoring)), so a review with no overrides reproduces the validators'
+figures exactly.
 
 A review can be added at any time, before or after publish, so a run published
 on its functional rating alone gains an aesthetic rating when someone plays it.
@@ -207,10 +224,15 @@ score.
   scoring counts toward neither side of the ratio. It is still checked, driven,
   and shown.
 
-On a validator-rated run the verdicts are the validators', so the score is fixed
-on completion and is the same however many reviews the run carries, including
-none. On a legacy run each review's verdicts produce that review's score and the
-run's score is the average across its reviews.
+On a validator-rated run each review's effective checklist, the validators'
+verdicts overlaid with that review's [overrides](#review), produces that
+review's figures. Its score counts, on both sides of the ratio, only the points
+that have an effective verdict, and its functional domain ratings follow the
+failure-cap rule above, with the toolchain gate on top. The run's score is the
+average of its reviews' effective scores and its functional rating is the worst
+across their effective ratings; while the run has no reviews, the validators'
+own score and rating stand. On a legacy run each review's verdicts produce that
+review's score and the run's score is the average across its reviews.
 
 Publishing a validator-rated completed run needs no review; publishing a legacy
 completed run refuses one with no review, so every published legacy

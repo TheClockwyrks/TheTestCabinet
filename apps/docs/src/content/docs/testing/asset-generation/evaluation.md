@@ -199,11 +199,11 @@ That review is one overall rating and nothing else. An asset-generation case
 declares
 [no reviewer checklist](/testing/asset-generation/manifests/overview/#judged-on-one-overall-rating),
 only the single `overall` scoring [domain](/components/core/results/#reviews),
-because how well an asset reads is a judgment about the whole thing. The reviewer
-takes in the asset as a whole, playing back every declared sequence, turning the
-model, or hearing the clip, then reads the brief and gives it one rating. Being
-the only domain, that rating is the run's rating. Runs of these cases carry a rating and a
-writeup and no point score.
+because how well an asset reads is one judgment about the whole asset. The
+reviewer takes in the asset as a whole, playing back every declared sequence,
+turning the model, or hearing the clip, then reads the brief and gives it one
+rating. Being the only domain, that rating is the run's rating. Runs of these
+cases carry a rating and a writeup and no point score.
 
 That puts the weight on the brief. It is both what the model is asked to satisfy
 and the only thing the rating is given against, so anything that would have been
