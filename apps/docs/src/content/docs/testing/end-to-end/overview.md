@@ -59,6 +59,8 @@ Each test case version contains:
 - Reference views, each seeded as a visual target and usable as the baseline for
   a validation check. A view is either an HTML mockup rendered to a screenshot,
   whose source stays out of the run, or a static image or video served as-is.
+  Reference views are retained so shipped versions keep resolving; a new case
+  declares none.
 - Assets such as sprites, for a case that needs art the model should not have to
   produce.
 - Validation criteria describing what is checked automatically. See
@@ -412,8 +414,9 @@ Every end-to-end test case must satisfy the following.
   static site into one of `dist/`, `build/`, or `out/` with an `index.html` at
   the root of that directory. The load check builds and serves an implementation
   with the manifest's `[build]` commands and records anything else as failing to
-  load. The language, framework, bundler, and rendering approach behind the
-  interface remain the model's choice.
+  load. Behind that interface the build is a TypeScript project on the case's
+  seeded toolchain; the architecture and code remain the model's own, and an
+  engine run takes rendering and the runtime surfaces from its engine.
 - It must require page-relative asset URLs whenever the build loads files at
   runtime by URL. The load check and the publish deploy serve at a root, but the
   console plays a finished run back from the per-run sub-path
@@ -421,8 +424,8 @@ Every end-to-end test case must satisfy the following.
   served HTML. A URL the build constructs at runtime, or a root-absolute one,
   must therefore be page-relative, so the build runs under any base path. For a
   bundler that means a relative base, such as Vite's `base: './'`.
-- It must be possible to specify visuals precisely enough that an automated pass
-  can compare an implementation against the reference views.
+- It must be possible to specify behavior precisely enough that a validator can
+  decide every review point from the spec.
 - It must mandate the instrumentation that lets a run be validated
   automatically: a debug API on a case-specific global, a deterministic core
   beneath it, and a read-only debug overlay. The debug API is a hard

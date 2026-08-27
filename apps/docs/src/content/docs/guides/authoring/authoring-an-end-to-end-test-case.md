@@ -27,23 +27,23 @@ version is frozen. Revise a case by adding a new version.
 test-cases/<type>/<difficulty>/<slug>/<version>/
   test-case.toml         # manifest: specs, references, checks, domains, review items
   variants/              # one standalone TOML file per variant (listed in `variants`)
-  workspaces/            # starter project per engine, seeded to the run root (optional)
+  workspaces/            # one starter project per engine, seeded to the run root
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
   changelog.md           # per-version site-facing entry (NOT seeded)
   README.md              # human overview (NOT seeded)
   specs/                 # the specification, decomposed by concern (SEEDED)
-  reference/             # mockup source and committed screenshots (NOT seeded)
+  references/            # reference implementations, one per engine (NOT seeded)
+  showcase/              # per-variant demo media captured from a reference (NOT seeded)
   validation/            # the validators review points are decided by (NOT seeded)
   validation-baseline/   # committed baseline media, per engine and variant
   assets/                # sprites the model must use, SEEDED (omit if none)
 ```
 
-A run receives the selected variant's seeded specs, the case's assets and
-workspace files, and the rendered reference screenshots. The prompt is rendered
-and handed to the harness as its instruction; it is never written to the run's
-disk. The reference source is withheld so a model builds the UI from the spec
-rather than copying it.
+A run receives the selected variant's seeded specs, the case's assets, and the
+workspace for the run's engine; an engine run also receives the vendored
+engine and its documentation at `engine/`. The prompt is rendered and handed
+to the harness as its instruction; it is never written to the run's disk.
 
 A workspace is one starter project per supported
 [engine](/components/core/engines/). An engine's workspace vendors the engine
@@ -59,8 +59,8 @@ with no source code, so the model owns the code it is judged on. See
 Confirm the concept satisfies every
 [design requirement](/testing/end-to-end/overview/#design-requirements): inspired
 by rather than a clone of an existing game, playable with no API keys and no
-backend, specifiable precisely enough for an automated comparison against a
-reference view, and built through the fixed build interface. The case must
+backend, specifiable precisely enough that a validator can decide every
+review point from the spec, and built through the fixed build interface. The case must
 mandate the [instrumentation](/testing/end-to-end/instrumentation/) a run is
 validated through, framed in the seeded spec as a debugging feature of the game.
 
@@ -93,9 +93,13 @@ A few rules dominate this step.
   no links outside it, no common spec referencing a variant-only spec, and no
   dependence on the reference source. See
   [self-contained specs](/testing/end-to-end/overview/#self-contained-specifications).
-- Specify what rather than how. The language, framework, bundler, and rendering
-  approach are the model's choices. Pin down observable behavior and exact
-  values. The build-and-serve interface in step 6 is the exception.
+- Specify what, never how. Pin down observable behavior and exact values, and
+  leave how to implement them to the build, per
+  [Never help the model](/guides/authoring/writing-case-specifications/#never-help-the-model).
+  The seeded workspace fixes the project itself: TypeScript, the build
+  interface, and the toolchain commands of step 6. An engine run additionally
+  takes rendering, input, and audio from its engine. Within that project the
+  architecture and the code are the model's own.
 - Be precise and testable. Every behavior a validator checks is written as an
   exact value or an explicit bound, and every validator is derived from the
   spec. Appearance is stated as what must be present. See
@@ -110,54 +114,67 @@ A short instruction that gives the model its task, points at the seeded specs,
 and carries the operational detail: the workspace path, commit expectations, and
 the fixed build interface. The template renders in strict mode, and the available
 variables are `{{workspace}}`, `{{variant.slug}}`, `{{variant.name}}`,
-`{{variant.description}}`, `{{#each specs}}` (each with `dest`, `path`, and
-`name`), and `{{time_limit_hours}}`. Any other reference is a render error.
+`{{variant.description}}`, `{{engine.slug}}`, `{{engine.name}}`,
+`{{engine.docs}}`, `{{#each specs}}` (each with `dest`, `path`, and `name`),
+and `{{time_limit_hours}}`. Any other reference is a render error.
 
 Run-specific detail belongs in the prompt and never in a spec, which is why the
 prompt carries `/work` and a spec does not. See
 [Prompt template](/testing/end-to-end/overview/#prompt-template).
 
-### 5. Author the reference views
+### 5. Author the reference implementations
 
-Build each view as self-contained static HTML on the fixed logical stage, sharing
-a `theme.css` that is the source of truth for the palette and field furniture.
-The harness renders these to screenshots at the logical viewport, per variant,
-into the git-ignored `reference/.rendered/` cache. Author the source; the
-screenshots are a build output.
+Author one correct build per supported engine, by convention under
+`references/<engine>/`, and declare the set in each variant's
+`[reference_implementation]` table. Each is a complete, conformant
+implementation of the variant on that engine: it is built with the case's own
+`[build]` commands, passes the same four toolchain gates a run is held to,
+and is never seeded into a run.
 
-A reference may instead name committed media with `media`, a static image under
-the tracked `reference/screenshots/` directory. That is how a view is targeted
-when it is captured from the case's own reference implementation rather than an
-HTML mockup.
+The reference implementations are what
+[`tcab capture-baselines`](/components/cli/overview/#commands) drives to
+produce the committed baseline media under
+`validation-baseline/<engine>/<variant>/`, what
+[`tcab publish-reference`](/components/cli/overview/#commands) deploys for the
+case page's Play tab, and what step 7 verifies the validators against.
+
+Reference views (`[[reference]]` mockups and `media`) are retained so shipped
+versions keep resolving; a new case declares none.
 
 ### 6. Write the manifest and declare variants
 
 Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/).
 
 - Metadata. `slug`, `name`, `difficulty` (`easy`, `medium`, or `hard`), and
-  `tags` are required; `tags` may be empty. `description` and `changelog` are
-  optional site-only paths that stay out of the seeded set.
+  `tags` are required; `tags` may be empty. `changelog` is a required site-only
+  path recording what changed in this version, and `description` is an optional
+  one; both stay out of the seeded set.
 - `[build]` is required and states `install` and `build` explicitly. The
   build emits a static site into `dist/`, `build/`, or `out/` with an
   `index.html` at its root. `npm ci` is conventional because it requires a
   committed lockfile. A finished run is also played back from the per-run
   sub-path `/runs/<id>/build/`, so a build that loads files at runtime by URL
   must keep working under any base path.
+- The starter project uses the per-engine spelling: `engines` and `[[engine]]`
+  declare the supported engines and the version range each is pinned at, and
+  `[workspaces]` names one starter directory per engine. This spelling is what
+  makes the version validator-rated. The single `workspace` key is the legacy
+  spelling, kept resolving for shipped versions. See
+  [The starter project](/testing/end-to-end/manifests/#the-starter-project).
+- `[toolchain]` is required of a new version and declares the TypeScript
+  commands run over the produced implementation: a gating `typecheck` plus the
+  recorded `lint`, `format`, and `test`.
 - `variants` is an ordered array of paths to standalone variant files under
   `variants/`. The first is the default, at least one is required, and because it
   is a root key it must appear before the first table header. See
   [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/).
-- Common `[[spec]]` and `[[reference]]` lists are seeded for every variant. A
-  `.hbs` source is rendered; anything else is seeded verbatim. A spec's `dest`
-  defaults to its `source` with a trailing `.hbs` stripped.
-- `[[check]]` entries are opt-in reference comparisons. A checked view's baseline
-  must resolve for every variant.
-- `[[proof]]` entries declare the evidence the build submits. Declare each one
-  twice so the two agree: a seeded `proof.md` spec telling the build to write
-  screenshots or short `.webm` clips at fixed paths, and one `[[proof]]` whose
-  `dest` matches each path. Validation records only whether each declared proof
-  turned up and is non-empty. See
-  [Proofs](/testing/end-to-end/evaluation/#proofs).
+- Common `[[spec]]` entries are seeded for every variant. A `.hbs` source is
+  rendered; anything else is seeded verbatim. A spec's `dest` defaults to its
+  `source` with a trailing `.hbs` stripped.
+- `[[reference]]`, `[[check]]`, and `[[proof]]` are retained so shipped
+  versions keep resolving; a new case declares none. The media a reviewer
+  compares is captured by the case's validators from scenarios the case
+  controls.
 - `[instrumentation]` declares the debug-API handle the build installs its
   automation surface on. It is required because every review point declares a
   `validation` script.
@@ -178,7 +195,24 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/).
   the worst across the effective set. A reviewer rates the run's aesthetics as
   a whole: how the build looks, sounds, and feels to play.
 
-### 7. Write the non-seeded docs
+### 7. Author the validators and capture baselines
+
+Every graded point carries a `validation` script for every supported engine,
+shipped under `validation/<engine>/` with the script path relative to that
+directory. Design the suites per
+[Writing Debug APIs and Validators](/guides/authoring/writing-debug-apis-and-validators/):
+one requirement per validator, every assertion traced to the spec, scenarios
+posed through the shared harness and the debug API.
+
+Run each engine's suite against that engine's reference implementation with
+`tcab validate`; a validator that fails there is a broken validator, not a
+failing build. Then confirm each validator discriminates by breaking the rule
+it covers in a scratch copy of the reference and confirming exactly the
+expected check fails. When the suites pass, run
+[`tcab capture-baselines`](/components/cli/overview/#commands) and commit the
+media it writes under `validation-baseline/<engine>/<variant>/`.
+
+### 8. Write the non-seeded docs
 
 `description.md` (site blurb), `changelog.md` (what changed in this version), and
 `README.md` (human overview). These never reach a run.
@@ -188,14 +222,18 @@ Author `test-case.toml` per the [schema](/testing/end-to-end/manifests/).
 A case is validated by resolving and seeding it. For every variant:
 
 ```sh
-tcab prompt --test-case <slug> --version <version> --variant <variant>
-tcab seed   --test-case <slug> --version <version> --variant <variant>
+tcab prompt --test-case <slug> --version <version> --variant <variant> --engine <engine>
+tcab seed   --test-case <slug> --version <version> --variant <variant> --engine <engine>
 ```
 
 `prompt` renders the instruction, catching strict-mode template errors and
 manifest problems. `seed` writes the seeded repository to disk (under `tmp/` by
 default) so you can read exactly what the model would receive and confirm the
 seeded set is self-contained.
+
+Repeat both for every engine the case supports; `--engine` defaults to
+`none`. Each engine renders its own branch of the spec templates, so every
+combination is read against the seeded output rather than the sources.
 
 Lint the specs and prose from the repository root:
 

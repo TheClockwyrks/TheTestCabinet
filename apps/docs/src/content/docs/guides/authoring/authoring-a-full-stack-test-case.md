@@ -79,7 +79,7 @@ still holds. Two additions:
   is heavier than the same game as end-to-end. Set `difficulty` and
   `max_runtime_hours` accordingly; Hollowdeep is `medium` with eight hours.
 
-### 2–5. Foundations, spec decomposition, prompt, references
+### 2–5. Foundations, spec decomposition, prompt, reference implementations
 
 Unchanged from end-to-end, with two notes.
 
@@ -89,8 +89,8 @@ Unchanged from end-to-end, with two notes.
   (`FULL_STACK_PREAMBLE` in `crates/core/src/prompt.rs`) at render time, which
   tells the model to author real assets with the on-`PATH` binaries and keep the
   build self-contained. Cover only case-specific detail in `prompt.hbs`.
-- References remain authored mockups that stay out of the seeded set. The
-  reviewer compares the produced build against them.
+- A new case declares no reference views. The visual bar is stated in the
+  specs, and the reviewer judges the produced build against them.
 
 ### 6. Write `specs/assets.md`, the asset-production contract
 
@@ -141,8 +141,9 @@ Author `test-case.toml` per the
   `presentation` domain for the produced art, motion, effects, and audio; the
   overall rating is the worst across the set. See
   [Review](/testing/full-stack/evaluation/#review).
-- `[[reference]]`, `[[proof]]`, `[[check]]`, and `variants` work exactly as
-  end-to-end.
+- `variants`, engines, the `[toolchain]` table, and the validators work
+  exactly as end-to-end. `[[reference]]`, `[[proof]]`, and `[[check]]` are
+  retained for shipped versions; a new case declares none.
 
 ### 8. Write the non-seeded docs
 

@@ -60,8 +60,8 @@ way the seeded text must give:
 - a menu-entry section saying which label it adds and where it sits;
 - the mode's rules as a delta against an existing mode;
 - whatever mechanic sections the variant needs, with precise, testable numbers
-  in pixels, degrees, seconds, and multipliers, in the same coordinate system
-  and style as the common specs;
+  in the playfield's logical units, degrees, seconds, and multipliers, in the
+  same coordinate system and style as the common specs;
 - the exact HUD label.
 
 A variant's own spec file may reference the common specs freely, since they are
@@ -146,7 +146,7 @@ description = "The ball bounces off the obstacles' tilted faces at oriented angl
 domains = ["gyre"]
 failure_cap = "scuffed"
 validation = { script = "gyre/oriented-bounce.test.ts", outputs = [
-  { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "video" },
+  { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "replay" },
 ] }
 ```
 

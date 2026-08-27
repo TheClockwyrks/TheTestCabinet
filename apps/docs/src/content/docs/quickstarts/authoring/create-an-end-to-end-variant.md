@@ -23,9 +23,10 @@ is the editorial rulebook the variant's specs follow.
 3. Where the variant contradicts an absolute statement in a common spec, soften
    that common spec generically to defer to a mode spec under `specs/modes/`.
    Leave the existing variants' behaviour unchanged.
-4. Where the menu differs, add a per-variant `title` mockup at
-   `reference/menu-<slug>.html`, copied from a sibling. Mockup source is never
-   seeded.
+4. Give the variant its own `[workspaces]` table (or `workspace` in an
+   engineless case) only when it changes what the starter project must hold,
+   and its own `[reference_implementation]` per engine when its correct build
+   differs.
 5. Create `variants/<slug>.toml`, a standalone TOML file whose top-level keys are
    the variant's fields, and add its path to the `variants` list in
    `test-case.toml`. The first entry in that list is the default variant.
@@ -36,7 +37,6 @@ slug = "gyre"
 name = "Gyre"
 description = "Standard plus a mode whose obstacles oscillate and rotate."
 spec = [{ source = "specs/modes/gyre.md" }]
-reference = [{ view = "title", path = "reference/menu-gyre.html" }]
 
 # A mode a variant introduces is usually rated on its own domain, layered on the
 # case's common ones.
@@ -46,13 +46,12 @@ name = "Gyre"
 description = "Swaying, rotating obstacles the ball bounces off at oriented angles."
 ```
 
-A spec entry's `dest` defaults to its `source` with any trailing `.hbs` removed.
-Within one variant, two seeded entries may not share a `dest`. A variant's
-`spec`, `reference` and `[[domain]]` entries are additive on the common ones, and
-each id or view slug must be unique across the common set and the variant's own.
-Every reference view named by a [check](/components/core/validation/#checks) must
-resolve for every variant, either as a common reference or as one each variant
-declares.
+A spec entry's `dest` defaults to its `source` with any trailing `.hbs`
+removed. Within one variant, two seeded entries may not share a `dest`. A
+variant's `spec`, review, and `[[domain]]` entries are additive on the common
+ones, and each id must be unique across the common set and the variant's own.
+Every review point the variant adds carries a `validation` script for every
+engine the case supports, with `domains` and `failure_cap`.
 
 ## Validate
 

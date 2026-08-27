@@ -51,6 +51,29 @@ Mentioning reviewers is acceptable. Work gets reviewed whether or not it is part
 of a benchmark, so "reviewers will check X" reads as ordinary engineering
 process.
 
+## Never help the model
+
+A spec states what must be built and how the built game behaves, in exact
+values and observable terms, and **never** how to implement it. Designing the
+implementation is the work a run measures, so a spec that suggests an
+algorithm, a data structure, a decomposition, or a place for code to live is
+doing part of the model's job. The fixed build interface, the seeded project's
+toolchain, and the module contract an engine's workspace states are
+requirements, and they are the only implementation facts a spec fixes.
+
+Every sentence in a spec is a rule: a statement a build either satisfies or
+violates. A sentence a build cannot violate is advice, and advice is cut or
+recast as the rule it hints at.
+
+| Advice (cut) | Rule (kept) |
+| --- | --- |
+| Name each one once in a module of your own and read it from there, rather than restating a value at each use. | Every fixed figure is named once and imported where it is used. |
+
+The left column tells the model how to write its code. The right column states
+a property the finished code either has or lacks, which is what the
+[clean-code requirements](#clean-maintainable-code) already are: rules about
+the delivered code, not guidance on producing it.
+
 ## What is specified and what is validated
 
 A playable case is scored by its validators and rated by its reviewers, and the
@@ -199,6 +222,8 @@ When you finish revising a case's specs or prompt, confirm each of the following
   spec.
 - The spec requires clean, maintainable code and names the checks that must
   pass.
+- The specs carry no implementation advice: every sentence states a rule a
+  build can violate, and nothing suggests how to implement one.
 - An engineless workspace contains configuration only.
 - The seeded set carries no historical or changelog wording.
 - Specs, prompt, and file names carry no mention of testing, benchmarking,
