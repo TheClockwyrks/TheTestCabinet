@@ -1,15 +1,7 @@
 [[media]]
-file = "ai-block.json.gz"
-name = "The AI blocks a shot"
+file = "gameplay.json.gz"
+name = "Three balls at once: collisions, saves, and points both ways"
 
 [[media]]
-file = "ball-collision.json.gz"
-name = "Two balls colliding head-on"
-
-[[media]]
-file = "solo-respawn.json.gz"
-name = "A scored ball respawns while play continues"
-
-[[media]]
-file = "three-balls.png"
-name = "Three balls held on their home points"
+file = "mid-match.png"
+name = "All three balls in flight"
