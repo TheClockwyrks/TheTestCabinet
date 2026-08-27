@@ -34,10 +34,12 @@
 // the live world at the moment of the call — the instance holds the engine, and
 // `engine.world` follows transitions — so a pose is `h.debug.serve()` and a
 // reading is `h.debug.snapshot()`, with nothing in between. One consequence is
-// worth stating once, here: an operation whose effect is a LEVEL TRANSITION
-// (`startMatch`, a `reset` away from the title) is honored at the end of the
-// next advanced frame, so a scenario poses, advances a frame, and then reads.
-// The scenario helpers below carry those advances so a check does not have to.
+// worth stating once, here: a SCREEN-CHANGING pose (`startMatch`, a `reset`
+// away from the title) may land at the call or as late as the end of the next
+// advanced frame — the spec fixes the arrangement, not the moment, and both
+// designs are conformant — so a scenario poses, advances a frame, and then
+// reads, which is correct under either design. The scenario helpers below
+// carry those advances so a check does not have to.
 //
 // THE CLOCK. `ConstantClock(TICK_MS)` is the default, so one frame is one
 // 120 Hz tick and every duration below is a whole number of them, which is the
@@ -1229,10 +1231,10 @@ export function parkSpares(
  * to live play.
  *
  * The transitions are advanced through here so a caller never counts them:
- * `reset` away from the title and `startMatch` each land on the frame after the
- * call, because a level transition is honored at the end of a frame — so each is
- * followed by one advanced frame, and every pose after that acts on the live
- * match world the countdown is running in.
+ * `reset` away from the title and `startMatch` each land no later than the end
+ * of the frame after the call (the harness header), so each is followed by one
+ * advanced frame, and every pose after that acts on the live match world the
+ * countdown is running in.
  *
  * `serve()` only expires the pre-serve hold; the LAUNCH is the build's own, on
  * the frame after. So this sweeps until the game reports live play, which is the
@@ -1264,9 +1266,10 @@ export async function startPlaying(
 /**
  * Start a match from the title the way a player does: menu keys only.
  *
- * `reset` from a match world is a level transition, honored at the end of the
- * next frame, so one frame is advanced before the first tap — otherwise that
- * tap's edge would be consumed by the world the reset is leaving.
+ * `reset` from a match world may land as late as the end of the next advanced
+ * frame (the harness header), so one frame is advanced before the first tap —
+ * otherwise that tap's edge could be consumed by the world the reset is
+ * leaving.
  */
 export async function startWithKeys(h: Harness, mode: Mode): Promise<void> {
   h.debug.reset();
@@ -1286,9 +1289,9 @@ export async function startWithKeys(h: Harness, mode: Mode): Promise<void> {
  * about the real input pipeline enters with {@link startWithKeys} instead, and
  * one that needs the hold already expired opens with {@link startPlaying}.
  *
- * Both operations are level transitions, honored at the end of the next
- * advanced frame (see the harness header), so each is followed by one frame —
- * the countdown is open, and reads, when this returns.
+ * Both operations may land as late as the end of the next advanced frame (see
+ * the harness header), so each is followed by one frame — the countdown is
+ * open, and reads, when this returns.
  */
 export async function openCountdown(h: Harness, mode: Mode): Promise<void> {
   h.debug.reset();

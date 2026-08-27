@@ -57,9 +57,12 @@ actors, and leaves the outcome to the frames that follow, so the game's own
 collision, the real serve, and the real AI produce the result and a scenario
 driven from code behaves exactly like one played by hand. A reading takes no
 arguments and returns plain data, read off the world at the instant of the call.
-Where the surface's implementation lives under `src/` is yours to decide; the
-type your instance declares for it, the `D` of its `GameInstance<D>`, is the
-surface this file specifies.
+A pose that changes the screen takes effect no later than the end of the next
+advanced frame. It may land at the call or ride a level transition the engine
+honors as the frame ends; a caller reads its arrangement after advancing a
+frame. Where the surface's implementation lives under `src/` is yours to
+decide; the type your instance declares for it, the `D` of its
+`GameInstance<D>`, is the surface this file specifies.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
@@ -536,12 +539,14 @@ the surface as `engine.debug`, the same value `initialize` returned.
 Every field is read straight off the game's state, so what the snapshot reports is
 what the game holds. One is derived rather than stored: `speed` is
 `hypot(vx, vy)`. `held` is the ball's own flag, true while it waits at its home
-point, and it stays true through a pause.
+point. A pause leaves it true: a waiting ball is still waiting while the game is
+paused, so a paused countdown reports every waiting ball as held.
 {{else}}
 Every field is read straight off the game's state, so what the snapshot reports is
 what the game holds. Two are derived rather than stored: `speed` is
 `hypot(vx, vy)`, and `held` is true while a ball's pre-serve countdown is still
-running, which stays true through a pause.
+running. A pause leaves it true: an interrupted countdown has not run out, so a
+paused countdown reports the ball as held.
 {{/if}}
 
 {{#if (eq engine.slug "structured-2d")}}

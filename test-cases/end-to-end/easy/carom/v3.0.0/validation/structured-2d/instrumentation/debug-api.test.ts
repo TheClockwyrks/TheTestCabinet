@@ -99,15 +99,18 @@ it("writes its operations as methods that act on the running game", async () => 
   assertEqual(first.screen, "title");
   assertDeepEqual(api.snapshot(), first);
 
-  // A pose returns nothing and acts on the live game, and a pose whose effect
-  // is a level transition is honored at the end of the next advanced frame
-  // (specs/instrumentation.md): until that frame runs, the running game still
-  // reports the title…
+  // A pose returns nothing and acts on the live game. The spec fixes what
+  // `startMatch` arranges and allows the screen change to land at the call or
+  // as late as the end of the next advanced frame (specs/instrumentation.md),
+  // so the probe reads the way every scenario reads a pose — after an advanced
+  // frame — and asserts the arrangement alone: the match is open, on its
+  // countdown, with a fresh score and the ball held.
   api.startMatch("versus");
-  assertEqual(api.snapshot().screen, "title");
-  // …and the frame that follows opens the match.
   await h.advance(1);
-  assertEqual(h.snapshot().screen, "countdown");
+  const opened = h.snapshot();
+  assertEqual(opened.screen, "countdown");
+  assertDeepEqual(opened.score, { p1: 0, p2: 0 });
+  assertEqual(ball0(opened).held, true);
 });
 
 it("reports the whole documented snapshot shape, from a live match", async () => {
