@@ -19,8 +19,24 @@ services:
     environment:
       - SSH_AUTH_SOCK=/tmp/devcontainer-ssh-agent.sock
     volumes:
+      # The SSH agent comes in through the socket the runtime SYNTHESISES —
+      # /run/host-services/ssh-auth.sock, which Docker Desktop and OrbStack both
+      # invent inside their own VM and keep pointed at the Mac's live agent. Do
+      # NOT interpolate the host's $SSH_AUTH_SOCK here, tempting as the Linux
+      # rows make it look: on macOS that variable names a per-boot random path
+      # (an ~/.ssh/agent/s.* socket, or a launchd Listeners socket), the compose
+      # `up` VS Code runs inherits it, and a bind source the daemon cannot find
+      # is silently created AS A DIRECTORY. One reboot later the container
+      # refuses to start with "not a directory: Are you trying to mount a
+      # directory onto a file", and a junk directory is left at the stale path.
+      # The synthesised path never goes stale because the runtime resolves it on
+      # its own side of the VM boundary.
+      #
+      # SSH_AGENT_SOCKET in .env overrides it should a runtime ever move it — a
+      # dedicated name rather than SSH_AUTH_SOCK, because the ambient variable
+      # leaking into the interpolation was the bug.
       - type: bind
-        source: ${SSH_AUTH_SOCK:-/run/host-services/ssh-auth.sock}
+        source: ${SSH_AGENT_SOCKET:-/run/host-services/ssh-auth.sock}
         target: /tmp/ssh-agent.sock
       # Docker-outside-of-Docker: bind the host's container-runtime socket in so
       # the local service stack (`make -C deployments/local local-up`) drives the

@@ -368,6 +368,18 @@ one from `$SSH_AUTH_SOCK`, and the macOS Docker one from
 synthesise inside their own VM for exactly this. The Linux Docker row binds nothing and
 leans on the extension's own forwarding, the same as the row below.
 
+The macOS Docker row deliberately does **not** interpolate the host's
+`$SSH_AUTH_SOCK` the way the Linux Podman row does. On macOS that variable names
+a per-boot random path (an `~/.ssh/agent/s.*` socket, or a launchd `Listeners`
+socket), the compose `up` VS Code runs inherits it, and a bind source the daemon
+cannot find is silently created *as a directory* — so one reboot later the
+container refuses to start with `not a directory: Are you trying to mount a
+directory onto a file`, leaving a junk directory at the stale path to delete.
+The synthesised socket never goes stale because the runtime resolves it on its
+own side of the VM boundary. If a runtime ever serves it elsewhere, set
+`SSH_AGENT_SOCKET` in `.env` — a dedicated name, because the ambient variable
+leaking into the interpolation was the bug.
+
 **macOS + Podman cannot have such a path.** Forwarding an agent this
 way means bind-mounting a live unix socket, and on macOS the Mac's own agent
 socket (under `/private/tmp/com.apple.launchd.*/Listeners`) sits on the far side
