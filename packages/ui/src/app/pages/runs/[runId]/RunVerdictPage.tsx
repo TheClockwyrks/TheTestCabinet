@@ -198,7 +198,8 @@ function ReadOnlyVerdictPanel({
   review: ParsedWriteup | undefined;
   reviews: StoredReview[];
   /** Whether the run is validator-rated (the store's word): its verdict is read
-   * off the record, with reviews contributing only the aesthetic channel. */
+   * off the record with reviewer overrides folded in; reviews also contribute
+   * the run-wide aesthetic channel. */
   validatorRated: boolean;
 }) {
   const model = useReviewModel(run.subject);
@@ -213,18 +214,21 @@ function ReadOnlyVerdictPanel({
       {validatorRated ? (
         // A validator-rated run has a verdict the moment it completes — the
         // validators' — whether or not anyone has reviewed it. The reviews add
-        // only the aesthetic channel and their prose.
+        // the aesthetic channel, any verdict overrides (folded into the rating
+        // and score shown), and their prose.
         <>
-          <ValidatorVerdict
+          <ValidatorVerdict run={run} model={model} reviews={reviews} />
+          {/* The per-item browser under the verdict header: the single per-item
+              surface — every checked point walked one at a time with the
+              reference-vs-run media, assertions, failure caps, and backing
+              script behind its (effective) verdict. Read-only, so it renders
+              for every visitor — the public gallery included. */}
+          <ReviewItemBrowser
             run={run}
-            model={model}
-            aesthetics={review?.aesthetics ?? []}
+            items={model.items}
+            domains={model.domains}
+            reviews={reviews}
           />
-          {/* The per-item browser under the validators' verdict: every checked
-              point walked one at a time with the reference-vs-run media and
-              assertions behind its verdict. Read-only, so it renders for every
-              visitor — the public gallery included. */}
-          <ReviewItemBrowser run={run} items={model.items} />
           {review?.body && (
             <Markdown breaks className={styles.writeupBody}>
               {review.body}

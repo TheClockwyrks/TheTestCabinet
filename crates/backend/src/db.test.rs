@@ -1,7 +1,7 @@
 use super::*;
 use crate::store::CaseNames;
 use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::{AestheticRating, DomainAesthetic, DomainRating, Rating};
+use test_cabinet_core::review::{AestheticRating, DomainRating, Rating};
 use test_cabinet_core::run_record::{
     HarnessFamily, HarnessSlug, RunEnvironment, RunState, RunStatus, RunSubject, RunTooling,
 };
@@ -211,6 +211,7 @@ fn review_by(account: &str, rating: Rating) -> StoredReview {
             rating,
         }],
         aesthetics: vec![],
+        aesthetic: None,
         writeup: "Plays well.".to_string(),
         checklist: vec![ReviewVerdict {
             id: "ball-spin".to_string(),
@@ -234,7 +235,7 @@ fn links() -> RunLinks {
 /// "now public" setup for these tests.
 async fn push_review_publish(db: &Db, id: &str, published_at: &str) {
     db.push(&record(id), &links(), None, None).await.unwrap();
-    db.add_review(id, &review(), None).await.unwrap();
+    db.add_review(id, &review(), None, None).await.unwrap();
     db.publish(id, published_at).await.unwrap();
 }
 
@@ -307,7 +308,7 @@ async fn publish_is_refused_until_a_run_has_a_review() {
     assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
 
     // After a review, publish succeeds and the run becomes public.
-    db.add_review("r1", &review(), None).await.unwrap();
+    db.add_review("r1", &review(), None, None).await.unwrap();
     let outcome = db.publish("r1", "2026-06-17T21:40:00Z").await.unwrap();
     assert!(outcome.newly_published);
     let stored = db.get_run("r1").await.unwrap().unwrap();
@@ -323,10 +324,10 @@ async fn add_review_is_per_account_upsert_and_a_run_can_carry_many() {
     db.push(&record("r1"), &links(), None, None).await.unwrap();
 
     // Two distinct accounts → two reviews.
-    db.add_review("r1", &review_by("u1", Rating::Great), None)
+    db.add_review("r1", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
-    db.add_review("r1", &review_by("u2", Rating::Broken), None)
+    db.add_review("r1", &review_by("u2", Rating::Broken), None, None)
         .await
         .unwrap();
     assert_eq!(db.get_run("r1").await.unwrap().unwrap().reviews.len(), 2);
@@ -336,7 +337,7 @@ async fn add_review_is_per_account_upsert_and_a_run_can_carry_many() {
     // revision, stamps `edited_at`, and preserves the original `reviewed_at`.
     let mut edited = review_by("u1", Rating::Scuffed);
     edited.reviewed_at = "2026-06-18T09:00:00Z".to_string();
-    db.add_review("r1", &edited, Some("fixed a misjudged rating"))
+    db.add_review("r1", &edited, Some("fixed a misjudged rating"), None)
         .await
         .unwrap();
     let stored = db.get_run("r1").await.unwrap().unwrap();
@@ -362,13 +363,13 @@ async fn add_review_is_per_account_upsert_and_a_run_can_carry_many() {
 async fn editing_a_review_without_a_note_is_rejected() {
     let db = Db::connect_in_memory().await.unwrap();
     db.push(&record("r1"), &links(), None, None).await.unwrap();
-    db.add_review("r1", &review_by("u1", Rating::Great), None)
+    db.add_review("r1", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
 
     // A content-changing re-submission with no note is rejected as unprocessable.
     let err = db
-        .add_review("r1", &review_by("u1", Rating::Scuffed), None)
+        .add_review("r1", &review_by("u1", Rating::Scuffed), None, None)
         .await
         .unwrap_err();
     assert!(
@@ -378,7 +379,7 @@ async fn editing_a_review_without_a_note_is_rejected() {
 
     // A re-submission that changes nothing is a no-op that needs no note and records
     // no revision.
-    db.add_review("r1", &review_by("u1", Rating::Great), None)
+    db.add_review("r1", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
     let stored = db.get_run("r1").await.unwrap().unwrap();
@@ -394,7 +395,7 @@ async fn list_reviews_by_user_orders_by_reviewed_at_and_paginates() {
     async fn review_at(db: &Db, run: &str, account: &str, reviewed_at: &str) {
         let mut r = review_by(account, Rating::Great);
         r.reviewed_at = reviewed_at.to_string();
-        db.add_review(run, &r, None).await.unwrap();
+        db.add_review(run, &r, None, None).await.unwrap();
     }
 
     for id in ["r1", "r2", "r3"] {
@@ -435,7 +436,10 @@ async fn list_reviews_by_user_orders_by_reviewed_at_and_paginates() {
 #[tokio::test]
 async fn add_review_for_an_unknown_run_is_not_found() {
     let db = Db::connect_in_memory().await.unwrap();
-    let err = db.add_review("nope", &review(), None).await.unwrap_err();
+    let err = db
+        .add_review("nope", &review(), None, None)
+        .await
+        .unwrap_err();
     assert!(matches!(err, crate::error::BackendError::NotFound(_)));
 }
 
@@ -498,7 +502,7 @@ async fn publish_marks_snapshot_dirty_but_pushing_a_pending_run_does_not() {
 
     // Pushing and reviewing a pending run touches nothing public.
     db.push(&record("r1"), &links(), None, None).await.unwrap();
-    db.add_review("r1", &review(), None).await.unwrap();
+    db.add_review("r1", &review(), None, None).await.unwrap();
     assert!(!db.snapshot_state().await.unwrap().dirty);
 
     // Publishing flips it public and marks the snapshot dirty.
@@ -534,7 +538,7 @@ async fn every_run_mutation_moves_updated_at() {
     db.push(&record("r1"), &links(), None, None).await.unwrap();
     let pushed = stamp(&lifted(&db, "r1").await.updated_at);
 
-    db.add_review("r1", &review(), None).await.unwrap();
+    db.add_review("r1", &review(), None, None).await.unwrap();
     let reviewed = stamp(&lifted(&db, "r1").await.updated_at);
 
     db.publish("r1", "2026-06-17T21:40:00Z").await.unwrap();
@@ -562,7 +566,7 @@ async fn every_run_mutation_moves_updated_at() {
     // other run's stamp exactly where it was.
     db.push(&record("r2"), &links(), None, None).await.unwrap();
     let other = lifted(&db, "r2").await.updated_at;
-    db.add_review("r1", &review_by("u2", Rating::Broken), None)
+    db.add_review("r1", &review_by("u2", Rating::Broken), None, None)
         .await
         .unwrap();
     assert_eq!(lifted(&db, "r2").await.updated_at, other);
@@ -663,7 +667,7 @@ async fn all_published_returns_only_published_runs_newest_first() {
 async fn delete_run_removes_an_unpublished_run_and_cascades_its_reviews() {
     let db = Db::connect_in_memory().await.unwrap();
     db.push(&record("r1"), &links(), None, None).await.unwrap();
-    db.add_review("r1", &review(), None).await.unwrap();
+    db.add_review("r1", &review(), None, None).await.unwrap();
     // A second pending run is left untouched, to prove the delete is scoped.
     db.push(&record("r2"), &links(), None, None).await.unwrap();
 
@@ -1633,7 +1637,7 @@ async fn publish_refuses_an_infrastructure_failure_even_with_a_review() {
     db.push(&rec, &RunLinks::default(), None, None)
         .await
         .unwrap();
-    db.add_review("i1", &review(), None).await.unwrap();
+    db.add_review("i1", &review(), None, None).await.unwrap();
 
     let err = db
         .publish("i1", "2026-06-23T00:00:00Z")
@@ -1655,7 +1659,7 @@ async fn publish_refuses_a_canceled_run_even_with_a_review() {
     db.push(&rec, &RunLinks::default(), None, None)
         .await
         .unwrap();
-    db.add_review("k1", &review(), None).await.unwrap();
+    db.add_review("k1", &review(), None, None).await.unwrap();
 
     let err = db
         .publish("k1", "2026-06-23T00:00:00Z")
@@ -1830,7 +1834,7 @@ async fn ensure_publishable_mirrors_the_publish_gate() {
     assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
 
     // With a review it passes (without flipping anything).
-    db.add_review("r1", &review(), None).await.unwrap();
+    db.add_review("r1", &review(), None, None).await.unwrap();
     db.ensure_publishable("r1").await.unwrap();
     assert!(
         !db.get_run("r1").await.unwrap().unwrap().published,
@@ -1843,7 +1847,7 @@ async fn ensure_publishable_mirrors_the_publish_gate() {
     db.push(&infra, &RunLinks::default(), None, None)
         .await
         .unwrap();
-    db.add_review("infra", &review(), None).await.unwrap();
+    db.add_review("infra", &review(), None, None).await.unwrap();
     let err = db.ensure_publishable("infra").await.unwrap_err();
     assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
 
@@ -1875,7 +1879,7 @@ async fn complete_publish_job_attaches_links_flips_published_and_marks_the_job()
     db.push(&record("r1"), &RunLinks::default(), None, None)
         .await
         .unwrap();
-    db.add_review("r1", &review(), None).await.unwrap();
+    db.add_review("r1", &review(), None, None).await.unwrap();
     db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
         .await
         .unwrap();
@@ -2624,7 +2628,7 @@ async fn add_review_maintains_the_lifted_rating_and_count() {
         .unwrap();
 
     // First review (great) sets the aggregate; the count reaches one.
-    db.add_review("r1", &review_by("u1", Rating::Great), None)
+    db.add_review("r1", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
     let row = lifted(&db, "r1").await;
@@ -2632,7 +2636,7 @@ async fn add_review_maintains_the_lifted_rating_and_count() {
     assert_eq!(row.review_count, 1);
 
     // A second, harsher review drags the aggregate to the worst rating.
-    db.add_review("r1", &review_by("u2", Rating::Scuffed), None)
+    db.add_review("r1", &review_by("u2", Rating::Scuffed), None, None)
         .await
         .unwrap();
     let row = lifted(&db, "r1").await;
@@ -2656,10 +2660,10 @@ async fn backfill_sort_columns_fills_rows_from_record_and_reviews() {
     db.push(&record_with_metrics("r1"), &links(), None, None)
         .await
         .unwrap();
-    db.add_review("r1", &review_by("u1", Rating::Great), None)
+    db.add_review("r1", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
-    db.add_review("r1", &review_by("u2", Rating::Scuffed), None)
+    db.add_review("r1", &review_by("u2", Rating::Scuffed), None, None)
         .await
         .unwrap();
     // A second run with no reviews, to prove the null-rating path is backfilled too.
@@ -2766,7 +2770,7 @@ async fn seed_metric(db: &Db, id: &str, tokens: u64, cost: Option<f64>, rating: 
     };
     db.push(&r, &links(), None, None).await.unwrap();
     if let Some(rating) = rating {
-        db.add_review(id, &review_by("u1", rating), None)
+        db.add_review(id, &review_by("u1", rating), None, None)
             .await
             .unwrap();
     }
@@ -3157,14 +3161,11 @@ async fn list_summaries_test_cases_list_composes_with_latest_versions() {
     );
 }
 
-/// A review from `account` rating the `gameplay` domain's aesthetic channel,
-/// which maintains the lifted `run.aesthetic` column the filter matches on.
+/// A review from `account` carrying the run-wide aesthetic `rating`, which
+/// maintains the lifted `run.aesthetic` column the filter matches on.
 fn review_with_aesthetic(account: &str, rating: AestheticRating) -> StoredReview {
     StoredReview {
-        aesthetics: vec![DomainAesthetic {
-            domain: "gameplay".to_string(),
-            rating,
-        }],
+        aesthetic: Some(rating),
         ..review_by(account, Rating::Great)
     }
 }
@@ -3179,12 +3180,14 @@ async fn list_summaries_filters_by_aesthetic_and_unrated_runs_never_match() {
         "a",
         &review_with_aesthetic("u1", AestheticRating::Legendary),
         None,
+        None,
     )
     .await
     .unwrap();
     db.add_review(
         "b",
         &review_with_aesthetic("u1", AestheticRating::Slop),
+        None,
         None,
     )
     .await
@@ -3361,7 +3364,7 @@ async fn latest_versions_is_measured_within_the_state_slice() {
     // has reached.
     let db = Db::connect_in_memory().await.unwrap();
     seed_version(&db, "old", "pong", "v1.0.0").await;
-    db.add_review("old", &review_by("u1", Rating::Great), None)
+    db.add_review("old", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
     db.publish("old", "2026-06-18T00:00:00Z").await.unwrap();
@@ -3445,7 +3448,7 @@ async fn publishable_slice_matches_the_publish_gate() {
         r.status.state = state;
         db.push(&r, &links(), None, None).await.unwrap();
         if reviewed {
-            db.add_review(id, &review_by("u1", Rating::Great), None)
+            db.add_review(id, &review_by("u1", Rating::Great), None, None)
                 .await
                 .unwrap();
         }
@@ -3505,7 +3508,7 @@ async fn publishable_slice_drops_a_run_once_it_is_published() {
     let db = Db::connect_in_memory().await.unwrap();
     for id in ["kept", "released"] {
         db.push(&record(id), &links(), None, None).await.unwrap();
-        db.add_review(id, &review_by("u1", Rating::Great), None)
+        db.add_review(id, &review_by("u1", Rating::Great), None, None)
             .await
             .unwrap();
     }
@@ -4637,7 +4640,7 @@ async fn unreviewed_lists_completed_runs_with_no_review_and_drops_them_once_revi
     assert_eq!(unreviewed[0].record.id, "r1");
 
     // Once any account reviews it, it drops off the unreviewed worklist.
-    db.add_review("r1", &review(), None).await.unwrap();
+    db.add_review("r1", &review(), None, None).await.unwrap();
     let (after, _) = db.list_unreviewed(50, None).await.unwrap();
     assert!(after.is_empty(), "a reviewed run is no longer unreviewed");
 }
@@ -5109,7 +5112,7 @@ async fn unreviewed_cell_counts_are_per_account_and_ignore_another_reviewers_pas
 
     // `u2` reviews one. That clears it from *their* buffer and nobody else's —
     // judgement is per account even though the run counts are global.
-    db.add_review("r1", &review_by("u2", Rating::Great), None)
+    db.add_review("r1", &review_by("u2", Rating::Great), None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -5379,10 +5382,10 @@ async fn cell_run_ratings_read_only_the_requesting_accounts_review() {
     db.push(&record("r1"), &links(), None, None).await.unwrap();
     // Two reviewers disagree. The lifted `run.rating` is the worse of the two, and
     // is exactly what a gate must not read.
-    db.add_review("r1", &review_by("u1", Rating::Great), None)
+    db.add_review("r1", &review_by("u1", Rating::Great), None, None)
         .await
         .unwrap();
-    db.add_review("r1", &review_by("u2", Rating::Broken), None)
+    db.add_review("r1", &review_by("u2", Rating::Broken), None, None)
         .await
         .unwrap();
     assert_eq!(
@@ -6102,10 +6105,12 @@ async fn the_probe_provider_projection_joins_slug_and_reads_errored_as_missing_l
 // --- The two rating channels ----------------------------------------------------
 //
 // A run of a case version on the engine manifest format is **validator-rated**: its
-// functional rating is decided by the validators (each failing scored point capping
-// its domains at its declared failure cap) and written at push time, its reviews
-// supply only the aesthetic channel, and it publishes with zero reviews. A legacy
-// run keeps behaving exactly as it always has.
+// functional rating starts as the validators' decision (each failing scored point
+// capping its domains at its declared failure cap), written at push time, and each
+// review may override individual verdicts — the run takes the worst across the
+// reviews' effective ratings, recomputed on review-add. Its reviews also supply the
+// run-wide aesthetic tier, and it publishes with zero reviews. A legacy run keeps
+// behaving exactly as it always has.
 
 /// A `pong@v1.0.0` manifest on the engine format whose base variant scores two
 /// validated points: `serve` (gameplay-critical, cap `broken`, single-player only)
@@ -6233,25 +6238,41 @@ fn validator_record(id: &str, verdicts: &[(&str, bool)]) -> RunRecord {
     record
 }
 
-/// A review from `account` rating both domains `rating` on the aesthetic scale and
-/// nothing else — the only shape a validator-rated run accepts.
+/// A review from `account` carrying the run-wide aesthetic `rating` and nothing
+/// else — the minimal shape a validator-rated run accepts.
 fn aesthetic_review(
     account: &str,
     rating: test_cabinet_core::review::AestheticRating,
 ) -> StoredReview {
-    use test_cabinet_core::review::DomainAesthetic;
+    override_review(account, rating, &[])
+}
+
+/// [`aesthetic_review`] plus the reviewer's verdict `overrides`, one binary
+/// pass/fail per `(verdict id, pass)` pair.
+fn override_review(
+    account: &str,
+    rating: test_cabinet_core::review::AestheticRating,
+    overrides: &[(&str, bool)],
+) -> StoredReview {
+    use test_cabinet_core::review::VerdictStatus;
     StoredReview {
         reviewer: reviewer(account),
         ratings: vec![],
-        aesthetics: ["single-player", "versus"]
-            .into_iter()
-            .map(|domain| DomainAesthetic {
-                domain: domain.to_string(),
-                rating,
+        aesthetics: vec![],
+        aesthetic: Some(rating),
+        writeup: "Looks lovely.".to_string(),
+        checklist: overrides
+            .iter()
+            .map(|(id, pass)| ReviewVerdict {
+                id: id.to_string(),
+                status: if *pass {
+                    VerdictStatus::Pass
+                } else {
+                    VerdictStatus::Fail
+                },
+                note: None,
             })
             .collect(),
-        writeup: "Looks lovely.".to_string(),
-        checklist: vec![],
         reviewed_at: "2026-06-17T22:00:00Z".to_string(),
         edited_at: None,
         revisions: Vec::new(),
@@ -6285,14 +6306,40 @@ fn functional_rating_takes_the_lowest_cap_among_failing_points() {
         ),
         Some(Rating::Broken)
     );
-    // Reviews never move a validator-rated run's functional rating.
+    // A review with no overrides is the fixed point: the validators' figure stands.
     assert_eq!(
         functional_rating(
             Some(&manifest),
-            &validator_record("r", &[]),
-            &[review_by("u1", Rating::Scuffed)]
+            &validator_record("r", &[("serve", true), ("hud", false)]),
+            &[aesthetic_review("u1", AestheticRating::Good)]
+        ),
+        Some(Rating::Great)
+    );
+    // An override moves it both ways: waving the failing cosmetic point through
+    // raises the run to flawless; failing the gameplay-critical one lowers it to
+    // broken. With several reviews the worst effective rating wins.
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[("serve", true), ("hud", false)]),
+            &[override_review(
+                "u1",
+                AestheticRating::Good,
+                &[("hud", true)]
+            )]
         ),
         Some(Rating::Flawless)
+    );
+    assert_eq!(
+        functional_rating(
+            Some(&manifest),
+            &validator_record("r", &[("serve", true), ("hud", true)]),
+            &[
+                override_review("u1", AestheticRating::Good, &[("serve", false)]),
+                aesthetic_review("u2", AestheticRating::Good),
+            ]
+        ),
+        Some(Rating::Broken)
     );
     // A legacy version (or no manifest at all) is the review aggregate.
     let mut legacy = validator_manifest();
@@ -6360,12 +6407,18 @@ async fn a_re_push_recomputes_a_validator_rated_runs_rating_but_keeps_its_aesthe
         db.get_run("r1").await.unwrap().unwrap().rating,
         Some(Rating::Broken)
     );
-    db.add_review("r1", &aesthetic_review("u1", AestheticRating::Good), None)
-        .await
-        .unwrap();
+    db.add_review(
+        "r1",
+        &aesthetic_review("u1", AestheticRating::Good),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
 
-    // The validators now pass: the record-derived rating follows the record, the
-    // review-derived aesthetic and count are preserved.
+    // The validators now pass: the rating follows the record (the no-override
+    // review is the fixed point), and the review-derived aesthetic and count are
+    // preserved.
     db.push(
         &validator_record("r1", &[("serve", true)]),
         &links(),
@@ -6382,7 +6435,7 @@ async fn a_re_push_recomputes_a_validator_rated_runs_rating_but_keeps_its_aesthe
 }
 
 #[tokio::test]
-async fn a_review_of_a_validator_rated_run_supplies_only_the_aesthetic_channel() {
+async fn a_review_of_a_validator_rated_run_supplies_the_run_wide_aesthetic() {
     use test_cabinet_core::review::AestheticRating;
     let db = Db::connect_in_memory().await.unwrap();
     let manifest = validator_manifest();
@@ -6399,6 +6452,7 @@ async fn a_review_of_a_validator_rated_run_supplies_only_the_aesthetic_channel()
         "r1",
         &aesthetic_review("u1", AestheticRating::Amazing),
         None,
+        Some(&manifest),
     )
     .await
     .unwrap();
@@ -6406,16 +6460,26 @@ async fn a_review_of_a_validator_rated_run_supplies_only_the_aesthetic_channel()
     assert_eq!(
         stored.rating,
         Some(Rating::Flawless),
-        "a review never moves it"
+        "a review with no overrides never moves it"
     );
     assert_eq!(stored.aesthetic, Some(AestheticRating::Amazing));
-    assert_eq!(stored.reviews[0].aesthetics.len(), 2, "round-trips");
+    assert_eq!(
+        stored.reviews[0].aesthetic,
+        Some(AestheticRating::Amazing),
+        "round-trips"
+    );
+    assert!(stored.reviews[0].aesthetics.is_empty());
     assert!(stored.reviews[0].ratings.is_empty());
 
     // The run's aesthetic is the worst across its reviews, like the rating.
-    db.add_review("r1", &aesthetic_review("u2", AestheticRating::Okay), None)
-        .await
-        .unwrap();
+    db.add_review(
+        "r1",
+        &aesthetic_review("u2", AestheticRating::Okay),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
     let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.aesthetic, Some(AestheticRating::Okay));
     assert_eq!(stored.reviews.len(), 2);
@@ -6426,7 +6490,107 @@ async fn a_review_of_a_validator_rated_run_supplies_only_the_aesthetic_channel()
     let (subjects, total) = db.recent_review_subjects("u2", 10).await.unwrap();
     assert_eq!(total, 1);
     assert!(subjects[0].ratings.is_empty());
-    assert_eq!(subjects[0].aesthetics[0].rating, AestheticRating::Okay);
+    assert_eq!(subjects[0].aesthetic, Some(AestheticRating::Okay));
+}
+
+#[tokio::test]
+async fn a_pre_migration_per_domain_review_row_collapses_to_its_worst_tier() {
+    use test_cabinet_core::review::{AestheticRating, DomainAesthetic};
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    db.push(
+        &validator_record("r1", &[]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+
+    // A row shaped like a pre-migration review: per-domain tiers in the legacy
+    // `aesthetics` JSON, nothing in the run-wide column.
+    let legacy_row = StoredReview {
+        aesthetic: None,
+        aesthetics: vec![
+            DomainAesthetic {
+                domain: "single-player".to_string(),
+                rating: AestheticRating::Amazing,
+            },
+            DomainAesthetic {
+                domain: "versus".to_string(),
+                rating: AestheticRating::Okay,
+            },
+        ],
+        ratings: vec![],
+        checklist: vec![],
+        ..review_by("u1", Rating::Great)
+    };
+    db.add_review("r1", &legacy_row, None, Some(&manifest))
+        .await
+        .unwrap();
+
+    // Every read sees the worst tier as the row's one run-wide aesthetic — the
+    // same figure the old per-domain aggregation produced.
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert_eq!(stored.reviews[0].aesthetic, Some(AestheticRating::Okay));
+    assert_eq!(stored.aesthetic, Some(AestheticRating::Okay));
+    let (subjects, _) = db.recent_review_subjects("u1", 10).await.unwrap();
+    assert_eq!(subjects[0].aesthetic, Some(AestheticRating::Okay));
+}
+
+#[tokio::test]
+async fn a_reviewer_override_recomputes_the_lifted_rating() {
+    use test_cabinet_core::review::AestheticRating;
+    let db = Db::connect_in_memory().await.unwrap();
+    let manifest = validator_manifest();
+    // The cosmetic point fails: the validators' own rating caps at great.
+    db.push(
+        &validator_record("r1", &[("serve", true), ("hud", false)]),
+        &links(),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        db.get_run("r1").await.unwrap().unwrap().rating,
+        Some(Rating::Great),
+        "the no-review fixed point: the validators' own figure"
+    );
+
+    // A reviewer waves the failing point through: the run's rating rises.
+    db.add_review(
+        "r1",
+        &override_review("u1", AestheticRating::Good, &[("hud", true)]),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert_eq!(stored.rating, Some(Rating::Flawless));
+    assert_eq!(
+        stored.reviews[0].checklist.len(),
+        1,
+        "the override persists"
+    );
+
+    // A second reviewer fails the gameplay-critical point: the run takes the
+    // worst across the reviews' effective ratings.
+    db.add_review(
+        "r1",
+        &override_review("u2", AestheticRating::Good, &[("serve", false)]),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
+    let stored = db.get_run("r1").await.unwrap().unwrap();
+    assert_eq!(stored.rating, Some(Rating::Broken));
+
+    // The summary card reads the recomputed lifted rating without a catalog.
+    let card = crate::snapshot::RunSummary::from_stored(&stored);
+    assert_eq!(card.rating, Some(Rating::Broken));
 }
 
 #[tokio::test]
@@ -6442,19 +6606,32 @@ async fn editing_a_reviews_aesthetics_records_the_change_in_its_revision() {
     )
     .await
     .unwrap();
-    db.add_review("r1", &aesthetic_review("u1", AestheticRating::Okay), None)
-        .await
-        .unwrap();
+    db.add_review(
+        "r1",
+        &aesthetic_review("u1", AestheticRating::Okay),
+        None,
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
 
     // An edit that only changes the aesthetic channel is still an edit: it needs a
-    // note and records the per-domain change.
+    // note and records the single domainless change.
     let mut edited = aesthetic_review("u1", AestheticRating::Good);
     edited.reviewed_at = "2026-06-18T09:00:00Z".to_string();
-    let err = db.add_review("r1", &edited, None).await.unwrap_err();
-    assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
-    db.add_review("r1", &edited, Some("Second look: the palette grew on me."))
+    let err = db
+        .add_review("r1", &edited, None, Some(&manifest))
         .await
-        .unwrap();
+        .unwrap_err();
+    assert!(matches!(err, crate::error::BackendError::Unprocessable(_)));
+    db.add_review(
+        "r1",
+        &edited,
+        Some("Second look: the palette grew on me."),
+        Some(&manifest),
+    )
+    .await
+    .unwrap();
 
     let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.aesthetic, Some(AestheticRating::Good));
@@ -6463,8 +6640,8 @@ async fn editing_a_reviews_aesthetics_records_the_change_in_its_revision() {
     assert_eq!(review.revisions.len(), 1);
     let diff = &review.revisions[0].diff;
     assert!(diff.ratings.is_empty());
-    assert_eq!(diff.aesthetics.len(), 2);
-    assert_eq!(diff.aesthetics[0].domain, "single-player");
+    assert_eq!(diff.aesthetics.len(), 1);
+    assert_eq!(diff.aesthetics[0].domain, None);
     assert_eq!(diff.aesthetics[0].from, Some(AestheticRating::Okay));
     assert_eq!(diff.aesthetics[0].to, Some(AestheticRating::Good));
 }
@@ -6517,7 +6694,7 @@ async fn a_legacy_run_never_carries_an_aesthetic_and_is_rated_by_its_reviews() {
         let stored = db.get_run(id).await.unwrap().unwrap();
         assert!(!stored.validator_rated);
         assert_eq!(stored.rating, None, "unreviewed");
-        db.add_review(id, &review_by("u1", Rating::Passable), None)
+        db.add_review(id, &review_by("u1", Rating::Passable), None, None)
             .await
             .unwrap();
         let stored = db.get_run(id).await.unwrap().unwrap();
@@ -6547,9 +6724,14 @@ async fn a_validator_rated_run_stays_in_the_unreviewed_worklist_until_reviewed()
     .await
     .unwrap();
     assert_eq!(db.list_for_review(50, None).await.unwrap().0.len(), 1);
-    db.add_review("r1", &aesthetic_review("u1", AestheticRating::Good), None)
-        .await
-        .unwrap();
+    db.add_review(
+        "r1",
+        &aesthetic_review("u1", AestheticRating::Good),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let stored = db.get_run("r1").await.unwrap().unwrap();
     assert_eq!(stored.reviews.len(), 1);
 }

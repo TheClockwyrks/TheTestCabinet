@@ -212,7 +212,9 @@ pub trait BackendClient: Send + Sync {
     /// Submit a review for a pushed run. (`POST /runs/{id}/reviews`) The review is
     /// attributed to the account behind the client's bearer token; a run may carry
     /// many reviews, one per account, and re-submitting from the same account
-    /// updates it. Requires a bearer token.
+    /// updates it. On a validator-rated run the writeup carries the run-wide
+    /// `aesthetic` tier and its checklist is the reviewer's overrides of the
+    /// validators' verdicts. Requires a bearer token.
     async fn submit_review(&self, run_id: &str, review: &Writeup) -> Result<()>;
 
     /// Enqueue a publish for a run. (`POST /runs/{id}/publish`) Publishing is
@@ -1001,7 +1003,7 @@ impl BackendClient for HttpBackendClient {
         let url = self.url(&format!("/runs/{}/reviews", encode(run_id)));
         let body = ReviewBody {
             ratings: &review.ratings,
-            aesthetics: &review.aesthetics,
+            aesthetic: review.aesthetic,
             writeup: &review.body,
             checklist: &review.checklist,
         };
@@ -2419,12 +2421,16 @@ struct CheckBody {
 struct ReviewBody<'a> {
     /// The reviewer's functional rating for each scoring domain (a legacy run).
     ratings: &'a [crate::review::DomainRating],
-    /// The reviewer's aesthetic rating for each scoring domain (a validator-rated
-    /// run). Omitted when empty so a legacy writeup posts exactly what it did before.
-    #[serde(skip_serializing_if = "<[_]>::is_empty")]
-    aesthetics: &'a [crate::review::DomainAesthetic],
+    /// The reviewer's run-wide aesthetic tier (a validator-rated run). Omitted
+    /// when absent so a legacy writeup posts exactly what it did before.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    aesthetic: Option<crate::review::AestheticRating>,
     writeup: &'a str,
-    /// The reviewer's verdicts on the case's declared checklist items.
+    /// The reviewer's verdicts on the case's declared checklist items: the full
+    /// checklist on a legacy run or a game jam, and the reviewer's **overrides**
+    /// of the validators' verdicts on a validator-rated run — sent as-is either
+    /// way; the caller (the writeup file's `review.<id>` lines) decides its
+    /// content.
     checklist: &'a [crate::review::ReviewVerdict],
 }
 

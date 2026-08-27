@@ -7,7 +7,7 @@ use tokio::net::TcpListener;
 
 use test_cabinet_core::MediaKind;
 use test_cabinet_core::metrics::RunMetrics;
-use test_cabinet_core::review::{DomainRating, Rating};
+use test_cabinet_core::review::{DomainRating, Rating, ReviewVerdict};
 use test_cabinet_core::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunState, RunStatus, RunSubject, RunTooling,
 };
@@ -121,6 +121,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 rating: Rating::Great,
             }],
             aesthetics: vec![],
+            aesthetic: None,
             writeup: "Plays well.".to_string(),
             checklist: vec![],
             reviewed_at: "2026-06-17T22:00:00Z".to_string(),
@@ -3134,7 +3135,8 @@ fn run_summary_score_is_the_validator_score_on_a_validator_rated_version() {
         &[("serve", true), ("hud", false)],
     );
 
-    // Scored with no review at all: one of two points earned, `reviews` is zero.
+    // Scored with no review at all: one of two points earned, `reviews` is zero —
+    // the no-review fixed point, the validators' own figure.
     let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
     assert_eq!(score.earned, 1.0);
     assert_eq!(score.total, 2);
@@ -3152,9 +3154,75 @@ fn run_summary_score_is_the_validator_score_on_a_validator_rated_version() {
     assert_eq!(domains[0].id, "gameplay");
 }
 
+#[test]
+fn run_summary_score_folds_reviewer_overrides_on_a_validator_rated_version() {
+    use test_cabinet_core::review::VerdictStatus;
+    let manifest = validator_manifest();
+    let mut run = validator_run(
+        "r1",
+        "2026-06-17T21:40:00Z",
+        &[("serve", true), ("hud", false)],
+    );
+
+    // A review with no overrides reproduces the validators' figure exactly.
+    run.reviews.push(aesthetic_reviewer_review(&[]));
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 1);
+
+    // The review waves the failing point through: the run's score rises.
+    run.reviews.clear();
+    run.reviews
+        .push(aesthetic_reviewer_review(&[("hud", VerdictStatus::Pass)]));
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 2.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 1);
+
+    // Two reviews average their effective scores: one waves `hud` through (2/2),
+    // the other fails `serve` too (0/2).
+    run.reviews
+        .push(aesthetic_reviewer_review(&[("serve", VerdictStatus::Fail)]));
+    let score = run_summary_score(&manifest, &run.record, &run.reviews).unwrap();
+    assert_eq!(score.earned, 1.0);
+    assert_eq!(score.total, 2);
+    assert_eq!(score.reviews, 2);
+}
+
+/// A run-wide-aesthetic review carrying the given verdict `overrides`, for the
+/// override-folding score test.
+fn aesthetic_reviewer_review(
+    overrides: &[(&str, test_cabinet_core::review::VerdictStatus)],
+) -> StoredReview {
+    use test_cabinet_core::review::AestheticRating;
+    StoredReview {
+        reviewer: crate::db::Reviewer {
+            user_id: "u1".to_string(),
+            username: "ada".to_string(),
+            display_name: "Ada L.".to_string(),
+        },
+        ratings: vec![],
+        aesthetics: vec![],
+        aesthetic: Some(AestheticRating::Good),
+        writeup: "Looks fine.".to_string(),
+        checklist: overrides
+            .iter()
+            .map(|(id, status)| ReviewVerdict {
+                id: id.to_string(),
+                status: *status,
+                note: None,
+            })
+            .collect(),
+        reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+        edited_at: None,
+        revisions: Vec::new(),
+    }
+}
+
 #[tokio::test]
 async fn a_validator_rated_run_is_summarized_by_its_validators_and_its_aesthetic_review() {
-    use test_cabinet_core::review::{AestheticRating, DomainAesthetic};
+    use test_cabinet_core::review::AestheticRating;
     let (_tmp, store) = empty_store();
     // `r1` is unreviewed; `r2` carries one aesthetic review.
     let unreviewed = validator_run(
@@ -3170,10 +3238,8 @@ async fn a_validator_rated_run_is_summarized_by_its_validators_and_its_aesthetic
             display_name: "Ada L.".to_string(),
         },
         ratings: vec![],
-        aesthetics: vec![DomainAesthetic {
-            domain: "gameplay".to_string(),
-            rating: AestheticRating::Legendary,
-        }],
+        aesthetics: vec![],
+        aesthetic: Some(AestheticRating::Legendary),
         writeup: "Breathtaking, even broken.".to_string(),
         checklist: vec![],
         reviewed_at: "2026-06-17T22:00:00Z".to_string(),
@@ -3212,21 +3278,19 @@ async fn a_validator_rated_run_is_summarized_by_its_validators_and_its_aesthetic
     assert_eq!(r1["score"]["reviews"], 0);
 
     let r2 = by_id("r2");
-    assert_eq!(r2["rating"], "broken", "the review does not move it");
+    assert_eq!(
+        r2["rating"], "broken",
+        "a review with no overrides does not move it"
+    );
     assert_eq!(r2["aesthetic"], "legendary");
     assert_eq!(r2["reviewCount"], 1);
 
-    // The run document carries the review's aesthetic channel, and the case
-    // document says the version is on the engine format with each point's cap.
+    // The run document carries the review's run-wide aesthetic tier (the legacy
+    // per-domain array is no longer emitted), and the case document says the
+    // version is on the engine format with each point's cap.
     let document = run_document_json(&snapshot, "r2");
-    assert_eq!(
-        document["reviews"][0]["aesthetics"][0]["domain"],
-        "gameplay"
-    );
-    assert_eq!(
-        document["reviews"][0]["aesthetics"][0]["rating"],
-        "legendary"
-    );
+    assert_eq!(document["reviews"][0]["aesthetic"], "legendary");
+    assert!(document["reviews"][0].get("aesthetics").is_none());
     assert!(
         document["reviews"][0]
             .get("ratings")
@@ -3261,6 +3325,7 @@ async fn a_legacy_run_summary_omits_the_aesthetic_channel() {
     assert_eq!(summary["rating"], "great");
     let document = run_document_json(&snapshot, "r1");
     assert!(document["reviews"][0].get("aesthetics").is_none());
+    assert!(document["reviews"][0].get("aesthetic").is_none());
     let case_obj = snapshot
         .objects
         .iter()

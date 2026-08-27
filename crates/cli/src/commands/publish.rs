@@ -8,8 +8,13 @@
 //! - **review** submits a review (from a locally authored `writeup.md`) for a
 //!   produced run, attributed to the logged-in account. A run may carry many
 //!   reviews, one per account. The writeup's frontmatter carries the review's
-//!   `rating.<domain>` (functional, legacy runs) and/or `aesthetic.<domain>`
-//!   (validator-rated runs) lines; the core [`Writeup`] parser reads both.
+//!   `rating.<domain>` lines (functional, legacy runs) and/or the single run-wide
+//!   `aesthetic: <tier>` line (validator-rated runs; the core [`Writeup`] parser
+//!   still reads a legacy file's per-domain `aesthetic.<domain>` lines, collapsed
+//!   to their worst tier). `review.<id>` verdict lines ride along as the review's
+//!   checklist — on a validator-rated run they are the reviewer's **overrides** of
+//!   individual validator verdicts (the points not listed keep the validators'
+//!   verdicts), forwarded as submitted.
 //! - **publish** is the solo convenience: self-review + publish gate in one step,
 //!   for an operator reviewing their own run. A **legacy** run cannot be published
 //!   without at least one review, so a missing writeup refuses the batch. A
@@ -17,7 +22,8 @@
 //!   [`TestCaseVersion::validator_rated`](test_cabinet_core::test_case::TestCaseVersion::validator_rated))
 //!   stands on its validator-decided functional rating and score, so it publishes
 //!   without a self-review when no writeup is present — and with one, the
-//!   self-review (aesthetics) is submitted first.
+//!   self-review (the run-wide aesthetic tier, plus any verdict overrides) is
+//!   submitted first.
 //!
 //! Both require a logged-in account (`tcab login`) and `TCAB_BACKEND_URL`.
 
@@ -310,9 +316,10 @@ fn load_writeup_at(path: &Path) -> Result<Writeup, WriteupLoadError> {
 }
 
 /// Summarize a writeup's ratings for the terminal: the overall functional rating
-/// (worst across `rating.<domain>`) and/or the overall aesthetic rating (worst
-/// across `aesthetic.<domain>`), each with its per-domain breakdown; `unrated`
-/// when the writeup carries neither (a checklist-only review).
+/// (worst across `rating.<domain>`, with its per-domain breakdown — the
+/// functional channel is still rated per domain on a legacy run) and/or the
+/// run-wide aesthetic tier (one tier for the whole build, no breakdown);
+/// `unrated` when the writeup carries neither (a checklist-only review).
 pub fn describe_ratings(writeup: &Writeup) -> String {
     let mut parts = Vec::new();
     if let Some(overall) = writeup.overall_rating() {
@@ -327,17 +334,8 @@ pub fn describe_ratings(writeup: &Writeup) -> String {
             overall.as_str()
         ));
     }
-    if let Some(overall) = writeup.overall_aesthetic() {
-        let per_domain = writeup
-            .aesthetics
-            .iter()
-            .map(|domain| format!("{}={}", domain.domain, domain.rating.as_str()))
-            .collect::<Vec<_>>()
-            .join(", ");
-        parts.push(format!(
-            "aesthetic {} (worst of {per_domain})",
-            overall.as_str()
-        ));
+    if let Some(aesthetic) = writeup.aesthetic {
+        parts.push(format!("aesthetic {}", aesthetic.as_str()));
     }
     if parts.is_empty() {
         "unrated".to_string()

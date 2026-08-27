@@ -227,18 +227,18 @@ describe("toRunSummary on a validator-rated run", () => {
     expect(summary.rating).toBe("great");
   });
 
-  it("aggregates the aesthetic channel across reviews (worst wins)", () => {
+  it("aggregates the run-wide aesthetic tier across reviews (worst wins)", () => {
     const summary = toRunSummary(
       stored(
         record(),
         [
           {
             ratings: [],
-            aesthetics: [{ domain: "core", rating: "amazing" }],
+            aesthetic: "amazing",
           } as unknown as StoredReview,
           {
             ratings: [],
-            aesthetics: [{ domain: "core", rating: "okay" }],
+            aesthetic: "okay",
           } as unknown as StoredReview,
         ],
         { validatorRated: true, rating: "flawless" },
@@ -246,6 +246,25 @@ describe("toRunSummary on a validator-rated run", () => {
     );
     expect(summary.aesthetic).toBe("okay");
     expect(summary.reviewCount).toBe(2);
+  });
+
+  it("collapses a legacy stored review's per-domain tiers to their worst", () => {
+    const summary = toRunSummary(
+      stored(
+        record(),
+        [
+          {
+            ratings: [],
+            aesthetics: [
+              { domain: "core", rating: "amazing" },
+              { domain: "versus", rating: "okay" },
+            ],
+          } as unknown as StoredReview,
+        ],
+        { validatorRated: true, rating: "flawless" },
+      ),
+    );
+    expect(summary.aesthetic).toBe("okay");
   });
 
   it("carries no aesthetic on a legacy run", () => {

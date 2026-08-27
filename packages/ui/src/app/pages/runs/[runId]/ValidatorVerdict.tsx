@@ -3,116 +3,150 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import { AestheticBadge, RatingBadge } from "@test-cabinet/ui";
 import {
   AESTHETIC_META,
-  FAILURE_CAP_META,
   RATING_META,
+  aggregateAestheticRating,
   automatedVerdicts,
+  effectiveVerdicts,
   formatPoints,
   isToolchainGated,
-  validatorDomainRatings,
-  validatorRating,
-  validatorScore,
-  worstAestheticRating,
+  reviewAesthetic,
+  validatorAggregateRating,
+  validatorAggregateScore,
+  verdictDomainRatings,
+  worstRating,
   type AestheticRating,
   type DomainAesthetic,
   type Rating,
+  type ReviewVerdict,
 } from "../../../data/ratings";
 import type { ReviewModel } from "../../../data/galleryContext";
-import { DebugScriptList } from "./DebugScriptList";
-import { ReviewChecklist } from "./ReviewChecklist";
-import { validatorFailures } from "./autoVerdicts";
 import styles from "./RunDetailPages.module.scss";
 
 /**
- * Everything the validators decided about a **validator-rated** run, computed
- * from its record against the case version's effective scoring model — available
- * the moment the run completes, independent of any review. The one place the
- * console derives these figures, so the Verdict tab and the review editor never
- * disagree.
+ * The minimal review shape the verdict folds in: the reviewer's verdict
+ * overrides (`checklist`) and their run-wide aesthetic tier (`aesthetic`, with
+ * the legacy per-domain `aesthetics` kept readable via `reviewAesthetic`).
+ * `StoredReview` satisfies it.
+ */
+export interface ValidatorReviewInput {
+  /** The reviewer's overrides: one binary verdict per overridden point. */
+  checklist?: readonly ReviewVerdict[];
+  /** The reviewer's run-wide aesthetic tier, when they rated one. */
+  aesthetic?: AestheticRating | null;
+  /** LEGACY per-domain tiers (old stored rows); collapsed to their worst. */
+  aesthetics?: readonly DomainAesthetic[];
+}
+
+/**
+ * Everything decided about a **validator-rated** run: the validators' verdicts
+ * from its record, with any reviews' overrides folded in — available the moment
+ * the run completes (zero reviews reproduce the validators' own figures
+ * exactly). The one place the console derives these figures, so the Verdict tab
+ * and the review editor never disagree.
  */
 export interface ValidatorDecision {
-  /** The functional rating: the worst across `domainRatings`, composed with the
-   * toolchain gate. Always present — zero failures is Flawless. */
+  /** The functional rating: with no reviews the validators' own; with reviews
+   * the worst across the reviews' effective ratings. Always present — zero
+   * failures is Flawless. */
   rating: Rating | null;
-  /** The validator-decided score (automated-only, toolchain-gated). */
+  /** The score: the validators' own with no reviews, else the average of the
+   * reviews' effective scores (toolchain-gated either way). */
   score: { earned: number; total: number };
-  /** Each effective domain's functional rating, in domain order. */
+  /** Each effective domain's functional rating, overrides folded in (worst
+   * across reviews), in domain order. */
   domainRatings: Map<string, Rating>;
-  /** The failing scored points and the caps they imposed. */
-  failures: ReturnType<typeof validatorFailures>;
   /** Whether the toolchain gate held the run at Broken / zero points. */
   gated: boolean;
 }
 
 /**
- * Decide a validator-rated run from its record and scoring model (see
- * {@link ValidatorDecision}). Mirrors `validator_rating` / `validator_score` in
- * the Rust core, which is what the store lifts onto the run — so what this shows
- * on completion is exactly what the backend records.
+ * Decide a validator-rated run from its record, its scoring model, and its
+ * reviews' overrides (see {@link ValidatorDecision}). Mirrors
+ * `validator_aggregate_rating` / `validator_aggregate_score` in the Rust core,
+ * which is what the store lifts onto the run — so what this shows is exactly
+ * what the backend records. With no reviews it reproduces `validator_rating` /
+ * `validator_score` unchanged.
  */
 export function decideValidatorRun(
   run: RunRecord,
   model: ReviewModel,
+  reviews: readonly ValidatorReviewInput[] = [],
 ): ValidatorDecision {
   const debugScripts = run.validation.debugScripts ?? [];
   const gated = isToolchainGated(run.toolchain);
-  const domainRatings = validatorDomainRatings(
-    model.domains,
-    model.items,
-    debugScripts,
-  );
+  const auto = automatedVerdicts(debugScripts);
+  const overrides = reviews.map((r) => r.checklist ?? []);
+  // The effective per-domain ratings: the validators' own with no reviews;
+  // otherwise, per domain, the worst across the reviews' effective checklists —
+  // the same worst-wins fold `validatorAggregateRating` takes over the whole run.
+  const verdictSets =
+    overrides.length === 0
+      ? [auto]
+      : overrides.map((o) => effectiveVerdicts(auto, o));
+  const domainRatings = new Map<string, Rating>();
+  for (const verdicts of verdictSets) {
+    for (const r of verdictDomainRatings(model.domains, model.items, verdicts)) {
+      const current = domainRatings.get(r.domain);
+      domainRatings.set(
+        r.domain,
+        current ? (worstRating([current, r.rating]) ?? r.rating) : r.rating,
+      );
+    }
+  }
   return {
-    rating: validatorRating(gated, domainRatings),
-    score: validatorScore(gated, model.items, debugScripts),
-    domainRatings: new Map(domainRatings.map((r) => [r.domain, r.rating])),
-    failures: validatorFailures(model.items, debugScripts),
+    rating: validatorAggregateRating(
+      gated,
+      model.domains,
+      model.items,
+      auto,
+      overrides,
+    ),
+    score: validatorAggregateScore(gated, model.items, auto, overrides),
+    domainRatings,
     gated,
   };
 }
 
 /**
- * The read-only verdict of a validator-rated run: the functional badge beside the
- * aesthetic one (when any reviewer has rated it), the validator-decided points,
- * a per-domain breakdown that lists the failing items that capped each domain,
- * and the machine-decided checklist — read-only, with each assertion's detail in
- * the automated-validation list. (The media behind each verdict is browsed per
- * item in the ReviewItemBrowser the verdict surfaces mount beside this.) No
- * override exists on such a run, so nothing here is a control.
+ * The verdict header of a validator-rated run: the functional badge beside the
+ * aesthetic one (once any reviewer has rated it), the points, and a compact
+ * per-domain strip of effective functional ratings — overrides folded in. The
+ * per-item detail (each point's verdict, media, assertions, failure cap, and
+ * backing script) lives in the ReviewItemBrowser the verdict surfaces mount
+ * beside this, so nothing is rendered twice.
  *
- * `aesthetics` is the aggregate per-domain aesthetic rating (worst across
- * reviewers) to show beside each domain; empty until someone reviews the run.
- * `showOverall` (default) leads with the two badges and the score; the
- * single-review page omits it.
+ * `reviews` are the run's reviews: their checklists are the reviewers' verdict
+ * overrides and their run-wide tiers aggregate into the aesthetic badge.
+ * `showOverall` (default) leads with the two badges and the score.
  */
 export function ValidatorVerdict({
   run,
   model,
-  aesthetics,
+  reviews = [],
   showOverall = true,
-  showChecklist = true,
 }: {
   run: RunRecord;
   model: ReviewModel;
-  aesthetics: readonly DomainAesthetic[];
+  reviews?: readonly ValidatorReviewInput[];
   showOverall?: boolean;
-  showChecklist?: boolean;
 }) {
-  const decision = useMemo(() => decideValidatorRun(run, model), [run, model]);
-  const debugScripts = run.validation.debugScripts ?? [];
-  const aestheticByDomain = new Map(
-    aesthetics.map((a) => [a.domain, a.rating]),
+  const decision = useMemo(
+    () => decideValidatorRun(run, model, reviews),
+    [run, model, reviews],
   );
-  const overallAesthetic: AestheticRating | null = worstAestheticRating(
-    aesthetics.map((a) => a.rating),
+  const overallAesthetic: AestheticRating | null = aggregateAestheticRating(
+    reviews.map((review) => reviewAesthetic(review)),
   );
-  const { rating, score, failures } = decision;
+  const { rating, score } = decision;
 
   return (
     <>
       {showOverall && (
         <div className={styles.verdictHeader}>
           <p className={styles.verdict}>
-            {/* The two channels side by side: the validator-decided functional
-                rating, then the reviewer-decided aesthetic one once it exists. */}
+            {/* The two channels side by side: the effective functional rating
+                (the validators', with any reviewer overrides folded in), then
+                the reviewer-decided aesthetic one once it exists. */}
             <span className={styles.badgePair}>
               {rating && <RatingBadge rating={rating} />}
               {overallAesthetic && <AestheticBadge rating={overallAesthetic} />}
@@ -134,11 +168,13 @@ export function ValidatorVerdict({
         </div>
       )}
       <p className={styles.validatorNote}>
-        Decided by this run&rsquo;s validators: every scored point was checked
-        by its script, and each failing point caps the domains it affects at its
-        failure cap. Reviewers rate only the aesthetic channel
+        The verdicts are this run&rsquo;s validators&rsquo;: every scored point
+        was checked by its script, and each failing point caps the domains it
+        affects at its failure cap. A reviewer can override any point&rsquo;s
+        verdict — the rating and score fold those overrides in — and reviewers
+        also rate the run&rsquo;s aesthetics
         {overallAesthetic
-          ? `: ${AESTHETIC_META[overallAesthetic].label.toLowerCase()} here, the worst any reviewer gave any domain.`
+          ? `: ${AESTHETIC_META[overallAesthetic].label.toLowerCase()} here, the worst any reviewer gave.`
           : "; no reviewer has rated it yet."}
       </p>
 
@@ -148,10 +184,6 @@ export function ValidatorVerdict({
           <ul className={styles.domainList}>
             {model.domains.map((domain) => {
               const domainRating = decision.domainRatings.get(domain.id);
-              const aesthetic = aestheticByDomain.get(domain.id);
-              const capped = failures.filter((f) =>
-                f.domains.includes(domain.id),
-              );
               return (
                 <li key={domain.id} className={styles.domainRow}>
                   <div className={styles.domainHead}>
@@ -161,69 +193,13 @@ export function ValidatorVerdict({
                     >
                       {domain.name}
                     </span>
-                    <span className={styles.badgePair}>
-                      {domainRating && <RatingBadge rating={domainRating} />}
-                      {aesthetic && <AestheticBadge rating={aesthetic} />}
-                    </span>
+                    {domainRating && <RatingBadge rating={domainRating} />}
                   </div>
-                  {/* The failing items that lowered this domain, each with the
-                      cap it imposed; the domain sits at the lowest of them. */}
-                  {capped.length > 0 && (
-                    <ul className={styles.capList} aria-label="Capped by">
-                      {capped.map((failure) => (
-                        <li key={failure.id} className={styles.capRow}>
-                          <span className={styles.capPoint}>
-                            {failure.category && (
-                              <span className={styles.capCategory}>
-                                {failure.category} ›{" "}
-                              </span>
-                            )}
-                            {failure.title}
-                          </span>
-                          <span
-                            className={styles.capTier}
-                            data-cap={failure.cap}
-                            title={FAILURE_CAP_META[failure.cap].description}
-                          >
-                            <span aria-hidden="true">→ </span>
-                            {FAILURE_CAP_META[failure.cap].label}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
                 </li>
               );
             })}
           </ul>
         </div>
-      )}
-
-      {showChecklist && (
-        <>
-          {/* The machine-decided checklist, read-only: exactly the verdicts the
-              validators produced (the same failure semantics the rating uses). */}
-          {model.items.length > 0 && (
-            <ReviewChecklist
-              model={model}
-              verdicts={automatedVerdicts(debugScripts)}
-            />
-          )}
-          {/* The scripts behind those verdicts: which ran, and each assertion's
-              detail. (The media each output captured is browsed per item in the
-              ReviewItemBrowser the verdict surfaces mount beside this.) Public
-              on a validator-rated run — there is no reviewer call for it to
-              bias. */}
-          {debugScripts.length > 0 && (
-            <div className={styles.checklist}>
-              <DebugScriptList
-                scripts={debugScripts}
-                heading="Automated validation"
-                collapsible
-              />
-            </div>
-          )}
-        </>
       )}
     </>
   );

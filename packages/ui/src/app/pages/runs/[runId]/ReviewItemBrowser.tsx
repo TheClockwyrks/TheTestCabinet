@@ -1,5 +1,9 @@
 import { useMemo, useState } from "react";
-import type { Assertion, RunRecord } from "@test-cabinet/run-record";
+import type {
+  Assertion,
+  DebugScriptResult,
+  RunRecord,
+} from "@test-cabinet/run-record";
 import type { ProofMedia, ReferenceShot } from "../../../../client/types";
 import {
   useGalleryData,
@@ -8,8 +12,10 @@ import {
 import { useRunVariant } from "../../../data/useRunVariant";
 import type { ReviewItemSummary } from "../../../data/testCases";
 import {
+  FAILURE_CAP_META,
   VERDICT_META,
   automatedVerdicts,
+  effectiveVerdicts,
   formatPoints,
   subItemVerdictId,
   verdictIdsForItem,
@@ -19,6 +25,7 @@ import { MediaView } from "../../../components/MediaView";
 import { ReviewItemAssets } from "./AssetResultSection";
 import { ValidationReplayPair } from "./ValidationReplayPair";
 import { ValidationMediaPair } from "./ValidationMediaPair";
+import type { ValidatorReviewInput } from "./ValidatorVerdict";
 import styles from "../RunExec.module.scss";
 
 /** Format a point weight as `1 pt` / `2 pts`. */
@@ -26,30 +33,53 @@ function pts(weight: number): string {
   return `${weight} ${weight === 1 ? "pt" : "pts"}`;
 }
 
-// The read-only per-item browser over a run's automated review items: the same
-// navigable rail + one-question-at-a-time panel the review editor walks a legacy
+/** The affected domains of a failing point as prose: "Single player", "Single
+ * player and Versus", "A, B, and C". Ids fall back where no name is known. */
+function formatDomainNames(
+  ids: readonly string[],
+  nameById: ReadonlyMap<string, string>,
+): string {
+  const names = ids.map((id) => nameById.get(id) ?? id);
+  if (names.length <= 1) return names[0] ?? "";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+// The read-only per-item browser over a run's automated review items — the
+// **single per-item surface** of a validator-rated run's Verdict tab: the same
+// navigable rail + one-question-at-a-time panel the review editor walks a
 // checklist with, but **browsing only** — no verdict radiogroups, no notes, no
-// "Mark unplayable", no restore controls. Each item shows its prose, the assets
-// it names, the expected-vs-submitted media it pairs, the automated-validation
-// media backing its verdict (the reference implementation beside this run's
-// build, image/clip pairs and shared-clock engine-replay pairs alike), the
-// mechanical assertions the debug script checked, and the validators' own
-// Pass/Fail readout.
+// restore controls. Each point shows its prose, the assets it names, the
+// expected-vs-submitted media it pairs, the automated-validation media backing
+// its verdict (the reference implementation beside this run's build), the
+// mechanical assertions the debug script checked, the failure cap and affected
+// domains of a failing scored point, the backing validator script (its detail,
+// path, and ran / did-not-run / precondition-unmet state), and the effective
+// verdict readout — the validators' call, or a reviewer's override where one
+// exists, marked as such.
 //
 // Mounted wherever a **validator-rated** run's verdict is read rather than
-// written: the Verdict tab's read-only panel (the public gallery included) and
-// the review editor's aesthetics-only form — so anyone can browse what the
-// machine checked and compare the run against the reference, whether or not they
-// can review.
+// written: the Verdict tab's read-only panel (the public gallery included) —
+// so anyone can browse what the machine checked and compare the run against
+// the reference, whether or not they can review.
 export function ReviewItemBrowser({
   run,
   items,
+  domains = [],
+  reviews = [],
 }: {
   run: RunRecord;
   /** The effective review items to browse — the caller's already-resolved
    * checklist (the editor's loaded items, or the verdict panel's scoring
    * model), so the browser can never disagree with the surface it sits on. */
   items: readonly ReviewItemSummary[];
+  /** The effective scoring domains, so a failing point's cap line can name the
+   * domains it affects. Ids fall back where a name is unavailable. */
+  domains?: readonly { id: string; name: string }[];
+  /** The run's reviews, whose checklists are reviewer overrides: the readout
+   * shows each point's effective verdict and marks overridden points. Empty
+   * shows the validators' verdicts alone. */
+  reviews?: readonly ValidatorReviewInput[];
 }) {
   const gallery = useGalleryData();
   // The run's own catalog variant, for the expected reference media (by view)
@@ -78,12 +108,50 @@ export function ReviewItemBrowser({
   const asset = useMemo(() => gallery.assetResultFor(run), [gallery, run]);
 
   // The validators' verdicts, keyed by verdict id — the same failure semantics
-  // the validator rating and read-only checklist use, so the readout here can
-  // never disagree with them.
-  const verdictById = useMemo(() => {
+  // the validator rating uses, so the readout here can never disagree with it.
+  const autoById = useMemo(() => {
     const map = new Map<string, VerdictStatus>();
     for (const v of automatedVerdicts(run.validation.debugScripts ?? [])) {
       map.set(v.id, v.status);
+    }
+    return map;
+  }, [run]);
+
+  // The EFFECTIVE verdicts: the validators' overlaid with every review's
+  // overrides (each review's checklist wins per id over what came before). With
+  // no reviews this is exactly the validators' set. The rail marks, the passed
+  // tally, and the per-point readout all read from here, with `autoById` kept
+  // beside it so an overridden point can say what the validators decided.
+  const verdictById = useMemo(() => {
+    let verdicts = automatedVerdicts(run.validation.debugScripts ?? []);
+    for (const review of reviews) {
+      verdicts = effectiveVerdicts(verdicts, review.checklist ?? []);
+    }
+    const map = new Map<string, VerdictStatus>();
+    for (const v of verdicts) map.set(v.id, v.status);
+    return map;
+  }, [run, reviews]);
+
+  // Domain id → display name, for the failure-cap line of a failing point.
+  const domainNameById = useMemo(
+    () => new Map(domains.map((d) => [d.id, d.name])),
+    [domains],
+  );
+
+  // The validator script backing each verdict id: the script whose own unit id
+  // matches, or the one whose verdicts decided it — so a point can show the
+  // script's detail, path, and ran / did-not-run / precondition-unmet state.
+  const scriptByVerdict = useMemo(() => {
+    const map = new Map<string, DebugScriptResult>();
+    for (const script of run.validation.debugScripts ?? []) {
+      const unitId =
+        script.subItemId != null
+          ? subItemVerdictId(script.itemId, script.subItemId)
+          : script.itemId;
+      if (!map.has(unitId)) map.set(unitId, script);
+      for (const v of script.verdicts) {
+        if (!map.has(v.id)) map.set(v.id, script);
+      }
     }
     return map;
   }, [run]);
@@ -152,8 +220,21 @@ export function ReviewItemBrowser({
   const slotHasValidationMedia = validationByVerdict.has(slotVerdictId);
   const media = validationByVerdict.get(slotVerdictId) ?? [];
   const assertions = assertionsByVerdict.get(slotVerdictId) ?? [];
-  // How many points the validators passed, for the rail's summary label — a
-  // read-only browser has nothing "addressed", only what the machine decided.
+  // What the validators decided for this point, beside the effective verdict —
+  // when the two differ, a reviewer overrode it (or decided a point the
+  // validators left undecided) and the readout says so.
+  const slotAuto = autoById.get(slotVerdictId);
+  const slotOverridden = slotStatus != null && slotAuto !== slotStatus;
+  // The failure cap + affected domains of a failing scored point — the detail
+  // the Domains strip no longer carries, shown on the point itself.
+  const slotCap = sub ? sub.failureCap : item.failureCap;
+  const slotCapDomains = (sub ? sub.domains : item.domains) ?? [];
+  const slotFailing =
+    slotStatus === "fail" && !slotNotScored && slotCap != null;
+  // The validator script backing this point, for its detail, path, and state.
+  const slotScript = scriptByVerdict.get(slotVerdictId);
+  // How many points hold an effective pass, for the rail's summary label — a
+  // read-only browser has nothing "addressed", only what was decided.
   const passedSlots = slots.filter((s) => {
     const it = items[s.itemIndex]!;
     const si = s.subIndex >= 0 ? it.subItems?.[s.subIndex] : undefined;
@@ -407,8 +488,41 @@ export function ReviewItemBrowser({
           </ul>
         )}
 
-        {/* The validators' call on this point, as a readout rather than a
-            control — there is no verdict to give on a browsed run. */}
+        {/* The failure cap this point imposes while it fails, and the domains
+            it lowers — the detail the Domains strip's cap list used to carry,
+            shown on the failing point itself. */}
+        {slotFailing && slotCap && (
+          <p
+            className={styles.capNote}
+            title={FAILURE_CAP_META[slotCap].description}
+          >
+            Failing caps{" "}
+            {formatDomainNames(slotCapDomains, domainNameById) ||
+              "its domains"}{" "}
+            at {FAILURE_CAP_META[slotCap].label}.
+          </p>
+        )}
+
+        {/* The validator script behind this point: its ran / did-not-run /
+            precondition-unmet state, any failure detail, and its path — the
+            information the old "Automated validation" table carried. */}
+        {slotScript && (
+          <div className={styles.scriptNote}>
+            <p className={styles.muted}>
+              {slotScript.preconditionUnmet
+                ? "The validator's precondition was not met, so it left this point undecided."
+                : slotScript.ran
+                  ? "The validator script ran to completion."
+                  : "The validator script did not run: a debug-API contract failure, which fails the point it backs."}
+              {slotScript.detail && <> {slotScript.detail}</>}
+            </p>
+            <p className={styles.scriptPath}>{slotScript.script}</p>
+          </div>
+        )}
+
+        {/* The effective call on this point, as a readout rather than a
+            control — the validators', or a reviewer's override, marked as
+            such. There is no verdict to give on a browsed run. */}
         <p className={styles.muted}>
           {slotStatus ? (
             <>
@@ -423,8 +537,20 @@ export function ReviewItemBrowser({
               >
                 {slotStatus === "pass" ? "✓" : "✗"}
               </span>{" "}
-              {VERDICT_META[slotStatus].label}, decided by this run&rsquo;s
-              validators.
+              {slotOverridden ? (
+                <>
+                  {VERDICT_META[slotStatus].label}, overridden by a reviewer
+                  {slotAuto
+                    ? ` (the validators said ${VERDICT_META[slotAuto].label})`
+                    : " (the validators left it undecided)"}
+                  .
+                </>
+              ) : (
+                <>
+                  {VERDICT_META[slotStatus].label}, decided by this run&rsquo;s
+                  validators.
+                </>
+              )}
             </>
           ) : (
             "Not automatically checked."

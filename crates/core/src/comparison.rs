@@ -296,10 +296,23 @@ pub struct Comparison {
 ///   entirely and contributes to neither the numerator nor the denominator (the point
 ///   is left for a human).
 pub fn automated_only_score(items: &[ReviewItem], debug_scripts: &[DebugScriptResult]) -> Score {
-    let verdicts = automated_verdicts(debug_scripts);
+    covered_score(items, &automated_verdicts(debug_scripts))
+}
+
+/// Score a slice of `verdicts` over `items`, restricting **both** numerator and
+/// denominator to the points the verdicts actually decide: the covered set is
+/// exactly the verdict ids, an undecided point is excluded rather than failed,
+/// and an erratum-excluded point (`scored == false`) counts toward neither side.
+///
+/// The verdict-slice core of [`automated_only_score`], generalized so a review's
+/// [effective checklist](crate::review::effective_verdicts) — the validators'
+/// verdicts overlaid with the reviewer's overrides — scores through the identical
+/// rule (see [`crate::review::validator_review_score`]). Mirrors `coveredScore`
+/// in `packages/run-stats/src/scoring.ts`.
+pub fn covered_score(items: &[ReviewItem], verdicts: &[ReviewVerdict]) -> Score {
     let covered: BTreeSet<String> = verdicts.iter().map(|v| v.id.clone()).collect();
     let restricted = restrict_items_to_covered(items, &covered);
-    score_checklist(&restricted, &verdicts)
+    score_checklist(&restricted, verdicts)
 }
 
 /// The verdicts a run's validators decided, synthesized as [`ReviewVerdict`]s —

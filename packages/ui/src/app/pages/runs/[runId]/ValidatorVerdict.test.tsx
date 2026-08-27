@@ -86,10 +86,6 @@ describe("decideValidatorRun", () => {
     expect(decision.rating).toBe("scuffed");
     // Points: the one validated point that passed, over the three validated.
     expect(decision.score).toMatchObject({ earned: 1, total: 3 });
-    expect(decision.failures.map((f) => f.id)).toEqual([
-      "rules.ai",
-      "rules.hud",
-    ]);
   });
 
   it("is Flawless with full points when nothing failed", () => {
@@ -103,13 +99,47 @@ describe("decideValidatorRun", () => {
     );
     expect(decision.rating).toBe("flawless");
     expect(decision.score).toMatchObject({ earned: 3, total: 3 });
-    expect(decision.failures).toEqual([]);
+  });
+
+  it("reproduces the validators' figures for a review with no overrides", () => {
+    const withReview = decideValidatorRun(run(), model, [
+      { checklist: [], aesthetic: "good" },
+    ]);
+    const without = decideValidatorRun(run(), model);
+    expect(withReview.rating).toBe(without.rating);
+    expect(withReview.score).toMatchObject({
+      earned: without.score.earned,
+      total: without.score.total,
+    });
+  });
+
+  it("folds a reviewer's overrides into the rating and score", () => {
+    // The reviewer overrides the failing AI point to pass: Single player's only
+    // remaining failure is the HUD (great cap), so the run recovers to great,
+    // and the score climbs to 2 / 3.
+    const decision = decideValidatorRun(run(), model, [
+      { checklist: [{ id: "rules.ai", status: "pass" }], aesthetic: "good" },
+    ]);
+    expect(decision.domainRatings.get("single-player")).toBe("great");
+    expect(decision.rating).toBe("great");
+    expect(decision.score).toMatchObject({ earned: 2, total: 3 });
+  });
+
+  it("aggregates worst rating and average score across several reviews", () => {
+    const decision = decideValidatorRun(run(), model, [
+      // One reviewer recovers the AI point (2/3, great)…
+      { checklist: [{ id: "rules.ai", status: "pass" }] },
+      // …the other stands on the validators' verdicts (1/3, scuffed).
+      { checklist: [] },
+    ]);
+    expect(decision.rating).toBe("scuffed");
+    expect(decision.score).toMatchObject({ earned: 1.5, total: 3 });
   });
 });
 
 describe("ValidatorVerdict", () => {
-  it("shows the functional rating, points, and which items capped each domain", () => {
-    render(<ValidatorVerdict run={run()} model={model} aesthetics={[]} />);
+  it("shows the rating, points, and a compact per-domain strip", () => {
+    render(<ValidatorVerdict run={run()} model={model} reviews={[]} />);
 
     // The headline: the validator-decided rating and score, before any review.
     expect(screen.getByText("1 / 3")).toBeTruthy();
@@ -117,48 +147,84 @@ describe("ValidatorVerdict", () => {
     // badge — only the functional one.
     expect(screen.queryByLabelText(/^Aesthetic:/)).toBeNull();
     expect(screen.getByText(/no reviewer has rated it yet/)).toBeTruthy();
+    // The explainer says overrides are possible, not that verdicts are locked.
+    expect(screen.getByText(/can override any point/)).toBeTruthy();
 
-    // Per domain: the rating and the failing items that capped it.
+    // Per domain: the effective functional badge ONLY — no "capped by" list
+    // (that detail lives in the item browser now) and no per-domain aesthetic.
     const single = screen.getByText("Single player").closest("li")!;
-    const singleCaps = within(single).getByLabelText("Capped by");
-    expect(within(singleCaps).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(single).getByText("Scuffed")).toBeTruthy();
+    expect(within(single).queryByLabelText("Capped by")).toBeNull();
     expect(
-      within(singleCaps).getByText("AI paddle tracks the ball (Solo)"),
-    ).toBeTruthy();
-    expect(within(singleCaps).getByText("Scuffed")).toBeTruthy();
-
+      within(single).queryByText("AI paddle tracks the ball (Solo)"),
+    ).toBeNull();
     const versus = screen.getByText("Versus").closest("li")!;
-    const versusCaps = within(versus).getByLabelText("Capped by");
-    expect(within(versusCaps).getAllByRole("listitem")).toHaveLength(1);
-    expect(within(versusCaps).getByText("Score readout updates")).toBeTruthy();
+    expect(within(versus).getByText("Great")).toBeTruthy();
+    expect(within(versus).queryByLabelText("Capped by")).toBeNull();
   });
 
-  it("shows the aggregate aesthetic beside the functional rating once reviewed", () => {
+  it("shows the aggregate run-wide aesthetic once reviewed", () => {
     render(
       <ValidatorVerdict
         run={run()}
         model={model}
-        aesthetics={[
-          { domain: "single-player", rating: "amazing" },
-          { domain: "versus", rating: "okay" },
+        reviews={[
+          { checklist: [], aesthetic: "amazing" },
+          { checklist: [], aesthetic: "okay" },
         ]}
       />,
     );
-    // The overall aesthetic is the worst across domains.
+    // The overall aesthetic is the worst run-wide tier across reviews, and it is
+    // the only aesthetic badge — domains carry none of their own.
     const aesthetics = screen.getAllByLabelText(/^Aesthetic:/);
+    expect(aesthetics).toHaveLength(1);
     expect(aesthetics[0]!.textContent).toBe("Okay");
-    // And each domain shows its own.
-    const single = screen.getByText("Single player").closest("li")!;
-    expect(within(single).getByLabelText("Aesthetic: Amazing")).toBeTruthy();
   });
 
-  it("renders the checklist read-only from the validators' verdicts", () => {
-    render(<ValidatorVerdict run={run()} model={model} aesthetics={[]} />);
-    // The machine's verdicts, not a reviewer's: one pass and two fails.
-    expect(screen.getAllByText("Pass")).toHaveLength(1);
-    expect(screen.getAllByText("Fail")).toHaveLength(2);
-    // Nothing here is a control: no override, no restore.
+  it("reads a legacy stored review's per-domain tiers collapsed to worst", () => {
+    render(
+      <ValidatorVerdict
+        run={run()}
+        model={model}
+        reviews={[
+          {
+            checklist: [],
+            aesthetics: [
+              { domain: "single-player", rating: "amazing" },
+              { domain: "versus", rating: "okay" },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.getByLabelText("Aesthetic: Okay")).toBeTruthy();
+  });
+
+  it("folds a reviewer's override into the shown rating and score", () => {
+    render(
+      <ValidatorVerdict
+        run={run()}
+        model={model}
+        reviews={[
+          {
+            checklist: [{ id: "rules.ai", status: "pass" }],
+            aesthetic: "good",
+          },
+        ]}
+      />,
+    );
+    // The recovered AI point lifts the score to 2 / 3 and the rating to Great:
+    // the headline badge and both domain badges now read Great.
+    expect(screen.getByText("2 / 3")).toBeTruthy();
+    expect(screen.getAllByText("Great").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("Scuffed")).toBeNull();
+  });
+
+  it("renders no checklist and no script table — the item browser owns that detail", () => {
+    render(<ValidatorVerdict run={run()} model={model} reviews={[]} />);
+    expect(screen.queryByText("Automated validation")).toBeNull();
     expect(screen.queryByRole("radiogroup")).toBeNull();
     expect(screen.queryByText(/Restore/)).toBeNull();
+    expect(screen.queryByText("validation/rules.mjs")).toBeNull();
   });
 });

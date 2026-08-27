@@ -15,7 +15,6 @@ import {
   overallGradeOf,
   type Rating,
   RATINGS,
-  worstAestheticRating,
   worstRating,
 } from "../data/ratings";
 import { isGgRun } from "../data/runLinks";
@@ -657,12 +656,7 @@ export function useEnrichedRuns(
             ? summary.rating
             : (worstRating(review?.ratings.map((r) => r.rating) ?? []) ??
               summary.rating),
-          aesthetic:
-            worstAestheticRating(
-              review?.aesthetics.map((r) => r.rating) ?? [],
-            ) ??
-            summary.aesthetic ??
-            null,
+          aesthetic: review?.aesthetic ?? summary.aesthetic ?? null,
           // A jam's overall grade: a local, in-progress review wins (it must show
           // before it is published, mirroring the rating); absent one, the
           // summary card's aggregate `score.overallGrade` stands in.

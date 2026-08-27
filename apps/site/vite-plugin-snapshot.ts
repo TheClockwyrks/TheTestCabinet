@@ -127,8 +127,10 @@ interface SnapshotDomainRating {
   rating: string;
 }
 
-// One per-domain AESTHETIC rating of a review — the second channel, carried only
-// by a review of a validator-rated run.
+// LEGACY: one per-domain AESTHETIC rating of a review, from when the second
+// channel was rated per scoring domain. Carried only by a snapshot written
+// before the channel became run-wide; a review's tier resolves as
+// `aesthetic ?? worst(aesthetics)`.
 interface SnapshotDomainAesthetic {
   domain: string;
   rating: string;
@@ -141,7 +143,12 @@ interface SnapshotReview {
   reviewerId?: string;
   reviewer?: string;
   ratings: SnapshotDomainRating[];
-  // The reviewer's per-domain aesthetic ratings; absent on a legacy run's review.
+  // The reviewer's RUN-WIDE aesthetic tier (a stored legacy row's per-domain
+  // entries arrive already collapsed); absent on a legacy run's review — which
+  // has no aesthetic channel — and on a snapshot written before the field.
+  aesthetic?: string | null;
+  // LEGACY: per-domain aesthetic ratings, present only on a not-yet-regenerated
+  // snapshot; collapse to the worst tier where `aesthetic` is absent.
   aesthetics?: SnapshotDomainAesthetic[];
   writeup: string;
   checklist?: SnapshotReviewVerdict[];
@@ -209,7 +216,8 @@ interface SnapshotCaseFile {
   // Whether the version is on the ENGINE manifest format — which, with the test
   // type (a game jam never is), makes it VALIDATOR-RATED: its runs' functional
   // rating and score come from the validators (every review item carries a
-  // `failureCap` and `domains`) and reviewers rate only the aesthetic channel.
+  // `failureCap` and `domains`), and reviewers rate the run-wide aesthetic
+  // channel (and may override individual verdicts).
   // Optional for snapshots written before the field existed (legacy).
   engineFormat?: boolean;
   // The asset shape an asset-generation case produces, partitioning the catalog's
@@ -433,6 +441,11 @@ interface AssembledReview {
   reviewerId: string;
   reviewer: string;
   ratings: SnapshotDomainRating[];
+  // The run-wide aesthetic tier; null on a legacy run's review. A stale
+  // snapshot's per-domain `aesthetics` are collapsed into this at assembly.
+  aesthetic: string | null;
+  // LEGACY per-domain tiers, carried through for the app's `reviewAesthetic`
+  // fallback; empty on a regenerated snapshot.
   aesthetics: SnapshotDomainAesthetic[];
   writeup: string;
   checklist: SnapshotReviewVerdict[];
@@ -690,8 +703,9 @@ interface AssembledVariant {
   domains: AssembledDomain[];
   // Whether a run of this variant is validator-rated (the version is on the engine
   // manifest format and is not a game jam): the items above carry failure caps
-  // and domains, the functional rating and score come from the run's validators,
-  // and reviewers rate only the aesthetic channel.
+  // and domains, the functional rating and score come from the run's validators
+  // (reviewer overrides folded in), and reviewers rate the run-wide aesthetic
+  // channel.
   validatorRated: boolean;
   // The absolute URLs of this variant's reference-implementation builds, one per
   // engine, or empty when it declares none. Carried through verbatim from the
@@ -793,8 +807,8 @@ const EMPTY: AssembledSnapshot = {
 // run's aggregate. Mirrors the `Rating` enum in `packages/ui/src/ratings.ts`.
 const RATING_ORDER = ["flawless", "great", "passable", "scuffed", "broken"];
 
-// Aesthetic tiers, ordered best to worst — the second channel, rated per domain
-// by reviewers of a validator-rated run. Mirrors `AESTHETIC_RATINGS` in
+// Aesthetic tiers, ordered best to worst — the second channel, one run-wide
+// tier per review of a validator-rated run. Mirrors `AESTHETIC_RATINGS` in
 // `@test-cabinet/run-stats`.
 const AESTHETIC_ORDER = ["legendary", "amazing", "good", "okay", "slop"];
 
@@ -838,8 +852,8 @@ async function fetchJson<T>(url: string): Promise<T> {
 // Reconstruct a single *aggregate* writeup's `---\nrating.<domain>: …\n---\n\n
 // <body>` framing from a run's reviews, so the existing `parseWriteup` path is
 // unchanged on the site side and the cards/badges show the aggregate verdict. The
-// aggregate rating for a domain is the worst any reviewer gave it — on both
-// channels, the aesthetic one framed as `aesthetic.<domain>: …` lines; a checklist
+// aggregate rating for a domain is the worst any reviewer gave it; the run-wide
+// aesthetic tier is one bare `aesthetic: …` line (worst across reviews); a checklist
 // item reads `pass` only when every reviewer who judged it passed it; the body
 // concatenates each reviewer's prose, attributed by display name. Mirrors
 // `frameReviews` in `@test-cabinet/ui`. Returns null for no reviews.
@@ -859,18 +873,18 @@ function frameWriteup(reviews: SnapshotReview[]): string | null {
     const worst = worstRating(tiers);
     if (worst) ratingLines.push(`rating.${domain}: ${worst}`);
   }
-  const aestheticsByDomain = new Map<string, string[]>();
-  for (const review of reviews) {
-    for (const r of review.aesthetics ?? []) {
-      const list = aestheticsByDomain.get(r.domain) ?? [];
-      list.push(r.rating);
-      aestheticsByDomain.set(r.domain, list);
-    }
-  }
-  for (const [domain, tiers] of aestheticsByDomain) {
-    const worst = worstAestheticRating(tiers);
-    if (worst) ratingLines.push(`aesthetic.${domain}: ${worst}`);
-  }
+  // The aesthetic channel is run-wide: one bare `aesthetic:` line carrying the
+  // worst tier any reviewer gave the whole build. Each review's own tier is its
+  // `aesthetic` field, else the worst of its legacy per-domain entries (a stale
+  // snapshot) — the same resolution the app's `reviewAesthetic` applies.
+  const aestheticTiers = reviews.flatMap((review) => {
+    const tier =
+      review.aesthetic ??
+      worstAestheticRating((review.aesthetics ?? []).map((r) => r.rating));
+    return tier ? [tier] : [];
+  });
+  const worstAesthetic = worstAestheticRating(aestheticTiers);
+  if (worstAesthetic) ratingLines.push(`aesthetic: ${worstAesthetic}`);
 
   const statusesByItem = new Map<string, string[]>();
   for (const review of reviews) {
@@ -910,6 +924,11 @@ function toAssembledReview(
     reviewerId: review.reviewerId ?? "",
     reviewer: review.reviewer ?? "Reviewer",
     ratings: review.ratings ?? [],
+    // Resolve the run-wide tier here so the app reads one field either way; the
+    // legacy entries ride along untouched for its own fallback.
+    aesthetic:
+      review.aesthetic ??
+      worstAestheticRating((review.aesthetics ?? []).map((r) => r.rating)),
     aesthetics: review.aesthetics ?? [],
     writeup: review.writeup ?? "",
     checklist: review.checklist ?? [],

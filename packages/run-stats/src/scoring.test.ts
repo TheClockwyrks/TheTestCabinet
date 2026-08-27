@@ -15,10 +15,16 @@ import {
   aggregateOverallGrade,
   automatedOnlyScore,
   automatedVerdicts,
+  effectiveVerdicts,
   isAestheticRating,
   isFailureCap,
+  reviewAesthetic,
+  validatorAggregateRating,
+  validatorAggregateScore,
   validatorDomainRatings,
   validatorRating,
+  validatorReviewRating,
+  validatorReviewScore,
   validatorScore,
   worstAestheticRating,
   applyScoreExclusions,
@@ -363,18 +369,49 @@ describe("aesthetic ratings", () => {
     expect(worstAestheticRating([])).toBeNull();
   });
 
-  it("aggregateAestheticRating is the worst across every review and domain", () => {
-    const harsh = [
-      aesthetic("single-player", "amazing"),
-      aesthetic("versus", "okay"),
-    ];
-    const generous = [
-      aesthetic("single-player", "legendary"),
-      aesthetic("versus", "amazing"),
-    ];
-    expect(aggregateAestheticRating([harsh, generous])).toBe("okay");
-    expect(aggregateAestheticRating([[]])).toBeNull();
+  it("aggregateAestheticRating is the worst run-wide tier across reviews", () => {
+    expect(aggregateAestheticRating(["amazing", "okay", "legendary"])).toBe(
+      "okay",
+    );
+    // A review with no tier (a legacy run's) contributes nothing.
+    expect(aggregateAestheticRating(["good", null, undefined])).toBe("good");
+    expect(aggregateAestheticRating([null])).toBeNull();
     expect(aggregateAestheticRating([])).toBeNull();
+  });
+
+  it("reviewAesthetic prefers the run-wide tier", () => {
+    expect(reviewAesthetic({ aesthetic: "good" })).toBe("good");
+    // The run-wide field wins even when a legacy array is also present.
+    expect(
+      reviewAesthetic({
+        aesthetic: "amazing",
+        aesthetics: [aesthetic("versus", "slop")],
+      }),
+    ).toBe("amazing");
+  });
+
+  it("reviewAesthetic collapses a legacy review's per-domain tiers to the worst", () => {
+    // The worst tier equals the old per-domain aggregation, so a legacy review's
+    // displayed value does not change.
+    expect(
+      reviewAesthetic({
+        aesthetics: [
+          aesthetic("single-player", "amazing"),
+          aesthetic("versus", "okay"),
+        ],
+      }),
+    ).toBe("okay");
+    expect(
+      reviewAesthetic({
+        aesthetic: null,
+        aesthetics: [aesthetic("single-player", "good")],
+      }),
+    ).toBe("good");
+  });
+
+  it("reviewAesthetic is null for a review with no aesthetic channel", () => {
+    expect(reviewAesthetic({})).toBeNull();
+    expect(reviewAesthetic({ aesthetic: null, aesthetics: [] })).toBeNull();
   });
 });
 
@@ -564,5 +601,223 @@ describe("validatorRating / validatorScore", () => {
       total: 3,
       reviews: 0,
     });
+  });
+});
+
+// --- reviewer overrides on a validator-rated run --------------------------------
+// Mirror the Rust core's override tests (crates/core/src/review.overrides.test.rs):
+// the effective checklist, the per-review figures that fold a review's overrides
+// into the validators' verdicts, and the run-level aggregation across reviews.
+
+/** A validator-rated whole-item point worth 1: scored, with a cap and domains. */
+const cappedItem = (
+  id: string,
+  failureCap: FailureCap,
+  domains: readonly string[],
+): WeightedItem => ({ id, weight: 1, failureCap, domains });
+
+/** A debug-script result recorded inconclusive (`preconditionUnmet`): the
+ * validators leave the point undecided. */
+const inconclusive = (item: string) => script(item, null, [], false, true);
+
+describe("effectiveVerdicts", () => {
+  it("overlays the reviewer's overrides per id", () => {
+    const auto = [pass("a"), fail("b"), pass("c")];
+    // `b` is overridden to pass (with a note), `d` — a point the validators left
+    // undecided — is decided by the reviewer; `a` and `c` are untouched.
+    const overrides: ReviewVerdict[] = [
+      { id: "b", status: "pass", note: "works when driven by hand" },
+      fail("d"),
+    ];
+    const effective = effectiveVerdicts(auto, overrides);
+    // The validators' order holds, reviewer-only points append.
+    expect(effective.map((v) => v.id)).toEqual(["a", "b", "c", "d"]);
+    expect(effective[0]!.status).toBe("pass");
+    expect(effective[1]!.status).toBe("pass");
+    // The override replaces the verdict wholesale, note included.
+    expect(effective[1]!.note).toBe("works when driven by hand");
+    expect(effective[3]!.status).toBe("fail");
+  });
+
+  it("with no overrides is exactly the validators' checklist", () => {
+    const auto = [pass("a"), fail("b")];
+    expect(effectiveVerdicts(auto, [])).toEqual(auto);
+  });
+});
+
+describe("validatorReviewRating / validatorReviewScore", () => {
+  it("an override raises the review's rating and score", () => {
+    // `serve` (broken cap) failed under the validators; the reviewer overrides
+    // it to pass, which recomputes both figures.
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedCategory("gameplay", [
+        ["serve", "broken", ["gameplay"]],
+        ["hud", "great", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      decided("gameplay", "gameplay.serve", false),
+      decided("gameplay", "gameplay.hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+    expect(
+      validatorRating(false, validatorDomainRatings(domains, items, scripts)),
+    ).toBe("broken");
+
+    const overrides = [pass("gameplay.serve")];
+    expect(validatorReviewRating(false, domains, items, auto, overrides)).toBe(
+      "flawless",
+    );
+    const score = validatorReviewScore(false, items, auto, overrides);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(2);
+  });
+
+  it("an override can also lower the review's figures", () => {
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedItem("serve", "scuffed", ["gameplay"]),
+      cappedItem("hud", "great", ["gameplay"]),
+    ];
+    const scripts = [
+      decided("serve", "serve", true),
+      decided("hud", "hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+
+    const overrides = [fail("serve")];
+    expect(validatorReviewRating(false, domains, items, auto, overrides)).toBe(
+      "scuffed",
+    );
+    const score = validatorReviewScore(false, items, auto, overrides);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(1);
+  });
+
+  it("a reviewer deciding an undecided point grows the denominator", () => {
+    // The validators covered only `hud` (`serve`'s precondition was unmet), so
+    // their score reads over 1 point. A reviewer deciding `serve` covers it:
+    // both sides of that review's ratio now include the point.
+    const items = [
+      cappedItem("serve", "broken", ["gameplay"]),
+      cappedItem("hud", "great", ["gameplay"]),
+    ];
+    const scripts = [inconclusive("serve"), decided("hud", "hud", true)];
+    const auto = automatedVerdicts(scripts);
+    expect(validatorReviewScore(false, items, auto, []).total).toBe(1);
+
+    const score = validatorReviewScore(false, items, auto, [pass("serve")]);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(2);
+  });
+
+  it("an erratum-excluded point counts toward neither side even when overridden", () => {
+    const items = [
+      { ...cappedItem("serve", "broken", ["gameplay"]), scored: false },
+      cappedItem("hud", "great", ["gameplay"]),
+    ];
+    const scripts = [
+      decided("serve", "serve", false),
+      decided("hud", "hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+    const score = validatorReviewScore(false, items, auto, [pass("serve")]);
+    // The excluded point stays out of the total.
+    expect(score.total).toBe(1);
+    expect(score.earned).toBeCloseTo(1);
+  });
+});
+
+describe("validatorAggregateRating / validatorAggregateScore", () => {
+  it("zero reviews aggregate to the validators' own figures", () => {
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedCategory("gameplay", [
+        ["serve", "broken", ["gameplay"]],
+        ["ai", "scuffed", ["gameplay"]],
+        ["hud", "great", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      decided("gameplay", "gameplay.serve", true),
+      decided("gameplay", "gameplay.ai", false),
+      decided("gameplay", "gameplay.hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+
+    expect(validatorAggregateRating(false, domains, items, auto, [])).toBe(
+      validatorRating(false, validatorDomainRatings(domains, items, scripts)),
+    );
+    expect(validatorAggregateScore(false, items, auto, [])).toEqual(
+      validatorScore(false, items, scripts),
+    );
+    // The gate still applies with no reviews at all.
+    expect(validatorAggregateRating(true, domains, items, auto, [])).toBe(
+      "broken",
+    );
+    const gated = validatorAggregateScore(true, items, auto, []);
+    expect(gated.earned).toBe(0);
+    expect(gated.total).toBe(3);
+  });
+
+  it("a review with no overrides is the aggregation's fixed point", () => {
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedCategory("gameplay", [
+        ["serve", "broken", ["gameplay"]],
+        ["ai", "scuffed", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      decided("gameplay", "gameplay.serve", true),
+      decided("gameplay", "gameplay.ai", false),
+    ];
+    const auto = automatedVerdicts(scripts);
+    const reviews = [[]];
+
+    expect(validatorAggregateRating(false, domains, items, auto, reviews)).toBe(
+      "scuffed",
+    );
+    const score = validatorAggregateScore(false, items, auto, reviews);
+    expect(score.reviews).toBe(1);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(1);
+  });
+
+  it("takes the worst rating and the average score across reviews", () => {
+    const domains = [{ id: "gameplay" }];
+    const items = [
+      cappedCategory("gameplay", [
+        ["serve", "broken", ["gameplay"]],
+        ["hud", "great", ["gameplay"]],
+      ]),
+    ];
+    const scripts = [
+      decided("gameplay", "gameplay.serve", false),
+      decided("gameplay", "gameplay.hud", true),
+    ];
+    const auto = automatedVerdicts(scripts);
+    // One reviewer overrides the failing `serve` to pass (flawless, 2/2); the
+    // other leaves the validators' verdicts (broken, 1/2).
+    const reviews = [[pass("gameplay.serve")], []];
+
+    // One harsh review cannot be masked by a generous one.
+    expect(validatorAggregateRating(false, domains, items, auto, reviews)).toBe(
+      "broken",
+    );
+    const score = validatorAggregateScore(false, items, auto, reviews);
+    expect(score.reviews).toBe(2);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(1.5);
+
+    // The toolchain gate applies at the aggregation seam.
+    expect(validatorAggregateRating(true, domains, items, auto, reviews)).toBe(
+      "broken",
+    );
+    const gated = validatorAggregateScore(true, items, auto, reviews);
+    expect(gated.earned).toBe(0);
+    expect(gated.total).toBe(2);
+    expect(gated.reviews).toBe(2);
   });
 });

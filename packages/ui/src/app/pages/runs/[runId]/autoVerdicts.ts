@@ -38,12 +38,14 @@ export interface VerdictDraft {
  */
 export function autoVerdictMap(run: RunRecord): Map<string, AutoVerdictInfo> {
   const map = new Map<string, AutoVerdictInfo>();
-  for (const script of run.validation.debugScripts ?? []) {
-    for (const v of script.verdicts) {
-      // The reviewer's note is left blank: a verdict's proof is its assertions,
-      // shown in the automated-validation list, not stuffed into the note field.
-      map.set(v.id, { status: v.pass ? "pass" : "fail", note: "" });
-    }
+  // The shared failure semantics (`automatedVerdicts`): decided verdicts carry
+  // through, a contract failure fails the point it backs, and an inconclusive
+  // (precondition-unmet) script leaves its point undecided — so the pre-fill can
+  // never disagree with the score and rating derived from the same record.
+  for (const v of automatedVerdicts(run.validation.debugScripts ?? [])) {
+    // The reviewer's note is left blank: a verdict's proof is its assertions,
+    // shown beside the point, not stuffed into the note field.
+    map.set(v.id, { status: v.status, note: "" });
   }
   return map;
 }

@@ -163,8 +163,10 @@ pub use publish_job_api::{
 };
 pub use reference::{BrowserRenderer, ReferenceRenderer, RenderedReference};
 pub use review::{
-    DomainRating, Rating, ReviewVerdict, Score, VerdictStatus, Writeup, missing_ratings,
-    missing_verdicts, parse_writeup, score,
+    AestheticRating, DomainRating, Rating, ReviewVerdict, Score, VerdictStatus, Writeup,
+    effective_verdicts, missing_ratings, missing_verdicts, needs_aesthetic, parse_writeup, score,
+    validator_aggregate_rating, validator_aggregate_score, validator_review_rating,
+    validator_review_score,
 };
 pub use run_record::{
     AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunShowcase,

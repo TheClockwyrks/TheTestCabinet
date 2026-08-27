@@ -327,7 +327,10 @@ interface ReviewResponse {
   reviewer: string;
   username?: string | null;
   ratings: StoredReview["ratings"];
-  // The reviewer's per-domain aesthetic ratings; absent on a legacy run's review.
+  // The reviewer's run-wide aesthetic tier; absent on a legacy run's review.
+  aesthetic?: StoredReview["aesthetic"];
+  // LEGACY: per-domain aesthetic ratings, carried only by a backend serving old
+  // stored rows; a review's run-wide tier resolves as `aesthetic ?? worst(these)`.
   aesthetics?: StoredReview["aesthetics"];
   writeup: string;
   checklist: StoredReview["checklist"];
@@ -385,6 +388,7 @@ function toStoredReview(rv: ReviewResponse): StoredReview {
     reviewer: rv.reviewer,
     username: rv.username ?? null,
     ratings: rv.ratings,
+    aesthetic: rv.aesthetic ?? null,
     aesthetics: rv.aesthetics ?? [],
     writeup: rv.writeup,
     checklist: rv.checklist,
@@ -2286,7 +2290,9 @@ export function createBackendExec(
         `/runs/${encodeURIComponent(id)}/reviews`,
         {
           ratings: review.ratings,
-          aesthetics: review.aesthetics,
+          // The run-wide aesthetic tier; omitted (not null) on a legacy run's
+          // review, which has no aesthetic channel for the backend to accept.
+          aesthetic: review.aesthetic ?? undefined,
           writeup: review.writeup,
           checklist: review.checklist,
           // Only meaningful on an edit; the backend ignores it on a first submission.

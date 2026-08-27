@@ -21,8 +21,9 @@ export type Rating = "flawless" | "great" | "passable" | "scuffed" | "broken";
  * rating channel, separate from the functional [`Rating`].
  *
  * On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run
- * behaviour is decided entirely by the validators, so the reviewer rates only how
- * the build looks, sounds, and feels. Ordered best to worst. [`Amazing`](Self::Amazing)
+ * behaviour is decided by the validators, so the reviewer rates how the build
+ * looks, sounds, and feels — one tier for the **whole run**, not one per scoring
+ * domain. Ordered best to worst. [`Amazing`](Self::Amazing)
  * is the normal maximum; [`Legendary`](Self::Legendary) is exceptional and reserved,
  * and its badge carries a special look so a viewer sees at once that it is rare.
  * A legacy run (one on a case version that is not validator-rated) never carries
@@ -111,9 +112,12 @@ export type DomainRating = {
 };
 
 /**
- * A reviewer's [`AestheticRating`] for one of a case's scoring domains — the
- * aesthetic counterpart of [`DomainRating`], carried by a review of a
- * [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run.
+ * **Legacy:** a reviewer's [`AestheticRating`] for one of a case's scoring
+ * domains, from when the aesthetic channel was rated per domain. The channel is
+ * now **run-wide** (see [`Writeup::aesthetic`]); this type survives only so old
+ * stored rows (the backend's `review.aesthetics` JSON column and the snapshot's
+ * legacy `aesthetics` field) keep deserializing. A legacy review's run-wide tier
+ * is the worst across its per-domain entries. Never written by new reviews.
  */
 export type DomainAesthetic = {
   /**
@@ -147,22 +151,25 @@ export type RatingChange = {
 };
 
 /**
- * One per-domain aesthetic rating change between two versions of a review (see
+ * The run-wide aesthetic rating change between two versions of a review (see
  * [`ReviewDiff::aesthetics`]) — the same shape as [`RatingChange`] on the
- * aesthetic channel. A newly rated domain has `from = None`; a domain whose
- * aesthetic rating was dropped has `to = None`.
+ * aesthetic channel. A newly rated review has `from = None`; a review whose tier
+ * was dropped has `to = None`.
  */
 export type AestheticChange = {
   /**
-   * The scoring domain whose aesthetic rating changed.
+   * **Legacy:** the scoring domain whose aesthetic rating changed, from when
+   * the channel was rated per domain. `None` on every new diff — the aesthetic
+   * rating is run-wide, so a change is a single domainless entry — and kept
+   * only so old stored revision rows (domain present) still deserialize.
    */
-  domain: string;
+  domain?: string;
   /**
-   * The aesthetic rating before the edit, or `None` if the domain was newly rated.
+   * The aesthetic rating before the edit, or `None` if the review was newly rated.
    */
   from?: AestheticRating;
   /**
-   * The aesthetic rating after the edit, or `None` if the domain's rating was removed.
+   * The aesthetic rating after the edit, or `None` if the rating was removed.
    */
   to?: AestheticRating;
 };
@@ -221,9 +228,10 @@ export type ReviewDiff = {
    */
   ratings?: Array<RatingChange>;
   /**
-   * The per-domain **aesthetic** rating changes, in the new review's domain
-   * order followed by any domains whose aesthetic rating was removed. Empty on
-   * a legacy run's review, which carries no aesthetic channel.
+   * The run-wide **aesthetic** rating change: at most one (domainless) entry
+   * on a new diff, kept as a `Vec` so old stored diffs — written when the
+   * channel was rated per domain — still deserialize. Empty on a legacy run's
+   * review, which carries no aesthetic channel, and when the tier held.
    */
   aesthetics?: Array<AestheticChange>;
   /**
@@ -281,11 +289,21 @@ export type Review = {
    */
   ratings: Array<DomainRating>;
   /**
-   * The reviewer's **aesthetic** rating for each scoring domain, on a review of
-   * a validator-rated run; this review's overall aesthetic rating is the worst
-   * across them. Empty (and omitted) on a legacy run's review.
+   * **Legacy:** the reviewer's per-domain aesthetic ratings, from when the
+   * channel was rated per scoring domain. No longer emitted — a stored
+   * legacy row's tiers are collapsed into [`aesthetic`](Self::aesthetic)
+   * instead — but kept in the contract so a freshly deployed site can still
+   * read a not-yet-regenerated snapshot (resolve a review's tier as
+   * `aesthetic ?? worst(aesthetics)`).
    */
   aesthetics?: Array<DomainAesthetic>;
+  /**
+   * The reviewer's **run-wide** aesthetic tier, on a review of a
+   * validator-rated run (a legacy per-domain row is already collapsed to its
+   * worst tier); the run's aesthetic rating is the worst across its reviews'
+   * tiers. Absent on a legacy run's review, which has no aesthetic channel.
+   */
+  aesthetic?: AestheticRating | null;
   writeup: string;
   checklist: Array<ReviewVerdict>;
   /**

@@ -66,7 +66,7 @@ describe("resolveRunScore", () => {
     const run = summary({ score: null, rating: null });
     const writeup: ParsedWriteup = {
       ratings: [{ domain: "d", rating: "scuffed" }],
-      aesthetics: [],
+      aesthetic: null,
       checklist: [{ id: "a", status: "pass" }],
       body: "",
     };
@@ -91,7 +91,7 @@ describe("resolveRunScore", () => {
     const run = summary({ score: null, rating: null });
     const writeup: ParsedWriteup = {
       ratings: [],
-      aesthetics: [],
+      aesthetic: null,
       checklist: [],
       body: "",
     };
@@ -124,7 +124,7 @@ describe("resolveRunScore", () => {
       ratings: [],
       // The category "fun" earned a `great` (8 pts × weight 1) and the reserved
       // overall verdict is the run's grade badge.
-      aesthetics: [],
+      aesthetic: null,
       checklist: [
         { id: "fun", status: "great" },
         { id: "overall", status: "neutral" },

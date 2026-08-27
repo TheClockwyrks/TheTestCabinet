@@ -143,27 +143,30 @@ export type RunSummary = {
    * The run's **functional** rating. On a legacy run the worst rating any
    * reviewer gave any domain, `None` while the run carries no reviews (an
    * unrated console run). On a [validator-rated](Self::validator_rated) run the
-   * validator-decided rating — each failing scored point caps its domains at its
-   * declared failure cap, the run gets the worst domain, composed with the
-   * toolchain gate — which is `Some` from the moment the run completes, with or
-   * without a review. A published run always has one.
+   * validators' decision as overridden by its reviews — each failing scored
+   * point caps its domains at its declared failure cap, each review's overrides
+   * overlay the validators' verdicts, the run gets the worst across the
+   * reviews' effective ratings (the validators' own figure while unreviewed),
+   * composed with the toolchain gate — which is `Some` from the moment the run
+   * completes, with or without a review. A published run always has one.
    */
   rating: Rating | null;
   /**
-   * The run's aggregate **aesthetic** rating: the worst aesthetic rating any
-   * reviewer gave any domain, or `None` when no review has rated the aesthetic
-   * channel — a validator-rated run nobody has reviewed yet, and every legacy
-   * run (its reviews carry no aesthetic ratings, so it never shows the badge).
+   * The run's aggregate **aesthetic** rating: the worst run-wide tier across
+   * its reviews, or `None` when no review has rated the aesthetic channel — a
+   * validator-rated run nobody has reviewed yet, and every legacy run (its
+   * reviews carry no aesthetic ratings, so it never shows the badge).
    */
   aesthetic?: AestheticRating | null;
   /**
    * Whether the run is **validator-rated**: its case version is on the engine
    * manifest format and not a game jam, so [`rating`](Self::rating) and
    * [`score`](Self::score) are decided by the validators (present without any
-   * review, and never changed by one), its reviewers supply only the
-   * [`aesthetic`](Self::aesthetic) channel, and it publishes with zero reviews.
-   * `false` for every legacy run, whose card reads exactly as it always has.
-   * Lifted here so every consumer can branch on it without a catalog.
+   * review, with each review's overrides folded in), its reviewers supply the
+   * [`aesthetic`](Self::aesthetic) channel and any verdict overrides, and it
+   * publishes with zero reviews. `false` for every legacy run, whose card reads
+   * exactly as it always has. Lifted here so every consumer can branch on it
+   * without a catalog.
    */
   validatorRated: boolean;
   /**

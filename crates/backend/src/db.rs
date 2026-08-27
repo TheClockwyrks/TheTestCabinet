@@ -133,13 +133,15 @@ pub struct StoredRun {
     /// The run's reviews, oldest first. Empty while the run is still pending
     /// review; one per reviewing account once reviewed. On a legacy run the run's
     /// functional rating is the worst across them and its score the average; on a
-    /// validator-rated run they supply only the aesthetic channel.
+    /// validator-rated run they supply the run-wide aesthetic tier and may
+    /// override validator verdicts (folded into the rating and score).
     pub reviews: Vec<StoredReview>,
     /// The lifted `run.rating` column: the run's **functional** rating. On a
-    /// validator-rated run the validator-decided rating written at push time —
-    /// the only place a catalog-free reader can get it from, since deciding it
-    /// needs the case's checklist; on a legacy run the review aggregate the store
-    /// maintains on review-add (`None` while unreviewed).
+    /// validator-rated run the validators' decision as overridden by its reviews,
+    /// written at push time and recomputed on review-add — the only place a
+    /// catalog-free reader can get it from, since deciding it needs the case's
+    /// checklist; on a legacy run the review aggregate the store maintains on
+    /// review-add (`None` while unreviewed).
     #[serde(default)]
     pub rating: Option<Rating>,
     /// The lifted `run.aesthetic` column: the run's aggregate **aesthetic** rating,
@@ -201,16 +203,28 @@ pub struct StoredReview {
     /// Empty on a review of a validator-rated run, whose functional rating is not
     /// the reviewer's to give.
     pub ratings: Vec<DomainRating>,
-    /// The reviewer's per-domain **aesthetic** ratings, on a review of a
-    /// validator-rated run. Stored as a JSON array in the `review.aesthetics`
-    /// column. Empty on a legacy run's review.
+    /// **Legacy:** the reviewer's per-domain aesthetic ratings, from when the
+    /// channel was rated per scoring domain. Stored as a JSON array in the
+    /// `review.aesthetics` column. Empty on a legacy run's review and on every
+    /// new write — the channel is now run-wide (see
+    /// [`aesthetic`](Self::aesthetic)); kept so old rows keep their tiers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aesthetics: Vec<DomainAesthetic>,
+    /// The reviewer's **run-wide** aesthetic tier, on a review of a
+    /// validator-rated run; `None` on a legacy run's review, which has no
+    /// aesthetic channel. Stored in the `review.aesthetic` column; a decoded
+    /// pre-migration row carries its legacy per-domain tiers **collapsed to the
+    /// worst** here (`row_aesthetic`), so every read sees one run-wide tier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aesthetic: Option<AestheticRating>,
     /// The markdown writeup body.
     pub writeup: String,
-    /// The reviewer's verdicts on the case's declared checklist items. Stored as
-    /// a JSON array in the `review.checklist` column. Empty for a case with no
-    /// items.
+    /// The reviewer's verdicts on the case's declared checklist items. On a
+    /// legacy run the full checklist; on a validator-rated run only the
+    /// reviewer's **overrides** — the points whose verdict differs from the
+    /// validators' (plus any the validators left undecided), overlaid per id when
+    /// figures are derived. Stored as a JSON array in the `review.checklist`
+    /// column. Empty for a case with no items, or a review with no overrides.
     pub checklist: Vec<ReviewVerdict>,
     /// RFC 3339 of when the review was **first** submitted. A later edit no longer
     /// overwrites this — it stamps [`edited_at`](Self::edited_at) instead.
@@ -238,9 +252,10 @@ pub struct RecentReviewSubject {
     /// game jam or a validator-rated run), or one whose stored ratings JSON no
     /// longer parsed.
     pub ratings: Vec<DomainRating>,
-    /// This review's per-domain aesthetic ratings; empty for a legacy run's review,
-    /// or one whose stored aesthetics JSON no longer parsed.
-    pub aesthetics: Vec<DomainAesthetic>,
+    /// This review's run-wide aesthetic tier (a legacy per-domain row collapsed to
+    /// its worst tier — `row_aesthetic`); `None` for a legacy run's review, or
+    /// one whose stored aesthetics JSON no longer parsed.
+    pub aesthetic: Option<AestheticRating>,
 }
 
 /// The reviewing account a [`StoredReview`] is attributed to, denormalized from
@@ -398,11 +413,13 @@ impl Db {
     ///
     /// `manifest` is the run's case version as the definition store holds it (or
     /// `None` when the store does not have it). It decides whether the run is
-    /// **validator-rated**: for such a run the functional `rating` is decided by
-    /// the validators from the record's `debug_scripts` and written here, at push
-    /// time, so it is visible the moment the run completes and no review ever
-    /// changes it (a re-push recomputes it, like every other record-derived
-    /// column). A legacy run's `rating` stays review-maintained exactly as before.
+    /// **validator-rated**: for such a run the functional `rating` starts as the
+    /// validators' decision, derived from the record's `debug_scripts` and written
+    /// here, at push time, so it is visible the moment the run completes — and a
+    /// review may then move it by overriding verdicts (see [`Self::add_review`]),
+    /// so a re-push recomputes it over the run's current reviews rather than
+    /// clobbering a reviewed aggregate. A legacy run's `rating` stays
+    /// review-maintained exactly as before.
     pub async fn push(
         &self,
         record: &RunRecord,
@@ -431,13 +448,24 @@ impl Db {
         // review_count, and on a legacy run rating) are NOT touched here — they are
         // maintained by `add_review`, and a re-push must preserve an already-reviewed
         // run's aggregate. A brand-new push writes the zero-review defaults (no
-        // aesthetic, count 0). On a validator-rated run `rating` is record-derived
-        // — the validators decide it — so it is written (and re-written) here.
+        // aesthetic, count 0). On a validator-rated run `rating` is decided by the
+        // validators *as overridden by the run's reviews*, so it is written (and
+        // re-written) here over whatever reviews the run already carries — none on a
+        // first push, which yields the validators' own figure.
         let lifted = lifted_run_metrics(&record);
         let validator_rated = manifest.is_some_and(StoredManifest::validator_rated);
-        let rating = validator_rated
-            .then(|| lifted_rating(manifest, &record, &[]))
-            .flatten();
+        let rating = if validator_rated {
+            let reviews = review::Entity::find()
+                .filter(review::Column::RunId.eq(record.id.clone()))
+                .all(&txn)
+                .await?
+                .into_iter()
+                .map(stored_review)
+                .collect::<Result<Vec<_>>>()?;
+            lifted_rating(manifest, &record, &reviews)
+        } else {
+            None
+        };
         let mut refreshed_columns = vec![
             run::Column::StartedAt,
             run::Column::FinishedAt,
@@ -551,6 +579,14 @@ impl Db {
     /// re-submission that changes nothing is a no-op (no note needed, no revision). A
     /// first submission needs no note.
     ///
+    /// `manifest` is the run's case version as the definition store holds it (or
+    /// `None` when the store does not have it). On a **validator-rated** run it is
+    /// what lets the lifted `rating` be recomputed here: a review may override
+    /// validator verdicts, so the run's functional rating is re-derived from the
+    /// full review set through the same seam push uses (`functional_rating` —
+    /// worst across the reviews' effective ratings, the validators' own figure
+    /// while the run has none). On a legacy run the manifest is not consulted.
+    ///
     /// Returns the run's current published state so the caller can decide whether the
     /// public snapshot needs refreshing. Errors with
     /// [`NotFound`](crate::error::BackendError::NotFound) when no run with `run_id` is
@@ -560,10 +596,12 @@ impl Db {
         run_id: &str,
         review: &StoredReview,
         edit_note: Option<&str>,
+        manifest: Option<&StoredManifest>,
     ) -> Result<bool> {
         let ratings_json = serde_json::to_string(&review.ratings)?;
         let aesthetics_json = serde_json::to_string(&review.aesthetics)?;
         let checklist_json = serde_json::to_string(&review.checklist)?;
+        let aesthetic_token = review.aesthetic.map(|rating| rating.as_str().to_string());
 
         let txn = self.conn().begin().await?;
 
@@ -586,20 +624,20 @@ impl Db {
             .await?;
         let (id, reviewed_at, edited_at) = match &existing {
             Some(prior) => {
-                let prior_ratings: Vec<DomainRating> = serde_json::from_str(&prior.ratings)?;
-                let prior_aesthetics: Vec<DomainAesthetic> =
-                    serde_json::from_str(&prior.aesthetics)?;
-                let prior_checklist: Vec<ReviewVerdict> = serde_json::from_str(&prior.checklist)?;
+                // Decode the prior row through the same path every read uses, so a
+                // pre-migration row's legacy per-domain tiers are already collapsed
+                // to the one run-wide tier the diff compares.
+                let prior_review = stored_review(prior.clone())?;
                 let diff = test_cabinet_core::review::diff_reviews(
                     test_cabinet_core::review::ReviewContent {
-                        ratings: &prior_ratings,
-                        aesthetics: &prior_aesthetics,
-                        writeup: &prior.writeup,
-                        checklist: &prior_checklist,
+                        ratings: &prior_review.ratings,
+                        aesthetic: prior_review.aesthetic,
+                        writeup: &prior_review.writeup,
+                        checklist: &prior_review.checklist,
                     },
                     test_cabinet_core::review::ReviewContent {
                         ratings: &review.ratings,
-                        aesthetics: &review.aesthetics,
+                        aesthetic: review.aesthetic,
                         writeup: &review.writeup,
                         checklist: &review.checklist,
                     },
@@ -646,6 +684,7 @@ impl Db {
             reviewer_display_name: Set(review.reviewer.display_name.clone()),
             ratings: Set(ratings_json),
             aesthetics: Set(aesthetics_json),
+            aesthetic: Set(aesthetic_token),
             writeup: Set(review.writeup.clone()),
             checklist: Set(checklist_json),
             reviewed_at: Set(reviewed_at),
@@ -660,6 +699,7 @@ impl Db {
                     review::Column::ReviewerDisplayName,
                     review::Column::Ratings,
                     review::Column::Aesthetics,
+                    review::Column::Aesthetic,
                     review::Column::Writeup,
                     review::Column::Checklist,
                     review::Column::EditedAt,
@@ -679,14 +719,21 @@ impl Db {
             .into_iter()
             .map(stored_review)
             .collect::<Result<Vec<_>>>()?;
-        // On a validator-rated run the functional rating is the validators' decision,
-        // written at push time: a review never moves it. On a legacy run it is the
-        // review aggregate. The gate is a fact about the run record, not about the
-        // reviews, so the record is read back here to compose it with the
-        // freshly-recomputed aggregate. A record that will not deserialize cannot
-        // gate: a storage problem must not silently mark a run broken.
+        // On a validator-rated run the functional rating starts as the validators'
+        // decision but folds in each review's overrides (worst across the reviews'
+        // effective ratings), so a review moves it and it is recomputed here through
+        // the same seam push uses — falling back to the column push wrote when the
+        // caller has no manifest or the record no longer deserializes (recomputing
+        // needs the case's checklist). On a legacy run it is the review aggregate.
+        // The gate is a fact about the run record, not about the reviews, so the
+        // record is read back here to compose it with the freshly-recomputed
+        // aggregate. A record that will not deserialize cannot gate: a storage
+        // problem must not silently mark a run broken.
         let rating = if run.validator_rated {
-            run.rating.clone()
+            match serde_json::from_str::<RunRecord>(&run.record_json).ok() {
+                Some(record) if manifest.is_some() => lifted_rating(manifest, &record, &reviews),
+                _ => run.rating.clone(),
+            }
         } else {
             match serde_json::from_str::<RunRecord>(&run.record_json).ok() {
                 Some(record) => lifted_rating(None, &record, &reviews),
@@ -1145,14 +1192,15 @@ impl Db {
             .count(&self.conn())
             .await? as usize;
 
-        // Select only the four columns the charts need, joined to the review's run for
+        // Select only the columns the charts need, joined to the review's run for
         // its subject. Column order here is the tuple order below.
-        let rows: Vec<(String, String, String, String)> = review::Entity::find()
+        let rows: Vec<(String, String, String, String, Option<String>)> = review::Entity::find()
             .select_only()
             .column(run::Column::TestCaseSlug)
             .column(run::Column::ModelId)
             .column(review::Column::Ratings)
             .column(review::Column::Aesthetics)
+            .column(review::Column::Aesthetic)
             .filter(review::Column::ReviewerUserId.eq(user_id))
             .join(JoinType::InnerJoin, review::Relation::Run.def())
             .order_by_desc(review::Column::ReviewedAt)
@@ -1165,11 +1213,18 @@ impl Db {
         let subjects = rows
             .into_iter()
             .map(
-                |(test_case_slug, model_id, ratings_json, aesthetics_json)| RecentReviewSubject {
-                    test_case_slug,
-                    model_id,
-                    ratings: serde_json::from_str(&ratings_json).unwrap_or_default(),
-                    aesthetics: serde_json::from_str(&aesthetics_json).unwrap_or_default(),
+                |(test_case_slug, model_id, ratings_json, aesthetics_json, aesthetic)| {
+                    let legacy: Vec<DomainAesthetic> =
+                        serde_json::from_str(&aesthetics_json).unwrap_or_default();
+                    RecentReviewSubject {
+                        test_case_slug,
+                        model_id,
+                        ratings: serde_json::from_str(&ratings_json).unwrap_or_default(),
+                        aesthetic: row_aesthetic(
+                            aesthetic.as_deref().and_then(AestheticRating::parse),
+                            &legacy,
+                        ),
+                    }
                 },
             )
             .collect();
@@ -1800,6 +1855,10 @@ fn stored_review_with_revisions(
     let ratings: Vec<DomainRating> = serde_json::from_str(&model.ratings)?;
     let aesthetics: Vec<DomainAesthetic> = serde_json::from_str(&model.aesthetics)?;
     let checklist: Vec<ReviewVerdict> = serde_json::from_str(&model.checklist)?;
+    let aesthetic = row_aesthetic(
+        model.aesthetic.as_deref().and_then(AestheticRating::parse),
+        &aesthetics,
+    );
     Ok(StoredReview {
         reviewer: Reviewer {
             user_id: model.reviewer_user_id,
@@ -1808,6 +1867,7 @@ fn stored_review_with_revisions(
         },
         ratings,
         aesthetics,
+        aesthetic,
         writeup: model.writeup,
         checklist,
         reviewed_at: model.reviewed_at,
@@ -1932,16 +1992,27 @@ pub(crate) fn aggregate_review_rating(
     )
 }
 
-/// The run's aggregate **aesthetic** rating — the worst aesthetic rating any
-/// reviewer gave any domain — or `None` when no review rated the aesthetic channel
-/// (a legacy run, or a validator-rated run nobody has reviewed yet). The single
-/// source of truth for the lifted `run.aesthetic` column and the summary cards;
-/// wraps the core [`aggregate_aesthetic`](test_cabinet_core::review::aggregate_aesthetic).
+/// A review row's **run-wide** aesthetic tier: the `aesthetic` column when set,
+/// else the worst tier across its `legacy` per-domain `aesthetics` JSON (which
+/// equals the old per-domain aggregation, so a pre-migration row displays
+/// unchanged), else `None` (a legacy run's review, no aesthetic channel). The
+/// single place the legacy shape collapses — every read path goes through it at
+/// decode ([`stored_review_with_revisions`], [`Db::recent_review_subjects`]).
+pub(crate) fn row_aesthetic(
+    aesthetic: Option<AestheticRating>,
+    legacy: &[DomainAesthetic],
+) -> Option<AestheticRating> {
+    aesthetic.or_else(|| AestheticRating::worst(legacy.iter().map(|entry| entry.rating)))
+}
+
+/// The run's aggregate **aesthetic** rating — the worst run-wide tier across its
+/// reviews — or `None` when no review rated the aesthetic channel (a legacy run,
+/// or a validator-rated run nobody has reviewed yet). The single source of truth
+/// for the lifted `run.aesthetic` column and the summary cards; wraps the core
+/// [`aggregate_aesthetic`](test_cabinet_core::review::aggregate_aesthetic).
 /// No gate composes over it: the toolchain gate is a functional verdict.
 pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<AestheticRating> {
-    test_cabinet_core::review::aggregate_aesthetic(
-        reviews.iter().map(|review| review.aesthetics.as_slice()),
-    )
+    test_cabinet_core::review::aggregate_aesthetic(reviews.iter().map(|review| review.aesthetic))
 }
 
 /// **The run's functional rating** — the single seam every consumer derives it
@@ -1950,11 +2021,13 @@ pub(crate) fn aggregate_review_aesthetic(reviews: &[StoredReview]) -> Option<Aes
 ///
 /// `manifest` is the run's case version as the store holds it (`None` when the
 /// store does not have it). On a [validator-rated](StoredManifest::validator_rated)
-/// version the rating is decided by the validators alone
-/// ([`validator_rating`](test_cabinet_core::review::validator_rating) over the
-/// record's `debug_scripts`, each failing scored point capping its declared
-/// domains at its failure cap) and `reviews` are not consulted — it is `Some` from
-/// the moment the run completes. Otherwise it is the legacy review aggregate
+/// version the rating is the validators' decision (each failing scored point
+/// capping its declared domains at its failure cap) **as overridden by the run's
+/// reviews**: each review's checklist overlays the validators' verdicts and the
+/// run takes the worst across the reviews' effective ratings
+/// ([`validator_aggregate_rating`](test_cabinet_core::review::validator_aggregate_rating));
+/// with zero reviews the validators' own figure stands, so it is `Some` from the
+/// moment the run completes. Otherwise it is the legacy review aggregate
 /// ([`aggregate_review_rating`]), `None` while the run has no reviews. Both are
 /// composed with the toolchain gate.
 pub(crate) fn functional_rating(
@@ -1967,13 +2040,14 @@ pub(crate) fn functional_rating(
             let variant = record.subject.variant.as_str();
             let items = crate::snapshot::review_items_for(manifest, variant);
             let domains = crate::snapshot::domains_for(manifest, variant);
-            test_cabinet_core::review::validator_rating(
+            let auto =
+                test_cabinet_core::comparison::automated_verdicts(&record.validation.debug_scripts);
+            test_cabinet_core::review::validator_aggregate_rating(
                 record.gated_broken(),
-                &test_cabinet_core::review::validator_domain_ratings(
-                    &domains,
-                    &items,
-                    &record.validation.debug_scripts,
-                ),
+                &domains,
+                &items,
+                &auto,
+                reviews.iter().map(|review| review.checklist.as_slice()),
             )
         }
         None => aggregate_review_rating(record, reviews),

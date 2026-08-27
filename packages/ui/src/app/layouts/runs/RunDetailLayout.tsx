@@ -23,7 +23,6 @@ import {
   overallGradeOf,
   type ParsedWriteup,
   parseWriteup,
-  worstAestheticRating,
   worstRating,
 } from "../../data/ratings";
 import { frameReviews } from "../../data/frameReview";
@@ -63,7 +62,8 @@ interface RunDetailLayoutProps {
    * tabs read reviews from here rather than the console's global reviews map —
    * whether the run is already published (the review editor offers no Publish
    * action once it is), and whether it is validator-rated (its verdict is read off
-   * the record and reviews rate only the aesthetic channel).
+   * the record — reviewer overrides folded in — and reviews add the run-wide
+   * aesthetic channel).
    */
   children: (ctx: {
     run: RunRecord;
@@ -228,15 +228,13 @@ export function RunDetailLayout({
       : review
         ? worstRating(review.ratings.map((r) => r.rating))
         : null;
-  // The AESTHETIC badge beside it: the worst aesthetic rating any reviewer gave
-  // any domain (a local writeup's aesthetics win, as an in-progress edit must show
-  // before it is published), or nothing while no review has rated the channel —
-  // which is every legacy run, whose reviews carry none.
+  // The AESTHETIC badge beside it: the worst run-wide tier any reviewer gave (a
+  // local writeup's tier wins, as an in-progress edit must show before it is
+  // published), or nothing while no review has rated the channel — which is
+  // every legacy run, whose reviews carry none.
   const overallAesthetic = isResultsScored
     ? null
-    : (worstAestheticRating(review?.aesthetics.map((r) => r.rating) ?? []) ??
-      detail?.aesthetic ??
-      null);
+    : (review?.aesthetic ?? detail?.aesthetic ?? null);
   // A game jam declares no scoring domains, so it has no rating to be worst
   // across: the reviewer's whole-game overall grade is its headline badge
   // instead. It rides the aggregate review's checklist under the reserved

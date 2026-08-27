@@ -96,7 +96,8 @@ export interface RunDetail {
    * Whether the run is **validator-rated** (its case version is on the engine
    * manifest format and is not a game jam): its points and functional rating are
    * read off the record the moment it completes, it publishes with zero reviews,
-   * and a reviewer rates only the aesthetic channel. False for a legacy run, whose
+   * and a reviewer rates the run-wide aesthetic channel and may override
+   * individual verdicts. False for a legacy run, whose
    * review surfaces are unchanged.
    */
   validatorRated: boolean;
@@ -107,7 +108,7 @@ export interface RunDetail {
    */
   rating: Rating | null;
   /**
-   * The run's aggregate aesthetic rating (the worst any reviewer gave any domain),
+   * The run's aggregate aesthetic rating (the worst run-wide tier any reviewer gave),
    * or null when no review has rated the channel — every legacy run.
    */
   aesthetic: AestheticRating | null;
@@ -140,7 +141,8 @@ export interface ReviewModel {
   domains: DomainSummary[];
   /** Whether the run is validator-rated (see `VariantSummary.validatorRated`):
    * the items carry failure caps and domains, the functional rating and score
-   * come from the record's validators, and a review rates aesthetics only. */
+   * come from the record's validators (reviewer overrides folded in), and a
+   * review carries the run-wide aesthetic tier plus any overrides. */
   validatorRated: boolean;
 }
 

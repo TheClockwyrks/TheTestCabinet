@@ -16,7 +16,6 @@ import {
   overallGradeOf,
   RATINGS,
   scoreChecklist,
-  worstAestheticRating,
   worstRating,
   type AestheticRating,
   type GradeStatus,
@@ -227,8 +226,8 @@ function summaryScore(run: RunSummary): ScoredRun | null {
 // the run has neither, so it drops off the board.
 //
 // The aesthetic rating rides along from the summary (the aggregate across the
-// run's reviews) or, on the writeup fallback, from the writeup's own aesthetics;
-// it never decides whether a run ranks.
+// run's reviews) or, on the writeup fallback, from the writeup's own run-wide
+// tier; it never decides whether a run ranks.
 export function resolveRunScore(
   run: RunSummary,
   variant: VariantSummary,
@@ -268,7 +267,7 @@ export function resolveRunScore(
     total,
     rating: worstRating(review.ratings.map((r) => r.rating)),
     grade: null,
-    aesthetic: worstAestheticRating(review.aesthetics.map((r) => r.rating)),
+    aesthetic: review.aesthetic,
   };
 }
 

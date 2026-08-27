@@ -110,6 +110,7 @@ fn review(account: &str, rating: Rating, passed: &[&str]) -> StoredReview {
             rating,
         }],
         aesthetics: vec![],
+        aesthetic: None,
         writeup: "Reviewed.".to_string(),
         checklist: ["heavy", "light"]
             .into_iter()
@@ -294,6 +295,7 @@ async fn a_review_added_after_indexing_changes_the_documents_score_rating_and_re
         "r1",
         &review("u1", Rating::Great, &["heavy", "light"]),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -312,7 +314,7 @@ async fn a_review_added_after_indexing_changes_the_documents_score_rating_and_re
 
     // A second reviewer fails the light item: the score is the mean earned weight
     // over the total (2.5 of 3), and the rating is the worst any reviewer gave.
-    db.add_review("r1", &review("u2", Rating::Scuffed, &["heavy"]), None)
+    db.add_review("r1", &review("u2", Rating::Scuffed, &["heavy"]), None, None)
         .await
         .unwrap();
     let mut scores = CatalogScores::new(&store);
@@ -360,7 +362,7 @@ async fn a_manifest_reweighting_is_invisible_until_the_index_is_invalidated() {
     .await
     .unwrap();
     // One review earning the heavy item and failing the light one: 2 of 3.
-    db.add_review("r1", &review("u1", Rating::Great, &["heavy"]), None)
+    db.add_review("r1", &review("u1", Rating::Great, &["heavy"]), None, None)
         .await
         .unwrap();
 
@@ -461,7 +463,7 @@ async fn reconciling_reloads_only_the_runs_whose_mutation_stamp_moved() {
     );
 
     // One run is reviewed: exactly that one is reloaded.
-    db.add_review("r2", &review("u1", Rating::Great, &["heavy"]), None)
+    db.add_review("r2", &review("u1", Rating::Great, &["heavy"]), None, None)
         .await
         .unwrap();
     let mut scores = CatalogScores::new(&store);
@@ -606,7 +608,7 @@ async fn a_run_of_an_uningested_case_indexes_with_no_score() {
     )
     .await
     .unwrap();
-    db.add_review("r1", &review("u1", Rating::Great, &["heavy"]), None)
+    db.add_review("r1", &review("u1", Rating::Great, &["heavy"]), None, None)
         .await
         .unwrap();
 

@@ -9,7 +9,7 @@ import type {
   AssetPreview,
   AuthResult,
   BackendIdentity,
-  DomainAesthetic,
+  AestheticRating,
   DomainRating,
   HarnessConfigEntry,
   HarnessEvent,
@@ -1241,13 +1241,15 @@ export interface ReviewDocumentInput {
   // legacy run only. A validator-rated run refuses any (its functional rating is
   // the validators'), so the editor sends none there.
   ratings: DomainRating[];
-  // The reviewer's AESTHETIC rating for each scoring domain — on a validator-rated
-  // run only, where every effective domain must be rated. A legacy run refuses
-  // any, so the editor sends none there.
-  aesthetics: DomainAesthetic[];
+  // The reviewer's RUN-WIDE aesthetic tier — required on a validator-rated run,
+  // one tier for the whole build. A legacy run refuses any, so the editor sends
+  // null there.
+  aesthetic: AestheticRating | null;
   writeup: string;
-  // The reviewer's per-point verdicts — on a legacy run only. The checklist of a
-  // validator-rated run is machine-decided and refuses any submitted verdict.
+  // The reviewer's per-point verdicts. On a legacy run, the full checklist. On a
+  // validator-rated run, the reviewer's OVERRIDES only: the verdicts that differ
+  // from the validators' (plus any points the validators left undecided), each
+  // binary pass/fail — points not listed keep the validators' verdicts.
   checklist: ReviewVerdict[];
   // A note explaining what changed, required when this submission edits an existing
   // review (a first submission needs none). The backend enforces it — it alone knows

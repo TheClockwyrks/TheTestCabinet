@@ -15,12 +15,17 @@
 //! [`Rating`] scale (Flawless → Broken). On a **legacy** case version it is the
 //! reviewers' aggregate ([`aggregate_rating`]); on a
 //! [validator-rated](crate::test_case::TestCaseVersion::validator_rated) version
-//! it is decided entirely by the validators — every failing point lowers the
-//! domains it declares to its [`FailureCap`], and the run's rating is the lowest
-//! cap among its failures (see [`validator_domain_ratings`]). The **aesthetic
-//! rating** is the separate [`AestheticRating`] scale (Legendary → Slop) a
-//! reviewer supplies per domain on a validator-rated run only; a legacy run has
-//! none.
+//! it is decided by the validators — every failing point lowers the domains it
+//! declares to its [`FailureCap`], and the run's rating is the lowest cap among
+//! its failures (see [`validator_domain_ratings`]) — **subject to reviewer
+//! overrides**: a reviewer may override any point's verdict (see
+//! [`effective_verdicts`]), each review's figures fold its overrides in
+//! ([`validator_review_rating`] / [`validator_review_score`]), and the run
+//! aggregates across its reviews ([`validator_aggregate_rating`] /
+//! [`validator_aggregate_score`]; the validators' own figures stand while the run
+//! has no reviews). The **aesthetic rating** is the separate [`AestheticRating`]
+//! scale (Legendary → Slop) a reviewer supplies **run-wide** — one tier for the
+//! whole build — on a validator-rated run only; a legacy run has none.
 //!
 //! Most case types declare one or more scoring [`crate::test_case::Domain`]s; the
 //! reviewer rates each independently and the run's **overall** rating is the
@@ -122,8 +127,9 @@ impl Rating {
 /// rating channel, separate from the functional [`Rating`].
 ///
 /// On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run
-/// behaviour is decided entirely by the validators, so the reviewer rates only how
-/// the build looks, sounds, and feels. Ordered best to worst. [`Amazing`](Self::Amazing)
+/// behaviour is decided by the validators, so the reviewer rates how the build
+/// looks, sounds, and feels — one tier for the **whole run**, not one per scoring
+/// domain. Ordered best to worst. [`Amazing`](Self::Amazing)
 /// is the normal maximum; [`Legendary`](Self::Legendary) is exceptional and reserved,
 /// and its badge carries a special look so a viewer sees at once that it is rare.
 /// A legacy run (one on a case version that is not validator-rated) never carries
@@ -189,8 +195,8 @@ impl AestheticRating {
     }
 
     /// The worst (lowest) aesthetic rating among `ratings`, or `None` when empty.
-    /// Like [`Rating::worst`], a run's overall aesthetic rating is the worst across
-    /// its domains and then across its reviews.
+    /// Like [`Rating::worst`], a run's overall aesthetic rating is the worst
+    /// across its reviews' run-wide tiers (see [`aggregate_aesthetic`]).
     pub fn worst(ratings: impl IntoIterator<Item = AestheticRating>) -> Option<AestheticRating> {
         ratings.into_iter().max_by_key(|rating| rating.rank())
     }
@@ -415,9 +421,12 @@ pub struct DomainRating {
     pub rating: Rating,
 }
 
-/// A reviewer's [`AestheticRating`] for one of a case's scoring domains — the
-/// aesthetic counterpart of [`DomainRating`], carried by a review of a
-/// [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run.
+/// **Legacy:** a reviewer's [`AestheticRating`] for one of a case's scoring
+/// domains, from when the aesthetic channel was rated per domain. The channel is
+/// now **run-wide** (see [`Writeup::aesthetic`]); this type survives only so old
+/// stored rows (the backend's `review.aesthetics` JSON column and the snapshot's
+/// legacy `aesthetics` field) keep deserializing. A legacy review's run-wide tier
+/// is the worst across its per-domain entries. Never written by new reviews.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -428,21 +437,26 @@ pub struct DomainAesthetic {
     pub rating: AestheticRating,
 }
 
-/// One per-domain aesthetic rating change between two versions of a review (see
+/// The run-wide aesthetic rating change between two versions of a review (see
 /// [`ReviewDiff::aesthetics`]) — the same shape as [`RatingChange`] on the
-/// aesthetic channel. A newly rated domain has `from = None`; a domain whose
-/// aesthetic rating was dropped has `to = None`.
+/// aesthetic channel. A newly rated review has `from = None`; a review whose tier
+/// was dropped has `to = None`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct AestheticChange {
-    /// The scoring domain whose aesthetic rating changed.
-    pub domain: String,
-    /// The aesthetic rating before the edit, or `None` if the domain was newly rated.
+    /// **Legacy:** the scoring domain whose aesthetic rating changed, from when
+    /// the channel was rated per domain. `None` on every new diff — the aesthetic
+    /// rating is run-wide, so a change is a single domainless entry — and kept
+    /// only so old stored revision rows (domain present) still deserialize.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub domain: Option<String>,
+    /// The aesthetic rating before the edit, or `None` if the review was newly rated.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub from: Option<AestheticRating>,
-    /// The aesthetic rating after the edit, or `None` if the domain's rating was removed.
+    /// The aesthetic rating after the edit, or `None` if the rating was removed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub to: Option<AestheticRating>,
@@ -514,9 +528,10 @@ pub struct ReviewDiff {
     /// any domains whose rating was removed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ratings: Vec<RatingChange>,
-    /// The per-domain **aesthetic** rating changes, in the new review's domain
-    /// order followed by any domains whose aesthetic rating was removed. Empty on
-    /// a legacy run's review, which carries no aesthetic channel.
+    /// The run-wide **aesthetic** rating change: at most one (domainless) entry
+    /// on a new diff, kept as a `Vec` so old stored diffs — written when the
+    /// channel was rated per domain — still deserialize. Empty on a legacy run's
+    /// review, which carries no aesthetic channel, and when the tier held.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aesthetics: Vec<AestheticChange>,
     /// The checklist verdict changes, in the new review's verdict order followed by
@@ -560,15 +575,16 @@ pub struct ReviewRevision {
 }
 
 /// One version of a review's content, as [`diff_reviews`] compares it: the
-/// per-domain functional ratings, the per-domain aesthetic ratings, the writeup
+/// per-domain functional ratings, the run-wide aesthetic tier, the writeup
 /// prose, and the checklist verdicts. Borrowed from wherever the review is held
-/// (a parsed [`Writeup`], or the backend's stored review).
+/// (a parsed [`Writeup`], or the backend's stored review — a legacy stored row's
+/// per-domain aesthetics collapse to their worst tier first).
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ReviewContent<'a> {
     /// The per-domain functional ratings (empty on a validator-rated run's review).
     pub ratings: &'a [DomainRating],
-    /// The per-domain aesthetic ratings (empty on a legacy run's review).
-    pub aesthetics: &'a [DomainAesthetic],
+    /// The run-wide aesthetic tier (`None` on a legacy run's review).
+    pub aesthetic: Option<AestheticRating>,
     /// The writeup body.
     pub writeup: &'a str,
     /// The checklist verdicts.
@@ -579,7 +595,7 @@ impl<'a> From<&'a Writeup> for ReviewContent<'a> {
     fn from(writeup: &'a Writeup) -> Self {
         ReviewContent {
             ratings: &writeup.ratings,
-            aesthetics: &writeup.aesthetics,
+            aesthetic: writeup.aesthetic,
             writeup: &writeup.body,
             checklist: &writeup.checklist,
         }
@@ -588,23 +604,24 @@ impl<'a> From<&'a Writeup> for ReviewContent<'a> {
 
 /// Compute the structured [`ReviewDiff`] from one version of a review to the next.
 ///
-/// A rating (functional or aesthetic) or verdict present in both versions is a
-/// change only when its value (or, for a verdict, its note) differs; one present
-/// only in the new version is an addition (`from = None`) and one present only in
-/// the prior version a removal (`to = None`). The writeup is a change only when the
-/// prose differs. Changes are ordered by the *new* review (additions and edits in
-/// its order) followed by removals, so the diff reads in the order the reviewer
-/// sees their review.
+/// A rating or verdict present in both versions is a change only when its value
+/// (or, for a verdict, its note) differs; one present only in the new version is
+/// an addition (`from = None`) and one present only in the prior version a
+/// removal (`to = None`). The run-wide aesthetic tier is a change only when it
+/// differs, recorded as a single domainless [`AestheticChange`]. The writeup is a
+/// change only when the prose differs. Changes are ordered by the *new* review
+/// (additions and edits in its order) followed by removals, so the diff reads in
+/// the order the reviewer sees their review.
 pub fn diff_reviews(prior: ReviewContent<'_>, next: ReviewContent<'_>) -> ReviewDiff {
     let ReviewContent {
         ratings: prior_ratings,
-        aesthetics: prior_aesthetics,
+        aesthetic: prior_aesthetic,
         writeup: prior_writeup,
         checklist: prior_checklist,
     } = prior;
     let ReviewContent {
         ratings: next_ratings,
-        aesthetics: next_aesthetics,
+        aesthetic: next_aesthetic,
         writeup: next_writeup,
         checklist: next_checklist,
     } = next;
@@ -637,33 +654,15 @@ pub fn diff_reviews(prior: ReviewContent<'_>, next: ReviewContent<'_>) -> Review
         }
     }
 
-    // The aesthetic channel diffs exactly like the functional one.
-    let prior_aesthetic = |domain: &str| {
-        prior_aesthetics
-            .iter()
-            .find(|r| r.domain == domain)
-            .map(|r| r.rating)
-    };
+    // The aesthetic channel is run-wide — one tier per review — so a change is a
+    // single domainless entry.
     let mut aesthetics = Vec::new();
-    for aesthetic in next_aesthetics {
-        let from = prior_aesthetic(&aesthetic.domain);
-        if from != Some(aesthetic.rating) {
-            aesthetics.push(AestheticChange {
-                domain: aesthetic.domain.clone(),
-                from,
-                to: Some(aesthetic.rating),
-            });
-        }
-    }
-    for aesthetic in prior_aesthetics {
-        let still_present = next_aesthetics.iter().any(|r| r.domain == aesthetic.domain);
-        if !still_present {
-            aesthetics.push(AestheticChange {
-                domain: aesthetic.domain.clone(),
-                from: Some(aesthetic.rating),
-                to: None,
-            });
-        }
+    if prior_aesthetic != next_aesthetic {
+        aesthetics.push(AestheticChange {
+            domain: None,
+            from: prior_aesthetic,
+            to: next_aesthetic,
+        });
     }
 
     let prior_verdict = |id: &str| prior_checklist.iter().find(|v| v.id == id);
@@ -708,8 +707,8 @@ pub fn diff_reviews(prior: ReviewContent<'_>, next: ReviewContent<'_>) -> Review
     }
 }
 
-/// A parsed review: a per-domain [`Rating`] and/or [`AestheticRating`], the
-/// writeup prose it accompanies, and the reviewer's verdicts on the case's
+/// A parsed review: per-domain [`Rating`]s and/or a run-wide [`AestheticRating`],
+/// the writeup prose it accompanies, and the reviewer's verdicts on the case's
 /// declared checklist items.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Writeup {
@@ -721,13 +720,14 @@ pub struct Writeup {
     /// [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run,
     /// whose functional rating is not the reviewer's to give.
     pub ratings: Vec<DomainRating>,
-    /// The reviewer's **aesthetic** rating per scoring domain, in the order they
-    /// appear in the writeup's frontmatter (`aesthetic.<domain>` lines). On a
-    /// validator-rated run a review is only complete once every declared domain
-    /// has one (see [`missing_aesthetics`]); the run's overall aesthetic rating is
-    /// the worst across them ([`Self::overall_aesthetic`]). Empty on a legacy run's
-    /// review, which has no aesthetic channel.
-    pub aesthetics: Vec<DomainAesthetic>,
+    /// The reviewer's run-wide **aesthetic** rating — one tier for the whole
+    /// build, from the writeup's bare `aesthetic: <tier>` frontmatter line (a
+    /// legacy file's per-domain `aesthetic.<domain>` lines parse too, collapsed to
+    /// their worst tier). On a validator-rated run a review is only complete once
+    /// it carries one (see [`needs_aesthetic`]); the run's aesthetic rating is the
+    /// worst across its reviews' tiers ([`aggregate_aesthetic`]). `None` on a
+    /// legacy run's review, which has no aesthetic channel.
+    pub aesthetic: Option<AestheticRating>,
     /// The writeup body — the Markdown prose shown before the playable build,
     /// with the frontmatter stripped and surrounding whitespace trimmed.
     pub body: String,
@@ -746,10 +746,11 @@ impl Writeup {
         Rating::worst(self.ratings.iter().map(|domain| domain.rating))
     }
 
-    /// The run's overall aesthetic rating from this review: the worst across its
-    /// domain aesthetic ratings, or `None` when it records none.
+    /// This review's run-wide aesthetic rating, or `None` when it records none.
+    /// The parser already collapsed a legacy file's per-domain lines to their
+    /// worst tier, so this is simply [`Self::aesthetic`].
     pub fn overall_aesthetic(&self) -> Option<AestheticRating> {
-        AestheticRating::worst(self.aesthetics.iter().map(|domain| domain.rating))
+        self.aesthetic
     }
 
     /// The reviewer's whole-game overall grade, from the reserved
@@ -764,8 +765,10 @@ impl Writeup {
     }
 
     /// Render this review to its canonical `writeup.md` file contents: a
-    /// per-domain `rating.<domain>` / `aesthetic.<domain>` frontmatter block
-    /// followed by the body.
+    /// frontmatter block of per-domain `rating.<domain>` lines and the bare
+    /// run-wide `aesthetic: <tier>` line, followed by the body. Only the bare
+    /// aesthetic form is ever emitted — a legacy file's per-domain lines were
+    /// collapsed at parse time.
     ///
     /// Reconstructing the file from the parsed parts normalizes whatever spacing
     /// the author used, so every published writeup has identical framing.
@@ -782,12 +785,8 @@ impl Writeup {
                 domain.rating.as_str()
             ));
         }
-        for domain in &self.aesthetics {
-            frontmatter.push_str(&format!(
-                "aesthetic.{}: {}\n",
-                domain.domain,
-                domain.rating.as_str()
-            ));
+        if let Some(aesthetic) = self.aesthetic {
+            frontmatter.push_str(&format!("aesthetic: {}\n", aesthetic.as_str()));
         }
         for verdict in &self.checklist {
             frontmatter.push_str(&format!(
@@ -840,19 +839,16 @@ pub fn missing_ratings(domains: &[Domain], writeup: &Writeup) -> Vec<String> {
         .collect()
 }
 
-/// The ids of declared `domains` that `writeup` does not record an **aesthetic**
-/// rating for — the aesthetic-channel counterpart of [`missing_ratings`].
+/// Whether `writeup` still needs its run-wide **aesthetic** tier — the
+/// aesthetic-channel counterpart of [`missing_ratings`], now a run-wide presence
+/// check since the channel carries one tier for the whole build.
 ///
-/// An empty result means every declared domain has an aesthetic rating: the
-/// completeness condition for a review of a
-/// [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run, whose
-/// functional rating the validators decide and whose reviewer rates aesthetics only.
-pub fn missing_aesthetics(domains: &[Domain], writeup: &Writeup) -> Vec<String> {
-    domains
-        .iter()
-        .filter(|domain| !writeup.aesthetics.iter().any(|r| r.domain == domain.id))
-        .map(|domain| domain.id.clone())
-        .collect()
+/// `false` means the review carries its tier: the completeness condition for a
+/// review of a [validator-rated](crate::test_case::TestCaseVersion::validator_rated)
+/// run, whose functional verdicts the validators decide (subject to reviewer
+/// overrides) and whose reviewer must rate the build's aesthetics as a whole.
+pub fn needs_aesthetic(writeup: &Writeup) -> bool {
+    writeup.aesthetic.is_none()
 }
 
 /// A run's numeric score: the point weight it earned over the total available.
@@ -879,9 +875,10 @@ pub struct Score {
 /// the harshest and most generous review.
 ///
 /// On a [validator-rated](crate::test_case::TestCaseVersion::validator_rated) run
-/// the score is decided by the validators ([`validator_score`]) and involves no
-/// review at all, so [`reviews`](Self::reviews) is `0` — a validator-scored run is
-/// scored the moment it completes, before (and whether or not) anyone reviews it.
+/// the score is decided by the validators ([`validator_score`]) the moment the
+/// run completes, so [`reviews`](Self::reviews) is `0` before anyone reviews it.
+/// Once reviews exist, each review's overrides yield an effective score and the
+/// run averages across them ([`validator_aggregate_score`]).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct AggregateScore {
     /// The mean weight earned across the run's reviews, or the validator-decided
@@ -932,19 +929,17 @@ pub fn aggregate_rating<'a>(
     )
 }
 
-/// The aggregate overall **aesthetic** rating across a run's reviews: the worst
-/// (lowest) aesthetic rating any reviewer gave any domain, or `None` when there are
-/// none (a legacy run, or a validator-rated run nobody has reviewed yet). The same
-/// rule as [`aggregate_rating`], on the aesthetic channel. Mirrors
+/// The aggregate **aesthetic** rating across a run's reviews: the worst (lowest)
+/// run-wide tier any reviewer gave, or `None` when none carry one (a legacy run,
+/// or a validator-rated run nobody has reviewed yet). Each item of `reviews` is
+/// one review's run-wide tier — a legacy stored row's per-domain entries collapse
+/// to their worst tier before reaching here. The same rule as
+/// [`aggregate_rating`], on the aesthetic channel. Mirrors
 /// `aggregateAestheticRating` in `packages/run-stats/src/scoring.ts`.
-pub fn aggregate_aesthetic<'a>(
-    reviews: impl IntoIterator<Item = &'a [DomainAesthetic]>,
+pub fn aggregate_aesthetic(
+    reviews: impl IntoIterator<Item = Option<AestheticRating>>,
 ) -> Option<AestheticRating> {
-    AestheticRating::worst(
-        reviews
-            .into_iter()
-            .flat_map(|aesthetics| aesthetics.iter().map(|domain| domain.rating)),
-    )
+    AestheticRating::worst(reviews.into_iter().flatten())
 }
 
 /// **The validator-decided functional rating, per domain.**
@@ -967,12 +962,39 @@ pub fn aggregate_aesthetic<'a>(
 /// ([`TestCaseVersion::review_items_for`](crate::test_case::TestCaseVersion::review_items_for))
 /// and `domains` its effective domain set
 /// ([`domains_for`](crate::test_case::TestCaseVersion::domains_for)); the result
-/// carries one [`DomainRating`] per domain, in `domains` order. Mirrors
-/// `validatorDomainRatings` in `packages/run-stats/src/scoring.ts`.
+/// carries one [`DomainRating`] per domain, in `domains` order. A thin wrapper
+/// over [`verdict_domain_ratings`], which applies the same failure-cap rule to a
+/// verdict slice a caller already holds (a review's [effective
+/// checklist](effective_verdicts), say). Mirrors `validatorDomainRatings` in
+/// `packages/run-stats/src/scoring.ts`.
 pub fn validator_domain_ratings(
     domains: &[Domain],
     items: &[ReviewItem],
     debug_scripts: &[crate::validation::DebugScriptResult],
+) -> Vec<DomainRating> {
+    verdict_domain_ratings(
+        domains,
+        items,
+        &crate::comparison::automated_verdicts(debug_scripts),
+    )
+}
+
+/// The per-domain functional ratings a slice of `verdicts` decides — the
+/// failure-cap core of [`validator_domain_ratings`], generalized so a review's
+/// [effective checklist](effective_verdicts) (validator verdicts overlaid with
+/// the reviewer's overrides) rates through the identical rule.
+///
+/// Every domain starts [`Flawless`](Rating::Flawless); each **failing** verdict
+/// on a **scored** point lowers each of the point's declared
+/// [`domains`](crate::test_case::SubReviewItem::domains) to `min(current,
+/// cap.rating())`, where `cap` is the point's
+/// [`failure_cap`](crate::test_case::SubReviewItem::failure_cap). A point with no
+/// verdict, a point excluded from scoring (`scored == false`, an erratum), and a
+/// verdict naming no declared point never lower anything.
+pub fn verdict_domain_ratings(
+    domains: &[Domain],
+    items: &[ReviewItem],
+    verdicts: &[ReviewVerdict],
 ) -> Vec<DomainRating> {
     let mut ratings: Vec<DomainRating> = domains
         .iter()
@@ -986,7 +1008,7 @@ pub fn validator_domain_ratings(
             entry.rating = Rating::worst([entry.rating, cap.rating()]).unwrap_or(entry.rating);
         }
     };
-    for verdict in crate::comparison::automated_verdicts(debug_scripts) {
+    for verdict in verdicts {
         if verdict.status != VerdictStatus::Fail {
             continue;
         }
@@ -1041,29 +1063,171 @@ pub fn validator_rating(gated: bool, domain_ratings: &[DomainRating]) -> Option<
 /// **The validator-decided score of a run**: the
 /// [automated-only score](crate::comparison::automated_only_score) over the run's
 /// effective `items` and its record's `debug_scripts`, composed with the toolchain
-/// gate ([`gated_score`]). On a validator-rated run every scored point carries a
-/// validator, so this *is* the run's score — available the moment the run
-/// completes, independent of any review ([`AggregateScore::reviews`] is `0`).
-/// Mirrors `validatorScore` in `packages/run-stats/src/scoring.ts`.
+/// gate ([`gated_score`]). This is the run's score while it has no reviews —
+/// available the moment the run completes ([`AggregateScore::reviews`] is `0`);
+/// once reviews exist, [`validator_aggregate_score`] folds their overrides in. A
+/// thin wrapper over [`crate::comparison::covered_score`] on the
+/// [validators' verdicts](crate::comparison::automated_verdicts). Mirrors
+/// `validatorScore` in `packages/run-stats/src/scoring.ts`.
 pub fn validator_score(
     gated: bool,
     items: &[ReviewItem],
     debug_scripts: &[crate::validation::DebugScriptResult],
 ) -> AggregateScore {
-    let Score { earned, total } = crate::comparison::automated_only_score(items, debug_scripts);
-    gated_score(
+    verdicts_own_score(
         gated,
-        Some(AggregateScore {
-            earned,
-            total,
-            reviews: 0,
-        }),
+        items,
+        &crate::comparison::automated_verdicts(debug_scripts),
     )
-    .unwrap_or(AggregateScore {
-        earned: 0.0,
+}
+
+/// The verdict-slice core of [`validator_score`], and the zero-review fixed point
+/// of [`validator_aggregate_score`]: the [covered
+/// score](crate::comparison::covered_score) of `verdicts` over `items`, gated,
+/// with [`AggregateScore::reviews`] `0`.
+fn verdicts_own_score(
+    gated: bool,
+    items: &[ReviewItem],
+    verdicts: &[ReviewVerdict],
+) -> AggregateScore {
+    let Score { earned, total } = crate::comparison::covered_score(items, verdicts);
+    AggregateScore {
+        earned: if gated { 0.0 } else { earned },
         total,
         reviews: 0,
-    })
+    }
+}
+
+/// A review's **effective checklist** on a validator-rated run: the validators'
+/// verdicts (`auto`, from [`crate::comparison::automated_verdicts`]) overlaid
+/// with that review's `overrides` — the reviewer wins per verdict id, and an
+/// override naming a point the validators left undecided (an unmet precondition,
+/// say) decides it, appended after the validators' points. A point the reviewer
+/// left untouched keeps the validators' verdict, so a review with no overrides
+/// is exactly the validators' checklist. Mirrors `effectiveVerdicts` in
+/// `packages/run-stats/src/scoring.ts`.
+pub fn effective_verdicts(
+    auto: &[ReviewVerdict],
+    overrides: &[ReviewVerdict],
+) -> Vec<ReviewVerdict> {
+    let mut effective: Vec<ReviewVerdict> = auto
+        .iter()
+        .map(|verdict| {
+            overrides
+                .iter()
+                .find(|o| o.id == verdict.id)
+                .unwrap_or(verdict)
+                .clone()
+        })
+        .collect();
+    for verdict in overrides {
+        if !auto.iter().any(|a| a.id == verdict.id) {
+            effective.push(verdict.clone());
+        }
+    }
+    effective
+}
+
+/// One review's functional rating on a validator-rated run: the worst across the
+/// per-domain ratings its [effective checklist](effective_verdicts) decides
+/// (validators' `auto` verdicts overlaid with the review's `overrides`), with the
+/// toolchain gate ([`gated_rating`]) on top. A review with no overrides
+/// reproduces [`validator_rating`] over the validators' own domain ratings
+/// exactly. Mirrors `validatorReviewRating` in
+/// `packages/run-stats/src/scoring.ts`.
+pub fn validator_review_rating(
+    gated: bool,
+    domains: &[Domain],
+    items: &[ReviewItem],
+    auto: &[ReviewVerdict],
+    overrides: &[ReviewVerdict],
+) -> Option<Rating> {
+    let effective = effective_verdicts(auto, overrides);
+    validator_rating(gated, &verdict_domain_ratings(domains, items, &effective))
+}
+
+/// One review's score on a validator-rated run: the [covered
+/// score](crate::comparison::covered_score) of its [effective
+/// checklist](effective_verdicts) — numerator **and** denominator restricted to
+/// the points holding an effective verdict, mirroring
+/// [`automated_only_score`](crate::comparison::automated_only_score)'s exclusion
+/// rule, with erratum-excluded points counting toward neither side — zeroed by
+/// the toolchain gate. A review with no overrides reproduces the automated-only
+/// score exactly; one that decides a point the validators left undecided grows
+/// the denominator by that point's weight. Mirrors `validatorReviewScore` in
+/// `packages/run-stats/src/scoring.ts`.
+pub fn validator_review_score(
+    gated: bool,
+    items: &[ReviewItem],
+    auto: &[ReviewVerdict],
+    overrides: &[ReviewVerdict],
+) -> Score {
+    let effective = effective_verdicts(auto, overrides);
+    let score = crate::comparison::covered_score(items, &effective);
+    Score {
+        earned: if gated { 0.0 } else { score.earned },
+        total: score.total,
+    }
+}
+
+/// A validator-rated run's aggregate functional rating across its `reviews`
+/// (each one review's overrides): with zero reviews, the validators' own rating
+/// ([`validator_rating`], unchanged); with one or more, the **worst** across the
+/// reviews' [effective ratings](validator_review_rating). A review with no
+/// overrides reproduces the validators' figures exactly, so today's behavior is
+/// the fixed point. The toolchain gate applies at this aggregation seam
+/// ([`gated_rating`]). Mirrors `validatorAggregateRating` in
+/// `packages/run-stats/src/scoring.ts`.
+pub fn validator_aggregate_rating<'a>(
+    gated: bool,
+    domains: &[Domain],
+    items: &[ReviewItem],
+    auto: &[ReviewVerdict],
+    reviews: impl IntoIterator<Item = &'a [ReviewVerdict]>,
+) -> Option<Rating> {
+    let mut reviewed = false;
+    let mut worst: Option<Rating> = None;
+    for overrides in reviews {
+        reviewed = true;
+        let effective = effective_verdicts(auto, overrides);
+        let ratings = verdict_domain_ratings(domains, items, &effective);
+        worst = Rating::worst(
+            worst
+                .into_iter()
+                .chain(Rating::worst(ratings.iter().map(|domain| domain.rating))),
+        );
+    }
+    if !reviewed {
+        let ratings = verdict_domain_ratings(domains, items, auto);
+        worst = Rating::worst(ratings.iter().map(|domain| domain.rating));
+    }
+    gated_rating(gated, worst)
+}
+
+/// A validator-rated run's aggregate score across its `reviews` (each one
+/// review's overrides): with zero reviews, the validators' own score
+/// ([`validator_score`], [`AggregateScore::reviews`] `0`); with one or more, the
+/// **average** of the reviews' [effective scores](validator_review_score) over
+/// the shared total (via [`aggregate_score`]). A review with no overrides
+/// reproduces the validators' figures exactly, so today's behavior is the fixed
+/// point. The toolchain gate applies at this aggregation seam ([`gated_score`]).
+/// Mirrors `validatorAggregateScore` in `packages/run-stats/src/scoring.ts`.
+pub fn validator_aggregate_score<'a>(
+    gated: bool,
+    items: &[ReviewItem],
+    auto: &[ReviewVerdict],
+    reviews: impl IntoIterator<Item = &'a [ReviewVerdict]>,
+) -> AggregateScore {
+    let scores: Vec<Score> = reviews
+        .into_iter()
+        .map(|overrides| {
+            crate::comparison::covered_score(items, &effective_verdicts(auto, overrides))
+        })
+        .collect();
+    let Some(aggregate) = aggregate_score(&scores) else {
+        return verdicts_own_score(gated, items, auto);
+    };
+    gated_score(gated, Some(aggregate)).expect("a scored aggregate stays scored")
 }
 
 /// Score a run by combining the case's declared `items` (which carry the point
@@ -1225,12 +1389,12 @@ pub fn gated_overall_grade(gated: bool, reviewed: Option<VerdictStatus>) -> Opti
     reviewed
 }
 
-/// Parse a `writeup.md` file: its per-domain `rating.<domain>` and
-/// `aesthetic.<domain>` frontmatter and its prose body.
+/// Parse a `writeup.md` file: its per-domain `rating.<domain>` and run-wide
+/// `aesthetic` frontmatter and its prose body.
 ///
 /// The file must open with a `---` fenced YAML frontmatter block carrying at
-/// least one of a `rating.<domain>` (a [`Rating`] tier), an `aesthetic.<domain>`
-/// (an [`AestheticRating`] tier), or a `review.<id>` checklist verdict, and must
+/// least one of a `rating.<domain>` (a [`Rating`] tier), an `aesthetic` (an
+/// [`AestheticRating`] tier), or a `review.<id>` checklist verdict, and must
 /// have a non-empty body after the frontmatter. Anything else is an
 /// [`Error::Review`] explaining what was missing — this is what the publish gate
 /// reports.
@@ -1238,17 +1402,17 @@ pub fn parse_writeup(raw: &str) -> Result<Writeup> {
     let (frontmatter, body) = split_frontmatter(raw)?;
 
     let ratings = parse_ratings(frontmatter)?;
-    let aesthetics = parse_aesthetics(frontmatter)?;
+    let aesthetic = parse_aesthetic(frontmatter)?;
     let checklist = parse_checklist(frontmatter)?;
     // A legacy domain-scored case rates at least one `rating.<domain>`; a
-    // validator-rated run's review rates at least one `aesthetic.<domain>`; a game
-    // jam rates neither but records its graded categories and overall mark as
+    // validator-rated run's review rates the run-wide `aesthetic`; a game jam
+    // rates neither but records its graded categories and overall mark as
     // `review.<id>` verdicts. A writeup carrying none is empty of judgement and
     // rejected.
-    if ratings.is_empty() && aesthetics.is_empty() && checklist.is_empty() {
+    if ratings.is_empty() && aesthetic.is_none() && checklist.is_empty() {
         return Err(Error::Review(
-            "writeup frontmatter is missing a `rating.<domain>` entry, an `aesthetic.<domain>` \
-             entry, or a `review.<id>` verdict"
+            "writeup frontmatter is missing a `rating.<domain>` entry, an `aesthetic` tier, or a \
+             `review.<id>` verdict"
                 .to_string(),
         ));
     }
@@ -1262,7 +1426,7 @@ pub fn parse_writeup(raw: &str) -> Result<Writeup> {
 
     Ok(Writeup {
         ratings,
-        aesthetics,
+        aesthetic,
         body: body.to_string(),
         checklist,
     })
@@ -1302,38 +1466,43 @@ fn parse_ratings(frontmatter: &str) -> Result<Vec<DomainRating>> {
     Ok(ratings)
 }
 
-/// Parse the per-domain aesthetic ratings from a frontmatter block: every
-/// `aesthetic.<domain>` line, in order. The value must be one of the
-/// [`AestheticRating`] tiers. An empty domain id or an unrecognized tier is an
-/// [`Error::Review`] so a malformed rating is reported rather than silently dropped.
-fn parse_aesthetics(frontmatter: &str) -> Result<Vec<DomainAesthetic>> {
-    let mut aesthetics = Vec::new();
+/// Parse the run-wide aesthetic rating from a frontmatter block: the bare
+/// `aesthetic: <tier>` line, plus any legacy per-domain `aesthetic.<domain>`
+/// lines, collapsed together to the **worst** tier — which equals the old
+/// per-domain aggregation, so a legacy file's displayed value does not change.
+/// The value must be one of the [`AestheticRating`] tiers. An empty domain id or
+/// an unrecognized tier is an [`Error::Review`] so a malformed rating is
+/// reported rather than silently dropped.
+fn parse_aesthetic(frontmatter: &str) -> Result<Option<AestheticRating>> {
+    let mut tiers = Vec::new();
     for line in frontmatter.lines() {
         let Some((name, value)) = line.split_once(':') else {
             continue;
         };
-        let Some(domain) = name.trim().strip_prefix("aesthetic.") else {
+        let name = name.trim();
+        let key = if name == "aesthetic" {
+            "aesthetic".to_string()
+        } else if let Some(domain) = name.strip_prefix("aesthetic.") {
+            // A legacy per-domain line: parsed for compatibility, collapsed below.
+            let domain = domain.trim();
+            if domain.is_empty() {
+                return Err(Error::Review(
+                    "writeup has an `aesthetic.` line with an empty domain id".to_string(),
+                ));
+            }
+            format!("aesthetic.{domain}")
+        } else {
             continue;
         };
-        let domain = domain.trim();
-        if domain.is_empty() {
-            return Err(Error::Review(
-                "writeup has an `aesthetic.` line with an empty domain id".to_string(),
-            ));
-        }
         let rating = AestheticRating::parse(value).ok_or_else(|| {
             Error::Review(format!(
-                "writeup `aesthetic.{domain}` must be one of legendary, amazing, good, okay, \
-                 slop (got `{}`)",
+                "writeup `{key}` must be one of legendary, amazing, good, okay, slop (got `{}`)",
                 value.trim()
             ))
         })?;
-        aesthetics.push(DomainAesthetic {
-            domain: domain.to_string(),
-            rating,
-        });
+        tiers.push(rating);
     }
-    Ok(aesthetics)
+    Ok(AestheticRating::worst(tiers))
 }
 
 /// Parse the checklist verdicts from a frontmatter block: every `review.<id>`
@@ -1415,3 +1584,7 @@ mod tests;
 #[cfg(test)]
 #[path = "review.gate.test.rs"]
 mod gate_tests;
+
+#[cfg(test)]
+#[path = "review.overrides.test.rs"]
+mod override_tests;

@@ -480,6 +480,16 @@
   cursor: pointer;
 }
 
+// The validator-rated editor's live-score row: the same two-cell spread as the
+// expandable bar, but static — the per-script detail lives on each point in the
+// walker, so there is nothing to expand here.
+.liveScoreStatic {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+}
+
 // The left cell: "Live score: X / Y pts" plus the muted auto-set note. Allowed to
 // shrink and wrap so the right-aligned checks cell keeps its place on a narrow row.
 .liveScoreSummary {
@@ -710,6 +720,36 @@
 
 .checklistText {
   color: t.$color-text;
+}
+
+// The failure-cap consequence of a failing scored point, on the point itself
+// ("Failing caps Single player and Versus at Scuffed."): the detail that used to
+// live in the Domains strip's cap list, kept quiet but distinct from the muted
+// script note beneath it.
+.capNote {
+  margin: 0;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-negative;
+}
+
+// The validator script behind a browsed point: its state + failure detail, with
+// the reporter-side script path beneath in small, muted type — the information
+// the old "Automated validation" table carried.
+.scriptNote {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+
+  > p {
+    margin: 0;
+  }
+}
+
+.scriptPath {
+  font-family: var(--ttc-font-mono, monospace);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
 }
 
 .checklistControls {

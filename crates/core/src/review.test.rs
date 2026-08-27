@@ -196,7 +196,7 @@ fn rejects_an_empty_body() {
 #[test]
 fn renders_a_canonical_file_that_reparses() {
     let writeup = Writeup {
-        aesthetics: Vec::new(),
+        aesthetic: None,
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Scuffed,
@@ -215,7 +215,7 @@ fn renders_a_canonical_file_that_reparses() {
 #[test]
 fn renders_multiple_domain_ratings_in_order() {
     let writeup = Writeup {
-        aesthetics: Vec::new(),
+        aesthetic: None,
         ratings: vec![
             DomainRating {
                 domain: "single-player".to_string(),
@@ -262,7 +262,7 @@ fn parses_checklist_verdicts_with_and_without_notes() {
 #[test]
 fn a_writeup_with_verdicts_round_trips() {
     let writeup = Writeup {
-        aesthetics: Vec::new(),
+        aesthetic: None,
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Scuffed,
@@ -289,7 +289,7 @@ fn a_writeup_with_verdicts_round_trips() {
 fn a_note_with_a_stray_newline_is_normalized_to_one_line() {
     // A note must never break the frontmatter block: newlines collapse to spaces.
     let writeup = Writeup {
-        aesthetics: Vec::new(),
+        aesthetic: None,
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Broken,
@@ -329,7 +329,7 @@ fn na_is_no_longer_a_valid_verdict() {
 fn missing_verdicts_reports_unaddressed_items() {
     let items = vec![item("ball-spin", 1), item("bank-shot", 1)];
     let writeup = Writeup {
-        aesthetics: Vec::new(),
+        aesthetic: None,
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Great,
@@ -349,7 +349,7 @@ fn missing_verdicts_reports_unaddressed_items() {
     // Once every item has a verdict, nothing is missing — a stale extra verdict
     // for an unknown id does not change that.
     let complete = Writeup {
-        aesthetics: Vec::new(),
+        aesthetic: None,
         checklist: vec![
             ReviewVerdict {
                 id: "ball-spin".to_string(),
@@ -387,7 +387,7 @@ fn missing_ratings_reports_unrated_domains() {
         },
     ];
     let writeup = Writeup {
-        aesthetics: Vec::new(),
+        aesthetic: None,
         ratings: vec![DomainRating {
             domain: "single-player".to_string(),
             rating: Rating::Great,
@@ -405,7 +405,7 @@ fn missing_ratings_reports_unrated_domains() {
 fn score_sums_the_weight_of_passed_items() {
     let items = vec![item("a", 2), item("b", 3), item("c", 1)];
     let writeup = Writeup {
-        aesthetics: Vec::new(),
+        aesthetic: None,
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Great,
@@ -541,13 +541,13 @@ fn diff_reviews_captures_rating_verdict_and_writeup_changes() {
     let diff = diff_reviews(
         ReviewContent {
             ratings: &prior_ratings,
-            aesthetics: &[],
+            aesthetic: None,
             writeup: "Old body.",
             checklist: &prior_checklist,
         },
         ReviewContent {
             ratings: &next_ratings,
-            aesthetics: &[],
+            aesthetic: None,
             writeup: "New body.",
             checklist: &next_checklist,
         },
@@ -591,7 +591,7 @@ fn diff_reviews_records_removals_and_is_empty_when_unchanged() {
     // An identical review diffs to nothing.
     let content = ReviewContent {
         ratings: &ratings,
-        aesthetics: &[],
+        aesthetic: None,
         writeup: "Body.",
         checklist: &checklist,
     };
@@ -619,7 +619,7 @@ fn missing_verdicts_requires_every_sub_item_of_a_sub_itemed_item() {
         item_with_sub_items("spin", &["stationary", "moving"]),
     ];
     let writeup = Writeup {
-        aesthetics: Vec::new(),
+        aesthetic: None,
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Great,
@@ -842,13 +842,6 @@ fn decided(item: &str, id: &str, pass: bool) -> DebugScriptResult {
     script(item, sub, &[(id, pass)], true, false)
 }
 
-fn aesthetic(domain: &str, rating: AestheticRating) -> DomainAesthetic {
-    DomainAesthetic {
-        domain: domain.to_string(),
-        rating,
-    }
-}
-
 #[test]
 fn every_aesthetic_tier_round_trips_through_its_token() {
     for rating in AestheticRating::ALL {
@@ -898,47 +891,57 @@ fn a_failure_cap_maps_onto_its_functional_rating_and_is_never_flawless() {
 }
 
 #[test]
-fn a_writeup_parses_and_round_trips_aesthetic_ratings() {
-    let raw =
-        "---\naesthetic.single-player: amazing\naesthetic.versus: Legendary\n---\n\nLovely.\n";
+fn a_writeup_parses_and_round_trips_the_run_wide_aesthetic() {
+    let raw = "---\naesthetic: Amazing\n---\n\nLovely.\n";
     let writeup = parse_writeup(raw).expect("parse");
     assert!(writeup.ratings.is_empty());
-    assert_eq!(
-        writeup.aesthetics,
-        vec![
-            aesthetic("single-player", AestheticRating::Amazing),
-            aesthetic("versus", AestheticRating::Legendary),
-        ]
-    );
+    assert_eq!(writeup.aesthetic, Some(AestheticRating::Amazing));
     assert_eq!(writeup.overall_rating(), None);
-    assert_eq!(
-        writeup.overall_aesthetic(),
-        Some(AestheticRating::Amazing),
-        "the overall aesthetic is the worst across domains"
-    );
+    assert_eq!(writeup.overall_aesthetic(), Some(AestheticRating::Amazing));
 
     let rendered = writeup.to_file_string();
-    assert_eq!(
-        rendered,
-        "---\naesthetic.single-player: amazing\naesthetic.versus: legendary\n---\n\nLovely.\n"
-    );
+    assert_eq!(rendered, "---\naesthetic: amazing\n---\n\nLovely.\n");
     assert_eq!(parse_writeup(&rendered).expect("reparse"), writeup);
 }
 
 #[test]
-fn a_writeup_renders_ratings_then_aesthetics_then_verdicts() {
+fn legacy_per_domain_aesthetic_lines_collapse_to_the_worst_tier() {
+    // A writeup written when the channel was per-domain still parses; its lines
+    // collapse to the worst tier — which equals the old aggregation, so the
+    // displayed value for an old review does not change.
+    let raw =
+        "---\naesthetic.single-player: amazing\naesthetic.versus: Legendary\n---\n\nLovely.\n";
+    let writeup = parse_writeup(raw).expect("parse");
+    assert_eq!(writeup.aesthetic, Some(AestheticRating::Amazing));
+
+    // Re-rendering emits only the new bare form.
+    assert_eq!(
+        writeup.to_file_string(),
+        "---\naesthetic: amazing\n---\n\nLovely.\n"
+    );
+
+    // A mixed file (bare + legacy lines) collapses across all of them too.
+    let mixed = "---\naesthetic: good\naesthetic.versus: okay\n---\n\nBody.\n";
+    assert_eq!(
+        parse_writeup(mixed).expect("parse").aesthetic,
+        Some(AestheticRating::Okay)
+    );
+}
+
+#[test]
+fn a_writeup_renders_ratings_then_the_aesthetic_then_verdicts() {
     let writeup = Writeup {
         ratings: vec![DomainRating {
             domain: "gameplay".to_string(),
             rating: Rating::Great,
         }],
-        aesthetics: vec![aesthetic("gameplay", AestheticRating::Good)],
+        aesthetic: Some(AestheticRating::Good),
         body: "Body.".to_string(),
         checklist: vec![pass("a")],
     };
     assert_eq!(
         writeup.to_file_string(),
-        "---\nrating.gameplay: great\naesthetic.gameplay: good\nreview.a: pass\n---\n\nBody.\n"
+        "---\nrating.gameplay: great\naesthetic: good\nreview.a: pass\n---\n\nBody.\n"
     );
     assert_eq!(
         parse_writeup(&writeup.to_file_string()).expect("reparse"),
@@ -948,6 +951,12 @@ fn a_writeup_renders_ratings_then_aesthetics_then_verdicts() {
 
 #[test]
 fn an_unknown_aesthetic_tier_or_empty_domain_is_rejected() {
+    let err = parse_writeup("---\naesthetic: flawless\n---\n\nBody.\n").unwrap_err();
+    assert!(
+        format!("{err}").contains("`aesthetic` must be one of legendary, amazing"),
+        "got: {err}"
+    );
+    // A legacy per-domain line's errors still name the line.
     let err = parse_writeup("---\naesthetic.gameplay: flawless\n---\n\nBody.\n").unwrap_err();
     assert!(
         format!("{err}").contains("`aesthetic.gameplay` must be one of legendary, amazing"),
@@ -958,65 +967,59 @@ fn an_unknown_aesthetic_tier_or_empty_domain_is_rejected() {
 }
 
 #[test]
-fn missing_aesthetics_reports_the_unrated_domains() {
-    let domains = [domain("single-player"), domain("versus")];
-    let writeup = Writeup {
+fn needs_aesthetic_is_a_run_wide_presence_check() {
+    let unrated = Writeup {
         ratings: Vec::new(),
-        aesthetics: vec![aesthetic("versus", AestheticRating::Okay)],
+        aesthetic: None,
         body: "Body.".to_string(),
-        checklist: Vec::new(),
+        checklist: vec![pass("a")],
     };
+    assert!(needs_aesthetic(&unrated));
+    let rated = Writeup {
+        aesthetic: Some(AestheticRating::Okay),
+        ..unrated.clone()
+    };
+    assert!(!needs_aesthetic(&rated));
+    // The functional-channel gate is untouched by the aesthetic tier: it still
+    // reports every domain as unrated, which is exactly right for a
+    // validator-rated run (whose functional ratings come from the validators).
+    let domains = [domain("single-player"), domain("versus")];
     assert_eq!(
-        missing_aesthetics(&domains, &writeup),
-        vec!["single-player".to_string()]
-    );
-    // The functional-channel gate is untouched by aesthetics: it still reports
-    // every domain as unrated, which is exactly right for a validator-rated run
-    // (whose functional rating is not the reviewer's to give).
-    assert_eq!(
-        missing_ratings(&domains, &writeup),
+        missing_ratings(&domains, &rated),
         vec!["single-player".to_string(), "versus".to_string()]
     );
 }
 
 #[test]
-fn aggregate_aesthetic_is_the_worst_across_every_review_and_domain() {
-    let harsh = vec![
-        aesthetic("single-player", AestheticRating::Amazing),
-        aesthetic("versus", AestheticRating::Okay),
-    ];
-    let generous = vec![
-        aesthetic("single-player", AestheticRating::Legendary),
-        aesthetic("versus", AestheticRating::Amazing),
-    ];
+fn aggregate_aesthetic_is_the_worst_across_the_reviews_run_wide_tiers() {
     assert_eq!(
-        aggregate_aesthetic([harsh.as_slice(), generous.as_slice()]),
+        aggregate_aesthetic([
+            Some(AestheticRating::Okay),
+            Some(AestheticRating::Legendary)
+        ]),
         Some(AestheticRating::Okay)
     );
-    assert_eq!(aggregate_aesthetic([Vec::new().as_slice()]), None);
+    // A review with no tier (a legacy run's, say) contributes nothing.
+    assert_eq!(
+        aggregate_aesthetic([None, Some(AestheticRating::Amazing)]),
+        Some(AestheticRating::Amazing)
+    );
+    assert_eq!(aggregate_aesthetic([None]), None);
     assert_eq!(aggregate_aesthetic(std::iter::empty()), None);
 }
 
 #[test]
-fn diff_reviews_captures_aesthetic_changes_alongside_ratings() {
-    let prior = vec![
-        aesthetic("single-player", AestheticRating::Good),
-        aesthetic("versus", AestheticRating::Good),
-    ];
-    let next = vec![
-        aesthetic("single-player", AestheticRating::Amazing),
-        aesthetic("hidden", AestheticRating::Slop),
-    ];
+fn diff_reviews_captures_the_run_wide_aesthetic_change_alongside_ratings() {
     let diff = diff_reviews(
         ReviewContent {
             ratings: &[],
-            aesthetics: &prior,
+            aesthetic: Some(AestheticRating::Good),
             writeup: "Body.",
             checklist: &[],
         },
         ReviewContent {
             ratings: &[],
-            aesthetics: &next,
+            aesthetic: Some(AestheticRating::Amazing),
             writeup: "Body.",
             checklist: &[],
         },
@@ -1026,23 +1029,11 @@ fn diff_reviews_captures_aesthetic_changes_alongside_ratings() {
     assert!(diff.writeup.is_none());
     assert_eq!(
         diff.aesthetics,
-        vec![
-            AestheticChange {
-                domain: "single-player".to_string(),
-                from: Some(AestheticRating::Good),
-                to: Some(AestheticRating::Amazing),
-            },
-            AestheticChange {
-                domain: "hidden".to_string(),
-                from: None,
-                to: Some(AestheticRating::Slop),
-            },
-            AestheticChange {
-                domain: "versus".to_string(),
-                from: Some(AestheticRating::Good),
-                to: None,
-            },
-        ]
+        vec![AestheticChange {
+            domain: None,
+            from: Some(AestheticRating::Good),
+            to: Some(AestheticRating::Amazing),
+        }]
     );
     assert!(!diff.is_empty(), "an aesthetic-only change is a change");
     let json = serde_json::to_value(&diff).expect("serialize");
@@ -1050,7 +1041,35 @@ fn diff_reviews_captures_aesthetic_changes_alongside_ratings() {
         json.get("ratings").is_none(),
         "empty channels stay off the wire"
     );
-    assert_eq!(json["aesthetics"].as_array().map(Vec::len), Some(3));
+    assert!(
+        json["aesthetics"][0].get("domain").is_none(),
+        "the run-wide entry carries no domain on the wire"
+    );
+
+    // An unchanged tier records nothing.
+    let held = diff_reviews(
+        ReviewContent {
+            ratings: &[],
+            aesthetic: Some(AestheticRating::Good),
+            writeup: "Body.",
+            checklist: &[],
+        },
+        ReviewContent {
+            ratings: &[],
+            aesthetic: Some(AestheticRating::Good),
+            writeup: "Body.",
+            checklist: &[],
+        },
+    );
+    assert!(held.is_empty());
+
+    // An old stored revision row (domain present, from the per-domain era) still
+    // deserializes.
+    let legacy: AestheticChange =
+        serde_json::from_str(r#"{"domain":"versus","from":"good","to":"okay"}"#).expect("legacy");
+    assert_eq!(legacy.domain.as_deref(), Some("versus"));
+    assert_eq!(legacy.from, Some(AestheticRating::Good));
+    assert_eq!(legacy.to, Some(AestheticRating::Okay));
 }
 
 #[test]

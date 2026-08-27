@@ -18,8 +18,8 @@ import { useRunsRuntime } from "../runtime/runsRuntime";
  * - a publishable failure tier is real model signal with no checklist to complete,
  *   so it publishes with no review;
  * - a completed **validator-rated** run publishes with zero reviews — its
- *   functional rating and score stand on their own, and an aesthetic review can
- *   be added later (or never);
+ *   functional rating and score stand on their own, and a review (the run-wide
+ *   aesthetic tier plus any verdict overrides) can be added later (or never);
  * - anything else needs at least one review.
  *
  * The backend is the real gate — it refuses regardless — so this exists to keep the

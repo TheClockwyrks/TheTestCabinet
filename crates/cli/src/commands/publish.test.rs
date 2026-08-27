@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use test_cabinet_core::parse_writeup;
+use test_cabinet_core::{AestheticRating, VerdictStatus, parse_writeup};
 
 use super::{PublishPlan, WriteupLoadError, describe_ratings, load_writeup_at, plan_lines};
 
@@ -19,21 +19,24 @@ fn describe_ratings_reports_the_functional_channel_on_a_legacy_writeup() {
 }
 
 #[test]
-fn describe_ratings_reports_the_aesthetic_channel_on_a_validator_rated_writeup() {
+fn describe_ratings_reports_the_run_wide_aesthetic_tier() {
+    let writeup = writeup("---\naesthetic: okay\n---\n\nBody.\n");
+    assert_eq!(describe_ratings(&writeup), "aesthetic okay");
+}
+
+#[test]
+fn describe_ratings_collapses_legacy_per_domain_aesthetic_lines_to_the_worst_tier() {
     let writeup =
         writeup("---\naesthetic.single-player: amazing\naesthetic.versus: okay\n---\n\nBody.\n");
-    assert_eq!(
-        describe_ratings(&writeup),
-        "aesthetic okay (worst of single-player=amazing, versus=okay)"
-    );
+    assert_eq!(describe_ratings(&writeup), "aesthetic okay");
 }
 
 #[test]
 fn describe_ratings_reports_both_channels_when_both_are_present() {
-    let writeup = writeup("---\nrating.gameplay: great\naesthetic.gameplay: good\n---\n\nBody.\n");
+    let writeup = writeup("---\nrating.gameplay: great\naesthetic: good\n---\n\nBody.\n");
     assert_eq!(
         describe_ratings(&writeup),
-        "functional great (worst of gameplay=great); aesthetic good (worst of gameplay=good)"
+        "functional great (worst of gameplay=great); aesthetic good"
     );
 }
 
@@ -64,28 +67,44 @@ fn a_missing_writeup_is_distinguished_from_a_malformed_one() {
 fn an_aesthetic_only_writeup_loads_from_disk() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("run-c.md");
-    std::fs::write(
-        &path,
-        "---\naesthetic.single-player: legendary\n---\n\nStunning.\n",
-    )
-    .expect("write fixture");
+    std::fs::write(&path, "---\naesthetic: legendary\n---\n\nStunning.\n").expect("write fixture");
     let loaded = load_writeup_at(Path::new(&path)).expect("loads");
     assert!(loaded.ratings.is_empty());
-    assert_eq!(loaded.aesthetics.len(), 1);
-    assert_eq!(loaded.aesthetics[0].domain, "single-player");
+    assert_eq!(loaded.aesthetic, Some(AestheticRating::Legendary));
     assert_eq!(loaded.body, "Stunning.");
 }
 
 #[test]
+fn a_validator_rated_writeup_carries_its_override_lines_as_the_checklist() {
+    // `review.<id>` lines on a validator-rated run are the reviewer's overrides of
+    // individual validator verdicts; the loaded writeup carries them so the
+    // self-review path forwards them (with the run-wide aesthetic) verbatim.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("run-d.md");
+    std::fs::write(
+        &path,
+        "---\naesthetic: good\nreview.versus.serve: pass precondition unmet, judged by hand\n---\n\nBody.\n",
+    )
+    .expect("write fixture");
+    let loaded = load_writeup_at(Path::new(&path)).expect("loads");
+    assert_eq!(loaded.aesthetic, Some(AestheticRating::Good));
+    assert_eq!(loaded.checklist.len(), 1);
+    assert_eq!(loaded.checklist[0].id, "versus.serve");
+    assert_eq!(loaded.checklist[0].status, VerdictStatus::Pass);
+    assert_eq!(
+        loaded.checklist[0].note.as_deref(),
+        Some("precondition unmet, judged by hand")
+    );
+}
+
+#[test]
 fn plan_lines_describe_a_self_review() {
-    let plan = PublishPlan::SelfReview(writeup(
-        "---\naesthetic.single-player: amazing\n---\n\nBody.\n",
-    ));
+    let plan = PublishPlan::SelfReview(writeup("---\naesthetic: amazing\n---\n\nBody.\n"));
     assert_eq!(
         plan_lines("run-a", &plan),
         vec![
             "  run-a".to_string(),
-            "    review: aesthetic amazing (worst of single-player=amazing)".to_string(),
+            "    review: aesthetic amazing".to_string(),
             "    action: submit self-review, then publish".to_string(),
         ]
     );

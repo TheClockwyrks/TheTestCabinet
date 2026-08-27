@@ -1,10 +1,10 @@
 import type { ReviewDocument, StoredReview } from "../../client/types";
 import {
+  reviewAesthetic,
   worstAestheticRating,
   worstGrade,
   worstRating,
   type AestheticRating,
-  type DomainAesthetic,
   type DomainRating,
   type Rating,
   type VerdictStatus,
@@ -14,15 +14,15 @@ import {
 // structured review, so a live host (web/desktop) can feed the gallery the same
 // raw writeup form `parseWriteup` reads — identical to what the public snapshot
 // emits for the static site. Per-domain functional ratings become
-// `rating.<domain>: <tier>` lines, per-domain aesthetic ratings
-// `aesthetic.<domain>: <tier>` lines, and checklist verdicts
-// `review.<id>: <status> [note]` lines, all of which the parser recovers.
+// `rating.<domain>: <tier>` lines, the run-wide aesthetic tier one bare
+// `aesthetic: <tier>` line (a legacy stored row's per-domain tiers collapse to
+// their worst first), and checklist verdicts `review.<id>: <status> [note]`
+// lines, all of which the parser recovers.
 export function frameReview(review: ReviewDocument): string {
+  const aesthetic = reviewAesthetic(review);
   const ratings = [
     ...(review.ratings ?? []).map((r) => `rating.${r.domain}: ${r.rating}`),
-    ...(review.aesthetics ?? []).map(
-      (r) => `aesthetic.${r.domain}: ${r.rating}`,
-    ),
+    ...(aesthetic ? [`aesthetic: ${aesthetic}`] : []),
   ];
   const verdicts = (review.checklist ?? []).map((v) => {
     const note = (v.note ?? "").replace(/\s+/g, " ").trim();
@@ -58,22 +58,15 @@ export function frameReviews(reviews: readonly StoredReview[]): string | null {
     if (worst) ratings.push({ domain, rating: worst });
   }
 
-  // The same rule on the aesthetic channel: the worst aesthetic rating any
-  // reviewer gave a domain (a validator-rated run's reviews carry these; a legacy
-  // run's carry none, so this stays empty there).
-  const aestheticsByDomain = new Map<string, AestheticRating[]>();
-  for (const review of reviews) {
-    for (const r of review.aesthetics ?? []) {
-      const list = aestheticsByDomain.get(r.domain) ?? [];
-      list.push(r.rating);
-      aestheticsByDomain.set(r.domain, list);
-    }
-  }
-  const aesthetics: DomainAesthetic[] = [];
-  for (const [domain, tiers] of aestheticsByDomain) {
-    const worst = worstAestheticRating(tiers);
-    if (worst) aesthetics.push({ domain, rating: worst });
-  }
+  // The same rule on the aesthetic channel, which is run-wide: the worst tier
+  // any reviewer gave the whole build (a legacy stored row's per-domain tiers
+  // collapse to their worst first via `reviewAesthetic`; a legacy run's reviews
+  // carry none, so this stays null there).
+  const aesthetic: AestheticRating | null = worstAestheticRating(
+    reviews
+      .map((review) => reviewAesthetic(review))
+      .filter((tier): tier is AestheticRating => tier !== null),
+  );
 
   // A binary checklist item passes only when every reviewer who judged it passed
   // it; a graded item (a game jam's category, and its whole-game `overall` mark)
@@ -89,7 +82,7 @@ export function frameReviews(reviews: readonly StoredReview[]): string | null {
   }
   const ratingLines = [
     ...ratings.map((r) => `rating.${r.domain}: ${r.rating}`),
-    ...aesthetics.map((r) => `aesthetic.${r.domain}: ${r.rating}`),
+    ...(aesthetic ? [`aesthetic: ${aesthetic}`] : []),
   ];
   const verdictLines: string[] = [];
   for (const [id, statuses] of statusesByItem) {

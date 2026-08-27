@@ -169,3 +169,35 @@ fn no_debug_scripts_yields_a_zero_of_zero_score() {
     assert_eq!(score.total, 0);
     assert!((score.earned - 0.0).abs() < 1e-9);
 }
+
+#[test]
+fn covered_score_restricts_both_sides_to_the_verdicts_points() {
+    // The verdict-slice core: any set of verdicts — a review's effective
+    // checklist, say — scores over exactly the points it decides. `a` passes and
+    // `b` fails (3 of 5); the undecided `human` point (weight 5) joins neither
+    // side, and an unscored (erratum-excluded) decided point joins neither side
+    // either.
+    let mut excluded = item("errata", 4);
+    excluded.scored = false;
+    let items = [item("a", 3), item("b", 2), item("human", 5), excluded];
+    let verdicts = [
+        ReviewVerdict {
+            id: "a".to_string(),
+            status: VerdictStatus::Pass,
+            note: None,
+        },
+        ReviewVerdict {
+            id: "b".to_string(),
+            status: VerdictStatus::Fail,
+            note: None,
+        },
+        ReviewVerdict {
+            id: "errata".to_string(),
+            status: VerdictStatus::Pass,
+            note: None,
+        },
+    ];
+    let score = covered_score(&items, &verdicts);
+    assert_eq!(score.total, 5);
+    assert!((score.earned - 3.0).abs() < 1e-9);
+}

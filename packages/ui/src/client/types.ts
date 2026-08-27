@@ -871,11 +871,20 @@ export interface ReviewDocument {
   // on a validator-rated run's review, whose functional rating is not the
   // reviewer's to give.
   ratings: DomainRating[];
-  // The reviewer's AESTHETIC rating for each scoring domain, on a validator-rated
-  // run's review (the run's aesthetic rating is the worst across them, then across
-  // reviews). Empty/absent on a legacy run's review, which has no aesthetic channel.
+  // The reviewer's RUN-WIDE aesthetic tier, on a validator-rated run's review
+  // (the run's aesthetic rating is the worst across its reviews' tiers).
+  // Null/absent on a legacy run's review, which has no aesthetic channel.
+  aesthetic?: AestheticRating | null;
+  // LEGACY: the per-domain aesthetic ratings, from when the channel was rated per
+  // scoring domain. Carried only by old stored rows/snapshots — resolve a
+  // review's run-wide tier as `aesthetic ?? worst(aesthetics)` (the
+  // `reviewAesthetic` helper). Never written by new reviews.
   aesthetics?: DomainAesthetic[];
   writeup: string;
+  // The reviewer's per-point verdicts. On a legacy run, the full checklist; on a
+  // validator-rated run, the reviewer's OVERRIDES only — the points whose verdict
+  // differs from the validators' (plus any the validators left undecided), each
+  // binary pass/fail. Empty when the reviewer overrode nothing.
   checklist: ReviewVerdict[];
 }
 
@@ -927,14 +936,14 @@ export interface StoredRun {
   // review); on a legacy run the review aggregate (null while unreviewed). Composed
   // with the toolchain gate either way.
   rating: Rating | null;
-  // The run's aggregate AESTHETIC rating — the worst any reviewer gave any domain —
-  // or null when no review has rated the aesthetic channel (every legacy run, and
-  // an unreviewed validator-rated one).
+  // The run's aggregate AESTHETIC rating — the worst run-wide tier any reviewer
+  // gave — or null when no review has rated the aesthetic channel (every legacy
+  // run, and an unreviewed validator-rated one).
   aesthetic: AestheticRating | null;
   // Whether the run is VALIDATOR-RATED (its case version is on the engine manifest
   // format and is not a game jam): its points and functional rating come from the
-  // record immediately, it publishes with zero reviews, and a reviewer rates only
-  // the aesthetic channel.
+  // record immediately, it publishes with zero reviews, and a reviewer rates the
+  // run-wide aesthetic channel and may override individual validator verdicts.
   validatorRated: boolean;
   // The run's score against its case version's checklist weights, as the backend
   // computes it (the same figure the summary cards carry): the validator-decided

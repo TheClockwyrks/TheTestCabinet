@@ -231,7 +231,8 @@ export interface VariantSummary {
    * the engine manifest format and is not a game jam, so every point above
    * carries a `failureCap` and `domains`, the functional rating and score are
    * decided by the validators the moment a run completes, and a reviewer rates
-   * only the aesthetic channel. False on a legacy version, reviewed as before. */
+   * the run-wide aesthetic channel (and may override individual verdicts).
+   * False on a legacy version, reviewed as before. */
   validatorRated: boolean;
   /** The absolute URLs of this variant's **reference implementations**, keyed by
    * the engine each was built for — the authored, in-repo, versioned static builds

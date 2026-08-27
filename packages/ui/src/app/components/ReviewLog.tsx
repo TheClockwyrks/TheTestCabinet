@@ -9,7 +9,7 @@ import {
 import type { MyReview } from "../../client/types";
 import {
   overallGradeOf,
-  worstAestheticRating,
+  reviewAesthetic,
   worstRating,
 } from "../data/ratings";
 import { useFindModel } from "../data/useModels";
@@ -49,9 +49,9 @@ interface ReviewColumn {
 // This account's own verdict for a run: the worst rating across the domains it
 // scored, or — for a game jam, which scores no domains — its whole-game overall
 // grade (mirrors the run log's rating cell so the two tables read identically).
-// On a validator-rated run the account's review carries only the aesthetic
-// channel, so its badge is the aesthetic one, shown beside the run's
-// validator-decided functional rating.
+// On a validator-rated run the account's review carries the run-wide aesthetic
+// tier (and possibly verdict overrides), so its badge is the aesthetic one,
+// shown beside the run's functional rating.
 function reviewerVerdict(entry: MyReview): ReactNode {
   const { review, run } = entry;
   const rated = review.ratings.length > 0;
@@ -60,9 +60,7 @@ function reviewerVerdict(entry: MyReview): ReactNode {
     : run.validatorRated
       ? run.rating
       : null;
-  const aesthetic = worstAestheticRating(
-    (review.aesthetics ?? []).map((r) => r.rating),
-  );
+  const aesthetic = reviewAesthetic(review);
   const grade = rated || aesthetic ? null : overallGradeOf(review.checklist);
   return (
     <span className={styles.rating} data-label="Rating">

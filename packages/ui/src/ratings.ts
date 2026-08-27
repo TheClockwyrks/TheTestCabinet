@@ -92,10 +92,10 @@ export const RATING_META: Record<Rating, RatingMeta> = {
 
 /**
  * Display metadata for the five **aesthetic** tiers, best to worst — the second
- * rating channel, which a reviewer rates per domain on a validator-rated run
- * (the functional {@link RATING_META} channel is decided by the validators
- * there). Amazing is the normal maximum; Legendary is exceptional and reserved,
- * which is why its badge shimmers.
+ * rating channel, which a reviewer rates **run-wide** (one tier for the whole
+ * build) on a validator-rated run (the functional {@link RATING_META} channel
+ * is decided by the validators there). Amazing is the normal maximum; Legendary
+ * is exceptional and reserved, which is why its badge shimmers.
  */
 export const AESTHETIC_META: Record<AestheticRating, RatingMeta> = {
   legendary: {

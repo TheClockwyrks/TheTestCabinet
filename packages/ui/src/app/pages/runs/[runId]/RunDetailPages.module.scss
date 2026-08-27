@@ -1278,38 +1278,59 @@ $verdict-gutter: 3.5rem;
   width: 100%;
 }
 
-.domainRow:has(.capList) {
-  flex-direction: column;
-  align-items: stretch;
+// A reviewer's verdict overrides on a validator-rated run, listed on the
+// single-review page: the point, the validators' verdict → the reviewer's, and
+// the reviewer's note when they left one.
+.overrides {
+  margin-top: t.$space-lg;
 }
 
-.capList {
+.overrideList {
   list-style: none;
   margin: t.$space-xs 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: t.$space-xs;
   font-size: t.$font-sm;
 }
 
-.capRow {
+.overrideRow {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: t.$space-md;
-  color: t.$color-text-muted;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-md;
 }
 
-.capPoint {
+.overridePoint {
   min-width: 0;
 }
 
-.capCategory {
+.overrideCategory {
   opacity: 0.7;
 }
 
-// The cap a failing point imposed, tinted by the tier it caps at.
+.overrideFlip {
+  white-space: nowrap;
+}
+
+.overrideFrom {
+  color: t.$color-text-muted;
+  text-decoration: line-through;
+}
+
+.overrideTo {
+  font-weight: 600;
+}
+
+.overrideNote {
+  flex-basis: 100%;
+  color: t.$color-text-muted;
+}
+
+// The cap a failing point imposed, tinted by the tier it caps at (the legacy
+// checklist's per-row cap label).
 .capTier {
   white-space: nowrap;
   font-weight: 600;

@@ -72,12 +72,14 @@ async fn seed_published(db: &Db, id: &str, published_at: &str) {
                 rating: Rating::Great,
             }],
             aesthetics: vec![],
+            aesthetic: None,
             writeup: "ok".to_string(),
             checklist: vec![],
             reviewed_at: "2026-06-17T22:00:00Z".to_string(),
             edited_at: None,
             revisions: Vec::new(),
         },
+        None,
         None,
     )
     .await

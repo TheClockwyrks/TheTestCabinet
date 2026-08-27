@@ -62,10 +62,18 @@ export function ReviewHistory({
                 </li>
               ))}
               {(revision.diff.aesthetics ?? []).map((change) => (
-                <li key={`a-${change.domain}`}>
+                // A new diff's aesthetic change is run-wide (no domain); an old
+                // stored revision from the per-domain era still names one.
+                <li key={`a-${change.domain ?? "run"}`}>
                   <span className={styles.diffKey}>
-                    {change.domain}
-                    <span className={styles.diffMuted}> (aesthetic)</span>
+                    {change.domain ? (
+                      <>
+                        {change.domain}
+                        <span className={styles.diffMuted}> (aesthetic)</span>
+                      </>
+                    ) : (
+                      "Aesthetics"
+                    )}
                   </span>{" "}
                   {change.from ? aestheticLabel(change.from) : "—"} →{" "}
                   {change.to ? aestheticLabel(change.to) : "—"}

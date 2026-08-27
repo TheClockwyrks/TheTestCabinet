@@ -291,7 +291,7 @@ function review(): StoredReview {
     reviewer: "A Reviewer",
     username: "reviewer",
     ratings: [{ domain: "approach", rating: "great" }],
-    aesthetics: [],
+    aesthetic: null,
     checklist: [],
     writeup: "Solid.",
     reviewedAt: "2026-08-02T00:00:00Z",

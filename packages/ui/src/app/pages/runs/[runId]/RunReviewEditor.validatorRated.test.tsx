@@ -9,11 +9,17 @@ import { RunReviewEditor } from "./RunReviewEditor";
 // The editor reads its clients, account, catalog, and gallery from contexts that
 // are irrelevant to the validator-rated branch under test; stub each at the seam
 // the editor reads so the test exercises only the form's own logic.
-const fixture = vi.hoisted(() => ({
-  submitReview: vi.fn(async () => {}),
-  publish: vi.fn(async () => ({ published: true })),
-  readReviewItems: vi.fn(async (): Promise<unknown[]> => []),
-  local: false,
+const fixture = vi.hoisted(() => {
+  const readReviewItems = vi.fn(async (): Promise<unknown[]> => []);
+  return {
+    submitReview: vi.fn(async () => {}),
+    publish: vi.fn(async () => ({ published: true })),
+    readReviewItems,
+    // A stable backend identity: the editor's checklist-seeding effect keys on
+    // it, so a fresh object per render would re-seed (and wipe an in-progress
+    // override) after every interaction.
+    backend: { client: { readReviewItems } },
+    local: false,
   // Stable identities, as the real hooks return state: the editor's seeding
   // effects key on the case's domain list, so a fresh object per render would
   // re-seed forever.
@@ -34,16 +40,15 @@ const fixture = vi.hoisted(() => ({
     proofMediaFor: () => [],
     assetResultFor: () => null,
     validationMediaFor: () => [],
-    // The read-only item browser resolves the run's catalog variant for its
-    // reference media; a null resolution just means no expected panes.
+    // The verdict surfaces resolve the run's catalog variant for reference
+    // media; a null resolution just means no expected panes.
     fetchCaseVariant: async () => null,
   },
-}));
+  };
+});
 
 vi.mock("../../../../client/context", () => ({
-  useBackend: () => ({
-    client: { readReviewItems: fixture.readReviewItems },
-  }),
+  useBackend: () => ({ client: fixture.backend.client }),
   useWorkers: () => ({
     active: {
       local: fixture.local,
@@ -146,7 +151,7 @@ function mount(ui: ReactNode) {
 }
 
 describe("RunReviewEditor on a validator-rated run", () => {
-  it("shows the validators' verdict read-only and asks only for aesthetics", async () => {
+  it("renders the editable walker pre-filled with the validators' verdicts and ONE aesthetic select", async () => {
     fixture.readReviewItems.mockResolvedValue(items);
     mount(
       <RunReviewEditor
@@ -162,37 +167,46 @@ describe("RunReviewEditor on a validator-rated run", () => {
     await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
     expect(screen.getAllByText("Scuffed").length).toBeGreaterThan(0);
 
-    // No reviewer control over the checklist: no Pass/Fail radiogroups, no
-    // override, no restore, no "Mark unplayable", no functional rating pickers.
-    expect(screen.queryByRole("radiogroup")).toBeNull();
-    expect(screen.queryByText(/Restore validator verdicts/)).toBeNull();
+    // The old lock-out notice is gone — verdicts ARE overridable now.
+    expect(screen.queryByText(/not yours to change/)).toBeNull();
+
+    // The checklist walker is EDITABLE: the same rail + one-question-at-a-time
+    // panel as a legacy review, with a Pass/Fail radiogroup on the point, every
+    // point pre-addressed by the machine, and the bulk restore offered (inert
+    // while nothing is overridden). "Mark unplayable" stays off — an override
+    // is a point-by-point exception, not a wholesale rewrite.
+    expect(
+      screen.getByRole("navigation", { name: "Checklist items" }),
+    ).toBeTruthy();
+    expect(screen.getByText("2/2 addressed")).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: "Verdict" })).toBeTruthy();
+    const restore = screen.getByRole("button", {
+      name: /Restore validator verdicts/,
+    });
+    expect((restore as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByText("Mark unplayable")).toBeNull();
     expect(screen.queryByText("Ratings")).toBeNull();
 
-    // The automated items can still be BROWSED, though: the read-only item rail
-    // is mounted with each checked point navigable, the machine's tally in its
-    // summary, and the validators' call shown as a readout, not a control.
+    // The pre-filled verdict is marked machine-set (the desaturated auto style,
+    // carrying its "click to override" affordance).
     expect(
-      screen.getByRole("navigation", { name: "Checked points" }),
+      screen.getByTitle(/Auto-set from this run's debug script/),
     ).toBeTruthy();
-    expect(screen.getByText("1/2 passed")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Ball serves" })).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "AI paddle tracks the ball (Solo)" }),
-    ).toBeTruthy();
-    expect(screen.getByText(/Pass, decided by this run/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "← Previous" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Next →" })).toBeTruthy();
 
-    // What the reviewer is asked for: one aesthetic picker per domain.
+    // What the reviewer is asked for: ONE run-wide aesthetic select (not one
+    // per domain), unset until chosen, and the aesthetics-focused writeup.
     expect(screen.getByText("Aesthetics")).toBeTruthy();
     const pickers = screen.getAllByRole("combobox");
-    expect(pickers).toHaveLength(2);
-    // Unset until chosen — the scale has no neutral default.
+    expect(pickers).toHaveLength(1);
     expect((pickers[0] as HTMLSelectElement).value).toBe("");
+    expect(
+      screen.getByPlaceholderText(
+        "How does the build look, sound, and feel to play? What stands out, and what falls flat?",
+      ),
+    ).toBeTruthy();
   });
 
-  it("walks the browsed items one at a time without offering a verdict", async () => {
+  it("walks every point with plain Previous/Next despite all being pre-decided", async () => {
     fixture.readReviewItems.mockResolvedValue(items);
     mount(
       <RunReviewEditor
@@ -205,21 +219,15 @@ describe("RunReviewEditor on a validator-rated run", () => {
     );
     await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
 
-    // Landing on the first point: the passed serve, read from the record.
-    expect(
-      screen.getByText("Pass, decided by this run’s validators.", {
-        exact: false,
-      }),
-    ).toBeTruthy();
+    // Landing on the first point, the passed serve: Pass is pre-selected.
+    const pass = screen.getByRole("radio", { name: "Pass" });
+    expect(pass.getAttribute("aria-checked")).toBe("true");
 
-    // Stepping forward shows the failed AI point, still with no control.
+    // Every point is pre-addressed, yet Next still steps to the failed AI
+    // point (nearest-unaddressed would strand the walker).
     fireEvent.click(screen.getByRole("button", { name: "Next →" }));
-    expect(
-      screen.getByText("Fail, decided by this run’s validators.", {
-        exact: false,
-      }),
-    ).toBeTruthy();
-    expect(screen.queryByRole("radiogroup")).toBeNull();
+    const fail = screen.getByRole("radio", { name: "Fail" });
+    expect(fail.getAttribute("aria-checked")).toBe("true");
     // The last point: nothing further to step to.
     expect(
       (screen.getByRole("button", { name: "Next →" }) as HTMLButtonElement)
@@ -227,7 +235,7 @@ describe("RunReviewEditor on a validator-rated run", () => {
     ).toBe(true);
   });
 
-  it("offers Publish without a review, and Submit only once every domain is rated", async () => {
+  it("offers Publish without a review, and submits no overrides when none were made", async () => {
     fixture.readReviewItems.mockResolvedValue(items);
     fixture.submitReview.mockClear();
     mount(
@@ -248,50 +256,122 @@ describe("RunReviewEditor on a validator-rated run", () => {
       /without an aesthetic review/,
     );
 
-    // Submit waits for a writeup and a tier for every domain.
+    // Submit waits for a writeup and the run-wide tier.
     const submit = screen.getByRole("button", { name: "Submit review" });
     expect((submit as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByPlaceholderText(/How did the build play/), {
-      target: { value: "Looks lovely." },
-    });
-    const [single, versus] = screen.getAllByRole("combobox");
-    fireEvent.change(single!, { target: { value: "amazing" } });
+    fireEvent.change(
+      screen.getByPlaceholderText(/How does the build look, sound, and feel/),
+      { target: { value: "Looks lovely." } },
+    );
     expect((submit as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(versus!, { target: { value: "okay" } });
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "amazing" },
+    });
     expect((submit as HTMLButtonElement).disabled).toBe(false);
 
-    // The submitted review carries aesthetics only — no functional rating and
-    // no checklist verdict, both of which the backend refuses on such a run.
+    // The submitted review carries the run-wide tier and prose — no functional
+    // rating, and an EMPTY checklist: untouched verdicts are not overrides.
     fireEvent.click(submit);
     await waitFor(() => expect(fixture.submitReview).toHaveBeenCalledTimes(1));
     const [, review] = fixture.submitReview.mock.calls[0] as unknown as [
       string,
       {
         ratings: unknown[];
-        aesthetics: { domain: string; rating: string }[];
+        aesthetic: string | null;
         checklist: unknown[];
         writeup: string;
       },
     ];
     expect(review.ratings).toEqual([]);
     expect(review.checklist).toEqual([]);
-    expect(review.aesthetics).toEqual([
-      { domain: "single-player", rating: "amazing" },
-      { domain: "versus", rating: "okay" },
-    ]);
+    expect(review.aesthetic).toBe("amazing");
     expect(review.writeup).toBe("Looks lovely.");
   });
 
-  it("shows an existing review's aesthetic badge, not a score", async () => {
+  it("submits an override as a delta and folds it into the live score", async () => {
+    fixture.readReviewItems.mockResolvedValue(items);
+    fixture.submitReview.mockClear();
+    mount(
+      <RunReviewEditor
+        run={run}
+        reviews={[]}
+        published={false}
+        validatorRated
+        onChanged={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
+    // The validators' own live score first: one of two points passing.
+    expect(screen.getByText("1 / 2 pts")).toBeTruthy();
+
+    // Step to the failed AI point and override it to Pass.
+    fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Pass" }));
+
+    // The live score folds the override in immediately…
+    expect(screen.getByText("2 / 2 pts")).toBeTruthy();
+    // …the per-point Restore appears, and the bulk restore arms.
+    expect(screen.getByRole("button", { name: /^Restore validator/i }));
+    expect(
+      (
+        screen.getByRole("button", {
+          name: /Restore validator verdicts \(1\)/,
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+
+    // Submit: the checklist carries ONLY the delta.
+    fireEvent.change(
+      screen.getByPlaceholderText(/How does the build look, sound, and feel/),
+      { target: { value: "The AI actually works; instrumentation glitched." } },
+    );
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "good" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
+    await waitFor(() => expect(fixture.submitReview).toHaveBeenCalledTimes(1));
+    const [, review] = fixture.submitReview.mock.calls[0] as unknown as [
+      string,
+      { checklist: { id: string; status: string }[]; aesthetic: string },
+    ];
+    expect(review.checklist).toEqual([{ id: "rules.ai", status: "pass" }]);
+    expect(review.aesthetic).toBe("good");
+  });
+
+  it("restores an overridden verdict back to the validators' call", async () => {
+    fixture.readReviewItems.mockResolvedValue(items);
+    mount(
+      <RunReviewEditor
+        run={run}
+        reviews={[]}
+        published={false}
+        validatorRated
+        onChanged={() => {}}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Next →" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Pass" }));
+    expect(screen.getByText("2 / 2 pts")).toBeTruthy();
+
+    // The bulk restore (its confirm is stubbed to accept) puts the machine's
+    // Fail back and the live score returns to the validators' own.
+    fireEvent.click(
+      screen.getByRole("button", { name: /Restore validator verdicts \(1\)/ }),
+    );
+    await waitFor(() => expect(screen.getByText("1 / 2 pts")).toBeTruthy());
+    expect(
+      screen.getByRole("radio", { name: "Fail" }).getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("shows an existing review's run-wide aesthetic badge, not a per-card score", async () => {
     fixture.readReviewItems.mockResolvedValue(items);
     const review = {
       reviewerId: "other",
       reviewer: "Someone",
       ratings: [],
-      aesthetics: [
-        { domain: "single-player", rating: "good" },
-        { domain: "versus", rating: "legendary" },
-      ],
+      aesthetic: "good",
       checklist: [],
       writeup: "Fine.",
     } as unknown as StoredReview;
@@ -305,8 +385,7 @@ describe("RunReviewEditor on a validator-rated run", () => {
       />,
     );
     await waitFor(() => expect(screen.getByText("1 / 2")).toBeTruthy());
-    // The aggregate aesthetic (worst across the review's domains) and the
-    // review card's own badge; no "pts (avg of …)" for a review with no checklist.
+    // The aggregate badge and the review card's own; no "pts (avg of …)" line.
     expect(screen.getAllByLabelText("Aesthetic: Good").length).toBeGreaterThan(
       0,
     );

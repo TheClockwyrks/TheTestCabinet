@@ -17,7 +17,7 @@ use time::format_description::well_known::Rfc3339;
 
 use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
 use test_cabinet_core::review::{
-    AestheticRating, DomainAesthetic, DomainRating, Rating, ReviewRevision, ReviewVerdict, Writeup,
+    AestheticRating, DomainRating, Rating, ReviewRevision, ReviewVerdict,
 };
 use test_cabinet_core::run_record::RunRecord;
 
@@ -26,7 +26,7 @@ use crate::db::{
     Reviewer, SortDir, StoredReview, StoredRun, SummaryFilter, SummarySort, SummaryState,
 };
 use crate::error::ApiError;
-use crate::snapshot::{RunSummary, domains_for, run_summary_score};
+use crate::snapshot::{RunSummary, run_summary_score};
 use crate::store::{CaseNames, DefinitionStore, StoredManifest, case_display_name};
 
 use super::AppState;
@@ -57,9 +57,9 @@ pub async fn add_review(
     // and instead records its graded categories and overall grade as checklist
     // verdicts; a validator-rated run rates the aesthetic channel. Require one of
     // the three so an empty review is still rejected.
-    if request.ratings.is_empty() && request.aesthetics.is_empty() && request.checklist.is_empty() {
+    if request.ratings.is_empty() && request.aesthetic.is_none() && request.checklist.is_empty() {
         return Err(ApiError::unprocessable(
-            "review must rate at least one domain (functional or aesthetic) or record a \
+            "review must rate at least one domain, rate the aesthetic channel, or record a \
              checklist verdict",
         ));
     }
@@ -68,18 +68,19 @@ pub async fn add_review(
     }
 
     // The run's case version decides which channel the reviewer rates. On a
-    // validator-rated run behaviour is the validators' to decide: the review must
-    // rate every effective domain on the aesthetic scale and may carry neither a
-    // functional rating nor a checklist verdict. On a legacy run the aesthetic
-    // channel does not exist. Either way the store is the authority on which the run
-    // is, so the check reads the flag it lifted at push time.
+    // validator-rated run the review must carry the run-wide aesthetic tier, may
+    // carry no functional rating, and its checklist verdicts are **overrides** of
+    // the validators' — each naming a declared point, binary pass/fail. On a
+    // legacy run the aesthetic channel does not exist. Either way the store is the
+    // authority on which the run is, so the check reads the flag it lifted at push
+    // time.
     let run = state
         .db
         .get_run(&id)
         .await
         .map_err(ApiError::from)?
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` not found")))?;
-    if run.validator_rated {
+    let manifest = if run.validator_rated {
         let subject = &run.record.subject;
         let manifest = state
             .store
@@ -91,13 +92,20 @@ pub async fn add_review(
                     subject.test_case_slug, subject.test_case_version
                 ))
             })?;
-        validate_validator_rated_review(&request, &domains_for(&manifest, &subject.variant))?;
-    } else if !request.aesthetics.is_empty() {
-        return Err(ApiError::unprocessable(
-            "review carries aesthetic ratings, but only a review of a validator-rated run \
-             (a case version on the engine manifest format) rates the aesthetic channel",
-        ));
-    }
+        validate_validator_rated_review(
+            &request,
+            &crate::snapshot::review_items_for(&manifest, &subject.variant),
+        )?;
+        Some(manifest)
+    } else {
+        if request.aesthetic.is_some() {
+            return Err(ApiError::unprocessable(
+                "review carries an aesthetic rating, but only a review of a validator-rated run \
+                 (a case version on the engine manifest format) rates the aesthetic channel",
+            ));
+        }
+        None
+    };
 
     let reviewed_at = OffsetDateTime::now_utc()
         .format(&Rfc3339)
@@ -109,7 +117,8 @@ pub async fn add_review(
             display_name: user.0.display_name,
         },
         ratings: request.ratings,
-        aesthetics: request.aesthetics,
+        aesthetics: Vec::new(),
+        aesthetic: request.aesthetic,
         writeup: request.writeup.trim().to_string(),
         checklist: request.checklist,
         reviewed_at,
@@ -120,7 +129,12 @@ pub async fn add_review(
 
     let published = state
         .db
-        .add_review(&id, &review, request.edit_note.as_deref())
+        .add_review(
+            &id,
+            &review,
+            request.edit_note.as_deref(),
+            manifest.as_ref(),
+        )
         .await
         .map_err(ApiError::from)?;
 
@@ -133,51 +147,53 @@ pub async fn add_review(
     Ok(Json(ReviewResponse { id, published }))
 }
 
-/// The completeness gate for a review of a **validator-rated** run, whose
-/// functional rating and checklist the validators decide and whose reviewer rates
-/// aesthetics only: the review must carry no `ratings` and no `checklist` verdicts
-/// (there is no override on such a run), must rate every one of the run's effective
-/// `domains` on the aesthetic scale, and may name no other domain. Each violation
-/// is a `422` naming what is wrong.
+/// The completeness gate for a review of a **validator-rated** run: the review
+/// must carry no `ratings` (the functional channel starts as the validators'
+/// decision), must carry the run-wide `aesthetic` tier, and may carry a
+/// **partial** `checklist` of overrides — each entry the reviewer's verdict for
+/// one of the run's declared points (`items`, the effective checklist for its
+/// variant), binary `pass`/`fail` with an optional note. Points not listed keep
+/// the validators' verdicts, so an empty checklist is fine. Each violation is a
+/// `422` naming what is wrong.
 fn validate_validator_rated_review(
     request: &ReviewRequest,
-    domains: &[test_cabinet_core::test_case::Domain],
+    items: &[test_cabinet_core::ReviewItem],
 ) -> Result<(), ApiError> {
     if !request.ratings.is_empty() {
         return Err(ApiError::unprocessable(
             "review carries functional ratings, but on a validator-rated run the functional \
-             rating is decided by the validators — rate the aesthetic channel instead",
+             rating is decided by the validators — override individual verdicts instead",
         ));
     }
-    if !request.checklist.is_empty() {
+    if request.aesthetic.is_none() {
         return Err(ApiError::unprocessable(
-            "review carries checklist verdicts, but on a validator-rated run the checklist is \
-             decided by the validators and cannot be overridden",
+            "review must rate the aesthetic channel: one run-wide tier for the whole build",
         ));
     }
-    let writeup = Writeup {
-        ratings: Vec::new(),
-        aesthetics: request.aesthetics.clone(),
-        body: String::new(),
-        checklist: Vec::new(),
-    };
-    let missing = test_cabinet_core::review::missing_aesthetics(domains, &writeup);
-    if !missing.is_empty() {
-        return Err(ApiError::unprocessable(format!(
-            "review must rate every domain on the aesthetic scale; missing: {}",
-            missing.join(", ")
-        )));
-    }
+    let declared: Vec<String> = items.iter().flat_map(|item| item.verdict_ids()).collect();
     let unknown: Vec<&str> = request
-        .aesthetics
+        .checklist
         .iter()
-        .map(|aesthetic| aesthetic.domain.as_str())
-        .filter(|domain| !domains.iter().any(|known| known.id == *domain))
+        .map(|verdict| verdict.id.as_str())
+        .filter(|id| !declared.iter().any(|known| known == id))
         .collect();
     if !unknown.is_empty() {
         return Err(ApiError::unprocessable(format!(
-            "review rates a domain the run's case version does not declare: {}",
+            "review overrides a verdict the run's case version does not declare: {}",
             unknown.join(", ")
+        )));
+    }
+    let graded: Vec<&str> = request
+        .checklist
+        .iter()
+        .filter(|verdict| verdict.status.is_grade())
+        .map(|verdict| verdict.id.as_str())
+        .collect();
+    if !graded.is_empty() {
+        return Err(ApiError::unprocessable(format!(
+            "review overrides a verdict with a graded tier, but an override is binary — \
+             pass or fail: {}",
+            graded.join(", ")
         )));
     }
     Ok(())
@@ -684,10 +700,11 @@ pub async fn review_stats(
         if let Some(worst) = Rating::worst(subject.ratings.iter().map(|r| r.rating)) {
             rating_counts[worst.rank()] += 1;
         }
-        // The same rule on the aesthetic channel: a validator-rated run's review rates
-        // no functional domain, so it lands here instead.
-        if let Some(worst) = AestheticRating::worst(subject.aesthetics.iter().map(|r| r.rating)) {
-            aesthetic_counts[worst.rank()] += 1;
+        // The aesthetic channel: a validator-rated run's review rates no functional
+        // domain and instead carries one run-wide tier (a legacy per-domain review
+        // already collapsed to its worst), so it lands here instead.
+        if let Some(tier) = subject.aesthetic {
+            aesthetic_counts[tier.rank()] += 1;
         }
     }
 
@@ -773,7 +790,7 @@ fn review_out(review: &StoredReview) -> ReviewOut {
         reviewer: review.reviewer.display_name.clone(),
         username: review.reviewer.username.clone(),
         ratings: review.ratings.clone(),
-        aesthetics: review.aesthetics.clone(),
+        aesthetic: review.aesthetic,
         writeup: review.writeup.clone(),
         checklist: review.checklist.clone(),
         reviewed_at: review.reviewed_at.clone(),
@@ -791,11 +808,15 @@ pub struct ReviewRequest {
     /// domain) on a legacy domain-scored run; refused on a validator-rated run.
     #[serde(default)]
     ratings: Vec<DomainRating>,
-    /// The reviewer's per-domain aesthetic ratings. Required (one per effective
-    /// domain) on a validator-rated run; refused on a legacy run.
+    /// The reviewer's **run-wide** aesthetic tier. Required on a validator-rated
+    /// run; refused on a legacy run.
     #[serde(default)]
-    aesthetics: Vec<DomainAesthetic>,
+    aesthetic: Option<AestheticRating>,
     writeup: String,
+    /// The reviewer's checklist verdicts. On a legacy run the full checklist; on
+    /// a validator-rated run a **partial** list of overrides (each a declared
+    /// verdict id with a binary pass/fail status) — points not listed keep the
+    /// validators' verdicts.
     #[serde(default)]
     checklist: Vec<ReviewVerdict>,
     /// A note explaining what changed, required when this submission edits an
@@ -998,18 +1019,20 @@ pub struct StoredRunOut {
     links: LinksOut,
     /// Whether the run is published (in the public snapshot).
     published: bool,
-    /// The run's **functional** rating: the validator-decided rating on a
-    /// validator-rated run (present from completion, never changed by a review),
-    /// the review aggregate on a legacy run (`null` while unreviewed). Composed with
-    /// the toolchain gate either way. Always present, `null` when unset.
+    /// The run's **functional** rating: on a validator-rated run the validators'
+    /// decision as overridden by its reviews (present from completion — the
+    /// validators' own figure while unreviewed), the review aggregate on a legacy
+    /// run (`null` while unreviewed). Composed with the toolchain gate either
+    /// way. Always present, `null` when unset.
     rating: Option<Rating>,
-    /// The run's aggregate **aesthetic** rating — the worst any reviewer gave any
-    /// domain — or `null` when no review has rated the aesthetic channel (every
-    /// legacy run, and an unreviewed validator-rated one). Always present.
+    /// The run's aggregate **aesthetic** rating — the worst run-wide tier across
+    /// its reviews — or `null` when no review has rated the aesthetic channel
+    /// (every legacy run, and an unreviewed validator-rated one). Always present.
     aesthetic: Option<AestheticRating>,
     /// Whether the run is validator-rated, so the console shows its points and
     /// functional rating from the record immediately, offers publish without a
-    /// review, and asks the reviewer for aesthetics only.
+    /// review, and asks the reviewer for the run-wide aesthetic tier (plus any
+    /// verdict overrides).
     validator_rated: bool,
     /// The run's score against its case version's checklist weights — the same
     /// figure the summary cards carry (see [`run_summary_score`]): the
@@ -1027,9 +1050,10 @@ struct ReviewOut {
     reviewer: String,
     username: String,
     ratings: Vec<DomainRating>,
-    /// The reviewer's per-domain aesthetic ratings; absent on a legacy run's review.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    aesthetics: Vec<DomainAesthetic>,
+    /// The reviewer's run-wide aesthetic tier (a legacy per-domain row already
+    /// collapsed to its worst); absent on a legacy run's review.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    aesthetic: Option<AestheticRating>,
     writeup: String,
     checklist: Vec<ReviewVerdict>,
     /// RFC 3339 of the first submission (unchanged by later edits).
@@ -1103,9 +1127,9 @@ pub struct ReviewStatsResponse {
     /// Reviews per rating the account gave (the worst rating across each review's
     /// domains), best-to-worst. Reviews that rated no domain (game jams) are omitted.
     ratings: Vec<RatingSlice>,
-    /// Reviews per **aesthetic** rating the account gave (the worst aesthetic rating
-    /// across each review's domains), best-to-worst. Reviews that rated no domain on
-    /// the aesthetic scale (every legacy-run review) are omitted.
+    /// Reviews per **aesthetic** rating the account gave (each review's run-wide
+    /// tier), best-to-worst. Reviews that did not rate the aesthetic channel
+    /// (every legacy-run review) are omitted.
     aesthetics: Vec<AestheticSlice>,
 }
 
@@ -1128,7 +1152,7 @@ struct RatingSlice {
 }
 
 /// One bucket of the aesthetic-ratings breakdown: an aesthetic tier and how many
-/// recent reviews the account gave it (as their worst domain on that scale).
+/// recent reviews the account gave it (as their run-wide tier).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AestheticSlice {

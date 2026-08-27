@@ -1,6 +1,10 @@
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type { StoredRun } from "../../client/types";
-import { aggregateAestheticRating, aggregateRating } from "../../ratings";
+import {
+  aggregateAestheticRating,
+  aggregateRating,
+  reviewAesthetic,
+} from "../../ratings";
 
 // Build a lightweight {@link RunSummary} card from a full {@link StoredRun} — its
 // record, its reviews, and the store's word on its rating channels — the
@@ -56,11 +60,11 @@ export function toRunSummary(stored: StoredRun): RunSummary {
     rating: stored.validatorRated
       ? stored.rating
       : aggregateRating(reviews.map((r) => r.ratings ?? [])),
-    // The aggregate AESTHETIC rating — the worst any reviewer gave any domain —
-    // or null when no review rated the channel (every legacy run). Derived from
+    // The aggregate AESTHETIC rating — the worst run-wide tier any reviewer gave
+    // — or null when no review rated the channel (every legacy run). Derived from
     // the reviews rather than read off the store so a review submitted this
     // session shows before the store's lifted column is re-read.
-    aesthetic: aggregateAestheticRating(reviews.map((r) => r.aesthetics ?? [])),
+    aesthetic: aggregateAestheticRating(reviews.map((r) => reviewAesthetic(r))),
     validatorRated: stored.validatorRated,
     reviewCount: reviews.length,
     // The store's score against the case catalog (the same figure the wire

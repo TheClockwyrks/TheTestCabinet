@@ -644,20 +644,22 @@ async fn capture_once() -> (String, tokio::sync::oneshot::Receiver<String>) {
 }
 
 #[tokio::test]
-async fn submit_review_posts_the_writeups_aesthetics_beside_its_ratings_and_checklist() {
-    // The writeup file's `aesthetic.<domain>` lines are the only review channel a
-    // validator-rated run accepts, so the wire body has to carry them — a review
-    // that posts `ratings: []` alone is refused by the backend as empty.
-    use crate::review::{AestheticRating, DomainAesthetic, Writeup};
+async fn submit_review_posts_the_writeups_aesthetic_beside_its_ratings_and_checklist() {
+    // The writeup file's run-wide `aesthetic` tier and its `review.<id>` override
+    // lines are a validator-rated run's whole review channel, so the wire body has
+    // to carry both — a review that posts `ratings: []` alone is refused by the
+    // backend as empty.
+    use crate::review::{AestheticRating, ReviewVerdict, VerdictStatus, Writeup};
     let (base, body) = capture_once().await;
     let writeup = Writeup {
         ratings: vec![],
-        aesthetics: vec![DomainAesthetic {
-            domain: "single-player".to_string(),
-            rating: AestheticRating::Amazing,
-        }],
+        aesthetic: Some(AestheticRating::Amazing),
         body: "Gorgeous.".to_string(),
-        checklist: vec![],
+        checklist: vec![ReviewVerdict {
+            id: "serve".to_string(),
+            status: VerdictStatus::Pass,
+            note: Some("works when driven by hand".to_string()),
+        }],
     };
 
     HttpBackendClient::new(base)
@@ -671,15 +673,17 @@ async fn submit_review_posts_the_writeups_aesthetics_beside_its_ratings_and_chec
         posted,
         serde_json::json!({
             "ratings": [],
-            "aesthetics": [{ "domain": "single-player", "rating": "amazing" }],
+            "aesthetic": "amazing",
             "writeup": "Gorgeous.",
-            "checklist": [],
+            "checklist": [
+                { "id": "serve", "status": "pass", "note": "works when driven by hand" },
+            ],
         })
     );
 }
 
 #[tokio::test]
-async fn submit_review_omits_aesthetics_from_a_legacy_writeup() {
+async fn submit_review_omits_the_aesthetic_from_a_legacy_writeup() {
     // A legacy writeup (functional ratings only) posts exactly what it always did.
     use crate::review::{DomainRating, Rating, Writeup};
     let (base, body) = capture_once().await;
@@ -688,7 +692,7 @@ async fn submit_review_omits_aesthetics_from_a_legacy_writeup() {
             domain: "gameplay".to_string(),
             rating: Rating::Great,
         }],
-        aesthetics: vec![],
+        aesthetic: None,
         body: "Solid.".to_string(),
         checklist: vec![],
     };
@@ -700,7 +704,7 @@ async fn submit_review_omits_aesthetics_from_a_legacy_writeup() {
 
     let posted: serde_json::Value =
         serde_json::from_str(&body.await.expect("request body")).expect("json body");
-    assert!(posted.get("aesthetics").is_none());
+    assert!(posted.get("aesthetic").is_none());
     assert_eq!(posted["ratings"][0]["rating"], "great");
 }
 

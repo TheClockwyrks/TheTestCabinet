@@ -27,83 +27,126 @@ fn parse_comma_list_yields_none_for_absent_or_empty_input() {
 // --- The validator-rated review gate ---------------------------------------------
 
 use axum::http::StatusCode;
-use test_cabinet_core::review::{AestheticRating, DomainAesthetic, VerdictStatus};
-use test_cabinet_core::test_case::Domain;
+use test_cabinet_core::review::VerdictStatus;
+use test_cabinet_core::test_case::SubReviewItem;
 
-fn effective_domains() -> Vec<Domain> {
-    ["single-player", "versus"]
-        .into_iter()
-        .map(|id| Domain {
-            id: id.to_string(),
-            name: id.to_string(),
-            description: String::new(),
-        })
-        .collect()
+/// The run's effective checklist for the gate tests: `serve` graded as a whole
+/// and a `combat` category with two sub-points (`hit`, `block`), so both plain
+/// and composite verdict ids are declared.
+fn declared_items() -> Vec<test_cabinet_core::ReviewItem> {
+    let item = |id: &str, sub_items: Vec<SubReviewItem>| test_cabinet_core::ReviewItem {
+        id: id.to_string(),
+        title: id.to_string(),
+        text: format!("The build satisfies {id}."),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: false,
+        domain: None,
+        sub_items,
+        scored: true,
+        validation: None,
+        failure_cap: None,
+        domains: vec![],
+    };
+    let sub = |id: &str| SubReviewItem {
+        id: id.to_string(),
+        title: id.to_string(),
+        description: None,
+        weight: 1,
+        reference: None,
+        proof: None,
+        scored: true,
+        validation: None,
+        failure_cap: None,
+        domains: vec![],
+    };
+    vec![
+        item("serve", vec![]),
+        item("combat", vec![sub("hit"), sub("block")]),
+    ]
 }
 
-fn aesthetics(domains: &[&str]) -> Vec<DomainAesthetic> {
-    domains
-        .iter()
-        .map(|domain| DomainAesthetic {
-            domain: domain.to_string(),
-            rating: AestheticRating::Good,
-        })
-        .collect()
-}
-
-fn request(aesthetics: Vec<DomainAesthetic>) -> ReviewRequest {
+fn request(aesthetic: Option<AestheticRating>) -> ReviewRequest {
     ReviewRequest {
         ratings: vec![],
-        aesthetics,
+        aesthetic,
         writeup: "Looks fine.".to_string(),
         checklist: vec![],
         edit_note: None,
     }
 }
 
+fn verdict(id: &str, status: VerdictStatus) -> ReviewVerdict {
+    ReviewVerdict {
+        id: id.to_string(),
+        status,
+        note: None,
+    }
+}
+
 #[test]
-fn a_validator_rated_review_must_rate_every_domain_on_the_aesthetic_scale_and_nothing_else() {
-    let domains = effective_domains();
+fn a_validator_rated_review_requires_the_run_wide_aesthetic_and_no_ratings() {
+    let items = declared_items();
 
-    // Complete: one aesthetic per effective domain, nothing else.
-    validate_validator_rated_review(&request(aesthetics(&["single-player", "versus"])), &domains)
-        .expect("a complete aesthetic review is accepted");
+    // Complete: one run-wide aesthetic tier, nothing else.
+    validate_validator_rated_review(&request(Some(AestheticRating::Good)), &items)
+        .expect("a run-wide aesthetic review is accepted");
 
-    // A missing domain names itself.
-    let err = validate_validator_rated_review(&request(aesthetics(&["single-player"])), &domains)
-        .unwrap_err();
+    // No aesthetic tier at all is refused.
+    let err = validate_validator_rated_review(&request(None), &items).unwrap_err();
     assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(err.message.contains("versus"), "{}", err.message);
-
-    // A domain the version does not declare is refused by name.
-    let err = validate_validator_rated_review(
-        &request(aesthetics(&["single-player", "versus", "co-op"])),
-        &domains,
-    )
-    .unwrap_err();
-    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(err.message.contains("co-op"), "{}", err.message);
+    assert!(err.message.contains("aesthetic"), "{}", err.message);
 
     // A functional rating is not the reviewer's to give.
-    let mut with_rating = request(aesthetics(&["single-player", "versus"]));
+    let mut with_rating = request(Some(AestheticRating::Good));
     with_rating.ratings.push(DomainRating {
         domain: "single-player".to_string(),
         rating: Rating::Great,
     });
-    let err = validate_validator_rated_review(&with_rating, &domains).unwrap_err();
+    let err = validate_validator_rated_review(&with_rating, &items).unwrap_err();
     assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
     assert!(err.message.contains("functional"), "{}", err.message);
+}
 
-    // Nor is the checklist: the validators decide it and there is no override.
-    let mut with_verdict = request(aesthetics(&["single-player", "versus"]));
-    with_verdict.checklist.push(ReviewVerdict {
-        id: "serve".to_string(),
+#[test]
+fn a_validator_rated_review_accepts_a_partial_checklist_of_binary_overrides() {
+    let items = declared_items();
+
+    // A partial checklist of declared points — a plain id and a composite one,
+    // with an optional note — is accepted; unlisted points keep the validators'
+    // verdicts, so nothing demands completeness.
+    let mut with_overrides = request(Some(AestheticRating::Good));
+    with_overrides
+        .checklist
+        .push(verdict("serve", VerdictStatus::Fail));
+    with_overrides.checklist.push(ReviewVerdict {
+        id: "combat.hit".to_string(),
         status: VerdictStatus::Pass,
-        note: None,
+        note: Some("lands despite the broken probe".to_string()),
     });
-    let err = validate_validator_rated_review(&with_verdict, &domains).unwrap_err();
+    validate_validator_rated_review(&with_overrides, &items)
+        .expect("a partial override checklist is accepted");
+
+    // An id the version does not declare is refused by name.
+    let mut unknown = request(Some(AestheticRating::Good));
+    unknown
+        .checklist
+        .push(verdict("smash", VerdictStatus::Pass));
+    let err = validate_validator_rated_review(&unknown, &items).unwrap_err();
     assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(err.message.contains("checklist"), "{}", err.message);
+    assert!(err.message.contains("smash"), "{}", err.message);
+
+    // A graded tier is refused: an override is binary.
+    let mut graded = request(Some(AestheticRating::Good));
+    graded
+        .checklist
+        .push(verdict("serve", VerdictStatus::Great));
+    let err = validate_validator_rated_review(&graded, &items).unwrap_err();
+    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(err.message.contains("binary"), "{}", err.message);
 }
 
 // --- The run detail's score and functional rating ---------------------------------
@@ -244,6 +287,37 @@ fn a_validator_rated_run_detail_carries_its_score_and_rating_from_the_record_alo
         .expect("a validator-rated run is scored on completion");
     assert_eq!((score.earned, score.total, score.reviews), (1.0, 2, 0));
     assert!(out.aesthetic.is_none());
+}
+
+#[test]
+fn a_validator_rated_run_detail_folds_a_reviews_overrides_into_its_figures() {
+    // The same failing `hud` as above, but a reviewer waved it through: the
+    // detail's rating and score are the review's effective figures, and the
+    // run-wide aesthetic surfaces on both the run and its review.
+    let mut run = detail_run(detail_record(&[("serve", true), ("hud", false)]), true);
+    run.reviews.push(StoredReview {
+        reviewer: Reviewer {
+            user_id: "u1".to_string(),
+            username: "ada".to_string(),
+            display_name: "Ada L.".to_string(),
+        },
+        ratings: vec![],
+        aesthetics: vec![],
+        aesthetic: Some(AestheticRating::Amazing),
+        writeup: "Fails only the probe.".to_string(),
+        checklist: vec![verdict("hud", VerdictStatus::Pass)],
+        reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+        edited_at: None,
+        revisions: Vec::new(),
+    });
+    let out = stored_run_out(&run, Some(&detail_manifest()));
+    assert_eq!(out.rating, Some(Rating::Flawless));
+    let score = out.score.as_ref().expect("still scored");
+    assert_eq!((score.earned, score.total, score.reviews), (2.0, 2, 1));
+    assert_eq!(out.aesthetic, Some(AestheticRating::Amazing));
+    let json = serde_json::to_value(&out).unwrap();
+    assert_eq!(json["reviews"][0]["aesthetic"], "amazing");
+    assert!(json["reviews"][0].get("aesthetics").is_none());
 }
 
 #[test]

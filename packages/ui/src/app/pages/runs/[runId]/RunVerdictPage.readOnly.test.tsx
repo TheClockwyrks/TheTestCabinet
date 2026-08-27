@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -175,5 +175,40 @@ describe("RunVerdictPage read-only on a validator-rated run", () => {
     expect(screen.queryByText("Mark unplayable")).toBeNull();
     expect(screen.queryByRole("button", { name: /Publish/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Submit review/ })).toBeNull();
+  });
+
+  it("renders each piece of information once: the browser owns the detail", () => {
+    render(
+      <MemoryRouter>
+        <RunVerdictPage />
+      </MemoryRouter>,
+    );
+
+    // The compact domain strip carries the badge only — the old "capped by"
+    // list and the old separate checklist/script sections are gone.
+    const single = screen.getByText("Single player").closest("li")!;
+    expect(within(single).queryByLabelText("Capped by")).toBeNull();
+    expect(screen.queryByText("Automated validation")).toBeNull();
+
+    // The rail is the at-a-glance pass/fail overview: the machine's tally plus
+    // per-point ✓/✕ marks.
+    expect(screen.getByText("1/2 passed")).toBeTruthy();
+    const rail = screen.getByRole("navigation", { name: "Checked points" });
+    expect(within(rail).getAllByText("✓").length).toBeGreaterThan(0);
+    expect(within(rail).getAllByText("✕").length).toBeGreaterThan(0);
+
+    // Stepping to the failing AI point, the browser shows the detail the strip
+    // no longer carries: the failure cap + affected domains, and the backing
+    // validator script's state and path.
+    fireEvent.click(
+      screen.getByRole("button", { name: "AI paddle tracks the ball (Solo)" }),
+    );
+    expect(
+      screen.getByText("Failing caps Single player at Scuffed."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/The validator script ran to completion/),
+    ).toBeTruthy();
+    expect(screen.getByText("validation/rules.mjs")).toBeTruthy();
   });
 });

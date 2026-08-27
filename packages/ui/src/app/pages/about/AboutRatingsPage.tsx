@@ -47,8 +47,9 @@ export function AboutRatingsPage() {
           <section>
             <h2 className={styles.scaleHeading}>Aesthetic rating scale</h2>
             <p className={styles.scaleNote}>
-              Rated by a reviewer per domain; a run&rsquo;s aesthetic rating is
-              the worst across its domains, then across its reviews.
+              Rated by a reviewer for the whole run — how the build looks,
+              sounds, and feels to play; a run&rsquo;s aesthetic rating is the
+              worst tier across its reviews.
             </p>
             <ul className={styles.defList}>
               {AESTHETIC_RATINGS.map((rating) => (

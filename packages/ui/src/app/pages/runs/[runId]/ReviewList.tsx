@@ -8,8 +8,8 @@ import {
 import {
   formatPoints,
   overallGradeOf,
+  reviewAesthetic,
   scoreChecklist,
-  worstAestheticRating,
   worstRating,
   type AestheticRating,
   type GradeStatus,
@@ -29,8 +29,10 @@ import styles from "./ReviewList.module.scss";
 //
 // Scoring uses the case's declared `items`; pass an empty list when the scoring
 // model is unavailable and the per-review score is simply omitted. On a
-// validator-rated run a review carries no checklist and no functional rating —
-// its badge is the reviewer's aesthetic rating and it has no score of its own.
+// validator-rated run a review's checklist holds only the reviewer's verdict
+// OVERRIDES (not a scoreable checklist of its own), so the card's badge is the
+// reviewer's run-wide aesthetic tier and the per-card score is omitted — the
+// review's effective figures live on its own page.
 export function ReviewList({
   reviews,
   items,
@@ -52,9 +54,9 @@ export function ReviewList({
         const overall = jam
           ? null
           : worstRating(review.ratings.map((r) => r.rating));
-        const aesthetic = worstAestheticRating(
-          (review.aesthetics ?? []).map((r) => r.rating),
-        );
+        // The review's run-wide aesthetic tier (a legacy stored row's per-domain
+        // entries collapse to their worst).
+        const aesthetic = reviewAesthetic(review);
         const grade = jam ? overallGradeOf(review.checklist) : null;
         const score =
           items.length > 0 && !validatorRated
@@ -112,9 +114,9 @@ export function ReviewHeader({
   // absent or the picture 404s (the reviewer has no picture).
   reviewerPictureUrl?: string | null;
   rating: Rating | null;
-  // The reviewer's overall AESTHETIC rating (worst across the domains they rated),
-  // shown beside — or, on a validator-rated run, in place of — the functional
-  // `rating` they did not give. Null/absent for a legacy review.
+  // The reviewer's run-wide AESTHETIC tier, shown beside the functional
+  // `rating` (or in place of it where none applies). Null/absent for a legacy
+  // run's review, which has no aesthetic channel.
   aesthetic?: AestheticRating | null;
   // A game-jam review's whole-game overall grade, shown as the badge in place of
   // the per-domain `rating` a jam does not carry. Null/absent for a domain-scored
