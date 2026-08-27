@@ -376,13 +376,16 @@
 
 // The fixed-aspect stage the preview leads with: 16:9, clipped and centered, so
 // the pane holds one geometry whatever the selected case stages (mirrors the
-// home page's showcase stage).
+// home page's showcase stage). The stage owns the frame: one border around the
+// clipped box, whatever kind of media is on it — drawn here rather than on the
+// media because the clipping used to cut a media-drawn border's bottom edge off.
 .stage {
   display: flex;
   align-items: center;
   justify-content: center;
   aspect-ratio: 16 / 9;
   overflow: hidden;
+  border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-sm;
   background: s.$panel-bg;
 
@@ -390,6 +393,13 @@
   > * {
     max-width: 100%;
     max-height: 100%;
+  }
+
+  // The replay canvas brings its own border (it usually stands alone); inside
+  // the stage's frame it would double up and get clipped, so strip it here.
+  canvas {
+    border: none;
+    border-radius: 0;
   }
 }
 
@@ -485,19 +495,9 @@
   @include h.halo-glow;
 }
 
-// The link into the case's detail page (mirrors the home page's "open run ›").
+// The link into the case's detail page. The button treatment itself is the runs
+// section's primary action (RunExec `.primary`, the "+ New run" look), composed
+// in the TSX; this only pins it to the pane's trailing edge.
 .openCase {
-  align-self: flex-start;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: t.$color-accent;
-  @include h.halo-glow;
-
-  &:hover {
-    text-decoration: none;
-    text-shadow:
-      0 0 0.5rem t.$color-accent,
-      0 0 1.5rem color-mix(in srgb, t.$color-accent 60%, transparent);
-  }
+  align-self: flex-end;
 }

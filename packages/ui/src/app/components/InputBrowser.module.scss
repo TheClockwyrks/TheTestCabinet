@@ -22,10 +22,16 @@
 
 // The index rail: a panel-surfaced column of group headings and row buttons.
 // Sized like the gg explorer's sidebar so the console's tree views line up.
+// It sticks to the viewport and scrolls its own entries, so the tree stays in
+// reach however far down a long file the viewer (which scrolls with the page)
+// has taken the reader.
 .rail {
   flex: 0 0 auto;
   width: 17rem;
   max-width: 40%;
+  position: sticky;
+  top: t.$space-md;
+  max-height: calc(100vh - 2 * t.$space-md);
   display: flex;
   flex-direction: column;
   gap: t.$space-sm;
@@ -34,8 +40,11 @@
   border-radius: t.$radius-md;
   background: s.$panel-bg;
   overflow-x: hidden;
+  overflow-y: auto;
 
   @include bp.below(t.$bp-md) {
+    position: static;
+    max-height: none;
     width: auto;
     max-width: none;
   }
@@ -111,6 +120,7 @@
 }
 
 // The viewer: the persistent stage beside the rail, on the same panel surface.
+// Headerless — the rail's current row already names the selection.
 .viewer {
   flex: 1 1 auto;
   min-width: 0;
@@ -118,35 +128,6 @@
   border-radius: t.$radius-md;
   background: s.$panel-bg;
   overflow: hidden;
-}
-
-// The viewer's header row: the selected entry's path on the left (the same
-// accent-glow path register as the accordion headers this view replaced), its
-// kind chip on the right.
-.viewerHeader {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-  padding: t.$space-md;
-  border-bottom: t.$border-hairline solid
-    color-mix(in srgb, t.$color-accent 22%, transparent);
-}
-
-.viewerPath {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--ttc-font);
-  color: t.$color-accent;
-  text-shadow: var(--ttc-glow);
-  overflow-wrap: anywhere;
-}
-
-.viewerTag {
-  flex: none;
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: t.$color-text-muted;
 }
 
 .viewerBody {

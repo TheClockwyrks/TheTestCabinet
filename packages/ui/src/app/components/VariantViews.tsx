@@ -13,6 +13,7 @@ import {
 } from "./InputBrowser";
 import { LoadingState } from "./LoadingState";
 import { MediaView } from "./MediaView";
+import { SourceView } from "./SourceView";
 
 // Shared renderer for a variant's inputs: everything a run of the variant is
 // given. The prompt the harness hands the model, the exact files it is seeded
@@ -25,44 +26,14 @@ import { MediaView } from "./MediaView";
 // how a prompt, spec file, or reference reads.
 
 /**
- * The kind of input an entry represents. It is shown as the entry's tag in the
- * viewer header, so the stage still tells prompt from spec from script from
- * package from reference. `asset` is reserved for a future input kind and is not
- * yet produced.
- */
-export type InputKind =
-  | "prompt"
-  | "spec"
-  | "script"
-  | "workspace"
-  | "package"
-  | "reference"
-  | "entry"
-  | "asset";
-
-/** The tag text shown for each input kind. */
-const INPUT_KIND_LABELS: Record<InputKind, string> = {
-  prompt: "Prompt",
-  spec: "Spec",
-  script: "Script",
-  workspace: "Workspace",
-  package: "Package",
-  reference: "Reference",
-  entry: "Previous entry",
-  asset: "Asset",
-};
-
-/**
  * A text file seeded into one particular run rather than authored on its variant —
  * today, the `previous-entries/` READMEs a repeated game-jam run is briefed with.
  * It is still an input the model was handed, so it reads as one: same tree,
- * same body rendering, its own tag.
+ * same body rendering.
  */
 export interface RunSeededInput {
   /** Path of the file inside the seeded repository, as the model saw it. */
   path: string;
-  /** The tag to show for it. */
-  kind: InputKind;
   /** The file's contents, rendered inline. */
   text: string;
 }
@@ -90,7 +61,6 @@ export function VariantInputsView({
             {
               id: "prompt",
               label: "prompt",
-              tag: INPUT_KIND_LABELS.prompt,
               render: () => <Markdown>{variant.prompt}</Markdown>,
             },
           ]
@@ -100,17 +70,11 @@ export function VariantInputsView({
       label: "Specs",
       // The exact files a run of the variant is seeded with — the same set
       // `tcab seed --variant <slug>` materializes. The public snapshot inlines
-      // these spec bodies, so they show on the static site too. Each is tagged by
-      // its role (a prose "Spec" or an executable "Script" the model edits and
-      // runs).
+      // these spec bodies, so they show on the static site too.
       items: variant.seededInputs.map(
         (input): InputBrowserItem => ({
           id: `spec:${input.path}`,
           label: input.path,
-          tag:
-            input.role === "script"
-              ? INPUT_KIND_LABELS.script
-              : INPUT_KIND_LABELS.spec,
           render: () => <SeededBody input={input} />,
         }),
       ),
@@ -125,7 +89,6 @@ export function VariantInputsView({
         (file): InputBrowserItem => ({
           id: `workspace:${file.path}`,
           label: file.path,
-          tag: INPUT_KIND_LABELS.workspace,
           render: () => <WorkspaceFileBody file={file} />,
         }),
       ),
@@ -141,7 +104,6 @@ export function VariantInputsView({
         (pkg): InputBrowserItem => ({
           id: `package:${pkg.name}`,
           label: pkg.name,
-          tag: INPUT_KIND_LABELS.package,
           render: () => <Markdown>{pkg.description}</Markdown>,
         }),
       ),
@@ -163,7 +125,6 @@ export function VariantInputsView({
         return {
           id: `reference:${shot.view}`,
           label: `reference/${shot.view}.${ext}`,
-          tag: INPUT_KIND_LABELS.reference,
           render: () => (
             <MediaView
               kind={shot.kind}
@@ -182,8 +143,7 @@ export function VariantInputsView({
         (input): InputBrowserItem => ({
           id: `run:${input.path}`,
           label: input.path,
-          tag: INPUT_KIND_LABELS[input.kind],
-          render: () => <Markdown>{fence(input.path, input.text)}</Markdown>,
+          render: () => <TextFileBody path={input.path} text={input.text} />,
         }),
       ),
     },
@@ -198,11 +158,11 @@ export function VariantInputsView({
   );
 }
 
-// A seeded file's body: prose for Markdown, a fenced code block for other text,
+// A seeded file's body: prose for Markdown, the source inline for other text,
 // the rendered image for a binary asset.
 function SeededBody({ input }: { input: SeededInput }) {
   if (input.kind === "text" && input.text !== undefined) {
-    return <Markdown>{fence(input.path, input.text)}</Markdown>;
+    return <TextFileBody path={input.path} text={input.text} />;
   }
   if (input.url) {
     return <img src={input.url} alt={input.path} />;
@@ -243,9 +203,8 @@ function fetchWorkspaceFile(url: string): Promise<string> {
 
 // A starter-workspace file's body: fetched by URL when the entry is selected
 // (this component mounts only then), rendered like any other seeded text file —
-// prose for Markdown, a fenced code block tagged with the extension otherwise.
-// A host that cannot serve the bytes (`url: null`) says so instead, the same
-// degrade the showcase media use.
+// prose for Markdown, the source inline otherwise. A host that cannot serve the
+// bytes (`url: null`) says so instead, the same degrade the showcase media use.
 function WorkspaceFileBody({ file }: { file: WorkspaceFileRef }) {
   const { path, url } = file;
   const [state, setState] = useState<WorkspaceFileState>({ status: "loading" });
@@ -279,16 +238,15 @@ function WorkspaceFileBody({ file }: { file: WorkspaceFileRef }) {
   if (state.status === "error") {
     return <InputViewerNote>This file could not be loaded.</InputViewerNote>;
   }
-  return <Markdown>{fence(path, state.text)}</Markdown>;
+  return <TextFileBody path={path} text={state.text} />;
 }
 
-// Markdown source files render as prose; every other text file renders as a
-// fenced code block so it is shown verbatim, tagged with its extension as the
-// language hint.
-function fence(path: string, text: string): string {
+// Markdown source files render as prose; every other text file renders inline as
+// source, syntax-highlighted when the extension names a language the console
+// recognizes.
+function TextFileBody({ path, text }: { path: string; text: string }) {
   if (path.endsWith(".md") || path.endsWith(".markdown")) {
-    return text;
+    return <Markdown>{text}</Markdown>;
   }
-  const lang = path.split(".").pop() ?? "";
-  return `\`\`\`${lang}\n${text}\n\`\`\``;
+  return <SourceView path={path} text={text} />;
 }

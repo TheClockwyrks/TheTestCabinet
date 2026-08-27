@@ -13,6 +13,7 @@ import { CATALOG_TABS, inTab } from "../../data/testCaseTabs";
 import { ReplayPlayer } from "../runs/replay/ReplayPlayer";
 import { routes } from "../../routes";
 import type { CatalogTab } from "../../routes";
+import exec from "../runs/RunExec.module.scss";
 import styles from "./TestCasesPage.module.scss";
 
 // The catalog's type tabs are defined in `../../data/testCaseTabs` (shared with
@@ -340,9 +341,9 @@ function PreviewPane({ testCase }: { testCase: TestCaseSummary }) {
       )}
       <Link
         to={routes.testCaseDetail(testCase.slug)}
-        className={styles.openCase}
+        className={`${exec.primary} ${styles.openCase}`}
       >
-        open case &rsaquo;
+        Open case
       </Link>
     </section>
   );

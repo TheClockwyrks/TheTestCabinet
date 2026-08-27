@@ -584,7 +584,7 @@ describe("TestCasesPage", () => {
     renderPage("end-to-end");
 
     expect(
-      within(preview()).getByRole("link", { name: "open case ›" }),
+      within(preview()).getByRole("link", { name: "Open case" }),
     ).toHaveAttribute("href", routes.testCaseDetail("sunfront"));
   });
 

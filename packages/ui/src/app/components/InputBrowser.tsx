@@ -8,8 +8,8 @@ import styles from "./InputBrowser.module.scss";
 // whichever entry is selected, instead of a stack of collapsible panels each
 // opening in place.
 //
-// The browser is deliberately generic: an item is just a label, an optional tag,
-// and a `render` producing its body. Content is rendered only for the selected
+// The browser is deliberately generic: an item is just a label and a `render`
+// producing its body. Content is rendered only for the selected
 // item, so a body that fetches on mount (a starter-workspace file) naturally
 // loads lazily on selection. Selection is internal state read from
 // `initialSelectedId` on mount only — a caller whose "came for" entry can change
@@ -20,10 +20,8 @@ import styles from "./InputBrowser.module.scss";
 export interface InputBrowserItem {
   /** Stable identity for selection (unique across every group). */
   id: string;
-  /** The row's text in the rail, and the viewer header's path. */
+  /** The row's text in the rail. */
   label: string;
-  /** The kind chip shown in the viewer header (e.g. `Spec`, `Script`). */
-  tag?: string;
   /** Produces the viewer body. Called only while the item is selected. */
   render: () => ReactNode;
 }
@@ -99,13 +97,9 @@ export function InputBrowser({
           </section>
         ))}
       </nav>
+      {/* No header naming the selection: the rail's current row already says
+          the file's name and its group says the category. */}
       <div className={styles.viewer}>
-        <div className={styles.viewerHeader}>
-          <span className={styles.viewerPath}>{selected.label}</span>
-          {selected.tag && (
-            <span className={styles.viewerTag}>{selected.tag}</span>
-          )}
-        </div>
         <div className={styles.viewerBody}>{selected.render()}</div>
       </div>
     </div>

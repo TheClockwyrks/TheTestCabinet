@@ -12,13 +12,11 @@ function groups(): InputBrowserGroup[] {
         {
           id: "spec:brief.md",
           label: "brief.md",
-          tag: "Spec",
           render: () => <p>The brief.</p>,
         },
         {
           id: "spec:build.py",
           label: "build.py",
-          tag: "Script",
           render: () => <p>The script.</p>,
         },
       ],
@@ -30,7 +28,6 @@ function groups(): InputBrowserGroup[] {
         {
           id: "reference:board",
           label: "reference/board.png",
-          tag: "Reference",
           render: () => <p>The board.</p>,
         },
       ],
@@ -69,8 +66,6 @@ describe("InputBrowser", () => {
       "true",
     );
     expect(screen.getByText("The brief.")).toBeInTheDocument();
-    // The viewer header carries the selected item's tag chip.
-    expect(screen.getByText("Spec")).toBeInTheDocument();
     // The other bodies are not rendered at all — that is what makes a body
     // fetching on mount naturally lazy.
     expect(screen.queryByText("The script.")).not.toBeInTheDocument();

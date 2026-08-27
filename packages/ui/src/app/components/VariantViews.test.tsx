@@ -4,7 +4,7 @@ import type { VariantSummary } from "../data/testCases";
 import { VariantInputsView } from "./VariantViews";
 
 // A variant carrying one prose spec, one script starter, and one shipped package,
-// so the Inputs view exercises every tag the two roles + packages produce.
+// so the Inputs view exercises every body shape the two roles + packages produce.
 function variant(overrides: Partial<VariantSummary> = {}): VariantSummary {
   return {
     slug: "base",
@@ -44,11 +44,10 @@ describe("VariantInputsView", () => {
   it("stages the prompt first, with every input listed under its group", () => {
     render(<VariantInputsView variant={variant()} />);
 
-    // The prompt starts selected: its body is on the stage, its tag in the
-    // viewer header (beside the group heading of the same name), and its rail
-    // row marked current.
+    // The prompt starts selected: its body is on the stage under its group
+    // heading, and its rail row marked current.
     expect(screen.getByText("Build it.")).toBeInTheDocument();
-    expect(screen.getAllByText("Prompt")).toHaveLength(2);
+    expect(screen.getByText("Prompt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "prompt" })).toHaveAttribute(
       "aria-current",
       "true",
@@ -73,23 +72,24 @@ describe("VariantInputsView", () => {
     expect(screen.queryByText("Previous entries")).not.toBeInTheDocument();
   });
 
-  it("tags a script starter and a shipped package distinctly from a spec", () => {
-    render(<VariantInputsView variant={variant()} />);
+  it("renders prose for Markdown, inline highlighted source otherwise", () => {
+    const { container } = render(<VariantInputsView variant={variant()} />);
 
-    // The viewer header's tag chip tells spec from script from package as each
-    // entry is selected.
+    // A Markdown spec reads as prose (its heading is a real heading)…
     fireEvent.click(screen.getByRole("button", { name: "specs/brief.md" }));
-    expect(screen.getByText("Spec")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Brief" })).toBeInTheDocument();
 
+    // …while a script starter reads as inline source: the text verbatim, with
+    // syntax token markup for the recognized extension.
     fireEvent.click(screen.getByRole("button", { name: "build.py" }));
-    expect(screen.getByText("Script")).toBeInTheDocument();
-    expect(screen.getByText(/import bpy/)).toBeInTheDocument();
+    expect(container.querySelector("code")?.textContent).toBe("import bpy\n");
+    expect(container.querySelector(".hljs-keyword")?.textContent).toBe(
+      "import",
+    );
 
     fireEvent.click(
       screen.getByRole("button", { name: "@test-cabinet/particle-runtime" }),
     );
-    expect(screen.getByText("Package")).toBeInTheDocument();
     expect(
       screen.getByText("Plays a produced particle system live on a canvas."),
     ).toBeInTheDocument();
@@ -101,7 +101,7 @@ describe("VariantInputsView", () => {
       text: async () => "export const main = 1;\n",
     }));
     vi.stubGlobal("fetch", fetchMock);
-    render(
+    const { container } = render(
       <VariantInputsView
         variant={variant({
           workspace: [
@@ -119,9 +119,13 @@ describe("VariantInputsView", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://cdn.example/main.ts");
     // The wait reads as a loading state, then the file body lands as code.
     expect(screen.getByText("Loading file…")).toBeInTheDocument();
-    expect(
-      await screen.findByText(/export const main = 1;/),
-    ).toBeInTheDocument();
+    // The file body lands as inline source (highlighted, so the text is split
+    // across token spans — assert on the whole code element).
+    await waitFor(() =>
+      expect(container.querySelector("code")?.textContent).toBe(
+        "export const main = 1;\n",
+      ),
+    );
   });
 
   it("says a workspace file failed rather than staging a blank pane", async () => {
@@ -175,7 +179,6 @@ describe("VariantInputsView", () => {
         runSeededInputs={[
           {
             path: "previous-entries/entry-01.md",
-            kind: "entry",
             text: "# Space Miner\n\nDig for ore.",
           },
         ]}
@@ -186,7 +189,6 @@ describe("VariantInputsView", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "previous-entries/entry-01.md" }),
     );
-    expect(screen.getByText("Previous entry")).toBeInTheDocument();
     expect(screen.getByText("Space Miner")).toBeInTheDocument();
   });
 });

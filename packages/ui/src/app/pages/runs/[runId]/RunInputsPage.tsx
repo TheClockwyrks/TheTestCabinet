@@ -64,7 +64,6 @@ function RunInputsBody({ run }: { run: RunRecord }) {
 function priorEntryInputs(run: RunRecord): RunSeededInput[] {
   return (run.gameJamPriorEntries ?? []).map((entry, index) => ({
     path: `previous-entries/entry-${String(index + 1).padStart(2, "0")}.md`,
-    kind: "entry",
     text: entry.readme,
   }));
 }
