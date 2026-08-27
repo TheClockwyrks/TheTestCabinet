@@ -122,8 +122,9 @@
   object-fit: cover;
 }
 
+// The lone play glyph, sized up a step so it holds the thumb on its own.
 .thumbGlyph {
-  font-size: t.$font-sm;
+  font-size: t.$font-md;
   color: t.$color-text-muted;
 }
 

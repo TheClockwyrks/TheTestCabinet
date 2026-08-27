@@ -111,13 +111,15 @@ every list, card, leaderboard, and metric.
 ## The test cases section
 
 `/test-cases` is a master-detail catalog: an index of every visible case beside
-a preview stage. The search field and the test-type tabs narrow the index. A
-row shows the case's name, latest version, and difficulty, and marks a case
-that has a [showcase](/components/core/showcase/#the-case-showcase); selecting
-one fills the stage with the case's showcase media, summary, and tags, plus a
-link opening the case. The stage loops the first media and offers the rest as
-a filmstrip, and a case with no showcase shows a placeholder. On a narrow
-viewport the stage sits above the index.
+a preview stage, split 40/60 by default with a draggable divider between the
+panes. The search field and the test-type tabs narrow the index. A row shows
+the case's name, latest version, and difficulty, and marks a case that has a
+[showcase](/components/core/showcase/#the-case-showcase); selecting one fills
+the stage with the case's showcase media, summary, and tags, plus a link
+opening the case. The stage loops one media entry at a time, a filmstrip of
+the whole carousel picks which, and a case with no showcase shows a
+placeholder. On a narrow viewport the stage sits above the index without the
+divider.
 
 A case's detail page lands on its Play tab, shaped like a run's: the anchored
 variant's showcase, a panel launching the deployed [reference

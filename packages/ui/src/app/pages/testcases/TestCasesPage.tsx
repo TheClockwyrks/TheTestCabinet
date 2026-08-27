@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import type { CSSProperties, RefObject } from "react";
 import { Link, NavLink } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { LoadingState } from "../../components/LoadingState";
@@ -36,15 +37,29 @@ function hasShowcase(testCase: TestCaseSummary): boolean {
   return (testCase.showcase?.media.length ?? 0) > 0;
 }
 
+// The index/preview split: 40% of the row to the index by default, draggable
+// between a quarter and about two thirds so neither pane can be crushed. Held
+// as a fraction of the split container's width; the arrow keys nudge it by two
+// points per press.
+const SPLIT_DEFAULT = 0.4;
+const SPLIT_MIN = 0.25;
+const SPLIT_MAX = 0.65;
+const SPLIT_STEP = 0.02;
+
+function clampSplit(fraction: number): number {
+  return Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, fraction));
+}
+
 // The test-case catalog, laid out "index + stage": below the type tab bar and
-// search, a master-detail split. The left index lists every case in the tab as
-// a selectable row (name, latest version, a replay marker when the case has a
-// showcase, difficulty badge); the right pane is a sticky preview of the
-// selected case — its showcase media on a stage (or a quiet cabinet placeholder
-// when it has none), a filmstrip of the rest of the carousel, its summary and
-// tags, and the link into the detail page. The tab is the URL (one route per
-// tab), so a reload keeps it, and a client-side search narrows within it.
-// Rows are listed alphabetically — never ranked.
+// search, a master-detail split — 40/60 by default, with a draggable divider
+// between the panes. The left index lists every case in the tab as a selectable
+// row (name, latest version, a replay marker when the case has a showcase,
+// difficulty badge); the right pane is a sticky preview of the selected case —
+// its showcase media on a stage (or a quiet cabinet placeholder when it has
+// none), a filmstrip picking which entry the stage plays, its summary and tags,
+// and the link into the detail page. The tab is the URL (one route per tab), so
+// a reload keeps it, and a client-side search narrows within it. Rows are
+// listed alphabetically — never ranked.
 export function TestCasesPage({ tab }: TestCasesPageProps) {
   const { testCases, status } = useTestCases();
   const { canExecute } = useGalleryData();
@@ -53,6 +68,10 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
   // rather than an object so the fallback below can resolve it against whatever
   // the current filters leave shown.
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  // The divider-held index/preview split. Component state only — a reload
+  // returns to the 40/60 default.
+  const [splitFraction, setSplitFraction] = useState(SPLIT_DEFAULT);
+  const splitRef = useRef<HTMLDivElement | null>(null);
   // Remember the viewed tab so a case's detail back-control returns here, not to
   // the catalog default tab.
   useRecordSectionIndex("testCases");
@@ -133,7 +152,18 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
           {selected === undefined ? (
             <p className={styles.empty}>No test cases match.</p>
           ) : (
-            <div className={styles.split}>
+            <div
+              ref={splitRef}
+              className={styles.split}
+              // The fraction rides a custom property consumed only by the wide
+              // layout's grid-template-columns, so the inline style cannot
+              // defeat the stacked layout below the medium breakpoint.
+              style={
+                {
+                  "--ttc-catalog-split": `${(splitFraction * 100).toFixed(2)}%`,
+                } as CSSProperties
+              }
+            >
               <div
                 className={styles.index}
                 role="listbox"
@@ -172,7 +202,14 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
                   </button>
                 ))}
               </div>
-              <PreviewPane testCase={selected} />
+              <SplitDivider
+                fraction={splitFraction}
+                containerRef={splitRef}
+                onResize={setSplitFraction}
+              />
+              {/* Keyed by the case, so switching cases remounts the pane and
+                  the filmstrip selection starts back at the first entry. */}
+              <PreviewPane key={selected.slug} testCase={selected} />
             </div>
           )}
         </>
@@ -181,15 +218,80 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
   );
 }
 
+// ---- Split divider -----------------------------------------------------------
+
+// The draggable divider between the index and the preview pane. Dragging moves
+// the split with the pointer; focusing it and pressing the arrow keys nudges it,
+// which is also what makes it adjustable at all without a pointer. Below the
+// medium breakpoint the panes stack and the stylesheet hides the divider (the
+// grid template is overridden there too), so no viewport gating is needed here.
+function SplitDivider({
+  fraction,
+  containerRef,
+  onResize,
+}: {
+  fraction: number;
+  containerRef: RefObject<HTMLDivElement | null>;
+  onResize: (fraction: number) => void;
+}) {
+  // Re-derive the fraction from the pointer's position over the whole split
+  // container, so the divider tracks the pointer exactly no matter where within
+  // its hit area the drag started.
+  const dragTo = (clientX: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect === undefined || rect.width === 0) return;
+    onResize(clampSplit((clientX - rect.left) / rect.width));
+  };
+  return (
+    <div
+      className={styles.divider}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the index and preview panes"
+      aria-valuemin={Math.round(SPLIT_MIN * 100)}
+      aria-valuemax={Math.round(SPLIT_MAX * 100)}
+      aria-valuenow={Math.round(fraction * 100)}
+      tabIndex={0}
+      onPointerDown={(event) => {
+        // Capture so the drag keeps tracking when the pointer outruns the
+        // divider's narrow hit area.
+        event.currentTarget.setPointerCapture(event.pointerId);
+        dragTo(event.clientX);
+      }}
+      onPointerMove={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          dragTo(event.clientX);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          onResize(clampSplit(fraction - SPLIT_STEP));
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault();
+          onResize(clampSplit(fraction + SPLIT_STEP));
+        }
+      }}
+    />
+  );
+}
+
 // ---- Preview pane ------------------------------------------------------------
 
-// The sticky preview of the selected case: the stage (its showcase's first
-// media, looping), the filmstrip over the rest of the carousel, then the case's
-// identity line, summary, tags, and the link into the detail page.
+// The sticky preview of the selected case: the stage (the filmstrip-selected
+// showcase media, the first by default), the filmstrip over the whole carousel,
+// then the case's identity line, summary, tags, and the link into the detail
+// page.
 function PreviewPane({ testCase }: { testCase: TestCaseSummary }) {
   const { caseShowcaseMediaUrl } = useGalleryData();
   const showcase = testCase.showcase ?? null;
   const media = showcase?.media ?? [];
+  // The filmstrip's selection: which entry the stage plays. Clamp rather than
+  // trust: the manifest caps the carousel, but the index is local state and the
+  // catalog could change under a refetch.
+  const [index, setIndex] = useState(0);
+  const shown = Math.max(0, Math.min(index, media.length - 1));
+  const current = media[shown];
   // `caseShowcaseMediaUrl` is optional (a host may serve no case showcase media
   // at all); an unresolvable file falls back to the placeholder stage the same
   // way no media does.
@@ -206,10 +308,17 @@ function PreviewPane({ testCase }: { testCase: TestCaseSummary }) {
   return (
     <section className={styles.preview} aria-label="Case preview">
       <PreviewStage
-        entry={media[0]}
-        url={media[0] ? resolve(media[0].file) : null}
+        entry={current}
+        url={current !== undefined ? resolve(current.file) : null}
       />
-      {media.length > 1 && <Filmstrip media={media} resolve={resolve} />}
+      {media.length > 1 && (
+        <Filmstrip
+          media={media}
+          index={shown}
+          onSelect={setIndex}
+          resolve={resolve}
+        />
+      )}
       <div className={styles.previewHeader}>
         <div className={styles.previewHeading}>
           <h3 className={styles.previewTitle}>{testCase.name}</h3>
@@ -290,44 +399,56 @@ function PreviewStage({
   );
 }
 
-// The strip under the stage: a glance at the rest of the carousel — the stage
-// already plays the first entry, so the strip starts at the second — capped at
-// three thumbs with a "+n more" tail; the full carousel lives on the case's
-// detail page, so the strip advertises rather than operates. An image entry
-// shows the image itself; a replay or video — which has no cheap still — shows
-// a play glyph over its kind.
+// The strip under the stage: one thumb per carousel entry, in the carousel's
+// order, picking which entry the stage plays — the same tablist the detail Play
+// tab's ShowcaseStrip presents, at preview scale. Every entry gets a thumb (the
+// manifest caps a showcase at ten) and the strip scrolls sideways when they
+// overflow the pane. An image entry shows the image itself; a replay or video —
+// which has no cheap still — shows a play glyph.
 function Filmstrip({
   media,
+  index,
+  onSelect,
   resolve,
 }: {
   media: ShowcaseMediaRef[];
+  index: number;
+  onSelect: (index: number) => void;
   resolve: (file: string) => string | null;
 }) {
-  const thumbs = media.slice(1, 4);
-  const more = media.length - 1 - thumbs.length;
   return (
-    <div className={styles.filmstrip} aria-label="Showcase media">
-      {thumbs.map((entry, index) => {
+    <div
+      className={styles.filmstrip}
+      role="tablist"
+      aria-label="Showcase media"
+    >
+      {media.map((entry, i) => {
         const url = entry.kind === "image" ? resolve(entry.file) : null;
         return (
-          <span
-            key={`${index}-${entry.file}`}
-            className={styles.filmThumb}
-            role="img"
-            aria-label={entry.name}
+          <button
+            key={`${i}-${entry.file}`}
+            type="button"
+            role="tab"
+            aria-selected={i === index}
+            className={
+              i === index
+                ? `${styles.filmThumb} ${styles.filmThumbActive}`
+                : styles.filmThumb
+            }
             title={entry.name}
+            aria-label={`Show ${entry.name}`}
+            onClick={() => onSelect(i)}
           >
             {url !== null ? (
               <img className={styles.filmImage} src={url} alt="" />
             ) : (
               <span className={styles.filmGlyph} aria-hidden="true">
-                ▶ {entry.kind}
+                ▶
               </span>
             )}
-          </span>
+          </button>
         );
       })}
-      {more > 0 && <span className={styles.filmMore}>+{more} more</span>}
     </div>
   );
 }

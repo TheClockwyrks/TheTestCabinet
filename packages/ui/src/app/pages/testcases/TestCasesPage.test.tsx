@@ -421,9 +421,9 @@ describe("TestCasesPage", () => {
     );
   });
 
-  it("filmstrips the carousel's tail, not the staged lead entry", () => {
-    // Six entries: the first plays on the stage, the strip shows the next
-    // three, and the remaining two collapse into the "+n more" tail.
+  it("filmstrips the whole carousel and stages the clicked entry", () => {
+    // Six entries: every one gets a thumb (no cap), in the carousel's order,
+    // with the staged entry marked selected.
     ready([
       testCase("Carom", "end-to-end", {
         showcase: {
@@ -443,14 +443,107 @@ describe("TestCasesPage", () => {
 
     renderPage("end-to-end");
 
-    const strip = within(preview()).getByLabelText("Showcase media");
-    const thumbs = within(strip).getAllByRole("img");
+    const strip = within(preview()).getByRole("tablist", {
+      name: "Showcase media",
+    });
+    const thumbs = within(strip).getAllByRole("tab");
     expect(thumbs.map((thumb) => thumb.getAttribute("aria-label"))).toEqual([
-      "Play 1",
-      "Play 2",
-      "Play 3",
+      "Show Title screen",
+      "Show Play 1",
+      "Show Play 2",
+      "Show Play 3",
+      "Show Play 4",
+      "Show Play 5",
     ]);
-    expect(strip).toHaveTextContent("+2 more");
+    expect(thumbs[0]).toHaveAttribute("aria-selected", "true");
+
+    // Clicking a thumb stages that entry and moves the selection to it.
+    fireEvent.click(within(strip).getByRole("tab", { name: "Show Play 2" }));
+    expect(
+      within(strip).getByRole("tab", { name: "Show Play 2" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      within(preview()).getByRole("img", { name: "Play 2" }),
+    ).toHaveAttribute(
+      "src",
+      "https://cdn.example/cases/carom/v1.2.0/base/play-2.png",
+    );
+  });
+
+  it("resets the filmstrip selection when the selected case changes", () => {
+    const carousel = (slug: string) => ({
+      version: "v1.2.0",
+      variant: "base",
+      media: [
+        { file: "one.png", name: `${slug} one`, kind: "image" as const },
+        { file: "two.png", name: `${slug} two`, kind: "image" as const },
+      ],
+    });
+    ready([
+      testCase("Aurora", "end-to-end", { showcase: carousel("Aurora") }),
+      testCase("Zephyr", "end-to-end", { showcase: carousel("Zephyr") }),
+    ]);
+
+    renderPage("end-to-end");
+
+    // Stage Aurora's second entry, then move to Zephyr: its stage starts back
+    // at the first entry rather than inheriting Aurora's selection.
+    fireEvent.click(screen.getByRole("tab", { name: "Show Aurora two" }));
+    within(preview()).getByRole("img", { name: "Aurora two" });
+    fireEvent.click(screen.getByRole("option", { name: /Zephyr/ }));
+    within(preview()).getByRole("img", { name: "Zephyr one" });
+    expect(
+      screen.getByRole("tab", { name: "Show Zephyr one" }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("shows an icon-only play glyph for a thumb with no still", () => {
+    ready([
+      testCase("Carom", "end-to-end", {
+        showcase: {
+          version: "v1.2.0",
+          variant: "base",
+          media: [
+            { file: "title.png", name: "Title screen", kind: "image" as const },
+            { file: "rally.json.gz", name: "A rally", kind: "replay" as const },
+          ],
+        },
+      }),
+    ]);
+
+    renderPage("end-to-end");
+
+    // A replay has no cheap still, so its thumb is the bare play glyph — the
+    // kind never rides along as text.
+    const thumb = screen.getByRole("tab", { name: "Show A rally" });
+    expect(thumb).toHaveTextContent("▶");
+    expect(thumb).not.toHaveTextContent("replay");
+  });
+
+  it("splits the panes with a keyboard-adjustable divider", () => {
+    ready([testCase("Sunfront", "end-to-end")]);
+
+    renderPage("end-to-end");
+
+    // The divider between the index and the preview, at the 40/60 default…
+    const divider = screen.getByRole("separator", {
+      name: "Resize the index and preview panes",
+    });
+    expect(divider).toHaveAttribute("aria-orientation", "vertical");
+    expect(divider).toHaveAttribute("aria-valuenow", "40");
+
+    // …nudged by the arrow keys…
+    fireEvent.keyDown(divider, { key: "ArrowLeft" });
+    expect(divider).toHaveAttribute("aria-valuenow", "38");
+    fireEvent.keyDown(divider, { key: "ArrowRight" });
+    fireEvent.keyDown(divider, { key: "ArrowRight" });
+    expect(divider).toHaveAttribute("aria-valuenow", "42");
+
+    // …and clamped so neither pane can be crushed.
+    for (let i = 0; i < 30; i++) {
+      fireEvent.keyDown(divider, { key: "ArrowLeft" });
+    }
+    expect(divider).toHaveAttribute("aria-valuenow", "25");
   });
 
   it("shows the placeholder stage for a case without a showcase", () => {

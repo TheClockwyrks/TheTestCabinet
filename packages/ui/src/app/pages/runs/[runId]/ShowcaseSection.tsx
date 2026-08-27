@@ -61,7 +61,7 @@ function ShowcaseStage({
 
 // The thumbnail strip under the stage: one button per carousel entry, in the
 // carousel's order. An image entry shows the image itself; a replay or video —
-// which has no cheap still — shows a play glyph over its kind.
+// which has no cheap still — shows a play glyph.
 function ShowcaseStrip({
   media,
   index,
@@ -96,7 +96,7 @@ function ShowcaseStrip({
               <img className={styles.thumbImage} src={url} alt="" />
             ) : (
               <span className={styles.thumbGlyph} aria-hidden="true">
-                ▶ {entry.kind}
+                ▶
               </span>
             )}
           </button>
