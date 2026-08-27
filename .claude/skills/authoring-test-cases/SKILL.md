@@ -76,6 +76,15 @@ together with that kind's authoring guide and the
 a variant layers **additive** specs and review items on the common set, and an
 asset-generation case declares no `[[reference]]`.
 
+## Adding or re-recording a variant's showcase
+
+A variant's showcase — the gameplay clip and stills the catalog and case pages
+present — has its own content rules and capture procedure:
+[`guides/authoring-a-case-showcase.md`](../../../apps/docs/src/content/docs/guides/authoring/authoring-a-case-showcase.md).
+The short version: the leading entry is sustained real play captured from the
+reference implementation (never validation-baseline assertion clips), and
+carom v3.0.0's `showcase/capture/` drivers are the worked example to adapt.
+
 ## After authoring
 
 Validate as each guide's **Validate your work** section describes (`tcab prompt` /

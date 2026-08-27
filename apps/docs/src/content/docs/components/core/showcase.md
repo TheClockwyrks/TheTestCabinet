@@ -117,6 +117,12 @@ authored answer-key material: it is never seeded into a run, and resolving it
 costs a run nothing. A variant that omits the key has no showcase, and the
 surfaces that would render one show their placeholder instead.
 
+The media presents the case rather than proving properties of it: the leading
+entry shows sustained, real play, with the case's mechanics arising inside
+that play, and stills follow the play. What the media must show and how to
+capture it are stated in
+[Authoring a Case Showcase](/guides/authoring/authoring-a-case-showcase/).
+
 ### Validation
 
 The case showcase is authored and committed rather than model-written, so
