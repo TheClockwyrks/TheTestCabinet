@@ -1,0 +1,320 @@
+# Fathom — Game state
+
+This file defines the observable state the game holds: every field it carries, the
+type of that field, and what it means. The debugging surface's readings project
+exactly this state, so it is what a scenario poses and reads back.
+
+{{#if (eq engine.slug "none")}}
+The build owns the shape of the state entirely. How it is organized, how the maze
+and the fog are held, and which values are stored rather than derived are all
+yours to decide. What is fixed is that the state carries the facts below, under
+the names and meanings given, and returns to its title-screen values when the
+debugging surface's `reset` is called.
+{{else if (eq engine.slug "simple-2d")}}
+The state is a value the engine holds and every frame replaces, so a frame builds
+the next state from the current one rather than writing into it, and every reader
+is handed it as `DeepReadonly<FathomState>`. `src/game.ts` declares and exports
+that type. How the state is organized inside `FathomState`, how the maze and the
+fog are held, and which values are stored rather than derived are yours to decide.
+What is fixed is that the state carries the facts below, under the names and
+meanings given, that every value the game carries from one frame to the next lives
+in it rather than in a module-level variable or a closure, and that it returns to
+its title-screen values when the debugging surface's `reset` is called.
+{{else}}
+The state lives in the framework objects the engine owns: the game instance, the
+world that is open, that world's game mode and game state, and the actors in it.
+Fathom runs in one world for the whole session, so the game definition registers a
+single level, the game never opens another, and every screen is a value of
+`screen`. How Fathom maps onto those objects, how the maze and the fog are held,
+and which values are stored rather than derived are yours to decide, within the
+framework's own line: nothing lives in a module-level variable or a closure
+outside them. What is fixed is that the state carries the facts below, under the
+names and meanings given, and returns to its title-screen values when the
+debugging surface's `reset` is called.
+{{/if}}
+
+## The snapshot
+
+The surface's `snapshot` returns a plain, JSON-serializable object carrying every
+field below. It is a pure read that changes nothing.
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "countdown" | "playing" | "paused" | "cleared" | "gameover",
+  depth: <number>,               // the current maze's depth, from 1
+  score: <number>,
+  lives: <number>,
+  muted: <boolean>,              // whether the mute toggle is on
+  creatureAI: <boolean>,         // whether the creatures' own minds are running
+{{#if (eq engine.slug "none")}}
+  autoStep: <boolean>,           // whether the frame loop advances the simulation
+{{/if}}
+  planktonRemaining: <number>,   // plankton left in the current maze
+  brightness: <number>,          // G, in [0, 1]
+  visionRadius: <number>,        // V, the line-of-sight light radius, in logical units
+{{#if (eq variant.slug "kindle")}}
+  windowRadius: <number>,        // R, the outer vision-circle radius, in logical units
+{{/if}}
+  sonar: { ready: <boolean>, cooldown: <number>, range: <number> },
+  ink: { ready: <boolean>, cooldown: <number> },
+
+  grid: {
+    cols: <number>,    // GRID_COLS
+    rows: <number>,    // GRID_ROWS
+    tile: <number>,    // TILE
+    originX: <number>, // GRID_ORIGIN_X, column 0's left edge
+    originY: <number>, // GRID_ORIGIN_Y, row 0's top edge
+  },
+
+  tiles: [ <string>, ... ],      // GRID_ROWS strings of GRID_COLS characters
+  visibility: [ <string>, ... ], // the same layout, one visibility character per tile
+
+  forager: {
+    x: <number>, y: <number>,    // its center
+    tx: <number>, ty: <number>,  // the tile it is on
+    dir: "up" | "down" | "left" | "right",
+    moving: <boolean>,
+  },
+
+  drifters: [
+    { x: <number>, y: <number>, tx: <number>, ty: <number> },
+  ],
+
+  predators: [
+    {
+      kind: "lanternjaw" | "gloamfin" | "flarefish",
+      x: <number>, y: <number>,
+      tx: <number>, ty: <number>,
+      dir: "up" | "down" | "left" | "right",
+      state: "den" | "wander" | "chase" | "search",
+      released: <boolean>,
+      speed: <number>,           // its current speed, in logical units per second
+      alert: <boolean>,
+      lit: <boolean>,
+      detectRange: <number | null>,   // Lanternjaw and Flarefish
+      hearingRange: <number | null>,  // Gloamfin
+      hearingLock: <boolean | null>,  // Gloamfin
+      flareCharging: <boolean | null>, // Flarefish
+      flaring: <boolean | null>,       // Flarefish
+      flareRadius: <number | null>,    // Flarefish
+    },
+  ],
+
+  pulses: [
+    {
+      source: "forager" | "gloamfin",
+      tint: "cyan" | "violet" | "orange",
+      ox: <number>, oy: <number>,  // the tile the pulse originated from
+      front: <number>,             // how far the front has traveled, in tiles
+      range: <number>,             // its maximum path range, in tiles
+    },
+  ],
+
+  inkClouds: [
+    { x: <number>, y: <number>, radius: <number>, remaining: <number> },
+  ],
+
+  simTime: <number>,   // accumulated simulation time, in seconds
+}
+```
+
+## The screens
+
+`screen` is the top-level state machine, and it names the screen the game is
+showing. Every build carries all seven, and `specs/ui.md` defines what each one
+shows and how the game moves between them.
+
+| `screen` | The game is |
+| --- | --- |
+| `"title"` | On the title screen and its menu. |
+| `"howto"` | On the how-to-play screen. |
+| `"countdown"` | Holding at the top of a maze, before control resumes. |
+| `"playing"` | In live play. |
+| `"paused"` | Paused over a frozen maze. |
+| `"cleared"` | On the interstitial after a maze is cleared. |
+| `"gameover"` | On the game-over screen after the last life is lost. |
+
+## The run
+
+- `depth` is the current maze's depth, a whole number from `1`. It fixes the
+  predator roster and the sonar range, as `specs/progression.md` and
+  `specs/predators.md` state.
+- `score` is the running score for the whole run, across every maze of it.
+- `lives` is the lives remaining, `START_LIVES` (`3`) at the start of a dive. The
+  life being played is not counted among them, so the game ends when contact costs
+  a life and `lives` is already `0`.
+- `muted` is the game's readable copy of the runtime's mute bit, refreshed every
+  frame. The runtime owns muting.
+- `simTime` is accumulated simulation time in seconds. Every tick adds its own
+  length, whatever the screen, the menus and the paused screen included.
+- `planktonRemaining` is how many plankton are left in the current maze.
+
+## The forager's senses
+
+- `brightness` is `G`, in `[0, 1]`, the forager's brightness as
+  `specs/sensing.md` defines it.
+- `visionRadius` is `V`, the radius of the line-of-sight light pocket, in logical
+  units. It is derived from `brightness` by the formula in `specs/sensing.md`
+  rather than held independently.
+{{#if (eq variant.slug "kindle")}}
+- `windowRadius` is `R`, the radius of the outer vision circle the forager
+  carries, in logical units. It is derived from `brightness` by the formula in
+  `specs/sensing.md` rather than held independently.
+{{/if}}
+- `sonar.cooldown` is the seconds left until the sonar pulse is ready and
+  `sonar.ready` is `true` exactly when that is `0`. `sonar.range` is `E`, the
+  pulse's maximum path range in tiles at the current depth.
+- `ink.cooldown` is the seconds left until ink is ready and `ink.ready` is `true`
+  exactly when that is `0`.
+
+## The maze
+
+`grid` is the tile grid's frame, and it reports the fixed geometry
+`specs/overview.md` states: `GRID_COLS` (`36`) columns and `GRID_ROWS` (`18`) rows
+of `TILE` (`32`) logical units each, with column `0`'s left edge at
+`GRID_ORIGIN_X` (`64`) and row `0`'s top edge at `GRID_ORIGIN_Y` (`80`). The
+center of tile `(tx, ty)` is therefore at
+`(GRID_ORIGIN_X + tx * TILE + TILE / 2, GRID_ORIGIN_Y + ty * TILE + TILE / 2)`.
+
+`tiles` is the layout, one string per row from the top, one character per column
+from the left.
+
+| Character | The tile is |
+| --- | --- |
+| `#` | Rock. |
+| `.` | Open corridor. |
+| `g` | The den gate. |
+| `d` | Den interior. |
+
+`visibility` is the per-tile visibility this instant, in the same layout.
+
+| Character | The tile is |
+| --- | --- |
+| `u` | Unrevealed, never touched by light, sonar or a flare. |
+| `r` | Remembered, revealed earlier and not lit now. |
+| `l` | Lit right now. |
+
+Visibility is what the fog of war has revealed, as `specs/sensing.md` defines
+it.{{#if (eq variant.slug "kindle")}} The vision circle is a rendering mask over that and reveals nothing, so a
+remembered tile outside the circle still reports `r`.{{/if}}
+
+## The forager
+
+- `x` and `y` are the forager's center, in logical units.
+- `tx` and `ty` are the tile it is on, the tile whose bounds contain its center.
+- `dir` is its facing, always one of the four cardinal directions, whether it is
+  moving or at rest.
+- `moving` is `true` while it is traveling and `false` while it is at rest, which
+  is a different question from `dir`.
+
+## The drifters
+
+`drifters` lists every bonus drifter in the maze, each with its center `x` and `y`
+in logical units and the tile `tx`, `ty` it is on. A drifter that has been eaten
+leaves the list.
+
+## The predators
+
+`predators` lists every predator of the current roster, **in release order**: the
+order `specs/predators.md` fixes for the den, which is the order the roster adds
+them in. The list therefore has one stable index per predator for as long as the
+roster stands, and the debugging surface's predator operations select a predator
+by that index.
+
+- `kind` is which hunter it is.
+- `x` and `y` are its center, in logical units, and `tx` and `ty` the tile it is
+  on.
+- `dir` is its facing, always one of the four cardinal directions.
+- `speed` is its current speed, in logical units per second.
+- `alert` is `true` only while its detection alert is firing, which is the
+  `ALERT_TIME` (`0.5 s`) window after a Gloamfin or a Flarefish acquires a fix.
+  It is always `false` for the Lanternjaw, which fires no alert.
+- `lit` is `true` while its body is being drawn this instant, whether by the
+  forager's light, a sonar mark, a flare, or its own alert.
+- `detectRange` is the light detection range the Lanternjaw and the Flarefish have
+  this instant, in logical units, and `null` for the Gloamfin.
+- `hearingRange` is how far the Gloamfin's close-range hearing reaches, in logical
+  units, and `null` for the others.
+- `hearingLock` is `true` while the Gloamfin holds a continuous close-range
+  hearing lock on the forager, and `null` for the others.
+- `flareCharging` is `true` while the Flarefish's pre-bloom charge-up glow is
+  showing, `flaring` is `true` while its bloom is burning, and `flareRadius` is
+  the bloom's current lit radius in logical units, `0` when it is not flaring. All
+  three are `null` for the others.
+
+### `state` and `released`
+
+`state` and `released` answer two different questions about a predator, and
+neither stands in for the other.
+
+`state` says where it is and what it is doing. `"den"` means the predator is in
+the den chamber, which includes one whose turn has come and which is still
+swimming across the chamber toward the gate; it stops being `"den"` when the
+predator is out. `"wander"` is patrolling with no fix, `"chase"` is pursuing a
+fix, and `"search"` is the Gloamfin's cast-about at a tile the forager has left.
+
+`released` says whether its turn has come. It is `false` while a predator waits
+its slot in the staggered schedule `specs/predators.md` fixes, and `true` from the
+moment that slot arrives, before it has crossed the gate and whatever `state`
+says.
+
+A predator posed into the den by the debugging surface has its release time
+suspended, so it stays `released: false` for as long as it is held there.
+
+## The wavefronts and the ink
+
+`pulses` lists every sonar wavefront in flight, the forager's own pulses and the
+Gloamfin's pings alike.
+
+- `source` is what cast it, and `tint` its color: `"cyan"` for the forager's
+  pulse, `"violet"` for an ordinary Gloamfin ping, and `"orange"` for the
+  Gloamfin's guaranteed lost-you ping.
+- `ox` and `oy` are the tile it originated from.
+- `front` is how far the leading edge has traveled from that tile, in corridor
+  steps, and `range` is the furthest it will travel, in the same steps. A pulse
+  leaves the list once its front passes its range.
+
+`inkClouds` lists every ink cloud still standing, each fixed at the center `x`,
+`y` it was released at, with its `radius` in logical units and `remaining`, the
+seconds of life it has left. A cloud leaves the list when `remaining` reaches `0`.
+
+## The driven flags
+
+Two flags exist for driving the game from code, and both rest in the value normal
+play uses.
+
+- `creatureAI` is `true` while the predators and the drifters run their own minds,
+  which is how a dive is played. Turning it off holds every creature exactly where
+  it stands and leaves the rest of the simulation running.
+{{#if (eq engine.slug "none")}}
+- `autoStep` is `true` while the frame loop advances the simulation from the wall
+  clock, which is how a build starts and how it is played. Turning it off leaves
+  the game rendering every frame and advancing only when the debugging surface
+  says so.
+{{/if}}
+
+## The contract
+
+- Every field above is present from the moment the game has initialized, and none
+  of them is optional. A field whose kind does not carry it reports `null`, as the
+  predator fields state, rather than going missing.
+{{#if (eq engine.slug "simple-2d")}}
+- The state handed to `update`, to `render`, to every diagnostic source and to
+  every operation of the debugging surface is read-only, as
+  `DeepReadonly<FathomState>`. `update` and the surface's poses return a new
+  `FathomState` built from the one they received; `render`, the sources and the
+  surface's readings return no state.
+{{else if (eq engine.slug "structured-2d")}}
+- The state is written only through the paths play runs on: the player controller
+  resolves the frame's input into it, the game mode's tick advances it, and the
+  debugging surface's poses arrange it at the call. Rendering reads it and writes
+  nothing.
+{{/if}}
+- Anything the build keeps beyond the fields above is refreshed by every
+  operation that could invalidate it, so a single-field pose leaves the game
+  consistent.
+- A `reset` restores the fields above to their title-screen values and reseeds
+  the game's random generator, leaving the game indistinguishable from one
+  freshly started, so anything else the build keeps across frames follows from
+  what a reset restores.

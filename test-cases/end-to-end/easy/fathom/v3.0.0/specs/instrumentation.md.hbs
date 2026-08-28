@@ -1,0 +1,441 @@
+# Fathom — Debug and automation surface
+
+{{#if (eq engine.slug "none")}}
+Fathom carries a small debugging and automation surface, `window.__fathom`, so the
+dive can be driven and inspected from code without touching the keyboard or
+waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build installs the finished surface on `window.__fathom` as soon as the game has
+initialized. Every scenario driven from code reaches the game through it, so it is
+present and exactly as specified here.
+
+Each operation is a read or a pose of the game's state. A pose arranges the maze,
+and the game's own sensing, pathfinding, release schedule and contact rules run
+from there exactly as they do in play, so a scenario driven from code behaves
+exactly like one played by hand.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else if (eq engine.slug "simple-2d")}}
+Fathom carries a small debugging and automation surface so the dive can be driven
+and inspected from code without touching the keyboard or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+build's `initialize` returns the finished surface beside the state it built, as
+the pair `[state, debug]`. The engine returns that same value from `engine.debug`,
+and it is reached that way alone: nothing is installed on the page. Every scenario
+driven from code reaches the game through it, so it is present and exactly as
+specified here.
+
+Each operation is a reading or a pose of `FathomState`, written in the shape of
+`update`, because the engine holds the state by value and nothing holds a writable
+one. A pose takes the current state, as `DeepReadonly<FathomState>`, and returns
+the next `FathomState`; a reading takes the state the same way and returns what it
+read. A caller drives a pose through the engine's `apply`, as
+`engine.apply((s) => debug.beginPlay(s))`, and a reading against the engine's
+current state, as `debug.snapshot(engine.state)`. A pose arranges the maze, and
+the game's own sensing, pathfinding, release schedule and contact rules run from
+there exactly as they do in play, so a scenario driven from code behaves exactly
+like one played by hand. `src/game.ts` declares and exports its type,
+`FathomDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{else}}
+Fathom carries a small debugging and automation surface so the dive can be driven
+and inspected from code without touching the keyboard or waiting on real time.
+
+You implement it. Every operation this file specifies is a deliverable, and the
+game instance's `initialize` returns the finished surface. The engine holds it and
+returns it from `engine.debug`, and it is reached that way alone: nothing is
+installed on the page. Every scenario driven from code reaches the game through
+it, so it is present and exactly as specified here.
+
+Each operation acts on the live game at the moment it is called. A pose takes only
+the parameters its heading names, arranges the running game through the same
+systems play uses, and returns nothing; a reading takes no parameters, returns
+plain data built at the call, and changes nothing. A pose arranges the maze, and
+the game's own sensing, pathfinding, release schedule and contact rules run from
+there exactly as they do in play, so a scenario driven from code behaves exactly
+like one played by hand. Fathom runs in one world for the whole session and every
+screen is a value of `screen`, so a pose that changes the screen takes effect at
+the call rather than riding a level transition. `src/game.ts` declares and exports
+its type, `FathomDebugApi`.
+
+The surface is inert during normal play, doing nothing until something calls it.
+{{/if}}
+
+## A deterministic core
+
+The surface rests on the fixed-step core `specs/movement.md` fixes: the
+simulation advances in whole `TICK_DT` ticks at `TICK_HZ` (`120`) of them a
+second, so a tick is the unit the operations below count in. Two more properties
+make the game driveable from code:
+
+- Render-free core. Game state advances from the elapsed time the game is handed,
+  independent of a canvas, of the frame loop that measured it, and of wall-clock
+  time. The dependency runs one way: the simulation reads nothing from the
+  renderer.
+- Seeded randomness. Every draw the game makes, for predator and drifter wander,
+  for the bonus-drifter cadence, and for the maze it lays out, runs off a
+  generator the surface's `reset` seeds, and the game keeps that generator's whole
+  state, so reseeding and replaying the same calls reproduces the same result
+  exactly.
+
+Given the same seed and the same sequence of calls and elapsed game time, the game
+reaches the same state every time.
+
+## What the runtime provides instead
+
+{{#if (eq engine.slug "none")}}
+The keyboard and the overlay belong to the runtime layer beneath the game, and the
+surface carries no operation for either. That layer delivers the key bindings this
+specification fixes, so a dispatched keyboard event drives the forager, the sonar
+pulse, the ink, the menus, the pause and the mute exactly as a player's key does,
+and it draws and toggles the debug overlay.
+
+The clock is the exception, because nothing outside this build owns it. The
+surface is what takes the game off real time and advances it, through
+`setAutoStep` and `advance` below.
+{{else}}
+The clock, the keyboard and the overlay belong to the {{engine.name}} engine,
+which documents them in the `engine/` directory at the root of this repository,
+and the surface carries no operation for any of them. The engine advances the game
+frame by frame and a scripted clock takes it off real time, it drives the actions
+the game registers so a dispatched keyboard event moves the forager exactly as a
+player's key does, and it draws and toggles the debug overlay.
+{{/if}}
+
+What the overlay shows is Fathom's, under Diagnostics below.
+
+## The operations
+
+The surface carries `version` (`FATHOM_DEBUG_VERSION`, `1`), a plain number, and
+the operations below. Values are plain numbers, strings and booleans. Positions
+and radii are in the logical units `specs/overview.md` fixes, `tx` and `ty` are
+the column and row of the tile grid defined there, and every duration is in
+seconds.
+{{#if (eq engine.slug "simple-2d")}}
+
+Each operation's first parameter is the current state, `DeepReadonly<FathomState>`.
+A pose returns the next `FathomState`, built from the one it was handed, which it
+leaves as it was; a reading returns what it read. The headings below name the
+parameters that follow the state.
+{{/if}}
+
+An argument outside the domain its operation states is invalid, and the call fails
+loudly rather than guessing what was meant.
+
+{{#if (eq engine.slug "none")}}
+### `setAutoStep(enabled)`
+
+Takes the game off real time, and gives it back. `setAutoStep(false)` stops the
+frame loop advancing the simulation from the wall clock, so the game changes only
+when `advance` says so. `setAutoStep(true)` returns it to running itself, which is
+how a build starts and how it is played.
+
+Drawing is unaffected either way: the loop keeps rendering, so the canvas shows
+the state the most recent tick left.
+
+### `advance(ticks)`
+
+Runs `ticks` whole simulation ticks immediately and in order, each worth exactly
+one `TICK_DT`. The unit is ticks rather than seconds, so nothing is rounded: `advance(1)`
+runs one tick and `advance(120)` covers one second of game time. Each tick is a real
+tick, the same one the frame loop runs, so the game's own sensing, pathfinding and
+contact rules produce the result, and the canvas is redrawn to reflect it.
+
+`ticks` is a non-negative whole number, and `advance(0)` runs nothing.
+
+Advancing while the game is still stepping automatically adds to what the wall
+clock is already doing, so a reproducible scenario calls `setAutoStep(false)`
+first.
+
+{{/if}}
+{{#if (eq engine.slug "simple-2d")}}
+### `reset(state, options)`
+{{else}}
+### `reset(options)`
+{{/if}}
+
+Restores every field of the observable state defined in `specs/state.md` to its
+title-screen value: the title screen with its first menu item highlighted, the
+score at `0`, `START_LIVES` (`3`) lives, depth `1`, brightness `0`, a freshly laid
+out maze with plankton on every corridor tile, no drifters, every predator in the
+den and unreleased, both cooldowns ready, no pulses and no ink clouds in flight,
+the fog fully unrevealed, creature minds on, and `simTime` at `0`.
+`options.seed` seeds the game's random generator, defaulting to `DEFAULT_SEED`
+(`1`).
+`options` is optional and an omitted `seed` takes the default.
+{{#if (eq engine.slug "none")}}
+A reset also re-arms manual stepping, leaving the game off the wall clock.
+{{/if}}
+
+`muted` is untouched, because muting is a player preference rather than a value a
+dive opens with.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `snapshot(state)`
+
+A pure reading of `state`, returned as the plain object `specs/state.md` defines.
+It returns no state, because it poses nothing.
+
+### `startDive(state)`
+{{else}}
+### `snapshot()`
+
+A pure read of the game, returned as the plain object `specs/state.md` defines. It
+changes nothing.
+
+### `startDive()`
+{{/if}}
+
+Poses the opening of a real dive, exactly as choosing `DIVE` from the title menu
+does: the score returns to `0`, lives to `START_LIVES`, depth to `1`, the maze is
+laid out afresh with its full plankton, every predator is in the den and
+unreleased, and `screen` becomes `"countdown"`. It leaves `simTime` as it is.
+
+The dive runs from there: the countdown ticks down against the elapsed time and
+play begins through the game's own code.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `beginPlay(state)`
+{{else}}
+### `beginPlay()`
+{{/if}}
+
+Ends the dive countdown immediately instead of waiting it out, so `screen` becomes
+`"playing"` and the den's release schedule starts from that moment. It applies on
+the `"countdown"` screen alone.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setDepth(state, d)`
+{{else}}
+### `setDepth(d)`
+{{/if}}
+
+Sets the current depth to the whole number `d`, at least `1`. Everything depth
+scales recomputes from it, so the predator roster and the sonar range are those
+`specs/progression.md` and `specs/predators.md` give for depth `d`, and a caller
+reads the scaled values back from the snapshot. It changes neither the maze nor
+the screen.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setMaze(state, rows)`
+{{else}}
+### `setMaze(rows)`
+{{/if}}
+
+Replaces the maze layout with the one given. `rows` is an array of `GRID_ROWS`
+(`18`) strings of `GRID_COLS` (`36`) characters each, in exactly the alphabet the
+snapshot's `tiles` uses: `'#'` rock, `'.'` corridor, `'g'` the den gate, and `'d'`
+den interior. A layout of the wrong size, carrying any other character, or
+carrying `'d'` or `'g'` tiles without exactly one `'g'`, is invalid.
+
+The posed layout is a fixture and is used exactly as given. It is **exempt** from
+every rule in `specs/maze.md`: dead ends, corridors wider than one tile,
+asymmetry, disconnected regions, a missing wrap tunnel and a missing den are all
+legal in a fixture, and the game keeps running on one. A structure the layout does
+not have simply takes no part: with no den gate the bonus-drifter cadence has
+nowhere to admit a drifter from and admits none, and a predator returned to a den
+that is not there is held out of play. The game accepts the fixture as it stands,
+without repairing it, refusing it, stalling on it, or returning to a maze of its
+own.
+
+After the call the game behaves in every respect as though the posed layout were
+the maze it had laid out itself. The wrap tunnel of a posed layout is the first
+row, if any, whose column `0` and column `35` tiles are both open.
+
+The board is left in the state a freshly laid-out maze starts in: a plankton on
+every corridor tile outside the den, revealed-tile memory cleared back to fog, and
+every predator returned to a den tile with its `released` flag `false`. The
+staggered release schedule is **suspended** while a posed board stands, so no
+release time arrives and no predator leaves the den until a later
+`setPredatorState` poses it out. The forager is placed at rest on the first
+corridor tile in reading order, scanning the top row left to right and then each
+row below, which is a defined resting place rather than a meaningful one.
+
+What it does not change is what the game is doing. The score, the lives, the
+depth, the cooldowns and the screen are all left as they are, so a call made
+during live play leaves the game in live play. The fixture holds until the next
+`reset`, or until a descent lays out the next maze.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setForagerTile(state, tx, ty)`
+{{else}}
+### `setForagerTile(tx, ty)`
+{{/if}}
+
+Moves the forager to the center of tile `(tx, ty)` and leaves it at rest there, as
+though no movement key were held. The tile is an open corridor tile. Its facing is
+untouched, and injected input moves it from there through the game's ordinary
+movement code.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setForagerDir(state, dir)`
+{{else}}
+### `setForagerDir(dir)`
+{{/if}}
+
+Sets the forager's facing to `dir`, one of `"up"`, `"down"`, `"left"` and
+`"right"`. It moves the forager nowhere and leaves it at rest.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setBrightness(state, g)`
+{{else}}
+### `setBrightness(g)`
+{{/if}}
+
+Sets the forager's brightness `G` to `g`, in `[0, 1]`. Everything derived from
+brightness recomputes from it.
+{{#if (eq variant.slug "kindle")}}
+The light radius `V`, the vision-circle radius `R`, and the Lanternjaw's and
+Flarefish's light detection ranges are those `specs/sensing.md`,
+`specs/predators/lanternjaw.md` and `specs/predators/flarefish.md` give for `g`.
+{{else}}
+The light radius `V` and the Lanternjaw's and Flarefish's light detection ranges
+are those `specs/sensing.md`, `specs/predators/lanternjaw.md` and
+`specs/predators/flarefish.md` give for `g`.
+{{/if}}
+
+It also arms the `BRIGHT_HOLD` (`1.0 s`) brightness hold, exactly as eating a
+plankton does, so the value it poses is steady for that full second and only then
+decays on the ordinary curve. The hold is armed in full every time, so this
+operation poses neither a part-spent hold nor a forager with no hold at all.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setPredatorTile(state, index, tx, ty)`
+{{else}}
+### `setPredatorTile(index, tx, ty)`
+{{/if}}
+
+Moves one predator to the center of tile `(tx, ty)` and leaves it there. `index`
+selects a predator by its position in the snapshot's `predators` list, counted
+from `0`. The tile is an open corridor tile, a den tile or the den gate. Its
+facing, its state and its `released` flag are untouched.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setPredatorDir(state, index, dir)`
+{{else}}
+### `setPredatorDir(index, dir)`
+{{/if}}
+
+Sets one predator's facing to `dir`, one of `"up"`, `"down"`, `"left"` and
+`"right"`. `index` selects the predator as above.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setPredatorState(state, index, value)`
+{{else}}
+### `setPredatorState(index, value)`
+{{/if}}
+
+Sets one predator's state to `value`, one of `"den"`, `"wander"` and `"chase"`.
+`index` selects the predator as above. `"search"` is reached only through the
+Gloamfin's own behavior and is not posed. After the pose the predator's own mind
+runs whenever the simulation advances: it senses, acquires, chases and searches
+through the real code.
+
+| `value` | What it poses |
+| --- | --- |
+| `"den"` | The predator is returned to a den tile, its `released` flag becomes `false`, and its release time is **suspended**, so it stays in the den chamber however long the scenario runs, until a later call poses it out. On a board with no den chamber it is held out of play, undrawn, unmoving, and unable to make contact. |
+| `"wander"` | The predator is loose on the tile it stands on, patrolling, with no fix on the forager. Its `released` flag becomes `true`. |
+| `"chase"` | The predator is loose on the tile it stands on, with a fix on the forager's current tile, pursuing it. Its `released` flag becomes `true`. |
+
+{{#if (eq engine.slug "simple-2d")}}
+### `spawnDrifter(state, tx, ty)`
+{{else}}
+### `spawnDrifter(tx, ty)`
+{{/if}}
+
+Adds one bonus drifter at the center of tile `(tx, ty)`, an open corridor tile. It
+then wanders through the ordinary drifter code and is worth the ordinary bonus
+when eaten. It is added whatever the drifter cadence is doing and whatever the
+`DRIFTER_MAX` (`2`) ceiling would otherwise allow.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setCreatureAI(state, enabled)`
+{{else}}
+### `setCreatureAI(enabled)`
+{{/if}}
+
+Turns the creatures' own minds on or off, where a creature is every predator and
+every bonus drifter. They are on by default and a `reset` restores them.
+
+With them off, each creature holds exactly where it stands, keeping the tile,
+facing and state it was posed with: it senses nothing, decides nothing, and does
+not move, however long the scenario runs. Everything else continues. The forager
+still swims under its own controls, its brightness and light still follow what it
+eats, cooldowns still run down, sonar wavefronts and ink clouds still travel and
+expire, plankton and drifters are still eaten and still score, and contact with a
+predator still costs a life.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setPlankton(state, tx, ty, present)`
+{{else}}
+### `setPlankton(tx, ty, present)`
+{{/if}}
+
+Puts a plankton on tile `(tx, ty)` when `present` is `true` and takes one off when
+it is `false`, and adjusts `planktonRemaining` to match. The tile is an open
+corridor tile. Removing a plankton this way is not eating it, so it scores nothing
+and clears no maze.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `clearPlankton(state)`
+{{else}}
+### `clearPlankton()`
+{{/if}}
+
+Takes every plankton off the maze at once, leaving `planktonRemaining` at `0`. As
+with `setPlankton`, nothing here is eaten, so it scores nothing and clears no
+maze: the maze is cleared by the forager eating a plankton when none remain after
+it, and an empty maze the forager has not just eaten from stays in live play.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setSonarCooldown(state, seconds)`
+{{else}}
+### `setSonarCooldown(seconds)`
+{{/if}}
+
+Sets the seconds remaining on the sonar pulse's cooldown, at least `0`. At `0` the
+pulse is ready and the snapshot reports `sonar.ready` as `true`. The cooldown runs
+down from the posed value on the ordinary curve.
+
+{{#if (eq engine.slug "simple-2d")}}
+### `setInkCooldown(state, seconds)`
+{{else}}
+### `setInkCooldown(seconds)`
+{{/if}}
+
+Sets the seconds remaining on ink's cooldown, at least `0`. At `0` ink is ready and
+the snapshot reports `ink.ready` as `true`. The cooldown runs down from the posed
+value on the ordinary curve.
+
+## Diagnostics
+
+The debug overlay is read-only. It shows the values the game registers with it as
+diagnostic sources, it draws over the running game without changing anything, and
+it is hidden until it is toggled. Register at least the current `screen` and
+`depth`, the `score` and `lives`, the brightness `G`, the light radius `V`,
+{{#if (eq variant.slug "kindle")}}the vision-circle radius `R`, {{/if}}the sonar and ink cooldowns, the plankton
+remaining, the forager's tile and facing, and, for each predator, its kind,
+state, tile, speed and whether its alert is firing. Those are the same facts the
+snapshot reports. Keep each source short enough to read on a line and keep every
+one a pure read, so watching the overlay leaves the simulation as it is.
+
+{{#if (eq engine.slug "none")}}
+The overlay is part of the runtime layer you write. It draws the registered
+sources in the game's monospace type, plainly and clearly apart from the HUD, and
+the backtick key (`KeyboardEvent.code` `Backquote`) shows and hides it. It starts
+hidden.
+{{else if (eq engine.slug "simple-2d")}}
+Registering those values is the whole of Fathom's part, through
+`InitApi.diagnostics`. Each source is called with the state current at the read, as
+`DeepReadonly<FathomState>`, and reports the value that state carries. Drawing the
+panel, toggling it with the backtick key, and keeping it read-only are the
+engine's.
+{{else}}
+Registering those values is the whole of Fathom's part, through the diagnostics
+registries the engine provides. Each source is a function of no arguments, called
+at each read, reporting the live game at the moment it runs. Drawing the panel,
+toggling it with the backtick key, and keeping it read-only are the engine's.
+{{/if}}

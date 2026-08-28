@@ -1,0 +1,391 @@
+# Fathom
+
+## Overview
+
+Fathom is a bioluminescent deep-sea maze chase for the browser. The player is a
+small glowing forager threading the flooded corridors of a pitch-dark maze,
+grazing plankton while predators hunt it. The maze is unseen until the forager's
+own light or a sonar pulse touches it, so a dive is as much about sensing where
+the danger is as about outswimming it.
+
+Fathom's defining idea is hunting in the dark. The maze starts unrevealed and is
+uncovered as the forager explores it or pings it, the predators stay hidden
+between glimpses, and each predator hunts by a different sense. One tracks
+light, one tracks sound, and one hunts in the flash of its own flare.
+
+Fathom has its own name, look, sensing systems, and predators, and its assets,
+branding, and design are original to it.
+
+The specification spans several files under `specs/`.
+
+| File | What it fixes |
+| --- | --- |
+| `specs/overview.md` | The stage, the tile grid, the project, and what a player reads at a glance. |
+| `specs/maze.md` | The maze layout rules, the den, and the wrap tunnel. |
+| `specs/movement.md` | The fixed timestep, how bodies travel the maze, and the controls. |
+| `specs/sensing.md` | The fog of war, the forager's light and brightness, the sonar pulse, and the ink. |
+| `specs/gameplay.md` | The plankton, the bonus drifters, and contact with a predator. |
+| `specs/progression.md` | Scoring, lives, depth, the descent, and the audio cues. |
+| `specs/ui.md` | The screens, the menus, the transitions between them, and the HUD. |
+| `specs/predators.md` | What every predator shares: movement, wander, the fix, the alert, the den schedule, and the roster. |
+| `specs/predators/lanternjaw.md` | The Lanternjaw's sense, tell, speeds, and states. |
+| `specs/predators/gloamfin.md` | The Gloamfin's sense, ping, speeds, search, and states. |
+| `specs/predators/flarefish.md` | The Flarefish's sense, flare, chase, and states. |
+| `specs/assets.md` | The art seeded with the project and how the game draws it. |
+| `specs/state.md` | The observable state and the snapshot that reports it. |
+| `specs/instrumentation.md` | The debugging and automation surface over that state. |
+| `specs/showcase.md` | The showcase the finished game ships beside its source. |
+
+Read all of them and build the game they describe as one cohesive whole.
+
+{{#if (eq engine.slug "none")}}
+## The runtime
+
+This game stands on no engine, so the runtime under it is yours to write: the
+frame loop and the delta time it measures, the canvas fit, keyboard input, image
+loading, audio cues, and the debug overlay. Where this specification speaks of
+the runtime it means that layer, and it states only what Fathom needs from it.
+How the layer is structured is yours to decide.
+{{else if (eq engine.slug "simple-2d")}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It owns the frame loop and
+the delta time the game is given, the input actions the forager and the menus
+are driven by, audio cues, asset loading, the canvas fit, and the debug overlay.
+Read its documentation before you start. This specification states only what is
+specific to Fathom.
+{{else}}
+## The runtime
+
+The game is built on the {{engine.name}} engine, which documents itself in the
+`engine/` directory at the root of this repository. It is a gameplay framework
+as much as a runtime: the game is written as subclasses of its classes, a game
+instance, a game mode, actors and their components, and the controllers that
+drive them, and the engine constructs, ticks, and renders them in a fixed order.
+It owns the frame loop and the delta time the game is given, rendering and the
+camera, the canvas fit, the input actions the forager and the menus are driven
+by, audio cues, asset loading, and the debug overlay. Read its documentation
+before you start. This specification states only what is specific to Fathom.
+
+The logical design field handed to the engine is the stage, and the game leaves
+the camera at rest, so world units and the stage's logical units coincide and
+every position in this specification is both.
+{{/if}}
+
+## The project you build in
+
+The project at the root of this repository is already wired up, and its
+`README.md` describes it. It is a TypeScript project built with Vite, tested
+with Vitest, linted with ESLint, and formatted with Prettier. That toolchain is
+fixed and supplied.
+
+{{#if (eq engine.slug "none")}}
+### What you implement
+
+Everything under `src/`. The directory does not exist yet.
+
+`index.html` loads `/src/main.ts` as its entry point, so that module is where
+your build starts. Beyond that the structure is yours: the frame loop and the
+canvas fit, keyboard input, image loading, audio, the diagnostics overlay, the
+debug and automation surface, the figures this specification fixes, and the game
+itself.
+
+The game's state is yours to shape. `specs/state.md` states what it must carry,
+and `specs/instrumentation.md` states the contracts fixed over it.
+
+### What stays as it is
+
+- `index.html`, the page and the canvas the stage is fitted into.
+- `assets/`, the art seeded with the project. `specs/assets.md` states what each
+  sheet holds and how the game renders it.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts
+stay as they are.
+
+### Every figure comes from this specification
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is stated here under a name. Anything this specification
+does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured
+over `src/`. A test drives the game over its own clock for a counted number of
+frames, so it needs no browser, and `@napi-rs/canvas` is installed for a test
+that wants a real 2D context.
+{{else if (eq engine.slug "simple-2d")}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `Game<FathomState, FathomDebugApi>`:
+`initialize` builds the state and the debug surface once and returns them
+together as `[state, debug]`, `update` takes the current state as a read-only
+view (`DeepReadonly<FathomState>`) and returns the next state, advanced against
+the frame's delta time in seconds, and `render` is handed that next state,
+read-only again, and draws it. The engine holds the state by value and replaces
+it with what each `update` returns, so a frame builds the next state from the
+current one rather than writing into it, and nothing but `update` and the debug
+surface's poses advances the game. All three functions throw `"not implemented"`
+as they stand. Implement them.
+
+`src/game.ts` also declares and exports `FathomState` and the types it is built
+from, exactly as `specs/state.md` states them, and `FathomDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the water
+itself. The seeded stub exports a placeholder; replace it with the color your
+trench uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's
+  canvas, binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `assets/`, the art seeded with the project. `specs/assets.md` states what each
+  sheet holds and how the game renders it.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts
+stay as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, and piece of screen copy this
+specification fixes is exported from `src/constants.ts` under the name this
+specification gives it. Import it and use it. Where a spec states a value it
+also names the constant that holds it, and the constant is authoritative.
+Anything this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured
+over `src/`. A test stands the engine up over its own canvas and clock and
+advances the game a counted number of frames, so it needs no browser.
+{{else}}
+### What you implement
+
+`src/game.ts`, and any new modules you add beside it under `src/`.
+
+`src/game.ts` exports `game`, a `GameDefinition<FathomDebugApi>`: the game
+instance class, a level registry holding the single level the game runs in, and
+`startLevel` naming it. The game opens that one level and never opens another;
+every screen is a value of the state's `screen` field, so the world and its game
+state live for the whole session. The instance's `initialize` registers the
+actions, defines the cues, and returns the debug surface. The level's game mode
+runs the screens and the rules, and its `gameStateClass` is `FathomState`, so
+the world's game state is the state `specs/state.md` declares. That mode adds a
+single player, and the frame's input is read in that player's controller. The
+actors, components, and controllers you write draw that state and drive it. As
+seeded,
+the definition is a stub whose instance throws `"not implemented"`. Implement
+it.
+
+`src/game.ts` also declares and exports `FathomState` and the types it is built
+from, exactly as `specs/state.md` states them, and `FathomDebugApi`, the debug
+and automation surface `specs/instrumentation.md` fixes.
+
+`src/game.ts` also exports `BACKGROUND`, a CSS color string: the stage
+background. `src/main.ts` hands it to the engine as the color the canvas is
+cleared to each frame, so the letterbox bars around the stage match the water
+itself. The seeded stub exports a placeholder; replace it with the color your
+trench uses.
+
+### What stays as it is
+
+- `src/main.ts`, the entry point. It stands the engine up over the page's
+  canvas, binds `game` to it, and runs.
+- `src/constants.ts`, holding every figure this specification fixes.
+- `index.html`, the page and the canvas the engine fits the stage into.
+- `assets/`, the art seeded with the project. `specs/assets.md` states what each
+  sheet holds and how the game renders it.
+- `.tcab/`, holding the vendored engine that `package.json` resolves the
+  dependency from.
+- `engine/`, the engine's own documentation.
+- The configuration: `tsconfig.json`, `vite.config.ts`, `vitest.config.ts`,
+  `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, and `.gitignore`.
+
+`package.json` takes one kind of change: a dependency you genuinely need, added
+along with the updated `package-lock.json`. Its existing entries and scripts
+stay as they are.
+
+### Every figure comes from `src/constants.ts`
+
+Every number, identifier, key binding, cue name, level name, and piece of screen
+copy this specification fixes is exported from `src/constants.ts` under the name
+this specification gives it. Import it and use it. Where a spec states a value
+it also names the constant that holds it, and the constant is authoritative.
+Anything this specification does not name is yours to decide.
+
+### Your own tests
+
+Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
+`npm test` runs them in process with Vitest, in Node, with coverage measured
+over `src/`. A test stands the engine up over a canvas from `@napi-rs/canvas`
+and a surface and clock of its own, then advances the game a counted number of
+frames with `engine.advance`, so it needs no browser.
+{{/if}}
+
+### The checks the repository passes
+
+Four commands run over the finished repository before it is reviewed:
+
+| Command | Checks |
+| --- | --- |
+| `npx tsc --noEmit` | The code type-checks. A repository that does not compile is not reviewed. |
+| `npx eslint .` | The code is lint-clean. |
+| `npx prettier --check .` | The code is formatted. |
+| `npx vitest run --coverage` | Your tests pass, with their count and coverage reported. |
+
+They run on the repository as you leave it. `npm run typecheck`, `npm run lint`,
+`npm run format`, and `npm test` run the same four locally.
+
+### The build interface
+
+`npm ci` followed by `npm run build` produces the complete static site into
+`dist/` at the repository root, with an `index.html` at the root of that
+directory as the entry point. The scripts that do this are already in
+`package.json`.
+
+That directory runs correctly when served as-is from a static file server, both
+at the server root and under a sub-path of it, so every URL the running game
+requests resolves relative to the page rather than the origin root. The art
+under `assets/` is loaded that way, as `specs/assets.md` states.
+
+## Goal of this build
+
+Produce a complete, polished, playable game that runs entirely in a browser.
+This is a substantial front-end build: real-time rendered graphics, a
+fixed-timestep simulation, a fog-of-war visibility system, tile-locked maze
+movement, three distinct predator behaviors, several screens, and a HUD. Aim for
+a game a person would enjoy playing, tense and readable.
+
+### Hard requirements
+
+{{#if (eq engine.slug "none")}}
+- Write the runtime the game stands on: the frame loop and its delta time, the
+  canvas fit, keyboard input, image loading, audio, and the debug overlay.
+{{else if (eq engine.slug "simple-2d")}}
+- Build on the {{engine.name}} engine, taking the frame loop, the input actions,
+  audio, asset loading, and the debug overlay from it.
+{{else}}
+- Build on the {{engine.name}} engine, taking the frame loop, rendering, the
+  input actions, audio, asset loading, and the debug overlay from it, and
+  writing the game inside its framework of game modes, actors, components, and
+  controllers.
+{{/if}}
+- Render real graphics on the canvas rather than an ASCII or text-only
+  rendering: the creatures, the maze tiles, and the flare from the art seeded
+  under `assets/`, which `specs/assets.md` states in full, and everything else
+  as shapes and text drawn in code.
+- Run in the browser with no backend. Everything needed to play ships with the
+  build, nothing is fetched from another origin at runtime, and no API key or
+  credential is needed to build, run, or play.
+{{#if (eq engine.slug "none")}}
+- Hold the game's whole state in one value, the one the frame loop advances and
+  the debug surface reads.
+{{else if (eq engine.slug "simple-2d")}}
+- Hold the game's whole state in `FathomState`, as `specs/state.md` declares it.
+{{else}}
+- Hold the game's whole authoritative state in `FathomState`, the world's game
+  state, as `specs/state.md` declares it.
+{{/if}}
+- Expose the debugging and automation surface `specs/instrumentation.md` fixes,
+  over the fixed-step, deterministic core it requires.
+- Replace the starter `README.md` with one explaining what the game is, how to
+  install dependencies, how to run it in development, how to produce the static
+  production build, and the controls.
+
+## Code quality
+
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
+
+## Coordinate system and presentation
+
+All positions, sizes, speeds, and ranges in this specification are given in the
+game's own logical units on a fixed stage of `STAGE_W x STAGE_H` (`1280 x 720`,
+16:9). The origin `(0, 0)` is the top-left; `x` increases to the right and `y`
+increases downward.
+
+- `STAGE_W x STAGE_H` is the game's logical design size. Fitting it to the
+  browser window is the runtime's: the uniform scale that preserves the aspect
+  ratio, the letterboxed centering, and the device pixel ratio. The complete
+  stage is therefore on screen at every window size, on load and at any pixel
+  density.
+- The letterbox bars around the stage carry the stage's background color.
+- Draw in logical units, and take the canvas element's own size from the runtime
+  alone.
+- Game logic operates in logical units, independent of the rendered scale.
+
+Every rate in this specification is per second and every duration is in seconds.
+
+### The tile grid
+
+The maze is laid out on a tile grid of `GRID_COLS` (`36`) columns by `GRID_ROWS`
+(`18`) rows, each tile `TILE` (`32`) logical units square. Column `0`'s left edge
+is at `GRID_ORIGIN_X` (`64`) and row `0`'s top edge is at `GRID_ORIGIN_Y` (`80`),
+so the maze region spans `x` in `[64, 1216]` and `y` in `[80, 656]`.
+
+| Quantity | Value |
+| --- | --- |
+| The left edge of column `tx` | `GRID_ORIGIN_X + tx * TILE` |
+| The top edge of row `ty` | `GRID_ORIGIN_Y + ty * TILE` |
+| The center of tile `(tx, ty)` | `(GRID_ORIGIN_X + tx * TILE + TILE / 2, GRID_ORIGIN_Y + ty * TILE + TILE / 2)` |
+
+Tile centers are the reference points for movement and for sensing throughout
+this specification. The HUD occupies the strip above the maze region, `y` in
+`[0, 80]`, and the strip below it, `y` in `[656, 720]`.
+
+## The screens
+
+The game is a state machine over seven screens: the title screen and its menu,
+the how-to-play screen, the dive countdown, live play, the paused screen, the
+maze-cleared interstitial, and the game-over screen. Every build carries all
+seven. `specs/state.md` names the value each one carries in `screen`, and
+`specs/ui.md` defines what each one shows, what its controls do, and how the
+game moves between them.
+
+## Visual design
+
+The look is bioluminescence in the abyss: cold light glowing out of a near-black
+maze. The palette, the glow, the layout of each screen, and every other aspect
+of the look are yours, within the requirements below.
+
+The creatures, the maze tiles, and the flare bloom are seeded as art under
+`assets/` and are rendered from it. The forager's light, the plankton, the sonar
+wavefronts, the ink, the HUD, and all text are drawn in code. `specs/assets.md`
+states which is which.
+
+Whatever look you choose, a player reads all of the following at a glance.
+
+| What a player reads | Requirement |
+| --- | --- |
+| The dark | An unrevealed tile is drawn as flat darkness, near-black and no brighter than a tenth of full brightness, hiding whether it is rock or open water. |
+| Rock and water | Where the game shows a revealed tile, rock and open corridor are told apart at a glance. |
+| The forager | The forager stands clearly apart from the corridor it swims along, and the light it carries reads as a cool glow around it. |
+| The predators | Each of the three predators is told apart from the other two and from the forager. |
+| The amber lights | The Lanternjaw's bulb and the bonus drifter are each drawn as a warm amber light, red-leaning and clearly warmer than the water, the rock, and the forager's own light. The two read as near-identical lights, so one is not told from the other at a distance. |
+| Plankton | A plankton reads as a small point of light against the corridor floor it sits on. |
+| The wavefronts | A sonar wavefront is drawn as it travels, and the three tints `specs/state.md` names are told apart from each other: cyan for the forager's pulse, violet for an ordinary Gloamfin ping, and orange for the Gloamfin's lost-you ping. |
+| The ink | An ink cloud is visibly darker than the water it stands in, and covers the area `specs/sensing.md` gives it. |
+| Text | Text is legible against its background at the logical stage size. |
+
+Every screen's text is set in a monospace type family, taken from a system stack
+rather than from a font the page downloads, so the game renders the same with no
+network.

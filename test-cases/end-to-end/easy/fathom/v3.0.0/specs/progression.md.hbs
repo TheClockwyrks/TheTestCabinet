@@ -1,0 +1,149 @@
+# Fathom — Scoring, lives, depth, and audio
+
+This file fixes what a dive is worth, what a catch costs, how a cleared maze
+descends to a deeper one, what depth scales, and the audio the game plays. The
+maze is in `specs/maze.md`, the plankton and the drifters in
+`specs/gameplay.md`, the fog, brightness and sonar in `specs/sensing.md`, the
+controls in `specs/movement.md`, the predators in `specs/predators.md`, and the
+screens the values below are shown on in `specs/ui.md`.
+
+## Scoring
+
+| Event | Points |
+| --- | --- |
+| The forager eats a plankton | `SCORE_PLANKTON` (`10`) |
+| The forager eats a bonus drifter | `SCORE_DRIFTER` (`200`) |
+| A maze is cleared | `SCORE_CLEAR` (`500`) |
+
+The score is one running total for the whole dive, carried across every maze of
+it and reported as `score`. It rises by the exact figure above and by nothing
+else. A dive opens at `0`, and losing a life leaves it as it stands.
+
+## Lives and getting caught
+
+A dive opens with `START_LIVES` (`3`) lives, reported as `lives`. That count is
+the lives held in reserve: the life being played is not one of them.
+
+Contact with a predator, defined in `specs/gameplay.md`, costs exactly one
+life. While a life remains in reserve, `lives` falls by `1`, the maze is set up
+for another attempt, and `screen` becomes `"countdown"`, so play resumes through
+the dive countdown. The attempt starts from this arrangement:
+
+- The forager is at rest on its start tile, with its brightness at `0`.
+- Every predator is back in the den with its `released` flag `false`, and the
+  staggered release schedule in `specs/predators.md` runs again from the moment
+  live play resumes.
+- Every bonus drifter is gone from the maze, and the drifter cadence restarts.
+- Every sonar wavefront and every ink cloud is gone, and both cooldowns are
+  ready.
+- The plankton already eaten stay eaten, so `planktonRemaining` is unchanged.
+- The score and the depth are unchanged.
+- What the dive has revealed of the maze carries across, as `specs/sensing.md`
+  gives.
+
+Contact with no life in reserve ends the dive instead: `lives` is already `0`,
+and `screen` becomes `"gameover"`.
+
+## Descending to the next maze
+
+A maze is cleared when the forager eats a plankton and none remain in the maze
+after it. Clearing awards the `SCORE_CLEAR` bonus and `screen` becomes
+`"cleared"`, and the next maze then begins at depth `d + 1`, opening on the dive
+countdown as the first maze of the dive does. `specs/ui.md` fixes how long the
+cleared screen holds.
+
+The next maze starts fresh: plankton on every corridor tile outside the den, the
+fog fully unrevealed, the forager at rest on its start tile, every predator in
+the den with its `released` flag `false` and the staggered release schedule
+running again from the moment live play begins, no bonus drifters, and the
+drifter cadence restarted. The score and the lives in reserve carry across.
+
+The layout of the next maze is a free choice. Reusing the current layout at every
+depth and laying out a fresh one per depth both satisfy `specs/maze.md`.
+
+## What depth scales
+
+The depth `d` is a whole number from `1`, reported as `depth`, and the first maze
+of a dive is depth `1`. Two things scale with it.
+
+Deeper mazes hold more hunters. Depth `1` holds one predator of each kind, each
+depth beyond the first adds one more, and the roster caps at two of each kind,
+six predators in all, from depth `4` on. The kinds, the order they are added in,
+and the release schedule are in `specs/predators.md`.
+
+The sonar pulse's path range `E` shrinks by one tile per depth, down to a floor
+of `SONAR_RANGE_MIN` (`5`) tiles from a base of `SONAR_RANGE_BASE` (`9`) tiles
+at depth `1`:
+
+`E = max(SONAR_RANGE_MIN, SONAR_RANGE_BASE - (d - 1))` tiles
+
+| Depth `d` | `1` | `2` | `3` | `4` | `5` and deeper |
+| --- | --- | --- | --- | --- | --- |
+| `E` | `9` | `8` | `7` | `6` | `5` |
+
+`E` is reported as `sonar.range`, and it is the range every pulse the forager
+emits carries, reported as that pulse's `range`.
+
+Nothing else scales with depth. Every predator speed in `specs/predators.md` and
+the files under `specs/predators/` holds at every depth, and so do the predators'
+detection ranges and senses, brightness, the sonar and ink cooldowns, ink's
+radius and life, the drifter cadence, and the scoring figures above.
+
+## Audio
+
+{{#if (eq engine.slug "none")}}
+The audio layer is part of the runtime you write. Every cue is synthesized with
+the Web Audio API, and the build ships no audio files. Define and play exactly
+the seven cues in `CUES`, under exactly these names, one per event:
+{{else if (eq engine.slug "simple-2d")}}
+Audio plays through the engine's cue bus. Every cue is synthesized from its
+declaration, and the build ships no audio files. Define and play exactly the
+seven cues in `CUES`, under exactly these names, one per event:
+{{else}}
+Audio plays through the engine's cue bus: define exactly the seven cues in
+`CUES` from the game instance's `initialize` and play them from the world's
+audio inside a tick, under exactly these names, one per event:
+{{/if}}
+
+| Cue | Constant | Played when |
+| --- | --- | --- |
+| `eat` | `CUES.eat` | The forager eats a plankton. |
+| `sonar` | `CUES.sonar` | The forager emits a sonar pulse. |
+| `ink` | `CUES.ink` | The forager releases an ink cloud. |
+| `predator-ping` | `CUES.predatorPing` | A Gloamfin emits one of its own sonar pings. |
+| `flare` | `CUES.flare` | A Flarefish's bloom begins. |
+| `caught` | `CUES.caught` | A predator makes contact with the forager. |
+| `descend` | `CUES.descend` | A maze is cleared. |
+
+Each is a distinct short sound, so the seven events are told apart by ear. Each
+is played on the tick its event happens, and at most once on that tick: a tick
+that raises more than one of them plays each of those once, and a tick on which
+two creatures raise the same one plays it once.
+
+{{#if (eq engine.slug "none")}}
+Muting and the first-interaction unlock belong to the runtime you write. The mute
+control `specs/movement.md` fixes toggles the runtime's mute bit from any screen,
+and the game mirrors that bit into `muted` every frame. Sound starts only once
+the player has interacted with the page, and a cue played before that is accepted
+and simply sounds nothing.
+{{else}}
+Muting and the first-gesture unlock belong to the engine. The game binds the mute
+control `specs/movement.md` fixes to the engine's mute bit and toggles it from
+any screen, then mirrors that bit into `muted` every frame. A cue played before
+the unlock is accepted and simply sounds nothing.
+{{/if}}
+
+While `muted` is on, no cue sounds. The events that raise cues still happen and
+the game plays exactly as it does unmuted, and only the sound stops. Clearing
+the toggle restores the cues from the next event on. A session opens with sound
+on, so `muted` is `false` until the mute control is used.
+
+The game stays fully playable with sound muted, and it runs, plays and reaches
+every screen whether or not audio is available.
+
+## Out of scope
+
+- Network or online play.
+- Predators that can be eaten, and power-ups that turn them into prey.
+- Persistence of the score or of any setting between sessions. Each session
+  starts fresh.

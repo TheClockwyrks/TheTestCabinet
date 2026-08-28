@@ -1,0 +1,145 @@
+# Fathom — Movement and controls
+
+This file defines the simulation's fixed timestep, how the forager and the
+predators travel the maze, and the controls a player operates the game with. The
+maze the bodies travel is in `specs/maze.md`, each predator's own behavior is in
+`specs/predators.md`, and what the sonar pulse and the ink do is in
+`specs/sensing.md`. Every figure below carries the name this specification gives
+it.
+
+## The fixed-step core
+
+The simulation runs on a fixed timestep of `TICK_HZ` (`120`) steps per second, so
+one simulation tick, `TICK_DT`, is exactly `1/120 s`. Every rate in this
+specification is integrated in whole ticks of that length.
+
+{{#if (eq engine.slug "none")}}
+The core is decoupled from rendering. A frame reports how much time has elapsed
+and the simulation advances by the whole `TICK_DT` ticks that elapsed time
+completes, carrying the remainder into the next frame, so the number of ticks run
+over an interval of game time is the same however that interval was divided into
+frames.
+{{else}}
+The core is decoupled from rendering. The engine hands each frame a delta time and
+the simulation advances by the whole `TICK_DT` ticks that delta completes,
+carrying the remainder into the next frame, so the number of ticks run over an
+interval of game time is the same however that interval was divided into frames.
+{{/if}}
+
+The tick is the game's whole clock. Movement, cooldowns, timers and the creatures'
+decisions all advance inside it, so the same starting state driven by the same
+inputs over the same elapsed game time reaches the same state every time.
+
+## Where a body may travel
+
+The forager and every predator are bodies on the tile grid, and each one travels
+along the center lines of corridors, always along one of the four cardinal
+directions or at rest. Rock is solid to every body. A body's center stays on
+corridor tiles, so it enters a tile only when that tile is open to it, and a body
+standing on a tile whose neighbors are all closed to it stays where it stands.
+
+The den gate and the den interior are open to predators alone. A predator crosses
+the gate leaving the den and returning to it, and the forager's travel is over
+corridor tiles, so the forager stands neither on the gate tile nor inside the den
+chamber.
+
+Motion is continuous rather than tile-by-tile: a body slides between tile centers
+at its own speed, and the centers are the points at which it may change direction.
+
+## The forager's travel
+
+The forager travels at `FORAGER_SPEED` (`128` logical units per second, four tiles
+per second), and that speed is constant wherever it is in the maze. It travels
+while a movement action is held and comes to rest where it stands when none is
+held, which is what `moving` in `specs/state.md` reports.
+
+The predators travel at their own speeds, which `specs/predators.md` and the
+per-kind files fix.
+
+## Turning
+
+A movement action sets the forager's **desired direction**, and that direction
+holds until another movement action replaces it. The desired direction is a
+request, and where it is honored depends on how it stands to the current heading.
+
+| Desired direction | Where it is honored |
+| --- | --- |
+| The opposite of the current heading | At once, wherever the forager stands. |
+| Perpendicular to the current heading | At the next tile center the forager reaches, if the tile that way is open to it. |
+
+At a tile center the forager takes the desired direction when the tile that way is
+open to it. Otherwise it carries on along its current heading while the tile ahead
+is open, and comes to rest at the center when that tile is closed to it. A forager
+at rest takes the desired direction when the tile that way is open to it, and
+stays at rest otherwise.
+
+The desired direction is buffered, so a direction set slightly before a junction is
+still the desired direction when the junction's center arrives, and the forager
+takes the turn there. A turn onto a perpendicular direction is taken at a tile
+center and nowhere else.
+
+## The wrap tunnel
+
+The two mouths of the wrap tunnel `specs/maze.md` defines are neighboring tiles,
+and a body crosses between them exactly as it crosses between any other pair of
+neighbors, on the terms that file fixes. Travel through the tunnel is one
+continuous move, entered by traveling into a mouth and left by traveling on out
+of the other.
+
+## Controls
+
+{{#if (eq engine.slug "none")}}
+Keyboard only. This game stands on no engine, so the input layer beneath the game
+is yours to write, and what the game reads from that layer is the actions below.
+`ACTIONS` holds their names, in the order given here, and `BINDINGS` maps each
+action to the `KeyboardEvent.code` values that fire it, so a binding is a physical
+key rather than a layout-dependent character.
+{{else if (eq engine.slug "simple-2d")}}
+Keyboard only, through actions the game registers with the engine. The actions are
+the vocabulary of the `LAYOUT` (`dpad-4-two-buttons`) touch layout the engine is
+built with: register exactly the ten names in `ACTIONS`, in the order given here,
+each bound to the keys `BINDINGS` gives it. The engine owns the keyboard and
+resolves each action, so the game reads the actions rather than key events. The
+keys are `KeyboardEvent.code` values, so a binding is a physical key rather than a
+layout-dependent character.
+{{else}}
+Keyboard only, through actions the game registers with the engine. The actions are
+the vocabulary of the `LAYOUT` (`dpad-4-two-buttons`) touch layout the engine is
+built with: register exactly the ten names in `ACTIONS`, in the order given here,
+each bound to the keys `BINDINGS` gives it. The engine owns the keyboard and
+resolves each action, and an action is read only through a player controller, in
+that controller's tick. The keys are `KeyboardEvent.code` values, so a binding is a
+physical key rather than a layout-dependent character.
+{{/if}}
+
+| Action | Keys | Does |
+| --- | --- | --- |
+| `up` | `ArrowUp`, `KeyW` | Sets the desired direction up. Moves a menu selection up. |
+| `down` | `ArrowDown`, `KeyS` | Sets the desired direction down. Moves a menu selection down. |
+| `left` | `ArrowLeft`, `KeyA` | Sets the desired direction left. |
+| `right` | `ArrowRight`, `KeyD` | Sets the desired direction right. |
+| `a` | `Space` | Emits a sonar pulse. |
+| `b` | `ShiftLeft`, `ShiftRight` | Releases an ink cloud. |
+| `confirm` | `Enter`, `Space` | Accepts the highlighted menu item. |
+| `back` | `Escape` | Leaves the current screen. |
+| `pause` | `Escape`, `KeyP` | Pauses live play. |
+| `mute` | `KeyM` | Toggles the game's sound. |
+
+### Where each action is read
+
+`Space` fires `a` and `confirm`, and `Escape` fires `back` and `pause`. Each screen
+reads the actions in its own row and leaves the rest alone, so one key does one
+thing on any given screen.
+
+| Screen | Actions read |
+| --- | --- |
+| `"playing"` | The four movement actions, held; `a`; `b`; `pause`; `mute`. |
+| `"title"`, `"howto"`, `"paused"`, `"gameover"` | `up` and `down`, as press edges; `confirm`; `back`; `mute`. |
+| `"countdown"`, `"cleared"` | `mute`. |
+
+The four movement actions are read as held values, so the forager travels while
+one of them is held. Every other action is read once per press.
+
+`specs/ui.md` defines where each menu selection and confirmation leads,
+`specs/sensing.md` defines what the sonar pulse and the ink cloud do, and
+`specs/progression.md` defines what muting silences.
