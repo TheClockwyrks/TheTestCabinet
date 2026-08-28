@@ -1,26 +1,21 @@
 // Cascade's generator: the tier ladder, determinism, the structural
-// requirements every emitted board satisfies, and — the central requirement —
+// requirements every emitted board satisfies, and — the central requirements —
 // solvability, proven by replaying each board's carved solution through a
 // real engine's debug surface, which feeds the same per-sample pointer path a
-// player draws through.
+// player draws through, and the difficulty floor, held against the five
+// measures in `src/difficulty.ts`.
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { channelsOn } from "./board";
 import {
-  fallbackBoard,
   generateBoard,
   generateBoardWithSolution,
+  reserveBoard,
   solutionSolves,
   tierFor,
 } from "./cascade";
-import {
-  CHANNELS,
-  GRID_MAX_COLS,
-  GRID_MAX_ROWS,
-  MAX_TIER,
-  TIER_ADVANCE,
-  TIERS,
-} from "./constants";
+import { CHANNELS, MAX_TIER, TIER_ADVANCE, TIERS } from "./constants";
+import { measureDifficulty, meetsFloor } from "./difficulty";
 import { createHarness, type Harness } from "./harness";
 import type { BoardState } from "./game";
 
@@ -32,6 +27,20 @@ describe("the tier ladder", () => {
     expect(tierFor(4 * TIER_ADVANCE - 1)).toBe(4);
     expect(tierFor(4 * TIER_ADVANCE)).toBe(MAX_TIER);
     expect(tierFor(100 * TIER_ADVANCE)).toBe(MAX_TIER);
+  });
+
+  it("puts a twenty-five-board run at five boards per rung", () => {
+    // Five rungs of five: the twenty-first board is the first generated past
+    // the twentieth solve, so it is the first at the top rung, and the ladder
+    // holds there through the twenty-fifth and beyond.
+    expect(TIER_ADVANCE).toBe(5);
+    expect(MAX_TIER).toBe(5);
+    expect(TIERS).toHaveLength(MAX_TIER);
+    for (let solved = 0; solved < MAX_TIER * TIER_ADVANCE; solved++) {
+      expect(tierFor(solved)).toBe(Math.floor(solved / TIER_ADVANCE) + 1);
+    }
+    expect(tierFor(20)).toBe(MAX_TIER);
+    expect(tierFor(24)).toBe(MAX_TIER);
   });
 });
 
@@ -63,6 +72,12 @@ function expectWellFormed(
   expect(board.cols, label).toBeLessThanOrEqual(spec.maxCols);
   expect(board.rows, label).toBeGreaterThanOrEqual(spec.minRows);
   expect(board.rows, label).toBeLessThanOrEqual(spec.maxRows);
+
+  // The tier's cap on cells left empty.
+  expect(
+    board.cols * board.rows - board.nodes.length,
+    label,
+  ).toBeLessThanOrEqual(spec.maxEmptyCells);
 
   // The first n of CHANNELS, exactly.
   expect(channelsOn(board), label).toEqual([
@@ -120,23 +135,78 @@ describe("emitted boards", () => {
     }
   });
 
-  it("draws each grid size from the tier's range; tier 5 is always 7x6", () => {
-    let rngState = 7;
-    for (let round = 0; round < 6; round++) {
-      const { board, rngState: next } = generateBoard(rngState, MAX_TIER);
-      rngState = next;
-      expect(board.cols).toBe(GRID_MAX_COLS);
-      expect(board.rows).toBe(GRID_MAX_ROWS);
+  it("draws each board's grid size from its tier's stated range", () => {
+    for (let tier = 1; tier <= MAX_TIER; tier++) {
+      const spec = TIERS[tier - 1];
+      let rngState = 7 + tier;
+      for (let round = 0; round < 6; round++) {
+        const label = `tier ${tier} round ${round}`;
+        const { board, rngState: next } = generateBoard(rngState, tier);
+        rngState = next;
+        expect(board.cols, label).toBeGreaterThanOrEqual(spec.minCols);
+        expect(board.cols, label).toBeLessThanOrEqual(spec.maxCols);
+        expect(board.rows, label).toBeGreaterThanOrEqual(spec.minRows);
+        expect(board.rows, label).toBeLessThanOrEqual(spec.maxRows);
+      }
+    }
+  });
+
+  it("meets the tier's difficulty floor, along a played sequence", () => {
+    // The first twelve boards of a run, exactly as a player would meet them:
+    // one seed threaded board to board, the tier climbing every TIER_ADVANCE
+    // solves. Each board is re-measured from scratch with the module the
+    // generator itself trusts, and held to its tier's floor — solutions,
+    // determined share, branching, shared crystals, and routes per channel,
+    // all within the TIERS entry's bounds. Twelve boards keep the runtime
+    // modest while crossing three rungs of the ladder.
+    let rngState = 20260827;
+    for (let solved = 0; solved < 12; solved++) {
+      const tier = tierFor(solved);
+      const spec = TIERS[tier - 1];
+      const label = `board ${solved + 1}, tier ${tier}`;
+      const generated = generateBoardWithSolution(rngState, tier);
+      rngState = generated.rngState;
+      const measured = measureDifficulty(
+        generated.board,
+        spec.maxSolutions + 1,
+        spec.minRoutes,
+      );
+      expect(measured, label).not.toBeNull();
+      if (measured === null) continue;
+      expect(measured.capped, label).toBe(false);
+      expect(meetsFloor(measured, spec), label).toBe(true);
     }
   });
 });
 
-describe("the fallback board", () => {
+describe("the reserve boards", () => {
   it("is well-formed and solvable at every tier", () => {
+    // A reserve is the fixed board a tier falls back to only when every
+    // attempt in the generator's budget misses. Each must parse, satisfy its
+    // tier's whole structural row, and be solved by the solution stored
+    // beside it, replayed through the real ruleset.
     for (let tier = 1; tier <= MAX_TIER; tier++) {
-      const { board, solution } = fallbackBoard(TIERS[tier - 1]);
-      expectWellFormed(board, tier, `fallback tier ${tier}`);
+      const { board, solution } = reserveBoard(tier);
+      expectWellFormed(board, tier, `reserve tier ${tier}`);
       expect(solutionSolves(board, solution)).toBe(true);
+    }
+  });
+
+  it("meets its tier's difficulty floor too", () => {
+    // The reserve carries the same contract as an emitted board: the floor
+    // holds even on the path taken only when generation runs dry.
+    for (let tier = 1; tier <= MAX_TIER; tier++) {
+      const spec = TIERS[tier - 1];
+      const { board } = reserveBoard(tier);
+      const measured = measureDifficulty(
+        board,
+        spec.maxSolutions + 1,
+        spec.minRoutes,
+      );
+      expect(measured, `reserve tier ${tier}`).not.toBeNull();
+      if (measured === null) continue;
+      expect(measured.capped, `reserve tier ${tier}`).toBe(false);
+      expect(meetsFloor(measured, spec), `reserve tier ${tier}`).toBe(true);
     }
   });
 });

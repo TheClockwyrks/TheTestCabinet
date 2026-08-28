@@ -46,7 +46,7 @@ export default defineConfig({
     maxWorkers: 4,
     minWorkers: 1,
     // Refract's pointer operations take effect the moment they are called, so
-    // even the whole campaign course or a twenty-board cascade sweep is a few
+    // even the whole campaign course or a twenty-five-board cascade sweep is a few
     // hundred crossings into the page rather than thousands of real-time frames;
     // a minute is generous against a healthy build and still bounds a hung one.
     testTimeout: 60_000,

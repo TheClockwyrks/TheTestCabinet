@@ -4,10 +4,10 @@
 // specs/modes/cascade.md "The generator": each emitted board fits within
 // GRID_MAX_COLS x GRID_MAX_ROWS (7 x 6), carries the first n of CHANNELS with
 // exactly two emitters for each channel present, and gives every crystal 1 to
-// MAX_CHARGES (3) charges. The same twenty-board sweep boards-are-solvable
-// drives is read here for shape: every arrived board is held against that
-// table, and the board the sweep leaves the player on afterwards — a fresh
-// tier-5 board — is checked too and kept as the picture.
+// MAX_CHARGES (3) charges. The same twenty-five-board sweep
+// boards-are-solvable drives is read here for shape: every arrived board is
+// held against that table, and the board the sweep leaves the player on
+// afterwards — a fresh tier-5 board — is checked too and kept as the picture.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -22,7 +22,7 @@ import {
 import { assertGeneratedBoardWellFormed } from "./helpers";
 
 const SEED = 1;
-const BOARDS = 20;
+const BOARDS = 25;
 
 let h: Harness;
 

@@ -4,8 +4,8 @@
 // board and returns to `title`, ending the sequence: starting Cascade again
 // begins a fresh one from tier `1`" — and entry itself sets `solvedCount` to 0.
 //
-// The run being abandoned is a real one: four boards are genuinely solved first
-// (solvedCount 4, tier 2), so "fresh" afterwards is distinguishable from "the
+// The run being abandoned is a real one: five boards are genuinely solved first
+// (solvedCount 5, tier 2), so "fresh" afterwards is distinguishable from "the
 // run that was left". The solve is done by the case's own spec-derived solver
 // through `solveGenerated`; the boards being solvable at all is
 // `boards-are-solvable`'s point, so a sweep that did not solve fails here as an
@@ -35,7 +35,7 @@ afterEach(async () => {
 });
 
 it("back during playing returns to title, and re-entering starts fresh", async () => {
-  const sweep = await solveGenerated(h, 4, SEED);
+  const sweep = await solveGenerated(h, 5, SEED);
   for (const [index, after] of sweep.afterSolve.entries()) {
     assertEqual(
       after.solved,
@@ -44,11 +44,11 @@ it("back during playing returns to title, and re-entering starts fresh", async (
     );
   }
 
-  // Off the fourth solved screen onto a board of the run in progress.
+  // Off the fifth solved screen onto a board of the run in progress.
   await fireAction(h, "confirm");
   const playing = await h.snapshot();
   assertEqual(playing.screen, "playing", "precondition: a run in progress");
-  assertEqual(playing.solvedCount, 4, "precondition: four boards solved");
+  assertEqual(playing.solvedCount, 5, "precondition: five boards solved");
 
   // back abandons the board and ends the sequence.
   await fireAction(h, "back");

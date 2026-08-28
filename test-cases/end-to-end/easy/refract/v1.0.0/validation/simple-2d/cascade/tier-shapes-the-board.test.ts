@@ -2,13 +2,14 @@
 // rung describes.
 //
 // specs/modes/cascade.md "The tier ladder" gives one row per tier: the grid
-// size range the generator draws from, the channel count, and the crystal
-// count and charge ranges. The sweep really solves twenty boards and holds
-// each board, as it arrives, against the row for the tier it was generated at
-// — the snapshot's own `tier`, which is the tier the next board is generated
-// at. Twenty boards visit every rung: four at each of tiers 1..4 and four at
-// tier 5. The oracle's TIERS table is the ladder as the spec states it, one
-// entry per tier. The still is a tier-5 board, the fullest row.
+// size range the generator draws from, the channel count, the crystal count
+// and charge ranges, and the cap on cells left empty. The sweep really
+// solves twenty-five boards and holds each board, as it arrives, against the
+// row for the tier it was generated at — the snapshot's own `tier`, which is
+// the tier the next board is generated at. Twenty-five boards visit every
+// rung: five at each of tiers 1..5. The oracle's TIERS table is the ladder
+// as the spec states it, one entry per tier. The still is a tier-5 board,
+// the fullest row.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertBetween, assertEqual, fail } from "../assert";
@@ -37,9 +38,9 @@ it("draws every board's shape from its tier's row in the ladder", async () => {
   await resetTo(h, 1);
   await startCascade(h);
 
-  await sweepGenerated(h, 20, {
+  await sweepGenerated(h, 25, {
     onBoard: (snapshot, round) => {
-      if (round === 17) captureStill(h, "board");
+      if (round === 21) captureStill(h, "board");
       const spec = TIERS[snapshot.tier - 1];
       if (spec === undefined) {
         return fail(
@@ -65,6 +66,12 @@ it("draws every board's shape from its tier's row in the ladder", async () => {
         channelsPresent(board).length,
         spec.channels,
         `${context}: the channel count the tier's row states`,
+      );
+      assertBetween(
+        board.cols * board.rows - board.nodes.length,
+        0,
+        spec.emptyCells,
+        `${context}: cells left empty within the tier's stated cap`,
       );
       const crystals = board.nodes.filter((node) => node.kind === "crystal");
       assertBetween(

@@ -181,8 +181,8 @@ describe("the select grid", () => {
     expect(h.state.boardIndex).toBe(0);
 
     await h.drag([
-      { col: 2, row: 1 },
       { col: 1, row: 0 },
+      { col: 2, row: 0 },
     ]);
     expect(h.state.beams[0].cells).toHaveLength(2);
 
@@ -304,10 +304,13 @@ describe("solving a campaign board", () => {
     h.cues.length = 0;
     // Board 1's solution, drawn as a player would.
     await h.drag([
-      { col: 2, row: 1 },
       { col: 1, row: 0 },
+      { col: 2, row: 0 },
       { col: 1, row: 1 },
-      { col: 0, row: 2 },
+      { col: 0, row: 1 },
+      { col: 1, row: 2 },
+      { col: 2, row: 2 },
+      { col: 2, row: 1 },
     ]);
     expect(h.state.screen).toBe("solved");
     expect(h.state.solvedBoards).toEqual([0]);
@@ -316,7 +319,7 @@ describe("solving a campaign board", () => {
     expect(played()).toContain(CUES.channelComplete);
 
     // The release after the solve began nothing; the beams stayed as drawn.
-    expect(h.state.beams[0].cells).toHaveLength(4);
+    expect(h.state.beams[0].cells).toHaveLength(7);
     expect(h.state.tracing).toBeNull();
 
     h.tap("Enter"); // NEXT BOARD
@@ -332,10 +335,13 @@ describe("solving a campaign board", () => {
     h.debug.loadBoard(CAMPAIGN_BOARDS[0]);
     h.cues.length = 0;
     const route = [
-      { col: 2, row: 1 },
       { col: 1, row: 0 },
+      { col: 2, row: 0 },
       { col: 1, row: 1 },
-      { col: 0, row: 2 },
+      { col: 0, row: 1 },
+      { col: 1, row: 2 },
+      { col: 2, row: 2 },
+      { col: 2, row: 1 },
     ];
     const centers = route.map((cell) => cellCenter(cell, h.state.board));
     h.debug.pointerDown(centers[0][0], centers[0][1]);
@@ -476,10 +482,13 @@ describe("the solved and complete screens", () => {
     h.tap("Enter");
     await h.engine.advance(1);
     await h.drag([
-      { col: 2, row: 1 },
       { col: 1, row: 0 },
+      { col: 2, row: 0 },
       { col: 1, row: 1 },
-      { col: 0, row: 2 },
+      { col: 0, row: 1 },
+      { col: 1, row: 2 },
+      { col: 2, row: 2 },
+      { col: 2, row: 1 },
     ]);
     expect(h.state.screen).toBe("solved");
   }

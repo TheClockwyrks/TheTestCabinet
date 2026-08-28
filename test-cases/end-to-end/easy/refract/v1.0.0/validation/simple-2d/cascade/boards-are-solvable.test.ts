@@ -4,9 +4,9 @@
 // solvable under the rules in specs/beams.md — a board reaches the player only
 // when a set of beams satisfying every rule is known to exist for it. The
 // check proves it the only honest way: it SOLVES the sequence for real.
-// Twenty consecutive boards from a fixed seed — the tier ladder puts solves
-// 17..20 at MAX_TIER (5), so the sweep reaches the top tier and continues
-// there — are each read off the snapshot, solved by the spec-derived solver,
+// Twenty-five consecutive boards from a fixed seed — the tier ladder puts
+// solves 21..25 at MAX_TIER (5), so the sweep reaches the top tier and
+// continues there — are each read off the snapshot, solved by the solver,
 // and the found beams drawn through `trace`; the game's own R9 is what says
 // each board is solved.
 //
@@ -16,9 +16,9 @@
 // `unsolvable`. Every board within the tier ladder's stated shapes resolves
 // in milliseconds in practice.
 //
-// The replay records the twentieth board — a MAX_TIER board — being solved:
-// the recorder is armed around the solve alone, never around the nineteen
-// solves that got there.
+// The replay records the twenty-fifth board — a MAX_TIER board — being
+// solved: the recorder is armed around the solve alone, never around the
+// twenty-four solves that got there.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, fail } from "../assert";
@@ -45,20 +45,21 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("solves twenty consecutive generated boards, reaching MAX_TIER and continuing there", async () => {
+it("solves twenty-five consecutive generated boards, reaching MAX_TIER and continuing there", async () => {
   await resetTo(h, 1);
   await startCascade(h);
 
-  // Boards 1..19, each proven solvable by solving it.
-  await solveGenerated(h, 19);
+  // Boards 1..24, each proven solvable by solving it.
+  await solveGenerated(h, 24);
 
-  // The twentieth board: generated past the sixteenth solve, so at MAX_TIER.
+  // The twenty-fifth board: generated past the twentieth solve, so at
+  // MAX_TIER.
   await tapAction(h, "confirm"); // NEXT BOARD (specs/modes/cascade.md)
   const snapshot = h.snapshot();
   assertEqual(
     snapshot.screen,
     "playing",
-    "the twentieth generated board is in play",
+    "the twenty-fifth generated board is in play",
   );
   assertEqual(
     snapshot.tier,
@@ -89,7 +90,7 @@ it("solves twenty consecutive generated boards, reaching MAX_TIER and continuing
     assertEqual(
       h.snapshot().screen,
       "solved",
-      "the twentieth board is solved by the solver's beams (specs/beams.md R9)",
+      "the twenty-fifth board is solved by the solver's beams (specs/beams.md R9)",
     );
     await h.advance(2);
   });

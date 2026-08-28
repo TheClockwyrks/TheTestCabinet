@@ -30,7 +30,7 @@ export default defineConfig({
     passWithNoTests: false,
     coverage: { enabled: false },
     // Traces are immediate and a whole course walk costs milliseconds; the
-    // ceiling is for the cascade sweeps that solve twenty generated boards.
+    // ceiling is for the cascade sweeps that solve twenty-five generated boards.
     testTimeout: 60_000,
   },
 });

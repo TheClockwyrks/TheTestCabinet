@@ -62,7 +62,7 @@ The generator takes a tier and produces one board: a grid within
 either empty or holding an emitter, a lens, or a crystal.
 
 **Every board the generator emits is solvable under the rules in
-`specs/beams.md`.**
+`specs/beams.md`, and meets its tier's difficulty floor, defined below.**
 
 Each emitted board also satisfies these, which follow from the rules and the
 ladder:
@@ -74,32 +74,74 @@ ladder:
 | Lenses per channel present | any number, including none |
 | Charges on a crystal | `1` to `MAX_CHARGES` (`3`) |
 | Grid size | within `GRID_MAX_COLS` x `GRID_MAX_ROWS` |
+| Empty cells | at most the count the ladder states for the tier |
 
-A board arrives with every beam empty. How many cells a board leaves empty is the
-generator's to choose.
+A board arrives with every beam empty.
 
 ## The tier ladder
 
 `state.tier` grows as boards are solved, widening the grid, adding channels, and
-introducing crystals. The ladder is held in `TIERS`, one entry per tier, and
-`MAX_TIER` (`5`) is the number of entries it holds.
+crowding the crystals. The ladder is held in `TIERS`, one entry per tier, and
+`MAX_TIER` (`5`) is the number of entries it holds. A grid range `AxB` to `CxD`
+spans `A` to `C` columns and `B` to `D` rows, each drawn independently.
 
-| Tier | Grid, cols x rows | Channels | Crystals |
-| --- | --- | --- | --- |
-| `1` | `4x4` to `5x4` | `1` | none |
-| `2` | `5x4` to `5x5` | `2` | none |
-| `3` | `5x5` to `6x5` | `2` | `1` to `2`, each carrying `1` charge |
-| `4` | `6x5` to `7x5` | `3` | `1` to `3`, each carrying `1` or `2` charges |
-| `5` | `7x6` | `3` | `2` to `4`, each carrying `1` to `3` charges |
+| Tier | Grid, cols x rows | Channels | Crystals | Charges each | Empty cells |
+| --- | --- | --- | --- | --- | --- |
+| `1` | `3x3` to `4x4` | `1` | none | — | at most `6` |
+| `2` | `4x4` to `5x4` | `2` | `0` to `1` | `1` to `2` | at most `7` |
+| `3` | `4x4` to `5x5` | `2` | `2` to `3` | `1` to `2` | at most `9` |
+| `4` | `5x4` to `6x5` | `3` | `3` to `5` | `1` to `3` | at most `10` |
+| `5` | `6x5` to `7x6` | `3` | `4` to `7` | `1` to `3` | at most `14` |
 
-- The tier climbs one step every `TIER_ADVANCE` (`4`) boards solved:
+- The tier climbs one step every `TIER_ADVANCE` (`5`) boards solved:
   `state.tier` is
   `min(floor(state.solvedCount / TIER_ADVANCE) + 1, MAX_TIER)`.
-- `MAX_TIER` is the top of the ladder and holds from the sixteenth board solved
+- The ladder is therefore five tiers of five boards each: boards `1` to `5` are
+  generated at tier `1`, boards `6` to `10` at tier `2`, and so on to boards
+  `21` to `25` at tier `5`.
+- `MAX_TIER` is the top of the ladder and holds from the twentieth board solved
   onward. Play continues there indefinitely, on fresh boards each time.
-- The generator draws each board's grid size from its tier's stated range. Tier
-  `5` states one size, and every board there is `7x6`.
+- The generator draws each board's grid size from its tier's stated range.
 - No tier exceeds `GRID_MAX_COLS`, `GRID_MAX_ROWS`, or `MAX_CHARGES`.
+
+## The difficulty floor
+
+A tier states more than a shape. Each rung sets a floor on the difficulty of
+the boards it emits, read off the board itself by the five measures below, and
+every board the generator emits satisfies every bound its tier's row states.
+The measures are defined by the rules in `specs/beams.md` and by nothing else.
+Reading order below means rows top to bottom, cells left to right within a row.
+
+### The measures
+
+A **solution** of a board is one complete beam per channel present that
+together satisfy rule R9. Two solutions are the same solution when every
+channel carries the same set of segments; the direction each beam was drawn in
+and the order its segments were drawn in do not distinguish them. Every
+solution of a board carries the same number of segments: half of (emitters
+present, plus `2` per lens, plus `2` per crystal charge), written `L` here.
+
+| Measure | Definition |
+| --- | --- |
+| Solutions | The number of distinct solutions the board admits. |
+| Routes per channel | For one channel: the number of distinct complete beams (rules R6 and R7) that channel admits when the other channels' beams are left undrawn. The other channels' nodes still stand and rule R2 still excludes them, and crystal capacity (R5) still limits crossings, but whether every crystal ends satisfied does not matter. Two routes are the same when they carry the same set of segments. The stated bound holds for every channel present. |
+| Determined share | The count of channel-and-segment pairs that appear in every solution, as a share of `L`. |
+| Branching factor | Replay each solution as a drawing: channels in `CHANNELS` order, each beam drawn segment by segment from its emitter that comes first in reading order, following the trail over that beam's segments whose node sequence comes first in reading order. Before each segment is drawn, count the moves rules R1 to R5 allow from the beam's current end, with everything drawn so far in place: the earlier beams whole, this beam's segments so far, and every crystal charge they spent. The branching factor is the mean of that count over every segment of every solution. |
+| Shared crystals | The largest count, across the solutions, of crystals crossed by beams of two or more channels within a single solution. |
+
+### The floor, by tier
+
+| Tier | Routes per channel | Solutions | Determined share | Branching factor | Shared crystals |
+| --- | --- | --- | --- | --- | --- |
+| `1` | at least `2` | `1` to `64` | — | at least `1.7` | — |
+| `2` | at least `2` | `2` to `64` | at most `95%` | at least `1.7` | — |
+| `3` | at least `3` | `2` to `128` | at most `90%` | at least `1.8` | at least `1` |
+| `4` | at least `3` | `2` to `192` | at most `85%` | at least `1.9` | at least `2` |
+| `5` | at least `6` | `2` to `256` | at most `80%` | at least `2.0` | at least `3` |
+
+A dash means the tier states no bound on that measure. The floor is part of the
+generator's contract: a candidate board that misses any bound is not emitted,
+and the player never sees it.
 
 ## Determinism
 

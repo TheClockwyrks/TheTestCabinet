@@ -31,10 +31,10 @@ debug surface that drives the real input path.
 Both modes ship in every build and are picked from the title menu. `state.mode`
 is `"campaign" | "cascade"` and the snapshot reports it.
 
-| Mode     | What it is                                                                                                                                                                                                                     |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Campaign | `CAMPAIGN_LENGTH` (`24`) hand-built boards in four sets of six, listed in `specs/campaign-boards.md` and opened in order as each is solved. It uses no randomness at all. It adds the `select` grid and the `complete` screen. |
-| Cascade  | One unbroken sequence with no last board. The build carries a seeded generator that emits a solvable board for a given seed and tier, and the tier climbs as boards are solved. Generation runs off `state.rngState`.          |
+| Mode     | What it is                                                                                                                                                                                                                                                                                                                                                   |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Campaign | `CAMPAIGN_LENGTH` (`24`) hand-built boards in four sets of six, listed in `specs/campaign-boards.md` and opened in order as each is solved. It uses no randomness at all. It adds the `select` grid and the `complete` screen.                                                                                                                               |
+| Cascade  | One unbroken sequence with no last board. The build carries a seeded generator that emits, for a given seed and tier, a board that is solvable and meets the tier's difficulty floor — five measures bounded per tier in `specs/modes/cascade.md`. The tier climbs every `TIER_ADVANCE` (`5`) solves, five tiers deep. Generation runs off `state.rngState`. |
 
 The six screens are the union of both modes: `title`, `howto`, `select`,
 `playing`, `solved`, `complete`. `select` and `complete` are reached in Campaign
@@ -142,9 +142,11 @@ process against the vendored engine and reach the surface through
 reach the build.
 
 Each project carries the same spec-derived oracle beside its harness:
-`notation.ts` (the board notation and the cell-center formula), `rules.ts`
-(`R1`–`R9` recomputed independently), `solver.ts` (a bounded solver), and
-`routes.ts` (the `24` campaign boards with a solving route each). Every
+`notation.ts` (the board notation, the cell-center formula, and the tier
+ladder with its difficulty floor), `rules.ts` (`R1`–`R9` recomputed
+independently), `solver.ts` (a bounded solver), `metrics.ts` (the floor's five
+measures recomputed independently), and `routes.ts` (the `24` campaign boards
+with a solving route each). Every
 expected value a suite asserts comes from that oracle or from a figure the
 specs fix, never from a reference build. All `24` campaign boards are solvable
 under the rules as the specs state them, which is the load-bearing fact the

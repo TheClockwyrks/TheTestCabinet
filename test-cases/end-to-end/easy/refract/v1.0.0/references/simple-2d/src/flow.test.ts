@@ -135,12 +135,12 @@ describe("the campaign solve transition", () => {
 describe("the cascade solve transition", () => {
   it("counts the solve and recomputes the tier from the ladder", () => {
     let state = startMode(createInitialState(), "cascade");
-    for (let solve = 1; solve <= 4; solve++) {
+    for (let solve = 1; solve <= 5; solve++) {
       state = onSolved(state);
       expect(state.screen).toBe("solved");
       state = nextCascadeBoard(state);
     }
-    expect(state.solvedCount).toBe(4);
+    expect(state.solvedCount).toBe(5);
     expect(state.tier).toBe(2);
   });
 

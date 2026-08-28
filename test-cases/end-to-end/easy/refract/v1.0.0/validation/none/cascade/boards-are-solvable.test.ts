@@ -8,9 +8,9 @@
 // cracked by the case's solver — derived from specs/beams.md alone, never from
 // any implementation — its beams traced through the game's own pointer path,
 // and the solved screen crossed through NEXT BOARD. Twenty-four boards from
-// seed 1 cover the whole ladder (the sixteenth solve reaches MAX_TIER) and
-// continue at the top; a twenty-fifth top-tier board is solved on camera as the
-// replay.
+// seed 1 cover the whole ladder — five boards per tier, the twentieth solve
+// reaching MAX_TIER — and a twenty-fifth top-tier board is solved on camera as
+// the replay, so the twenty-five-board sweep continues at the top.
 //
 // RESIDUAL RISK, ACCEPTED: the solver carries an expansion cap (a generous
 // runaway stop, DEFAULT_MAX_EXPANSIONS = 2,000,000) so a pathological board
@@ -62,12 +62,12 @@ it("solves twenty-four consecutive generated boards, through MAX_TIER and beyond
     );
   }
 
-  // The sweep really climbed: the sixteenth solve reaches MAX_TIER, so boards
-  // seventeen onward were generated there and the sequence continued at the top.
+  // The sweep really climbed: the twentieth solve reaches MAX_TIER, so boards
+  // twenty-one onward were generated there and the sequence continued at the top.
   assertEqual(
-    sweep.afterSolve[15].tier,
+    sweep.afterSolve[19].tier,
     MAX_TIER,
-    "the sixteenth solve reaches MAX_TIER",
+    "the twentieth solve reaches MAX_TIER",
   );
 
   // One more board at the top tier, solved on camera as the replay: the bare

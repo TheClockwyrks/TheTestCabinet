@@ -1193,12 +1193,12 @@ validation = { script = "cascade/cascade-back.test.ts", outputs = [
 [[review.categories.items]]
 id = "boards-are-solvable"
 title = "Every generated board is solvable"
-description = "Board after board, a set of beams satisfying every rule exists and the player can reach it: twenty consecutive generated boards, reaching MAX_TIER (5) and continuing there, are each solved by a solver derived from the specs alone. No board the sequence hands the player is a dead end."
+description = "Board after board, a set of beams satisfying every rule exists and the player can reach it: twenty-five consecutive generated boards, reaching MAX_TIER (5) and continuing there, are each solved by a solver derived from the specs alone. No board the sequence hands the player is a dead end."
 domains = ["cascade"]
 failure_cap = "broken"
 # Automated validation: solve the sequence for real — snapshot each board, run the
 # spec-derived solver, trace the found beams, assert solved, take NEXT BOARD — for
-# twenty boards and then more at the top tier. The solver's expansion cap is a
+# twenty-five boards, crossing the whole ladder and continuing at the top tier. The solver's expansion cap is a
 # generous runaway stop; the residual risk of a conformant board it cannot crack
 # inside the cap is documented in the suite header. See
 # validation/<engine>/cascade/boards-are-solvable.test.ts.
@@ -1217,7 +1217,7 @@ validation = { script = "cascade/boards-are-well-formed.test.ts", outputs = [
 [[review.categories.items]]
 id = "tier-ladder"
 title = "The tier climbs on the ladder specified"
-description = "After every solve across the sweep, tier is min(floor(solvedCount / TIER_ADVANCE) + 1, MAX_TIER) exactly, climbing one step every TIER_ADVANCE (4) boards solved and holding at MAX_TIER (5) from the sixteenth solve onward."
+description = "After every solve across the sweep, tier is min(floor(solvedCount / TIER_ADVANCE) + 1, MAX_TIER) exactly, climbing one step every TIER_ADVANCE (5) boards solved and holding at MAX_TIER (5) from the twentieth solve onward."
 domains = ["cascade"]
 failure_cap = "passable"
 validation = { script = "cascade/tier-ladder.test.ts", outputs = [
@@ -1226,16 +1226,32 @@ validation = { script = "cascade/tier-ladder.test.ts", outputs = [
 [[review.categories.items]]
 id = "tier-shapes-the-board"
 title = "Each tier emits the boards its rung describes"
-description = "Each generated board's cols and rows fall within its tier's stated range, and its channel count and its crystals' count and charges match the row specs/modes/cascade.md gives that tier."
+description = "Each generated board's cols and rows fall within its tier's stated range, and its channel count, its crystals' count and charges, and its empty-cell count match the row specs/modes/cascade.md gives that tier."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/tier-shapes-the-board.test.ts", outputs = [
   { id = "board", name = "A board shaped by its tier", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "boards-meet-the-tier-floor"
+title = "Every generated board meets its tier's difficulty floor"
+description = "Across the sweep, each generated board satisfies every bound its tier's row of the difficulty floor states — routes per channel, solution count, determined share, branching factor, and shared crystals — as specs/modes/cascade.md defines the five measures."
+domains = ["cascade"]
+failure_cap = "scuffed"
+# Automated validation: sweep twenty-five consecutive generated boards, recompute
+# the five measures with the oracle's own enumeration (metrics.ts, derived from
+# specs/modes/cascade.md and specs/beams.md alone), and hold each board against
+# its tier's stated bounds. The enumeration stops one past the tier's solutions
+# bound and carries a generous expansion budget as a runaway stop; a board the
+# budget stops on is reported as unmeasured, never as passing. See
+# validation/<engine>/cascade/boards-meet-the-tier-floor.test.ts.
+validation = { script = "cascade/boards-meet-the-tier-floor.test.ts", outputs = [
+  { id = "board", name = "A generated board meeting its tier's floor", kind = "image" },
+] }
+[[review.categories.items]]
 id = "sequence-is-endless"
 title = "The sequence has no last board"
-description = "Play continues at MAX_TIER (5) indefinitely: past the sixteenth solve, NEXT BOARD keeps producing well-formed boards and solvedCount keeps rising by one per board solved."
+description = "Play continues at MAX_TIER (5) indefinitely: past the twentieth solve, NEXT BOARD keeps producing well-formed boards and solvedCount keeps rising by one per board solved."
 domains = ["cascade"]
 failure_cap = "scuffed"
 validation = { script = "cascade/sequence-is-endless.test.ts", outputs = [

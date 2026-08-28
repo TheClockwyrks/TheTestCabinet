@@ -30,8 +30,9 @@ export default defineConfig({
     passWithNoTests: false,
     coverage: { enabled: false },
     // Traces are immediate, so even a whole campaign course walk or a
-    // twenty-board cascade sweep costs milliseconds; the headroom is for the
-    // cascade solver's documented worst case, and it is still generous there.
+    // twenty-five-board cascade sweep costs milliseconds; the headroom is for
+    // the cascade solver's documented worst case, and it is still generous
+    // there.
     testTimeout: 60_000,
   },
 });

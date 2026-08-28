@@ -1,13 +1,13 @@
 // Refract — cascade/tier-ladder: the tier climbs on the ladder specified.
 //
 // specs/modes/cascade.md "The tier ladder": the tier climbs one step every
-// TIER_ADVANCE (4) boards solved — tier is
+// TIER_ADVANCE (5) boards solved — tier is
 // min(floor(solvedCount / TIER_ADVANCE) + 1, MAX_TIER) — and MAX_TIER (5)
-// holds from the sixteenth board solved onward. The twenty-board sweep solves
-// board after board, and the reading after each solve is the next board's
-// arrival snapshot: a board arrives after exactly k solves, so its tier must
-// be the formula's value at k, exactly. The twentieth solve's own reading is
-// taken off the solved screen the sweep ends on.
+// holds from the twentieth board solved onward. The twenty-five-board sweep
+// solves board after board, and the reading after each solve is the next
+// board's arrival snapshot: a board arrives after exactly k solves, so its
+// tier must be the formula's value at k, exactly. The twenty-fifth solve's
+// own reading is taken off the solved screen the sweep ends on.
 
 import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
@@ -21,7 +21,7 @@ import {
 import { MAX_TIER, TIER_ADVANCE, tierForSolvedCount } from "../notation";
 
 const SEED = 1;
-const BOARDS = 20;
+const BOARDS = 25;
 
 let h: Harness;
 
@@ -33,7 +33,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("recomputes tier as min(floor(solvedCount / 4) + 1, 5) after every solve", async () => {
+it("recomputes tier as min(floor(solvedCount / 5) + 1, 5) after every solve", async () => {
   const solved = await solveGenerated(h, BOARDS, SEED);
 
   for (let k = 0; k < solved.length; k += 1) {
@@ -47,7 +47,7 @@ it("recomputes tier as min(floor(solvedCount / 4) + 1, 5) after every solve", as
   }
 
   const end = h.snapshot();
-  assertEqual(end.solvedCount, BOARDS, "the twentieth solve is counted");
+  assertEqual(end.solvedCount, BOARDS, "the twenty-fifth solve is counted");
   assertEqual(
     end.tier,
     tierForSolvedCount(BOARDS),

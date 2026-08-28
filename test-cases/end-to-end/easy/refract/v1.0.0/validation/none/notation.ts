@@ -39,16 +39,18 @@ export const CAMPAIGN_LENGTH = 24;
 /** specs/modes/cascade.md "The tier ladder". */
 export const MAX_TIER = 5;
 /** specs/modes/cascade.md: the tier climbs one step every TIER_ADVANCE boards solved. */
-export const TIER_ADVANCE = 4;
+export const TIER_ADVANCE = 5;
 
 /** specs/board.md "Channels": the three channel identifiers, in this order. */
 export type Channel = "triangle" | "square" | "diamond";
 export const CHANNELS: readonly Channel[] = ["triangle", "square", "diamond"];
 
 /**
- * specs/modes/cascade.md "The tier ladder", one entry per tier (index 0 is
- * tier 1). Grid sizes are the stated inclusive ranges; crystal counts and
- * charge ranges likewise.
+ * specs/modes/cascade.md "The tier ladder" and "The floor, by tier", one entry
+ * per tier (index 0 is tier 1). Grid sizes are the stated inclusive ranges;
+ * crystal counts and charge ranges likewise; `emptyCells` is the stated
+ * maximum. The floor fields carry the tier's stated bounds, with an unstated
+ * bound held at the loosest value of its kind.
  */
 export interface TierSpec {
   readonly tier: number;
@@ -57,47 +59,89 @@ export interface TierSpec {
   readonly channels: number;
   readonly crystals: readonly [min: number, max: number];
   readonly charges: readonly [min: number, max: number];
+  /** The most cells a board at this tier leaves empty. */
+  readonly emptyCells: number;
+  /** Routes per channel: every channel present admits at least this many. */
+  readonly minRoutes: number;
+  /** The solution count the board admits, inclusive on both ends. */
+  readonly solutions: readonly [min: number, max: number];
+  /** The determined share, at most, as a fraction of a solution's segments. */
+  readonly maxDeterminedShare: number;
+  /** The branching factor, at least. */
+  readonly minBranching: number;
+  /** Crystals crossed by two or more channels in one solution, at least. */
+  readonly minSharedCrystals: number;
 }
 export const TIERS: readonly TierSpec[] = [
   {
     tier: 1,
-    cols: [4, 5],
-    rows: [4, 4],
+    cols: [3, 4],
+    rows: [3, 4],
     channels: 1,
     crystals: [0, 0],
     charges: [0, 0],
+    emptyCells: 6,
+    minRoutes: 2,
+    solutions: [1, 64],
+    maxDeterminedShare: 1,
+    minBranching: 1.7,
+    minSharedCrystals: 0,
   },
   {
     tier: 2,
-    cols: [5, 5],
-    rows: [4, 5],
+    cols: [4, 5],
+    rows: [4, 4],
     channels: 2,
-    crystals: [0, 0],
-    charges: [0, 0],
+    crystals: [0, 1],
+    charges: [1, 2],
+    emptyCells: 7,
+    minRoutes: 2,
+    solutions: [2, 64],
+    maxDeterminedShare: 0.95,
+    minBranching: 1.7,
+    minSharedCrystals: 0,
   },
   {
     tier: 3,
-    cols: [5, 6],
-    rows: [5, 5],
+    cols: [4, 5],
+    rows: [4, 5],
     channels: 2,
-    crystals: [1, 2],
-    charges: [1, 1],
+    crystals: [2, 3],
+    charges: [1, 2],
+    emptyCells: 9,
+    minRoutes: 3,
+    solutions: [2, 128],
+    maxDeterminedShare: 0.9,
+    minBranching: 1.8,
+    minSharedCrystals: 1,
   },
   {
     tier: 4,
-    cols: [6, 7],
-    rows: [5, 5],
+    cols: [5, 6],
+    rows: [4, 5],
     channels: 3,
-    crystals: [1, 3],
-    charges: [1, 2],
+    crystals: [3, 5],
+    charges: [1, 3],
+    emptyCells: 10,
+    minRoutes: 3,
+    solutions: [2, 192],
+    maxDeterminedShare: 0.85,
+    minBranching: 1.9,
+    minSharedCrystals: 2,
   },
   {
     tier: 5,
-    cols: [7, 7],
-    rows: [6, 6],
+    cols: [6, 7],
+    rows: [5, 6],
     channels: 3,
-    crystals: [2, 4],
+    crystals: [4, 7],
     charges: [1, 3],
+    emptyCells: 14,
+    minRoutes: 6,
+    solutions: [2, 256],
+    maxDeterminedShare: 0.8,
+    minBranching: 2,
+    minSharedCrystals: 3,
   },
 ];
 

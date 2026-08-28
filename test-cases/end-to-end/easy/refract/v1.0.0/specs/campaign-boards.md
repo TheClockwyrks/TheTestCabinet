@@ -16,258 +16,260 @@ four lines of five characters each.
 
 The boards fall into four sets of six, Set A through Set D, in play order. A set
 is a grouping the player is shown; it carries no rule of its own, and the
-sentences that head each set below describe what the boards in it hold.
+sentences that head each set below describe what the boards in it hold. The
+course climbs without pause: each set asks more of the player than the one
+before it, and the last boards ask more than anything else in the game.
 
 ## Set A: boards 1 to 6
 
 The smallest boards, each carrying a single channel and no crystals. One beam
 runs between the channel's two emitters and threads every lens on the board.
+Even here no board has only one answer: each admits at least two completed
+pictures, and the crowded grids leave real choices from the first move.
 
 ### Board 1 (3 x 3)
 
 ```
-.t.
-.tT
-T..
+.Tt
+ttT
+.tt
 ```
 
 ### Board 2 (3 x 3)
 
 ```
-.T.
-t.T
+.tt
+TtT
 tt.
 ```
 
 ### Board 3 (4 x 3)
 
 ```
-tT..
-t.tT
-.t..
+tTtt
+ttTt
+ttt.
 ```
 
 ### Board 4 (4 x 3)
 
 ```
-.t..
-t.tT
-.tTt
+Tt.t
+tTtt
+.ttt
 ```
 
 ### Board 5 (4 x 4)
 
 ```
-..t.
-.tt.
 .tTt
-T..t
+.ttt
+ttTt
+tttt
 ```
 
 ### Board 6 (4 x 4)
 
 ```
-.t.T
-t.t.
-tt..
-tTt.
+tttT
+ttt.
+t.tt
+ttTt
 ```
 
 ## Set B: boards 7 to 12
 
-A second channel joins the bench, and the first crystals appear. One board in
-this set stands a single crystal in front of one channel on its own, and the
-crystal there takes a single crossing; the crystals after it take two.
+A second channel joins the bench, and the first crystals appear. Board 9
+stands the first crystal, two charges one channel must spend alone; from
+board 10 on the crystals sit between the channels, open to either, and by the
+end of the set two at once are in play.
 
 ### Board 7 (4 x 4)
 
 ```
-...S
-tTs.
-t.Ss
-.tTs
+STtt
+sstt
+ssTt
+Sss.
 ```
 
 ### Board 8 (5 x 4)
 
 ```
-..t..
-tt.t.
-TS.Ts
-..ssS
+Sst..
+stTtt
+ssttt
+SsstT
 ```
 
 ### Board 9 (4 x 4)
 
 ```
-T...
-t.T.
-.t1t
-...t
+tSss
+2tss
+Ttss
+tTS.
 ```
 
 ### Board 10 (5 x 4)
 
 ```
-Tt...
-Sstt.
-..2.T
-.Ss..
+Tt.T.
+ttt..
+t2sSs
+tSsss
 ```
 
 ### Board 11 (5 x 4)
 
 ```
-.Tt2S
-ttst.
-Ss.T.
-s....
+..t.s
+ttT2s
+ttS2S
+t.Tss
 ```
 
-### Board 12 (5 x 5)
+### Board 12 (5 x 4)
 
 ```
-.Tttt
-s2St.
-.st..
-..sT.
-..S..
+Tttt.
+ttsSt
+.22t.
+ssST.
 ```
 
 ## Set C: boards 13 to 18
 
-Wider boards, reaching `6 x 6`. A third channel appears on several of them, and
-several carry more than one crystal at once, so a beam has more than one crossing
-to place.
+A third channel joins from board 13, and the crystals multiply: two to five
+per board, shared ever more widely. Board 17 stands the first crystal at the
+full `MAX_CHARGES` (`3`), and board 18 stands two of them.
 
-### Board 13 (5 x 5)
-
-```
-.sS..
-2S.T.
-ss..t
-.tttt
-..T.t
-```
-
-### Board 14 (6 x 5)
+### Board 13 (4 x 5)
 
 ```
-..tt2t
-.tTt.t
-Ts....
-.2S...
-sssS..
+.Ddd
+tTdD
+t22.
+tsSs
+T.S.
+```
+
+### Board 14 (5 x 5)
+
+```
+..tT.
+t2dD.
+T2t.s
+d2sss
+DSssS
 ```
 
 ### Board 15 (5 x 5)
 
 ```
-Sssdd
-s.2Sd
-.t.DD
-Tt...
-tttT.
+.T.2t
+sDttt
+sS2Td
+ss22D
+.S.d.
 ```
 
-### Board 16 (6 x 5)
+### Board 16 (5 x 5)
 
 ```
-..dd..
-.T.Dd.
-ttT2dS
-2.sDs.
-tt.ssS
+..ttt
+.S2tt
+DsTsT
+d22d.
+SddD.
 ```
 
 ### Board 17 (6 x 5)
 
 ```
-..Tss.
-.ts..S
-t.t2s.
-2t.Ts.
-tt..sS
+...ttd
+S2Ttdd
+t32Ddd
+Tss2d.
+sS.dD.
 ```
 
-### Board 18 (6 x 6)
+### Board 18 (6 x 5)
 
 ```
-t2Tt.D
-.tttd.
-..Tdd2
-.SsdsS
-...sDs
-....s.
+T.....
+ttDsss
+dd3222
+.dt3Ss
+DddTSs
 ```
 
 ## Set D: boards 19 to 24
 
-The largest boards, reaching the full `GRID_MAX_COLS` by `GRID_MAX_ROWS`
-(`7 x 6`). Most carry all three channels at once, crystals crowd the bench up to
-five at a time, and two boards stand a crystal at the full `MAX_CHARGES` (`3`).
+The summit. The boards grow to the full `GRID_MAX_COLS` by `GRID_MAX_ROWS`
+(`7 x 6`) while staying dense: four to eight crystals crowd every bench, open
+to two or three channels at once, and the final board leaves more open than
+any board before it.
 
-### Board 19 (6 x 6)
-
-```
-ssddd.
-s2Sd.d
-.2..Dd
-..SttD
-.T.tt.
-.tttTt
-```
-
-### Board 20 (7 x 5)
+### Board 19 (5 x 5)
 
 ```
-.D2dt.t
-Sd2DTtt
-2s..Tt.
-s2...tt
-.Ss...t
+.Dttt
+.dd3t
+.d2TT
+S2s2D
+.sSss
 ```
 
-### Board 21 (7 x 6)
+### Board 20 (6 x 5)
 
 ```
-....Tss
-t..t.sS
-22t.s..
-t3t..ss
-Tt...S2
-.....ss
+.S.tT.
+s2ttDd
+s2T2.d
+s22d3.
+ssSddD
 ```
 
-### Board 22 (7 x 6)
+### Board 21 (6 x 5)
 
 ```
-Ss..Dd.
-ss.DdTt
-s2s2..t
-..s2d.t
-.S.Tdt2
-....t2t
+S2D..T
+d2ssts
+.D3S3s
+.dT32t
+.d2tt.
+```
+
+### Board 22 (6 x 6)
+
+```
+.tt2d.
+.t2t2d
+t1DdSd
+2.S3dD
+TT2sd.
+.ssss.
 ```
 
 ### Board 23 (7 x 6)
 
 ```
-Tss.S..
-ts.s.Dd
-t.ss.dS
-.t.322T
-tD2d2.t
-tt.d...
+s2SST..
+2232.t.
+stTsttt
+..t.t.t
+d22ttdD
+dD2dddd
 ```
 
 ### Board 24 (7 x 6)
 
 ```
-S2ss.S.
-Ts2.s.d
-ssD2ddd
-ssTt.d2
-tt.tDd.
-t2t....
+ssdd.d.
+2S.dd2d
+ssD..d.
+t2ttTdd
+.t323Dd
+ttT2sS.
 ```

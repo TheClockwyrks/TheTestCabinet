@@ -31,7 +31,7 @@ import {
   type Harness,
 } from "../harness";
 
-const SWEEP = 20;
+const SWEEP = 25;
 const SEED = 2;
 
 let h: Harness;

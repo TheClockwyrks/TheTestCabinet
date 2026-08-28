@@ -1,8 +1,8 @@
 // Refract — cascade/sequence-is-endless: the sequence has no last board.
 //
 // specs/modes/cascade.md: MAX_TIER is the top of the ladder and holds from the
-// sixteenth board solved onward — play continues there indefinitely, on fresh
-// boards each time. The sweep drives PAST the top: twenty-two boards solved in
+// twentieth board solved onward — play continues there indefinitely, on fresh
+// boards each time. The sweep drives PAST the top: twenty-six boards solved in
 // a row, so six arrive after the ladder has topped out. Each of those arrives
 // well formed at MAX_TIER with solvedCount one higher than the board before,
 // and NEXT BOARD still hands over a fresh, well-formed board afterwards — no
@@ -22,7 +22,7 @@ import { MAX_TIER, TIER_ADVANCE } from "../notation";
 import { assertGeneratedBoardWellFormed } from "./helpers";
 
 const SEED = 1;
-/** Six boards past the sixteenth solve, where the ladder tops out. */
+/** Six boards past the twentieth solve, where the ladder tops out. */
 const BOARDS = TIER_ADVANCE * (MAX_TIER - 1) + 6;
 const FIRST_TOP_TIER_BOARD = TIER_ADVANCE * (MAX_TIER - 1);
 

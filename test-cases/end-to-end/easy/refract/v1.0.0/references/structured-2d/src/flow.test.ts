@@ -185,12 +185,12 @@ describe("the cascade solve transition", () => {
   it("counts the solve and recomputes the tier from the ladder", () => {
     const state = new RefractState();
     startMode(state, "cascade");
-    for (let solve = 1; solve <= 4; solve++) {
+    for (let solve = 1; solve <= 5; solve++) {
       onSolved(state);
       expect(state.screen).toBe("solved");
       nextCascadeBoard(state);
     }
-    expect(state.solvedCount).toBe(4);
+    expect(state.solvedCount).toBe(5);
     expect(state.tier).toBe(2);
   });
 

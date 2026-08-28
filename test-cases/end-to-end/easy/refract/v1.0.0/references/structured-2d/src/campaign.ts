@@ -19,33 +19,33 @@ import type { BoardState } from "./game";
 /** Every board, in play order, boards `1`–`24` at indices `0`–`23`. */
 export const CAMPAIGN_BOARDS: readonly (readonly string[])[] = [
   // ---- Set A: boards 1 to 6 — one channel, no crystals -------------------
-  [".t.", ".tT", "T.."],
-  [".T.", "t.T", "tt."],
-  ["tT..", "t.tT", ".t.."],
-  [".t..", "t.tT", ".tTt"],
-  ["..t.", ".tt.", ".tTt", "T..t"],
-  [".t.T", "t.t.", "tt..", "tTt."],
+  [".Tt", "ttT", ".tt"],
+  [".tt", "TtT", "tt."],
+  ["tTtt", "ttTt", "ttt."],
+  ["Tt.t", "tTtt", ".ttt"],
+  [".tTt", ".ttt", "ttTt", "tttt"],
+  ["tttT", "ttt.", "t.tt", "ttTt"],
   // ---- Set B: boards 7 to 12 — a second channel, first crystals ----------
-  ["...S", "tTs.", "t.Ss", ".tTs"],
-  ["..t..", "tt.t.", "TS.Ts", "..ssS"],
-  ["T...", "t.T.", ".t1t", "...t"],
-  ["Tt...", "Sstt.", "..2.T", ".Ss.."],
-  [".Tt2S", "ttst.", "Ss.T.", "s...."],
-  [".Tttt", "s2St.", ".st..", "..sT.", "..S.."],
-  // ---- Set C: boards 13 to 18 — wider, a third channel, more crystals ----
-  [".sS..", "2S.T.", "ss..t", ".tttt", "..T.t"],
-  ["..tt2t", ".tTt.t", "Ts....", ".2S...", "sssS.."],
-  ["Sssdd", "s.2Sd", ".t.DD", "Tt...", "tttT."],
-  ["..dd..", ".T.Dd.", "ttT2dS", "2.sDs.", "tt.ssS"],
-  ["..Tss.", ".ts..S", "t.t2s.", "2t.Ts.", "tt..sS"],
-  ["t2Tt.D", ".tttd.", "..Tdd2", ".SsdsS", "...sDs", "....s."],
-  // ---- Set D: boards 19 to 24 — the largest boards, crowded crystals -----
-  ["ssddd.", "s2Sd.d", ".2..Dd", "..SttD", ".T.tt.", ".tttTt"],
-  [".D2dt.t", "Sd2DTtt", "2s..Tt.", "s2...tt", ".Ss...t"],
-  ["....Tss", "t..t.sS", "22t.s..", "t3t..ss", "Tt...S2", ".....ss"],
-  ["Ss..Dd.", "ss.DdTt", "s2s2..t", "..s2d.t", ".S.Tdt2", "....t2t"],
-  ["Tss.S..", "ts.s.Dd", "t.ss.dS", ".t.322T", "tD2d2.t", "tt.d..."],
-  ["S2ss.S.", "Ts2.s.d", "ssD2ddd", "ssTt.d2", "tt.tDd.", "t2t...."],
+  ["STtt", "sstt", "ssTt", "Sss."],
+  ["Sst..", "stTtt", "ssttt", "SsstT"],
+  ["tSss", "2tss", "Ttss", "tTS."],
+  ["Tt.T.", "ttt..", "t2sSs", "tSsss"],
+  ["..t.s", "ttT2s", "ttS2S", "t.Tss"],
+  ["Tttt.", "ttsSt", ".22t.", "ssST."],
+  // ---- Set C: boards 13 to 18 — a third channel, crystals multiply -------
+  [".Ddd", "tTdD", "t22.", "tsSs", "T.S."],
+  ["..tT.", "t2dD.", "T2t.s", "d2sss", "DSssS"],
+  [".T.2t", "sDttt", "sS2Td", "ss22D", ".S.d."],
+  ["..ttt", ".S2tt", "DsTsT", "d22d.", "SddD."],
+  ["...ttd", "S2Ttdd", "t32Ddd", "Tss2d.", "sS.dD."],
+  ["T.....", "ttDsss", "dd3222", ".dt3Ss", "DddTSs"],
+  // ---- Set D: boards 19 to 24 — the summit: dense, contested boards ------
+  [".Dttt", ".dd3t", ".d2TT", "S2s2D", ".sSss"],
+  [".S.tT.", "s2ttDd", "s2T2.d", "s22d3.", "ssSddD"],
+  ["S2D..T", "d2ssts", ".D3S3s", ".dT32t", ".d2tt."],
+  [".tt2d.", ".t2t2d", "t1DdSd", "2.S3dD", "TT2sd.", ".ssss."],
+  ["s2SST..", "2232.t.", "stTsttt", "..t.t.t", "d22ttdD", "dD2dddd"],
+  ["ssdd.d.", "2S.dd2d", "ssD..d.", "t2ttTdd", ".t323Dd", "ttT2sS."],
 ];
 
 /** The four sets the select screen labels, in row order. */

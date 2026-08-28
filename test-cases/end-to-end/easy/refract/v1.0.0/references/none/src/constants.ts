@@ -97,14 +97,19 @@ export const MAX_TIER = 5;
 
 /**
  * The tier climbs one rung every this many boards solved:
- * `tier = min(floor(solvedCount / TIER_ADVANCE) + 1, MAX_TIER)`.
+ * `tier = min(floor(solvedCount / TIER_ADVANCE) + 1, MAX_TIER)`, so the
+ * ladder is five rungs of five boards each, and the top rung holds from the
+ * twentieth solve onward.
  */
-export const TIER_ADVANCE = 4;
+export const TIER_ADVANCE = 5;
 
 /**
  * One rung of the ladder. The shape is this module's; every value in TIERS is
  * the specification's. A tier that carries no crystals states `0` for all four
- * crystal figures.
+ * crystal figures. The difficulty-floor fields carry the bounds of the
+ * specification's "The floor, by tier" table; a bound the table does not
+ * state is held at the loosest value of its kind, so every rung reads the
+ * same way.
  */
 export interface Tier {
   /** The tier this entry describes, `1` through MAX_TIER. */
@@ -122,69 +127,117 @@ export interface Tier {
   /** The charges each of those crystals carries, inclusive on both ends. */
   readonly minCharges: number;
   readonly maxCharges: number;
+  /** The most cells a board at this tier leaves empty. */
+  readonly maxEmptyCells: number;
+  /** Routes per channel: every channel present admits at least this many. */
+  readonly minRoutes: number;
+  /** The solution count the board admits, inclusive on both ends. */
+  readonly minSolutions: number;
+  readonly maxSolutions: number;
+  /** The determined share, at most, as a fraction of a solution's segments. */
+  readonly maxDeterminedShare: number;
+  /** The branching factor, at least. */
+  readonly minBranching: number;
+  /** Crystals crossed by two or more channels in one solution, at least. */
+  readonly minSharedCrystals: number;
 }
 
 /** The ladder, one entry per tier, in tier order. */
 export const TIERS: readonly Tier[] = [
   {
     tier: 1,
-    minCols: 4,
-    maxCols: 5,
-    minRows: 4,
+    minCols: 3,
+    maxCols: 4,
+    minRows: 3,
     maxRows: 4,
     channels: 1,
     minCrystals: 0,
     maxCrystals: 0,
     minCharges: 0,
     maxCharges: 0,
+    maxEmptyCells: 6,
+    minRoutes: 2,
+    minSolutions: 1,
+    maxSolutions: 64,
+    maxDeterminedShare: 1,
+    minBranching: 1.7,
+    minSharedCrystals: 0,
   },
   {
     tier: 2,
-    minCols: 5,
+    minCols: 4,
+    maxCols: 5,
+    minRows: 4,
+    maxRows: 4,
+    channels: 2,
+    minCrystals: 0,
+    maxCrystals: 1,
+    minCharges: 1,
+    maxCharges: 2,
+    maxEmptyCells: 7,
+    minRoutes: 2,
+    minSolutions: 2,
+    maxSolutions: 64,
+    maxDeterminedShare: 0.95,
+    minBranching: 1.7,
+    minSharedCrystals: 0,
+  },
+  {
+    tier: 3,
+    minCols: 4,
     maxCols: 5,
     minRows: 4,
     maxRows: 5,
     channels: 2,
-    minCrystals: 0,
-    maxCrystals: 0,
-    minCharges: 0,
-    maxCharges: 0,
-  },
-  {
-    tier: 3,
-    minCols: 5,
-    maxCols: 6,
-    minRows: 5,
-    maxRows: 5,
-    channels: 2,
-    minCrystals: 1,
-    maxCrystals: 2,
-    minCharges: 1,
-    maxCharges: 1,
-  },
-  {
-    tier: 4,
-    minCols: 6,
-    maxCols: 7,
-    minRows: 5,
-    maxRows: 5,
-    channels: 3,
-    minCrystals: 1,
+    minCrystals: 2,
     maxCrystals: 3,
     minCharges: 1,
     maxCharges: 2,
+    maxEmptyCells: 9,
+    minRoutes: 3,
+    minSolutions: 2,
+    maxSolutions: 128,
+    maxDeterminedShare: 0.9,
+    minBranching: 1.8,
+    minSharedCrystals: 1,
+  },
+  {
+    tier: 4,
+    minCols: 5,
+    maxCols: 6,
+    minRows: 4,
+    maxRows: 5,
+    channels: 3,
+    minCrystals: 3,
+    maxCrystals: 5,
+    minCharges: 1,
+    maxCharges: 3,
+    maxEmptyCells: 10,
+    minRoutes: 3,
+    minSolutions: 2,
+    maxSolutions: 192,
+    maxDeterminedShare: 0.85,
+    minBranching: 1.9,
+    minSharedCrystals: 2,
   },
   {
     tier: 5,
-    minCols: 7,
+    minCols: 6,
     maxCols: 7,
-    minRows: 6,
+    minRows: 5,
     maxRows: 6,
     channels: 3,
-    minCrystals: 2,
-    maxCrystals: 4,
+    minCrystals: 4,
+    maxCrystals: 7,
     minCharges: 1,
     maxCharges: 3,
+    maxEmptyCells: 14,
+    minRoutes: 6,
+    minSolutions: 2,
+    maxSolutions: 256,
+    maxDeterminedShare: 0.8,
+    minBranching: 2,
+    minSharedCrystals: 3,
   },
 ];
 

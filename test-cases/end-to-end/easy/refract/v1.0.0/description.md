@@ -19,7 +19,8 @@ Two ways to play ship in every build, chosen from the title menu.
 - Campaign: a course of twenty-four hand-built boards in four sets of six,
   opened in order as each is solved, with a select grid and a completion screen.
 - Cascade: endless. The game carries a seeded generator that emits a solvable
-  board on demand, and the tier it generates at climbs as boards fall.
+  board on demand, holds every board to its tier's difficulty floor, and climbs
+  the tier as boards fall — five tiers, five boards each.
 
 ## Why it is a benchmark
 

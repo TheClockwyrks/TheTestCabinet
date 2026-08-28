@@ -1,24 +1,30 @@
 // Refract — Cascade's board generator and tier ladder.
 //
-// The generator's central requirement is that EVERY board it emits is solvable
-// under the rules in `src/rules.ts` (specs/modes/cascade.md): a board the
+// The generator's contract (specs/modes/cascade.md) has two halves. EVERY
+// board it emits is solvable under the rules in `src/rules.ts`: a board the
 // player cannot finish is the one failure the endless sequence cannot absorb.
-// It earns that guarantee by construction and then proves it: a board is built
-// by carving the SOLUTION first — one path of 8-adjacent cells per channel,
+// And every board meets its tier's DIFFICULTY FLOOR: the five measures in
+// `src/difficulty.ts`, each within the bounds the tier's TIERS entry states,
+// so the sequence cannot drift into busywork the way a merely solvable board
+// can.
+//
+// Solvability is earned by construction and then proved: a board is built by
+// carving the SOLUTION first — one path of 8-adjacent cells per channel,
 // walked under the very limits a beam obeys — and the nodes are read off the
 // paths afterward: an endpoint becomes an emitter, a cell one path crosses
 // once becomes a lens (or a one-charge crystal), and a cell the paths cross
 // more than once becomes a crystal charged once per crossing. The finished
-// board is then verified by replaying those paths through the real ruleset,
-// and only a board whose solution the rules accept is emitted.
+// board is verified by replaying those paths through the real ruleset, then
+// measured against the floor, and only a board that passes both is emitted.
 //
 // All randomness runs off the one integer `RefractState.rngState`, threaded
 // through a cursor and handed back advanced, so the sequence is a function of
-// the seed alone (specs/modes/cascade.md, Determinism). A construction attempt
-// can fail — a walk can box itself in — and a failed attempt simply draws
-// again; the deterministic fallback board at the bottom exists so the
-// generator cannot fail outright, and in practice an attempt lands long before
-// the cap.
+// the seed alone (specs/modes/cascade.md, Determinism). An attempt can fail —
+// a walk can box itself in, and most carved boards land under the floor — and
+// a failed attempt simply draws again. The per-tier reserve boards at the
+// bottom exist so the generator cannot fail outright: each is fixed, verified
+// against its tier's whole contract, and reached only if every attempt in the
+// budget misses, which the acceptance rate makes vanishingly rare.
 
 import { channelsOn, parseBoard } from "./board";
 import {
@@ -28,6 +34,7 @@ import {
   TIERS,
   type Tier,
 } from "./constants";
+import { measureDifficulty, meetsFloor } from "./difficulty";
 import { boardSolved, canExtend, segmentKey } from "./rules";
 import { cursor, type RngCursor } from "./rng";
 import type { BeamState, BoardState, Cell, NodeState } from "./game";
@@ -45,14 +52,20 @@ export interface GeneratedBoard {
   readonly rngState: number;
 }
 
-/** Construction attempts before the deterministic fallback is used. */
-const MAX_ATTEMPTS = 64;
+/** Attempts before the tier's reserve board is used. Acceptance against the
+ * floor runs a fifth to two thirds per carved candidate across the ladder, so
+ * the reserve is a guarantee rather than a path taken in practice. */
+const MAX_ATTEMPTS = 400;
 
 /** Restarts a single path is given before the whole attempt is abandoned. */
 const WALK_RESTARTS = 24;
 
 /** The chance a walk stops once it may, per step; longer walks otherwise. */
-const STOP_CHANCE = 0.3;
+const STOP_CHANCE = 0.22;
+
+/** Walk length as a share of the channel's cell budget, low and high. */
+const WALK_SHARE_LO = 0.62;
+const WALK_SHARE_HI = 0.95;
 
 /** One board at a tier, and the advanced generator state. */
 export function generateBoard(
@@ -76,12 +89,30 @@ export function generateBoardWithSolution(
   const rng = cursor(rngState);
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const built = tryBuild(spec, rng);
-    if (built && solutionSolves(built.board, built.solution)) {
-      return { ...built, rngState: rng.state };
-    }
+    if (!built) continue;
+    const cells = built.board.cols * built.board.rows;
+    if (cells - built.board.nodes.length > spec.maxEmptyCells) continue;
+    if (!solutionSolves(built.board, built.solution)) continue;
+    if (!clearsFloor(built.board, spec)) continue;
+    return { ...built, rngState: rng.state };
   }
-  const fallback = fallbackBoard(spec);
-  return { ...fallback, rngState: rng.state };
+  const reserve = reserveBoard(tier);
+  return { ...reserve, rngState: rng.state };
+}
+
+/**
+ * Whether a candidate clears its tier's difficulty floor. The enumeration is
+ * asked for one solution past the tier's cap, so a board over the cap comes
+ * back capped and fails; a board the expansion budget stops on is discarded
+ * the same way, since its measures are not trustworthy either.
+ */
+function clearsFloor(board: BoardState, spec: Tier): boolean {
+  const measured = measureDifficulty(
+    board,
+    spec.maxSolutions + 1,
+    spec.minRoutes,
+  );
+  return measured !== null && !measured.capped && meetsFloor(measured, spec);
 }
 
 /**
@@ -157,11 +188,12 @@ function tryBuild(
     spec,
   };
 
-  // Path lengths sized to the grid, so the puzzle uses the bench it is given
-  // rather than idling in a corner.
+  // Path lengths sized to the grid, so the puzzle crowds the bench it is
+  // given: the floor's branching and routes bounds are met by full boards,
+  // not by paths idling in a corner.
   const share = (cols * rows) / spec.channels;
-  const minLen = Math.max(4, Math.round(share * 0.5));
-  const maxLen = Math.max(minLen + 1, Math.round(share * 0.8));
+  const minLen = Math.max(4, Math.round(share * WALK_SHARE_LO));
+  const maxLen = Math.max(minLen + 1, Math.round(share * WALK_SHARE_HI));
 
   const solution: Cell[][] = [];
   for (let channel = 0; channel < spec.channels; channel++) {
@@ -311,7 +343,8 @@ function validSteps(carving: Carving, from: Cell): Cell[] {
  * once per crossing, and single-crossed cells are converted to one-charge
  * crystals until the attempt's target is met — preferring cells beside
  * another channel's territory, so a crystal reads as a question of who spends
- * it rather than a label on one beam's path.
+ * it rather than a label on one beam's path. The floor's shared-crystals
+ * bound is what a candidate without genuinely contested crystals then fails.
  */
 function chooseCrystals(
   carving: Carving,
@@ -393,41 +426,173 @@ function buildBoard(
   return { cols: carving.cols, rows: carving.rows, nodes };
 }
 
-// ---- The fallback --------------------------------------------------------
+// ---- The reserves --------------------------------------------------------
+
+/** One fixed board per tier: notation rows and a solving route per channel. */
+interface Reserve {
+  readonly notation: readonly string[];
+  readonly solution: readonly (readonly Cell[])[];
+}
 
 /**
- * A deterministic board for the tier, used only if every construction attempt
- * fails: one straight route per channel on its own row, with the tier's
- * minimum crystal count converted from the first channel's lenses. Plain, but
- * well-formed and provably solvable, which is the one thing the sequence
- * cannot do without.
+ * The per-tier reserve boards, used only if every construction attempt
+ * misses. Each is verified against its tier's whole contract — shape, floor,
+ * and the stored solution — by this build's own tests, so even the last
+ * resort keeps the sequence's guarantees.
  */
-export function fallbackBoard(spec: Tier): {
+const RESERVES: readonly Reserve[] = [
+  {
+    notation: [".ttt", ".ttt", "Ttt.", "Tttt"],
+    solution: [
+      [
+        { col: 0, row: 2 },
+        { col: 1, row: 1 },
+        { col: 1, row: 0 },
+        { col: 2, row: 0 },
+        { col: 3, row: 0 },
+        { col: 2, row: 1 },
+        { col: 3, row: 1 },
+        { col: 2, row: 2 },
+        { col: 3, row: 3 },
+        { col: 2, row: 3 },
+        { col: 1, row: 2 },
+        { col: 1, row: 3 },
+        { col: 0, row: 3 },
+      ],
+    ],
+  },
+  {
+    notation: ["tTssS", "tStss", "tttT.", "tt..."],
+    solution: [
+      [
+        { col: 1, row: 0 },
+        { col: 0, row: 0 },
+        { col: 0, row: 1 },
+        { col: 0, row: 2 },
+        { col: 1, row: 2 },
+        { col: 0, row: 3 },
+        { col: 1, row: 3 },
+        { col: 2, row: 2 },
+        { col: 2, row: 1 },
+        { col: 3, row: 2 },
+      ],
+      [
+        { col: 4, row: 0 },
+        { col: 3, row: 0 },
+        { col: 4, row: 1 },
+        { col: 3, row: 1 },
+        { col: 2, row: 0 },
+        { col: 1, row: 1 },
+      ],
+    ],
+  },
+  {
+    notation: ["S.ttT", ".2t2.", "ss2t.", "..S.T"],
+    solution: [
+      [
+        { col: 4, row: 0 },
+        { col: 3, row: 0 },
+        { col: 2, row: 0 },
+        { col: 3, row: 1 },
+        { col: 2, row: 1 },
+        { col: 1, row: 1 },
+        { col: 2, row: 2 },
+        { col: 3, row: 1 },
+        { col: 3, row: 2 },
+        { col: 4, row: 3 },
+      ],
+      [
+        { col: 0, row: 0 },
+        { col: 1, row: 1 },
+        { col: 0, row: 2 },
+        { col: 1, row: 2 },
+        { col: 2, row: 2 },
+        { col: 2, row: 3 },
+      ],
+    ],
+  },
+  {
+    notation: [".D.tt", "113DT", ".2s2T", "SsS.."],
+    solution: [
+      [
+        { col: 4, row: 1 },
+        { col: 4, row: 0 },
+        { col: 3, row: 0 },
+        { col: 2, row: 1 },
+        { col: 1, row: 1 },
+        { col: 0, row: 1 },
+        { col: 1, row: 2 },
+        { col: 2, row: 1 },
+        { col: 3, row: 2 },
+        { col: 4, row: 2 },
+      ],
+      [
+        { col: 0, row: 3 },
+        { col: 1, row: 2 },
+        { col: 1, row: 3 },
+        { col: 2, row: 2 },
+        { col: 3, row: 2 },
+        { col: 2, row: 3 },
+      ],
+      [
+        { col: 1, row: 0 },
+        { col: 2, row: 1 },
+        { col: 3, row: 1 },
+      ],
+    ],
+  },
+  {
+    notation: ["...Ttt.", ".Sss2Dd", "Ss222d.", "s.3d.t.", ".Dss..T"],
+    solution: [
+      [
+        { col: 3, row: 0 },
+        { col: 4, row: 0 },
+        { col: 5, row: 0 },
+        { col: 4, row: 1 },
+        { col: 3, row: 2 },
+        { col: 4, row: 2 },
+        { col: 5, row: 3 },
+        { col: 6, row: 4 },
+      ],
+      [
+        { col: 1, row: 1 },
+        { col: 2, row: 1 },
+        { col: 3, row: 1 },
+        { col: 2, row: 2 },
+        { col: 3, row: 2 },
+        { col: 2, row: 3 },
+        { col: 2, row: 4 },
+        { col: 3, row: 4 },
+        { col: 2, row: 3 },
+        { col: 2, row: 2 },
+        { col: 1, row: 2 },
+        { col: 0, row: 3 },
+        { col: 0, row: 2 },
+      ],
+      [
+        { col: 5, row: 1 },
+        { col: 6, row: 1 },
+        { col: 5, row: 2 },
+        { col: 4, row: 1 },
+        { col: 4, row: 2 },
+        { col: 3, row: 3 },
+        { col: 2, row: 3 },
+        { col: 1, row: 4 },
+      ],
+    ],
+  },
+];
+
+/** The tier's fixed reserve board and its solution. */
+export function reserveBoard(tier: number): {
   board: BoardState;
   solution: Cell[][];
 } {
-  const cols = spec.maxCols;
-  const rows = spec.maxRows;
-  const notation: string[] = [];
-  const solution: Cell[][] = [];
-  const emitterChars = ["T", "S", "D"];
-  const lensChars = ["t", "s", "d"];
-  for (let row = 0; row < rows; row++) {
-    const channel = row % 2 === 0 ? row / 2 : -1;
-    if (channel >= 0 && channel < spec.channels) {
-      let line = emitterChars[channel];
-      for (let col = 1; col < cols - 1; col++) {
-        const crystal = channel === 0 && col <= spec.minCrystals;
-        line += crystal ? "1" : lensChars[channel];
-      }
-      line += emitterChars[channel];
-      notation.push(line);
-      const route: Cell[] = [];
-      for (let col = 0; col < cols; col++) route.push({ col, row });
-      solution.push(route);
-    } else {
-      notation.push(".".repeat(cols));
-    }
-  }
-  return { board: parseBoard(notation), solution };
+  const reserve = RESERVES[Math.min(Math.max(tier, 1), MAX_TIER) - 1];
+  return {
+    board: parseBoard(reserve.notation),
+    solution: reserve.solution.map((route) =>
+      route.map((cell) => ({ ...cell })),
+    ),
+  };
 }

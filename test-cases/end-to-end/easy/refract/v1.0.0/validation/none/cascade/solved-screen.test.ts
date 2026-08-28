@@ -69,8 +69,8 @@ afterEach(async () => {
 });
 
 it("solving goes to solved, draws the copy, and keeps the board behind", async () => {
-  // Four real solves put the run at tier 2, where boards carry two channels.
-  const sweep = await solveGenerated(h, 4, SEED);
+  // Five real solves put the run at tier 2, where boards carry two channels.
+  const sweep = await solveGenerated(h, 5, SEED);
   for (const [index, after] of sweep.afterSolve.entries()) {
     assertEqual(
       after.solved,

@@ -2,8 +2,9 @@
 // describes.
 //
 // specs/modes/cascade.md's ladder table, held verbatim in notation.ts's TIERS:
-// per tier, the grid's cols x rows range, the channel count, and the crystals'
-// count and charge range. Each board of a twenty-board sweep is held to the row
+// per tier, the grid's cols x rows range, the channel count, the crystals'
+// count and charge range, and the most cells a board may leave empty. Each
+// board of a twenty-five-board sweep is held to the row
 // of the tier the run stood at when it was generated — read as the spec's own
 // formula over the solvedCount the arrival snapshot reports, since "the
 // generator draws each board's grid size from its tier's stated range" and the
@@ -21,7 +22,7 @@ import {
   type RefractSnapshot,
 } from "../harness";
 
-const SWEEP = 20;
+const SWEEP = 25;
 const SEED = 1;
 
 let h: Harness;
@@ -34,7 +35,7 @@ afterEach(async () => {
   await h.dispose();
 });
 
-it("each board's size, channels, and crystals match its tier's ladder row", async () => {
+it("each board's size, channels, crystals, and empty cells match its tier's ladder row", async () => {
   const arrivals: RefractSnapshot[] = [];
   const sweep = await solveGenerated(
     h,
@@ -58,6 +59,13 @@ it("each board's size, channels, and crystals match its tier's ladder row", asyn
       channelsPresent(board).length,
       row.channels,
       `${at}: channels present`,
+    );
+
+    assertBetween(
+      board.cols * board.rows - board.nodes.length,
+      0,
+      row.emptyCells,
+      `${at}: empty cells`,
     );
 
     const crystals = board.nodes.filter((node) => node.kind === "crystal");

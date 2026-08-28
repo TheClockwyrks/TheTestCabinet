@@ -3,12 +3,13 @@
 // specs/modes/cascade.md "The generator": every board the generator emits is
 // solvable under the rules in specs/beams.md — a board reaches the player only
 // when a set of beams satisfying every rule is known to exist for it. The
-// check proves it the only honest way: twenty consecutive generated boards are
-// SOLVED for real — snapshot the arrived board, run the spec-derived solver,
-// trace the found beams through the build's own limits, assert the build
-// agrees it is solved, take NEXT BOARD. Twenty boards crosses the whole ladder
-// (tier 5 from the sixteenth solve, specs/modes/cascade.md) and proves four
-// more at the top, so the sweep reaches MAX_TIER and continues there.
+// check proves it the only honest way: twenty-five consecutive generated
+// boards are SOLVED for real — snapshot the arrived board, run the
+// spec-derived solver, trace the found beams through the build's own limits,
+// assert the build agrees it is solved, take NEXT BOARD. Twenty-five boards
+// crosses the whole ladder at five per tier (tier 5 from the twentieth solve,
+// specs/modes/cascade.md) and proves five more at the top, so the sweep
+// reaches MAX_TIER and continues there.
 //
 // RESIDUAL RISK, documented: the solver caps its node expansions as a runaway
 // stop. A conformant generator could in principle emit a board the search
@@ -27,8 +28,8 @@ import {
 import { MAX_TIER, TIER_ADVANCE } from "../notation";
 
 const SEED = 1;
-const BOARDS = 20;
-/** Sixteen solves put the ladder at MAX_TIER (min(floor(16/4)+1, 5) = 5). */
+const BOARDS = 25;
+/** Twenty solves put the ladder at MAX_TIER (min(floor(20/5)+1, 5) = 5). */
 const FIRST_TOP_TIER_BOARD = TIER_ADVANCE * (MAX_TIER - 1);
 
 let h: Harness;
@@ -41,7 +42,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-it("solves twenty consecutive generated boards, reaching tier 5 and continuing there", async () => {
+it("solves twenty-five consecutive generated boards, reaching tier 5 and continuing there", async () => {
   // The whole sweep is the section: board after board arriving and solving.
   const solved = await captureReplay(h, "solve", () =>
     solveGenerated(h, BOARDS, SEED),
@@ -58,6 +59,6 @@ it("solves twenty consecutive generated boards, reaching tier 5 and continuing t
   assertEqual(
     h.snapshot().solvedCount,
     BOARDS,
-    "the sweep's twenty solves are counted",
+    "the sweep's twenty-five solves are counted",
   );
 });

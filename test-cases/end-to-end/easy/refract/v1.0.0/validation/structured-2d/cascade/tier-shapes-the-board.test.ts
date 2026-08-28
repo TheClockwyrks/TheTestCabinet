@@ -3,15 +3,21 @@
 //
 // specs/modes/cascade.md "The tier ladder": the generator draws each board's
 // grid size from its tier's stated range, and the rung fixes the channel
-// count and the crystals — their count and the charges each carries. Across
-// the twenty-board sweep, board k arrives after exactly k solves, so its rung
-// is the formula's tier at k; the board is held against that rung's row of
-// TIERS: cols and rows within the stated range, channel count equal to the
-// row's, crystal count within the row's range, and every crystal's charges
-// within the row's range.
+// count, the crystals — their count and the charges each carries — and how
+// many cells the board may leave empty. Across the twenty-five-board sweep,
+// board k arrives after exactly k solves, so its rung is the formula's tier
+// at k; the board is held against that rung's row of TIERS: cols and rows
+// within the stated range, channel count equal to the row's, crystal count
+// within the row's range, every crystal's charges within the row's range,
+// and empty cells at most the row's cap.
 
 import { afterEach, beforeEach, it } from "vitest";
-import { assertBetween, assertEqual, assertNotNull } from "../assert";
+import {
+  assertBetween,
+  assertEqual,
+  assertLessThanOrEqual,
+  assertNotNull,
+} from "../assert";
 import {
   captureStill,
   createHarness,
@@ -27,7 +33,7 @@ import {
 } from "../notation";
 
 const SEED = 1;
-const BOARDS = 20;
+const BOARDS = 25;
 
 let h: Harness;
 
@@ -58,6 +64,11 @@ function assertShapedByTier(board: Board, tier: number, context: string): void {
     channelsPresent(board).length,
     row.channels,
     `${context}: channels at tier ${tier}`,
+  );
+  assertLessThanOrEqual(
+    board.cols * board.rows - board.nodes.length,
+    row.emptyCells,
+    `${context}: empty cells at tier ${tier}`,
   );
   const crystals = board.nodes.filter((node) => node.kind === "crystal");
   assertBetween(

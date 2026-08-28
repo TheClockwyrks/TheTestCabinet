@@ -3,8 +3,8 @@
 //
 // specs/modes/cascade.md "The sequence": `back` during playing abandons the
 // board and returns to title, ending the sequence — starting Cascade again
-// begins a fresh one from tier 1. Progress is built first (four real solves,
-// so solvedCount is 4 and the tier has climbed) so a fresh sequence is
+// begins a fresh one from tier 1. Progress is built first (five real solves,
+// so solvedCount is 5 and the tier has climbed) so a fresh sequence is
 // distinguishable from a continued one, then `back` is pressed and CASCADE is
 // chosen again through the real title menu (menuIndex is 0 on arriving at the
 // title, specs/ui.md, so `down` then `confirm` lands on CASCADE).
