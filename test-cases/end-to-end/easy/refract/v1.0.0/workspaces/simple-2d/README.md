@@ -12,11 +12,11 @@ that alongside the specs. What is missing is the game.
 
 **`src/game.ts`, and any new files you add beside it.**
 
-Start by declaring and exporting `RefractState`, exactly as `specs/state.md`
+`src/game.ts` declares and exports `RefractState`, exactly as `specs/state.md`
 fixes it, and `RefractDebugApi`, the debug and automation surface
-`specs/instrumentation.md` specifies. The stub in `src/game.ts` is written
-against both names, so the project does not compile until they exist — a fresh
-workspace failing `npm run typecheck` is the starting point, not a broken seed.
+`specs/instrumentation.md` specifies. The seeded stub is written against both
+names, so the project does not compile until they exist — a fresh workspace
+failing `npm run typecheck` is the starting point, not a broken seed.
 
 `src/game.ts` then exports `game`, a `Game<RefractState, RefractDebugApi>`: three
 functions over that state. `initialize` builds the state and the debug surface
@@ -25,12 +25,9 @@ state as a read-only view (`DeepReadonly<RefractState>`, from `ts-essentials`)
 and returns the next state, advanced against the frame's delta time in seconds;
 and `render` is handed that next state, read-only again, and draws it. The engine
 holds the state by value and replaces it with whatever `update` returns, so a
-frame builds the next state from the current one — spreading the parts that
-change — rather than writing into it, and the type is what guarantees that
-rendering changes nothing. All three currently throw `"not implemented"`.
-Implement them, and split the work across new modules under `src/` however you
-like — the board, the ruleset, the tracing, the board generator, rendering, the
-debug surface, and so on.
+frame builds the next state from the current one rather than writing into it,
+and the type is what guarantees that rendering changes nothing. All three
+currently throw `"not implemented"`. Implement them.
 
 **The pointer comes from the engine.** A beam is drawn with the pointer, and
 the engine hands the game its position already in logical stage units along
@@ -61,8 +58,7 @@ carries a complete worked example of testing a game this way.
   page's canvas, binds `game` to it, and runs.
 - **`src/constants.ts`** — every figure the specification fixes: the stage and
   board geometry, the channels, the campaign length, the tier ladder, the action
-  names, the cue names, and the screen copy. Read from it, and never restate a
-  number it already names.
+  names, the cue names, and the screen copy. Read from it.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.

@@ -77,22 +77,13 @@ The file extension states what an entry is:
 | `.json.gz` | A replay: a gzipped recording of the game's own drawing, made with the engine's recorder. |
 | `.webm` | A video clip. |
 
-Anything in motion is captured as a replay rather than a video. How screenshots
-are captured is the build's own business.
+Anything in motion is captured as a replay rather than a video.
 
 ## Capturing a replay
 
-The engine documents its recorder in `engine/recording.md` at the root of this
-repository. `engine.startRecording()` arms it and capture begins on the next
-frame; `engine.stopRecording()` returns the recording, a plain object that
-`JSON.stringify` serializes. Gzip that JSON (Node's `zlib` gzips it) and write
-the result to the `.json.gz` file the carousel names.
-
-Capture from code, in a script or test run with the project's own toolchain:
-construct the engine over the game on a headless canvas the way the engine
-documentation shows, drive play (the operations in `specs/instrumentation.md`
-load a board and trace beams, and `engine.advance` steps the frames), and
-bracket the recorder around the stretch worth showing. Each replay holds a few
-seconds of live play, such as a board solved trace by trace, rather than a
-menu.
+A replay is a gzipped JSON recording made with the engine's recorder, which the
+engine documents in `engine/recording.md` at the root of this repository. Each
+replay holds a few seconds of live play, such as a board solved trace by trace,
+rather than a menu. How screenshots and replays are captured is the build's own
+business.
 {{/if}}

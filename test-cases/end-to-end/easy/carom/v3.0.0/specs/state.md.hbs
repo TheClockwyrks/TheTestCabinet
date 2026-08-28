@@ -1,8 +1,7 @@
 # Carom — Game state
 
 {{#if (eq engine.slug "none")}}
-The build owns the shape of the game's state entirely. Choose the types, the
-fields, and the modules that hold them to suit the implementation you write.
+The build owns the shape of the game's state entirely.
 
 The one contract fixed over the state is the debugging and automation surface
 specified for this build. Every operation that surface carries is a read or a
@@ -219,9 +218,9 @@ turned.
 
 Both are derived from `obstacleClock` by the sway and rotation formulas this
 specification fixes, and both are declared state because the oriented collision
-resolves against them and the debug surface reports them. Recompute the pair
-every frame from the clock rather than integrating them, so a scenario that
-poses the clock faces exactly the pose the formula names.
+resolves against them and the debug surface reports them. Both equal those
+formulas evaluated at the current `obstacleClock`, on every frame and after the
+clock is posed.
 {{/if}}
 
 ## `CaromState`

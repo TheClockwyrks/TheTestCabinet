@@ -53,26 +53,36 @@ process.
 
 ## Never help the model
 
-A spec states what must be built and how the built game behaves, in exact
-values and observable terms, and **never** how to implement it. Designing the
-implementation is the work a run measures, so a spec that suggests an
-algorithm, a data structure, a decomposition, or a place for code to live is
-doing part of the model's job. The fixed build interface, the seeded project's
-toolchain, and the module contract an engine's workspace states are
-requirements, and they are the only implementation facts a spec fixes.
+A spec states what must be built and how the built game behaves, in exact values
+and observable terms. Deciding how to build it is the work a run measures, so a
+spec fixes no algorithm, no data structure, no decomposition, and no place for
+code to live. The build interface, the seeded project's toolchain, and the module
+contract an engine's workspace states are the only implementation facts a spec
+fixes, because a run depends on them.
 
-Every sentence in a spec is a rule: a statement a build either satisfies or
-violates. A sentence a build cannot violate is advice, and advice is cut or
-recast as the rule it hints at.
+Clean code is one of the requirements a spec states, not a lesson a spec teaches.
+The spec requires code fit for a long-lived codebase shared with other developers
+and names the checks that must pass. Which figures get a name, how modules
+divide, where a rule lives, and what a comment explains are the model's
+decisions, and deciding them badly is a result worth measuring.
 
-| Advice (cut) | Rule (kept) |
+| Coaching (cut) | Requirement (kept) |
 | --- | --- |
-| Name each one once in a module of your own and read it from there, rather than restating a value at each use. | Every fixed figure is named once and imported where it is used. |
+| Name each fixed figure once in a module of your own and read it from there, rather than restating a value at each use. | The code is fit for a long-lived codebase shared with other developers. |
+| Read the pressed keys into a set each frame and check it when you move the paddles. | The left paddle moves up while `KeyW` is held and down while `KeyS` is held. |
 
-The left column tells the model how to write its code. The right column states
-a property the finished code either has or lacks, which is what the
-[clean-code requirements](#clean-maintainable-code) already are: rules about
-the delivered code, not guidance on producing it.
+The test is not whether a sentence names something a build could fail to do.
+"Every fixed figure is named once and imported where it is used" is a property a
+finished build either has or lacks, and it is still coaching, because it hands
+over a practice the model is there to arrive at on its own. The test is whether
+the sentence describes the product or the process that produces it.
+
+An implementation fact a validated figure depends on is a requirement. Where a
+spec asserts a position or a speed to a tolerance, the integration and the order
+collisions resolve in are stated exactly, because a validator can only assert a
+figure the spec pins down. That is the same exemption the module contract has,
+and it reaches no further: the moment a sentence stops being what a validator's
+number rests on, it is coaching again.
 
 ## What is specified and what is validated
 
@@ -123,9 +133,9 @@ focused items are what let results differentiate models.
 ### Clean, maintainable code
 
 The spec requires the code a model writes to be fit for a real codebase shared
-with human developers: modules split by concern, every fixed figure named once
-and imported, no duplicated logic or dead code, comments that explain intent, and
-the project's type-check, lint, format, and test commands passing.
+with human developers, and names the checks that must pass: the project's
+type-check, lint, format, and test commands. The practices that get it there stay
+out of the spec, as [Never help the model](#never-help-the-model) covers.
 
 ### Engineless configurations
 
@@ -221,9 +231,9 @@ When you finish revising a case's specs or prompt, confirm each of the following
   script for every supported engine, with every threshold derived from the
   spec.
 - The spec requires clean, maintainable code and names the checks that must
-  pass.
-- The specs carry no implementation advice: every sentence states a rule a
-  build can violate, and nothing suggests how to implement one.
+  pass, without listing the practices that produce it.
+- The specs carry no coaching: nothing states how to build the game or how to
+  write the code, only what the finished build must be and do.
 - An engineless workspace contains configuration only.
 - The seeded set carries no historical or changelog wording.
 - Specs, prompt, and file names carry no mention of testing, benchmarking,

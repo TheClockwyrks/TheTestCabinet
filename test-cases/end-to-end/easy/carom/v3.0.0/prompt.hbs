@@ -13,8 +13,7 @@ That toolchain is the whole of what it supplies.
 What is missing is everything under `src/`, and that directory does not exist
 yet. Nothing here supplies a frame loop, a canvas fit, input, audio, an overlay,
 or a line of game code. `index.html` loads `/src/main.ts`, so that module is
-where your build starts: create it, and organize the rest of `src/` however suits
-you.
+where your build starts.
 {{else if (eq engine.slug "simple-2d")}}
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
@@ -56,10 +55,10 @@ This build runs on the **{{engine.name}}** engine, installed as a dependency of
 the project, so import it by its bare package name; there is nothing to add to
 `package.json` for it and nothing to install.
 
-The engine's own documentation is at `{{engine.docs}}`. Read all of it before you
-start. It is the authoritative description of the engine's API; the specification
-in `specs/` describes the game and does not restate the engine. The documentation
-also carries a complete worked example of unit-testing a game built on it.
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the game
+and does not restate the engine. The documentation also carries a complete worked
+example of unit-testing a game built on it.
 
 Build the game on the engine rather than beside it. The engine owns the frame
 loop and the delta time it hands your update, the input actions, the audio, asset
@@ -76,10 +75,10 @@ This build runs on the **{{engine.name}}** engine, installed as a dependency of
 the project, so import it by its bare package name; there is nothing to add to
 `package.json` for it and nothing to install.
 
-The engine's own documentation is at `{{engine.docs}}`. Read all of it before you
-start. It is the authoritative description of the engine's API; the specification
-in `specs/` describes the game and does not restate the engine. The documentation
-also carries a complete worked example of unit-testing a game built on it.
+The engine's own documentation is at `{{engine.docs}}`. It is the authoritative
+description of the engine's API; the specification in `specs/` describes the game
+and does not restate the engine. The documentation also carries a complete worked
+example of unit-testing a game built on it.
 
 Build the game inside the engine's framework rather than beside it. The engine
 owns the frame loop and the delta time it hands each tick, rendering, collision
@@ -94,10 +93,10 @@ the game itself: its rules, its simulation, and what its components draw.
 ## What to read first
 
 The full specification is in the `specs/` directory at `{{workspace}}`, already
-present in your project. Read all of it before you start, and produce an
-implementation that matches the specification exactly. `specs/overview.md` states
-what you implement, which files stay as they are, the code quality the build is
-held to, and the commands that run over the finished repository.
+present in your project. Produce an implementation that matches the
+specification exactly. `specs/overview.md` states what you implement, which files
+stay as they are, the code quality the build is held to, and the commands that
+run over the finished repository.
 
 ## The build interface
 

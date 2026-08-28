@@ -111,9 +111,7 @@ Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured
 over `src/`. A test drives the game over its own clock for a counted number of
 frames, so it needs no browser, and `@napi-rs/canvas` is installed for a test
-that wants a real 2D context. Unit tests cover the limits that accept or refuse
-a move, beginning a trace on a node and retracting from the live end, crystal
-charge accounting, and the detection of a complete beam and a solved board.
+that wants a real 2D context.
 {{else if (eq engine.slug "simple-2d")}}
 ### What you implement
 
@@ -128,8 +126,7 @@ read-only again, and draws it. The engine holds the state by value and replaces
 it with what each `update` returns, so a frame builds the next state from the
 current one rather than writing into it, and nothing but `update` and the debug
 surface's poses advances the game. All three functions throw `"not implemented"`
-as they stand. Implement them, and split the work across new files under `src/`
-however suits you.
+as they stand. Implement them.
 
 `src/game.ts` also declares and exports `RefractState` and the types it is built
 from, exactly as `specs/state.md` states them, and `RefractDebugApi`, the debug
@@ -170,10 +167,7 @@ this specification does not name is yours to decide.
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured
 over `src/`. A test stands the engine up over its own canvas and clock and
-advances the game a counted number of frames, so it needs no browser. Unit
-tests cover the limits that accept or refuse a move, beginning a trace on a
-node and retracting from the live end, crystal charge accounting, and the
-detection of a complete beam and a solved board.
+advances the game a counted number of frames, so it needs no browser.
 {{else}}
 ### What you implement
 
@@ -191,8 +185,7 @@ and the pointer are read. The mode's `gameStateClass` is `RefractState`, so the
 world's game state is the state `specs/state.md` declares. The actors,
 components, and controllers you write draw that state and drive it. As seeded,
 the definition is a stub whose instance throws
-`"not implemented"`. Implement it, and split the work across new files under
-`src/` however suits you.
+`"not implemented"`. Implement it.
 
 `src/game.ts` also declares and exports `RefractState` and the types it is built
 from, exactly as `specs/state.md` states them, and `RefractDebugApi`, the debug
@@ -234,10 +227,7 @@ Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured
 over `src/`. A test stands the engine up over a canvas from `@napi-rs/canvas`
 and a surface and clock of its own, then advances the game a counted number of
-frames with `engine.advance`, so it needs no browser. Unit tests cover the
-limits that accept or refuse a move, beginning a trace on a node and retracting
-from the live end, crystal charge accounting, and the detection of a complete
-beam and a solved board.
+frames with `engine.advance`, so it needs no browser.
 {{/if}}
 
 ### The checks the repository passes
@@ -309,16 +299,8 @@ both.
 
 ## Code quality
 
-The code is written as for a long-lived codebase shared with human developers.
-
-- Modules are split by concern, and each has one responsibility.
-- Every fixed figure is named once and imported where it is used.
-- Logic appears once; no two places implement the same rule.
-- The tree carries no dead code, no commented-out code, and no leftover
-  debugging output.
-- Comments explain intent where the code cannot.
-- The type-check, lint, and format checks pass.
-- Unit tests cover the simulation.
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
 
 ## Coordinate system and presentation
 

@@ -33,10 +33,7 @@ so `world.byTag` finds it under the names the specification uses, the
 components that draw them, and the controllers that drive the paddles. The
 instance's `initialize` registers every action in `ACTIONS` against its binding
 in `BINDINGS`, defines the four `CUES`, registers the diagnostic sources
-`specs/instrumentation.md` lists — each a function of no arguments that reads
-the live world at the moment it runs — and returns the debug surface. Split
-the work across new modules under `src/` however you like — the modes, the
-actors, the controllers, the surface, and so on.
+`specs/instrumentation.md` lists, and returns the debug surface.
 
 `src/game.ts` also exports `BACKGROUND`, a CSS color string: the field
 background `src/main.ts` hands the engine as the color the canvas is cleared to
@@ -69,8 +66,7 @@ testing a game this way.
   page's canvas, binds `game` to it, and runs.
 - **`src/constants.ts`** — every figure the specification fixes: geometry,
   speeds, spin, the match rules, the action names and bindings, the cue names,
-  the level names, the actor tags. Read from it, and never restate a value it
-  already names.
+  the level names, the actor tags. Read from it.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.

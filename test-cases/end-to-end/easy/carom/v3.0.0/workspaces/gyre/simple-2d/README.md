@@ -32,11 +32,9 @@ state as a read-only view (`DeepReadonly<CaromState>`, from `ts-essentials`) and
 returns the next state, advanced against the frame's delta time in seconds; and
 `render` is handed that next state, read-only again, and draws it. The engine
 holds the state by value and replaces it with whatever `update` returns, so a
-frame builds the next state from the current one — spreading the parts that
-change — rather than writing into it, and the type is what guarantees that
-rendering changes nothing. All three currently throw `"not implemented"`.
-Implement them, and split the work across new modules under `src/` however you
-like — physics, rendering, the AI, the debug surface, and so on.
+frame builds the next state from the current one rather than writing into it,
+and the type is what guarantees that rendering changes nothing. All three
+currently throw `"not implemented"`. Implement them.
 
 The debug surface is a required deliverable. The engine returns it from
 `engine.debug` exactly as `initialize` handed it over, and that is how the game
@@ -61,8 +59,7 @@ carries a complete worked example of testing a game this way.
 - **`src/main.ts`** — the fixed entry point. It creates the engine over the
   page's canvas, binds `game` to it, and runs.
 - **`src/constants.ts`** — every figure the specification fixes: geometry,
-  speeds, spin, the match rules, the action names, the cue names. Read
-  from it, and never restate a number it already names.
+  speeds, spin, the match rules, the action names, the cue names. Read from it.
 - **`index.html`** — the page and the canvas the engine fits the field into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.

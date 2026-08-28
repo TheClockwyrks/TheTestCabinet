@@ -36,8 +36,8 @@ returns what it read. A caller drives a pose through the engine's `apply`, as
 current state, as `debug.snapshot(engine.state)`. A pose arranges the world, and
 the game's own `update` runs the real collision, the real serve, and the real AI
 from there on the next frame, so a scenario driven from code behaves exactly like
-one played by hand. Where the surface's implementation lives under `src/` is
-yours to decide; `src/game.ts` declares and exports its type, `CaromDebugApi`.
+one played by hand. `src/game.ts` declares and exports its type,
+`CaromDebugApi`.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{else}}
@@ -167,9 +167,8 @@ it is the one behavior the whole surface depends on.
   velocities to `0`, handing the paddles back.
 {{else}}
 The driver is the hold the surface takes on the paddles, and honoring it is the
-one behavior the whole surface depends on. How the build carries it is its own —
-a controller of the build's that possesses both paddles is the natural shape —
-but its behavior is fixed:
+one behavior the whole surface depends on. How the build carries it is its own,
+and its behavior is fixed:
 
 - While the driver holds nothing, the game plays normally: the registered
   actions move the human paddles and, in Solo, the AI moves the right one.
@@ -473,30 +472,14 @@ obstacles.
 {{/if}}
 
 {{#if (eq engine.slug "none")}}
-A typical scenario calls `startMatch("versus")`, then `setPaddle` and `setBall` to
-arrange the exact contact wanted, advances the game a handful of frames to run the
-real collision, and reads the result from `snapshot()`.
-
 ## Snapshot shape
 
 `snapshot()` returns:
 {{else if (eq engine.slug "simple-2d")}}
-A typical scenario applies `startMatch` through
-`engine.apply((s) => debug.startMatch(s, "versus"))`, then `setPaddle` and
-`setBall` the same way to arrange the exact contact wanted, advances the engine a
-handful of frames to run the real collision, and reads the result from
-`debug.snapshot(engine.state)`.
-
 ## Snapshot shape
 
 `snapshot` returns:
 {{else}}
-A typical scenario calls `startMatch("versus")`, advances a frame to open the
-match, then `setPaddle` and `setBall` to arrange the exact contact wanted,
-advances the engine a handful of frames to run the real collision, and reads
-the result from `snapshot()`. A caller holds the surface as `engine.debug`, the
-same value `initialize` returned.
-
 ## Snapshot shape
 
 `snapshot()` returns:
@@ -596,15 +579,12 @@ sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
 {{else if (eq engine.slug "simple-2d")}}
 Registering those values is the whole of Carom's part, through
 `InitApi.diagnostics`. Each source is called with the state current at the read,
-as `DeepReadonly<CaromState>`, and reads off that argument: a source that closed
-over the state `initialize` built would report the title screen forever, because
-every frame leaves a new value behind. Drawing the panel, toggling it, and
-keeping it read-only are the engine's.
+as `DeepReadonly<CaromState>`, and reports the value that state carries. Drawing
+the panel, toggling it, and keeping it read-only are the engine's.
 {{else}}
 Registering those values is the whole of Carom's part, through
 `InitApi.diagnostics` when the instance initializes. Each source is a function of
 no arguments that reads the live game at the moment it runs and returns a short
-value: read the open world inside the source rather than closing over a figure
-read at initialization, which would report the title screen forever. Drawing the
-panel, toggling it, and keeping it read-only are the engine's.
+value. Drawing the panel, toggling it, and keeping it read-only are the
+engine's.
 {{/if}}

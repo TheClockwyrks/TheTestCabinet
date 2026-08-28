@@ -83,9 +83,8 @@ as they are.
 ### Every figure comes from this specification
 
 Every number, key binding, cue name, and piece of screen copy this specification
-fixes is stated here under a name. Name each one once in a module of your own and
-read it from there, rather than restating a value at each use. Anything this
-specification does not name is yours to decide.
+fixes is stated here under a name, and the value stated here is authoritative.
+Anything this specification does not name is yours to decide.
 
 ### Your own tests
 
@@ -93,9 +92,7 @@ Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured over
 `src/`. A test drives the game over its own clock for a counted number of frames,
 so it needs no browser, and `@napi-rs/canvas` is installed for a test that wants
-a real 2D context. Cover the parts of the game a person cannot see at a glance:
-the collision resolution, the paddle bounce and spin, the serve, the scoring and
-match rules, and the AI.
+a real 2D context.
 {{else if (eq engine.slug "simple-2d")}}
 ### What you implement
 
@@ -110,8 +107,7 @@ again, and draws it. The engine holds the state by value and replaces it with
 what each `update` returns, so a frame builds the next state from the current
 one rather than writing into it, and nothing but `update` and the debug
 surface's poses advances the game. All three functions throw `"not implemented"`
-as they stand. Implement them, and split the work across new files under `src/`
-however suits you.
+as they stand. Implement them.
 
 `src/game.ts` also declares and exports `CaromState` and the types it is built
 from, exactly as this specification states them, and `CaromDebugApi`, the debug
@@ -152,9 +148,7 @@ does not name is yours to decide.
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured over
 `src/`. A test stands the engine up over its own canvas and clock and advances the
-game a counted number of frames, so it needs no browser. Cover the parts of the
-game a person cannot see at a glance: the collision resolution, the paddle bounce
-and spin, the serve, the scoring and match rules, and the AI.
+game a counted number of frames, so it needs no browser.
 {{else}}
 ### What you implement
 
@@ -168,8 +162,7 @@ instance class. Behind that definition you write the whole game: the game
 mode(s) that hold the match rules, the actors that populate the field (each
 carrying its tag from `TAGS`) and the components that draw them, the controllers
 that drive the paddles, and the debug and automation surface this specification
-fixes, which your instance's `initialize` builds and returns. Split the work
-across new files under `src/` however suits you.
+fixes, which your instance's `initialize` builds and returns.
 
 `src/game.ts` also exports `BACKGROUND`, a CSS color string: the field
 background. `src/main.ts` hands it to the engine as the color the canvas is
@@ -207,9 +200,7 @@ Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `src/`. A test stands the engine up over its own canvas and clock and advances the
 game a counted number of frames, so it needs no browser; `@napi-rs/canvas` is
 installed to supply the 2D context, and the engine's documentation carries a
-complete worked example. Cover the parts of the game a person cannot see at a
-glance: the collision responses, the paddle bounce and spin, the serve, the
-scoring and match rules, and the AI.
+complete worked example.
 {{/if}}
 
 ### The checks the repository passes
@@ -276,16 +267,8 @@ mode. Aim for a game a person would enjoy playing.
 
 ## Code quality
 
-The code is written as for a long-lived codebase shared with human developers.
-
-- Modules are split by concern, and each has one responsibility.
-- Every fixed figure is named once and imported where it is used.
-- Logic appears once; no two places implement the same rule.
-- The tree carries no dead code, no commented-out code, and no leftover
-  debugging output.
-- Comments explain intent where the code cannot.
-- The type-check, lint, and format checks pass.
-- Unit tests cover the simulation.
+The code is fit for a long-lived codebase shared with human developers. The
+type-check, lint, and format checks pass, and unit tests cover the simulation.
 
 ## Coordinate system and presentation
 

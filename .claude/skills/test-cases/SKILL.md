@@ -49,12 +49,25 @@ down" is two items, "up" and "down", because a build whose paddle moves only up
 must score differently from one whose paddle moves both ways. Tightly focused
 items are what differentiate models.
 
-### Clean Code Is Required
+### Clean Code Is Required, Never Taught
 
-Specs require code fit for a real codebase shared with human developers: modules
-split by concern, every fixed figure named once and imported, no duplicated
-logic or dead code, comments that explain intent, and the project's type-check,
-lint, format, and test commands passing.
+Specs require code fit for a real codebase shared with human developers, and
+name the checks that must pass: the project's type-check, lint, format, and test
+commands. **NEVER** list the practices that produce clean code. Which figures
+get a name, how modules divide, where a rule lives, and what a comment explains
+are the model's decisions, and deciding them badly is a result worth measuring.
+
+### Never Help The Model
+
+Specs state what must be built and how the built game behaves. Deciding how to
+build it is the work a run measures, so a spec fixes no algorithm, no data
+structure, no decomposition, and no place for code to live. The build interface,
+the seeded project's toolchain, and the module contract an engine's workspace
+states are the only implementation facts a spec fixes, because a run depends on
+them. An implementation fact a validated figure depends on is a requirement
+under the same exemption: where a spec asserts a position or a speed to a
+tolerance, the integration and the order collisions resolve in are stated
+exactly, because a validator can only assert a figure the spec pins down.
 
 ### Engineless Workspaces Ship Configuration Only
 

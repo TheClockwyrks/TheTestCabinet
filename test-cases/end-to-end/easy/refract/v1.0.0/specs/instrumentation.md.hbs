@@ -36,8 +36,8 @@ it read. A caller drives a pose through the engine's `apply`, as
 state, as `debug.snapshot(engine.state)`. A pose arranges the board, and the
 game's own targeting, grab rules, limits, and completion test run from there
 exactly as they do in play, so a scenario driven from code behaves exactly like
-one played by hand. Where the surface's implementation lives under `src/` is yours
-to decide; `src/game.ts` declares and exports its type, `RefractDebugApi`.
+one played by hand. `src/game.ts` declares and exports its type,
+`RefractDebugApi`.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{else}}
@@ -56,8 +56,7 @@ same systems play uses, and returns nothing; a reading returns plain data built
 at the call and changes nothing. A pose arranges the board, and the game's own
 targeting, grab rules, limits, and completion test run from there exactly as
 they do in play, so a scenario driven from code behaves exactly like one played
-by hand. Where the surface's implementation lives under `src/` is yours to
-decide; `src/game.ts` declares and exports its type, `RefractDebugApi`.
+by hand. `src/game.ts` declares and exports its type, `RefractDebugApi`.
 
 The surface is inert during normal play, doing nothing until something calls it.
 {{/if}}
@@ -163,8 +162,7 @@ time, so `advance(1, 1)` and `advance(1, 60)` cover the same second of game time
 and must reach the same outcome, beyond the drift a change in step size explains.
 
 Advancing while the game is still stepping automatically adds to what the wall
-clock is already doing, so a scenario that must be reproducible calls
-`setAutoStep(false)` first.
+clock is already doing.
 
 {{/if}}
 {{#if (eq engine.slug "none")}}

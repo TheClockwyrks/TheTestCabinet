@@ -23,9 +23,9 @@ You also write the `window.__carom` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how the
 game is driven from code, so it is present and exactly as specified.
 
-Every figure the specification fixes — geometry, speeds, spin, the match
-rules, the action names, the cue names — is stated in `specs/`. Name them once in
-your own module and read from it, rather than restating a number at each use.
+Every figure the specification fixes — geometry, speeds, spin, the match rules,
+the action names, the cue names — is stated in `specs/`, and the value stated
+there is authoritative.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test` runs
 them in process, in Node, with coverage over `src/`. `@napi-rs/canvas` is

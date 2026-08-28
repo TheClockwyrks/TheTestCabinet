@@ -20,10 +20,9 @@ fixed logical stage onto the canvas, pointer and keyboard input, audio, and the
 diagnostics overlay — and you write the game itself on top of it.
 
 Refract is traced with the pointer, so the pointer path is part of what you
-build: taking the cursor off the page, mapping its position into the game's
-logical units through the same fit you use to draw, and delivering its movement
-and its press and release edges to the game. `specs/controls.md` states what
-Refract does with them.
+build: taking the cursor off the page and delivering its position in the game's
+logical units, with its movement and its press and release edges, to the game.
+`specs/controls.md` states what Refract does with them.
 
 You also write the `window.__refract` debugging and automation API that
 `specs/instrumentation.md` specifies. It is a required deliverable: it is how the
@@ -31,8 +30,8 @@ game is driven from code, so it is present and exactly as specified.
 
 Every figure the specification fixes — the stage and board geometry, the cell
 pitch and targeting radius, the channel names, the beam rules, the action names,
-the cue names — is stated in `specs/`. Name them once in your own module and read
-from it, rather than restating a number at each use.
+the cue names — is stated in `specs/`, and the value stated there is
+authoritative.
 
 Tests you write belong beside your sources as `src/**/*.test.ts`. `npm test` runs
 them in process, in Node, with coverage over `src/`. `@napi-rs/canvas` is

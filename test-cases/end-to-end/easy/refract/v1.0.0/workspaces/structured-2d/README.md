@@ -34,10 +34,7 @@ pointer are read, and registers the diagnostic sources through
 engine's mute bit into `state.muted`. Leave the camera at rest, so world units
 and the stage's logical units coincide. The state is the whole of the
 authoritative game — the actors, components, and controllers you write draw it
-and drive it, holding nothing authoritative of their own. Implement the game,
-and split the work across new modules under `src/` however you like — the
-board, the ruleset, the tracing, the board generator, the actors and components
-that render, the debug surface, and so on.
+and drive it, holding nothing authoritative of their own. Implement the game.
 
 **The pointer comes from the engine.** A beam is drawn with the pointer, and
 the player controller reads it from its input reader already in logical stage
@@ -72,8 +69,7 @@ every piece of that recipe.
   page's canvas, binds `game` to it, and runs.
 - **`src/constants.ts`** — every figure the specification fixes: the stage and
   board geometry, the channels, the campaign length, the tier ladder, the action
-  names, the cue names, and the screen copy. Read from it, and never restate a
-  number it already names.
+  names, the cue names, and the screen copy. Read from it.
 - **`index.html`** — the page and the canvas the engine fits the stage into.
 - **The toolchain** — `package.json`, `tsconfig.json`, `vite.config.ts`,
   `vitest.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.gitignore`.
