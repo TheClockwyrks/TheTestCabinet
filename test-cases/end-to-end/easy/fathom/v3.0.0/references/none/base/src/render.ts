@@ -501,7 +501,8 @@ function drawBodies(
     if (!predatorLit(state, p)) continue;
     // A body a sonar mark alone is showing is drawn dimmer than one the
     // forager's own light falls on, so a mark reads as a glimpse.
-    ctx.globalAlpha = state.fog.isLit(p.col, p.row) || p.alertT > 0 ? 1 : 0.6;
+    ctx.globalAlpha =
+      state.fog.showsBodies(p.col, p.row) || p.alertT > 0 ? 1 : 0.6;
     drawSprite(ctx, predatorSheet(state.assets, p), predatorFrame(p), p, alpha);
   }
   ctx.globalAlpha = 1;
@@ -509,7 +510,7 @@ function drawBodies(
   // A drifter's jellyfish body shows only where the forager's own light falls
   // on it: a sonar pulse never resolves which amber glimmer is which.
   for (const d of state.drifters) {
-    if (!state.fog.isLit(d.col, d.row)) continue;
+    if (!state.fog.showsBodies(d.col, d.row)) continue;
     drawSprite(ctx, state.assets.drifter, drifterFrame(d), d, alpha);
   }
 

@@ -877,9 +877,10 @@ function lightCrest(state: FathomState, wave: SonarWave): void {
     const behind = wave.front - d;
     if (behind < 0 || behind > PULSE_BAND) continue;
     for (const cell of wave.buckets[d]) {
-      state.fog.light(cell.col, cell.row);
+      state.fog.lightGround(cell.col, cell.row);
       for (const n of state.maze.neighbors(cell.col, cell.row)) {
-        if (state.maze.isRock(n.col, n.row)) state.fog.light(n.col, n.row);
+        if (state.maze.isRock(n.col, n.row))
+          state.fog.lightGround(n.col, n.row);
       }
     }
   }

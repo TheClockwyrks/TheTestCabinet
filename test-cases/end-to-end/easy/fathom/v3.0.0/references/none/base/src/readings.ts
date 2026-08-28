@@ -53,9 +53,10 @@ export function predatorLit(state: FathomState, p: Predator): boolean {
   if (p.state === "den") return false;
   if (p.alertT > 0) return true;
   // A pulse marks the Gloamfin and the Flarefish. The Lanternjaw is one of the
-  // maze's amber lights, so a pulse leaves it exactly as it was.
+  // maze's amber lights, so a pulse leaves it exactly as it was — and a crest
+  // washing over the tile it stands on lights the ground, not the hunter.
   if (p.kind !== "lanternjaw" && p.markT > 0) return true;
-  return state.fog.isLit(p.col, p.row);
+  return state.fog.showsBodies(p.col, p.row);
 }
 
 /** Whether the maze itself is on screen, which is what the HUD is drawn over. */

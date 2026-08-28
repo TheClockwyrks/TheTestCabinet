@@ -127,6 +127,16 @@ describe("predatorLit", () => {
     h.state.fog.light(p.col, p.row);
     expect(predatorLit(h.state, p)).toBe(true);
   });
+
+  it("leaves a Lanternjaw a sonar crest is washing over undrawn", () => {
+    const h = harness();
+    const p = h.state.predators[0];
+    p.state = "wander";
+    // A crest lights the ground, not what stands on it, so an amber-light
+    // creature under one is still not drawn (`specs/sensing.md`).
+    h.state.fog.lightGround(p.col, p.row);
+    expect(predatorLit(h.state, p)).toBe(false);
+  });
 });
 
 describe("mazeOnScreen", () => {

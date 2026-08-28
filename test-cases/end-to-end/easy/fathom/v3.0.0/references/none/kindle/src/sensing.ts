@@ -73,13 +73,26 @@ export class Fog {
   /** Revealed by any source, and remembered for the rest of the maze. */
   private revealed: boolean[] = new Array(GRID_COLS * GRID_ROWS).fill(false);
 
-  /** Lit this instant, by the light, a live sonar mark, or a flare. */
+  /**
+   * Lit this instant by a source that shows what stands on the tile as well as
+   * the tile: the forager's own light, or a flare's disc.
+   */
   private litTiles = new Set<number>();
+
+  /**
+   * Lit this instant by the crest of a sonar pulse, which draws the ground and
+   * nothing standing on it. Kept apart from {@link litTiles} because a pulse
+   * "draws neither the bonus drifter's body nor the Lanternjaw's"
+   * (`specs/sensing.md`), so a crest may not put a body on screen the way the
+   * light and a flare do.
+   */
+  private crestTiles = new Set<number>();
 
   /** Back to fully unrevealed, as a fresh maze opens. */
   reset(): void {
     this.revealed.fill(false);
     this.litTiles.clear();
+    this.crestTiles.clear();
   }
 
   reveal(col: number, row: number): void {
@@ -94,6 +107,16 @@ export class Fog {
   }
 
   isLit(col: number, row: number): boolean {
+    const k = tileKey(col, row);
+    return this.litTiles.has(k) || this.crestTiles.has(k);
+  }
+
+  /**
+   * Whether what STANDS on a tile is drawn by whatever is lighting it. True
+   * under the forager's light and inside a flare's disc, false under a sonar
+   * crest alone, which shows the corridor without answering who is in it.
+   */
+  showsBodies(col: number, row: number): boolean {
     return this.litTiles.has(tileKey(col, row));
   }
 
@@ -105,9 +128,18 @@ export class Fog {
     this.revealed[k] = true;
   }
 
-  /** Drop the lit set, before the sources that hold it are gathered again. */
+  /** Mark a tile lit this instant by a sonar crest: the ground alone. */
+  lightGround(col: number, row: number): void {
+    if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return;
+    const k = tileKey(col, row);
+    this.crestTiles.add(k);
+    this.revealed[k] = true;
+  }
+
+  /** Drop the lit sets, before the sources that hold them are gathered again. */
   clearLit(): void {
     this.litTiles.clear();
+    this.crestTiles.clear();
   }
 
   /**

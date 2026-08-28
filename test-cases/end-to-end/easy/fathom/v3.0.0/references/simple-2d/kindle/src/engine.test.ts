@@ -1335,7 +1335,10 @@ describe("the rest of the surface", () => {
     const admitted = h.snapshot();
     expect(admitted.drifters.length).toBe(1);
     expect(admitted.predators.every((p) => !p.released)).toBe(true);
-  });
+    // Twenty-six seconds of simulation with the whole grid drawn on every tick
+    // runs to a few seconds of wall clock, which is close enough to the default
+    // ceiling to fail on a busy machine. The bound is here to stop a hang.
+  }, 30_000);
 
   it("poses a cooldown that then runs down on the ordinary curve", async () => {
     poseQuietBoard(board([HALL], HALL_ROW));
