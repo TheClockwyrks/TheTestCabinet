@@ -1,0 +1,178 @@
+// gloamfin.ink-noop: ink has no effect on the sound-based Gloamfin; it keeps chasing.
+//
+// The chase is posed instantly (`arrange`); the ink drop, the forager's break-away and
+// the Gloamfin swimming straight through the cloud after it are the real sim, so they are
+// `act` and are what the clip shows.
+//
+// WHAT THE CLIP HAS TO SHOW, AND WHY THAT SHAPES THE SCENARIO. "Ink does nothing to it"
+// is an absence, and an absence photographs badly: the old scenario inked on top of a
+// parked forager with the Gloamfin two tiles off, so the cloud swallowed both of them and
+// the clip was a hunter closing on a stationary forager — indistinguishable from a clip
+// with no ink in it at all. Here the forager inks and breaks away, which leaves the cloud
+// standing between the two, and the verdict is read at the moment the Gloamfin is INSIDE
+// that cloud: the one place a sight-based hunter would have lost the fix, and the one the
+// Gloamfin walks through without breaking stride.
+//
+// The read is taken as it ENTERS the cloud rather than later, which also keeps the check
+// honest. Its hearing reaches about two tiles, so a Gloamfin allowed to close on a
+// fleeing forager could re-acquire by ear — and a build whose ink DID wrongly break the
+// fix would then read as chasing again, passing this item for the opposite reason. At the
+// entry instant the two are still four tiles apart, well outside hearing, so the chase
+// that is read can only be the one the ink failed to break.
+import {
+  DIR_KEY,
+  GLOAMFIN_HEAR,
+  TICK,
+  denAllExcept,
+  poseInkStandoff,
+  pred,
+  requirePredatorMotion,
+  unmetPrecondition,
+  startPlaying,
+  ticksFor,
+} from "../_helpers.mjs";
+
+export default function item() {
+  let openingSnap;
+  let line;
+  let beforeInk;
+  let entered;
+  let afterInk;
+  let gapAtRead = 0;
+  let chasedThrough = 0;
+  let crossed = 0;
+
+  return {
+    id: "gloamfin.ink-noop",
+
+    async arrange(api) {
+      await startPlaying(api);
+      // gap 3: the Gloamfin starts OUTSIDE the 80 px cloud (96 px away), so the clip
+      // shows it entering the ink rather than beginning inside it.
+      line = await poseInkStandoff(api, { gap: 3 });
+      await denAllExcept(api, ["gloamfin"]);
+      // The forager first: `chase` fixes on wherever it is standing when the mode is set,
+      // and that tile is where the cloud is about to go. Facing the way it will break
+      // away, and the board left un-stripped so the swim cannot clear the maze mid-clip.
+      await api.call("setForager", {
+        tx: line.ink.tx,
+        ty: line.ink.ty,
+        dir: line.flee,
+      });
+      await api.call("setPredator", "gloamfin", {
+        tx: line.pred.tx,
+        ty: line.pred.ty,
+        dir: line.flee, // pointed down the corridor at the forager
+        mode: "chase",
+      });
+    },
+
+    async act(api) {
+      await api.advance(6); // 6 ticks = the old 0.05 s
+      openingSnap = await api.snapshot();
+      beforeInk = pred(openingSnap, "gloamfin").state;
+      await api.call("clearCooldowns");
+      await api.call("press", "ShiftLeft"); // ink at the forager, over the line to the Gloamfin
+      await api.call("keyDown", DIR_KEY[line.flee]);
+      // Read the state the moment the Gloamfin is inside the cloud it is chasing through.
+      entered = await api.until(
+        (s) =>
+          s.inkClouds.some(
+            (cloud) =>
+              Math.hypot(
+                cloud.x - pred(s, "gloamfin").x,
+                cloud.y - pred(s, "gloamfin").y,
+              ) <= cloud.radius,
+          ),
+        { max: ticksFor(1), poll: TICK },
+      );
+      const g = pred(entered.snap, "gloamfin");
+      afterInk = g.state;
+      gapAtRead = Math.hypot(
+        g.x - entered.snap.forager.x,
+        g.y - entered.snap.forager.y,
+      );
+
+      // WATCH IT CROSS, rather than reading the one tick it touched the cloud. "Ink does
+      // nothing to it" is a claim about a hunter that keeps coming, and a single instant
+      // cannot tell that from one that recoils on the next step. So the cloud is watched
+      // for as long as the Gloamfin is inside it and still chasing, and what is recorded
+      // is whether it went on closing.
+      //
+      // 50 ticks, and the number is chosen to END BEFORE THE SEARCH. The chase is toward
+      // the tile the fix was taken on, and the forager has left it — so on any conforming
+      // build the Gloamfin reaches that empty tile a beat later, drops to `search` and
+      // begins "casting back and forth around the spot"
+      // (`specs/predators/gloamfin.md`). That cast is a turn-around in plain view, and a
+      // clip that runs into it shows a hunter apparently repelled by the ink directly
+      // under a verdict saying ink does nothing. Both references reach the fix around 70
+      // ticks after entering the cloud; 50 keeps the whole clip inside the chase.
+      const CROSS_TICKS = 50;
+      const from = { x: g.x, y: g.y };
+      for (let i = 0; i < CROSS_TICKS; i += 5) {
+        await api.advance(5);
+        const s = await api.snapshot();
+        const p = pred(s, "gloamfin");
+        if (p.state !== "chase") break;
+        crossed = Math.hypot(p.x - from.x, p.y - from.y);
+        chasedThrough = i + 5;
+      }
+      await api.call("keyUp", DIR_KEY[line.flee]);
+    },
+
+    async assert(api, check) {
+      check.expectEq("the Gloamfin is chasing", beforeInk, "chase");
+      // THE TWO CLAUSES BELOW ARE PRECONDITIONS, NOT FINDINGS, and were assertions until a
+      // run made the difference plain. This item asks one thing — whether ink stops a
+      // hunter that navigates by sound — and it can only ask it of a Gloamfin that is
+      // inside the cloud and far enough from the forager that hearing is not the reason it
+      // still knows where to go. Neither clause says anything about the build's ink.
+      //
+      // Scored, they say the wrong thing in both directions. A run had every substantive
+      // assertion pass — the hunter held its fix, spent 50 ticks in the cloud and covered
+      // 214 px through it — and failed the item anyway, because by the moment of the read
+      // it had closed to 51.6 px against its own 64 px hearing. The verdict called that a
+      // Gloamfin broken by ink, in the same breath as the evidence that it was not.
+      if (!entered.hit) {
+        requirePredatorMotion(
+          openingSnap,
+          entered.snap,
+          "gloamfin",
+          "swim into the ink cloud laid between it and the forager",
+        );
+        throw unmetPrecondition(
+          "the Gloamfin never reached the ink cloud laid between it and the forager, so " +
+            "there was no moment inside it at which to ask whether the ink changed anything",
+        );
+      }
+      if (!(gapAtRead > GLOAMFIN_HEAR)) {
+        throw unmetPrecondition(
+          `the Gloamfin had closed to ${gapAtRead.toFixed(0)} px by the time it was inside the ` +
+            `cloud, inside the ${GLOAMFIN_HEAR} px its own hearing reaches ` +
+            `(specs/predators/gloamfin.md), so what it still knew cannot be separated from ` +
+            `what the ink did or did not do to it`,
+        );
+      }
+      check.expectEq(
+        "ink does not stop the Gloamfin (still chasing, inside the cloud)",
+        afterInk,
+        "chase",
+      );
+      check.expectGe(
+        `and it keeps chasing THROUGH the cloud rather than recoiling from it (${chasedThrough} ticks inside it, still fixed)`,
+        chasedThrough,
+        40,
+      );
+      // Still SWIMMING, not merely still flagged as chasing. Half a tile over those ticks
+      // is far under the two-and-a-bit tiles a hunter at its chase speed actually covers,
+      // and far over anything a Gloamfin the ink had stopped could manage. Not "closing":
+      // it gains only `6 px/s` on a forager fleeing at `128`, so the gap barely narrows —
+      // that margin is `gloamfin/chase-cap`'s to measure, not this item's.
+      check.expectGe(
+        `swimming on through it rather than stopping in it (${crossed.toFixed(0)} px covered inside the cloud)`,
+        crossed,
+        16,
+      );
+    },
+  };
+}

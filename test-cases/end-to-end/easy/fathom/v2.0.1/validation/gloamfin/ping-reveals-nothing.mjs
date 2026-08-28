@@ -1,0 +1,94 @@
+// gloamfin.ping-reveals-nothing: its own ping reveals no terrain (only its violet
+// wavefront is visible) and it does not draw itself.
+//
+// The lone Gloamfin is posed instantly (`arrange`); the sweep that waits for its ping to
+// be well in flight is `act`, and is what the clip shows.
+import {
+  denAllExcept,
+  sceneGuard,
+  sceneHeld,
+  poseApart,
+  pred,
+  quietBoard,
+  startPlaying,
+} from "../_helpers.mjs";
+
+// Tiles revealed FAR from the forager (beyond the reach of the local passive light) —
+// any such revealed tile would have to come from something other than the light.
+function farRevealed(s) {
+  let n = 0;
+  for (let r = 0; r < s.grid.rows; r++) {
+    for (let c = 0; c < s.grid.cols; c++) {
+      const v = s.visibility[r][c];
+      if (
+        (v === "l" || v === "r") &&
+        Math.abs(c - s.forager.tx) + Math.abs(r - s.forager.ty) > 5
+      ) {
+        n++;
+      }
+    }
+  }
+  return n;
+}
+
+export default function item() {
+  let quiet;
+  let guard;
+  let before;
+  let r;
+
+  return {
+    id: "gloamfin.ping-reveals-nothing",
+
+    async arrange(api) {
+      await startPlaying(api);
+      // A posed board: the forager's corridor, and 11 tiles off across solid
+      // rock a separate ring to patrol. Sealed off rather than merely distant, so
+      // "far away" holds for the whole watch instead of only until the patrol
+      // arrives — a real maze is one connected region and cannot offer that.
+      const far = (await poseApart(api, 11)).far; // beyond its ping range, so no acquire
+      quiet = await denAllExcept(api, ["gloamfin"]);
+      await api.call("setPredator", "gloamfin", {
+        tx: far.tx,
+        ty: far.ty,
+        mode: "wander",
+      });
+      await quietBoard(api);
+      guard = await sceneGuard(api, quiet);
+    },
+
+    async act(api) {
+      // What the trench looks like BEFORE the ping. The claim is that the ping reveals
+      // nothing, which is a statement about what it CHANGES — so it is read as a change.
+      // Counting revealed tiles once and requiring zero measures something else: whatever
+      // a build already had revealed out there. One left twelve tiles showing from before
+      // the scenario began and was failed for a ping that had altered nothing at all.
+      before = farRevealed(await api.snapshot());
+      // Advance until the Gloamfin's ping is well in flight. 1200 ticks = the old loop's
+      // 200 passes of 0.05 s (10 s); poll 6 = that same 0.05 s chunk.
+      r = await api.until(
+        (s) => s.pulses.some((p) => p.source === "gloamfin" && p.front > 2),
+        { max: 1200, poll: 6 },
+      );
+      await api.advance(108); // 108 ticks = the old 900 ms live tail
+    },
+
+    async assert(api, check) {
+      // Was the scenario still standing when the measurement ended? If not, the label
+      // says what gave way, rather than reporting it against the subject.
+      const broke = sceneHeld(await api.snapshot(), guard);
+      check.expectOk(broke ?? "the scenario held to the end", !broke);
+      if (broke) return;
+      check.expectOk("the Gloamfin emitted a violet ping wavefront", r.hit);
+      check.expectLe(
+        "its ping reveals no terrain out in the dark (nothing revealed that was not already)",
+        farRevealed(r.snap),
+        before,
+      );
+      check.expectOk(
+        "it does not draw itself (unlit in the fog)",
+        pred(r.snap, "gloamfin").lit === false,
+      );
+    },
+  };
+}
