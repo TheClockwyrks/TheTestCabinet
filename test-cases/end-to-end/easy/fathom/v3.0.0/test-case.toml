@@ -1,0 +1,1900 @@
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# engines a run may select, how the produced implementation is built and checked,
+# and what a reviewer grades. The testing harness reads this file to resolve a
+# `TestCaseVersion`.
+
+# The case's stable identity, recorded in every run.
+slug = "fathom"
+
+# Human-readable display name for this test case.
+name = "Fathom"
+
+# Relative difficulty of this case, surfaced on the site. Fathom is one
+# self-contained real-time loop over a tile grid — a fog-of-war visibility
+# system, tile-locked movement, three predator behaviors, and a handful of
+# screens — with no subsystem big enough to need splitting out behind an
+# interface, so easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "maze", "stealth"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A bioluminescent forager grazing a pitch-dark maze, where the maze is hidden \
+until your light or a sonar pulse reveals it, and three predators each hunt by a \
+different signal you give off — your light, your sound, or its own flare."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version. The site aggregates every
+# version's entry, newest first, into the case's changelog. Like `description`,
+# it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs, the selected variant, and the selected engine) and
+# handed to the model as the build instruction. It injects absolute in-container
+# paths via template variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
+# unbounded. Fathom is a large build for an easy case — a fog-of-war visibility
+# system, a maze generator, three predator minds, seven screens — so it gets a
+# full three hours, comfortably more than a healthy build needs while still
+# catching a session that never terminates.
+max_runtime_hours = 3
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the seeded project's dependencies —
+# the TypeScript toolchain the `[toolchain]` commands invoke, the headless canvas
+# the model's own vitest tests can draw through, and, on an engine run, the
+# vendored engine — and downloads the Playwright Chromium build (the base image
+# ships the OS libraries Chromium links against, but not the browser binary), so
+# the model can build the game and look at it in a browser without any further
+# setup.
+init = "npm install && npx playwright install chromium"
+
+# Asset files or directories seeded alongside the specs, each kept at its path
+# relative to this version folder when seeded (so `assets/glimmerfin/` lands at
+# `assets/glimmerfin/` in the run). Fathom ships a fixed set of pre-drawn art, so
+# every build renders the same creatures, tiles, and effects and differs only in
+# the code around them. Each entry is a sprite-sheet directory of per-frame PNGs;
+# the build renders each element from its sheet, and the frame layouts are the
+# contract in `specs/assets.md`. The maze layout, the light, the plankton, the
+# wavefronts, the ink, and the whole HUD are still drawn in code.
+#
+# `assets` is a root key, so it must precede the first table header.
+assets = [
+  "assets/glimmerfin",   # the player forager (sprite)
+  "assets/lanternjaw",   # the Lanternjaw predator, both forms (sprite)
+  "assets/gloamfin",     # the Gloamfin predator (sprite)
+  "assets/flarefish",    # the Flarefish predator (sprite)
+  "assets/drifter",      # the bonus drifter (sprite)
+  "assets/flare-bloom",  # the Flarefish's radial flare (effect)
+  "assets/trench-walls", # the maze tileset: wall autotile, floor, fog, den gate
+]
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Both variants are the same dive, the same maze, and
+# the same three predators; they differ only in the SENSING model, which is
+# Fathom's signature system. That difference is carried by the specs that branch
+# on the selected variant — `specs/sensing.md.hbs` (the outer vision circle),
+# `specs/ui.md.hbs` (the dive label on the HUD), `specs/state.md.hbs` (the
+# `windowRadius` a snapshot reports) and `specs/instrumentation.md.hbs` (what
+# `setBrightness` recomputes) — rendered before they land, so each variant's
+# seeded spec set reads as one self-contained game.
+#   - base   — Standard: a remembered fog of war, line-of-sight passive light,
+#              and a corridor-flooding sonar pulse. The reference dive.
+#   - kindle — the same fog of war, plus an outer vision circle the forager
+#              carries, which grows as it eats. The circle reveals nothing: it
+#              masks how much of the already-revealed maze is drawn, and beyond
+#              it even explored ground is black.
+# Both are rated on the case's common domains; neither adds a domain of its own.
+# This list is a root key, so it must precede the first table header.
+variants = [
+  "variants/base.toml",
+  "variants/kindle.toml",
+]
+
+# The engines a run of this case may select. An engine is the runtime the produced
+# game is built on — the frame loop and the delta time it hands the game, the
+# input actions a player drives it with, the audio bus, asset loading, and the
+# on-screen diagnostics; one of them also owns rendering, collision detection, and
+# the gameplay framework the game is written inside. It is a *run dimension*,
+# chosen per run alongside the model, the harness, and the variant, and recorded
+# on the run; it is not a property of the game.
+#
+# Fathom supports three, and the game is the same under all of them. What differs
+# is how much of the build is handed over:
+#   - `none`          supplies no runtime and no `src/` at all, so the build
+#                     writes the frame loop, the canvas fit, the input, the image
+#                     loading, the audio, the overlay and the `window.__fathom`
+#                     surface itself.
+#   - `simple-2d`     vendors the runtime as a package and seeds the modules
+#                     around it (`src/constants.ts`, `src/main.ts`, and the
+#                     `src/game.ts` the build writes, debug surface included).
+#   - `structured-2d` vendors its framework engine the same way and seeds
+#                     `src/constants.ts` and `src/main.ts`; the build writes its
+#                     game module: the one level the dive runs in, the game mode
+#                     that holds the screens and the rules, the actors and
+#                     components that draw the maze and its creatures, the
+#                     controller the forager is driven through, and the debug
+#                     surface its instance's `initialize` returns.
+# Neither engine supplies a tile map, pathfinding, sprite-sheet animation, a
+# fog-of-war mask, or a random generator, so the parts of Fathom that make it
+# Fathom are the build's under every engine. The game they describe is the same
+# one, so the review items are the same for every engine and a score recorded
+# under one is comparable with a score recorded under another; the specs and the
+# validators branch where the deliverable differs.
+#
+# `none` supplies no package and therefore carries no version, so it is named in
+# the bare `engines` list; `simple-2d` and `structured-2d` each carry a range and
+# are named in `[[engine]]` tables. A range is pinned because a specification is
+# written against a runtime contract: `min_version` is the 1.0.0 API the specs and
+# the validators are written against, and there is deliberately no `max_version`,
+# so a later 1.x or 2.x from the host package store is accepted as it lands.
+# Widening or moving a range means a new case version, so the pin is the statement
+# that THIS spec set matches THIS contract.
+#
+# What this declaration deliberately does NOT do is describe an engine. An engine
+# ships its own documentation from its own package, and seeding puts it in the run
+# for the model to read, so the specs seeded from this folder never restate an
+# engine's API and never fall out of date when it changes. Where a spec speaks of
+# the runtime it does so only to state what is specific to *this game* under it —
+# which surfaces the build still supplies, Fathom's touch layout, and Fathom's cue
+# names — never to teach the runtime.
+#
+# `engines` is a root key, so it must precede the first table header.
+engines = ["none"]
+
+[[engine]]
+slug = "simple-2d"
+min_version = "1.0.0"
+
+[[engine]]
+slug = "structured-2d"
+min_version = "1.0.0"
+
+# The starter project seeded into the root of every run before the specs, one per
+# engine. All three carry the same Vite/TypeScript/ESLint/Prettier/Vitest
+# configuration the `[toolchain]` commands below run against, and an `index.html`
+# holding the canvas. What differs is how much of the build is supplied with them.
+#
+#   - `none`          supplies the configuration and nothing else. There is no
+#                     `src/`: the build writes its own frame loop, canvas fit,
+#                     input, image loading, audio, diagnostics overlay and
+#                     `window.__fathom` surface, and every figure the
+#                     specification fixes, from the specs alone.
+#   - `simple-2d`     declares the engine in its `package.json`, which is vendored
+#                     in at seed time so the build imports it by its bare package
+#                     name, and seeds the case-owned modules around the game:
+#                     `src/constants.ts` (every figure this specification fixes,
+#                     which a validator imports; the look is NOT among them) and
+#                     `src/main.ts` (the browser entry). The build writes
+#                     `src/game.ts`: the state, the debug surface its `initialize`
+#                     returns beside that state, the three functions, and the
+#                     `BACKGROUND` color `src/main.ts` hands the engine.
+#   - `structured-2d` declares that engine in its `package.json` the same way and
+#                     seeds the same two case-owned modules: `src/constants.ts`
+#                     (every figure this specification fixes plus the level name,
+#                     the action bindings and the cue names, which a validator
+#                     imports; the look is NOT among them) and `src/main.ts` (the
+#                     browser entry). The build writes `src/game.ts`: the
+#                     `GameDefinition` the engine drives — its one level, the game
+#                     mode holding the screens and the rules, its actors and the
+#                     controller the forager is driven through — the debug surface
+#                     its instance's `initialize` returns, and the `BACKGROUND`
+#                     color `src/main.ts` hands the engine.
+#
+# The table below is the BASE variant's. Kindle replaces it wholesale in
+# `variants/kindle.toml`, because its seeded `src/constants.ts` carries
+# `KINDLE_VISION_MIN` and `KINDLE_VISION_GAIN` and its dive label differs. The
+# engineless project holds no game code for a variant to differ in — only the
+# configuration the build is written against — so every variant shares it, and
+# what Kindle changes about the game is carried by the specs, which are rendered
+# per variant before they land. The seeded files land at the run root
+# (`workspaces/none/package.json` seeds to `package.json`).
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/base/simple-2d"
+"structured-2d" = "workspaces/base/structured-2d"
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`, so the validated build installs exactly what the deploy
+# will. Both commands are required — there are no defaults, so every case states
+# exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# The TypeScript toolchain run over the produced implementation once `[build]`'s
+# install has completed. An end-to-end build is written in TypeScript, and the
+# seeded workspace ships the configuration each of these commands reads
+# (`tsconfig.json`, `eslint.config.js`, `.prettierrc.json`, `vitest.config.ts`),
+# so what is checked here is the code the model wrote against configuration the
+# case fixed. The commands run host-side over the collected tree after the run's
+# container is gone, so a slow suite costs the run none of its runtime budget.
+#
+# `typecheck` GATES: a non-zero exit rates the run `broken` and scores it zero,
+# because code that does not compile is not reviewable. The other three are
+# recorded and gate nothing — `test` additionally records the count and coverage
+# the build's own suite reports, which is how a build that ships tests is told
+# apart from one that ships none. Each is spelled `npx` rather than
+# `npm run <script>` so the check is the case's own statement of what is run and
+# does not depend on the model leaving the seeded scripts intact.
+[toolchain]
+typecheck = "npx tsc --noEmit"
+lint = "npx eslint ."
+format = "npx prettier --check ."
+test = "npx vitest run --coverage"
+
+# Instrumentation: the debug-and-automation surface a build carries, named once
+# here. The handle is required as soon as any review item declares a `validation`
+# script, which they all do below. It names the ENGINELESS contract: an engineless
+# build writes the surface itself and installs it on `window.__fathom`, so the
+# handle is what a person opening the console of such a build finds. An engine run
+# has no global at all — the build writes the surface, its `initialize` returns
+# it, and a validator reads it back off `engine.debug`. What shape the surface's
+# operations take is the engine's contract. Under `simple-2d` the engine holds the
+# state by value and hands every reader a read-only view, so the surface is
+# written in the shape of `update`: a pose takes the current state and returns the
+# next, which a validator applies through `engine.apply`, and a reading takes the
+# state and returns what it read, which a validator calls with `engine.state`.
+# Under `structured-2d` the state lives in the framework objects the engine owns,
+# so the surface's operations are methods on the live game: a pose takes only its
+# own arguments and arranges the open world through the same systems play uses,
+# and a reading takes nothing and returns plain data. The seeded specification
+# documents the surface independently as an ordinary game debug feature (see
+# specs/instrumentation.md); this entry is reporter-side and never seeded.
+#
+# There is deliberately no `tick_hz`. It existed to tell the validation runtime
+# what one stepped tick was worth, because a driver stepped the build's own fixed
+# timestep through the debug API at a rate the manifest had to state. Nothing
+# steps that way now: the engine mandates no timestep at all — it hands the game
+# the real elapsed time of each frame — and a validator supplies its own clock
+# object and calls `engine.advance(n)`, so the size of a step is stated in the
+# validator that takes it. Fathom's own fixed step, `TICK_HZ` (`120`), is a rule
+# of the GAME stated in `specs/movement.md` and asserted by the checks below; it
+# is not a property of the harness that drives it.
+[instrumentation]
+handle = "__fathom"
+
+# The specs: every one is seeded for EVERY variant and every engine of this case,
+# at the `dest` path within the run workspace. The specification is decomposed by
+# concern, and there is a single list — what a variant changes is not a separate
+# per-variant file but a branch inside a common spec, rendered for the selected
+# variant before it lands. Every seeded set thus asserts exactly one game, with no
+# cross-variant and no cross-engine language, because the branching resolves at
+# seed time and the model never sees the alternative.
+#
+# There is no proof spec: the media a reviewer looks at is captured by this case's
+# own validators from scenarios the case controls. The showcase spec below does
+# ask the build for media, but as the game's own store-page presentation rather
+# than as evidence any point is judged on.
+#
+# A spec's `dest` defaults to its `source` with a trailing `.hbs` stripped, so an
+# `.md.hbs` source seeds to the same `.md` path and a plain `.md` source seeds
+# verbatim.
+
+# The stage, the tile grid, the project the build works in, the screens, and what
+# a player must read at a glance. Branches on engine (the runtime and the module
+# contract differ); it seeds to `specs/overview.md`.
+[[spec]]
+source = "specs/overview.md.hbs"
+
+# The maze layout rules, the den, and the wrap tunnel.
+[[spec]]
+source = "specs/maze.md"
+
+# The fixed-step core, how the forager and the predators travel the maze, and the
+# controls. Branches on engine (how input reaches the game differs); it seeds to
+# `specs/movement.md`.
+[[spec]]
+source = "specs/movement.md.hbs"
+
+# The fog of war, the forager's light and brightness, the sonar pulse, and the
+# ink. Branches on variant (the Kindle dive adds the outer vision circle); it
+# seeds to `specs/sensing.md`.
+[[spec]]
+source = "specs/sensing.md.hbs"
+
+# The plankton, the bonus drifters, and contact with a predator.
+[[spec]]
+source = "specs/gameplay.md"
+
+# The predators: the common file, then one file per kind, each seeded at its path
+# under `specs/predators/`.
+[[spec]]
+source = "specs/predators.md"
+
+[[spec]]
+source = "specs/predators/lanternjaw.md"
+
+[[spec]]
+source = "specs/predators/gloamfin.md"
+
+[[spec]]
+source = "specs/predators/flarefish.md"
+
+# Scoring, lives, depth, the descent, and the audio cues. Branches on engine (the
+# cue bus differs); it seeds to `specs/progression.md`.
+[[spec]]
+source = "specs/progression.md.hbs"
+
+# The screens, the menus, the transitions, and the HUD. Branches on variant (the
+# HUD's dive label differs); it seeds to `specs/ui.md`.
+[[spec]]
+source = "specs/ui.md.hbs"
+
+# The art-asset contract: which seeded sheets the build renders each element
+# from, their frame layouts, and what is left to draw in code. Branches on engine
+# (asset loading differs); it seeds to `specs/assets.md`.
+[[spec]]
+source = "specs/assets.md.hbs"
+
+# The observable state and the snapshot that reports it. Under an engine this is
+# the `FathomState` contract the debug surface poses and reads and the validators
+# read back, stated by the case rather than by the seeded `src/game.ts`, which
+# holds the stub alone. Under `none` the build owns the shape and the debug
+# surface is the only contract over it. Branches on engine (where the state
+# lives) and on variant (the Kindle dive reports its vision-circle radius); it
+# seeds to `specs/state.md`.
+[[spec]]
+source = "specs/state.md.hbs"
+
+# The debugging and automation surface every build exposes, over a deterministic,
+# steppable core, framed as an ordinary developer affordance of the game.
+# Branches on engine (how the surface is reached and its calling convention) and
+# on variant (what `setBrightness` recomputes); it seeds to
+# `specs/instrumentation.md`.
+[[spec]]
+source = "specs/instrumentation.md.hbs"
+
+# The showcase the finished game ships beside its source: a player-facing
+# description and a short ordered carousel of captured media under `showcase/`,
+# framed as the game's store-page presentation. Branches on engine (how motion is
+# captured); it seeds to `specs/showcase.md`.
+[[spec]]
+source = "specs/showcase.md.hbs"
+
+# No `[[reference]]`, no `[[proof]]`, and no `[[check]]`: the specification fixes
+# behavior, and the appearance it does fix is a legibility floor decided from the
+# pixels rather than a layout to reproduce, so there is no visual target to seed
+# or to score against. Every piece of evidence a reviewer sees comes from this
+# case's validators, which pose each scenario against the game the build wrote and
+# capture what it renders. The automated load check still runs.
+
+# Scoring domains. A run is rated on each independently, and the run's overall
+# rating is the WORST across them — a flawless maze cannot mask predators that do
+# not hunt. Every case must declare at least one. This case is on the engine
+# format, so it is validator-rated: each domain's FUNCTIONAL rating is decided by
+# the validators behind the checklist below (every point names the domains its
+# failure lowers and how far — see `domains` / `failure_cap` there), and the
+# reviewer's judgement lives in the separate AESTHETIC rating of each domain.
+#
+# The four gameplay domains are the four things a dive can independently be bad
+# at, and a failure is attributable to exactly the ones it touches: a maze that
+# generates rooms is a `navigation` fault and nothing else; a sonar pulse that
+# arrives all at once is a `sensing` fault; a Gloamfin that never corners is a
+# `predators` fault; a plankton that scores nothing is a `progression` fault. The
+# fifth, `presentation`, holds the two points about the stage and the seeded art,
+# and is the aesthetic home of the look this case leaves to the build.
+[[domain]]
+id = "navigation"
+name = "Navigation"
+description = "The maze and moving through it: how a layout is laid out, the den and the wrap tunnel, and how the forager travels the corridors under the controls."
+
+[[domain]]
+id = "sensing"
+name = "Sensing"
+description = "Reading the dark: the fog of war and what it remembers, the light the forager carries and the brightness that widens it, the corridor-flooding sonar pulse, and the ink."
+
+[[domain]]
+id = "predators"
+name = "Predators"
+description = "The hunt: the three hunters, the sense each one tracks you by, its tell and its counter, the den and its staggered release, and what contact costs."
+
+[[domain]]
+id = "progression"
+name = "Progression"
+description = "The run around the dive: the score, the lives, the descent to deeper mazes, the seven screens and the menus between them, and the audio cues."
+
+[[domain]]
+id = "presentation"
+name = "Presentation"
+description = "The look of the trench, which this case leaves to the build apart from the seeded art it renders from: the stage fitted in its window, the palette and glow, the HUD, and how a screen reads."
+
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare
+# name grouping the points a reviewer grades — and each
+# `[[review.categories.items]]` under it is one graded review item, worth one
+# point (the default weight), so a category is worth the number of items it holds
+# (no fractional scoring). A category carries no prose of its own; each item
+# states in `description` the claim its validator checks. The recorded verdict id
+# is the composite `<categoryId>.<itemId>`. The checklist is reporter-side
+# material — never seeded into a run, so the model never sees it; each item
+# restates a rule the seeded specification already states, in the spec's own
+# vocabulary and naming the spec's own constants, and every threshold a validator
+# asserts is derived from a figure or rule in the specs plus a numeric tolerance
+# stated in the item. The points where the two dives genuinely disagree — what is
+# drawn of the explored map, and how far the amber lights carry — live in
+# `variants/base.toml` and `variants/kindle.toml`; everything else is common and
+# stays here.
+#
+# EVERY point on this checklist carries a validation script, and every point is
+# one observable behavior, so a build fails exactly the rule it breaks (the
+# Lanternjaw's light sense and the Flarefish's are two points, not one). Each
+# script is a vitest suite under `validation/<engine>/<category>/<item id>.test.ts`.
+# The `<engine>` level is the ENGINE the suite is written against — a validator
+# speaks one engine's vocabulary, so this case, which supports three, ships one
+# directory per engine: `validation/none/` drives the build in Chromium through
+# `window.__fathom`, and `validation/simple-2d/` and `validation/structured-2d/`
+# each run in process against their vendored engine. The three are the same
+# scenarios; only how they reach the build differs. The directory for the run's
+# engine is what gets staged into the built workspace at `validation/`, so a
+# script path here is written relative to that directory.
+#
+# A `simple-2d` suite imports the runtime and the build's own `src/game.ts`,
+# constructs it over a headless canvas with a clock it scripts, poses the scenario
+# by applying the poses of the surface `engine.debug` returns through
+# `engine.apply`, and steps it with `advance`. It reads behavior back from
+# `engine.state` (or the surface's `snapshot` over it), audio from the runtime's
+# `cue:played` event, and drawing from the canvas — either the pixels or a
+# recording proxy over the 2D context. A `structured-2d` suite does the same
+# through the operations of the surface the build's instance returned from
+# `initialize`, which arrange the live world through the same systems play uses.
+#
+# HOW THE SCENARIOS ARE POSED. Almost every point here is about a piece of
+# geometry — a blind corner, a rock spine, a corridor long enough to measure a
+# speed along — so a suite POSES the board it is about through `setMaze` rather
+# than hunting for that shape in whatever maze the build generated. The
+# exceptions are the `maze` points and the wrap-tunnel point, where finding the
+# shape in the build's own board IS the check. A posed fixture is exempt from
+# `specs/maze.md`'s validity rules, and posing one returns every predator to the
+# den with the release schedule suspended, so a posed scenario does not share its
+# corridor with a hunter that wandered in. Every fixture carries a sealed larder
+# of plankton the forager cannot reach, so no amount of grazing clears the maze
+# mid-measurement.
+#
+# THE MEDIA a point declares is produced by its own suite, from the scenario the
+# case controls. A `replay` output is a draw-command recording: the suite arms the
+# recorder around the section the point is about — the crossing, the acquisition,
+# the flare cycle — and never around the arrangement that got there. An `image`
+# output is a single captured frame. Both are evidence beside the verdict rather
+# than any part of it: a point passes or fails on its assertions alone.
+#
+# Nothing on this checklist asks a reviewer to judge how a screen looks.
+# Appearance is rated through the domains above; the rendering points here assert
+# only what the specification fixes about what is drawn — that the fog is dark,
+# that the amber lights are warm and alike, that a marked body appears, that the
+# stage is fitted — and capture the frame as evidence.
+#
+# EVERY point also carries `domains` and `failure_cap`, because this case is
+# validator-rated: a point's validator, not a reviewer, decides the functional
+# rating. `domains` names the scoring domains a failure lowers, and a point that
+# straddles two names both — ink blinding a Lanternjaw is as much a sensing rule
+# as a predator one. An instrumentation point, which every suite in every domain
+# drives through, lowers all five. `failure_cap` is the highest functional rating
+# those domains may reach while the point fails; each domain gets the LOWEST cap
+# among its failing points, and a domain with no failing point is flawless. The
+# caps are graded by how much of the game a failure takes away: `broken` where the
+# game cannot be played as intended (no debug surface, a forager that cannot be
+# moved, a maze whose corridors do not join up, a plankton that never scores, a
+# catch that costs nothing); `scuffed` where a rule the game is built on is
+# noticeably wrong or an optional path is unusable (a sense, a speed, a flare, the
+# fog itself, the alternate key bindings); `passable` where the fault is a
+# tolerance, a ceiling, an edge case or a secondary path (a cooldown, a wrap, a
+# menu screen, a cue); and `great` where it is a cosmetic detail (the mute
+# toggle, a tell that is drawn slightly differently). No point caps at `flawless`:
+# a failure always costs.
+[review]
+format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The debug surface is a deliverable of the build, not a courtesy: it is how the
+# game is driven and inspected from code, and every other suite on this checklist
+# poses its scenario through it. These points check that it is really there,
+# really wired to the running game, and really deterministic. A surface that
+# reports a plausible-looking object unconnected to what is on screen is the
+# failure mode worth naming, and it also shows up as every other suite failing to
+# run.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "surface-present"
+title = "The debug and automation surface is present"
+description = "Every operation specs/instrumentation.md names is present as a function on the surface — reached on the page as window.__fathom in an engineless build and off engine.debug in an engine build — version reports FATHOM_DEBUG_VERSION (1), and the surface is live: setMaze poses a board, setForagerTile moves the forager onto it, and both the snapshot and the rendered canvas change."
+domains = ["navigation", "sensing", "predators", "progression", "presentation"]
+failure_cap = "broken"
+# Automated validation: reflect that every required operation is installed as a
+# function (setAutoStep and advance under `none` alone), then prove liveness by
+# posing a board, placing the forager on it, and reading both the snapshot and the
+# canvas back. See validation/<engine>/instrumentation/surface-present.test.ts.
+validation = { script = "instrumentation/surface-present.test.ts", outputs = [
+  { id = "state", name = "The driven in-game state", kind = "image" },
+] }
+[[review.categories.items]]
+id = "snapshot-shape"
+title = "Snapshot reports the full documented shape"
+description = "In live play on a posed board carrying a drifter, a pulse in flight, an ink cloud, and one predator of each kind, the snapshot reports every field specs/state.md lists with its documented type — the screen, depth, score, lives, muted, creatureAI, planktonRemaining, brightness, visionRadius, the sonar and ink pairs, the grid block, tiles, visibility, the forager block, drifters, one predators entry per predator with every per-kind field present or null, pulses, inkClouds and simTime — with tiles and visibility both GRID_ROWS (18) strings of GRID_COLS (36) characters and every tile coordinate agreeing with the position it is derived from."
+domains = ["navigation", "sensing", "predators", "progression", "presentation"]
+failure_cap = "broken"
+# Automated validation: pose a board exercising every branch of the shape, then
+# hold each reported field against the documented shape and against the position
+# it is derived from. See validation/<engine>/instrumentation/snapshot-shape.test.ts.
+validation = { script = "instrumentation/snapshot-shape.test.ts", outputs = [
+  { id = "posed", name = "The posed board the snapshot reports", kind = "image" },
+] }
+[[review.categories.items]]
+id = "manual-clock"
+title = "The game holds still on the driver's clock"
+description = "The other half of the deterministic-core contract: with the simulation taken off the wall clock, nothing advances between steps — simTime does not move and no predator moves over a second of real time — while a step of n ticks advances simTime by exactly n * TICK_DT (1/120 s) within one tick, and covering one second of game time as one step and as sixty steps leaves simTime the same either way."
+domains = ["navigation", "sensing", "predators", "progression", "presentation"]
+failure_cap = "scuffed"
+# Automated validation: take the clock (setAutoStep(false) under `none`; the
+# harness's own ConstantClock under an engine), let real time pass with nothing
+# stepping the game, then cover the same second of game time under two step sizes.
+# See validation/<engine>/instrumentation/manual-clock.test.ts.
+validation = { script = "instrumentation/manual-clock.test.ts", outputs = [
+  { id = "held", name = "The game held still while real time passes", kind = "replay" },
+] }
+
+# --- Controls -----------------------------------------------------------------
+# Every control is driven through the real input path — a key event in Chromium
+# under `none`, the engine's own input under an engine — and its effect is read
+# back from the snapshot, so the actual bindings are exercised rather than a
+# parallel path. The four movement actions are bound to two key sets each
+# (specs/movement.md), and each binding is its own point, so a build that wires
+# only the arrows fails exactly the four WASD points.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "move-up"
+title = "ArrowUp swims the forager up"
+description = "On an open corridor, holding ArrowUp starts the forager traveling: moving is true, dir is up, and its y falls."
+domains = ["navigation"]
+failure_cap = "broken"
+# Automated validation: pose a corridor, hold ArrowUp, advance, and read the
+# forager's heading and position. See validation/<engine>/controls/move-up.test.ts.
+validation = { script = "controls/move-up.test.ts", outputs = [
+  { id = "move", name = "The forager swimming up", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "move-down"
+title = "ArrowDown swims the forager down"
+description = "On an open corridor, holding ArrowDown starts the forager traveling: moving is true, dir is down, and its y rises."
+domains = ["navigation"]
+failure_cap = "broken"
+# Automated validation: pose a corridor, hold ArrowDown, advance, and read the
+# forager's heading and position. See validation/<engine>/controls/move-down.test.ts.
+validation = { script = "controls/move-down.test.ts", outputs = [
+  { id = "move", name = "The forager swimming down", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "move-left"
+title = "ArrowLeft swims the forager left"
+description = "On an open corridor, holding ArrowLeft starts the forager traveling: moving is true, dir is left, and its x falls."
+domains = ["navigation"]
+failure_cap = "broken"
+# Automated validation: pose a corridor, hold ArrowLeft, advance, and read the
+# forager's heading and position. See validation/<engine>/controls/move-left.test.ts.
+validation = { script = "controls/move-left.test.ts", outputs = [
+  { id = "move", name = "The forager swimming left", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "move-right"
+title = "ArrowRight swims the forager right"
+description = "On an open corridor, holding ArrowRight starts the forager traveling: moving is true, dir is right, and its x rises."
+domains = ["navigation"]
+failure_cap = "broken"
+# Automated validation: pose a corridor, hold ArrowRight, advance, and read the
+# forager's heading and position. See validation/<engine>/controls/move-right.test.ts.
+validation = { script = "controls/move-right.test.ts", outputs = [
+  { id = "move", name = "The forager swimming right", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wasd-up"
+title = "KeyW swims the forager up"
+description = "KeyW drives the up action exactly as ArrowUp does: held on an open corridor it starts the forager traveling with dir up."
+domains = ["navigation"]
+failure_cap = "scuffed"
+# Automated validation: pose a corridor, hold KeyW, advance, and read the
+# forager's heading. See validation/<engine>/controls/wasd-up.test.ts.
+validation = { script = "controls/wasd-up.test.ts", outputs = [
+  { id = "move", name = "The forager swimming up under KeyW", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wasd-left"
+title = "KeyA swims the forager left"
+description = "KeyA drives the left action exactly as ArrowLeft does: held on an open corridor it starts the forager traveling with dir left."
+domains = ["navigation"]
+failure_cap = "scuffed"
+# Automated validation: pose a corridor, hold KeyA, advance, and read the
+# forager's heading. See validation/<engine>/controls/wasd-left.test.ts.
+validation = { script = "controls/wasd-left.test.ts", outputs = [
+  { id = "move", name = "The forager swimming left under KeyA", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wasd-down"
+title = "KeyS swims the forager down"
+description = "KeyS drives the down action exactly as ArrowDown does: held on an open corridor it starts the forager traveling with dir down."
+domains = ["navigation"]
+failure_cap = "scuffed"
+# Automated validation: pose a corridor, hold KeyS, advance, and read the
+# forager's heading. See validation/<engine>/controls/wasd-down.test.ts.
+validation = { script = "controls/wasd-down.test.ts", outputs = [
+  { id = "move", name = "The forager swimming down under KeyS", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wasd-right"
+title = "KeyD swims the forager right"
+description = "KeyD drives the right action exactly as ArrowRight does: held on an open corridor it starts the forager traveling with dir right."
+domains = ["navigation"]
+failure_cap = "scuffed"
+# Automated validation: pose a corridor, hold KeyD, advance, and read the
+# forager's heading. See validation/<engine>/controls/wasd-right.test.ts.
+validation = { script = "controls/wasd-right.test.ts", outputs = [
+  { id = "move", name = "The forager swimming right under KeyD", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "sonar-key"
+title = "Space emits a sonar pulse"
+description = "Pressing Space in live play with sonar.ready true puts a pulse in flight: pulses gains an entry with source forager, tint cyan, its origin tile the forager's own, and range equal to sonar.range."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose live play with the cooldown at 0, press Space, and
+# read the new pulse off the snapshot. See validation/<engine>/controls/sonar-key.test.ts.
+validation = { script = "controls/sonar-key.test.ts", outputs = [
+  { id = "ping", name = "A sonar pulse emitted on Space", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ink-key"
+title = "Shift releases ink"
+description = "Pressing ShiftLeft in live play with ink.ready true releases a cloud: inkClouds gains an entry centered on the forager, with radius INK_RADIUS (80) and remaining INK_LIFE (3 s), both within a tick's tolerance."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose live play with the cooldown at 0, press ShiftLeft,
+# and read the new cloud off the snapshot. See validation/<engine>/controls/ink-key.test.ts.
+validation = { script = "controls/ink-key.test.ts", outputs = [
+  { id = "ink", name = "An ink cloud released on Shift", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pause-esc"
+title = "Escape pauses live play"
+description = "Pressing Escape while screen is playing sets screen to paused."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: open live play, press Escape, and read the screen. See
+# validation/<engine>/controls/pause-esc.test.ts.
+validation = { script = "controls/pause-esc.test.ts", outputs = [
+  { id = "pause", name = "A live dive paused with Escape", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pause-p"
+title = "KeyP pauses live play"
+description = "Pressing KeyP while screen is playing sets screen to paused, exactly as Escape does."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: open live play, press KeyP, and read the screen. See
+# validation/<engine>/controls/pause-p.test.ts.
+validation = { script = "controls/pause-p.test.ts", outputs = [
+  { id = "pause", name = "A live dive paused with KeyP", kind = "image" },
+] }
+[[review.categories.items]]
+id = "mute"
+title = "KeyM toggles mute"
+description = "Pressing KeyM flips muted, and while muted is true an event that raises a cue — the forager emitting a sonar pulse — sounds nothing, while the same event with muted false sounds its cue."
+domains = ["progression"]
+failure_cap = "great"
+# Automated validation: read muted across a KeyM press, then emit a pulse muted
+# and unmuted and watch what the cue bus reports. See
+# validation/<engine>/controls/mute.test.ts.
+validation = { script = "controls/mute.test.ts", outputs = [
+  { id = "mute", name = "A muted dive, mid sonar pulse", kind = "image" },
+] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "On a real wall clock, with nothing stepping the game from outside, live play advances: simTime rises and a released predator's position changes over a stretch of real time."
+domains = ["navigation", "sensing", "predators", "progression", "presentation"]
+failure_cap = "broken"
+# Automated validation: hand the game a real wall clock, let the loop run itself
+# for a stretch of real time, and confirm simTime and a predator both moved — a
+# build that only advances when something pokes it stays where it was put. See
+# validation/<engine>/controls/advances-in-real-time.test.ts.
+validation = { script = "controls/advances-in-real-time.test.ts", outputs = [
+  { id = "before", name = "The instant the wall clock is handed over", kind = "image" },
+  { id = "after", name = "Moments later, on the build's own clock", kind = "image" },
+] }
+[[review.categories.items]]
+id = "setmaze-houses-predators"
+title = "setMaze houses the predators it re-dens"
+description = "Posing a layout returns every predator to a den tile with released false and SUSPENDS the release schedule, so watching past the third predator's ordinary due time — DEN_RELEASE_GAP (5 s) times two after live play began, with room to spare — leaves every released flag false. A hunter stopped by rock looks exactly like one that was held, so released is what tells them apart."
+domains = ["navigation", "sensing", "predators", "progression", "presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose a board, open live play, advance well past the third
+# release time, and read every predator's `released` flag — not its position,
+# which rock alone could explain. See
+# validation/<engine>/controls/setmaze-houses-predators.test.ts.
+validation = { script = "controls/setmaze-houses-predators.test.ts", outputs = [
+  { id = "housed", name = "A posed board, its den holding every predator", kind = "replay" },
+] }
+
+# --- Maze movement ------------------------------------------------------------
+# How bodies travel the tile grid. Every point but the wrap tunnel is measured on
+# a posed corridor whose geometry the suite chose, so the run is long enough to
+# time and the wall is exactly where the check needs it. The wrap tunnel is read
+# off the build's own board, because the pierced row is the build's to place.
+[[review.categories]]
+id = "maze-movement"
+title = "Maze movement"
+[[review.categories.items]]
+id = "constant-speed"
+title = "The forager travels at a constant speed"
+description = "Running a straight corridor, the forager covers ground at FORAGER_SPEED (128 logical units per second) within 2 percent, measured over a stretch of at least four tiles, with no ramp at the start and no drift over the run."
+domains = ["navigation"]
+failure_cap = "scuffed"
+# Automated validation: pose a long straight corridor, hold one direction, and
+# measure the distance covered against the simulated time it took. See
+# validation/<engine>/maze-movement/constant-speed.test.ts.
+validation = { script = "maze-movement/constant-speed.test.ts", outputs = [
+  { id = "run", name = "The forager running a straight corridor", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "turn-at-center"
+title = "Turns are taken at tile centers"
+description = "A perpendicular direction held mid-tile is buffered: the forager keeps its old heading until its center reaches the next tile center, and only there does dir change and the new axis begin, with its off-axis coordinate within 1 unit of that center's."
+domains = ["navigation"]
+failure_cap = "scuffed"
+# Automated validation: pose a junction, run into it, hold the perpendicular
+# direction well before the center, and watch where the heading actually changes.
+# See validation/<engine>/maze-movement/turn-at-center.test.ts.
+validation = { script = "maze-movement/turn-at-center.test.ts", outputs = [
+  { id = "turn", name = "A buffered turn taken at a junction center", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "reverse-anytime"
+title = "Reversal is allowed anywhere"
+description = "The opposite direction held mid-tile reverses the forager on the tick it is read, away from any tile center: dir flips and the position starts back the way it came, without waiting for a center."
+domains = ["navigation"]
+failure_cap = "passable"
+# Automated validation: pose a corridor, run part of a tile, hold the opposite
+# direction well off center, and read the heading and position on the next steps.
+# See validation/<engine>/maze-movement/reverse-anytime.test.ts.
+validation = { script = "maze-movement/reverse-anytime.test.ts", outputs = [
+  { id = "reverse", name = "A mid-corridor reversal", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-wall"
+title = "The forager cannot enter rock"
+description = "Holding a direction into a rock tile leaves the forager at rest against it: its center stops within half a tile of the last open tile's center, its tile never becomes the rock tile, and it never reads as moving into it."
+domains = ["navigation"]
+failure_cap = "broken"
+# Automated validation: pose a corridor that dead-ends in rock, hold the direction
+# into it for far longer than the crossing would take, and watch where the forager
+# comes to rest. See validation/<engine>/maze-movement/no-wall.test.ts.
+validation = { script = "maze-movement/no-wall.test.ts", outputs = [
+  { id = "blocked", name = "The forager stopped at a wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "predators-keep-to-corridors"
+title = "Predators keep to the corridors"
+description = "The hunters' half of the same rule, asked in both shapes: chasing a fix across a rock spine a predator rounds the spine, standing on no rock tile at any moment of the crossing; and posed on a tile with no open neighbor it stays exactly where it is."
+domains = ["navigation", "predators"]
+failure_cap = "scuffed"
+# Automated validation: pose a rock spine between a hunter and the forager, watch
+# every tile the hunter stands on as it closes, then pose a second fixture that
+# boxes a hunter in and confirm it does not move. See
+# validation/<engine>/maze-movement/predators-keep-to-corridors.test.ts.
+validation = { script = "maze-movement/predators-keep-to-corridors.test.ts", outputs = [
+  { id = "route", name = "A hunter taking the long way round a rock spine", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wrap-tunnel"
+title = "The wrap tunnel is one continuous step"
+description = "On the build's own board, traveling off one mouth of the pierced row carries the forager onto the other mouth on the same row, covering TILE (32) units for the crossing within 2 units, at the speed it was already making, with its center staying inside the maze region x in [64, 1216] throughout."
+domains = ["navigation"]
+failure_cap = "passable"
+# Automated validation: find the pierced row in the build's own layout, run the
+# forager off one mouth, and measure the ground covered and the row it arrives on.
+# See validation/<engine>/maze-movement/wrap-tunnel.test.ts.
+validation = { script = "maze-movement/wrap-tunnel.test.ts", outputs = [
+  { id = "wrap", name = "The forager wrapping through the tunnel", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-den-gate"
+title = "The forager cannot cross the den gate"
+description = "The gate is the predators' door alone: holding the direction into the den gate from the corridor outside it leaves the forager on the corridor side, never standing on the gate tile or on a den-interior tile."
+domains = ["navigation"]
+failure_cap = "passable"
+# Automated validation: pose a corridor meeting a den gate, hold the direction
+# into it for far longer than the crossing would take, and read the forager's
+# tile. See validation/<engine>/maze-movement/no-den-gate.test.ts.
+validation = { script = "maze-movement/no-den-gate.test.ts", outputs = [
+  { id = "blocked", name = "The forager stopped at the den gate", kind = "replay" },
+] }
+
+# --- Maze ---------------------------------------------------------------------
+# The structural rules, read off the layout the BUILD laid out for itself — these
+# are the points where hunting the shape in the build's own board is the check,
+# so none of them poses a fixture. Each is measured over several fresh layouts,
+# so a generator that conforms only sometimes is caught.
+[[review.categories]]
+id = "maze"
+title = "Maze"
+[[review.categories.items]]
+id = "corridors-one-wide"
+title = "Corridors are one tile wide"
+description = "No 2x2 block of the grid is four corridor tiles, so the corridors wind one tile wide and the den chamber, made of den-interior tiles, is the only open area wider than that."
+domains = ["navigation"]
+failure_cap = "scuffed"
+# Automated validation: scan every 2x2 window of the reported layout across
+# several freshly seeded mazes. See validation/<engine>/maze/corridors-one-wide.test.ts.
+validation = { script = "maze/corridors-one-wide.test.ts", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "symmetry"
+title = "Mirror-symmetric about the centerline"
+description = "Column c and column GRID_COLS - 1 - c carry the same kind of tile in every row — rock mirrors rock and non-rock mirrors non-rock, about the axis between columns 17 and 18 — with a pair exempt where either tile is den interior or the den gate."
+domains = ["navigation"]
+failure_cap = "passable"
+# Automated validation: compare every mirrored column pair of the reported layout
+# across several freshly seeded mazes. See validation/<engine>/maze/symmetry.test.ts.
+validation = { script = "maze/symmetry.test.ts", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "connected"
+title = "One connected region"
+description = "Every corridor tile is reachable from every other by moving between corridor neighbors — the wrap tunnel's two mouths counting as neighbors — so the forager's start tile, both mouths, and every plankton lie in one region."
+domains = ["navigation"]
+failure_cap = "broken"
+# Automated validation: flood the reported layout from one corridor tile and
+# confirm it reaches every other, across several freshly seeded mazes. See
+# validation/<engine>/maze/connected.test.ts.
+validation = { script = "maze/connected.test.ts", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-dead-ends"
+title = "No dead ends"
+description = "Every corridor tile has at least two corridor neighbors, so the maze is braided and no corridor ends in a pocket the forager must back out of."
+domains = ["navigation"]
+failure_cap = "passable"
+# Automated validation: count the corridor neighbors of every corridor tile in the
+# reported layout, across several freshly seeded mazes. See
+# validation/<engine>/maze/no-dead-ends.test.ts.
+validation = { script = "maze/no-dead-ends.test.ts", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "proportions"
+title = "The three proportions are in range"
+description = "Measured over the corridor tiles alone, with den interior and den gate excluded from both the tiles measured and the neighbors counted: openness is between MAZE_OPENNESS_MIN (2.0) and MAZE_OPENNESS_MAX (2.8) inclusive, the mean corridor-run length is between MAZE_MAZING_MIN (2.0) and MAZE_MAZING_MAX (8.0) inclusive, and density is between MAZE_DENSITY_MIN (0.40) and MAZE_DENSITY_MAX (1.0) inclusive over the 544 cells inside the border."
+domains = ["navigation"]
+failure_cap = "passable"
+# Automated validation: compute the three measures from the reported layout, by
+# the definitions in specs/maze.md, across several freshly seeded mazes. See
+# validation/<engine>/maze/proportions.test.ts.
+validation = { script = "maze/proportions.test.ts", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "den-enclosed"
+title = "The den chamber is enclosed"
+description = "No den-interior tile has a corridor neighbor, so the chamber's only opening onto the corridors is its gate."
+domains = ["navigation", "predators"]
+failure_cap = "scuffed"
+# Automated validation: walk the den-interior tiles of the reported layout and
+# check every neighbor of each, across several freshly seeded mazes. See
+# validation/<engine>/maze/den-enclosed.test.ts.
+validation = { script = "maze/den-enclosed.test.ts", outputs = [
+  { id = "board", name = "The den chamber and the corridor outside its gate", kind = "image" },
+] }
+[[review.categories.items]]
+id = "den-one-exit"
+title = "The den has exactly one gate"
+description = "The layout carries exactly one den-gate tile, and it sits on the top edge of the den chamber."
+domains = ["navigation", "predators"]
+failure_cap = "passable"
+# Automated validation: count the gate tiles in the reported layout and check
+# where the one sits relative to the chamber, across several freshly seeded
+# mazes. See validation/<engine>/maze/den-one-exit.test.ts.
+validation = { script = "maze/den-one-exit.test.ts", outputs = [
+  { id = "board", name = "The den chamber and the corridor outside its gate", kind = "image" },
+] }
+[[review.categories.items]]
+id = "den-reachable"
+title = "A released predator can reach the forager"
+description = "Following neighbors that are corridor, den-interior or den-gate tiles, the forager's start tile is reachable from every den-interior tile, so the den is not walled off from the maze it hunts in."
+domains = ["navigation", "predators"]
+failure_cap = "broken"
+# Automated validation: flood the reported layout from each den-interior tile over
+# the tiles a predator may enter and confirm it reaches the forager's start tile,
+# across several freshly seeded mazes. See validation/<engine>/maze/den-reachable.test.ts.
+validation = { script = "maze/den-reachable.test.ts", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+
+# --- Fog of war ---------------------------------------------------------------
+# The three visibility states and what each one draws. Every point poses the
+# geometry it is about and reads `visibility` beside the rendered pixels, so a
+# build that reports a state it does not draw, or draws a state it does not
+# report, fails rather than passes on the half it got right.
+[[review.categories]]
+id = "fog"
+title = "Fog of war"
+[[review.categories.items]]
+id = "unrevealed-black"
+title = "Unrevealed maze is flat dark fog"
+description = "A tile nothing has touched reports visibility u and is drawn as flat darkness — sampled at the tile's center, no brighter than a tenth of full brightness — and a rock tile and a corridor tile that are both unrevealed are drawn alike, within an RGB distance of 25 of 441, so the fog does not leak the layout."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose a board, keep the forager far from a chosen rock tile
+# and a chosen corridor tile, and sample both against the brightness ceiling and
+# against each other. See validation/<engine>/fog/unrevealed-black.test.ts.
+validation = { script = "fog/unrevealed-black.test.ts", outputs = [
+  { id = "fog", name = "The unrevealed maze", kind = "image" },
+] }
+[[review.categories.items]]
+id = "remembered-persists"
+title = "Revealed terrain is remembered"
+description = "A tile the forager's light has lit reports visibility r once the light moves off it, stays r for the rest of the maze, and is still drawn — sampled at its center it differs from the unrevealed fog by more than 25 of 441 RGB distance."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: light a tile, swim well clear of it, then read its
+# visibility and sample the pixel there against an unrevealed tile. See
+# validation/<engine>/fog/remembered-persists.test.ts.
+validation = { script = "fog/remembered-persists.test.ts", outputs = [
+  { id = "memory", name = "Revealed terrain persisting after moving on", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "predators-not-remembered"
+title = "Predator bodies are not remembered"
+description = "A predator lit by the forager's light reports lit true while the light holds it and lit false once the forager has swum out of range, with nothing of the body left drawn on the tile it stood on, sampled against the same tile before it arrived."
+domains = ["sensing", "predators"]
+failure_cap = "passable"
+# Automated validation: light a posed Gloamfin with creature minds off, swim the
+# forager away, and read `lit` beside the pixels at the tile it stands on. See
+# validation/<engine>/fog/predators-not-remembered.test.ts.
+validation = { script = "fog/predators-not-remembered.test.ts", outputs = [
+  { id = "forget", name = "A predator body dropping out of view", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "light-line-of-sight"
+title = "The light does not bend around corners"
+description = "A predator whose center is within V of the forager's but whose joining segment crosses a rock tile reports lit false, and the same predator reports lit true once the forager rounds the corner with nothing but open water between them."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose a blind corner with a hunter well inside V but behind
+# rock, read `lit`, then bring the forager around the corner and read it again.
+# See validation/<engine>/fog/light-line-of-sight.test.ts.
+validation = { script = "fog/light-line-of-sight.test.ts", outputs = [
+  { id = "los", name = "A predator hidden around a blind corner, revealed on rounding it", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "light-reveals-walls"
+title = "The light reveals the rock it lands on and stops there"
+description = "A rock tile whose center is within V of the forager, with open water between them, reports visibility l, and the tile directly behind it on the same line stays u, so the light reaches the wall and no farther."
+domains = ["sensing"]
+failure_cap = "passable"
+# Automated validation: pose a corridor ending in a rock face two tiles thick,
+# stand the forager inside V of the face, and read the visibility of the face and
+# of the tile behind it. See validation/<engine>/fog/light-reveals-walls.test.ts.
+validation = { script = "fog/light-reveals-walls.test.ts", outputs = [
+  { id = "walls", name = "Walls revealed by the light", kind = "image" },
+] }
+
+# --- Brightness ---------------------------------------------------------------
+# The dial the whole game turns on: eating brightens the forager, brightness
+# widens what it sees, and the same brightness widens what hunts it. The decay
+# curve is read on the game's own clock, so a build with the right halflife on the
+# wrong hold fails the hold point and passes the rest.
+[[review.categories]]
+id = "brightness"
+title = "Brightness"
+[[review.categories.items]]
+id = "from-eating"
+title = "Eating brightens the forager"
+description = "Eating one plankton from G 0 raises brightness by BRIGHT_PER_EAT (0.34) within 0.01, and eating enough of them clamps G at exactly 1 rather than passing it."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose a corridor of plankton, eat them one at a time, and
+# read `brightness` after each. See validation/<engine>/brightness/from-eating.test.ts.
+validation = { script = "brightness/from-eating.test.ts", outputs = [
+  { id = "brighten", name = "The forager brightening as it eats", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "widens-vision"
+title = "Brightness widens the light pocket"
+description = "visionRadius is VISION_MIN + VISION_GAIN * G — 96 at G 0 and 160 at G 1, within 1 unit — read at several posed brightnesses, and a tile between the two radii is unlit at G 0 and lit at G 1."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose brightness at several values, read `visionRadius`
+# against the formula, and read the visibility of a tile posed between the two
+# radii. See validation/<engine>/brightness/widens-vision.test.ts.
+validation = { script = "brightness/widens-vision.test.ts", outputs = [
+  { id = "widen", name = "The forager's vision widening as it eats", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "holds-decays"
+title = "Brightness holds, then decays"
+description = "After eating, G is unchanged over the whole BRIGHT_HOLD (1.0 s) window within 0.01, and from then on it halves every BRIGHT_HALFLIFE (0.9 s) within 0.02 — so it is never a constant drain and never decays during the hold — and a further plankton eaten mid-decay arms the hold in full again."
+domains = ["sensing"]
+failure_cap = "passable"
+# Automated validation: eat, sample G across the hold and across two halflives
+# beyond it, then eat again mid-decay and sample the fresh hold. See
+# validation/<engine>/brightness/holds-decays.test.ts.
+validation = { script = "brightness/holds-decays.test.ts", outputs = [
+  { id = "decay", name = "Brightness holding then decaying", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "widens-lanternjaw"
+title = "Brightness widens the Lanternjaw's reach"
+description = "A Lanternjaw's detectRange is LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G — 128 at G 0 and 320 at G 1, within 1 unit — so the same forager is out of reach dim and inside it bright."
+domains = ["sensing", "predators"]
+failure_cap = "passable"
+# Automated validation: pose a Lanternjaw and read `detectRange` at several posed
+# brightnesses against the formula. See
+# validation/<engine>/brightness/widens-lanternjaw.test.ts.
+validation = { script = "brightness/widens-lanternjaw.test.ts", outputs = [
+  { id = "range", name = "The detection range growing with brightness", kind = "replay" },
+] }
+
+# --- Sonar --------------------------------------------------------------------
+# The pulse is a wavefront travelling the corridors, not a circle, and most of
+# these points are about that difference: what it reaches, in what order, what it
+# shows, and what it deliberately leaves alone.
+[[review.categories]]
+id = "sonar"
+title = "Sonar"
+[[review.categories.items]]
+id = "cooldown"
+title = "Sonar recharges over SONAR_COOLDOWN"
+description = "Emitting a pulse sets sonar.cooldown to SONAR_COOLDOWN (1.5 s) and sonar.ready to false, the cooldown runs down with simulated time, a second press before it reaches 0 puts no pulse in flight, and ready returns true exactly when the cooldown reaches 0."
+domains = ["sensing"]
+failure_cap = "passable"
+# Automated validation: emit, read the cooldown down to 0 while pressing again
+# part way, and count the pulses that entered flight. See
+# validation/<engine>/sonar/cooldown.test.ts.
+validation = { script = "sonar/cooldown.test.ts", outputs = [
+  { id = "cooldown", name = "The sonar cooldown recharging", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "wavefront"
+title = "The pulse travels as a wavefront"
+description = "A pulse's front advances at SONAR_WAVE_SPEED (14) corridor steps per second within 5 percent, standing 14 * t steps out t seconds after it was emitted, and the pulse leaves the list once its front passes its range rather than covering every tile at once."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: emit a pulse and read `front` against elapsed simulated
+# time at several samples, then advance past the range and confirm the pulse is
+# gone. See validation/<engine>/sonar/wavefront.test.ts.
+validation = { script = "sonar/wavefront.test.ts", outputs = [
+  { id = "wave", name = "The sonar wavefront in flight", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "near-before-far"
+title = "It reveals near tiles before far ones"
+description = "On a posed corridor running straight out from the forager, a tile 2 corridor steps out is revealed strictly before a tile 7 steps out, and each becomes revealed within 5 percent of its own distance divided by SONAR_WAVE_SPEED."
+domains = ["sensing"]
+failure_cap = "passable"
+# Automated validation: pose a long straight corridor, emit, and record the
+# simulated time at which each of two tiles at known corridor distances first
+# reports revealed. See validation/<engine>/sonar/near-before-far.test.ts.
+validation = { script = "sonar/near-before-far.test.ts", outputs = [
+  { id = "progressive", name = "Near tiles revealed before far", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "reveals-walls"
+title = "It floods the corridors and reveals the rock bounding them"
+description = "Every open tile within E corridor steps of the origin becomes revealed, following the corridors around a corner and through a junction, together with the rock tiles bounding those corridors — while a corridor tile beyond E, and a pocket rock seals off, both stay u."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose a board with a corner, a junction, a corridor beyond
+# E and a sealed pocket, emit a pulse, run it out, and read the visibility of each.
+# See validation/<engine>/sonar/reveals-walls.test.ts.
+validation = { script = "sonar/reveals-walls.test.ts", outputs = [
+  { id = "walls", name = "Corridors and their walls revealed by a sonar pulse", kind = "image" },
+] }
+[[review.categories.items]]
+id = "marks-predators"
+title = "It marks the Gloamfin and the Flarefish"
+description = "A Gloamfin and a Flarefish standing on a flooded tile beyond the forager's light report lit true from the moment the front reaches them and stay lit for SONAR_MARK_TIME (1.5 s) within a tenth of a second, then fall back to lit false."
+domains = ["sensing", "predators"]
+failure_cap = "scuffed"
+# Automated validation: pose both hunters on a corridor well beyond V with creature
+# minds off, emit, and read `lit` from the arrival of the front through the mark
+# window and past its end. See validation/<engine>/sonar/marks-predators.test.ts.
+validation = { script = "sonar/marks-predators.test.ts", outputs = [
+  { id = "mark", name = "A predator marked by the sonar front", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "not-reveal-amber"
+title = "It never resolves the amber look-alikes"
+description = "A bonus drifter and a Lanternjaw standing on flooded tiles beyond the forager's light are left as they were: the Lanternjaw reports lit false through the whole pulse, and the pixels at both creatures' motes are unchanged across the front's arrival within an RGB distance of 25 of 441."
+domains = ["sensing", "predators"]
+failure_cap = "passable"
+# Automated validation: pose a drifter and a Lanternjaw on a flooded corridor
+# beyond V, sample both motes before and after the front reaches them, and read
+# the Lanternjaw's `lit`. See validation/<engine>/sonar/not-reveal-amber.test.ts.
+validation = { script = "sonar/not-reveal-amber.test.ts", outputs = [
+  { id = "amber", name = "The amber look-alikes left unmarked by sonar", kind = "image" },
+] }
+[[review.categories.items]]
+id = "heard-by-gloamfin"
+title = "A pulse is heard by the Gloamfin"
+description = "A wandering Gloamfin the front reaches turns to chase: its state becomes chase on the front's ARRIVAL, not at the moment the pulse was emitted, so a Gloamfin several steps out keeps wandering until the front gets there."
+domains = ["sensing", "predators"]
+failure_cap = "passable"
+# Automated validation: pose a wandering Gloamfin several corridor steps out, emit
+# a pulse, and record the simulated time its state changes against the front's
+# own arrival time. See validation/<engine>/sonar/heard-by-gloamfin.test.ts.
+validation = { script = "sonar/heard-by-gloamfin.test.ts", outputs = [
+  { id = "heard", name = "The Gloamfin turning to a heard pulse", kind = "replay" },
+] }
+
+# --- Ink ----------------------------------------------------------------------
+# The cloud itself. What ink does to each hunter is that hunter's own point.
+[[review.categories]]
+id = "ink"
+title = "Ink"
+[[review.categories.items]]
+id = "cooldown"
+title = "Ink recharges over INK_COOLDOWN"
+description = "Releasing a cloud sets ink.cooldown to INK_COOLDOWN (8 s) and ink.ready to false, the cooldown runs down with simulated time, a second press before it reaches 0 releases no cloud, and ready returns true exactly when the cooldown reaches 0."
+domains = ["sensing"]
+failure_cap = "passable"
+# Automated validation: release, read the cooldown down to 0 while pressing again
+# part way, and count the clouds that appeared. See
+# validation/<engine>/ink/cooldown.test.ts.
+validation = { script = "ink/cooldown.test.ts", outputs = [
+  { id = "cooldown", name = "The ink cooldown recharging", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cloud"
+title = "The cloud stands where it was released"
+description = "A released cloud has radius INK_RADIUS (80) within 1 unit and remaining INK_LIFE (3 s) within a tick, its center stays exactly where the forager released it while the forager swims away, remaining runs down with simulated time, and it leaves inkClouds when remaining reaches 0."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: release a cloud, swim the forager clear, and read the
+# cloud's center, radius and remaining across its whole life and one tick past it.
+# See validation/<engine>/ink/cloud.test.ts.
+validation = { script = "ink/cloud.test.ts", outputs = [
+  { id = "cloud", name = "An ink cloud lingering in place", kind = "replay" },
+] }
+
+# --- Lanternjaw ---------------------------------------------------------------
+# The light-hunter, and the one predator that carries a standing tell. Every point
+# here poses the hunter with creature minds ON — the fix has to be earned through
+# the build's own sense rather than poked into `chase` — and stands the pair at
+# least 5 tiles apart so the reading is not taken inside the forager's own light
+# pocket.
+[[review.categories]]
+id = "lanternjaw"
+title = "Lanternjaw"
+[[review.categories.items]]
+id = "light-range"
+title = "It senses the forager's light within R"
+description = "A Lanternjaw with clear line of sight to the forager takes a fix — state chase — while the distance between their centers is inside detectRange, and holds none while the same pair stands beyond it, with the boundary tested on both sides at a posed brightness."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: pose the pair in a straight corridor at a distance inside
+# R and at one beyond it, at a posed brightness, and read `state` at each. See
+# validation/<engine>/lanternjaw/light-range.test.ts.
+validation = { script = "lanternjaw/light-range.test.ts", outputs = [
+  { id = "sense", name = "The Lanternjaw fixing on your light", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "los-break"
+title = "Rock breaks its sense"
+description = "A Lanternjaw well inside detectRange of the forager but with a rock tile on the line between their centers takes no fix: it stays wander for a window far longer than a step, and the same pair with open water between them acquires."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: pose the pair either side of a rock spine inside R, watch
+# the state across a window, then clear the line and watch it acquire. See
+# validation/<engine>/lanternjaw/los-break.test.ts.
+validation = { script = "lanternjaw/los-break.test.ts", outputs = [
+  { id = "blind", name = "A wall breaking the Lanternjaw's sense", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "dim-shakes"
+title = "Dimming shakes its fix"
+description = "A Lanternjaw chasing a bright forager standing at a distance between R at G 0 and R at the posed G loses the sense as G decays past the point that puts the forager beyond R, holds the last fixed tile for LINGER_TIME (2 s), and is back to wander within a tenth of a second of that window running out."
+domains = ["predators", "sensing"]
+failure_cap = "scuffed"
+# Automated validation: earn the fix at high brightness at a distance only that
+# brightness reaches, let G decay, and record the simulated time the state returns
+# to wander against the moment the sense lapsed. See
+# validation/<engine>/lanternjaw/dim-shakes.test.ts.
+validation = { script = "lanternjaw/dim-shakes.test.ts", outputs = [
+  { id = "shaken", name = "Dimming shaking the Lanternjaw off", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ink-shakes"
+title = "Ink shakes its fix at once"
+description = "A cloud on the line between a chasing Lanternjaw and the forager drops the fix with no linger: state is wander within a tenth of a second of the cloud appearing, well short of LINGER_TIME (2 s), and it takes no new fix while the cloud blinds it."
+domains = ["predators", "sensing"]
+failure_cap = "scuffed"
+# Automated validation: earn the fix, release ink between the two, and record how
+# long the state takes to fall back to wander and whether it re-acquires while the
+# cloud stands. See validation/<engine>/lanternjaw/ink-shakes.test.ts.
+validation = { script = "lanternjaw/ink-shakes.test.ts", outputs = [
+  { id = "shaken", name = "Ink shaking the Lanternjaw off", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "bulb-visible"
+title = "Its bulb shows at any distance"
+description = "A Lanternjaw standing on an unrevealed tile far beyond the forager's light, with lit false, still draws its amber mote: the brightest warm pixel found within 12 units of its reported center is well above the surrounding fog and reads amber, with its red channel above its blue."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: pose a Lanternjaw in unrevealed fog far from the forager,
+# confirm `lit` is false, and search its neighborhood for the mote. See
+# validation/<engine>/lanternjaw/bulb-visible.test.ts.
+validation = { script = "lanternjaw/bulb-visible.test.ts", outputs = [
+  { id = "bulb", name = "The Lanternjaw's amber bulb in the dark", kind = "image" },
+] }
+[[review.categories.items]]
+id = "wander-disguise"
+title = "It wanders at the drifter's pace and hunts faster"
+description = "An unfixed Lanternjaw reports speed DRIFTER_SPEED (64) and covers ground at that rate within 2 percent, and the instant it takes a fix its speed becomes PREDATOR_SPEED (116), also within 2 percent, which is below the forager's FORAGER_SPEED (128)."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: measure the ground a wandering Lanternjaw covers over a
+# window, earn it a fix, and measure again. See
+# validation/<engine>/lanternjaw/wander-disguise.test.ts.
+validation = { script = "lanternjaw/wander-disguise.test.ts", outputs = [
+  { id = "disguise", name = "The Lanternjaw dropping its disguise to hunt", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "additive-reveal"
+title = "Lighting it leaves the bulb where it was"
+description = "Bringing the forager's light onto a Lanternjaw adds its body without disturbing its tell: the amber mote is found in the same place within 4 units of where it was unlit and still reads amber, while the pixels around it, sampled clear of the mote, go from fog to a drawn body."
+domains = ["predators", "presentation"]
+failure_cap = "great"
+# Automated validation: find the mote unlit, bring the light onto the creature,
+# find the mote again, and sample the body ring in both states. See
+# validation/<engine>/lanternjaw/additive-reveal.test.ts.
+validation = { script = "lanternjaw/additive-reveal.test.ts", outputs = [
+  { id = "reveal", name = "The bulb unchanged as the body appears around it", kind = "replay" },
+] }
+
+# --- Gloamfin -----------------------------------------------------------------
+# The sound-hunter: the only predator with a sense that works through rock, the
+# only one ink cannot touch, and the only one that searches. Its speed rules are
+# the sharpest numbers in the case, so each is measured over a run long enough for
+# the figure to separate from its neighbors.
+[[review.categories]]
+id = "gloamfin"
+title = "Gloamfin"
+[[review.categories.items]]
+id = "wander-speed"
+title = "It wanders at a steady PREDATOR_SPEED"
+description = "A wandering Gloamfin reports speed PREDATOR_SPEED (116) and covers ground at that rate within 2 percent, and it reads the same after a minute of wandering as it does a moment after release, so there is no wind-up over time."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: measure the ground a wandering Gloamfin covers early and
+# again after a long wander. See validation/<engine>/gloamfin/wander-speed.test.ts.
+validation = { script = "gloamfin/wander-speed.test.ts", outputs = [
+  { id = "wander", name = "The Gloamfin wandering at a steady pace", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ping-cadence"
+title = "It pings on its own cadence"
+description = "A wandering Gloamfin out of hearing range of the forager casts a violet ping from its own tile, with source gloamfin and tint violet, and consecutive pings arrive GLOAMFIN_PING_INTERVAL (4 s) apart within a tenth of a second, over at least three of them."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: pose a Gloamfin far from the forager, watch `pulses` over
+# several cadences, and record the simulated time of each ping it casts. See
+# validation/<engine>/gloamfin/ping-cadence.test.ts.
+validation = { script = "gloamfin/ping-cadence.test.ts", outputs = [
+  { id = "ping", name = "The Gloamfin's periodic violet ping", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "fix-and-alert"
+title = "Close hearing takes a fix and fires the alert"
+description = "The forager brought within GLOAMFIN_HEAR (64) of a wandering Gloamfin's center, through rock and with no light on either, hands it a fix: hearingLock becomes true, state becomes chase, and alert becomes true on that same step."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: pose the pair either side of rock at more than 64 units,
+# close the gap under 64, and read `hearingLock`, `state` and `alert`. See
+# validation/<engine>/gloamfin/fix-and-alert.test.ts.
+validation = { script = "gloamfin/fix-and-alert.test.ts", outputs = [
+  { id = "fix", name = "The Gloamfin acquiring by close hearing", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "chase-cap"
+title = "It chases at GLOAMFIN_CHASE_SPEED"
+description = "On a straight run with a fresh fix, a chasing Gloamfin reports speed GLOAMFIN_CHASE_SPEED (134) and covers ground at that rate within 2 percent, above the forager's FORAGER_SPEED (128) and never above the cap."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: earn a fix at one end of a long straight corridor and
+# measure the ground covered over a run with no turn in it. See
+# validation/<engine>/gloamfin/chase-cap.test.ts.
+validation = { script = "gloamfin/chase-cap.test.ts", outputs = [
+  { id = "cap", name = "The Gloamfin at its chase cap", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "corners-slow"
+title = "Every corner costs it its edge"
+description = "A chasing Gloamfin turning onto a perpendicular direction drops to GLOAMFIN_CORNER_SPEED (115) within 1 unit per second on that step, below FORAGER_SPEED (128), then climbs back to GLOAMFIN_CHASE_SPEED (134) GLOAMFIN_RAMP_TIME (2 s) after the turn within a tenth of a second, and a straight run and a reversal cost it nothing."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: earn a fix, route the chase around a posed corner, and
+# sample `speed` on the turn and across the ramp; then take a straight step and a
+# reversal and confirm neither drops it. See
+# validation/<engine>/gloamfin/corners-slow.test.ts.
+validation = { script = "gloamfin/corners-slow.test.ts", outputs = [
+  { id = "corner", name = "The Gloamfin slowing at a corner", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "lost-you-orange"
+title = "A lost chase casts one orange ping"
+description = "A Gloamfin that reaches its fixed tile and finds the forager gone enters search, and GLOAMFIN_SEARCH_DELAY (1.2 s) into that search it casts exactly one ping with tint orange, plainly apart from the violet of an ordinary one, and casts no second orange ping before the search ends."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: hand a Gloamfin a stale fix, move the forager well clear,
+# let it arrive, and watch `pulses` and their tints across the whole search. See
+# validation/<engine>/gloamfin/lost-you-orange.test.ts.
+validation = { script = "gloamfin/lost-you-orange.test.ts", outputs = [
+  { id = "orange", name = "The orange lost-you ping", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ping-floor"
+title = "No two pings closer than the floor"
+description = "Across a stretch covering an ordinary cadence and a search's guaranteed ping, no two pings a Gloamfin casts arrive closer than GLOAMFIN_PING_MIN_GAP (3 s) apart, the guaranteed one waiting for the floor rather than breaking it."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: drive a Gloamfin through an ordinary ping and then
+# straight into a search, and measure every gap between the pings it casts. See
+# validation/<engine>/gloamfin/ping-floor.test.ts.
+validation = { script = "gloamfin/ping-floor.test.ts", outputs = [
+  { id = "floor", name = "Pings spaced no closer than the floor", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "silent-when-close"
+title = "It goes silent while it holds you by ear"
+description = "While hearingLock is true a Gloamfin casts no ping at all, over a stretch far longer than GLOAMFIN_PING_INTERVAL (4 s), and it casts one as soon as the forager slips back beyond GLOAMFIN_HEAR (64) and the floor allows."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: hold the forager inside the hearing range for several
+# cadences and watch `pulses` stay empty of its pings, then withdraw and watch one
+# arrive. See validation/<engine>/gloamfin/silent-when-close.test.ts.
+validation = { script = "gloamfin/silent-when-close.test.ts", outputs = [
+  { id = "silent", name = "The Gloamfin holding you silently at close range", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ping-reveals-nothing"
+title = "Its ping reveals nothing"
+description = "A ping sweeping over unrevealed corridor leaves every tile it passes reporting u, marks no predator and no drifter — every lit flag unchanged, the casting Gloamfin's included — and the pixels at a tile it swept, sampled once the front has passed, are unchanged from before the ping within an RGB distance of 25 of 441."
+domains = ["predators", "sensing"]
+failure_cap = "passable"
+# Automated validation: pose a Gloamfin on unrevealed corridor with a drifter and
+# another hunter in its reach, let a ping run out, and read the visibility, the
+# lit flags and the pixels. See validation/<engine>/gloamfin/ping-reveals-nothing.test.ts.
+validation = { script = "gloamfin/ping-reveals-nothing.test.ts", outputs = [
+  { id = "silent", name = "A Gloamfin ping revealing no terrain", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ink-noop"
+title = "Ink does nothing to it"
+description = "A chasing Gloamfin with a cloud on the line between it and the forager, and a chasing Gloamfin standing inside a cloud, both keep state chase and keep closing on the forager for the whole life of the cloud."
+domains = ["predators", "sensing"]
+failure_cap = "passable"
+# Automated validation: earn a hearing fix, release ink on the line and again on
+# the hunter itself, and watch the state and the separation across the cloud's
+# whole life. See validation/<engine>/gloamfin/ink-noop.test.ts.
+validation = { script = "gloamfin/ink-noop.test.ts", outputs = [
+  { id = "noop", name = "The Gloamfin ignoring ink", kind = "replay" },
+] }
+
+# --- Flarefish ----------------------------------------------------------------
+# The one hunter that lights the maze up for you and is invisible the rest of the
+# time. The flare's beats are read a step after the flag that opens each, because
+# a build may raise the flag and light the disc on the following step and both
+# conform.
+[[review.categories]]
+id = "flarefish"
+title = "Flarefish"
+[[review.categories.items]]
+id = "light-sense"
+title = "It senses the forager's light like the Lanternjaw"
+description = "A wandering Flarefish with clear line of sight to the forager takes a fix — state chase — while the distance between their centers is inside detectRange, which is LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G, with no flare needed, and holds none while the same pair stands beyond it."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: pose the pair in a straight corridor at a distance inside
+# R and at one beyond it, at a posed brightness, well clear of any flare, and read
+# `state` at each. See validation/<engine>/flarefish/light-sense.test.ts.
+validation = { script = "flarefish/light-sense.test.ts", outputs = [
+  { id = "light", name = "The Flarefish fixing on your light", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "no-tell"
+title = "Between flares it shows nothing of itself"
+description = "Outside a flare a Flarefish beyond the forager's light reports lit false, flareCharging false, flaring false and flareRadius 0, and once a bloom has ended the pixels at its position fall back to the surrounding fog within an RGB distance of 25 of 441, so no mote, glow or wavefront is left behind."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: watch a posed Flarefish through a whole flare cycle beyond
+# V, and sample the pixels at its position before the charge and after the bloom
+# and its fade. See validation/<engine>/flarefish/no-tell.test.ts.
+validation = { script = "flarefish/no-tell.test.ts", outputs = [
+  { id = "notell", name = "A Flarefish's flare fading, leaving nothing of it drawn", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "flare-cadence"
+title = "It flares on the interval, charge then bloom"
+description = "A wandering Flarefish out of reach of the forager runs flareCharging true for FLARE_CHARGE (0.5 s) then flaring true for FLARE_BLOOM (1 s), each within a tenth of a second, and consecutive charge-ups begin FLARE_INTERVAL (7 s) after the previous bloom ended, so they are 8.5 s apart within a fifth of a second."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: watch a posed wandering Flarefish across two whole cycles,
+# recording the simulated time each flag rises and falls. See
+# validation/<engine>/flarefish/flare-cadence.test.ts.
+validation = { script = "flarefish/flare-cadence.test.ts", outputs = [
+  { id = "flare", name = "A Flarefish flare cycle", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "flare-reveals"
+title = "The bloom reveals a disc through rock"
+description = "While flaring, flareRadius is FLARE_RADIUS (192) within 1 unit and every tile whose center lies inside that disc reports l, rock and floor alike and including tiles with rock on the line to the Flarefish, while a tile just outside the disc stays u."
+domains = ["predators", "sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose a Flarefish among rock beyond the forager's light,
+# read `flareRadius` and the visibility of tiles inside and just outside the disc
+# a step after the bloom opens. See validation/<engine>/flarefish/flare-reveals.test.ts.
+validation = { script = "flarefish/flare-reveals.test.ts", outputs = [
+  { id = "reveal", name = "The flare revealing a disc of maze", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "flare-lock"
+title = "The bloom locks on through rock"
+description = "A forager anywhere within FLARE_RADIUS (192) of a blooming Flarefish at any step of the bloom is locked onto through rock: state becomes chase, alert becomes true, and flaring falls to false on that step, the bloom ending at once. A forager posed just beyond the radius is not locked onto."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: pose the forager behind rock inside the radius and let a
+# flare bloom, then repeat just outside it, reading `state`, `alert` and `flaring`
+# at each. See validation/<engine>/flarefish/flare-lock.test.ts.
+validation = { script = "flarefish/flare-lock.test.ts", outputs = [
+  { id = "lock", name = "The flare locking on through a wall", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "chase-like-lanternjaw"
+title = "A chasing Flarefish neither charges nor blooms"
+description = "While state is chase, flareCharging and flaring both stay false over a stretch far longer than FLARE_INTERVAL (7 s), it travels at PREDATOR_SPEED (116) within 2 percent, and returning to wander sets the timer to FLARE_INTERVAL in full, so the next charge-up is a whole interval away."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: earn a fix, hold it well past an interval while watching
+# both flags, then let the fix lapse and record when the next charge-up begins.
+# See validation/<engine>/flarefish/chase-like-lanternjaw.test.ts.
+validation = { script = "flarefish/chase-like-lanternjaw.test.ts", outputs = [
+  { id = "chase", name = "The Flarefish chasing, not flaring", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ink-breaks"
+title = "Ink breaks its fix at once"
+description = "A cloud on the line between a chasing Flarefish and the forager drops the fix with no linger: state is wander within a tenth of a second of the cloud appearing, well short of LINGER_TIME (2 s), and it takes no new fix while the cloud blinds it."
+domains = ["predators", "sensing"]
+failure_cap = "scuffed"
+# Automated validation: earn the fix by light, release ink between the two, and
+# record how long the state takes to fall back to wander and whether it
+# re-acquires while the cloud stands. See
+# validation/<engine>/flarefish/ink-breaks.test.ts.
+validation = { script = "flarefish/ink-breaks.test.ts", outputs = [
+  { id = "ink", name = "Ink breaking the Flarefish's fix", kind = "replay" },
+] }
+
+# --- The den and release ------------------------------------------------------
+# The stagger is measured on `released`, not on where a predator stands: the
+# chamber is several tiles wide and nothing fixes which tile a hunter waits on, so
+# the arrival in the corridor is not the schedule.
+[[review.categories]]
+id = "den"
+title = "The den and release"
+[[review.categories.items]]
+id = "stagger"
+title = "Predators are released 5 s apart, in order"
+description = "From the moment screen becomes playing, the first predator's released turns true at 0 s and each one after it DEN_RELEASE_GAP (5 s) later, within a tenth of a second, in the DEN_ORDER the snapshot lists them in — Lanternjaw, then Gloamfin, then Flarefish — and no predator is released during the countdown that precedes play."
+domains = ["predators"]
+failure_cap = "scuffed"
+# Automated validation: open a dive, watch `released` through the countdown and
+# across the first three release times, and record the simulated time each flips.
+# See validation/<engine>/den/stagger.test.ts.
+validation = { script = "den/stagger.test.ts", outputs = [
+  { id = "stagger", name = "The three predators leaving the den in turn", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "re-release"
+title = "Losing a life runs the schedule again"
+description = "Contact returns every predator to the den with released false and state den, and once play resumes the whole staggered schedule runs again from that moment: the three flips arrive at 0 s, DEN_RELEASE_GAP (5 s) and 10 s after play resumes, within a tenth of a second."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: take the life by placing a hunter on the forager so the
+# death is instant, then watch `released` from the resumed play. See
+# validation/<engine>/den/re-release.test.ts.
+validation = { script = "den/re-release.test.ts", outputs = [
+  { id = "rerelease", name = "The den refilling on a death and emptying again in turn", kind = "replay" },
+] }
+
+# --- Detection alert ----------------------------------------------------------
+# Two hunters fire it and one deliberately does not, so the absence is its own
+# point rather than an untested corner.
+[[review.categories]]
+id = "alert"
+title = "Detection alert"
+[[review.categories.items]]
+id = "gloamfin"
+title = "The Gloamfin fires the alert on a fresh fix"
+description = "A Gloamfin acquiring the forager reports alert true from that step and for ALERT_TIME (0.5 s) within a tenth of a second, lit true for that whole window wherever it stands, and alert false thereafter, and refreshing a fix it is already chasing on fires nothing."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: earn a fresh acquisition beyond the forager's light, sample
+# `alert` and `lit` across the window, then refresh the same fix and confirm
+# nothing fires. See validation/<engine>/alert/gloamfin.test.ts.
+validation = { script = "alert/gloamfin.test.ts", outputs = [
+  { id = "alert", name = "The Gloamfin's detection alert", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "flarefish"
+title = "The Flarefish fires the alert on a fresh fix"
+description = "A Flarefish acquiring the forager, by its light sense or by a flare lock, reports alert true from that step and for ALERT_TIME (0.5 s) within a tenth of a second, and lit true for that whole window wherever it stands."
+domains = ["predators"]
+failure_cap = "passable"
+# Automated validation: earn an acquisition each way beyond the forager's light
+# and sample `alert` and `lit` across the window. See
+# validation/<engine>/alert/flarefish.test.ts.
+validation = { script = "alert/flarefish.test.ts", outputs = [
+  { id = "alert", name = "The Flarefish's detection alert", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "lanternjaw-none"
+title = "The Lanternjaw fires no alert"
+description = "A Lanternjaw reports alert false at every moment, through an acquisition and across the ALERT_TIME (0.5 s) window after it, because its standing bulb is its tell."
+domains = ["predators"]
+failure_cap = "great"
+# Automated validation: earn a fresh Lanternjaw acquisition and sample `alert`
+# every step across the window that would carry one. See
+# validation/<engine>/alert/lanternjaw-none.test.ts.
+validation = { script = "alert/lanternjaw-none.test.ts", outputs = [
+  { id = "none", name = "The Lanternjaw acquiring with no alert", kind = "replay" },
+] }
+
+# --- Amber look-alikes --------------------------------------------------------
+# The bluff at the center of the game: a glimmer in the dark is a free 200 points
+# or a hunter, and nothing but committing to it tells you which. The look is
+# sampled by searching each creature's neighborhood for the brightest warm pixel,
+# because a build may draw the mote anywhere on the body.
+[[review.categories]]
+id = "amber"
+title = "Amber look-alikes"
+[[review.categories.items]]
+id = "lookalikes"
+title = "A drifter and a Lanternjaw's bulb read alike"
+description = "A bonus drifter and a wandering Lanternjaw posed side by side in unrevealed fog, both beyond the forager's light, each draw a warm mote whose red channel exceeds its blue, and the two motes differ from each other by no more than an RGB distance of 40 of 441, so one glimmer is not told from the other."
+domains = ["sensing", "predators"]
+failure_cap = "scuffed"
+# Automated validation: pose the two on separate corridors well beyond V, search
+# each neighborhood for its brightest warm pixel, and compare them. See
+# validation/<engine>/amber/lookalikes.test.ts.
+validation = { script = "amber/lookalikes.test.ts", outputs = [
+  { id = "amber", name = "The amber look-alikes side by side", kind = "image" },
+] }
+[[review.categories.items]]
+id = "drifter-permanent"
+title = "A drifter stays until it is eaten"
+description = "A spawned drifter is still in drifters after a stretch far longer than DRIFTER_INTERVAL (25 s), holding its pace at DRIFTER_SPEED (64) within 2 percent throughout, and it leaves the list only when the forager eats it."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: spawn a drifter, run the maze on for well over a cadence
+# with the forager parked clear of it, then eat it. See
+# validation/<engine>/amber/drifter-permanent.test.ts.
+validation = { script = "amber/drifter-permanent.test.ts", outputs = [
+  { id = "permanent", name = "A drifter persisting over time", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "drifter-score"
+title = "Eating a drifter scores SCORE_DRIFTER"
+description = "A drifter whose center lies on the forager's tile is eaten: score rises by exactly SCORE_DRIFTER (200), the drifter leaves drifters, and planktonRemaining is unchanged."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: spawn a drifter with creature minds off, bring the forager
+# onto its tile, and read the score and both lists across the bite. See
+# validation/<engine>/amber/drifter-score.test.ts.
+validation = { script = "amber/drifter-score.test.ts", outputs = [
+  { id = "score", name = "Scoring a drifter", kind = "replay" },
+] }
+
+# --- Scoring and progression --------------------------------------------------
+# What a dive is worth and what it costs. `three-lives` waits for each death on
+# its own budget rather than a single fixed march, because a build may grant a
+# respawn grace and still conform.
+[[review.categories]]
+id = "scoring"
+title = "Scoring and progression"
+[[review.categories.items]]
+id = "plankton"
+title = "Plankton score SCORE_PLANKTON each"
+description = "The forager entering a tile holding a plankton eats it the moment its center enters that tile: score rises by exactly SCORE_PLANKTON (10), planktonRemaining falls by exactly 1, and the tile holds no plankton afterward."
+domains = ["progression"]
+failure_cap = "broken"
+# Automated validation: pose a plankton on a known tile, swim the forager onto it,
+# and read the score and the remaining count across the bite. See
+# validation/<engine>/scoring/plankton.test.ts.
+validation = { script = "scoring/plankton.test.ts", outputs = [
+  { id = "eat", name = "Scoring a plankton", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "cleared-bonus"
+title = "Clearing a maze scores SCORE_CLEAR"
+description = "Eating the plankton that leaves none behind adds SCORE_CLEAR (500) on top of that plankton's own SCORE_PLANKTON (10), for exactly 510 across the bite, and screen becomes cleared."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: strip the board to one plankton under the forager, eat it,
+# and read the score across the bite and the screen after it. See
+# validation/<engine>/scoring/cleared-bonus.test.ts.
+validation = { script = "scoring/cleared-bonus.test.ts", outputs = [
+  { id = "clear", name = "Clearing a maze for the bonus", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "caught-costs-life"
+title = "Contact costs a life and sets the board up again"
+description = "A predator whose center lies on the forager's tile costs exactly one life: lives falls by 1, screen becomes countdown, and the board is set up for another attempt — the forager at rest on its start tile with brightness 0, every predator back in the den with released false, no drifters, no wavefronts, no ink clouds, both cooldowns ready, and planktonRemaining, score and depth all unchanged."
+domains = ["progression", "predators"]
+failure_cap = "broken"
+# Automated validation: place a hunter on the forager so the contact is instant,
+# then hold the whole arrangement above against the snapshot. See
+# validation/<engine>/scoring/caught-costs-life.test.ts.
+validation = { script = "scoring/caught-costs-life.test.ts", outputs = [
+  { id = "caught", name = "Getting caught and losing a life", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "descend-on-clear"
+title = "Clearing descends to the next depth"
+description = "The cleared screen gives way to a maze at depth d + 1, opening on the countdown, with plankton on every corridor tile outside the den, the fog fully unrevealed, every predator denned and unreleased, no drifters, and the score and lives carried across."
+domains = ["progression"]
+failure_cap = "broken"
+# Automated validation: clear a maze, let the interstitial run out, and read the
+# depth, the screen, the plankton count, the fog and the roster of the next maze.
+# See validation/<engine>/scoring/descend-on-clear.test.ts.
+validation = { script = "scoring/descend-on-clear.test.ts", outputs = [
+  { id = "descend", name = "Descending to a deeper maze", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "depth-scaling"
+title = "Depth adds hunters and shortens the pulse"
+description = "At depths 1 through 5 the roster holds the counts specs/predators.md tabulates — one of each kind at depth 1, adding a Gloamfin, then a Lanternjaw, then a Flarefish, and holding at ROSTER_CAP (two of each, six in all) from ROSTER_CAP_DEPTH (4) on — listed in release order, while sonar.range is max(SONAR_RANGE_MIN (5), SONAR_RANGE_BASE (9) - (d - 1)) and a pulse emitted at that depth carries exactly that range. No predator speed changes with depth."
+domains = ["progression", "predators", "sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose each depth in turn, read the roster's kinds in order
+# and `sonar.range`, emit a pulse and read its own `range`, and compare a
+# wandering hunter's speed at depth 1 and at depth 5. See
+# validation/<engine>/scoring/depth-scaling.test.ts.
+validation = { script = "scoring/depth-scaling.test.ts", outputs = [
+  { id = "scale", name = "Depth scaling the dive", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "three-lives"
+title = "Three lives, then game over"
+description = "A dive opens with lives START_LIVES (3) and the life being played is not counted, so three catches drop lives to 2, 1 and 0 with play resuming each time, and the fourth catch, taken with lives already 0, sets screen to gameover."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: take four lives in turn, each by placing a hunter on the
+# forager and waiting for play to resume on its own budget, reading `lives` and
+# `screen` after each. See validation/<engine>/scoring/three-lives.test.ts.
+validation = { script = "scoring/three-lives.test.ts", outputs = [
+  { id = "over", name = "Losing the last life to game over", kind = "replay" },
+] }
+
+# --- Game screens -------------------------------------------------------------
+# Each screen is reached the way a player reaches it — through the menus, through
+# play, or through the transition that leads to it — and each point asserts the
+# copy the specification fixes for that screen, so a screen that exists as a value
+# of `screen` but draws nothing fails.
+[[review.categories]]
+id = "states"
+title = "Game screens"
+[[review.categories.items]]
+id = "title"
+title = "The title screen opens the game"
+description = "A fresh game opens on screen title, drawing FATHOM, the tagline HUNT IN THE DARK, and a menu of DIVE then HOW TO PLAY with the first item selected and drawn distinctly from the second."
+domains = ["progression"]
+failure_cap = "broken"
+# Automated validation: reset and read the screen, the drawn text, and which menu
+# item is drawn as selected. See validation/<engine>/states/title.test.ts.
+validation = { script = "states/title.test.ts", outputs = [
+  { id = "title", name = "The title menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "howto"
+title = "How to play is reachable and covers the game"
+description = "HOW TO PLAY confirmed from the title menu sets screen to howto, whose drawn text names a key for each of the controls specs/movement.md binds, names all three predators, and describes reading the dark by the forager's light and by the sonar pulse; confirm or back returns to title."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: walk the title menu to the second item, confirm, read the
+# drawn text off the recorder, and go back. See validation/<engine>/states/howto.test.ts.
+validation = { script = "states/howto.test.ts", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "countdown"
+title = "A dive opens on the countdown"
+description = "DIVE confirmed sets screen to countdown with the maze and the HUD drawn behind it, the countdown holds for at least 1 s and at most 3 s of simulated time before screen becomes playing, and nothing but the countdown's own time and the forager's light advances while it runs."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: confirm DIVE, then advance a step at a time reading the
+# screen, the simulated time and every mover's position until play begins. See
+# validation/<engine>/states/countdown.test.ts.
+validation = { script = "states/countdown.test.ts", outputs = [
+  { id = "countdown", name = "The dive countdown", kind = "image" },
+] }
+[[review.categories.items]]
+id = "paused"
+title = "The pause screen freezes the dive"
+description = "Pausing live play sets screen to paused and draws a menu of RESUME, RESTART and QUIT TO MENU over a maze that stays visible, and nothing advances behind it: over a stretch of simulated time no position, cooldown or brightness changes, and RESUME returns to playing."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: pause a live dive, hold the snapshot against itself across
+# a long stretch, read the drawn menu items, and resume. See
+# validation/<engine>/states/paused.test.ts.
+validation = { script = "states/paused.test.ts", outputs = [
+  { id = "paused", name = "The pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cleared"
+title = "The cleared interstitial names the depth"
+description = "Clearing a maze sets screen to cleared and draws DEPTH 1 CLEARED for the depth just cleared, over the maze view, and it holds for at least 1 s and at most 3 s of simulated time before the descent."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: clear a maze, read the screen and the drawn text, and time
+# the hold against the simulation's own clock. See
+# validation/<engine>/states/cleared.test.ts.
+validation = { script = "states/cleared.test.ts", outputs = [
+  { id = "cleared", name = "The maze-cleared screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "gameover"
+title = "Game over reports the run and offers the menu"
+description = "The catch taken with lives 0 sets screen to gameover, whose drawn text carries the score the run finished on and the depth it reached, over a menu of PLAY AGAIN then MENU; PLAY AGAIN opens a fresh dive on the countdown at depth 1 with score 0 and lives START_LIVES (3)."
+domains = ["progression"]
+failure_cap = "scuffed"
+# Automated validation: run the lives out, read the screen and the drawn text, and
+# confirm PLAY AGAIN. See validation/<engine>/states/gameover.test.ts.
+validation = { script = "states/gameover.test.ts", outputs = [
+  { id = "gameover", name = "The game-over screen", kind = "image" },
+] }
+
+# --- Audio --------------------------------------------------------------------
+# Seven cues, one per event, each its own point so a build fails exactly the cue
+# it omits. What a cue SOUNDS like is the build's; the check reads the cue bus for
+# the name the specification fixes, played on the tick its event happens and at
+# most once on that tick. The mute toggle is `controls.mute`.
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "eat"
+title = "The eat cue"
+description = "CUES.eat (\"eat\") plays on the tick the forager eats a plankton, exactly once on that tick."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: swim the forager onto a posed plankton and watch the cue
+# bus across the bite. See validation/<engine>/audio/eat.test.ts.
+validation = { script = "audio/eat.test.ts", outputs = [
+  { id = "eat", name = "The eat whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "sonar"
+title = "The sonar cue"
+description = "CUES.sonar (\"sonar\") plays on the tick the forager emits a sonar pulse, exactly once on that tick."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: emit a pulse and watch the cue bus. See
+# validation/<engine>/audio/sonar.test.ts.
+validation = { script = "audio/sonar.test.ts", outputs = [
+  { id = "sonar", name = "The sonar pulse whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "ink"
+title = "The ink cue"
+description = "CUES.ink (\"ink\") plays on the tick the forager releases an ink cloud, exactly once on that tick."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: release a cloud and watch the cue bus. See
+# validation/<engine>/audio/ink.test.ts.
+validation = { script = "audio/ink.test.ts", outputs = [
+  { id = "ink", name = "The ink release whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "pred-pulse"
+title = "The predator-ping cue"
+description = "CUES.predatorPing (\"predator-ping\") plays on the tick a Gloamfin casts one of its own pings, exactly once on that tick."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose a wandering Gloamfin clear of the forager, wait out
+# its cadence, and watch the cue bus on the tick the ping enters flight. See
+# validation/<engine>/audio/pred-pulse.test.ts.
+validation = { script = "audio/pred-pulse.test.ts", outputs = [
+  { id = "pulse", name = "The Gloamfin ping whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "flare"
+title = "The flare cue"
+description = "CUES.flare (\"flare\") plays on the tick a Flarefish's bloom begins, exactly once on that tick, and not on the tick its charge-up begins."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: pose a wandering Flarefish clear of the forager, watch the
+# cue bus across the charge and the opening of the bloom. See
+# validation/<engine>/audio/flare.test.ts.
+validation = { script = "audio/flare.test.ts", outputs = [
+  { id = "flare", name = "The Flarefish flare whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "caught"
+title = "The caught cue"
+description = "CUES.caught (\"caught\") plays on the tick a predator makes contact with the forager, exactly once on that tick."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: place a hunter on the forager and watch the cue bus on the
+# tick the life is lost. See validation/<engine>/audio/caught.test.ts.
+validation = { script = "audio/caught.test.ts", outputs = [
+  { id = "caught", name = "The catch whose cue is checked", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "descend"
+title = "The descend cue"
+description = "CUES.descend (\"descend\") plays on the tick a maze is cleared, exactly once on that tick."
+domains = ["progression"]
+failure_cap = "passable"
+# Automated validation: eat the last plankton and watch the cue bus on the tick
+# the maze clears. See validation/<engine>/audio/descend.test.ts.
+validation = { script = "audio/descend.test.ts", outputs = [
+  { id = "descend", name = "The maze clear whose cue is checked", kind = "replay" },
+] }
+
+# --- Presentation -------------------------------------------------------------
+# The two things about the look this specification actually fixes: that the whole
+# stage is on screen at any window size, and that the seeded art is what the game
+# draws its creatures and tiles from. The palette, the glow, the HUD layout and
+# every other aspect of the look are the build's, and how good they are is the
+# aesthetic rating's, not scored here.
+[[review.categories]]
+id = "presentation"
+title = "Presentation"
+[[review.categories.items]]
+id = "window-fit"
+title = "The stage is fitted and centered"
+description = "Over surfaces wider than the stage, taller than it, and at a raised device pixel ratio, the whole STAGE_W x STAGE_H (1280 x 720) stage is inside the surface at its own aspect ratio, centered with even letterboxing, and the bars carry the stage's background color within an RGB distance of 25 of 441."
+domains = ["presentation"]
+failure_cap = "passable"
+# Automated validation: stand the game up over several surface sizes and pixel
+# ratios and measure where the stage lands and what the bars are painted with. See
+# validation/<engine>/presentation/window-fit.test.ts.
+validation = { script = "presentation/window-fit.test.ts", outputs = [
+  { id = "fit", name = "The stage fitted in an off-aspect window", kind = "image" },
+] }
+[[review.categories.items]]
+id = "provided-art"
+title = "The seeded sheets are what the game draws from"
+description = "Over a live dive drawing the forager, a maze of rock and corridor, all three predators, a drifter and a flare, every one of the seven seeded sheets is loaded and drawn: each element is drawn from an image source that is a frame of its own sheet, at the frame sizes specs/assets.md gives, rather than from shapes drawn in code or from art of the build's own."
+domains = ["presentation"]
+failure_cap = "scuffed"
+# Automated validation: pose a board carrying every element, arm the draw recorder
+# over one frame, and hold the image sources drawn against the seeded frames. See
+# validation/<engine>/presentation/provided-art.test.ts.
+validation = { script = "presentation/provided-art.test.ts", outputs = [
+  { id = "art", name = "The maze and its creatures drawn from the seeded sheets", kind = "image" },
+] }

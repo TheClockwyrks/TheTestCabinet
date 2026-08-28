@@ -1,0 +1,132 @@
+# The Kindle dive: the same maze, the same three hunters and the same fog of war
+# as the Standard dive, with one addition that defines it — an outer vision circle
+# the forager carries, which grows as it eats. The circle reveals nothing; it is a
+# rendering mask. The maze is explored and remembered exactly as in the Standard
+# dive, but only the part of the explored map inside the circle is drawn, and
+# everything beyond it is painted with the same flat fog as never-revealed ground
+# while staying remembered underneath. Every path resolves against the version
+# folder.
+slug = "kindle"
+name = "Kindle"
+description = "A remembered fog of war seen only through a circular window that grows as you eat, beyond which even explored ground is dark."
+
+# The sensing model that varies lives in the common `.hbs` specs, branched on this
+# variant's slug when rendered: kindle gets the vision circle and everything
+# clipped to it (`specs/sensing.md.hbs`), the KINDLE dive label on the HUD
+# (`specs/ui.md.hbs`), the `windowRadius` a snapshot reports (`specs/state.md.hbs`)
+# and a `setBrightness` that recomputes `R` beside `V` and the two light detection
+# ranges (`specs/instrumentation.md.hbs`). So kindle declares no `spec` of its own.
+
+# Curated demo media for this variant, captured from the reference build below.
+showcase = "showcase/kindle"
+
+# The authored, *correct* static build of this variant, one per engine — see
+# `variants/base.toml` for what a reference implementation is and how it is
+# published. It is the same game as the base build with the vision circle added,
+# and it is never seeded into a run.
+[reference_implementation]
+none = "references/none/kindle"
+"simple-2d" = "references/simple-2d/kindle"
+"structured-2d" = "references/structured-2d/kindle"
+
+# This variant needs a starter project of its own under each engine that seeds
+# one: the seeded `src/constants.ts` carries `KINDLE_VISION_MIN` (192) and
+# `KINDLE_VISION_GAIN` (128), which base's does not, and the dive label the HUD
+# draws differs. The table REPLACES the case's `[workspaces]` rather than layering
+# on it, so it names one directory per engine exactly as the case's does.
+#
+# The engineless project is the case's own, shared with every variant. It holds no
+# game code for a variant to differ in — only the configuration the build is
+# written against — and what this variant changes about the game is carried by the
+# specs, which are rendered per variant before they land.
+[workspaces]
+none = "workspaces/none"
+"simple-2d" = "workspaces/kindle/simple-2d"
+"structured-2d" = "workspaces/kindle/structured-2d"
+
+# The Kindle dive's own points, in the categories grammar (`format` is inherited
+# from the case manifest, `[review] format = 2`). They cover the vision circle
+# that defines the dive: what it draws, how it grows, what it hides without
+# forgetting, what it deliberately does not govern, and what is drawn over it. The
+# common fog, brightness, sonar, ink and predator points live in the case
+# manifest. Every point carries `domains` and `failure_cap` on the scale the case
+# manifest sets out above its `[review]` table: the circle and its growth ARE this
+# dive, so missing either is a rule noticeably wrong (`scuffed`); what is drawn
+# over the blackout, and what the circle leaves alone, are edge cases of the same
+# mask (`passable`).
+[[review.categories]]
+id = "kindle"
+title = "Kindle sensing"
+[[review.categories.items]]
+id = "vision-circle"
+title = "The maze is drawn only inside the circle"
+description = "On ground the forager has already revealed, a tile whose center lies inside windowRadius of the forager's center is drawn — differing from unrevealed fog by more than an RGB distance of 25 of 441 — and a revealed tile whose center lies beyond it is painted with that same flat fog, within 25 of 441 of it, with the boundary tested on both sides."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: reveal a stretch of corridor, read `windowRadius`, and
+# sample rendered pixels at revealed tiles just inside and just outside that
+# radius. See validation/<engine>/kindle/vision-circle.test.ts.
+validation = { script = "kindle/vision-circle.test.ts", outputs = [
+  { id = "circle", name = "The vision circle: drawn inside, dark beyond", kind = "image" },
+] }
+[[review.categories.items]]
+id = "grows-with-eating"
+title = "The circle grows as you eat"
+description = "windowRadius is KINDLE_VISION_MIN + KINDLE_VISION_GAIN * G — 192 at G 0 and 320 at G 1, within 1 unit — read at several posed brightnesses, and it is larger than visionRadius at every one of them."
+domains = ["sensing"]
+failure_cap = "scuffed"
+# Automated validation: pose brightness at several values and read `windowRadius`
+# against the formula and against `visionRadius`. See
+# validation/<engine>/kindle/grows-with-eating.test.ts.
+validation = { script = "kindle/grows-with-eating.test.ts", outputs = [
+  { id = "grow", name = "The vision circle widening with brightness", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "memory-windowed"
+title = "Hidden, but not forgotten"
+description = "A tile revealed earlier still reports visibility r once the forager has swum beyond windowRadius of it, even while the pixel there is painted with the flat fog, and bringing the forager back inside the radius draws it again with any uneaten plankton still on it."
+domains = ["sensing"]
+failure_cap = "passable"
+# Automated validation: reveal a tile, swim past the radius and read its
+# visibility beside the pixel there, then return and sample again. See
+# validation/<engine>/kindle/memory-windowed.test.ts.
+validation = { script = "kindle/memory-windowed.test.ts", outputs = [
+  { id = "memory", name = "Remembered ground hidden then redrawn", kind = "replay" },
+] }
+[[review.categories.items]]
+id = "predators-by-light"
+title = "Predators are drawn by the light, not the circle"
+description = "A predator posed inside windowRadius but beyond visionRadius reports lit false and draws no body, and the same predator brought inside visionRadius with clear line of sight reports lit true, so the circle governs the maze and the light pocket governs the hunters."
+domains = ["sensing", "predators"]
+failure_cap = "passable"
+# Automated validation: pose a hunter between the two radii with creature minds
+# off, read `lit` and sample its tile, then bring it inside the light. See
+# validation/<engine>/kindle/predators-by-light.test.ts.
+validation = { script = "kindle/predators-by-light.test.ts", outputs = [
+  { id = "bylight", name = "A predator inside the circle but unlit beyond the light", kind = "image" },
+] }
+[[review.categories.items]]
+id = "beyond-circle"
+title = "The amber lights are clipped to the circle"
+description = "A bonus drifter posed beyond windowRadius draws no mote: the pixels within 12 units of its reported center are within an RGB distance of 25 of 441 of the surrounding flat fog, and the same drifter inside the radius draws its warm mote."
+domains = ["sensing"]
+failure_cap = "passable"
+# Automated validation: spawn a drifter beyond the radius and search its
+# neighborhood for a mote that must not be there, then bring the forager close
+# enough to take it inside the circle. See
+# validation/<engine>/kindle/beyond-circle.test.ts.
+validation = { script = "kindle/beyond-circle.test.ts", outputs = [
+  { id = "clipped", name = "A distant amber light clipped away", kind = "image" },
+] }
+[[review.categories.items]]
+id = "flare-second-circle"
+title = "A flare is a second window onto the maze"
+description = "A Flarefish blooming beyond the forager's vision circle draws the maze inside its bloom: a tile inside FLARE_RADIUS (192) of the Flarefish but beyond windowRadius of the forager is drawn while the bloom burns, differing from the flat fog by more than an RGB distance of 25 of 441, and is painted back to that fog once the bloom ends."
+domains = ["sensing", "predators"]
+failure_cap = "passable"
+# Automated validation: pose a Flarefish well beyond the vision circle, let it
+# bloom, and sample a tile inside its disc across the bloom and after it. See
+# validation/<engine>/kindle/flare-second-circle.test.ts.
+validation = { script = "kindle/flare-second-circle.test.ts", outputs = [
+  { id = "second", name = "A flare lighting the maze beyond the vision circle", kind = "replay" },
+] }
