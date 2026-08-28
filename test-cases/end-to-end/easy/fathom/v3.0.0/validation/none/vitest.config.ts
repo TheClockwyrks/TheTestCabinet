@@ -31,6 +31,8 @@ export default defineConfig({
     name: "validation",
     include: ["validation/**/*.test.ts"],
     environment: "node",
+    globalSetup: ["validation/globalSetup.ts"],
+    setupFiles: ["validation/setup.ts"],
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },

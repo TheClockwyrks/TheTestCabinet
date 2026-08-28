@@ -1,15 +1,134 @@
 // audio/pred-pulse — the predator-ping cue.
 //
-// NOT IMPLEMENTED. The checklist declares this point; the suite that decides it
-// lands with the rest of this engine's validators. Until then it fails loudly
-// rather than passing on nothing.
+// `specs/progression.md` fixes `CUES.predatorPing` (`"predator-ping"`) as the cue
+// played when "a Gloamfin emits one of its own sonar pings", and governs all
+// seven with one sentence: "Each is played on the tick its event happens, and at
+// most once on that tick."
 //
-// The claim this validator has to decide:
-// CUES.predatorPing ("predator-ping") plays on the tick a Gloamfin casts one
-// of its own pings, exactly once on that tick.
+// THE PING IS EARNED, NOT POSED. `specs/predators/gloamfin.md` has a wandering
+// Gloamfin cast its own ping on its own cadence, and `specs/instrumentation.md`
+// gives the surface no operation that casts one. So the hunter is set wandering
+// and the check waits it out.
+//
+// AND IT IS WAITED OUT SOMEWHERE IT CANNOT REACH THE FORAGER. `poseApart` lays
+// down two sealed rooms — the forager's, and a ring across solid rock for the
+// hunter to patrol — because on a connected board "far away" is only a head
+// start: a patrol crosses the grid in a few seconds, and a Gloamfin that arrives
+// and takes a fix stops casting the periodic ping this point is about. A posed
+// fixture is exempt from `specs/maze.md`'s connectedness rule
+// (`specs/instrumentation.md`), so the two halves stay apart for the whole watch.
+//
+// THE EVENT IS THE PING ENTERING FLIGHT, which `specs/state.md` reports as a
+// `pulses` entry whose `source` is `"gloamfin"`.
+//
+// WHAT THIS ENGINE CANNOT SEE. The cue's NAME, and how many sources one cue is
+// made of. `validation/audio/cues.ts` states why, and what these checks assert
+// instead.
+//
+// WHAT THIS DOES NOT DECIDE. The cadence itself, which is
+// `gloamfin/ping-cadence`'s; what a ping reveals, which is
+// `gloamfin/ping-reveals-nothing`'s; its color, which is
+// `gloamfin/lost-you-orange`'s.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThanOrEqual, assertNull } from "../assert";
+import { GLOAMFIN_PING_INTERVAL, ticksFor } from "../constants";
+import { poseApart } from "../fixtures";
+import { captureReplay, createHarness, type Harness } from "../harness";
+import {
+  denAllExcept,
+  quietBoard,
+  sceneGuard,
+  sceneHeld,
+  startPlaying,
+} from "../scene";
+import {
+  requireKind,
+  soundsBeforeEvent,
+  soundsOnEvent,
+  watchForEvent,
+} from "./cues";
 
-it("The predator-ping cue", () => {
-  throw new Error("validation/none/audio/pred-pulse.test.ts: not implemented");
+/**
+ * How far the hunter's sealed ring sits from the forager's room, in tiles.
+ *
+ * Ten tiles is `320` logical units, comfortably past `GLOAMFIN_HEAR` (`64`) and
+ * past the `GLOAMFIN_PING_RANGE` (`9`) tiles a ping itself carries, so the two
+ * halves of the board have nothing to say to each other.
+ */
+const APART_TILES = 10;
+
+/**
+ * The ceiling on the watch, in ticks.
+ *
+ * `GLOAMFIN_PING_INTERVAL` is `4 s`, so a wandering Gloamfin casts inside that.
+ * Twice the interval and a second over is a hard window: a build whose hunter
+ * never pings fails on the bound rather than leaving the point inconclusive.
+ */
+const PING_TICKS = ticksFor(2 * GLOAMFIN_PING_INTERVAL + 1);
+
+/** Ticks run past the reading, purely so the clip shows the ping traveling. */
+const TAIL_TICKS = ticksFor(1);
+
+let h: Harness;
+
+beforeEach(async (ctx) => {
+  h = await createHarness(ctx);
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("sounds on the tick a Gloamfin casts its own ping, and not before", async () => {
+  // A real, browser-trusted gesture first: an engineless build owns its own audio
+  // layer and is entitled to open it on the player's first interaction alone
+  // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
+  await h.armAudio();
+  await startPlaying(h);
+  const rooms = await poseApart(h, APART_TILES);
+  const gloamfin = requireKind(h, await h.snapshot(), "gloamfin");
+
+  await h.debug.setPredatorTile(gloamfin, rooms.far.tx, rooms.far.ty);
+  await h.debug.setPredatorState(gloamfin, "wander");
+  const quiet = await denAllExcept(h, [gloamfin]);
+  await quietBoard(h, rooms.near);
+  const guard = await sceneGuard(h, quiet);
+
+  const watch = await captureReplay(h, "pulse", async () => {
+    const seen = await watchForEvent(
+      h,
+      (s) => s.pulses.some((pulse) => pulse.source === "gloamfin"),
+      PING_TICKS,
+    );
+    // Past the reading, so the clip shows the ping crossing its ring. Nothing
+    // after this line can reach an assertion.
+    await h.advance(TAIL_TICKS);
+    return seen;
+  });
+
+  assertNull(
+    sceneHeld(await h.snapshot(), guard),
+    "the scenario held to the end",
+  );
+
+  assertEqual(
+    watch.hit,
+    true,
+    `the wandering Gloamfin cast one of its own pings inside ${String(PING_TICKS)} ` +
+      `ticks, which is twice its GLOAMFIN_PING_INTERVAL (${String(GLOAMFIN_PING_INTERVAL)} s) cadence`,
+  );
+  assertEqual(
+    soundsBeforeEvent(watch),
+    0,
+    `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
+      "ping, on a board where nothing else is happening — a cue is played on the " +
+      "tick its event happens (specs/progression.md)",
+  );
+  assertGreaterThanOrEqual(
+    soundsOnEvent(watch),
+    1,
+    "sounds the build emitted on the tick the Gloamfin's ping entered flight, " +
+      "which is the tick CUES.predatorPing is played on (specs/progression.md)",
+  );
 });

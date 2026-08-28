@@ -1,18 +1,132 @@
-// fog/light-reveals-walls — the light reveals the rock it lands on and stops there.
+// fog/light-reveals-walls — the light reveals the rock it lands on and stops
+// there.
 //
-// NOT IMPLEMENTED. The checklist declares this point; the suite that decides it
-// lands with the rest of this engine's validators. Until then it fails loudly
-// rather than passing on nothing.
+// `specs/sensing.md` states it as one sentence with two halves: "The light reveals
+// the rock it lands on and stops there. A rock tile the light reaches is lit and
+// drawn as rock, and the tiles behind it are left as they were." A build can hold
+// either half alone — one that never lights rock at all satisfies "stops there",
+// and one that lights a whole ray satisfies "reveals the rock it lands on" — so
+// both are read out of the same frame.
 //
-// The claim this validator has to decide:
-// A rock tile whose center is within V of the forager, with open water between
-// them, reports visibility l, and the tile directly behind it on the same line
-// stays u, so the light reaches the wall and no farther.
+// THE SECOND HALF IS ONLY WORTH READING IF THE FAR TILE IS IN RANGE. A tile the
+// light could not have reached anyway says nothing about the rock in front of it.
+// So the corridor is posed short: with `PROBE_RUN` (`2`) tiles of open water ahead
+// of the forager the rock closing it stands `96` logical units away and the
+// corridor tile on its far side stands `128`, both inside the `160` the light
+// reaches at `G = 1` (`V = VISION_MIN + VISION_GAIN * G`). The only thing between
+// the forager and that far tile is the rock, and the check asserts that geometry
+// from the specification's own figures before it reads a visibility.
+//
+// AN AXIAL RAY, not a grazing one. `specs/sensing.md` traces the light along "the
+// segment joining those two centers", and the rock flanking a corridor sits at an
+// angle where two conforming builds may honestly disagree about a segment that
+// clips a corner. The rock squarely at the end of a corridor the forager is
+// standing in does not: that line runs down the corridor's own center line through
+// nothing but open tiles (`poseLitWallProbe`).
+//
+// THE BOARD IS OTHERWISE EMPTY. `setMaze` returns every predator to a den and
+// suspends the release schedule, `denAllExcept` keeps them there, and
+// `clearPlankton` takes the plankton off without eating any of it
+// (`specs/instrumentation.md`: "nothing here is eaten, so it scores nothing and
+// clears no maze"), so the forager's brightness is the one this check posed and no
+// flare or pulse reveals anything.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThan,
+  assertNull,
+} from "../assert";
+import { VISION_GAIN, VISION_MIN } from "../constants";
+import { poseLitWallProbe, tileGap, visibilityAt } from "../fixtures";
+import { captureStill, createHarness, type Harness } from "../harness";
+import {
+  denAllExcept,
+  parkForager,
+  sceneGuard,
+  sceneHeld,
+  startPlaying,
+} from "../scene";
 
-it("The light reveals the rock it lands on and stops there", () => {
-  throw new Error(
-    "validation/none/fog/light-reveals-walls.test.ts: not implemented",
+/**
+ * Tiles of open water between the forager and the rock that closes the corridor.
+ *
+ * Two, so the rock stands `96` units away and the corridor tile behind it stands
+ * `128` — both inside `V` at `G = 1`, which is what makes "and stops there" a
+ * claim about the rock rather than about the range.
+ */
+const PROBE_RUN = 2;
+
+/** The widest the light pocket ever opens, in logical units: `V` at `G = 1`. */
+const VISION_MAX = VISION_MIN + VISION_GAIN;
+
+/** Ticks run after the pose, so the frame that is read was drawn under it. */
+const SETTLE_TICKS = 2;
+
+let h: Harness;
+
+beforeEach(async (ctx) => {
+  h = await createHarness(ctx);
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("lights the rock closing a corridor and leaves the tile behind it dark", async () => {
+  await startPlaying(h);
+  const probe = await poseLitWallProbe(h, { run: PROBE_RUN });
+  const quiet = await denAllExcept(h);
+  await parkForager(h, { tx: probe.tx, ty: probe.ty });
+  await h.debug.clearPlankton();
+  // The widest light the game has: `V = VISION_MIN + VISION_GAIN * G`
+  // (`specs/sensing.md`), so both the rock and the tile behind it are in range and
+  // only the rock can be what stops the light.
+  await h.debug.setBrightness(1);
+  const guard = await sceneGuard(h, quiet);
+
+  await h.advance(SETTLE_TICKS);
+  const snap = await h.snapshot();
+  // Before the assertions, so a check that fails still leaves the picture.
+  await captureStill(h, "walls");
+
+  assertNull(sceneHeld(snap, guard), "the scenario held to the end");
+
+  // The fixture's own geometry, from the specification's figures rather than from
+  // the build's readings.
+  const here = { tx: snap.forager.tx, ty: snap.forager.ty };
+  const toWall = tileGap(snap.grid, here, probe.wall);
+  const toBehind = tileGap(snap.grid, here, probe.behind);
+  assertLessThan(
+    toWall,
+    VISION_MAX,
+    `the logical units between the forager and the rock closing the corridor, ` +
+      `which must be inside V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
+  );
+  assertLessThan(
+    toBehind,
+    VISION_MAX,
+    `the logical units between the forager and the corridor tile behind that ` +
+      `rock, which is inside the same V — so only the rock can stop the light`,
+  );
+  assertGreaterThan(
+    toBehind,
+    toWall,
+    "the tile behind the rock stands further off than the rock itself",
+  );
+
+  assertEqual(
+    visibilityAt(snap, probe.wall),
+    "l",
+    `the rock at (${probe.wall.tx}, ${probe.wall.ty}) closing the corridor ` +
+      `${PROBE_RUN + 1} tiles ${probe.dir} of the forager, with open water ` +
+      `between them`,
+  );
+  assertEqual(
+    visibilityAt(snap, probe.behind),
+    "u",
+    `the corridor tile at (${probe.behind.tx}, ${probe.behind.ty}) directly ` +
+      `behind that rock on the same line, which the light stops short of`,
   );
 });

@@ -1,21 +1,236 @@
 // scoring/caught-costs-life — contact costs a life and sets the board up again.
 //
-// NOT IMPLEMENTED. The checklist declares this point; the suite that decides it
-// lands with the rest of this engine's validators. Until then it fails loudly
-// rather than passing on nothing.
+// specs/gameplay.md fixes contact: "The forager is in contact with a predator
+// whose center lies on the forager's own tile, whatever that predator's kind and
+// whatever it is doing." specs/progression.md fixes what it costs — "While a life
+// remains in reserve, `lives` falls by `1`, the maze is set up for another
+// attempt, and `screen` becomes `"countdown"`" — and then lists the arrangement
+// that attempt starts from, clause by clause. Every clause is read below.
 //
-// The claim this validator has to decide:
-// A predator whose center lies on the forager's tile costs exactly one life:
-// lives falls by 1, screen becomes countdown, and the board is set up for
-// another attempt — the forager at rest on its start tile with brightness 0,
-// every predator back in the den with released false, no drifters, no
-// wavefronts, no ink clouds, both cooldowns ready, and planktonRemaining,
-// score and depth all unchanged.
+// THE HUNTER IS POSED ONTO THE FORAGER, because that IS the condition the
+// specification states. A chase across a corridor would test the hunter's
+// pathfinding, which `gloamfin/*` and `maze-movement/*` own, and would leave this
+// point failing for a hunter that never arrived.
+//
+// THE BOARD IS THE BUILD'S OWN, not a posed fixture, and that is the point. The
+// arrangement includes "the forager at rest on its start tile", and a start tile
+// only means something on a maze the build laid out for itself: `setMaze` rests
+// the forager "on the first corridor tile in reading order, ... a defined resting
+// place rather than a meaningful one" (specs/instrumentation.md). So the forager's
+// tile at the opening of the dive is taken as the start tile, and the forager is
+// TRAVELLED OFF IT before the catch, so the reading is a real question rather than
+// a forager that never moved.
+//
+// EVERY CLAUSE IS POSED AWAY FROM ITS RESET VALUE FIRST, where the surface can
+// pose it: brightness to `1`, both cooldowns part-spent, a bonus drifter on the
+// board. What cannot be posed is a sonar wavefront or an ink cloud — no operation
+// creates either, and reaching for the keys that do would put the controls between
+// this point and its subject — so those two clauses are read as confirmations
+// rather than as discriminating ones.
+//
+// NO SCENE GUARD. The guard's first finding is a screen that changed under the
+// measurement, which here is the subject.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { INK_COOLDOWN, SONAR_COOLDOWN } from "../../src/constants";
+import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import {
+  captureReplay,
+  centerOf,
+  createHarness,
+  DIR_KEY,
+  startPlaying,
+  ticks,
+  type Harness,
+} from "../harness";
+import { openNeighborDirs, openTiles, type Tile } from "../maze";
+import {
+  denAll,
+  fromForager,
+  graded,
+  requireSwim,
+  unmetPrecondition,
+} from "../scene";
 
-it("Contact costs a life and sets the board up again", () => {
-  throw new Error(
-    "validation/simple-2d/scoring/caught-costs-life.test.ts: not implemented",
-  );
+/**
+ * Ticks the forager travels away from its start tile before the catch.
+ *
+ * Half a second at `FORAGER_SPEED` (128 units per second, specs/movement.md) is
+ * two tiles, so the forager is unambiguously off the tile it opened on and the
+ * reset has somewhere to bring it back from.
+ */
+const AWAY_TICKS = ticks(0.5);
+
+/**
+ * How long the catch may take once the hunter stands on the forager's tile.
+ *
+ * The condition holds the moment the pose lands, so this is a HARD ceiling on the
+ * step the build resolves contact in rather than a wait for anything to travel.
+ */
+const CATCH_BUDGET = ticks(1);
+
+/**
+ * Ticks between the catch and the reading.
+ *
+ * specs/progression.md fixes the arrangement the next attempt starts from without
+ * fixing the step it lands on, so the reading is taken a beat later, well inside
+ * the `1 s` the dive countdown holds for at the very least (specs/ui.md).
+ */
+const SETTLE_TICKS = ticks(0.1);
+
+/** Ticks past the reading, purely so the clip shows the board coming back. */
+const TAIL_TICKS = ticks(0.75);
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("Contact costs a life and sets the board up again", async (ctx) => {
+  await graded(ctx, async () => {
+    const opened = await startPlaying(h);
+    const startTile: Tile = {
+      tx: opened.forager.tx,
+      ty: opened.forager.ty,
+    };
+    if (opened.predators.length === 0) {
+      unmetPrecondition(
+        "the roster carries no predator to make contact with; what a depth's " +
+          "roster holds is scoring/depth-scaling's verdict, not this one's",
+      );
+    }
+    await denAll(h);
+
+    // Off the start tile, under the game's own movement code.
+    const leaving = openNeighborDirs(opened, startTile.tx, startTile.ty)[0];
+    if (leaving === undefined) {
+      unmetPrecondition(
+        `the forager's start tile (${startTile.tx}, ${startTile.ty}) has no ` +
+          "corridor neighbour to travel to, so it cannot be moved off the tile " +
+          "the reset must bring it back to; the layout is the maze points' verdict",
+      );
+    }
+    const parked = h.snapshot();
+    h.hold(DIR_KEY[leaving]);
+    await h.advance(AWAY_TICKS);
+    h.release(DIR_KEY[leaving]);
+    requireSwim(
+      parked.forager,
+      h.snapshot().forager,
+      "leave the start tile the reset has to bring it back to",
+    );
+
+    // Every clause the surface can pose is posed away from the value the reset
+    // must restore, so each reading below is a question rather than a formality.
+    h.debug.setBrightness(1);
+    h.debug.setSonarCooldown(SONAR_COOLDOWN);
+    h.debug.setInkCooldown(INK_COOLDOWN);
+    const board = h.snapshot();
+    const away = openTiles(board).reduce((best, tile) => {
+      const at = centerOf(board, tile);
+      const to = centerOf(board, best);
+      const reach = (p: { x: number; y: number }): number =>
+        fromForager(board, p.x, p.y);
+      return reach(at) > reach(to) ? tile : best;
+    }, startTile);
+    h.debug.spawnDrifter(away.tx, away.ty);
+
+    const caught = await captureReplay(h, "caught", async () => {
+      const before = h.snapshot();
+      h.debug.setPredatorTile(0, before.forager.tx, before.forager.ty);
+      h.debug.setPredatorState(0, "chase");
+      const contact = await h.until((s) => s.lives < before.lives, {
+        maxFrames: CATCH_BUDGET,
+        poll: 1,
+      });
+      await h.advance(SETTLE_TICKS);
+      const after = h.snapshot();
+      await h.advance(TAIL_TICKS);
+      return { before, hit: contact.hit, after };
+    });
+
+    assertGreaterThan(
+      caught.before.drifters.length,
+      0,
+      "the bonus drifters the board carried when the hunter arrived",
+    );
+    assertEqual(
+      caught.hit,
+      true,
+      `a life was lost inside ${CATCH_BUDGET} ticks of a predator standing on ` +
+        `the forager's own tile (${caught.before.forager.tx}, ` +
+        `${caught.before.forager.ty})`,
+    );
+
+    assertEqual(
+      caught.after.lives,
+      caught.before.lives - 1,
+      "the lives after contact",
+    );
+    assertEqual(
+      caught.after.screen,
+      "countdown",
+      "the screen the next attempt opens on",
+    );
+    assertDeepEqual(
+      { tx: caught.after.forager.tx, ty: caught.after.forager.ty },
+      startTile,
+      "the tile the forager is set up on for another attempt, against the one " +
+        "the dive opened on",
+    );
+    assertEqual(
+      caught.after.forager.moving,
+      false,
+      "the forager is at rest for the next attempt",
+    );
+    assertEqual(
+      caught.after.brightness,
+      0,
+      "the forager's brightness for the next attempt, posed at 1 before the catch",
+    );
+    assertEqual(
+      caught.after.predators.filter((p) => p.state === "den" && !p.released)
+        .length,
+      caught.after.predators.length,
+      "the predators back in the den with released false, of the whole roster",
+    );
+    assertEqual(
+      caught.after.drifters.length,
+      0,
+      "the bonus drifters left on the board",
+    );
+    assertEqual(
+      caught.after.pulses.length,
+      0,
+      "the sonar wavefronts in flight",
+    );
+    assertEqual(caught.after.inkClouds.length, 0, "the ink clouds standing");
+    assertEqual(
+      caught.after.sonar.ready,
+      true,
+      "the sonar pulse is ready again",
+    );
+    assertEqual(caught.after.ink.ready, true, "ink is ready again");
+    assertEqual(
+      caught.after.planktonRemaining,
+      caught.before.planktonRemaining,
+      "planktonRemaining across the catch, since the plankton already eaten " +
+        "stay eaten",
+    );
+    assertEqual(
+      caught.after.score,
+      caught.before.score,
+      "the score across the catch",
+    );
+    assertEqual(
+      caught.after.depth,
+      caught.before.depth,
+      "the depth across the catch",
+    );
+  });
 });

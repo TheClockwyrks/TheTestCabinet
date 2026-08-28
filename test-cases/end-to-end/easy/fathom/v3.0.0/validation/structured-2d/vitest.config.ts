@@ -30,7 +30,14 @@ export default defineConfig({
     passWithNoTests: false,
     coverage: { enabled: false },
     // A dive driven out to a game over is tens of thousands of ticks of real
-    // simulation; generous here, and still a fraction of a second in practice.
-    testTimeout: 60_000,
+    // simulation, and the heaviest check here — a minute of wandering measured at
+    // both ends, which specs/predators/gloamfin.md states in exactly that unit —
+    // drives some seven and a half thousand of them. That takes half a minute of
+    // wall clock on a quiet machine and appreciably longer on a loaded one, so a
+    // budget sized to what it costs when nothing else is running turns an honest
+    // measurement into a coin flip. This is several times the slowest check
+    // observed, which costs a passing suite nothing and still stops a validator
+    // that hangs far inside the runner's own cap on the whole run.
+    testTimeout: 180_000,
   },
 });

@@ -1,20 +1,195 @@
 // standard/fog-remembered — the whole explored map stays drawn.
 //
-// NOT IMPLEMENTED. The checklist declares this point; the suite that decides it
-// lands with the rest of this engine's validators. Until then it fails loudly
-// rather than passing on nothing.
+// `specs/sensing.md`, in the Standard dive: "The whole explored map stays drawn.
+// Every tile ever revealed keeps being drawn, across the entire grid at once,
+// remembered tiles dim and the pocket around the forager bright. The tiles drawn
+// black are the never-revealed ones." A remembered tile is drawn "rock as dark
+// stone, corridor as faint open water, and any plankton on it as a faint mote",
+// and `specs/state.md` has it keep reporting `r`.
 //
-// The claim this validator has to decide:
-// There is no vision-circle mask: a tile revealed earlier and reporting
-// visibility r is still drawn once the forager has swum far beyond any light
-// radius from it — sampled at its center it differs from an unrevealed tile by
-// more than an RGB distance of 25 of 441 — however far across the grid it
-// lies.
+// So there is exactly one thing to prove, and it is a NEGATIVE: nothing masks the
+// explored map by distance. The Kindle dive is the same game with that mask added,
+// which is what makes this point worth its own check — a build that carried the
+// Kindle circle into the Standard dive would report `r` for the tile and paint it
+// black, and every reading short of the canvas would agree with the specification.
+//
+// THE BOARD IS POSED so "far away" is a fact of the fixture rather than of the
+// maze a build laid out. The forager lights a pocket at one end of a long
+// corridor, and is then rested at the other end, `SWUM_TILES` tiles off — past
+// `V` at its very widest (`VISION_MIN + VISION_GAIN`, 160) many times over, so
+// nothing the forager carries reaches the tile that is read.
+//
+// TWO TILES ARE READ, AND BOTH HALVES ARE NEEDED. The corridor tile still carries
+// its plankton — the forager grazes only the tile its own center is on
+// (`specs/gameplay.md`), so a tile it merely lit keeps its mote — and that mote
+// against the faint floor is what a player sees out there, read at the tile's
+// center where `specs/gameplay.md` draws it. Beside it, the ROCK tile above the
+// forager's own berth is read, which carries no mote and can carry none: it is
+// the TERRAIN, "rock as dark stone" (`specs/sensing.md`). A build that masked the
+// explored ground by distance and went on drawing the motes over the mask would
+// pass the first reading and fail the second.
+//
+// THE COMPARISON IS AGAINST THIS BUILD'S OWN FOG, sampled off a sealed pocket of
+// the same fixture that nothing has ever touched. The palette is the build's
+// (`specs/overview.md` leaves it so), so the question is whether the two tiles
+// are drawn DIFFERENTLY, not what color either one is.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan, assertNull } from "../assert";
+import { VISION_GAIN, VISION_MIN } from "../constants";
+import { poseMaze, tileCenterOf, visibilityAt } from "../fixtures";
+import {
+  captureStill,
+  colorDistance,
+  createHarness,
+  tileColor,
+  type Harness,
+} from "../harness";
+import {
+  clearUnderfoot,
+  denAllExcept,
+  parkForager,
+  sceneGuard,
+  sceneHeld,
+  startPlaying,
+} from "../scene";
+import type { TileRef } from "../maze";
 
-it("The whole explored map stays drawn", () => {
-  throw new Error(
-    "validation/none/standard/fog-remembered.test.ts: not implemented",
+/**
+ * The board: a long corridor with the forager's home at one end, the tile that is
+ * read two tiles along it, the far berth at the other end, and — across eight
+ * tiles of solid rock — a sealed three-tile pocket nothing can ever reach.
+ *
+ * `H` home, `T` the tile that is read, `B` the far berth, `S` the fog reference.
+ */
+const ART = ["H.T" + ".".repeat(17) + "B" + " ".repeat(8) + "S.."] as const;
+
+/** How far `T` sits from `H`, in tiles: inside `V` at `G = 0` (96, three tiles). */
+const LIT_TILES = 2;
+
+/** How far `B` sits from `T`, in tiles. */
+const SWUM_TILES = 18;
+
+/** The widest the light pocket ever opens, in logical units: `V` at `G = 1`. */
+const VISION_MAX = VISION_MIN + VISION_GAIN;
+
+/**
+ * How far apart the remembered tile and the unrevealed one must be drawn, as an
+ * RGB distance out of `441`.
+ *
+ * The review item's own bound: "it differs from an unrevealed tile by more than
+ * an RGB distance of 25 of 441".
+ */
+const DRAWN_MIN = 25;
+
+/** Ticks the forager stands at each berth, so the build has drawn what it lit. */
+const SETTLE_TICKS = 4;
+
+/** How far above the home berth the rock tile that is read sits, in tiles. */
+const ROCK_OFFSET = 1;
+
+let h: Harness;
+
+beforeEach(async (ctx) => {
+  h = await createHarness(ctx);
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("keeps drawing explored ground however far the forager swims from it", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const home = board.mark("H");
+  const target = board.mark("T");
+  const berth = board.mark("B");
+  const unlit = board.mark("S");
+  // The rock directly above the home berth: revealed by the forager's own light
+  // while it stood there, and terrain rather than a mote, because no plankton sits
+  // on rock (`specs/gameplay.md`).
+  const rock: TileRef = { tx: home.tx, ty: home.ty - ROCK_OFFSET };
+  const quiet = await denAllExcept(h);
+
+  // Light the pocket at home. The pellet underfoot is eaten off camera and `G`
+  // put back to zero, so the light that reveals `T` is the one a dive opens with
+  // rather than one this arrangement widened.
+  await parkForager(h, home);
+  await clearUnderfoot(h);
+  await h.advance(SETTLE_TICKS);
+  const lit = await h.snapshot();
+  for (const tile of [target, rock]) {
+    if (visibilityAt(lit, tile) !== "u") continue;
+    // Whether the forager's own light reveals the ground around it — the corridor
+    // ahead, and the rock it lands on — is `fog/light-line-of-sight`'s verdict to
+    // give. With nothing revealed there is no remembered tile for this point to
+    // be about.
+    h.unmet(
+      `the forager's light left the tile at (${tile.tx}, ${tile.ty}) beside it ` +
+        `unrevealed — the corridor ${LIT_TILES} tiles ahead and the rock it ` +
+        "lands on are what this scenario reads — so there is no explored ground " +
+        "here; whether the light reveals at all is the fog checks' verdict, not " +
+        "this one's",
+    );
+  }
+
+  // And rest it at the far end of the corridor, its own pellet eaten there too.
+  await parkForager(h, berth);
+  await clearUnderfoot(h);
+  const guard = await sceneGuard(h, quiet);
+  await h.advance(SETTLE_TICKS);
+
+  const after = await h.snapshot();
+  const remembered = await tileColor(h, after, target);
+  const rockColor = await tileColor(h, after, rock);
+  const fog = await tileColor(h, after, unlit);
+  // Before the assertions, so a check that fails still leaves the picture that
+  // shows the reviewer what the build drew out there.
+  await captureStill(h, "remembered");
+
+  assertNull(sceneHeld(after, guard), "the scenario held to the end");
+
+  // The fixture's own geometry, asserted rather than assumed: the tile that is
+  // read stands further off than the light reaches at ANY brightness.
+  const at = tileCenterOf(after.grid, target);
+  assertGreaterThan(
+    Math.hypot(at.x - after.forager.x, at.y - after.forager.y),
+    VISION_MAX,
+    "the logical units between the forager and the remembered tile, which must " +
+      `exceed V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
+  );
+
+  // What the build SAYS about the two tiles.
+  assertEqual(
+    visibilityAt(after, target),
+    "r",
+    `the corridor tile at (${target.tx}, ${target.ty}), revealed earlier and no ` +
+      "longer lit",
+  );
+  assertEqual(
+    visibilityAt(after, rock),
+    "r",
+    `the rock tile at (${rock.tx}, ${rock.ty}), revealed earlier and no longer lit`,
+  );
+  assertEqual(
+    visibilityAt(after, unlit),
+    "u",
+    `the sealed tile at (${unlit.tx}, ${unlit.ty}), which nothing has touched`,
+  );
+
+  // And what it DRAWS there, a whole corridor away from the forager.
+  assertGreaterThan(
+    colorDistance(remembered, fog),
+    DRAWN_MIN,
+    "the RGB distance out of 441 between the remembered corridor tile at " +
+      `(${target.tx}, ${target.ty}), ${SWUM_TILES} tiles behind the forager, and ` +
+      "unrevealed fog: explored ground stays drawn however far off it lies",
+  );
+  assertGreaterThan(
+    colorDistance(rockColor, fog),
+    DRAWN_MIN,
+    `the RGB distance out of 441 between the remembered rock tile at ` +
+      `(${rock.tx}, ${rock.ty}) and unrevealed fog: the terrain of the explored ` +
+      "map stays drawn too, with no mote on it to stand in for it",
   );
 });

@@ -1,16 +1,151 @@
-// states/cleared — the cleared interstitial names the depth.
+// states/cleared — the cleared interstitial names the depth it just cleared.
 //
-// NOT IMPLEMENTED. The checklist declares this point; the suite that decides it
-// lands with the rest of this engine's validators. Until then it fails loudly
-// rather than passing on nothing.
+// `specs/progression.md`: "A maze is cleared when the forager eats a plankton and
+// none remain in the maze after it. Clearing awards the `SCORE_CLEAR` bonus and
+// `screen` becomes `"cleared"`". `specs/ui.md` gives that screen as "the
+// interstitial after a maze is cleared, over the maze view, naming the depth just
+// cleared as `DEPTH 1 CLEARED`, `DEPTH 2 CLEARED` and so on", and times it: "The
+// cleared interstitial holds for at least `1 s` and at most `3 s` before the
+// descent ... timed on the simulation's own accumulated time."
 //
-// The claim this validator has to decide:
-// Clearing a maze sets screen to cleared and draws DEPTH 1 CLEARED for the
-// depth just cleared, over the maze view, and it holds for at least 1 s and at
-// most 3 s of simulated time before the descent.
+// THE MAZE IS CLEARED THE WAY A PLAYER CLEARS ONE. `clearPlankton` takes every
+// plankton off the board and `specs/instrumentation.md` is explicit that doing so
+// "scores nothing and clears no maze: ... an empty maze the forager has not just
+// eaten from stays in live play". So one plankton is put back, on the corridor
+// tile ahead of the forager, and the forager SWIMS INTO IT under a held key. The
+// clear is then the build's own eat-and-clear path, on a board with exactly one
+// mouthful left.
+//
+// WHY IT IS SWUM INTO RATHER THAN STOOD ON. `specs/gameplay.md` has the forager
+// eat "the plankton on its own tile, the moment its center enters that tile", so
+// a build entitled to decide eating on tile ENTRY alone would never eat a pellet
+// posed under a forager already standing there. Swimming in is the eat both
+// readings agree on.
+//
+// THE FIXTURE IS POSED. A corridor that runs the way a key pushes is a property
+// of the board a build invented, so `poseMoveKeyRun` lays down the same straight
+// run under every build. Its sealed larder — the unreachable corridor every
+// fixture carries so no scenario can clear the maze by accident — is emptied here
+// along with everything else, deliberately: this is the one point whose whole
+// subject is the board running out.
+//
+// WHAT THIS DOES NOT DECIDE. The `SCORE_CLEAR` bonus, which is
+// `scoring/cleared-bonus`'s; the descent to depth `d + 1`, which is
+// `scoring/descend-on-clear`'s. All that is read past the interstitial here is
+// that it gives way inside its own window.
 
-import { it } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
+import { HOLD_MAX, HOLD_MIN, TICK_HZ, ticksFor } from "../constants";
+import { poseMoveKeyRun } from "../fixtures";
+import { captureStill, createHarness, type Harness } from "../harness";
+import { denAllExcept, requireSwim, startPlaying } from "../scene";
+import { MOVE_KEY, assertDrew, frameOps, watchScreen } from "./screens";
 
-it("The cleared interstitial names the depth", () => {
-  throw new Error("validation/none/states/cleared.test.ts: not implemented");
+/**
+ * The ticks the forager is given to swim one tile into the last plankton.
+ *
+ * At `FORAGER_SPEED` (`128`) a tile is `0.25 s`, and its center enters the next
+ * tile half a tile in. One second is a hard ceiling four times that, so a build
+ * that is merely slow fails here rather than leaving the point inconclusive.
+ */
+const SWIM_TICKS = ticksFor(1);
+
+/**
+ * The ceiling on the interstitial watch, in ticks.
+ *
+ * `specs/ui.md` gives it at most `3 s`, so a tick past that is a failure rather
+ * than an inconclusive run.
+ */
+const MAX_HOLD_TICKS = ticksFor(HOLD_MAX) + 2;
+
+/**
+ * The uncertainty in the measured hold, in seconds.
+ *
+ * The interstitial begins DURING the tick this watch first sees it on and gives
+ * way DURING the tick after the last one sampled, so the span read below is the
+ * true hold to within two ticks either way — `1/60 s` against a two-second-wide
+ * window.
+ */
+const TICK_SLACK = 2 / TICK_HZ;
+
+let h: Harness;
+
+beforeEach(async (ctx) => {
+  h = await createHarness(ctx);
+});
+
+afterEach(async () => {
+  await h.dispose();
+});
+
+it("reaches the cleared interstitial, names the depth, and holds 1-3 s", async () => {
+  await startPlaying(h);
+  const run = await poseMoveKeyRun(h, "right");
+  await denAllExcept(h);
+
+  // One mouthful left in the whole maze, one tile ahead of the forager.
+  await h.debug.clearPlankton();
+  const last = { tx: run.tile.tx + 1, ty: run.tile.ty };
+  await h.debug.setPlankton(last.tx, last.ty, true);
+  const before = await h.snapshot();
+
+  const swim = await watchScreen(h, "playing", SWIM_TICKS, MOVE_KEY);
+  // Whether the forager travels at all is the movement points' verdict.
+  requireSwim(
+    h,
+    before.forager,
+    swim.after.forager,
+    "reach the maze's last plankton",
+  );
+  const cleared = swim.after;
+
+  const ops = await frameOps(h);
+  // Before the assertions, so a failing check still leaves the screen it read.
+  await captureStill(h, "cleared");
+
+  const hold = await watchScreen(h, "cleared", MAX_HOLD_TICKS);
+
+  assertEqual(
+    swim.hit,
+    true,
+    "the forager reaches the maze's last plankton inside the window the check " +
+      "gives it",
+  );
+  assertEqual(
+    cleared.planktonRemaining,
+    0,
+    "plankton left in the maze after the forager ate the last one " +
+      "(specs/progression.md)",
+  );
+  assertEqual(
+    cleared.screen,
+    "cleared",
+    "the screen eating the maze's last plankton reaches (specs/ui.md)",
+  );
+  assertDrew(
+    ops,
+    `DEPTH ${String(cleared.depth)} CLEARED`,
+    "the depth just cleared, named on the interstitial (specs/ui.md)",
+  );
+
+  assertEqual(
+    hold.hit,
+    true,
+    `the cleared interstitial gives way inside ${String(HOLD_MAX)} s of ` +
+      "simulated time (specs/ui.md)",
+  );
+  // The ticks really ran, so the span below is a measurement rather than nothing.
+  assertGreaterThan(
+    hold.after.simTime - cleared.simTime,
+    0,
+    "simulated seconds accumulated while the interstitial held (specs/state.md)",
+  );
+  assertBetween(
+    hold.after.simTime - cleared.simTime,
+    HOLD_MIN - TICK_SLACK,
+    HOLD_MAX + TICK_SLACK,
+    "seconds of the simulation's own accumulated time the cleared interstitial " +
+      "held for (specs/ui.md)",
+  );
 });

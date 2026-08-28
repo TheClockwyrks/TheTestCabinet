@@ -29,8 +29,12 @@ export default defineConfig({
     // A missing validator is a broken suite, not a passing one.
     passWithNoTests: false,
     coverage: { enabled: false },
-    // A dive driven out to a game over is tens of thousands of ticks of real
-    // simulation; generous here, and still a fraction of a second in practice.
-    testTimeout: 60_000,
+    // The longest checks here are minutes of GAME time: `gloamfin/wander-speed`
+    // reads a patrol a minute apart because specs/predators/gloamfin.md states the
+    // claim in that unit, which is 7,200 ticks of real simulation with a full tile
+    // grid drawn on each. Half a minute of wall clock on an idle machine, and
+    // several times that on a loaded one, so the ceiling is set well clear of both:
+    // it exists to stop a build that never terminates, not to time the host.
+    testTimeout: 300_000,
   },
 });
