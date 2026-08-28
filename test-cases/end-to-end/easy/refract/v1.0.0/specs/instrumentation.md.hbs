@@ -183,10 +183,7 @@ only the opening board is unlocked, and the cascade progression back to its
 opening state, `solvedCount` at `0` and `tier` at `1`. `options.seed` seeds
 `rngState`, defaulting to `DEFAULT_SEED` (`1`).
 
-`muted` is deliberately untouched: muting is a player preference the runtime owns.
-
-Because it restores exactly the declared fields, any state of your own that a
-frame depends on is derivable from them.
+`muted` is untouched; the runtime owns muting.
 
 {{#if (eq engine.slug "none")}}
 ### `snapshot()`
@@ -235,8 +232,7 @@ Boards up to `GRID_MAX_COLS` (`7`) by `GRID_MAX_ROWS` (`6`) are accepted, and ce
 centers follow the formula in `specs/board.md`, so a posed board sits on the stage
 exactly where a played board of the same dimensions would.
 
-This is the surface's main lever: it puts the game on a chosen board without
-playing to it. A board posed this way is a board like any other, and the rules in
+A board posed this way is a board like any other, and the rules in
 `specs/beams.md` apply to it unchanged.
 
 {{#if (eq engine.slug "none")}}
@@ -254,24 +250,24 @@ an adjacent node, or retracts it, under those same rules, and a move the limits
 refuse changes nothing and leaves the trace live. The release ends the trace and
 leaves the beam as drawn.
 
-**Each of the three takes effect immediately, when it is called, rather than being
+Each of the three **takes effect immediately**, when it is called, rather than
 {{#if (eq engine.slug "none")}}
-sampled once per update.** The press, the move, or the release is resolved in the
-state the call returns rather than deferred to the next update.
-No frame need pass between them, so a whole route can be drawn from code without
+being sampled once per update. The press, the move, or the release is resolved
+in the state the call returns rather than deferred to the next update. No frame
+need pass between them, so a whole route can be drawn from code without
 advancing the game at all.
 {{else if (eq engine.slug "simple-2d")}}
-sampled once per update.** The press, the move, or the release is resolved in the
-state the call returns rather than deferred to the next update.
-Each returns the state that press, move, or release left behind, and the next call
+being sampled once per update. The press, the move, or the release is resolved
+in the state the call returns rather than deferred to the next update. Each
+returns the state that press, move, or release left behind, and the next call
 is handed that state, so a whole route can be drawn from code without a frame
 passing between the calls.
 {{else}}
-sampled once per frame.** The press, the move, or the release is resolved against
-the live state before the call returns rather than deferred to the next frame,
-through the same per-sample resolution the player controller feeds each frame.
-No frame need pass between them, so a whole route can be drawn from code without
-advancing the game at all.
+being sampled once per frame. The press, the move, or the release is resolved
+against the live state before the call returns rather than deferred to the next
+frame, through the same per-sample resolution the player controller feeds each
+frame. No frame need pass between them, so a whole route can be drawn from code
+without advancing the game at all.
 {{/if}}
 
 A move that satisfies R9 solves the board and ends the trace on the spot, as
@@ -308,25 +304,14 @@ The same as the `clear` action in `specs/controls.md`: every beam on the board i
 emptied and any live trace ends. It applies on the `playing` screen alone.
 
 {{#if (eq engine.slug "none")}}
-A typical scenario calls `loadBoard` to pose the board wanted, `trace` once per
-channel to draw its beam, and reads the result from `snapshot()`.
-
 ## Snapshot shape
 
 `snapshot()` returns:
 {{else if (eq engine.slug "simple-2d")}}
-A typical scenario applies `loadBoard` through
-`engine.apply((s) => debug.loadBoard(s, board))`, then a `trace` per channel the
-same way to draw its beam, and reads the result from `debug.snapshot(engine.state)`.
-
 ## Snapshot shape
 
 `snapshot` returns:
 {{else}}
-A typical scenario calls `engine.debug.loadBoard(board)` to pose the board
-wanted, `engine.debug.trace(cells)` once per channel to draw its beam, and reads
-the result from `engine.debug.snapshot()`.
-
 ## Snapshot shape
 
 `snapshot()` returns:
@@ -337,9 +322,11 @@ the result from `engine.debug.snapshot()`.
   version: 1,
   screen: "title" | "howto" | "select" | "playing" | "solved" | "complete",
   mode: "campaign" | "cascade",
+  menuIndex: <number>,         // the screen's highlighted menu item, from 0
   boardIndex: <number>,        // the campaign board being played, counted from 0
   solvedBoards: [<number>],    // the campaign indices solved so far, ascending
   unlockedCount: <number>,     // how many campaign boards are open to the player
+  selectIndex: <number>,       // the board highlighted on select, counted from 0
   solvedCount: <number>,       // boards solved in the current cascade run
   tier: <number>,              // the tier the next cascade board is generated at
   board: {
@@ -367,17 +354,20 @@ the result from `engine.debug.snapshot()`.
 
 The shape is fixed, and every field is present whatever the mode is. `select` and
 `complete` are screens Campaign reaches and Cascade does not, as
-`specs/modes/campaign.md` and `specs/modes/cascade.md` state, and the four
-progress fields belong one pair to each mode. A field the current mode does not
-use reports its resting value rather than going missing:
+`specs/modes/campaign.md` and `specs/modes/cascade.md` state, and the six mode
+fields belong four to Campaign and two to Cascade. A field the current mode does
+not use reports its resting value rather than going missing:
 
 | Field | Resting value |
 | --- | --- |
 | `boardIndex` | `0` |
 | `solvedBoards` | empty |
 | `unlockedCount` | `1` |
+| `selectIndex` | `0` |
 | `solvedCount` | `0` |
 | `tier` | `1` |
+
+`menuIndex` is live on every screen with a menu and rests at `0` on `playing`.
 
 Every field is read straight off the game's state, so what the snapshot reports is
 what the game holds. Four are derived rather than stored:
@@ -423,10 +413,8 @@ sources, it is shown and hidden by the backtick key (`KeyboardEvent.code`
 {{else if (eq engine.slug "simple-2d")}}
 Registering those values is the whole of Refract's part, through
 `InitApi.diagnostics`. Each source is called with the state current at the read,
-as `DeepReadonly<RefractState>`, and reads off that argument: a source that closed
-over the state `initialize` built would report the title screen forever, because
-every frame leaves a new value behind. Drawing the panel, toggling it, and keeping
-it read-only are the engine's.
+as `DeepReadonly<RefractState>`, and reads off that argument. Drawing the panel,
+toggling it, and keeping it read-only are the engine's.
 {{else}}
 Registering those values is the whole of Refract's part, through
 `world.diagnostics` in the game mode's `beginPlay`. Each source is a function of

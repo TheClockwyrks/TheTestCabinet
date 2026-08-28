@@ -7,9 +7,8 @@ rules in `specs/beams.md` allow, and moves on once the board is solved. The othe
 way to play is the endless sequence in `specs/modes/cascade.md`, which the title
 menu offers alongside this one.
 
-Every board, its position in the course, and the order the player meets them in
-are fixed, so two players who have reached the same point are looking at exactly
-the same bench.
+Every board, its position in the course, and the order the player meets them
+in are fixed.
 
 This file defines the course, its progression, and the three screens the course
 adds. The rules a board is solved under are in `specs/beams.md`, the grid and the
@@ -92,12 +91,10 @@ Every menu on these screens is driven by the registered actions `up`, `down`,
 
 ## The select screen
 
-The select screen is the campaign's home. It shows every board at once, so the
-player sees how far the course runs and how far they have come.
-
 - The grid presents all `24` boards in number order, six columns wide and four
   rows tall, one row per set, Set A at the top. Each row is labelled with its
-  set.
+  set's entry in `SET_LABELS` (`SET A`, `SET B`, `SET C`, `SET D`), in that
+  order from the top row down.
 - Each board in the grid shows its number and reads, at a glance, as one of three
   states:
 
@@ -131,8 +128,7 @@ the legibility requirements in `specs/overview.md`.
   nothing and changes nothing, and the solved board cannot be taken apart again
   from this screen.
 - The finished board stays visible behind the screen, with every beam as the
-  player drew it. The screen is drawn over it and does not hide it. A player
-  should be able to admire the solution they just completed.
+  player drew it. The screen is drawn over it and does not hide it.
 - The screen names the board that was solved and offers a short vertical menu of
   onward choices, in this order:
 

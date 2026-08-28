@@ -86,6 +86,12 @@ export const MAX_CHARGES = 3;
  */
 export const CAMPAIGN_LENGTH = 24;
 
+/**
+ * The select screen's four row labels, one per set of six boards, in the
+ * order the rows are drawn from the top down.
+ */
+export const SET_LABELS = ["SET A", "SET B", "SET C", "SET D"] as const;
+
 // ---- Cascade's tier ladder (specs/modes/cascade.md) ----------------------
 
 /** The number of rungs the ladder holds; the top rung holds indefinitely. */

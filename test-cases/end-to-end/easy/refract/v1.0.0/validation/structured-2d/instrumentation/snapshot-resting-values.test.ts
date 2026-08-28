@@ -1,0 +1,77 @@
+// Refract — instrumentation/snapshot-resting-values: the shape is fixed
+// whatever the mode. In Cascade the campaign fields report their resting
+// values — boardIndex 0, solvedBoards empty, unlockedCount 1, selectIndex 0 —
+// and in Campaign the cascade fields do — solvedCount 0, tier 1. No field
+// goes missing.
+//
+// Each mode is really PLAYED before its snapshot is read — one board solved
+// through the build's own rules — so the fields under test are the other
+// mode's while this one demonstrably holds live state of its own. A fresh
+// reset would make every field resting trivially; the item is that the
+// UNUSED mode's fields rest while the used mode's move. The resting values
+// asserted are the table in specs/instrumentation.md.
+
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertContains,
+  assertDeepEqual,
+  assertEqual,
+  assertHasProperty,
+} from "../assert";
+import {
+  captureStill,
+  createHarness,
+  driveCourse,
+  solveGenerated,
+  type Harness,
+} from "../harness";
+import { SNAPSHOT_FIELDS } from "./fields";
+
+let h: Harness;
+
+beforeEach(async () => {
+  h = await createHarness();
+});
+
+afterEach(() => {
+  h?.dispose();
+});
+
+it("in Cascade, the campaign fields report their resting values", async () => {
+  // Really solve one generated board, so Cascade holds progress of its own.
+  await solveGenerated(h, 1, 1);
+  const snap = h.snapshot();
+  captureStill(h, "resting");
+
+  assertEqual(snap.mode, "cascade", "the mode being played");
+  assertEqual(snap.solvedCount, 1, "cascade really progressed");
+
+  // The campaign four, at the resting values specs/instrumentation.md tables.
+  assertEqual(snap.boardIndex, 0, "boardIndex rests at 0 in Cascade");
+  assertDeepEqual(snap.solvedBoards, [], "solvedBoards rests empty in Cascade");
+  assertEqual(snap.unlockedCount, 1, "unlockedCount rests at 1 in Cascade");
+  assertEqual(snap.selectIndex, 0, "selectIndex rests at 0 in Cascade");
+
+  // No field goes missing: the shape is fixed whatever the mode.
+  for (const field of SNAPSHOT_FIELDS) {
+    assertHasProperty(snap, field, "a documented field, present in Cascade");
+  }
+});
+
+it("in Campaign, the cascade fields report their resting values", async () => {
+  // Really solve campaign board 1, so Campaign holds progress of its own.
+  await driveCourse(h, 1, 1);
+  const snap = h.snapshot();
+
+  assertEqual(snap.mode, "campaign", "the mode being played");
+  assertContains(snap.solvedBoards, 0, "campaign really progressed");
+
+  // The cascade two, at the resting values specs/instrumentation.md tables.
+  assertEqual(snap.solvedCount, 0, "solvedCount rests at 0 in Campaign");
+  assertEqual(snap.tier, 1, "tier rests at 1 in Campaign");
+
+  // No field goes missing: the shape is fixed whatever the mode.
+  for (const field of SNAPSHOT_FIELDS) {
+    assertHasProperty(snap, field, "a documented field, present in Campaign");
+  }
+});

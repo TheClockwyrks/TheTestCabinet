@@ -7,8 +7,7 @@ long as the player wants them. There is no last board. The other way to play is
 the campaign, a fixed course of hand-built boards, which
 `specs/modes/campaign.md` defines.
 
-The boards are not written down anywhere. The game carries a generator that
-produces a board on demand, and that generator is a real part of this build.
+The game carries a generator that produces a board on demand.
 
 This file defines the sequence, the generator's contract, the tier ladder that
 shapes what the generator emits, and the screen shown when a board is solved. The
@@ -63,10 +62,8 @@ The generator takes a tier and produces one board: a grid within
 either empty or holding an emitter, a lens, or a crystal.
 
 **Every board the generator emits is solvable under the rules in
-`specs/beams.md`.** This is the generator's central requirement. A board reaches
-the player only when a set of beams satisfying every rule is known to exist for
-it. A board the player cannot finish is the one failure the sequence cannot
-absorb, because the player has no way to skip it.
+`specs/beams.md`.** A board reaches the player only when a set of beams
+satisfying every rule is known to exist for it.
 
 Each emitted board also satisfies these, which follow from the rules and the
 ladder:
@@ -80,7 +77,7 @@ ladder:
 | Grid size | within `GRID_MAX_COLS` x `GRID_MAX_ROWS` |
 
 A board arrives with every beam empty. How many cells a board leaves empty is the
-generator's to choose, since it is one of the levers difficulty rides on.
+generator's to choose.
 
 ## The tier ladder
 
@@ -101,31 +98,9 @@ introducing crystals. The ladder is held in `TIERS`, one entry per tier, and
   `min(floor(state.solvedCount / TIER_ADVANCE) + 1, MAX_TIER)`.
 - `MAX_TIER` is the top of the ladder and holds from the sixteenth board solved
   onward. Play continues there indefinitely, on fresh boards each time.
-- Where a tier states a range of grid sizes, the generator chooses from that
-  range, so consecutive boards at that tier are not all the same shape. Tier `5`
-  states one size, and every board there is `7x6`.
+- The generator draws each board's grid size from its tier's stated range. Tier
+  `5` states one size, and every board there is `7x6`.
 - No tier exceeds `GRID_MAX_COLS`, `GRID_MAX_ROWS`, or `MAX_CHARGES`.
-
-## Boards worth solving
-
-A legal board is the floor, not the goal. A player meets far more of these boards
-than any hand-written set could hold, so what the generator emits is the game, and
-its design is part of the work rather than a detail behind it.
-
-What a good board does:
-
-- Uses the whole grid its tier gives it, rather than leaving a large region of the
-  board idle while the puzzle happens in one corner.
-- Makes the player deduce. A board whose every step is the only legal move is
-  solved by following the board rather than by reading it.
-- Interleaves the channels once more than one is present, so the beams share
-  territory and constrain each other instead of occupying separate halves.
-- Places crystals where more than one channel can plausibly reach them, so the
-  charge count is a question rather than a label.
-- Varies. Two boards in a row at the same tier should not read as the same board
-  reshuffled.
-- Grows in difficulty across the ladder in steps a player can feel, without a
-  jump that stalls the sequence.
 
 ## Determinism
 
@@ -175,9 +150,6 @@ the last and from the last to the first. `confirm` takes the highlighted item.
 `back` returns to `title`.
 
 ## The count
-
-The boards-solved count is the player's one measure of how far the sequence has
-carried them, so it is on screen while they play.
 
 - During `playing`, show the count beside the label `HUD_SOLVED_LABEL` (`SOLVED`)
   and the current tier beside `HUD_TIER_LABEL` (`TIER`).

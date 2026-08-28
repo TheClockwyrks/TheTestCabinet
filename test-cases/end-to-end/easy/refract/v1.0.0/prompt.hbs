@@ -26,8 +26,7 @@ What is missing is the game itself: `src/game.ts`. As seeded it is a stub whose
 `initialize`, `update`, and `render` throw `"not implemented"`, and whose
 `BACKGROUND` is a placeholder. The stub is written against the `RefractState` and
 `RefractDebugApi` types the specification asks `src/game.ts` to declare, so the
-project does not type-check until those declarations exist. That first `tsc`
-failure on a fresh checkout is expected; declaring the types clears it.
+project does not type-check until those declarations exist.
 {{else}}
 A TypeScript project is already in place at `{{workspace}}`, and its `README.md`
 describes it. Its dependencies are installed, so you can build and test right
@@ -39,8 +38,7 @@ What is missing is the game itself: `src/game.ts`. As seeded it is a stub game
 definition whose instance's `initialize` throws `"not implemented"`, and whose
 `BACKGROUND` is a placeholder. The stub is written against the `RefractState` and
 `RefractDebugApi` types the specification asks `src/game.ts` to declare, so the
-project does not type-check until those declarations exist. That first `tsc`
-failure on a fresh checkout is expected; declaring the types clears it.
+project does not type-check until those declarations exist.
 {{/if}}
 
 {{#if (eq engine.slug "none")}}
@@ -108,9 +106,7 @@ held to, and the commands that run over the finished repository.
 step, into `dist/` at the project root, with an `index.html` at the root of that
 directory. Serving that directory as-is at the root of any static file server
 must run the game; it is deployed to static hosting exactly that way. The scripts
-that do this are already in `package.json`. Add a dependency only if you
-genuinely need one, and run `npm install` afterward so the committed
-`package-lock.json` matches.
+that do this are already in `package.json`.
 
 ## Driving the game in a browser
 

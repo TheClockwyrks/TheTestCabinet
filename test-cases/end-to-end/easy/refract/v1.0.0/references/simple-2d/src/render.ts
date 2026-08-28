@@ -18,6 +18,7 @@ import {
   HUD_SOLVED_LABEL,
   HUD_TIER_LABEL,
   NODE_R,
+  SET_LABELS,
   SOLVED_ITEMS,
   SOLVED_TITLE_TEXT,
   STAGE_CX,
@@ -542,7 +543,7 @@ function drawSelect(state: RefractState, ctx: Ctx): void {
     if (col === 0) {
       text(
         ctx,
-        `SET ${String.fromCharCode(65 + row)}`,
+        SET_LABELS[row],
         firstX - TILE_PITCH_X + 20,
         cy,
         20,

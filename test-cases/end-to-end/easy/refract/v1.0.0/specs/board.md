@@ -41,9 +41,6 @@ Two radii govern a node:
 | `NODE_R` | `30` | Every node's drawn form fits inside this radius of its cell center. |
 | `NODE_HIT_R` | `44` | A node is targeted by the pointer when the pointer is within this radius of the node's cell center. |
 
-`NODE_HIT_R` is below half of `CELL_PITCH` (`96`), which is `48`, so no two
-targeting regions overlap and a pointer position targets at most one node.
-
 ## Nodes
 
 There are three kinds of node.
@@ -60,8 +57,8 @@ glance.
 
 A crystal is never the property of a channel. It carries `charges`, a whole number
 from `1` to `MAX_CHARGES` (`3`), and a running `spent` count from `0` to its
-charges. The two read apart at a glance, so a player sees at once how much of a
-crystal is still open. `specs/beams.md` says what spends a charge.
+charges. The two read apart at a glance. `specs/beams.md` says what spends a
+charge.
 
 ## Channels
 
@@ -74,9 +71,8 @@ crystal is still open. `specs/beams.md` says what spends a charge.
 | `diamond` | A diamond, a square stood on a corner. |
 
 Each channel carries one distinct hue, and the three are told apart at a glance.
-The silhouettes are pinned, so channel identity reads by form as well as by hue
-and a player who reads hue poorly still plays the board. The hues themselves are
-the build's to choose.
+The silhouettes are pinned, so channel identity reads by form as well as by
+hue. The hues themselves are the build's to choose.
 
 A board declares **1 to 3 channels**. Every channel present has **exactly two
 emitters** and any number of lenses, including none. A channel that is not
@@ -86,10 +82,9 @@ declared has no nodes on the board and no beam.
 
 Refract pins the geometry above, the node kinds, the channel silhouettes, and the
 notation below. It does not pin a palette, a font, node artwork, beam rendering,
-a background, or animation. The look of the optical bench is yours to design, and
-a distinctive one is worth the effort.
+a background, or animation. The look of the optical bench is yours to design.
 
-What the look must deliver, because a player reads the board to play it:
+What the look must deliver:
 
 1. The three channel hues are told apart at a glance.
 2. Each channel's nodes carry that channel's silhouette, and an emitter reads as

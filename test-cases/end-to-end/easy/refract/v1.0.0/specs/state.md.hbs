@@ -11,11 +11,12 @@ what they write, and returns to its title-screen values when the surface's
 `reset` is called. Beyond satisfying that surface, how the state is organized is
 yours to decide.
 
-Whatever its shape, the state carries the following, because the rest of this
-specification is written against them:
+Whatever its shape, the state carries the following:
 
 - The mode the player chose from the title menu, Campaign or Cascade. It decides
   which screens the game moves between and where the next board comes from.
+- The item highlighted on whichever vertical menu the current screen shows,
+  counted from `0`. The snapshot reports it as `menuIndex`.
 - The board being played: its `cols` and `rows`, and every node on it with the
   cell it occupies, its kind, the channel an emitter or a lens belongs to, and a
   crystal's charge count. A node's center on the stage comes from the cell center
@@ -38,6 +39,8 @@ specification is written against them:
 - The course's progress, as `specs/modes/campaign.md` describes it: which board
   is being played, which boards have been solved, and how many boards are open
   to the player.
+- The board highlighted on the campaign's select grid, zero-indexed the same
+  way as the course's boards. The snapshot reports it as `selectIndex`.
 - The run's progress, as `specs/modes/cascade.md` describes it: how many boards
   have been solved, and the tier the generator emits at.
 - The simulation time, in seconds, which every update adds its `dt` to whatever
@@ -271,8 +274,7 @@ The declaration above is what the debug surface reads and poses.
   `update`, to `render`, to every diagnostic source, and to every operation of
   the debug surface. `update` and the surface's poses return a new
   `RefractState` built from the one they received; `render`, the sources, and
-  `snapshot` return no state. The type is what guarantees that rendering changes
-  nothing and that nothing but a transition advances the game.
+  `snapshot` return no state.
 {{else}}
 `src/game.ts` declares and exports the state the game is written against. This
 section is that declaration: write it into `src/game.ts` exactly as it stands

@@ -37,9 +37,11 @@ describe("snapshot", () => {
       version: REFRACT_DEBUG_VERSION,
       screen: "title",
       mode: "campaign",
+      menuIndex: 0,
       boardIndex: 0,
       solvedBoards: [],
       unlockedCount: 1,
+      selectIndex: 0,
       solvedCount: 0,
       tier: 1,
       board: { cols: 1, rows: 1, nodes: [] },
@@ -89,6 +91,27 @@ describe("snapshot", () => {
       live: { col: 0, row: 1 },
     });
     expect(snapshot.pointer.down).toBe(true);
+  });
+
+  it("reports the live highlight indexes and their resting values", () => {
+    const title = debug.snapshot({ ...fresh(), menuIndex: 2 });
+    expect(title.menuIndex).toBe(2);
+
+    const select = debug.snapshot({
+      ...debug.startMode(fresh(), "campaign"),
+      selectIndex: 5,
+    });
+    expect(select.selectIndex).toBe(5);
+
+    // On `playing` both rest at their documented values.
+    const playing = debug.snapshot(debug.loadBoard(fresh(), ["TtT"]));
+    expect(playing.menuIndex).toBe(0);
+    expect(playing.selectIndex).toBe(0);
+
+    for (const snapshot of [title, select, playing]) {
+      expect(typeof snapshot.menuIndex).toBe("number");
+      expect(typeof snapshot.selectIndex).toBe("number");
+    }
   });
 });
 

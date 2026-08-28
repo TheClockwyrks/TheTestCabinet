@@ -29,9 +29,11 @@ describe("snapshot", () => {
       version: REFRACT_DEBUG_VERSION,
       screen: "title",
       mode: "campaign",
+      menuIndex: 0,
       boardIndex: 0,
       solvedBoards: [],
       unlockedCount: 1,
+      selectIndex: 0,
       solvedCount: 0,
       tier: 1,
       board: { cols: 1, rows: 1, nodes: [] },
@@ -42,6 +44,14 @@ describe("snapshot", () => {
       muted: false,
       simTime: 0,
     });
+  });
+
+  it("reports the live menu and select highlights straight off the state", () => {
+    const title: RefractState = { ...fresh(), menuIndex: 2 };
+    expect(debug.snapshot(title).menuIndex).toBe(2);
+
+    const select = debug.startMode(fresh(), "campaign");
+    expect(debug.snapshot({ ...select, selectIndex: 7 }).selectIndex).toBe(7);
   });
 
   it("derives node centers, spends, completeness, and the live end", () => {

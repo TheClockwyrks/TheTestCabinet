@@ -21,6 +21,7 @@ import {
   HUD_SOLVED_LABEL,
   HUD_TIER_LABEL,
   NODE_R,
+  SET_LABELS,
   SOLVED_ITEMS,
   SOLVED_TITLE_TEXT,
   STAGE_CX,
@@ -245,6 +246,11 @@ function drawNode(
   y: number,
   beams: readonly BeamState[],
 ): void {
+  // Round joins on every node stroke: a mitered corner shoots a spike well
+  // past its own path — far enough on a triangle's base to carry the form
+  // outside NODE_R — and the join is set here rather than left to whatever a
+  // beam last left on the context, so a node draws the same on every frame.
+  ctx.lineJoin = "round";
   if (node.kind === "crystal") {
     drawCrystal(ctx, x, y, node.charges ?? 0, spentAt(beams, node));
     return;
@@ -253,11 +259,12 @@ function drawNode(
   const hue = CHANNEL_COLOR[channel];
   const r = NODE_R * 0.72;
   if (node.kind === "emitter") {
-    // The outlined silhouette, with a soft halo so an endpoint reads as a
-    // source of light.
-    silhouettePath(ctx, channel, x, y, r + 4);
+    // The outlined silhouette, with a soft halo just inside the outline so an
+    // endpoint reads as a source of light while the whole drawn form — halo
+    // included — stays inside NODE_R of the cell center (specs/board.md).
+    silhouettePath(ctx, channel, x, y, r - 2);
     ctx.strokeStyle = withAlpha(hue, 0.25);
-    ctx.lineWidth = 9;
+    ctx.lineWidth = 8;
     ctx.stroke();
     silhouettePath(ctx, channel, x, y, r);
     ctx.strokeStyle = hue;
@@ -544,7 +551,7 @@ function drawSelect(state: RefractState, ctx: Ctx): void {
     if (col === 0) {
       text(
         ctx,
-        `SET ${String.fromCharCode(65 + row)}`,
+        SET_LABELS[row],
         firstX - TILE_PITCH_X + 20,
         cy,
         20,

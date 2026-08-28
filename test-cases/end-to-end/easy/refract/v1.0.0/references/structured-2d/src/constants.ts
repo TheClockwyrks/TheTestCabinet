@@ -87,6 +87,9 @@ export const MAX_CHARGES = 3;
  */
 export const CAMPAIGN_LENGTH = 24;
 
+/** The select grid's row labels, one per set, top row down. */
+export const SET_LABELS = ["SET A", "SET B", "SET C", "SET D"] as const;
+
 // ---- Cascade's tier ladder (specs/modes/cascade.md) ----------------------
 
 /** The number of rungs the ladder holds; the top rung holds indefinitely. */

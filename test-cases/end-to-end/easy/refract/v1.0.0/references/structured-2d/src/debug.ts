@@ -71,9 +71,13 @@ export interface RefractSnapshot {
   version: number;
   screen: Screen;
   mode: Mode;
+  /** The screen's highlighted menu item; rests at `0` on `playing`. */
+  menuIndex: number;
   boardIndex: number;
   solvedBoards: number[];
   unlockedCount: number;
+  /** The board highlighted on the campaign select grid. */
+  selectIndex: number;
   solvedCount: number;
   tier: number;
   board: {
@@ -161,9 +165,11 @@ export function createDebugApi(world: () => World): RefractDebugApi {
         version: REFRACT_DEBUG_VERSION,
         screen: live.screen,
         mode: live.mode,
+        menuIndex: live.menuIndex,
         boardIndex: live.boardIndex,
         solvedBoards: [...live.solvedBoards],
         unlockedCount: live.unlockedCount,
+        selectIndex: live.selectIndex,
         solvedCount: live.solvedCount,
         tier: live.tier,
         board: {

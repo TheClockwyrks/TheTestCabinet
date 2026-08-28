@@ -34,9 +34,11 @@ describe("snapshot", () => {
       version: REFRACT_DEBUG_VERSION,
       screen: "title",
       mode: "campaign",
+      menuIndex: 0,
       boardIndex: 0,
       solvedBoards: [],
       unlockedCount: 1,
+      selectIndex: 0,
       solvedCount: 0,
       tier: 1,
       board: { cols: 0, rows: 0, nodes: [] },
@@ -47,6 +49,24 @@ describe("snapshot", () => {
       muted: false,
       simTime: 0,
     });
+  });
+
+  it("reports the live highlights: menuIndex on a menu, selectIndex on select", async () => {
+    h.tap("ArrowDown");
+    await h.engine.advance(1);
+    expect(h.debug.snapshot().menuIndex).toBe(1);
+
+    h.debug.startMode("campaign");
+    h.tap("ArrowRight");
+    await h.engine.advance(1);
+    expect(h.debug.snapshot().selectIndex).toBe(1);
+
+    // On playing, menuIndex rests at 0 and selectIndex keeps the highlight.
+    h.debug.loadBoard(["TtT"]);
+    const snapshot = h.debug.snapshot();
+    expect(snapshot.screen).toBe("playing");
+    expect(snapshot.menuIndex).toBe(0);
+    expect(snapshot.selectIndex).toBe(1);
   });
 
   it("derives node centers, spends, completeness, and the live end", () => {
@@ -107,9 +127,11 @@ describe("reset", () => {
       version: REFRACT_DEBUG_VERSION,
       screen: "title",
       mode: "campaign",
+      menuIndex: 0,
       boardIndex: 0,
       solvedBoards: [],
       unlockedCount: 1,
+      selectIndex: 0,
       solvedCount: 0,
       tier: 1,
       board: { cols: 0, rows: 0, nodes: [] },

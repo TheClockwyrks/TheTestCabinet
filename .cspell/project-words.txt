@@ -589,3 +589,8 @@ levelup
 levelups
 respaces
 unranked
+
+# Refract v1.0.0 manifest prose: the silhouette-mask comparison the board
+# rendering validators describe.
+binarize
+binarized

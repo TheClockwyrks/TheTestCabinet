@@ -51,9 +51,11 @@ export interface RefractSnapshot {
   version: number;
   screen: Screen;
   mode: Mode;
+  menuIndex: number;
   boardIndex: number;
   solvedBoards: number[];
   unlockedCount: number;
+  selectIndex: number;
   solvedCount: number;
   tier: number;
   board: {
@@ -149,9 +151,11 @@ export function createDebugApi(): RefractDebugApi {
         version: REFRACT_DEBUG_VERSION,
         screen: state.screen,
         mode: state.mode,
+        menuIndex: state.menuIndex,
         boardIndex: state.boardIndex,
         solvedBoards: [...state.solvedBoards],
         unlockedCount: state.unlockedCount,
+        selectIndex: state.selectIndex,
         solvedCount: state.solvedCount,
         tier: state.tier,
         board: {

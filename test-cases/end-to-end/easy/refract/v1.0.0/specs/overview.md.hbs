@@ -102,9 +102,8 @@ as they are.
 ### Every figure comes from this specification
 
 Every number, identifier, key binding, cue name, and piece of screen copy this
-specification fixes is stated here under a name. Name each one once in a module
-of your own and read it from there, rather than restating a value at each use.
-Anything this specification does not name is yours to decide.
+specification fixes is stated here under a name. Anything this specification
+does not name is yours to decide.
 
 ### Your own tests
 
@@ -112,10 +111,9 @@ Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured
 over `src/`. A test drives the game over its own clock for a counted number of
 frames, so it needs no browser, and `@napi-rs/canvas` is installed for a test
-that wants a real 2D context. Cover the parts of the game a person cannot see at
-a glance: the limits that accept or refuse a move, beginning a trace on a node
-and retracting from the live end, crystal charge accounting, and detecting a
-complete beam and a solved board.
+that wants a real 2D context. Unit tests cover the limits that accept or refuse
+a move, beginning a trace on a node and retracting from the live end, crystal
+charge accounting, and the detection of a complete beam and a solved board.
 {{else if (eq engine.slug "simple-2d")}}
 ### What you implement
 
@@ -172,10 +170,10 @@ this specification does not name is yours to decide.
 Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured
 over `src/`. A test stands the engine up over its own canvas and clock and
-advances the game a counted number of frames, so it needs no browser. Cover the
-parts of the game a person cannot see at a glance: the limits that accept or
-refuse a move, beginning a trace on a node and retracting from the live end,
-crystal charge accounting, and detecting a complete beam and a solved board.
+advances the game a counted number of frames, so it needs no browser. Unit
+tests cover the limits that accept or refuse a move, beginning a trace on a
+node and retracting from the live end, crystal charge accounting, and the
+detection of a complete beam and a solved board.
 {{else}}
 ### What you implement
 
@@ -236,10 +234,10 @@ Write unit tests for what you build, beside your sources as `src/**/*.test.ts`.
 `npm test` runs them in process with Vitest, in Node, with coverage measured
 over `src/`. A test stands the engine up over a canvas from `@napi-rs/canvas`
 and a surface and clock of its own, then advances the game a counted number of
-frames with `engine.advance`, so it needs no browser. Cover the parts of the
-game a person cannot see at a glance: the limits that accept or refuse a move,
-beginning a trace on a node and retracting from the live end, crystal charge
-accounting, and detecting a complete beam and a solved board.
+frames with `engine.advance`, so it needs no browser. Unit tests cover the
+limits that accept or refuse a move, beginning a trace on a node and retracting
+from the live end, crystal charge accounting, and the detection of a complete
+beam and a solved board.
 {{/if}}
 
 ### The checks the repository passes
@@ -267,10 +265,7 @@ the root of any static file server. The scripts that do this are already in
 ## Goal of this build
 
 Produce a complete, polished, playable game that runs entirely in a browser.
-This is a substantial front-end build: real-time rendered graphics, a rules
-engine that runs on every pointer move, several screens and menus, and a tracing
-interaction that has to feel precise under the hand. Aim for a game a person
-would enjoy playing.
+Aim for a game a person would enjoy playing.
 
 The build ships both of the game's modes, and the player chooses between them
 from the title menu. Campaign plays a fixed set of boards in order, and Cascade
@@ -294,8 +289,7 @@ both.
   controllers.
 {{/if}}
 - Ship both modes, Campaign and Cascade, each reachable from the title menu.
-- Render real graphics on the canvas, drawn as shapes and text rather than as an
-  ASCII or text-only rendering.
+- Render real graphics on the canvas, drawn as shapes and text.
 - Draw everything in code. The build ships no art or audio files and fetches
   nothing at runtime.
 - Run in the browser with no backend. Everything needed to play is
@@ -356,8 +350,7 @@ The bench is dark. Choose the colors and the typography, decide how a node is
 drawn and how a beam is rendered along the cells it links, and decide what sits
 behind the board and how the board answers a beam as it grows.
 
-Legibility is gameplay, so whatever look you choose, a player reads all of the
-following at a glance.
+Whatever look you choose, a player reads all of the following at a glance.
 
 | What a player reads | Requirement |
 | --- | --- |

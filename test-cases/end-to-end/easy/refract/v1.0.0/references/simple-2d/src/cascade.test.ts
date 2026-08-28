@@ -107,15 +107,20 @@ describe("emitted boards", () => {
     }
   });
 
-  it("varies consecutive boards at the same tier", () => {
-    let rngState = 7;
-    const boards: string[] = [];
-    for (let round = 0; round < 6; round++) {
-      const { board, rngState: next } = generateBoard(rngState, 5);
-      rngState = next;
-      boards.push(JSON.stringify(board));
+  it("draws each board's grid size from its tier's stated range", () => {
+    for (let tier = 1; tier <= MAX_TIER; tier++) {
+      const spec = TIERS[tier - 1];
+      let rngState = 7 + tier;
+      for (let round = 0; round < 6; round++) {
+        const label = `tier ${tier} round ${round}`;
+        const { board, rngState: next } = generateBoard(rngState, tier);
+        rngState = next;
+        expect(board.cols, label).toBeGreaterThanOrEqual(spec.minCols);
+        expect(board.cols, label).toBeLessThanOrEqual(spec.maxCols);
+        expect(board.rows, label).toBeGreaterThanOrEqual(spec.minRows);
+        expect(board.rows, label).toBeLessThanOrEqual(spec.maxRows);
+      }
     }
-    expect(new Set(boards).size).toBe(boards.length);
   });
 });
 

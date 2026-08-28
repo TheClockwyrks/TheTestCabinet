@@ -13,7 +13,14 @@ import {
   solutionSolves,
   tierFor,
 } from "./cascade";
-import { CHANNELS, MAX_TIER, TIER_ADVANCE, TIERS } from "./constants";
+import {
+  CHANNELS,
+  GRID_MAX_COLS,
+  GRID_MAX_ROWS,
+  MAX_TIER,
+  TIER_ADVANCE,
+  TIERS,
+} from "./constants";
 import { createHarness, type Harness } from "./harness";
 import type { BoardState } from "./game";
 
@@ -113,15 +120,14 @@ describe("emitted boards", () => {
     }
   });
 
-  it("varies consecutive boards at the same tier", () => {
+  it("draws each grid size from the tier's range; tier 5 is always 7x6", () => {
     let rngState = 7;
-    const boards: string[] = [];
     for (let round = 0; round < 6; round++) {
-      const { board, rngState: next } = generateBoard(rngState, 5);
+      const { board, rngState: next } = generateBoard(rngState, MAX_TIER);
       rngState = next;
-      boards.push(JSON.stringify(board));
+      expect(board.cols).toBe(GRID_MAX_COLS);
+      expect(board.rows).toBe(GRID_MAX_ROWS);
     }
-    expect(new Set(boards).size).toBe(boards.length);
   });
 });
 

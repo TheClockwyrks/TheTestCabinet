@@ -73,17 +73,20 @@ seeded for every run. The `.hbs` templates branch on `engine.slug` alone.
 
 ## Contents
 
-| Path             | Seeded to run? | Purpose                                                                 |
-| ---------------- | -------------- | ----------------------------------------------------------------------- |
-| `specs/`         | Yes            | The spec handed to the model, by concern.                               |
-| `workspaces/`    | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
-| `references/`    | No             | The authored, correct build, one directory per engine. Never seeded.    |
-| `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.                           |
-| `test-case.toml` | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
-| `variants/`      | No             | One TOML file per variant (listed in `variants`).                       |
-| `description.md` | No             | The site-facing introduction on the case's detail page.                 |
-| `changelog.md`   | No             | This version's entry in the case's changelog.                           |
-| `README.md`      | No             | This overview.                                                          |
+| Path                   | Seeded to run? | Purpose                                                                 |
+| ---------------------- | -------------- | ----------------------------------------------------------------------- |
+| `specs/`               | Yes            | The spec handed to the model, by concern.                               |
+| `workspaces/`          | Yes            | The starter TypeScript project, `<engine>/`, seeded at the run root.    |
+| `references/`          | No             | The authored, correct build, one directory per engine. Never seeded.    |
+| `validation/`          | No             | The validator suites deciding every review point, `<engine>/`.          |
+| `validation-baseline/` | No             | The baseline media, captured from each reference build.                 |
+| `showcase/`            | No             | The variant's demo media and description for the catalog.               |
+| `prompt.hbs`           | No             | Rendered into the model's prompt; not seeded.                           |
+| `test-case.toml`       | No             | Manifest: workspaces, engines, toolchain, specs, domains, review items. |
+| `variants/`            | No             | One TOML file per variant (listed in `variants`).                       |
+| `description.md`       | No             | The site-facing introduction on the case's detail page.                 |
+| `changelog.md`         | No             | This version's entry in the case's changelog.                           |
+| `README.md`            | No             | This overview.                                                          |
 
 The specification is split across `specs/` by concern, and every file is seeded
 for every run:
@@ -124,23 +127,32 @@ domains. What the specs do fix about the look is legibility: channels told apart
 by hue and by silhouette, emitters outlined where lenses are filled, and
 crystals showing charges spent and remaining.
 
-## What is not built yet
+## Validation
 
-This case is authored but not yet complete, and the manifest reflects only what
-exists:
+This case is validator-rated: every point on the checklist carries a Vitest
+suite, and the validators decide the functional rating through each point's
+failure cap. A reviewer rates the run's aesthetics and may override a verdict.
 
-- No validators. There is no `validation/` directory. The checklist points are
-  authored from the specs, and the Vitest suites that decide them have yet to be
-  written: one project per engine, `validation/none/`, `validation/simple-2d/`
-  and `validation/structured-2d/`. Until they exist, no point is
-  machine-decided, no run's media is produced by a validator, and
-  `tcab capture-baselines` has nothing to capture against the reference builds,
-  so there is no `validation-baseline/` either.
-- Campaign board solution counts are unresolved. All `24` boards in
-  `specs/campaign-boards.md` are verified solvable and well formed, which is the
-  load-bearing fact the specs rest on. Two independent solvers disagreed on how
-  many solutions some boards admit, so no spec text claims a board is uniquely
-  solvable, and none should until the two are reconciled.
+`validation/` holds one project per engine, `validation/none/`,
+`validation/simple-2d/` and `validation/structured-2d/`, each with a suite per
+review point at `<category>/<id>.test.ts`. The `none` suites drive the built
+site in Chromium through `window.__refract`; the two engine projects run in
+process against the vendored engine and reach the surface through
+`engine.debug`. The three run the same scenarios and differ only in how they
+reach the build.
+
+Each project carries the same spec-derived oracle beside its harness:
+`notation.ts` (the board notation and the cell-center formula), `rules.ts`
+(`R1`–`R9` recomputed independently), `solver.ts` (a bounded solver), and
+`routes.ts` (the `24` campaign boards with a solving route each). Every
+expected value a suite asserts comes from that oracle or from a figure the
+specs fix, never from a reference build. All `24` campaign boards are solvable
+under the rules as the specs state them, which is the load-bearing fact the
+course rests on. No spec text claims a board is uniquely solvable.
+
+`validation-baseline/<engine>/<variant>/` holds the media the same suites
+captured from that engine's reference build, so a reviewer sees the build's
+evidence and the reference's side by side.
 
 ## Versioning
 
