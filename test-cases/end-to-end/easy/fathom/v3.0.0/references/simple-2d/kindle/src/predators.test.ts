@@ -24,11 +24,12 @@ import { centerX, centerY } from "./grid";
 import { loadLayout } from "./maze";
 import { releaseInk } from "./ink";
 import {
+  addedPredator,
   createPredator,
+  denPose,
   flareCharging,
   flareRadius,
   flaring,
-  holdInDen,
   rosterForDepth,
   stepPredator,
   wanderSpeed,
@@ -176,18 +177,42 @@ describe("the den and its release schedule", () => {
     expect(out.modes[0]).toBe("den");
   });
 
-  it("never releases a predator whose release time is suspended", () => {
+  it("never releases a predator that carries no release time", () => {
+    // A predator the debug surface added carries no release time, because the
+    // staggered schedule runs on the roster a maze is laid out with. Held
+    // unreleased, its slot never arrives.
     const maze = denBoard();
     const w = world(maze, 1, 1);
-    const held = holdInDen(createPredator("flarefish", 17, 7, 0), {
-      tx: 17,
-      ty: 7,
-    });
-    const after = run(held, w, 120 * 30);
+    const added = addedPredator("flarefish", 17, 7);
+    expect(added.releaseIn).toBeNull();
+    expect(added.mode).toBe("wander");
+    expect(added.released).toBe(true);
+    expect(added.mind).toBe(true);
+
+    const waiting = denPose({ ...added, released: false });
+    const after = run(waiting, w, 120 * 30);
     expect(after.predator.released).toBe(false);
     expect(after.predator.mode).toBe("den");
     expect(after.predator.x).toBe(centerX(17));
     expect(after.predator.y).toBe(centerY(7));
+  });
+
+  it("poses the den where the predator already stands, keeping its slot", () => {
+    // `setPredatorState(index, "den")` moves the predator nowhere and leaves its
+    // `released` flag as it stands, so a released predator posed into the
+    // chamber swims out through the gate from there.
+    const maze = denBoard();
+    const w = world(maze, 1, 1);
+    const loose = { ...createPredator("gloamfin", 17, 7, 0), released: true };
+    const posed = denPose(loose);
+    expect(posed.mode).toBe("den");
+    expect(posed.released).toBe(true);
+    expect(posed.x).toBe(centerX(17));
+    expect(posed.y).toBe(centerY(7));
+    expect(posed.fix).toBeNull();
+
+    const out = run(posed, w, 600);
+    expect(out.predator.mode).toBe("wander");
   });
 });
 

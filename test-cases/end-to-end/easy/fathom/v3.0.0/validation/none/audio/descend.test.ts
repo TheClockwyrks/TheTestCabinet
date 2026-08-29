@@ -34,19 +34,24 @@
 //
 // NO SCENE GUARD HERE. A guard's whole job is to notice the dive leaving the
 // screen it was on; leaving `"playing"` for `"cleared"` IS this point's event.
-// Every hunter is in the den instead, so nothing else can disturb the watch.
+// The posed board carries no predator and no drifter instead, so nothing else
+// can disturb the watch.
 //
 // WHAT THIS ENGINE CANNOT SEE. The cue's NAME, and how many sources one cue is
 // made of. `validation/audio/cues.ts` states why, and what these checks assert
 // instead.
 //
-// WHAT THIS DOES NOT DECIDE. Whether an ordinary mouthful sounds at all, which is
-// `audio/eat`'s and which this stands down for rather than reporting; the
-// `SCORE_CLEAR` bonus, which is `scoring/cleared-bonus`'s; the interstitial, which
-// is `states/cleared`'s; the descent, which is `scoring/descend-on-clear`'s.
+// WHAT THIS DOES NOT DECIDE. The `SCORE_CLEAR` bonus, which is
+// `scoring/cleared-bonus`'s; the interstitial, which is `states/cleared`'s; the
+// descent, which is `scoring/descend-on-clear`'s.
 
-import { afterEach, beforeEach } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertGreaterThanOrEqual,
+  assertNotEqual,
+} from "../assert";
 import { ARROW_KEY, ticksFor } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
 import {
@@ -55,7 +60,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, denAll, requireSwim, unmetPrecondition } from "../scene";
+
 import { soundsBetween, soundsOnTick, watchForEvent } from "./cues";
 
 /** The key `specs/movement.md` binds the `right` action to first. */
@@ -87,106 +92,89 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "sounds more on the tick the maze is cleared than an ordinary mouthful does",
-  async () => {
-    // A real, browser-trusted gesture first: an engineless build owns its own audio
-    // layer and is entitled to open it on the player's first interaction alone
-    // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
-    await h.armAudio();
-    await startPlaying(h);
-    const run = await poseMoveKeyRun(h, "right");
-    await denAll(h);
+it("sounds more on the tick the maze is cleared than an ordinary mouthful does", async () => {
+  // A real, browser-trusted gesture first: an engineless build owns its own audio
+  // layer and is entitled to open it on the player's first interaction alone
+  // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
+  await h.armAudio();
+  await startPlaying(h);
+  const run = await poseMoveKeyRun(h, "right");
 
-    // Two mouthfuls in the whole maze, on the two corridor tiles ahead of the
-    // forager. The fixture's own sealed larder goes with everything else,
-    // deliberately: this is a point whose subject is the board running out.
-    await h.debug.clearPlankton();
-    await h.debug.setPlankton(run.start.tx + 1, run.start.ty, true);
-    await h.debug.setPlankton(run.start.tx + 2, run.start.ty, true);
-    const before = await h.snapshot();
+  // Two mouthfuls in the whole maze, on the two corridor tiles ahead of the
+  // forager: the board is emptied by the pose, and this is a point whose
+  // subject is the board running out.
+  await h.debug.setPlankton(run.start.tx + 1, run.start.ty, true);
+  await h.debug.setPlankton(run.start.tx + 2, run.start.ty, true);
 
-    const watch = await captureReplay(h, "descend", async () => {
-      await h.hold(MOVE_KEY);
-      try {
-        const seen = await watchForEvent(
-          h,
-          (s) => s.screen === "cleared",
-          SWIM_TICKS,
-          // The ordinary mouthful: the first tick the board is down to its last
-          // plankton is the tick the first one was swallowed on.
-          { mark: (s) => s.planktonRemaining <= LAST_MOUTHFUL },
-        );
-        // Past the reading, so the clip shows the interstitial. Nothing after this
-        // line can reach an assertion.
-        await h.advance(TAIL_TICKS);
-        return seen;
-      } finally {
-        await h.release(MOVE_KEY);
-      }
-    });
-
-    // Whether the forager travels at all is the movement points' verdict.
-    requireSwim(
-      before.forager,
-      watch.snapshot.forager,
-      "reach the maze's last two plankton",
-    );
-
-    assertEqual(
-      watch.hit,
-      true,
-      `the forager ate both plankton and cleared the maze inside ` +
-        `${String(SWIM_TICKS)} ticks, from tile (${String(run.start.tx)}, ${String(run.start.ty)})`,
-    );
-    if (watch.marked < 0) {
-      unmetPrecondition(
-        `the board never came down to its last plankton over the ` +
-          `${String(watch.at)} ticks before it cleared, so there was no ordinary ` +
-          `mouthful to measure the clearing one against — whether the forager eats ` +
-          `what it swims over is scoring/plankton's verdict, not this one's`,
+  const watch = await captureReplay(h, "descend", async () => {
+    await h.hold(MOVE_KEY);
+    try {
+      const seen = await watchForEvent(
+        h,
+        (s) => s.screen === "cleared",
+        SWIM_TICKS,
+        // The ordinary mouthful: the first tick the board is down to its last
+        // plankton is the tick the first one was swallowed on.
+        { mark: (s) => s.planktonRemaining <= LAST_MOUTHFUL },
       );
+      // Past the reading, so the clip shows the interstitial. Nothing after this
+      // line can reach an assertion.
+      await h.advance(TAIL_TICKS);
+      return seen;
+    } finally {
+      await h.release(MOVE_KEY);
     }
+  });
 
-    if (watch.marked === watch.at) {
-      unmetPrecondition(
-        "both plankton went on the same tick, so the ordinary mouthful and the " +
-          "clearing one are the same reading and there is nothing to compare — " +
-          "whether the forager eats one tile at a time is scoring/plankton's " +
-          "verdict, not this one's",
-      );
-    }
+  assertEqual(
+    watch.hit,
+    true,
+    `the forager ate both plankton and cleared the maze inside ` +
+      `${String(SWIM_TICKS)} ticks, from tile (${String(run.start.tx)}, ${String(run.start.ty)})`,
+  );
+  assertGreaterThanOrEqual(
+    watch.marked,
+    0,
+    `the board came down to its last plankton over the ${String(watch.at)} ` +
+      "ticks before it cleared, which is the ordinary mouthful the clearing " +
+      "one is measured against",
+  );
+  assertNotEqual(
+    watch.marked,
+    watch.at,
+    "the tick the ordinary mouthful was swallowed on, against the tick the " +
+      "clearing one was — the forager eats one tile at a time " +
+      "(specs/gameplay.md), so the two are different ticks",
+  );
 
-    const ordinary = soundsOnTick(watch, watch.marked);
-    if (ordinary === 0) {
-      unmetPrecondition(
-        "the ordinary mouthful sounded nothing, so there is no cost of an eat to " +
-          "hold the clearing mouthful against — whether an eat sounds at all is " +
-          "audio/eat's verdict, not this one's",
-      );
-    }
+  const ordinary = soundsOnTick(watch, watch.marked);
+  assertGreaterThanOrEqual(
+    ordinary,
+    1,
+    "sounds the build emitted on the tick the ordinary mouthful was " +
+      "swallowed, which CUES.eat is played on (specs/progression.md)",
+  );
 
-    assertEqual(
-      soundsBetween(watch, 0, watch.marked),
-      0,
-      `sounds the build emitted over the ${String(watch.marked - 1)} ticks before ` +
-        "the first mouthful, on a board holding two plankton and no loose hunter " +
-        "— a cue is played on the tick its event happens (specs/progression.md)",
-    );
-    assertEqual(
-      soundsBetween(watch, watch.marked, watch.at),
-      0,
-      `sounds the build emitted over the ` +
-        `${String(Math.max(0, watch.at - watch.marked - 1))} ticks between the two ` +
-        "mouthfuls, on which nothing specs/progression.md names a cue for happened",
-    );
-    assertGreaterThan(
-      soundsOnTick(watch, watch.at),
-      ordinary,
-      `sounds the build emitted on the tick the maze cleared, against the ` +
-        `${String(ordinary)} an ordinary mouthful sounded on this build — the ` +
-        "clearing tick carries CUES.descend on top of the CUES.eat both mouthfuls " +
-        "raise (specs/progression.md)",
-    );
-  },
-);
+  assertEqual(
+    soundsBetween(watch, 0, watch.marked),
+    0,
+    `sounds the build emitted over the ${String(watch.marked - 1)} ticks before ` +
+      "the first mouthful, on a board holding two plankton and no loose hunter " +
+      "— a cue is played on the tick its event happens (specs/progression.md)",
+  );
+  assertEqual(
+    soundsBetween(watch, watch.marked, watch.at),
+    0,
+    `sounds the build emitted over the ` +
+      `${String(Math.max(0, watch.at - watch.marked - 1))} ticks between the two ` +
+      "mouthfuls, on which nothing specs/progression.md names a cue for happened",
+  );
+  assertGreaterThan(
+    soundsOnTick(watch, watch.at),
+    ordinary,
+    `sounds the build emitted on the tick the maze cleared, against the ` +
+      `${String(ordinary)} an ordinary mouthful sounded on this build — the ` +
+      "clearing tick carries CUES.descend on top of the CUES.eat both mouthfuls " +
+      "raise (specs/progression.md)",
+  );
+});

@@ -27,15 +27,19 @@
 // the forager and end the measurement with a lost life. A posed board may do what a
 // generated one may not (`specs/instrumentation.md`).
 //
-// WHAT THIS DOES NOT DECIDE. That close hearing takes a fix at all is
-// `gloamfin/fix-and-alert`'s, so a build whose Gloamfin never acquires stands this
-// check down rather than being failed twice for one fault.
+// THE BOARD HOLDS THE GLOAMFIN AND NOTHING ELSE. `poseOccludedPair` empties it
+// and this check spawns back the one hunter it is about, so `G` stays at the zero
+// a dive opens on — nothing is underfoot to eat — and no second predator can
+// light the tile whose darkness makes `lit` mean something.
+//
+// AND THE FIX HAS TO HAPPEN. An alert fires on an acquisition, so a Gloamfin that
+// never acquires leaves nothing for this point to read and the check FAILS.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { ALERT_TIME, GLOAMFIN_HEAR } from "../constants";
 import { visibilityAt } from "../maze";
-import { poseOccludedPair, predatorIndex } from "../fixtures";
+import { poseOccludedPair, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -44,15 +48,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * How far apart the pair stands, in tiles.
@@ -142,25 +138,14 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("The Gloamfin fires the alert on a fresh fix", async () => {
+it("The Gloamfin fires the alert on a fresh fix", async () => {
   await startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
-  const index = predatorIndex(await h.snapshot(), "gloamfin");
-  if (index === null) {
-    unmetPrecondition(
-      "the roster carries no Gloamfin, so this scenario has nothing to pose — " +
-        "what the roster holds is the progression checks' verdict, not this one's",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  await h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
-  await h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "gloamfin", pair.pred, {
+    state: "wander",
+  });
   await parkForager(h, pair.forager);
-  // Its own pellet settled and `G` back to the zero a dive opens on, so the light
-  // pocket is the narrowest it ever is and nothing widens it under the
-  // measurement.
-  await clearUnderfoot(h);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const posed = await h.snapshot();
   const posedGap = Math.hypot(
@@ -176,14 +161,6 @@ check("The Gloamfin fires the alert on a fresh fix", async () => {
         poll: 1,
       },
     );
-    if (!acquired.hit) {
-      unmetPrecondition(
-        `the Gloamfin took no fix on a forager ${posedGap.toFixed(0)} units away, ` +
-          `inside GLOAMFIN_HEAR (${GLOAMFIN_HEAR}), so there was no fresh ` +
-          "acquisition for an alert to fire on — whether close hearing takes a " +
-          "fix is gloamfin/fix-and-alert's verdict, not this one's",
-      );
-    }
     const fired = await h.until((s) => s.predators[index].alert === true, {
       maxTicks: FIRE_TICKS,
       poll: 1,
@@ -242,6 +219,13 @@ check("The Gloamfin fires the alert on a fresh fix", async () => {
       "the reach close hearing works within",
   );
 
+  assertEqual(
+    read.acquired.hit,
+    true,
+    `the Gloamfin took a fix on a forager ${posedGap.toFixed(0)} units away, ` +
+      `inside GLOAMFIN_HEAR (${GLOAMFIN_HEAR}), which is the acquisition an ` +
+      "alert fires on",
+  );
   assertEqual(
     read.fired.hit,
     true,

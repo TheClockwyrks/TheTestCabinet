@@ -18,12 +18,13 @@
 // like for like in both dives. The two sit four tiles apart from each other, far
 // enough that neither neighbourhood can pick up the other's glow.
 //
-// THE CREATURES' MINDS ARE OFF. `setCreatureAI(false)` holds each creature "exactly
-// where it stands, keeping the tile, facing and state it was posed with"
-// (specs/instrumentation.md) while everything else runs, so the Lanternjaw stays a
-// wandering Lanternjaw on the tile the comparison was set up on and the drifter
-// stays beside it. What is being compared is how the two are DRAWN, and nothing
-// about that needs either of them to move.
+// THE TWO CREATURES' MINDS ARE OFF, AND THEY ARE THE ONLY TWO ON THE BOARD.
+// `setPredatorMind` and `setDrifterMind` hold each one "exactly where it stands,
+// keeping the tile, facing and `state` it was posed with"
+// (specs/instrumentation.md) while everything else in the game runs, so the
+// Lanternjaw stays a wandering Lanternjaw on the tile the comparison was set up on
+// and the drifter stays beside it. What is being compared is how the two are
+// DRAWN, and nothing about that needs either of them to move.
 //
 // EACH MOTE IS SEARCHED FOR, NOT SAMPLED AT A POINT. Where on a body the glow sits
 // is the build's art — one draws it on the creature's center, another as a bulb at
@@ -33,13 +34,13 @@
 // blows out toward white by design and the hue reads in the halo around it: the
 // brightest pixel of a perfectly good amber mote is often a neutral white one.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureStill,
   centerOf,
@@ -54,16 +55,7 @@ import {
   type Rgb,
 } from "../harness";
 import type { Tile } from "../maze";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The board: the forager alone on `F`, the Lanternjaw's tile `A` five tiles due
@@ -140,33 +132,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("A drifter and a Lanternjaw's bulb read alike", async () => {
-  const opened = startPlaying(h);
-  const lantern = indexOfKind(opened, "lanternjaw");
-  if (lantern < 0) {
-    failPrecondition(
-      "the roster to carry a Lanternjaw whose bulb can be compared with a " +
-        "drifter's mote; specs/predators.md gives depth 1 one of each kind",
-      "scoring/depth-scaling",
-      opened.predators.map((p) => p.kind),
-    );
-  }
+it("A drifter and a Lanternjaw's bulb read alike", async () => {
+  startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
   const bulbTile = board.mark("A");
   const driftTile = board.mark("B");
   await parkForager(h, home);
-  // The pellet the pose left under the forager is eaten off camera and the
-  // brightness put back to zero, so the light pocket is the one a dive opens with
-  // rather than one this scenario's setup widened.
-  await clearUnderfoot(h);
-
-  const quiet = await denAll(h, [lantern]);
-  h.debug.setPredatorTile(lantern, bulbTile.tx, bulbTile.ty);
-  h.debug.setPredatorState(lantern, "wander");
+  // One Lanternjaw, one drifter, and nothing else on the board — so the two motes
+  // read here are the two the point compares. Both are held where they were
+  // posed: this point is about what is DRAWN, not about where either goes next.
+  const lantern = await spawnPredator(h, "lanternjaw", bulbTile, {
+    mind: false,
+  });
   h.debug.spawnDrifter(driftTile.tx, driftTile.ty);
-  h.debug.setCreatureAI(false);
-  const guard = await sceneGuard(h, quiet);
+  h.debug.setDrifterMind(0, false);
+  const guard = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
   const after = h.snapshot();

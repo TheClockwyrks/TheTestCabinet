@@ -26,7 +26,7 @@
 // WHAT THIS DOES NOT DECIDE. What the pulse reveals, which the `sonar/*` points
 // own; the cooldown it starts, which is `sonar/cooldown`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BINDINGS, CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import {
@@ -36,15 +36,9 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
+import { poseStraightRun } from "../fixtures";
 
 /** The key `specs/movement.md` binds the `a` action to: it emits a sonar pulse. */
 const SONAR_KEY = BINDINGS.a[0];
@@ -73,6 +67,9 @@ const TAIL_TICKS = ticksFor(1);
  */
 const QUIET_LEAD = ticksFor(0.25);
 
+/** How many tiles of bare corridor the pulse is cast from. */
+const RUN_TILES = 8;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -83,58 +80,56 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "plays CUES.sonar on the tick the forager emits a pulse, and not before",
-  async () => {
-    startPlaying(h);
-    const quiet = await denAll(h);
-    await parkForager(h);
-    await clearUnderfoot(h);
-    h.debug.setSonarCooldown(0);
-    const watch = await sceneGuard(h, quiet);
+it("plays CUES.sonar on the tick the forager emits a pulse, and not before", async () => {
+  startPlaying(h);
+  // A bare corridor: no predator, no drifter, no plankton, so the only thing that
+  // can raise a cue across either window is the pulse this check emits.
+  const run = await poseStraightRun(h, RUN_TILES);
+  await parkForager(h, run.start);
+  h.debug.setSonarCooldown(0);
+  const watch = await sceneGuard(h);
 
-    const seen = await captureReplay(h, "sonar", async () => {
-      try {
-        const found = await watchForEvent(
-          h,
-          (s) => s.pulses.some((pulse) => pulse.source === "forager"),
-          QUIET_LEAD + PULSE_TICKS,
-          {
-            quietLead: QUIET_LEAD,
-            arm: () => {
-              h.hold(SONAR_KEY);
-            },
+  const seen = await captureReplay(h, "sonar", async () => {
+    try {
+      const found = await watchForEvent(
+        h,
+        (s) => s.pulses.some((pulse) => pulse.source === "forager"),
+        QUIET_LEAD + PULSE_TICKS,
+        {
+          quietLead: QUIET_LEAD,
+          arm: () => {
+            h.hold(SONAR_KEY);
           },
-        );
-        // Held on past the reading, so the clip shows the wavefront flooding the
-        // corridors. Nothing after this line can reach an assertion.
-        await h.advance(TAIL_TICKS);
-        return found;
-      } finally {
-        h.release(SONAR_KEY);
-      }
-    });
+        },
+      );
+      // Held on past the reading, so the clip shows the wavefront flooding the
+      // corridors. Nothing after this line can reach an assertion.
+      await h.advance(TAIL_TICKS);
+      return found;
+    } finally {
+      h.release(SONAR_KEY);
+    }
+  });
 
-    requireSceneHeld(h.snapshot(), watch);
+  requireSceneHeld(h.snapshot(), watch);
 
-    assertEqual(
-      seen.hit,
-      true,
-      `a wavefront the forager cast entered flight inside the ${String(PULSE_TICKS)} ` +
-        "ticks the check holds Space for, with the cooldown posed ready",
-    );
-    assertEqual(
-      cuesBeforeEvent(seen, CUES.sonar),
-      0,
-      `times CUES.sonar played over the ${String(seen.at - 1)} ticks before the ` +
-        "pulse — a cue is played on the tick its event happens " +
-        "(specs/progression.md)",
-    );
-    assertEqual(
-      cuesOnEvent(seen, CUES.sonar),
-      1,
-      "times CUES.sonar played on the tick the forager cast its pulse, which is " +
-        "its own tick and at most once on it (specs/progression.md)",
-    );
-  },
-);
+  assertEqual(
+    seen.hit,
+    true,
+    `a wavefront the forager cast entered flight inside the ${String(PULSE_TICKS)} ` +
+      "ticks the check holds Space for, with the cooldown posed ready",
+  );
+  assertEqual(
+    cuesBeforeEvent(seen, CUES.sonar),
+    0,
+    `times CUES.sonar played over the ${String(seen.at - 1)} ticks before the ` +
+      "pulse — a cue is played on the tick its event happens " +
+      "(specs/progression.md)",
+  );
+  assertEqual(
+    cuesOnEvent(seen, CUES.sonar),
+    1,
+    "times CUES.sonar played on the tick the forager cast its pulse, which is " +
+      "its own tick and at most once on it (specs/progression.md)",
+  );
+});

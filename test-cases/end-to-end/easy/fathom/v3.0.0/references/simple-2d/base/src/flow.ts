@@ -26,6 +26,7 @@ import type {
   ForagerState,
   MazeState,
   PredatorState,
+  Screen,
   Tile,
 } from "./state";
 
@@ -148,29 +149,52 @@ export function layFreshMaze(state: FathomState, depth: number): FathomState {
 
 // ---- The screens ---------------------------------------------------------
 
+/** The seven screens, which is the domain `setScreen` accepts. */
+export const SCREENS: readonly Screen[] = [
+  "title",
+  "howto",
+  "countdown",
+  "playing",
+  "paused",
+  "cleared",
+  "gameover",
+];
+
+/**
+ * How long the screen holds before it gives way on its own, `0` for a screen that
+ * waits on the player instead (`specs/ui.md`).
+ */
+function screenHold(screen: Screen): number {
+  if (screen === "countdown") return COUNTDOWN_TIME;
+  if (screen === "cleared") return CLEARED_TIME;
+  return 0;
+}
+
+/**
+ * The game showing `screen`, with that screen's own hold started.
+ *
+ * It is the one way a screen is entered, so the debug surface's `setScreen` and
+ * the game's own transitions reach the same arrangement by the same route: a
+ * posed screen and a played one are the same screen. It sets the screen and
+ * nothing else — the den's staggered schedule is timed from live play because the
+ * schedule runs only while `screen` is `"playing"` (`specs/predators.md`), not
+ * because entering it touches a predator.
+ */
+export function enterScreen(state: FathomState, screen: Screen): FathomState {
+  return { ...state, screen, screenIn: screenHold(screen) };
+}
+
 /** The countdown at the top of a maze, which live play resumes through. */
 export function toCountdown(state: FathomState): FathomState {
-  return { ...state, screen: "countdown", screenIn: COUNTDOWN_TIME };
+  return enterScreen(state, "countdown");
 }
 
 /**
  * Live play beginning, which is where the den's staggered schedule is timed
- * from (`specs/predators.md`). Release time `0` is this moment, so the first
- * predator's slot has already arrived when the screen turns over and it reports
- * `released` from here rather than a tick later. A predator the debug surface
- * holds in the den has no release time at all and the schedule passes it by.
+ * from (`specs/predators.md`).
  */
 export function beginLivePlay(state: FathomState): FathomState {
-  return {
-    ...state,
-    screen: "playing",
-    screenIn: 0,
-    predators: state.predators.map((p) =>
-      p.released || p.releaseIn === null || p.releaseIn > 0
-        ? p
-        : { ...p, released: true, releaseIn: 0 },
-    ),
-  };
+  return enterScreen(state, "playing");
 }
 
 /**
@@ -186,7 +210,7 @@ export function beginDive(state: FathomState): FathomState {
 /** The title screen, with the run restored to the values a dive begins from. */
 export function toTitle(state: FathomState): FathomState {
   const fresh = layFreshMaze({ ...state, score: 0, lives: START_LIVES }, 1);
-  return { ...fresh, screen: "title", menuIndex: 0, screenIn: 0 };
+  return enterScreen({ ...fresh, menuIndex: 0 }, "title");
 }
 
 /** Another attempt at the same maze, at the same depth. */
@@ -200,19 +224,14 @@ export function retryMaze(state: FathomState): FathomState {
  */
 export function loseLife(state: FathomState): FathomState {
   if (state.lives <= 0) {
-    return { ...state, screen: "gameover", menuIndex: 0 };
+    return enterScreen({ ...state, menuIndex: 0 }, "gameover");
   }
   return retryMaze({ ...state, lives: state.lives - 1 });
 }
 
 /** The maze cleared: the bonus, and the interstitial before the descent. */
 export function clearMaze(state: FathomState): FathomState {
-  return {
-    ...state,
-    score: state.score + SCORE_CLEAR,
-    screen: "cleared",
-    screenIn: CLEARED_TIME,
-  };
+  return enterScreen({ ...state, score: state.score + SCORE_CLEAR }, "cleared");
 }
 
 /** The next maze, one depth down, opening on the countdown. */
@@ -245,7 +264,6 @@ export function openingState(
     score: 0,
     lives: START_LIVES,
     muted,
-    creatureAI: true,
     simTime: 0,
     carry: 0,
     rngState: draws.state,

@@ -29,7 +29,7 @@
 // `progression/depth-scaling`'s — the fixture is drawn against the depth-1 range
 // the scenario reads off the pulse itself.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNotEqual } from "../assert";
 import { SONAR_RANGE_BASE } from "../../src/constants";
 import { poseMaze } from "../fixtures";
@@ -40,15 +40,8 @@ import {
   visibilityOf,
   type Harness,
 } from "../harness";
-import type { Tile } from "../maze";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { Tile } from "../maze";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { emitPulse, foragerPulse, requireFogMemory } from "./pulse";
 
 /**
@@ -135,97 +128,92 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "floods the corridors around a corner and through a junction with their rock, and enters neither a sealed pocket nor a tile past E",
-  async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const home = board.mark("F");
-    await parkForager(h, home);
-    await clearUnderfoot(h);
-    const quiet = await denAll(h);
-    const watch = await sceneGuard(h, quiet);
+it("floods the corridors around a corner and through a junction with their rock, and enters neither a sealed pocket nor a tile past E", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const home = board.mark("F");
+  await parkForager(h, home);
+  const watch = await sceneGuard(h);
 
-    const at = (offset: readonly [number, number]): Tile => ({
-      tx: home.tx + offset[0],
-      ty: home.ty + offset[1],
-    });
+  const at = (offset: readonly [number, number]): Tile => ({
+    tx: home.tx + offset[0],
+    ty: home.ty + offset[1],
+  });
 
-    const emitted = await emitPulse(h);
-    // The fixture is drawn for the depth this scenario runs at; a pulse carrying
-    // some other range would be measuring a different board.
-    assertEqual(
-      emitted.pulse.range,
-      SONAR_RANGE_BASE,
-      "the range the depth-1 pulse this fixture is drawn for carries",
-    );
+  const emitted = await emitPulse(h);
+  // The fixture is drawn for the depth this scenario runs at; a pulse carrying
+  // some other range would be measuring a different board.
+  assertEqual(
+    emitted.pulse.range,
+    SONAR_RANGE_BASE,
+    "the range the depth-1 pulse this fixture is drawn for carries",
+  );
 
-    const swept = await h.until(
-      (snapshot) => foragerPulse(snapshot) === undefined,
-      {
-        maxFrames: FLOOD_TICKS,
-        poll: 1,
-      },
-    );
-    // A beat past the pulse leaving the list, so what is read is the fog it left
-    // rather than the tick it left on.
-    await h.advance(2);
-    const snapshot = h.snapshot();
-    // Before the assertions, so a failing check still leaves the picture a
-    // reviewer needs to see which half of the board went wrong.
-    captureStill(h, "walls");
+  const swept = await h.until(
+    (snapshot) => foragerPulse(snapshot) === undefined,
+    {
+      maxFrames: FLOOD_TICKS,
+      poll: 1,
+    },
+  );
+  // A beat past the pulse leaving the list, so what is read is the fog it left
+  // rather than the tick it left on.
+  await h.advance(2);
+  const snapshot = h.snapshot();
+  // Before the assertions, so a failing check still leaves the picture a
+  // reviewer needs to see which half of the board went wrong.
+  captureStill(h, "walls");
 
-    requireSceneHeld(snapshot, watch);
+  requireSceneHeld(snapshot, watch);
 
-    // Every reading above is of the fog's MEMORY of a front that has already
-    // passed, so a build that keeps nothing it reveals answers "u" at all of
-    // them and reads exactly like one whose pulse revealed nothing. Taken here,
-    // after the readings, so it costs a clean run nothing.
-    await requireFogMemory(h);
+  // Every reading above is of the fog's MEMORY of a front that has already
+  // passed, so a build that keeps nothing it reveals answers "u" at all of
+  // them and reads exactly like one whose pulse revealed nothing. Taken here,
+  // after the readings, so it costs a clean run nothing.
+  await requireFogMemory(h);
 
-    assertEqual(
-      swept.hit,
-      true,
-      `the pulse ran out within ${FLOOD_TICKS} ticks, of the 77 a front at ` +
-        "SONAR_WAVE_SPEED takes to pass a range of 9",
-    );
+  assertEqual(
+    swept.hit,
+    true,
+    `the pulse ran out within ${FLOOD_TICKS} ticks, of the 77 a front at ` +
+      "SONAR_WAVE_SPEED takes to pass a range of 9",
+  );
 
-    for (const offset of FLOODED) {
-      const tile = at(offset);
-      assertNotEqual(
-        visibilityOf(snapshot, tile),
-        "u",
-        `the corridor tile at (${tile.tx}, ${tile.ty}), ${offset[0] + offset[1]} ` +
-          "or fewer corridor steps out and inside the flood",
-      );
-    }
-
-    for (const offset of BOUNDING_ROCK) {
-      const tile = at(offset);
-      assertNotEqual(
-        visibilityOf(snapshot, tile),
-        "u",
-        `the rock tile at (${tile.tx}, ${tile.ty}), which bounds a corridor the ` +
-          "front swept over",
-      );
-    }
-
-    const beyond = at(BEYOND);
-    assertEqual(
-      visibilityOf(snapshot, beyond),
+  for (const offset of FLOODED) {
+    const tile = at(offset);
+    assertNotEqual(
+      visibilityOf(snapshot, tile),
       "u",
-      `the corridor tile at (${beyond.tx}, ${beyond.ty}), which is ` +
-        `${SONAR_RANGE_BASE + 1} corridor steps out and so one past the range`,
+      `the corridor tile at (${tile.tx}, ${tile.ty}), ${offset[0] + offset[1]} ` +
+        "or fewer corridor steps out and inside the flood",
     );
+  }
 
-    for (const offset of POCKET) {
-      const tile = at(offset);
-      assertEqual(
-        visibilityOf(snapshot, tile),
-        "u",
-        `the corridor tile at (${tile.tx}, ${tile.ty}), inside a pocket rock seals ` +
-          "off from every corridor the flood travels",
-      );
-    }
-  },
-);
+  for (const offset of BOUNDING_ROCK) {
+    const tile = at(offset);
+    assertNotEqual(
+      visibilityOf(snapshot, tile),
+      "u",
+      `the rock tile at (${tile.tx}, ${tile.ty}), which bounds a corridor the ` +
+        "front swept over",
+    );
+  }
+
+  const beyond = at(BEYOND);
+  assertEqual(
+    visibilityOf(snapshot, beyond),
+    "u",
+    `the corridor tile at (${beyond.tx}, ${beyond.ty}), which is ` +
+      `${SONAR_RANGE_BASE + 1} corridor steps out and so one past the range`,
+  );
+
+  for (const offset of POCKET) {
+    const tile = at(offset);
+    assertEqual(
+      visibilityOf(snapshot, tile),
+      "u",
+      `the corridor tile at (${tile.tx}, ${tile.ty}), inside a pocket rock seals ` +
+        "off from every corridor the flood travels",
+    );
+  }
+});

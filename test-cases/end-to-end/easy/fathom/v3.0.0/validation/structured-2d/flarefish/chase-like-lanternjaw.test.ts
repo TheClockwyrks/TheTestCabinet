@@ -42,15 +42,16 @@
 // `lanternjaw/dim-shakes`'s; and the cadence of the flares themselves, which is
 // `flarefish/flare-cadence`'s.
 
-import { afterEach, beforeEach } from "vitest";
-import { assertEqual, assertLessThanOrEqual } from "../assert";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertLessThanOrEqual, fail } from "../assert";
 import {
+  BRIGHT_HOLD,
   FLARE_INTERVAL,
   FLARE_RADIUS,
   PREDATOR_SPEED,
   TICK_HZ,
 } from "../../src/constants";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -60,14 +61,10 @@ import {
 } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import {
-  check,
-  denAll,
-  indexOfKind,
   parkForager,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  standDown,
 } from "../scene";
 import { startPlaying } from "../harness";
 import { BLOOM_MAX, FIRST_FLARE_MAX, FLARE_POLL } from "./room";
@@ -178,201 +175,199 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "neither charges nor blooms across a chase longer than FLARE_INTERVAL, travels at PREDATOR_SPEED, and re-arms a whole interval on returning to wander",
-  async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const runStart = board.mark("C");
-    const pocket = board.mark("W");
-    await parkForager(h, pocket);
-    h.debug.setBrightness(0);
+it("neither charges nor blooms across a chase longer than FLARE_INTERVAL, travels at PREDATOR_SPEED, and re-arms a whole interval on returning to wander", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const runStart = board.mark("C");
+  const pocket = board.mark("W");
+  await parkForager(h, pocket);
+  h.debug.setBrightness(0);
 
-    const opening = h.snapshot();
-    const index = indexOfKind(opening, "flarefish");
-    if (index < 0) {
-      standDown(
-        "the roster carries no Flarefish, so there is no chase to read — what " +
-          "the roster holds is the progression checks' verdict, not this one's",
-      );
-    }
-    const quiet = await denAll(h, [index]);
+  const index = await spawnPredator(h, "flarefish", runStart, {
+    dir: "right",
+  });
+  // The forager is the thing that moves here, so the guard watches everything
+  // about the scene except where it stands.
+  const guard = await sceneGuard(h, { foragerParked: false });
+
+  const fish = (snap: FathomSnapshot): FathomSnapshot["predators"][number] =>
+    snap.predators[index];
+
+  // A whole flare, waited out in the corridor, so the chase below opens on a timer
+  // the specification says is full.
+  const bloom = await h.until((snap) => fish(snap).flaring === true, {
+    maxFrames: ticksFor(FIRST_FLARE_MAX),
+    poll: FLARE_POLL,
+  });
+  const reloaded = await h.until((snap) => fish(snap).flaring !== true, {
+    maxFrames: ticksFor(BLOOM_MAX),
+    poll: FLARE_POLL,
+  });
+  if (!bloom.hit || !reloaded.hit) {
+    fail(
+      `the Flarefish to complete a flare within ` +
+        `${FIRST_FLARE_MAX + BLOOM_MAX} s of patrolling the corridor, which is ` +
+        "what opens the chase below on a timer known to be full",
+      `bloom ${String(bloom.hit)}, reload ${String(reloaded.hit)}`,
+    );
+  }
+
+  // Part of the reloaded interval, spent wandering, so the remainder the chase
+  // carries is known and is NOT the figure a re-arm would produce.
+  await h.advance(ticksFor(SPEND_SECONDS));
+
+  const run = await captureReplay(h, "chase", async () => {
+    // Both bodies to the corridor's left end, the forager two tiles ahead. No tick
+    // runs across these poses, so the timer is still the full interval the bloom
+    // just reloaded.
     h.debug.setPredatorTile(index, runStart.tx, runStart.ty);
     h.debug.setPredatorDir(index, "right");
-    h.debug.setPredatorState(index, "wander");
-    // The forager is the thing that moves here, so the guard watches everything
-    // about the scene except where it stands.
-    const guard = await sceneGuard(h, quiet, { foragerParked: false });
+    h.debug.setForagerTile(runStart.tx + HEAD_START, runStart.ty);
+    h.debug.setForagerDir("right");
+    // A fully lit forager, and the hold armed beside it, so the Flarefish's
+    // light-sense reaches the whole retreat: at `G = 1` its `R` is
+    // `LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN` (320), against the 160 units the
+    // retreat opens between the two over CHASE_SECONDS. The board carries no
+    // plankton, so `G` is posed rather than grazed for, and it is posed again on
+    // every sample so the hold never lapses under the chase.
+    h.debug.setBrightness(1);
+    h.debug.setBrightHold(BRIGHT_HOLD);
+    const key = DIR_KEY.right;
+    h.hold(key);
+    await h.advance(ACQUIRE_TICKS);
+    const acquired = h.snapshot();
 
-    const fish = (snap: FathomSnapshot): FathomSnapshot["predators"][number] =>
-      snap.predators[index];
-
-    // A whole flare, waited out in the corridor, so the chase below opens on a timer
-    // the specification says is full.
-    const bloom = await h.until((snap) => fish(snap).flaring === true, {
-      maxFrames: ticksFor(FIRST_FLARE_MAX),
-      poll: FLARE_POLL,
-    });
-    const reloaded = await h.until((snap) => fish(snap).flaring !== true, {
-      maxFrames: ticksFor(BLOOM_MAX),
-      poll: FLARE_POLL,
-    });
-    if (!bloom.hit || !reloaded.hit) {
-      standDown(
-        `the Flarefish did not complete a flare within ` +
-          `${FIRST_FLARE_MAX + BLOOM_MAX} s of patrolling the corridor, so the ` +
-          `chase below could not be opened on a timer known to be full — whether ` +
-          `it flares on its interval is flarefish/flare-cadence's verdict, not ` +
-          `this one's`,
-      );
-    }
-
-    // Part of the reloaded interval, spent wandering, so the remainder the chase
-    // carries is known and is NOT the figure a re-arm would produce.
-    await h.advance(ticksFor(SPEND_SECONDS));
-
-    const run = await captureReplay(h, "chase", async () => {
-      // Both bodies to the corridor's left end, the forager two tiles ahead. No tick
-      // runs across these poses, so the timer is still the full interval the bloom
-      // just reloaded.
-      h.debug.setPredatorTile(index, runStart.tx, runStart.ty);
-      h.debug.setPredatorDir(index, "right");
-      h.debug.setForagerTile(runStart.tx + HEAD_START, runStart.ty);
-      h.debug.setForagerDir("right");
-      const key = DIR_KEY.right;
-      h.hold(key);
-      await h.advance(ACQUIRE_TICKS);
-      const acquired = h.snapshot();
-
-      const flags: { at: number; charging: boolean; flaring: boolean }[] = [];
-      const states: string[] = [];
-      let from: FathomSnapshot | null = null;
-      let to: FathomSnapshot | null = null;
-      for (
-        let at = ACQUIRE_TICKS;
-        at < ticksFor(CHASE_SECONDS);
-        at += SAMPLE_TICKS
-      ) {
-        await h.advance(SAMPLE_TICKS);
-        const snap = h.snapshot();
-        const now = at + SAMPLE_TICKS;
-        flags.push({
-          at: now,
-          charging: fish(snap).flareCharging === true,
-          flaring: fish(snap).flaring === true,
-        });
-        states.push(fish(snap).state);
-        if (now === SPEED_FROM) from = snap;
-        if (now === SPEED_TO) to = snap;
-      }
-      h.release(key);
-
-      // The forager to its sealed pocket, which is how the fix goes stale.
-      await parkForager(h, pocket);
-      const dropped = await h.until((snap) => fish(snap).state === "wander", {
-        maxFrames: ticksFor(GIVE_UP_MAX),
-        poll: FLARE_POLL,
+    const flags: { at: number; charging: boolean; flaring: boolean }[] = [];
+    const states: string[] = [];
+    let from: FathomSnapshot | null = null;
+    let to: FathomSnapshot | null = null;
+    for (
+      let at = ACQUIRE_TICKS;
+      at < ticksFor(CHASE_SECONDS);
+      at += SAMPLE_TICKS
+    ) {
+      await h.advance(SAMPLE_TICKS);
+      h.debug.setBrightness(1);
+      h.debug.setBrightHold(BRIGHT_HOLD);
+      const snap = h.snapshot();
+      const now = at + SAMPLE_TICKS;
+      flags.push({
+        at: now,
+        charging: fish(snap).flareCharging === true,
+        flaring: fish(snap).flaring === true,
       });
-      const charged = await h.until(
-        (snap) => fish(snap).flareCharging === true,
-        {
-          maxFrames: ticksFor(REARM_MAX),
-          poll: FLARE_POLL,
-        },
-      );
-      return { acquired, flags, states, from, to, dropped, charged };
+      states.push(fish(snap).state);
+      if (now === SPEED_FROM) from = snap;
+      if (now === SPEED_TO) to = snap;
+    }
+    h.release(key);
+
+    // The forager to its sealed pocket, back at the `G` a dive opens on, which
+    // is how the fix goes stale.
+    await parkForager(h, pocket);
+    h.debug.setBrightness(0);
+    const dropped = await h.until((snap) => fish(snap).state === "wander", {
+      maxFrames: ticksFor(GIVE_UP_MAX),
+      poll: FLARE_POLL,
     });
+    const charged = await h.until((snap) => fish(snap).flareCharging === true, {
+      maxFrames: ticksFor(REARM_MAX),
+      poll: FLARE_POLL,
+    });
+    return { acquired, flags, states, from, to, dropped, charged };
+  });
 
-    requireSceneHeld(h.snapshot(), guard);
+  requireSceneHeld(h.snapshot(), guard);
 
-    // The premise: the hunter's own sense took the fix, and held it for the whole
-    // window. Both are `flarefish/light-sense`'s claim rather than this one's.
-    if (fish(run.acquired).state !== "chase") {
-      standDown(
-        `the Flarefish did not fix on a forager ${HEAD_START} tiles down a ` +
-          `straight corridor in clear line of sight, so there was no chase to ` +
-          `read — whether its light-sense holds inside R is ` +
-          `flarefish/light-sense's verdict, not this one's`,
-      );
-    }
-    const lapsed = run.states.filter((state) => state !== "chase");
-    if (lapsed.length > 0) {
-      standDown(
-        `the Flarefish left its chase (${lapsed[0]}) during the ` +
-          `${CHASE_SECONDS} s the forager was retreating down one straight ` +
-          `corridor in clear line of sight — whether its sense holds inside R is ` +
-          `flarefish/light-sense's verdict, not this one's`,
-      );
-    }
-    const from = run.from;
-    const to = run.to;
-    if (from === null || to === null) {
-      standDown(
-        "the chase window closed before the pace could be read across it, so " +
-          "there is no ground covered to measure",
-      );
-    }
-    requirePredatorMotion(
-      from,
-      to,
-      index,
-      "chase the retreating forager down the corridor",
+  // The premise: the hunter's own sense took the fix, and held it for the whole
+  // window. Both are what a chase IS, so a build that gave neither has no chase
+  // for this point to read and fails here.
+  if (fish(run.acquired).state !== "chase") {
+    fail(
+      `the Flarefish to fix on a fully lit forager ${HEAD_START} tiles down a ` +
+        "straight corridor in clear line of sight, which is the chase this " +
+        "point reads",
+      fish(run.acquired).state,
     );
+  }
+  const lapsed = run.states.filter((state) => state !== "chase");
+  if (lapsed.length > 0) {
+    fail(
+      `the Flarefish to hold its chase for the whole ${CHASE_SECONDS} s the ` +
+        "fully lit forager was retreating down one straight corridor in clear " +
+        "line of sight, which is the window this point measures across",
+      lapsed[0],
+    );
+  }
+  const from = run.from;
+  const to = run.to;
+  if (from === null || to === null) {
+    fail(
+      "the chase to still be running at both ends of the window the pace is " +
+        "read across, which is the ground this point measures",
+      "the window closed before the second reading",
+    );
+  }
+  requirePredatorMotion(
+    from,
+    to,
+    index,
+    "chase the retreating forager down the corridor",
+  );
 
-    // No tell, across a stretch longer than the interval its timer was carrying.
-    const told = run.flags.filter((flag) => flag.charging || flag.flaring);
-    assertEqual(
-      told.length,
-      0,
-      `steps of the ${CHASE_SECONDS} s chase on which the Flarefish reported a ` +
-        `charge-up or a bloom, of ${run.flags.length} read — its timer stood at ` +
-        `${FLARE_INTERVAL - SPEND_SECONDS} s when the chase opened, of the ` +
-        `FLARE_INTERVAL (${FLARE_INTERVAL} s) the bloom before it reloaded` +
-        (told.length > 0
-          ? `; the first was ${told[0].at} ticks in, charging=${told[0].charging} ` +
-            `flaring=${told[0].flaring}`
-          : ""),
-    );
+  // No tell, across a stretch longer than the interval its timer was carrying.
+  const told = run.flags.filter((flag) => flag.charging || flag.flaring);
+  assertEqual(
+    told.length,
+    0,
+    `steps of the ${CHASE_SECONDS} s chase on which the Flarefish reported a ` +
+      `charge-up or a bloom, of ${run.flags.length} read — its timer stood at ` +
+      `${FLARE_INTERVAL - SPEND_SECONDS} s when the chase opened, of the ` +
+      `FLARE_INTERVAL (${FLARE_INTERVAL} s) the bloom before it reloaded` +
+      (told.length > 0
+        ? `; the first was ${told[0].at} ticks in, charging=${told[0].charging} ` +
+          `flaring=${told[0].flaring}`
+        : ""),
+  );
 
-    // The pace, from ground covered over one unbroken straight run.
-    const covered = Math.hypot(
-      fish(to).x - fish(from).x,
-      fish(to).y - fish(from).y,
-    );
-    const pace = (covered * TICK_HZ) / (SPEED_TO - SPEED_FROM);
-    assertLessThanOrEqual(
-      Math.abs(pace - PREDATOR_SPEED) / PREDATOR_SPEED,
-      SPEED_TOLERANCE,
-      `how far the chasing Flarefish's pace (${pace.toFixed(1)} units a second, ` +
-        `from ${covered.toFixed(1)} units over ${SPEED_TO - SPEED_FROM} ticks) ` +
-        `sat from the PREDATOR_SPEED (${PREDATOR_SPEED}) ` +
-        `specs/predators/flarefish.md gives it in every state, as a fraction`,
-    );
+  // The pace, from ground covered over one unbroken straight run.
+  const covered = Math.hypot(
+    fish(to).x - fish(from).x,
+    fish(to).y - fish(from).y,
+  );
+  const pace = (covered * TICK_HZ) / (SPEED_TO - SPEED_FROM);
+  assertLessThanOrEqual(
+    Math.abs(pace - PREDATOR_SPEED) / PREDATOR_SPEED,
+    SPEED_TOLERANCE,
+    `how far the chasing Flarefish's pace (${pace.toFixed(1)} units a second, ` +
+      `from ${covered.toFixed(1)} units over ${SPEED_TO - SPEED_FROM} ticks) ` +
+      `sat from the PREDATOR_SPEED (${PREDATOR_SPEED}) ` +
+      `specs/predators/flarefish.md gives it in every state, as a fraction`,
+  );
 
-    // And the re-arm: a whole interval from the moment it went back to wandering.
-    assertEqual(
-      run.dropped.hit,
-      true,
-      `the Flarefish gave the fix up within ${GIVE_UP_MAX} s of the forager ` +
-        `retreating ${POCKET_ROWS} tiles below it, behind solid rock and past ` +
-        `FLARE_RADIUS (${FLARE_RADIUS})`,
-    );
-    assertEqual(
-      run.charged.hit,
-      true,
-      `the Flarefish charged up again within ${REARM_MAX} s of returning to ` +
-        `wander`,
-    );
-    assertLessThanOrEqual(
-      Math.abs(
-        run.charged.snapshot.simTime -
-          run.dropped.snapshot.simTime -
-          FLARE_INTERVAL,
-      ),
-      REARM_TOLERANCE,
-      `how far the gap between returning to wander and the next charge-up sat ` +
-        `from the FLARE_INTERVAL (${FLARE_INTERVAL} s) ` +
-        `specs/predators/flarefish.md sets the timer to in full`,
-    );
-  },
-);
+  // And the re-arm: a whole interval from the moment it went back to wandering.
+  assertEqual(
+    run.dropped.hit,
+    true,
+    `the Flarefish gave the fix up within ${GIVE_UP_MAX} s of the forager ` +
+      `retreating ${POCKET_ROWS} tiles below it, behind solid rock and past ` +
+      `FLARE_RADIUS (${FLARE_RADIUS})`,
+  );
+  assertEqual(
+    run.charged.hit,
+    true,
+    `the Flarefish charged up again within ${REARM_MAX} s of returning to ` +
+      `wander`,
+  );
+  assertLessThanOrEqual(
+    Math.abs(
+      run.charged.snapshot.simTime -
+        run.dropped.snapshot.simTime -
+        FLARE_INTERVAL,
+    ),
+    REARM_TOLERANCE,
+    `how far the gap between returning to wander and the next charge-up sat ` +
+      `from the FLARE_INTERVAL (${FLARE_INTERVAL} s) ` +
+      `specs/predators/flarefish.md sets the timer to in full`,
+  );
+});

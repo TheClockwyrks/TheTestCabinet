@@ -27,10 +27,14 @@
 // (`gloamfin/ping-cadence`), or when in a search the guaranteed ping falls
 // (`gloamfin/lost-you-orange`). Both are stood aside for by name below.
 
-import { afterEach, beforeEach } from "vitest";
-import { assertGreaterThanOrEqual, assertLessThanOrEqual } from "../assert";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertContains,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { GLOAMFIN_PING_MIN_GAP, TICK_HZ } from "../constants";
-import { placeForager, placePredator, poseMaze } from "../fixtures";
+import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -38,14 +42,10 @@ import {
   startPlaying,
 } from "../harness";
 import {
-  check,
-  denAll,
-  quietBoard,
-  requireKind,
+  parkForager,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  unmetPrecondition,
 } from "../scene";
 import { pingGaps, pingLog, sweep } from "./pings";
 
@@ -89,18 +89,16 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("No two pings closer than the floor", async () => {
+it("No two pings closer than the floor", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, LONG_CHASE);
-  const index = requireKind(await h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
   await placeForager(h, board.mark("F"), "right");
-  await placePredator(h, index, board.mark("P"), {
+  const index = await spawnPredator(h, "gloamfin", board.mark("P"), {
     dir: "left",
     state: "chase",
   });
-  await quietBoard(h, board.mark("R"));
-  const guard = await sceneGuard(h, quiet);
+  await parkForager(h, board.mark("R"));
+  const guard = await sceneGuard(h);
 
   const opening = await h.snapshot();
   const log = pingLog(index);
@@ -114,15 +112,13 @@ check("No two pings closer than the floor", async () => {
 
   const { sightings } = log;
   const tints = sightings.map((sighting) => sighting.tint);
-  if (!tints.includes("violet")) {
-    unmetPrecondition(
-      `the Gloamfin cast no ordinary violet ping across the ` +
-        `${(WATCH_TICKS / TICK_HZ).toFixed(1)} s watched, so the stretch this ` +
-        `point measures never held the ordinary cadence it is about — whether a ` +
-        `Gloamfin pings on its own cadence at all is gloamfin/ping-cadence's ` +
-        `verdict, not this one's`,
-    );
-  }
+  assertContains(
+    tints,
+    "violet",
+    `the tints cast across the ${(WATCH_TICKS / TICK_HZ).toFixed(1)} s watched — ` +
+      "the ordinary cadence this point measures the floor against runs on violet " +
+      "pings (specs/predators/gloamfin.md)",
+  );
   if (!tints.includes("orange")) {
     requirePredatorMotion(
       opening,
@@ -130,13 +126,14 @@ check("No two pings closer than the floor", async () => {
       index,
       "chase the fourteen tiles to the tile its fix named and search there",
     );
-    unmetPrecondition(
-      `the Gloamfin cast no orange ping across the ` +
-        `${(WATCH_TICKS / TICK_HZ).toFixed(1)} s watched, so the guaranteed ping ` +
-        `this point measures the floor against never arrived — whether a lost ` +
-        `chase casts one is gloamfin/lost-you-orange's verdict, not this one's`,
-    );
   }
+  assertContains(
+    tints,
+    "orange",
+    `the tints cast across the ${(WATCH_TICKS / TICK_HZ).toFixed(1)} s watched — ` +
+      "a lost chase casts the guaranteed orange ping this point measures the " +
+      "floor against (specs/predators/gloamfin.md)",
+  );
 
   const gaps = pingGaps(sightings);
   assertGreaterThanOrEqual(

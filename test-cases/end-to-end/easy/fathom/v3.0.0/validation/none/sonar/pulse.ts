@@ -17,19 +17,16 @@
 // this file from its counterparts under the two engines: the scenario, the
 // thresholds and the readings are the same.
 //
-// IT IS ALSO WHERE THE SONAR POINTS STAND DOWN, and it tells the two ways a press
-// can come to nothing APART. Whether pressing `Space` casts a pulse at all is
-// `controls/sonar-key`'s verdict: specs/movement.md binds the `a` action to
-// `Space` and has the `"playing"` screen read it. Whether the pulse that press
-// casts then travels as a front, rather than arriving everywhere at once and
-// vanishing inside the tick, is `sonar/wavefront`'s. A press that leaves nothing
-// on `pulses` could be either — so the cooldown is what separates them: a build
-// that read the key ARMS it (specs/sensing.md: "emitting one sets the cooldown to
-// `SONAR_COOLDOWN`"), and one that read nothing does not. Each refusal names the
-// point that owns what actually went wrong, and neither is a verdict.
+// A PRESS THAT CASTS NOTHING FAILS THE CHECK THAT MADE IT. Every point here is
+// about what a pulse does, so a scenario with no pulse in it has missed the
+// behavior it grades, and there is no second place for that point to be decided.
+// The failure still says WHICH of the two ways the press came to nothing, because
+// the cooldown separates them: a build that read the key ARMS it
+// (specs/sensing.md: "emitting one sets the cooldown to `SONAR_COOLDOWN`"), and
+// one that read nothing does not.
 
+import { fail } from "../assert";
 import { BINDINGS } from "../constants";
-import { unmetPrecondition } from "../scene";
 import {
   type FathomSnapshot,
   type Harness,
@@ -108,36 +105,38 @@ export async function castPulse(h: Harness): Promise<Emitted> {
 }
 
 /**
- * Stand the check down when the press did nothing whatever: no pulse, and no
- * cooldown armed.
+ * Fail the check when the press did nothing whatever: no pulse, and no cooldown
+ * armed.
  *
- * That is a build that did not read the key, which is `controls/sonar-key`'s
- * verdict to give.
+ * That is a build that did not read the key, and a point about what a pulse does
+ * has no pulse to read.
  */
 export function requirePress(emitted: Emitted): void {
   if (emitted.pulse !== null || emitted.armed) return;
-  unmetPrecondition(
-    `pressing ${SONAR_KEY} with sonar.ready ` +
-      `${String(emitted.before.sonar.ready)} put no pulse in flight and armed no ` +
-      "cooldown, so nothing about a pulse can be read here; whether the key emits " +
-      "one at all is controls/sonar-key's verdict, not this one's",
+  fail(
+    `pressing ${SONAR_KEY} on the "playing" screen to emit a sonar pulse; ` +
+      "specs/movement.md binds the a action to it and specs/sensing.md emits a " +
+      "pulse when its cooldown is 0",
+    `the press put no pulse in flight and armed no cooldown, with sonar.ready ` +
+      `${String(emitted.before.sonar.ready)}`,
   );
 }
 
 /**
- * The pulse the press cast, or a refusal naming the point that owns its absence.
+ * The pulse the press cast, or a failure naming what was missing.
  *
  * A press that armed the cooldown and left nothing on `pulses` DID emit — the
- * wavefront it emitted was gone within the tick, which is a fault in how the
- * front travels, and `sonar/wavefront` is where that is decided.
+ * wavefront it emitted was gone within the tick, which is a front that does not
+ * travel.
  */
 export function requireLivePulse(emitted: Emitted): PulseSnapshot {
   requirePress(emitted);
   if (emitted.pulse === null) {
-    unmetPrecondition(
-      `pressing ${SONAR_KEY} armed the sonar cooldown but left no wavefront on ` +
-        "pulses a tick later, so this scenario has no front to follow; a pulse " +
-        "that does not travel is sonar/wavefront's verdict, not this one's",
+    fail(
+      "the pulse the press emitted to stand on pulses a tick later, travelling " +
+        "outward as a front; specs/sensing.md has it flood the corridors at " +
+        "SONAR_WAVE_SPEED",
+      `pressing ${SONAR_KEY} armed the sonar cooldown and left pulses empty`,
     );
   }
   return emitted.pulse;

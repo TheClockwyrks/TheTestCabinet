@@ -31,7 +31,7 @@
 // patrol travels at (`gloamfin/wander-speed`), or how the fix was taken
 // (`gloamfin/fix-and-alert`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -42,7 +42,7 @@ import {
   GLOAMFIN_CHASE_SPEED,
   TICK_HZ,
 } from "../../src/constants";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -50,16 +50,12 @@ import {
   type Harness,
 } from "../harness";
 import {
-  check,
-  clearUnderfoot,
-  denAll,
   parkForager,
-  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
-import { gloamfinOf, groundBetween, placePredator } from "./pings";
+import { gloamfinOf, groundBetween } from "./pings";
 
 /**
  * The fixture: one straight corridor with the forager on `F` and the Gloamfin
@@ -114,24 +110,21 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("It chases at GLOAMFIN_CHASE_SPEED", async () => {
+it("It chases at GLOAMFIN_CHASE_SPEED", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, RUN);
-  const index = requireKind(await h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
   // The forager first, and parked: `setPredatorState(index, "chase")` fixes on
   // "the forager's current tile" (specs/instrumentation.md), so it has to be
   // standing at the far end of the run by the time the Gloamfin is posed.
   await parkForager(h, board.mark("F"));
-  await clearUnderfoot(h);
-  await placePredator(h, index, board.mark("P"), {
+  const index = await spawnPredator(h, "gloamfin", board.mark("P"), {
     // Faced down the corridor at the forager. A heading pointing anywhere else
     // would put a turn into the opening steps, and this point measures the run
     // rather than the turn.
     dir: "left",
     state: "chase",
   });
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const opening = h.snapshot();
 

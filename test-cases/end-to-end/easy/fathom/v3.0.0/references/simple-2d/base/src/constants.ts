@@ -133,6 +133,13 @@ export const INK_LIFE = 3;
 /** The three kinds, as the snapshot reports them. */
 export type PredatorKind = "lanternjaw" | "gloamfin" | "flarefish";
 
+/** The three kinds as a list, which is the domain `addPredator` accepts. */
+export const PREDATOR_KINDS: readonly PredatorKind[] = [
+  "lanternjaw",
+  "gloamfin",
+  "flarefish",
+];
+
 /**
  * The hunting pace: the Lanternjaw chasing, the Gloamfin wandering and
  * searching, and the Flarefish in every state.

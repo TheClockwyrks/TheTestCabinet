@@ -1,11 +1,14 @@
 // Fathom — the snapshot the debug surface reads (`specs/state.md`).
 //
 // A pure projection of `FathomState` into a plain, JSON-serializable object. It
-// changes nothing and derives nothing the game does not already hold: the tile
-// alphabet and the visibility alphabet come off the same maze and the same fog
-// the renderer draws, the light radius comes off the brightness by the formula
-// `specs/sensing.md` gives, and each predator's per-kind fields are `null` where
-// its kind does not carry them rather than going missing.
+// changes nothing and derives nothing the game does not already hold: the tile,
+// plankton and visibility alphabets come off the same maze, the same plankton and
+// the same fog the renderer draws, the light radius comes off the brightness by
+// the formula `specs/sensing.md` gives, and each predator's per-kind fields are
+// `null` where its kind does not carry them rather than going missing.
+//
+// It reports every field an operation of the debug surface can set, so each of
+// those operations can be verified by posing a value and reading it back.
 
 import {
   FLARE_RADIUS,
@@ -41,6 +44,7 @@ export interface PredatorSnapshot {
   dir: Dir;
   state: PredatorMode;
   released: boolean;
+  mind: boolean;
   speed: number;
   alert: boolean;
   lit: boolean;
@@ -60,9 +64,9 @@ export interface FathomSnapshot {
   score: number;
   lives: number;
   muted: boolean;
-  creatureAI: boolean;
   planktonRemaining: number;
   brightness: number;
+  brightHold: number;
   visionRadius: number;
   sonar: { ready: boolean; cooldown: number; range: number };
   ink: { ready: boolean; cooldown: number };
@@ -74,6 +78,7 @@ export interface FathomSnapshot {
     originY: number;
   };
   tiles: string[];
+  plankton: string[];
   visibility: string[];
   forager: {
     x: number;
@@ -89,6 +94,7 @@ export interface FathomSnapshot {
     tx: number;
     ty: number;
     lit: boolean;
+    mind: boolean;
   }[];
   predators: PredatorSnapshot[];
   pulses: {
@@ -101,6 +107,25 @@ export interface FathomSnapshot {
   }[];
   inkClouds: { x: number; y: number; radius: number; remaining: number }[];
   simTime: number;
+}
+
+/**
+ * The plankton layer in the snapshot's alphabet: `'*'` where a plankton stands
+ * and `'-'` where none does, one string per row (`specs/state.md`).
+ *
+ * It reports the layer the game holds, so the `'*'` it carries and
+ * `planktonRemaining` are always the same count.
+ */
+function planktonRows(plankton: readonly boolean[]): string[] {
+  const rows: string[] = [];
+  for (let ty = 0; ty < GRID_ROWS; ty++) {
+    let row = "";
+    for (let tx = 0; tx < GRID_COLS; tx++) {
+      row += plankton[ty * GRID_COLS + tx] ? "*" : "-";
+    }
+    rows.push(row);
+  }
+  return rows;
 }
 
 /** One predator's entry, with the fields its kind does not carry as `null`. */
@@ -121,6 +146,7 @@ function predatorSnapshot(
     dir: p.facing,
     state: p.mode,
     released: p.released,
+    mind: p.mind,
     speed: p.speed,
     // The Lanternjaw fires no alert, so its window never opens.
     alert: p.alertIn > 0,
@@ -147,9 +173,9 @@ export function snapshotOf(
     score: state.score,
     lives: state.lives,
     muted: state.muted,
-    creatureAI: state.creatureAI,
     planktonRemaining: state.planktonRemaining,
     brightness: state.brightness,
+    brightHold: state.brightHold,
     visionRadius: visionRadius(state.brightness),
     sonar: {
       ready: state.sonarCooldown <= 0,
@@ -165,6 +191,7 @@ export function snapshotOf(
       originY: GRID_ORIGIN_Y,
     },
     tiles: [...state.maze.rows],
+    plankton: planktonRows(state.plankton),
     visibility: visibilityRows(state.revealed, state.lit),
     forager: {
       x: state.forager.x,
@@ -182,6 +209,7 @@ export function snapshotOf(
         tx: at.tx,
         ty: at.ty,
         lit: drifterLit(state.lit, d),
+        mind: d.mind,
       };
     }),
     predators: state.predators.map((p) =>

@@ -24,7 +24,7 @@ import {
 } from "./constants";
 import { anchor, stampLayout } from "./fixtures";
 import { createHarness, type Harness } from "./harness";
-import { HALL, PERCH, at, pose } from "./scenarios";
+import { HALL, PERCH, at, minds, pose } from "./scenarios";
 import type { FathomSnapshot } from "./debug";
 
 function ticks(seconds: number): number {
@@ -34,9 +34,8 @@ function ticks(seconds: number): number {
 /** A harness in live play with the board dark, quiet and fully posed. */
 async function posed(art: readonly string[]): Promise<Harness> {
   const harness = await createHarness();
-  harness.debug.startDive();
-  harness.debug.beginPlay();
-  harness.debug.setCreatureAI(false);
+  harness.debug.setScreen("playing");
+  minds(harness.debug, false);
   pose(harness.debug, art);
   // A board with nothing to graze keeps the forager dark and the count steady.
   harness.debug.clearPlankton();
@@ -161,7 +160,7 @@ describe("the sonar pulse", () => {
     harness.debug.setForagerTile(start.tx, start.ty);
     harness.debug.setPredatorTile(1, start.tx + 6, start.ty);
     harness.debug.setPredatorState(1, "wander");
-    harness.debug.setCreatureAI(true);
+    minds(harness.debug, true);
     // The hunter is boxed in nowhere, so it holds still until the front lands.
     expect(harness.debug.snapshot().predators[1].state).toBe("wander");
 
@@ -187,7 +186,7 @@ describe("the Gloamfin's ping", () => {
     harness.debug.setForagerTile(start.tx, start.ty);
     harness.debug.setPredatorTile(1, perch.tx, perch.ty);
     harness.debug.setPredatorState(1, "wander");
-    harness.debug.setCreatureAI(true);
+    minds(harness.debug, true);
     await harness.engine.advance(2);
     const before = revealed(harness.debug.snapshot());
 
@@ -227,7 +226,7 @@ describe("the Gloamfin's ping", () => {
     harness.debug.setForagerTile(forager.tx, forager.ty);
     harness.debug.setPredatorTile(1, hunter.tx, hunter.ty);
     harness.debug.setPredatorState(1, "wander");
-    harness.debug.setCreatureAI(true);
+    minds(harness.debug, true);
 
     // The hunter is held on its own tile for the whole window, so it never
     // closes to hearing range and the ping is the only sense left to it.
@@ -277,11 +276,12 @@ describe("the Flarefish's flare", () => {
     harness.debug.setForagerTile(start.tx, start.ty);
     harness.debug.setPredatorTile(2, pocket.tx, pocket.ty);
     harness.debug.setPredatorState(2, "wander");
-    harness.debug.setCreatureAI(true);
+    minds(harness.debug, true);
 
-    const charging = await harness.until(
+    // The flare's own cadence is seconds of simulation rather than pictures.
+    const charging = await harness.waitFor(
       () => harness.debug.snapshot().predators[2].flareCharging === true,
-      ticks(FLARE_INTERVAL + 1),
+      FLARE_INTERVAL + 1,
     );
     expect(charging).toBe(true);
     expect(harness.debug.snapshot().predators[2].flaring).toBe(false);
@@ -302,9 +302,9 @@ describe("the Flarefish's flare", () => {
     expect(burning.visibility[pocket.ty - 1][pocket.tx]).toBe("l");
     expect(burning.visibility[pocket.ty][pocket.tx - 1]).toBe("l");
 
-    const over = await harness.until(
+    const over = await harness.waitFor(
       () => harness.debug.snapshot().predators[2].flaring === false,
-      ticks(FLARE_BLOOM + 0.2),
+      FLARE_BLOOM + 0.2,
     );
     expect(over).toBe(true);
     await harness.engine.advance(2);
@@ -326,7 +326,7 @@ describe("ink", () => {
     harness.debug.setPredatorTile(0, start.tx + 3, start.ty);
     harness.debug.setPredatorState(0, "wander");
     harness.debug.setBrightness(1);
-    harness.debug.setCreatureAI(true);
+    minds(harness.debug, true);
     await harness.engine.advance(2);
     expect(harness.debug.snapshot().predators[0].state).toBe("chase");
 
@@ -343,9 +343,8 @@ describe("ink", () => {
 describe("the wrap tunnel", () => {
   it("carries a body across the border as one ordinary step", async () => {
     const harness = await createHarness();
-    harness.debug.startDive();
-    harness.debug.beginPlay();
-    harness.debug.setCreatureAI(false);
+    harness.debug.setScreen("playing");
+    minds(harness.debug, false);
 
     const tiles = harness.debug.snapshot().tiles;
     const row = tiles.findIndex(
@@ -373,9 +372,8 @@ describe("the wrap tunnel", () => {
 describe("the bonus drifters", () => {
   it("admits one at the den gate on its cadence, up to the ceiling", async () => {
     const harness = await createHarness();
-    harness.debug.startDive();
-    harness.debug.beginPlay();
-    harness.debug.setCreatureAI(false);
+    harness.debug.setScreen("playing");
+    minds(harness.debug, false);
     // Out of the way, so the forager grazes nothing and eats no drifter.
     harness.debug.setForagerTile(1, 1);
     expect(harness.debug.snapshot().drifters).toHaveLength(0);
@@ -413,7 +411,7 @@ describe("the bonus drifters", () => {
     const harness = await posed(RING);
     const entry = at(stampLayout(RING), "D");
     harness.debug.spawnDrifter(entry.tx, entry.ty);
-    harness.debug.setCreatureAI(true);
+    minds(harness.debug, true);
 
     const seconds = 2;
     const opened = harness.debug.snapshot().drifters[0];

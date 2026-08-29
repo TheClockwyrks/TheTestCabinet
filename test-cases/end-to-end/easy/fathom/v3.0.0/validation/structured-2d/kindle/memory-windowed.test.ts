@@ -38,11 +38,12 @@
 // (specs/instrumentation.md), and the distances are read against the `R` the
 // build reports at the moment of each reading.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
+  fail,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -55,15 +56,7 @@ import {
   startPlaying,
   visibilityAt,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { Tile } from "../maze";
 import { FOG_MATCH, tileFromForager, windowRadius } from "./circle";
 
@@ -115,7 +108,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Hidden, but not forgotten", async () => {
+it("Hidden, but not forgotten", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const watched = board.mark("T");
@@ -123,12 +116,17 @@ check("Hidden, but not forgotten", async () => {
   const unlit = board.mark("S");
   const near = board.mark("H");
   const away = board.mark("A");
-  const quiet = await denAll(h);
 
-  /** Rest the forager at a berth, put `G` back to zero, and let it draw. */
+  // A plankton on the tile that is watched, which is what a maze is laid out with
+  // on every corridor tile (specs/gameplay.md), and a spare on the tile nothing
+  // ever reveals, so no mouthful here could be the one that clears the maze. The
+  // forager rests on neither.
+  h.debug.setPlankton(watched.tx, watched.ty, true);
+  h.debug.setPlankton(unseen.tx, unseen.ty, true);
+
+  /** Rest the forager at a berth and let it draw. */
   const restAt = async (tile: Tile): Promise<void> => {
     await parkForager(h, tile);
-    await clearUnderfoot(h);
     await h.advance(SETTLE_TICKS);
   };
 
@@ -136,15 +134,14 @@ check("Hidden, but not forgotten", async () => {
   // station the readings are taken from.
   await restAt(board.mark("M"));
   if (visibilityAt(h.snapshot(), watched) === "u") {
-    failPrecondition(
+    fail(
       "the forager's own light to reveal the corridor tile beside it, so this " +
         "point had explored ground to hide and bring back (specs/sensing.md)",
-      "the fog points",
       "the neighbouring tile was still unrevealed",
     );
   }
   await restAt(near);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const seen = await captureReplay(h, "memory", async () => {
     await h.advance(DWELL_TICKS);

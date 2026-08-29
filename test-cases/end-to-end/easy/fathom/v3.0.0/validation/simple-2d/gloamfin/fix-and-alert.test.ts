@@ -24,37 +24,32 @@
 // deciding. Diagonally adjacent is `45.25`, inside the range under either reading
 // and still nowhere near contact.
 //
-// THE PLANKTON GO FIRST. `clearPlankton` takes every one off without eating any,
-// so it "scores nothing and clears no maze" (`specs/instrumentation.md`), and the
-// forager's swim cannot raise `G` off the `0` this scenario opens on. The claim is
+// THE BOARD CARRIES NO PLANKTON. `poseMaze` opens on a board `clearPlankton`
+// emptied (`specs/instrumentation.md`), so the forager's swim cannot raise `G` off
+// the `0` this scenario opens on. The claim is
 // about a fix taken "with no light on either", and that is what holds it.
 //
 // WHAT THIS DOES NOT DECIDE. What a chase then does (`gloamfin/chase-cap`), or
 // what the alert looks like (`alert/gloamfin`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { GLOAMFIN_HEAR, TICK_HZ } from "../../src/constants";
-import { poseMaze } from "../fixtures";
+import { BRIGHT_HOLD, GLOAMFIN_HEAR, TICK_HZ } from "../../src/constants";
+import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
+  poseBrightness,
+  requireForagerMotion,
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  requireKind,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
-import { apart, gloamfinOf, placeForager, placePredator } from "./pings";
+import { requireSceneHeld, sceneGuard } from "../scene";
+import { apart, gloamfinOf } from "./pings";
 
 /**
  * The fixture: the forager's corridor, and the Gloamfin walled into the tile
@@ -93,18 +88,17 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Close hearing takes a fix and fires the alert", async () => {
+it("Close hearing takes a fix and fires the alert", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
-  const index = requireKind(await h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
-  await placePredator(h, index, board.mark("G"), { state: "wander" });
+  const index = await spawnPredator(h, "gloamfin", board.mark("G"), {
+    state: "wander",
+  });
   await placeForager(h, board.mark("F"), "right");
-  await h.debug.clearPlankton();
-  await h.debug.setBrightness(0);
+  await poseBrightness(h, 0, BRIGHT_HOLD);
   // The forager is this point's mover, so the guard watches everything BUT where
   // it stands: a life lost, the dive leaving live play, a denned hunter loose.
-  const guard = await sceneGuard(h, quiet, { foragerParked: false });
+  const guard = await sceneGuard(h, { foragerParked: false });
 
   const opening = h.snapshot();
   const openingGloamfin = gloamfinOf(opening, index);
@@ -146,9 +140,9 @@ check("Close hearing takes a fix and fires the alert", async () => {
       `GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches`,
   );
 
-  requireSwim(
-    opening.forager,
-    crossing.read.forager,
+  requireForagerMotion(
+    opening,
+    crossing.read,
     `swim the ${SEALED_PAIR[0].length - 1} tiles of corridor this scenario laid ` +
       `out to bring it inside GLOAMFIN_HEAR of the Gloamfin`,
   );

@@ -18,15 +18,15 @@
 
 import { fail } from "../assert";
 import {
-  MOTE_SEARCH,
   colorDistance,
+  MOTE_SEARCH,
   sampleColor,
   type Harness,
   type Rgb,
 } from "../harness";
 import { fromForager } from "../scene";
-import type { FathomSnapshot } from "../surface";
-import type { Tile } from "../maze";
+import { FathomSnapshot } from "../surface";
+import { Tile } from "../maze";
 
 /**
  * The vision circle's radius at `G = 0` and how much a full `G` adds, in logical

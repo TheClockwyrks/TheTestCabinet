@@ -28,7 +28,7 @@
 // a build that reports a state it does not draw, or draws a state it does not
 // report, fails rather than passing on the half it got right.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -40,7 +40,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, denAll, requireSceneHeld, sceneGuard } from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 import { tileCenter, type Tile, visibilityAt } from "../maze";
 
 /**
@@ -89,58 +89,54 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "draws an unrevealed rock tile and an unrevealed corridor tile alike, and dark",
-  async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const quiet = await denAll(h);
-    const guard = await sceneGuard(h, quiet);
+it("draws an unrevealed rock tile and an unrevealed corridor tile alike, and dark", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const guard = await sceneGuard(h);
 
-    const corridor: Tile = board.mark("C");
-    const rock: Tile = { tx: corridor.tx - ROCK_OFFSET, ty: corridor.ty };
+  const corridor: Tile = board.mark("C");
+  const rock: Tile = { tx: corridor.tx - ROCK_OFFSET, ty: corridor.ty };
 
-    await h.advance(SETTLE_TICKS);
-    const snap = await h.snapshot();
-    const centers = [
-      tileCenter(snap.grid, rock),
-      tileCenter(snap.grid, corridor),
-    ];
-    const [rockColor, corridorColor] = (await h.pixels(centers)).map(rgbOf);
-    // Before the assertions, so a failing check still leaves the picture that shows
-    // why the reviewer is being told the fog leaks.
-    await captureStill(h, "fog");
+  await h.advance(SETTLE_TICKS);
+  const snap = await h.snapshot();
+  const centers = [
+    tileCenter(snap.grid, rock),
+    tileCenter(snap.grid, corridor),
+  ];
+  const [rockColor, corridorColor] = (await h.pixels(centers)).map(rgbOf);
+  // Before the assertions, so a failing check still leaves the picture that shows
+  // why the reviewer is being told the fog leaks.
+  await captureStill(h, "fog");
 
-    requireSceneHeld(snap, guard);
+  requireSceneHeld(snap, guard);
 
-    // What the build SAYS about the two tiles.
-    assertEqual(
-      visibilityAt(snap, rock),
-      "u",
-      `the rock tile at (${rock.tx}, ${rock.ty}), which nothing has touched`,
-    );
-    assertEqual(
-      visibilityAt(snap, corridor),
-      "u",
-      `the corridor tile at (${corridor.tx}, ${corridor.ty}), which nothing has touched`,
-    );
+  // What the build SAYS about the two tiles.
+  assertEqual(
+    visibilityAt(snap, rock),
+    "u",
+    `the rock tile at (${rock.tx}, ${rock.ty}), which nothing has touched`,
+  );
+  assertEqual(
+    visibilityAt(snap, corridor),
+    "u",
+    `the corridor tile at (${corridor.tx}, ${corridor.ty}), which nothing has touched`,
+  );
 
-    // And what it DRAWS there.
-    assertLessThanOrEqual(
-      luminance(rockColor),
-      FOG_MAX_BRIGHTNESS,
-      `the mean channel at the unrevealed rock tile's center, of 255`,
-    );
-    assertLessThanOrEqual(
-      luminance(corridorColor),
-      FOG_MAX_BRIGHTNESS,
-      `the mean channel at the unrevealed corridor tile's center, of 255`,
-    );
-    assertLessThanOrEqual(
-      colorDistance(rockColor, corridorColor),
-      ALIKE_MAX_DISTANCE,
-      `the RGB distance between the unrevealed rock tile and the unrevealed ` +
-        `corridor tile beside it, of 441`,
-    );
-  },
-);
+  // And what it DRAWS there.
+  assertLessThanOrEqual(
+    luminance(rockColor),
+    FOG_MAX_BRIGHTNESS,
+    `the mean channel at the unrevealed rock tile's center, of 255`,
+  );
+  assertLessThanOrEqual(
+    luminance(corridorColor),
+    FOG_MAX_BRIGHTNESS,
+    `the mean channel at the unrevealed corridor tile's center, of 255`,
+  );
+  assertLessThanOrEqual(
+    colorDistance(rockColor, corridorColor),
+    ALIKE_MAX_DISTANCE,
+    `the RGB distance between the unrevealed rock tile and the unrevealed ` +
+      `corridor tile beside it, of 441`,
+  );
+});

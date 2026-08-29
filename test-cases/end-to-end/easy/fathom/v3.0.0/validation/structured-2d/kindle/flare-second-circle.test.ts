@@ -44,7 +44,7 @@
 // than hanging: the sweep is bounded at the interval, the charge and the bloom
 // with a second's margin, and the check asserts the bloom actually arrived.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   FLARE_BLOOM,
   FLARE_CHARGE,
@@ -55,8 +55,9 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
+  fail,
 } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   centerOf,
@@ -69,16 +70,7 @@ import {
   ticksFor,
   visibilityAt,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { Tile } from "../maze";
 import { FOG_MATCH, windowRadius } from "./circle";
 
@@ -169,7 +161,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("A flare is a second window onto the maze", async () => {
+it("A flare is a second window onto the maze", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART, { at: { tx: 0, ty: 0 } });
   const ring = board.all("R");
@@ -184,15 +176,6 @@ check("A flare is a second window onto the maze", async () => {
     h.debug.setPlankton(tile.tx, tile.ty, false);
   }
 
-  const flarefish = indexOfKind(h.snapshot(), "flarefish");
-  if (flarefish < 0) {
-    failPrecondition(
-      "the depth-1 roster to carry a Flarefish, which is the hunter this " +
-        "scenario poses (specs/predators.md)",
-      "scoring/depth-scaling",
-      "no Flarefish on the roster",
-    );
-  }
   // The rock the ring encloses: every tile inside its bounding box that is not a
   // tile of the ring itself, which this fixture leaves solid.
   const inner: Tile[] = [];
@@ -205,12 +188,9 @@ check("A flare is a second window onto the maze", async () => {
     }
   }
 
-  const quiet = await denAll(h, [flarefish]);
-  h.debug.setPredatorTile(flarefish, ring[0].tx, ring[0].ty);
-  h.debug.setPredatorState(flarefish, "wander");
+  const flarefish = await spawnPredator(h, "flarefish", ring[0]);
   await parkForager(h, board.mark("F"));
-  await clearUnderfoot(h);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   // The seven seconds of wandering the timer takes are run before the capture
   // opens, so the clip is the bloom rather than the wait for it.
@@ -322,11 +302,10 @@ check("A flare is a second window onto the maze", async () => {
   ) {
     // Every tile of this room stands within `FLARE_RADIUS` of every other, so
     // reaching here means the build's disc is somewhere other than where it says.
-    failPrecondition(
+    fail(
       `the bloom disc to reach the FLARE_RADIUS (${FLARE_RADIUS}) ` +
         "specs/predators/flarefish.md gives it, so a tile of the Flarefish's own " +
         "room lay inside it while it burned",
-      "the flarefish points",
       "no tile of that room lay inside the disc",
     );
   }
@@ -366,12 +345,11 @@ check("A flare is a second window onto the maze", async () => {
     seen.wallColor === null ||
     seen.floorColor === null
   ) {
-    failPrecondition(
+    fail(
       `the bloom disc to reach the FLARE_RADIUS (${FLARE_RADIUS}) ` +
         "specs/predators/flarefish.md gives it, so a rock tile of the " +
         "Flarefish's own room and the corridor beneath it both lay inside it " +
         "while it burned",
-      "the flarefish points",
       "no such pair lay inside the disc",
     );
   }

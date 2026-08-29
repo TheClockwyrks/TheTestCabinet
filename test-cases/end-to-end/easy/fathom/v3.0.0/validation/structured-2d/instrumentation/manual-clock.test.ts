@@ -32,10 +32,10 @@
 // at every moment, its own ping floods corridors that do not reach the forager,
 // and no amount of patrolling can end the scenario by contact.
 
-import { afterEach, beforeEach } from "vitest";
-import { TICK_DT, TICK_HZ } from "../../src/constants";
-import { assertLessThanOrEqual, assertNotEqual } from "../assert";
-import { poseMaze } from "../fixtures";
+import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD, TICK_DT, TICK_HZ } from "../../src/constants";
+import { assertLessThanOrEqual } from "../assert";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -43,15 +43,12 @@ import {
   type Harness,
 } from "../harness";
 import {
-  check,
-  denAll,
-  indexOfKind,
   parkForager,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  type SceneView,
 } from "../scene";
+import type { SceneView } from "../scene";
 
 /**
  * The board: an eight-tile room for the forager, three rows of solid rock, and a
@@ -140,95 +137,87 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "advances only when the driver steps it, by exactly the ticks it is given",
-  async () => {
-    startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const home = board.mark("F");
-    const beat = board.mark("P");
-    await parkForager(h, home);
-    // Full glow, so the clip is a lit room a reviewer can compare frame to frame
-    // rather than a black rectangle.
-    h.debug.setBrightness(1);
+it("advances only when the driver steps it, by exactly the ticks it is given", async () => {
+  startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const home = board.mark("F");
+  const beat = board.mark("P");
+  await parkForager(h, home);
+  // Full glow, so the clip is a lit room a reviewer can compare frame to frame
+  // rather than a black rectangle.
+  h.debug.setBrightness(1);
+  h.debug.setBrightHold(BRIGHT_HOLD);
 
-    const witness = indexOfKind(h.snapshot(), WITNESS);
-    assertNotEqual(
-      witness,
-      -1,
-      `a ${WITNESS} on the depth-1 roster, which specs/predators.md fixes as ` +
-        `one of each kind`,
-    );
-    const quiet = await denAll(h, [witness]);
-    h.debug.setPredatorTile(witness, beat.tx, beat.ty);
-    h.debug.setPredatorState(witness, "wander");
-    const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  // The one creature on the board: a hunter patrolling the beat it was posed
+  // on, which is what makes "nothing moved while real time passed" a reading
+  // rather than a tautology.
+  const witness = await spawnPredator(h, WITNESS, beat);
+  const watch = await sceneGuard(h, { foragerParked: false });
 
-    const run = await captureReplay(h, "held", async () => {
-      // The clip opens on the posed room, before the wait.
-      await h.advance(OPEN_TICKS);
+  const run = await captureReplay(h, "held", async () => {
+    // The clip opens on the posed room, before the wait.
+    await h.advance(OPEN_TICKS);
 
-      const before = h.snapshot();
-      // The measurement: real wall-clock time, with nothing stepping the build.
-      await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
-      const after = h.snapshot();
+    const before = h.snapshot();
+    // The measurement: real wall-clock time, with nothing stepping the build.
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS));
+    const after = h.snapshot();
 
-      // And closes on it, so the two halves of the clip are the same picture.
-      await h.advance(OPEN_TICKS);
+    // And closes on it, so the two halves of the clip are the same picture.
+    await h.advance(OPEN_TICKS);
 
-      // Now the driver's own step, and the same second spent sixty ways.
-      const stepFrom = h.snapshot();
-      await h.advance(STEP_TICKS);
-      const stepTo = h.snapshot();
+    // Now the driver's own step, and the same second spent sixty ways.
+    const stepFrom = h.snapshot();
+    await h.advance(STEP_TICKS);
+    const stepTo = h.snapshot();
 
-      const splitFrom = h.snapshot();
-      for (let i = 0; i < SPLIT_STEPS; i += 1) await h.advance(SPLIT_TICKS);
-      const splitTo = h.snapshot();
+    const splitFrom = h.snapshot();
+    for (let i = 0; i < SPLIT_STEPS; i += 1) await h.advance(SPLIT_TICKS);
+    const splitTo = h.snapshot();
 
-      return { before, after, stepFrom, stepTo, splitFrom, splitTo };
-    });
+    return { before, after, stepFrom, stepTo, splitFrom, splitTo };
+  });
 
-    requireSceneHeld(h.snapshot(), watch);
+  requireSceneHeld(h.snapshot(), watch);
 
-    // The witness has to be able to move for "nothing moved" to mean anything,
-    // and whether a predator patrols under its own power is the den and patrol
-    // points' verdict rather than this one's.
-    requirePredatorMotion(
-      run.stepFrom,
-      run.stepTo,
-      witness,
-      "patrol over a second the driver stepped, which is what makes " +
-        "'nothing moved while real time passed' a reading rather than a tautology",
-    );
+  // The witness has to be able to move for "nothing moved" to mean anything,
+  // and whether a predator patrols under its own power is the den and patrol
+  // points' verdict rather than this one's.
+  requirePredatorMotion(
+    run.stepFrom,
+    run.stepTo,
+    witness,
+    "patrol over a second the driver stepped, which is what makes " +
+      "'nothing moved while real time passed' a reading rather than a tautology",
+  );
 
-    assertLessThanOrEqual(
-      run.after.simTime - run.before.simTime,
-      MAX_DRIFT,
-      `seconds of simulation time accrued over ${SETTLE_MS} ms of real time ` +
-        `with nothing stepping the game`,
-    );
-    assertLessThanOrEqual(
-      widestTravel(run.before, run.after),
-      MAX_TRAVEL,
-      `the furthest the forager or any predator drifted, in logical units, ` +
-        `over that same second — so the clock was held rather than a counter ` +
-        `stalled`,
-    );
+  assertLessThanOrEqual(
+    run.after.simTime - run.before.simTime,
+    MAX_DRIFT,
+    `seconds of simulation time accrued over ${SETTLE_MS} ms of real time ` +
+      `with nothing stepping the game`,
+  );
+  assertLessThanOrEqual(
+    widestTravel(run.before, run.after),
+    MAX_TRAVEL,
+    `the furthest the forager or any predator drifted, in logical units, ` +
+      `over that same second — so the clock was held rather than a counter ` +
+      `stalled`,
+  );
 
-    const stepped = run.stepTo.simTime - run.stepFrom.simTime;
-    assertLessThanOrEqual(
-      Math.abs(stepped - STEP_TICKS * TICK_DT),
-      STEP_EPS,
-      `how far simTime moved from the ${STEP_TICKS * TICK_DT} s that ` +
-        `${STEP_TICKS} ticks are worth`,
-    );
+  const stepped = run.stepTo.simTime - run.stepFrom.simTime;
+  assertLessThanOrEqual(
+    Math.abs(stepped - STEP_TICKS * TICK_DT),
+    STEP_EPS,
+    `how far simTime moved from the ${STEP_TICKS * TICK_DT} s that ` +
+      `${STEP_TICKS} ticks are worth`,
+  );
 
-    const split = run.splitTo.simTime - run.splitFrom.simTime;
-    assertLessThanOrEqual(
-      Math.abs(split - stepped),
-      STEP_EPS,
-      `how far the same second differs when it is covered as ${SPLIT_STEPS} ` +
-        `steps of ${SPLIT_TICKS} ticks instead of one step of ${STEP_TICKS}`,
-    );
-  },
-);
+  const split = run.splitTo.simTime - run.splitFrom.simTime;
+  assertLessThanOrEqual(
+    Math.abs(split - stepped),
+    STEP_EPS,
+    `how far the same second differs when it is covered as ${SPLIT_STEPS} ` +
+      `steps of ${SPLIT_TICKS} ticks instead of one step of ${STEP_TICKS}`,
+  );
+});

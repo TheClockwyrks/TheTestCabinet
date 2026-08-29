@@ -25,22 +25,20 @@
 // brightness is `brightness/widens-lanternjaw`'s. Both halves here stand at a
 // fraction of the range so neither turns on either.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD } from "../../src/constants";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
+  poseBrightness,
   startPlaying,
   ticks,
   type Harness,
 } from "../harness";
 import {
-  check,
-  clearUnderfoot,
-  denAll,
   parkForager,
-  requireKind,
   requireSceneHeld,
   sceneGuard,
   separation,
@@ -91,7 +89,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Rock breaks its sense", async () => {
+it("Rock breaks its sense", async () => {
   await startPlaying(h);
   // The forager's corridor carries `C`, the clear-line standoff, `GAP_TILES`
   // along it; `P` sits the same number of ROWS below, with the rows between it
@@ -105,17 +103,16 @@ check("Rock breaks its sense", async () => {
   const home = board.mark("F");
   const blind = board.mark("P");
   const clear = board.mark("C");
-  const index = requireKind(h.snapshot(), "lanternjaw");
-  const quiet = await denAll(h, [index]);
   await parkForager(h, home);
-  await clearUnderfoot(h);
-  await h.debug.setBrightness(POSED_G);
-  const watch = await sceneGuard(h, quiet);
+  await poseBrightness(h, POSED_G, BRIGHT_HOLD);
+  // The one Lanternjaw this point is about, standing where the band occludes it.
+  const index = await spawnPredator(h, "lanternjaw", blind, {
+    state: "wander",
+  });
+  const watch = await sceneGuard(h);
 
   const read = await captureReplay(h, "blind", async () => {
     // Behind the band: inside the range, no line, so no fix at any step.
-    await h.debug.setPredatorTile(index, blind.tx, blind.ty);
-    await h.debug.setPredatorState(index, "wander");
     const seen: string[] = [];
     for (let spent = 0; spent < BLIND_TICKS; spent += BLIND_POLL) {
       await h.advance(BLIND_POLL);
@@ -127,7 +124,7 @@ check("Rock breaks its sense", async () => {
     // them, and nothing else about the scenario different.
     await h.debug.setPredatorState(index, "wander");
     await h.debug.setPredatorTile(index, clear.tx, clear.ty);
-    await h.debug.setBrightness(POSED_G);
+    await poseBrightness(h, POSED_G, BRIGHT_HOLD);
     const acquired = await h.until(
       (s) => s.predators[index].state === "chase",
       { maxFrames: ACQUIRE_TICKS, poll: 1 },

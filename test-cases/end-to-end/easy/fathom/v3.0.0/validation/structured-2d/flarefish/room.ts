@@ -36,18 +36,12 @@
 // from it are comparable.
 
 import { FLARE_RADIUS } from "../../src/constants";
-import { poseMaze } from "../fixtures";
-import {
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  standDown,
-  type Quiet,
-} from "../scene";
+import { poseMaze, spawnPredator } from "../fixtures";
+import { parkForager } from "../scene";
 import type { Harness } from "../harness";
 import type { Tile } from "../maze";
 import type { FathomSnapshot } from "../surface";
+import { fail } from "../assert";
 
 /** How many tiles of corridor the forager's own room holds. */
 export const ROOM_TILES = 3;
@@ -106,8 +100,6 @@ export interface FlareRoom {
   hall: Tile[];
   /** The Flarefish's index in the snapshot's roster. */
   index: number;
-  /** What was posed into the den, for the scene guard. */
-  quiet: Quiet;
 }
 
 /**
@@ -134,28 +126,16 @@ export async function poseFlareRoom(h: Harness): Promise<FlareRoom> {
   }));
 
   await parkForager(h, home);
-  h.debug.clearPlankton();
   h.debug.setBrightness(0);
 
-  const snap = h.snapshot();
-  const index = indexOfKind(snap, "flarefish");
-  if (index < 0) {
-    standDown(
-      "the roster carries no Flarefish, so there is no flare to watch — what " +
-        "the roster holds is the progression checks' verdict, not this one's",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  h.debug.setPredatorTile(index, hall[2].tx, hall[2].ty);
-  h.debug.setPredatorDir(index, "right");
-  h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "flarefish", hall[2], { dir: "right" });
 
-  return { forager: home, hall, index, quiet };
+  return { forager: home, hall, index };
 }
 
 /**
  * A Flarefish that reports a burning bloom is burning a disc, or the check that
- * merely wanted one to watch stands down.
+ * wanted one to watch FAILS.
  *
  * specs/predators/flarefish.md ties the two together: through the bloom window
  * "`flaring` is true and `flareRadius` is `FLARE_RADIUS` (`192`, 6 tiles)", and
@@ -166,9 +146,10 @@ export async function poseFlareRoom(h: Harness): Promise<FlareRoom> {
  * light, its cue or its lock against a build whose flare did none of those things
  * yet.
  *
- * `flarefish/flare-reveals` is the point that fails for it: it holds the reported
- * `flareRadius` against `FLARE_RADIUS` through the window it finds. So the checks
- * that only needed a bloom to stand in defer to it.
+ * `flarefish/flare-reveals` reads the same claim head-on, holding the reported
+ * `flareRadius` against `FLARE_RADIUS` through the window it finds. The checks
+ * that only needed a bloom to stand in fail here too rather than measuring a
+ * moment that was never a bloom.
  */
 export function requireBurningDisc(
   snapshot: FathomSnapshot,
@@ -177,12 +158,11 @@ export function requireBurningDisc(
   const fish = snapshot.predators[index];
   if (fish === undefined || fish.flaring !== true) return;
   if (typeof fish.flareRadius === "number" && fish.flareRadius > 0) return;
-  failPrecondition(
+  fail(
     `a Flarefish reporting flaring to burn a disc of FLARE_RADIUS ` +
       `(${FLARE_RADIUS}), so there was a bloom for this check to stand in; ` +
       "specs/predators/flarefish.md gives the flag and the radius the same " +
       "window",
-    "flarefish/flare-reveals",
     `flareRadius was reported as ${JSON.stringify(fish.flareRadius)}`,
   );
 }

@@ -36,16 +36,23 @@
 // reading — narrower than the `131.9` the alcove stands at, and narrower than the
 // `192` the kindle circle covers at that same `G`.
 
-import { afterEach, beforeEach } from "vitest";
-import { TILE, VISION_MIN } from "../../src/constants";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD, TILE, VISION_MIN } from "../../src/constants";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThan,
+  assertNotEqual,
+} from "../assert";
 import { poseMaze } from "../fixtures";
 import {
-  DIR_KEY,
   captureReplay,
   centerOf,
   colorDistance,
   createHarness,
+  DIR_KEY,
+  poseBrightness,
+  requireForagerMotion,
   sampleTile,
   startPlaying,
   ticks,
@@ -53,16 +60,12 @@ import {
   type Harness,
 } from "../harness";
 import {
-  check,
-  denAll,
   fromForager,
   parkForager,
   requireSceneHeld,
-  requireSwim,
   sceneGuard,
-  unmetPrecondition,
 } from "../scene";
-import type { Tile } from "../maze";
+import { Tile } from "../maze";
 
 /**
  * The board.
@@ -88,8 +91,8 @@ const SWIM_TILES = 4;
  *
  * `SWIM_TILES` tiles is `128` logical units, which `FORAGER_SPEED` (`128`) covers
  * in one second. Three seconds is a wide margin on that and still a hard ceiling,
- * so a build whose forager crawls is stood down by {@link requireSwim} rather than
- * waited for indefinitely.
+ * so a build whose forager crawls fails here rather than being waited for
+ * indefinitely.
  */
 const SWIM_MAX_TICKS = ticks(3);
 
@@ -126,7 +129,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Revealed terrain is remembered", async () => {
+it("Revealed terrain is remembered", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const alcove: Tile = board.mark("A");
@@ -135,13 +138,19 @@ check("Revealed terrain is remembered", async () => {
   const rock: Tile = { tx: alcove.tx, ty: alcove.ty - 1 };
   const start: Tile = board.mark("S");
   const fog: Tile = board.mark("D");
-  const quiet = await denAll(h);
+  // A plankton on the alcove, which is what a maze carries on a corridor tile
+  // (specs/gameplay.md) and what a remembered one is drawn with: "corridor as
+  // faint open water, and any plankton on it as a faint mote"
+  // (specs/sensing.md). The alcove is a stub the forager never enters, so the
+  // pellet is still standing when the tile is read — and still standing at the
+  // end, so no bite of this scenario's can clear the maze.
+  h.debug.setPlankton(alcove.tx, alcove.ty, true);
   h.debug.setForagerTile(start.tx, start.ty);
   h.debug.setForagerDir("right");
-  h.debug.setBrightness(0);
+  await poseBrightness(h, 0, BRIGHT_HOLD);
   // The forager travels here, so the guard watches the board rather than the
   // tile it was parked on.
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   await h.advance(SETTLE_TICKS);
   const opened = h.snapshot();
@@ -154,31 +163,26 @@ check("Revealed terrain is remembered", async () => {
       { maxFrames: SWIM_MAX_TICKS, poll: 1 },
     );
     h.release(DIR_KEY.right);
-    // Whether the forager swims at all is `controls/*` and `maze-movement/*`'s
-    // verdict; this point has nothing to say about a build whose forager stayed
-    // where it was put.
-    if (!swum.hit) {
-      requireSwim(
-        before.forager,
-        swum.snapshot.forager,
-        `swim ${SWIM_TILES} tiles clear of the tile its light revealed`,
-      );
-      unmetPrecondition(
-        `the forager covered only ${(swum.snapshot.forager.x - before.forager.x).toFixed(1)} ` +
-          `of the ${SWIM_TILES * TILE} logical units this scenario needs in ` +
-          `${SWIM_MAX_TICKS} ticks, so the light never left the tile it revealed; ` +
-          `how fast the forager travels is maze-movement/constant-speed's verdict`,
-      );
-    }
+    // The light has to LEAVE the tile it revealed for this point to have a
+    // remembered tile to read, so a forager that never got there fails here.
+    requireForagerMotion(
+      before,
+      swum.snapshot,
+      `swim ${SWIM_TILES} tiles clear of the tile its light revealed`,
+    );
+    assertEqual(
+      swum.hit,
+      true,
+      `the forager covered the ${SWIM_TILES * TILE} logical units this scenario ` +
+        `needs within ${SWIM_MAX_TICKS} ticks (it covered ` +
+        `${(swum.snapshot.forager.x - before.forager.x).toFixed(1)}), which is ` +
+        "what takes the light off the tile it revealed",
+    );
 
-    // Parked on the tile it reached, with the pellet under it taken off the
-    // board rather than eaten (specs/instrumentation.md: `setPlankton` "scores
-    // nothing and clears no maze"), and the light back at its narrowest. None of
-    // that touches the alcove.
+    // Parked on the tile it reached, with the light back at its narrowest.
+    // Neither touches the alcove.
     await parkForager(h);
-    const parked = h.snapshot();
-    h.debug.setPlankton(parked.forager.tx, parked.forager.ty, false);
-    h.debug.setBrightness(0);
+    await poseBrightness(h, 0, BRIGHT_HOLD);
     await h.advance(SETTLE_TICKS);
     const moved = h.snapshot();
 
@@ -214,16 +218,15 @@ check("Revealed terrain is remembered", async () => {
     "the logical units between the forager and the alcove once it has swum on, " +
       `which must exceed V at G = 0 (VISION_MIN = ${VISION_MIN})`,
   );
-  // A build whose light still reaches that far is one `brightness/widens-vision`
-  // fails; this point cannot read a remembered tile through a light that never
-  // left it.
-  if (visibilityOf(reading.moved, alcove) === "l") {
-    unmetPrecondition(
-      `the forager's light still holds the alcove ${gap.toFixed(1)} units away, ` +
-        `where the build reports a radius of ${reading.moved.visionRadius}; the ` +
-        `light's radius is brightness/widens-vision's verdict, not this one's`,
-    );
-  }
+  // A remembered tile is one the light has left, so a light that still holds the
+  // alcove leaves nothing here to read as remembered.
+  assertNotEqual(
+    visibilityOf(reading.moved, alcove),
+    "l",
+    `the alcove's visibility once the forager stood ${gap.toFixed(1)} units ` +
+      `away, where the build reports a light radius of ` +
+      String(reading.moved.visionRadius),
+  );
 
   for (const [name, tile] of [
     ["alcove", alcove],

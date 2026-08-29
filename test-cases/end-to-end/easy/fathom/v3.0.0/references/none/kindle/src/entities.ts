@@ -186,6 +186,14 @@ export function advance(
   want: WantDir,
   canEnter: CanEnter,
 ): void {
+  // Travel carries a body only along tiles open to it, so a body standing on a
+  // tile that is closed to it — which is what a newly posed layout can leave it
+  // on — holds that tile and travels nowhere.
+  if (!canEnter(m.col, m.row)) {
+    m.dir = null;
+    return;
+  }
+
   // Nothing desired: the body comes to rest where it stands.
   const first = want();
   if (first === null) {
@@ -296,11 +304,8 @@ export class Predator extends Mover {
   /** Seconds still to wait in the den before its turn comes. */
   denTimer: number;
 
-  /**
-   * Whether the schedule is suspended for this predator, which a posed board or
-   * a posed `"den"` state does, so no release time ever arrives for it.
-   */
-  heldInDen = false;
+  /** Whether it runs its own mind, which is how a dive is played. */
+  mind = true;
 
   /** The tile it believes the forager is on, or `null` while it has none. */
   fix: Cell | null = null;
@@ -352,7 +357,10 @@ export class Predator extends Mover {
 // ---- The bonus drifters ----------------------------------------------------
 
 /** A drifter stays in the maze until it is eaten, so it carries no lifetime. */
-export class Drifter extends Mover {}
+export class Drifter extends Mover {
+  /** Whether it runs its own wander, which is how a dive is played. */
+  mind = true;
+}
 
 /** Whether a body's heading changed by a quarter turn between two steps. */
 export function turnedCorner(before: Heading, after: Heading): boolean {

@@ -36,12 +36,16 @@
 // reading — narrower than the `131.9` the alcove stands at, and narrower than the
 // `192` the kindle circle covers at that same `G`.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { TILE, VISION_MIN } from "../../src/constants";
-import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThan,
+  assertLessThan,
+  fail,
+} from "../assert";
 import { poseMaze } from "../fixtures";
 import {
-  DIR_KEY,
   captureReplay,
   centerOf,
   colorDistance,
@@ -52,15 +56,7 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  failPrecondition,
-  parkForager,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { Tile } from "../maze";
 
 /**
@@ -79,18 +75,11 @@ import type { Tile } from "../maze";
  */
 const ART = ["#", "A", "S.........", "", "", "", "    D.."] as const;
 
-/** How many tiles along the corridor the forager swims before the reading. */
-const SWIM_TILES = 4;
+/** How far along the corridor the spare plankton stands, in tiles. */
+const SPARE_TILES = 9;
 
-/**
- * How long the swim is given, in ticks.
- *
- * `SWIM_TILES` tiles is `128` logical units, which `FORAGER_SPEED` (`128`) covers
- * in one second. Three seconds is a wide margin on that and still a hard ceiling,
- * so a build whose forager crawls is stood down by {@link requireSwim} rather than
- * waited for indefinitely.
- */
-const SWIM_MAX_TICKS = ticksFor(3);
+/** How many tiles along the corridor the forager stands before the reading. */
+const SWIM_TILES = 4;
 
 /** Ticks run after a pose, so the frame that is read was drawn under it. */
 const SETTLE_TICKS = 2;
@@ -131,7 +120,7 @@ function tileColor(snapshot: ReturnType<Harness["snapshot"]>, tile: Tile) {
   return sampleColor(h, at.x, at.y);
 }
 
-check("Revealed terrain is remembered", async () => {
+it("Revealed terrain is remembered", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const alcove: Tile = board.mark("A");
@@ -140,50 +129,28 @@ check("Revealed terrain is remembered", async () => {
   const rock: Tile = { tx: alcove.tx, ty: alcove.ty - 1 };
   const start: Tile = board.mark("S");
   const fog: Tile = board.mark("D");
-  const quiet = await denAll(h);
   h.debug.setForagerTile(start.tx, start.ty);
   h.debug.setForagerDir("right");
   h.debug.setBrightness(0);
+  // A plankton stands on the alcove, which is what a maze is laid out with on
+  // every corridor tile (specs/gameplay.md), and a second well down the corridor
+  // so that nothing here can be the mouthful that clears the maze. Neither is ever
+  // eaten: the forager is carried along its own row and never onto either.
+  h.debug.setPlankton(alcove.tx, alcove.ty, true);
+  h.debug.setPlankton(start.tx + SPARE_TILES, start.ty, true);
   // The forager travels here, so the guard watches the board rather than the tile
   // it was parked on.
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   await h.advance(SETTLE_TICKS);
   const opened = h.snapshot();
 
   const reading = await captureReplay(h, "memory", async () => {
-    const before = h.snapshot();
-    h.hold(DIR_KEY.right);
-    const swum = await h.until(
-      (s) => s.forager.x - before.forager.x >= SWIM_TILES * TILE,
-      { maxFrames: SWIM_MAX_TICKS, poll: 1 },
-    );
-    h.release(DIR_KEY.right);
-    // Whether the forager swims at all is `controls/*` and `maze-movement/*`'s
-    // verdict; this point has nothing to say about a build whose forager stayed
-    // where it was put.
-    if (!swum.hit) {
-      requireSwim(
-        before.forager,
-        swum.snapshot.forager,
-        `swim ${SWIM_TILES} tiles clear of the tile its light revealed`,
-      );
-      failPrecondition(
-        `the forager to cover the ${SWIM_TILES * TILE} logical units this ` +
-          `scenario needs within ${SWIM_MAX_TICKS} ticks, so the light leaves the ` +
-          `tile it revealed`,
-        "maze-movement/constant-speed",
-        `${(swum.snapshot.forager.x - before.forager.x).toFixed(1)} units covered`,
-      );
-    }
-
-    // Parked on the tile it reached, with the pellet under it taken off the board
-    // rather than eaten (specs/instrumentation.md: `setPlankton` "scores nothing
-    // and clears no maze"), and the light back at its narrowest. None of that
-    // touches the alcove.
-    await parkForager(h);
-    const parked = h.snapshot();
-    h.debug.setPlankton(parked.forager.tx, parked.forager.ty, false);
+    // Carried clear of the tile its light revealed, rather than driven clear of
+    // it: what this point reads is a remembered tile, and whether a held movement
+    // action moves the forager is the movement points' subject. The board carries
+    // no plankton, so nothing about the move changes the light either.
+    await parkForager(h, { tx: start.tx + SWIM_TILES, ty: start.ty });
     h.debug.setBrightness(0);
     await h.advance(SETTLE_TICKS);
     const moved = h.snapshot();
@@ -232,10 +199,9 @@ check("Revealed terrain is remembered", async () => {
   // fails; this point cannot read a remembered tile through a light that never
   // left it.
   if (visibilityAt(reading.moved, alcove) === "l") {
-    failPrecondition(
+    fail(
       `the forager's light to leave a tile ${gap.toFixed(1)} units away once it ` +
         "has swum on",
-      "brightness/widens-vision",
       `a reported radius of ${reading.moved.visionRadius}`,
     );
   }
@@ -260,12 +226,11 @@ check("Revealed terrain is remembered", async () => {
   // stop at rock — which is fog/light-line-of-sight's verdict, and without a
   // control there is nothing here to measure a remembered tile against.
   if (visibilityAt(reading.later, fog) !== "u") {
-    failPrecondition(
+    fail(
       `the sealed pocket at (${fog.tx}, ${fog.ty}) to stay unrevealed, as the ` +
         "control this point measures a remembered tile against; no light, pulse " +
         "or flare of this scenario reaches it, and specs/sensing.md has the " +
         "light travel straight and stop at the rock it lands on",
-      "fog/light-line-of-sight",
       `it reported "${visibilityAt(reading.later, fog)}"`,
     );
   }

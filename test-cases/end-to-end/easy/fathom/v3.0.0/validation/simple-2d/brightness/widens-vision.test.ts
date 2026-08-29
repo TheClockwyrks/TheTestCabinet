@@ -29,8 +29,13 @@
 // has never been revealed by anything, so "not lit" there cannot be a tile that an
 // earlier, brighter reading had already lit and left remembered.
 
-import { afterEach, beforeEach } from "vitest";
-import { TILE, VISION_GAIN, VISION_MIN } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  BRIGHT_HOLD,
+  TILE,
+  VISION_GAIN,
+  VISION_MIN,
+} from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
@@ -43,19 +48,18 @@ import {
   captureReplay,
   centerOf,
   createHarness,
+  poseBrightness,
   startPlaying,
   visibilityOf,
   type Harness,
 } from "../harness";
 import {
-  check,
-  denAll,
   fromForager,
   parkForager,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
-import type { Tile } from "../maze";
+import { Tile } from "../maze";
 
 /** Tiles of posed corridor: the forager's own, the probe's, and room to spare. */
 const RUN_TILES = 8;
@@ -90,21 +94,19 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Brightness widens the light pocket", async () => {
+it("Brightness widens the light pocket", async () => {
   await startPlaying(h);
   const run = await poseStraightRun(h, RUN_TILES);
   const probe: Tile = { tx: run.start.tx + PROBE_TILES, ty: run.start.ty };
-  const quiet = await denAll(h);
   await parkForager(h, run.start);
   // No plankton, so nothing the forager is standing on can raise `G` under a
   // reading that is about a posed one.
-  h.debug.clearPlankton();
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
   const sweep = await captureReplay(h, "widen", async () => {
     const readings: { g: number; radius: number; probe: string }[] = [];
     for (const g of SAMPLES) {
-      h.debug.setBrightness(g);
+      await poseBrightness(h, g, BRIGHT_HOLD);
       await h.advance(READ_BEAT);
       const snapshot = h.snapshot();
       readings.push({

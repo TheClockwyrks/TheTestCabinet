@@ -38,11 +38,12 @@
 // (specs/instrumentation.md), and the distances are read against the `R` the
 // build reports at the moment of each reading.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
+  assertNotEqual,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -53,15 +54,7 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import {
   FOG_MATCH,
   fromFog,
@@ -118,7 +111,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Hidden, but not forgotten", async () => {
+it("Hidden, but not forgotten", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const watched = board.mark("T");
@@ -126,30 +119,26 @@ check("Hidden, but not forgotten", async () => {
   const unlit = board.mark("S");
   const near = board.mark("H");
   const away = board.mark("A");
-  const quiet = await denAll(h);
 
   /** Rest the forager at a berth, put `G` back to zero, and let it draw. */
   const restAt = async (tile: { tx: number; ty: number }): Promise<void> => {
     await parkForager(h, tile);
-    await clearUnderfoot(h);
     await h.advance(SETTLE_TICKS);
   };
 
   // Reveal the watched tile from the berth beside it, then take up the near
   // station the readings are taken from.
   await restAt(board.mark("M"));
-  if (visibilityOf(h.snapshot(), watched) === "u") {
-    // Whether the forager's light reveals the ground around it is
-    // `fog/light-line-of-sight`'s verdict; with nothing revealed there is no
-    // remembered tile for this point to hide and bring back.
-    unmetPrecondition(
-      "the forager's light left the neighbouring corridor tile unrevealed, so " +
-        "this scenario has no explored ground to hide; whether the light " +
-        "reveals at all is the fog points' verdict, not this one's",
-    );
-  }
+  // With nothing revealed there is no remembered tile for this point to hide and
+  // bring back, so the reveal is part of what it decides.
+  assertNotEqual(
+    visibilityOf(h.snapshot(), watched),
+    "u",
+    "the visibility of the corridor tile beside the berth, which the forager's " +
+      "own light reveals — it is the explored ground the circle then hides",
+  );
   await restAt(near);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
   const seen = await captureReplay(h, "memory", async () => {
     await h.advance(DWELL_TICKS);

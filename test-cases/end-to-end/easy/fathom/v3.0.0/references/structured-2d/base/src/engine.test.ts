@@ -31,7 +31,7 @@ import {
 } from "./constants";
 import { diagnosticSources } from "./diagnostics";
 import { createHarness, FRAME_MS, type Harness } from "./harness";
-import { DEN, HALL, at, pose } from "./scenarios";
+import { DEN, HALL, at, minds, pose } from "./scenarios";
 
 /** Frames, at one tick a frame, covering `seconds` of game time. */
 function ticks(seconds: number): number {
@@ -41,9 +41,8 @@ function ticks(seconds: number): number {
 /** A harness already in live play, with the creatures held where posed. */
 async function playing(): Promise<Harness> {
   const harness = await createHarness();
-  harness.debug.startDive();
-  harness.debug.beginPlay();
-  harness.debug.setCreatureAI(false);
+  harness.debug.setScreen("playing");
+  minds(harness.debug, false);
   // One tick settles the board — the plankton underfoot is grazed — so a test
   // that watches the cue log sees only the cues its own action raised.
   await harness.engine.advance(1);
@@ -69,15 +68,13 @@ describe("the engine wiring", () => {
 
   it("runs the simulation on whole ticks, however the frames divide the time", async () => {
     const one = await createHarness();
-    one.debug.startDive();
-    one.debug.beginPlay();
+    one.debug.setScreen("playing");
     await one.engine.advance(ticks(2));
     const perTick = one.debug.snapshot();
     one.dispose();
 
     const two = await createHarness();
-    two.debug.startDive();
-    two.debug.beginPlay();
+    two.debug.setScreen("playing");
     two.engine.setClock(new ConstantClock(FRAME_MS * 2));
     await two.engine.advance(ticks(2) / 2);
     const perFrame = two.debug.snapshot();
@@ -179,16 +176,16 @@ describe("the screens", () => {
     const start = at(fixture, "F");
     for (let attempt = 0; attempt <= START_LIVES; attempt++) {
       if (harness.debug.snapshot().screen === "countdown") {
-        harness.debug.beginPlay();
+        harness.debug.setScreen("playing");
       }
       // Contact is the predator's center on the forager's own tile, whatever
       // that predator is doing, so a posed hunter underfoot is enough.
       harness.debug.setPredatorTile(0, start.tx, start.ty);
       harness.debug.setPredatorState(0, "wander");
-      const settled = await harness.until(() => {
+      const settled = await harness.waitFor(() => {
         const screen = harness.debug.snapshot().screen;
         return screen === "countdown" || screen === "gameover";
-      }, ticks(2));
+      }, 2);
       expect(settled).toBe(true);
     }
     expect(harness.debug.snapshot().screen).toBe("gameover");
@@ -335,8 +332,7 @@ describe("the controls", () => {
     await harness.tap("KeyM");
     expect(harness.debug.snapshot().muted).toBe(true);
 
-    harness.debug.startDive();
-    harness.debug.beginPlay();
+    harness.debug.setScreen("playing");
     await harness.engine.advance(1);
     harness.cues.length = 0;
     await harness.tap("Space");
@@ -353,7 +349,13 @@ describe("the controls", () => {
 describe("the rules of a dive", () => {
   it("scores a plankton and brightens the forager for eating it", async () => {
     const harness = await playing();
-    pose(harness.debug, HALL);
+    const fixture = pose(harness.debug, HALL);
+    const start = at(fixture, "F");
+    // Two on the board, so eating the first clears no maze under the reading.
+    harness.debug.setPlankton(start.tx + 1, start.ty, true);
+    harness.debug.setPlankton(start.tx + 2, start.ty, true);
+    harness.debug.setBrightness(0);
+    harness.debug.setBrightHold(0);
     const before = harness.debug.snapshot();
     expect(before.brightness).toBe(0);
 
@@ -428,7 +430,7 @@ describe("the rules of a dive", () => {
     const mark = at(fixture, "P");
     harness.debug.setPredatorTile(0, mark.tx, mark.ty);
     harness.debug.setPredatorState(0, "chase");
-    harness.debug.setCreatureAI(true);
+    minds(harness.debug, true);
     harness.cues.length = 0;
 
     const caught = await harness.until(
@@ -450,11 +452,11 @@ describe("the rules of a dive", () => {
     const harness = await playing();
     const fixture = pose(harness.debug, HALL);
     const mark = at(fixture, "P");
-    harness.debug.setCreatureAI(true);
+    minds(harness.debug, true);
 
     for (let attempt = 0; attempt <= START_LIVES; attempt++) {
       if (harness.debug.snapshot().screen === "countdown") {
-        harness.debug.beginPlay();
+        harness.debug.setScreen("playing");
       }
       harness.debug.setPredatorTile(0, mark.tx, mark.ty);
       harness.debug.setPredatorState(0, "chase");
@@ -517,9 +519,8 @@ describe("the rules of a dive", () => {
 
   it("releases the den on the staggered schedule, measured on `released`", async () => {
     const harness = await createHarness();
-    harness.debug.startDive();
-    harness.debug.beginPlay();
-    harness.debug.setCreatureAI(false);
+    harness.debug.setScreen("playing");
+    minds(harness.debug, false);
 
     const times: number[] = [];
     for (let slot = 0; slot < 3; slot++) {
@@ -541,14 +542,37 @@ describe("the rules of a dive", () => {
 
   it("lets a released predator out through the den gate", async () => {
     const harness = await createHarness();
-    harness.debug.startDive();
-    harness.debug.beginPlay();
-    pose(harness.debug, DEN);
-    // The posed board suspends the schedule, so the swim is posed instead.
-    harness.debug.setPredatorState(0, "wander");
+    harness.debug.setScreen("playing");
+    const fixture = pose(harness.debug, DEN);
+    minds(harness.debug, false);
+    const start = at(fixture, "F");
+    // Well clear of the gate, so nothing the swimmer does reaches it.
+    harness.debug.setForagerTile(start.tx, start.ty);
+
+    // One hunter alone, in the chamber, with its turn come.
+    const den = harness.debug.snapshot().tiles.reduce<{
+      tx: number;
+      ty: number;
+    } | null>((found, row, ty) => {
+      const tx = row.indexOf("d");
+      return found ?? (tx === -1 ? null : { tx, ty });
+    }, null);
+    if (!den) throw new Error("the fixture carries no den tile");
+    harness.debug.setPredatorTile(0, den.tx, den.ty);
+    harness.debug.setPredatorState(0, "den");
+    harness.debug.setPredatorReleased(0, true);
+    harness.debug.setPredatorMind(0, true);
+    expect(harness.debug.snapshot().predators[0].state).toBe("den");
+
+    // It swims out under its own mind, and is loose once it is past the gate.
+    const out = await harness.until(
+      () => harness.debug.snapshot().predators[0].state === "wander",
+      ticks(4),
+    );
+    expect(out).toBe(true);
     const loose = harness.debug.snapshot().predators[0];
-    expect(loose.state).toBe("wander");
     expect(loose.released).toBe(true);
+    expect(harness.debug.snapshot().tiles[loose.ty][loose.tx]).toBe(".");
     harness.dispose();
   });
 });
@@ -623,9 +647,9 @@ describe("the picture", () => {
     expect(await drawn()).toBeGreaterThan(60);
 
     await harness.tap("Escape");
-    harness.debug.startDive();
+    harness.debug.setScreen("countdown");
     expect(await drawn()).toBeGreaterThan(60);
-    harness.debug.beginPlay();
+    harness.debug.setScreen("playing");
     expect(await drawn()).toBeGreaterThan(60);
     harness.dispose();
   });
@@ -637,7 +661,7 @@ describe("the picture", () => {
     // The Gloamfin's close hearing takes a fix through the build's own sense.
     harness.debug.setPredatorTile(1, start.tx + 1, start.ty);
     harness.debug.setPredatorState(1, "wander");
-    harness.debug.setCreatureAI(true);
+    minds(harness.debug, true);
     await harness.engine.advance(2);
 
     const alerted = harness.debug.snapshot().predators[1];

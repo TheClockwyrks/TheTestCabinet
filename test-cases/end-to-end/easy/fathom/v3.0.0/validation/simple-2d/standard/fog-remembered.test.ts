@@ -34,9 +34,9 @@
 // (specs/overview.md leaves it so), so the question is whether the two tiles are
 // drawn DIFFERENTLY, not what color either one is.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureStill,
@@ -49,14 +49,10 @@ import {
   type Harness,
 } from "../harness";
 import {
-  check,
-  clearUnderfoot,
-  denAll,
   fromForager,
   parkForager,
   requireSceneHeld,
   sceneGuard,
-  unmetPrecondition,
 } from "../scene";
 
 /**
@@ -66,9 +62,15 @@ import {
  *
  * `H` home, `T` the tile that is read, `B` the far berth, `S` the fog reference.
  */
-const ART = ["H.T" + ".".repeat(17) + "B" + " ".repeat(8) + "S.."] as const;
+const ART = ["T.H" + ".".repeat(17) + "B" + " ".repeat(8) + "S.."] as const;
 
-/** How far `T` sits from `H`, in tiles: inside `V` at `G = 0` (96, three tiles). */
+/**
+ * How far `T` sits from `H`, in tiles: inside `V` at `G = 0` (96, three tiles).
+ *
+ * It sits on the side the forager does NOT swim to, so the light reveals it from
+ * the home berth and nothing ever crosses it — which is what leaves the plankton
+ * this check stands on it in place for the reading.
+ */
 const LIT_TILES = 2;
 
 /** How far `B` sits from `T`, in tiles. */
@@ -102,7 +104,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The whole explored map stays drawn", async () => {
+it("The whole explored map stays drawn", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("H");
@@ -113,34 +115,35 @@ check("The whole explored map stays drawn", async () => {
   // while it stood there, and terrain rather than a mote, because no plankton
   // sits on rock (specs/gameplay.md).
   const rock = { tx: home.tx, ty: home.ty - ROCK_OFFSET };
-  const quiet = await denAll(h);
 
-  // Light the pocket at home. The pellet underfoot is eaten off camera and `G`
-  // put back to zero, so the light that reveals `T` is the one a dive opens
-  // with rather than one this arrangement widened.
+  // A plankton on the tile the reading is taken at, which is what a maze carries
+  // on a corridor tile (specs/gameplay.md) and what a remembered one is drawn
+  // with: "corridor as faint open water, and any plankton on it as a faint mote"
+  // (specs/sensing.md). It stands behind the forager, which swims the other way,
+  // so it is still there when the tile is read and the maze cannot be cleared.
+  h.debug.setPlankton(target.tx, target.ty, true);
+
+  // Light the pocket at home. The board carries no other plankton, so the light
+  // that reveals `T` is the one a dive opens with rather than one a mouthful
+  // widened.
   await parkForager(h, home);
-  await clearUnderfoot(h);
   await h.advance(SETTLE_TICKS);
   const lit = h.snapshot();
+  // With nothing revealed there is no remembered tile for this point to be
+  // about, so the reveal is part of what it decides.
   for (const tile of [target, rock]) {
-    if (visibilityOf(lit, tile) !== "u") continue;
-    // Whether the forager's own light reveals the ground around it — the
-    // corridor ahead, and the rock it lands on — is `fog/light-line-of-sight`'s
-    // verdict to give. With nothing revealed there is no remembered tile for
-    // this point to be about.
-    unmetPrecondition(
-      `the forager's light left the tile at (${tile.tx}, ${tile.ty}) beside it ` +
-        `unrevealed — the corridor ${LIT_TILES} tiles ahead and the rock it ` +
-        "lands on are what this scenario reads — so there is no explored " +
-        "ground here; whether the light reveals at all is the fog points' " +
-        "verdict, not this one's",
+    assertNotEqual(
+      visibilityOf(lit, tile),
+      "u",
+      `the visibility of the tile at (${tile.tx}, ${tile.ty}) the forager's own ` +
+        `light stands beside — the corridor ${LIT_TILES} tiles ahead and the ` +
+        "rock it lands on are the explored ground this scenario remembers",
     );
   }
 
   // And rest it at the far end of the corridor, its own pellet eaten there too.
   await parkForager(h, berth);
-  await clearUnderfoot(h);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
   await h.advance(SETTLE_TICKS);
 
   const after = h.snapshot();

@@ -38,14 +38,14 @@
 // what ink does to the hunters it DOES blind (`lanternjaw/*`, `flarefish/*`), or
 // what a cloud costs to release (`ink/*`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertGreaterThanOrEqual,
 } from "../assert";
 import { GLOAMFIN_HEAR, INK_LIFE, TICK_HZ, TILE } from "../constants";
-import { placePredator, poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -54,15 +54,10 @@ import {
   startPlaying,
 } from "../harness";
 import {
-  check,
-  denAll,
   parkForager,
-  quietBoard,
-  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  unmetPrecondition,
 } from "../scene";
 import { apart, gloamfinOf, sweep } from "./pings";
 
@@ -153,34 +148,30 @@ async function watchCloud(index: number): Promise<Crossing> {
   return crossing;
 }
 
-/** Release a cloud where the forager stands, or stand the check down. */
+/** Release a cloud where the forager stands. */
 async function releaseInk(what: string): Promise<void> {
   await h.debug.setInkCooldown(0);
   await h.tap(INK_KEY);
-  if ((await h.snapshot()).inkClouds.length === 0) {
-    unmetPrecondition(
-      `no ink cloud stood after the b action was pressed with the cooldown at 0, ` +
-        `so there was no ${what} for this point to watch the Gloamfin through — ` +
-        `specs/sensing.md releases a cloud when ink's cooldown is 0 and ` +
-        `specs/movement.md binds that action to ${INK_KEY}, and whether ink is ` +
-        `released at all is the ink checks' verdict, not this one's`,
-    );
-  }
+  assertGreaterThan(
+    (await h.snapshot()).inkClouds.length,
+    0,
+    `the ${what} this point watches the Gloamfin through; specs/sensing.md ` +
+      `releases a cloud when ink's cooldown is 0 and specs/movement.md binds ` +
+      `that action to ${INK_KEY}`,
+  );
 }
 
-check("Ink does nothing to it", async () => {
+it("Ink does nothing to it", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, STANDOFF);
-  const index = requireKind(await h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
   // The forager first, and parked: a posed chase fixes on "the forager's current
   // tile" (specs/instrumentation.md), and that tile is where the first cloud goes.
-  await quietBoard(h, board.mark("I"));
-  await placePredator(h, index, board.mark("P"), {
+  await parkForager(h, board.mark("I"));
+  const index = await spawnPredator(h, "gloamfin", board.mark("P"), {
     dir: "left",
     state: "chase",
   });
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const watched = await captureReplay(h, "noop", async () => {
     // ---- The cloud on the line between them --------------------------------
@@ -199,10 +190,13 @@ check("Ink does nothing to it", async () => {
     await parkForager(h, board.mark("P"));
     await releaseInk("cloud under the hunter itself");
     await parkForager(h, board.mark("I"));
-    await placePredator(h, index, board.mark("P"), {
-      dir: "left",
-      state: "chase",
-    });
+    await h.debug.setPredatorTile(
+      index,
+      board.mark("P").tx,
+      board.mark("P").ty,
+    );
+    await h.debug.setPredatorDir(index, "left");
+    await h.debug.setPredatorState(index, "chase");
     const openingInside = await h.snapshot();
     const inside = await watchCloud(index);
     const closedInside = await h.snapshot();

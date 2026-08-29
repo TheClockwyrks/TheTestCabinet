@@ -19,8 +19,8 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach } from "vitest";
-import { check } from "../scene";
+import { afterEach, beforeEach, it } from "vitest";
+
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { deadEnds } from "../maze";
@@ -47,30 +47,27 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "lays out a braided maze, with at least two corridor neighbors on every corridor tile",
-  async () => {
-    const boards = await freshBoards(h);
-    requireLaidOut(boards);
+it("lays out a braided maze, with at least two corridor neighbors on every corridor tile", async () => {
+  const boards = await freshBoards(h);
+  requireLaidOut(boards);
 
-    const measured = boards.map((board) => {
-      const ends = deadEnds(board.snapshot);
-      return { board, ends, ok: ends.length === MAX_DEAD_ENDS };
-    });
-    await captureBoard(h, witness(measured).board);
+  const measured = boards.map((board) => {
+    const ends = deadEnds(board.snapshot);
+    return { board, ends, ok: ends.length === MAX_DEAD_ENDS };
+  });
+  await captureBoard(h, witness(measured).board);
 
-    for (const one of measured) {
-      const named = one.ends
-        .slice(0, NAMED)
-        .map((tile) => `(${tile.tx}, ${tile.ty})`)
-        .join(", ");
-      assertEqual(
-        one.ends.length,
-        MAX_DEAD_ENDS,
-        `corridor tiles with fewer than two corridor neighbors in the maze laid ` +
-          `out from seed ${one.board.seed}` +
-          (named === "" ? "" : `, at ${named}`),
-      );
-    }
-  },
-);
+  for (const one of measured) {
+    const named = one.ends
+      .slice(0, NAMED)
+      .map((tile) => `(${tile.tx}, ${tile.ty})`)
+      .join(", ");
+    assertEqual(
+      one.ends.length,
+      MAX_DEAD_ENDS,
+      `corridor tiles with fewer than two corridor neighbors in the maze laid ` +
+        `out from seed ${one.board.seed}` +
+        (named === "" ? "" : `, at ${named}`),
+    );
+  }
+});

@@ -31,11 +31,10 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { denTiles, predatorReachable } from "../maze";
-import { check } from "../scene";
 import { captureBoard, freshBoards, witness } from "./boards";
 
 /**
@@ -63,50 +62,45 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "joins the den to the forager's start over the tiles a predator may enter",
-  async () => {
-    const boards = await freshBoards(h);
+it("joins the den to the forager's start over the tiles a predator may enter", async () => {
+  const boards = await freshBoards(h);
 
-    const measured = boards.map((board) => {
-      const start = board.snapshot.forager;
-      const den = denTiles(board.snapshot);
-      const reach = predatorReachable(board.snapshot, [
-        { tx: start.tx, ty: start.ty },
-      ]);
-      const unreached = den.filter(
-        (tile) => !reach.has(`${tile.tx},${tile.ty}`),
-      );
-      return {
-        board,
-        start,
-        den,
-        unreached,
-        ok: den.length >= MIN_DEN_TILES && unreached.length === MAX_UNREACHED,
-      };
-    });
-    await captureBoard(h, witness(measured).board);
+  const measured = boards.map((board) => {
+    const start = board.snapshot.forager;
+    const den = denTiles(board.snapshot);
+    const reach = predatorReachable(board.snapshot, [
+      { tx: start.tx, ty: start.ty },
+    ]);
+    const unreached = den.filter((tile) => !reach.has(`${tile.tx},${tile.ty}`));
+    return {
+      board,
+      start,
+      den,
+      unreached,
+      ok: den.length >= MIN_DEN_TILES && unreached.length === MAX_UNREACHED,
+    };
+  });
+  await captureBoard(h, witness(measured).board);
 
-    for (const one of measured) {
-      const seed = `the maze laid out from seed ${one.board.seed}`;
-      assertGreaterThanOrEqual(
-        one.den.length,
-        MIN_DEN_TILES,
-        `den-interior ('d') tiles in ${seed}, the chamber a released predator ` +
-          `comes out of`,
-      );
-      const named = one.unreached
-        .slice(0, NAMED)
-        .map((tile) => `(${tile.tx}, ${tile.ty})`)
-        .join(", ");
-      assertEqual(
-        one.unreached.length,
-        MAX_UNREACHED,
-        `den-interior tiles the forager's start tile (${one.start.tx}, ` +
-          `${one.start.ty}) cannot be reached from over corridor, den and gate ` +
-          `tiles, of the ${one.den.length} in ${seed}` +
-          (named === "" ? "" : `, at ${named}`),
-      );
-    }
-  },
-);
+  for (const one of measured) {
+    const seed = `the maze laid out from seed ${one.board.seed}`;
+    assertGreaterThanOrEqual(
+      one.den.length,
+      MIN_DEN_TILES,
+      `den-interior ('d') tiles in ${seed}, the chamber a released predator ` +
+        `comes out of`,
+    );
+    const named = one.unreached
+      .slice(0, NAMED)
+      .map((tile) => `(${tile.tx}, ${tile.ty})`)
+      .join(", ");
+    assertEqual(
+      one.unreached.length,
+      MAX_UNREACHED,
+      `den-interior tiles the forager's start tile (${one.start.tx}, ` +
+        `${one.start.ty}) cannot be reached from over corridor, den and gate ` +
+        `tiles, of the ${one.den.length} in ${seed}` +
+        (named === "" ? "" : `, at ${named}`),
+    );
+  }
+});

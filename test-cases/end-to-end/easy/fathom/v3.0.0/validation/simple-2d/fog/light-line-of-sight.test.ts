@@ -28,36 +28,36 @@
 // and judged clear only once it is on the arm. What happens in between is the
 // build's business.
 //
-// THE PREDATOR IS SCENERY. `setCreatureAI(false)` holds every creature exactly
-// where it stands and leaves the rest of the simulation running
-// (specs/instrumentation.md), so the only thing that changes between "not drawn"
-// and "drawn" is where the forager is standing — rather than where a patrol
-// happened to wander mid-clip.
+// THE PREDATOR IS SCENERY, AND IT IS THE ONLY ONE. `poseMaze` clears the roster,
+// the drifters and the plankton, this check spawns back the one hunter it is
+// about, and `setPredatorMind(index, false)` holds it exactly where it stands
+// while the rest of the simulation runs (specs/instrumentation.md). So the only
+// thing that changes between "not drawn" and "drawn" is where the forager is
+// standing — rather than where a patrol happened to wander mid-clip. The bare
+// board also keeps `G` the one this check posed rather than one a swim down a
+// corridor of pellets kept topping up.
 
-import { afterEach, beforeEach } from "vitest";
-import { VISION_GAIN, VISION_MIN } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
-  DIR_KEY,
   captureReplay,
   createHarness,
+  DIR_KEY,
+  poseBrightness,
+  requireForagerMotion,
   startPlaying,
   ticks,
   type Harness,
 } from "../harness";
 import {
-  check,
-  denAll,
   fromForager,
   parkForager,
-  requireKind,
   requireSceneHeld,
-  requireSwim,
   sceneGuard,
-  unmetPrecondition,
 } from "../scene";
-import type { FathomSnapshot } from "../surface";
+import { FathomSnapshot } from "../surface";
 
 /**
  * The blind corner: the forager starts at `S` and swims right to the junction
@@ -87,7 +87,7 @@ const VISION_MAX = VISION_MIN + VISION_GAIN;
  *
  * Three tiles is `96` logical units, which `FORAGER_SPEED` (`128`) covers in
  * `0.75 s`. Two seconds is a wide margin and still a hard ceiling, so a build that
- * never gets there is stood down rather than waited for.
+ * never gets there fails rather than being waited for.
  */
 const LEG_MAX_TICKS = ticks(2);
 
@@ -104,28 +104,25 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The light does not bend around corners", async () => {
+it("The light does not bend around corners", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, BLIND_CORNER);
   const start = board.mark("S");
   const junction = board.mark("J");
   const post = board.mark("P");
-  const gloamfin = requireKind(h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [gloamfin]);
 
   h.debug.setForagerTile(start.tx, start.ty);
   h.debug.setForagerDir("right");
-  h.debug.setPredatorTile(gloamfin, post.tx, post.ty);
-  // Facing the junction it will be revealed from, so the reveal is head-on.
-  h.debug.setPredatorDir(gloamfin, "up");
-  h.debug.setPredatorState(gloamfin, "wander");
-  h.debug.setCreatureAI(false);
-  // No plankton to graze, so `G` is the one this check posed rather than one a
-  // swim down a corridor of pellets kept topping up.
-  h.debug.clearPlankton();
+  // Facing the junction it will be revealed from, so the reveal is head-on, and
+  // held there for the whole drive.
+  const gloamfin = await spawnPredator(h, "gloamfin", post, {
+    dir: "up",
+    state: "wander",
+    mind: false,
+  });
   // The widest light in the game, so the predator is inside `V` throughout.
-  h.debug.setBrightness(1);
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  await poseBrightness(h, 1, BRIGHT_HOLD);
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   interface Sample {
     lit: boolean;
@@ -181,20 +178,19 @@ check("The light does not bend around corners", async () => {
 
   requireSceneHeld(end.settled, watch);
 
-  // Whether the forager travels is `controls/*` and `maze-movement/*`'s verdict.
-  if (!end.arrived || !end.onArm) {
-    requireSwim(
-      end.before.forager,
-      end.settled.forager,
-      "round the corner the predator waits behind",
-    );
-    unmetPrecondition(
-      `the forager did not reach ${end.arrived ? "the arm below the junction" : "the junction"} ` +
-        `within ${LEG_MAX_TICKS} ticks a leg, so the reveal this point is about ` +
-        `never happened; how the forager travels and turns is maze-movement's ` +
-        `verdict, not this one's`,
-    );
-  }
+  // The drive reached the arm, which is the reveal this point is about: a forager
+  // that never rounded the corner never crossed from blind to clear.
+  requireForagerMotion(
+    end.before,
+    end.settled,
+    "round the corner the predator waits behind",
+  );
+  assertEqual(
+    end.arrived && end.onArm,
+    true,
+    `the forager reached the junction and then the arm below it within ` +
+      `${LEG_MAX_TICKS} ticks a leg, which is the crossing this point reads`,
+  );
 
   assertGreaterThan(
     blind.length,
@@ -219,13 +215,14 @@ check("The light does not bend around corners", async () => {
   // And inside the light the BUILD reports, so a build whose radius is wrong is
   // reported by the point that owns the radius rather than by this one.
   const narrowest = Math.min(...blind.map((s) => s.radius));
-  if (narrowest <= furthest) {
-    unmetPrecondition(
-      `the build's own light radius fell to ${narrowest} while the predator ` +
-        `stood ${furthest.toFixed(1)} units away, so it was out of range rather ` +
-        `than behind rock; the radius is brightness/widens-vision's verdict`,
-    );
-  }
+  assertGreaterThan(
+    narrowest,
+    furthest,
+    `the narrowest light radius the build reported across the blind stretch, ` +
+      `against the ${furthest.toFixed(1)} units the predator stood at its ` +
+      "furthest — a predator outside the pocket is out of range rather than " +
+      "behind rock, and this point reads the rock",
+  );
 
   assertEqual(
     blind.filter((s) => s.lit).length,

@@ -31,14 +31,14 @@
 // patrol travels at (`gloamfin/wander-speed`), or how the fix was taken
 // (`gloamfin/fix-and-alert`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
 import { FORAGER_SPEED, GLOAMFIN_CHASE_SPEED, TICK_HZ } from "../constants";
-import { placePredator, poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -46,10 +46,7 @@ import {
   startPlaying,
 } from "../harness";
 import {
-  check,
-  denAll,
-  quietBoard,
-  requireKind,
+  parkForager,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
@@ -109,23 +106,21 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("It chases at GLOAMFIN_CHASE_SPEED", async () => {
+it("It chases at GLOAMFIN_CHASE_SPEED", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, RUN);
-  const index = requireKind(await h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
   // The forager first, and parked: `setPredatorState(index, "chase")` fixes on
   // "the forager's current tile" (specs/instrumentation.md), so it has to be
   // standing at the far end of the run by the time the Gloamfin is posed.
-  await quietBoard(h, board.mark("F"));
-  await placePredator(h, index, board.mark("P"), {
+  await parkForager(h, board.mark("F"));
+  const index = await spawnPredator(h, "gloamfin", board.mark("P"), {
     // Faced down the corridor at the forager. A heading pointing anywhere else
     // would put a turn into the opening steps, and this point measures the run
     // rather than the turn.
     dir: "left",
     state: "chase",
   });
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const opening = await h.snapshot();
 

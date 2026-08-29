@@ -3,8 +3,8 @@
 // The circle is a rendering mask and not a sense, so every test here reads two
 // things about the same tile: what the snapshot says of it, which the circle
 // must never touch, and what the pixel at its center says, which the circle
-// decides. Each is posed as a fixture and driven through the debug surface, and
-// every figure asserted is the one `specs/sensing.md` states.
+// decides. Each is posed as a fixture over a world holding only what the test is
+// about, and every figure asserted is the one `specs/sensing.md` states.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -41,15 +41,18 @@ function apart(one: Pixel, other: Pixel): number {
   return Math.hypot(one[0] - other[0], one[1] - other[1], one[2] - other[2]);
 }
 
-/** A harness in live play with the board posed, dark and stripped of plankton. */
+/**
+ * A harness in live play over an empty world: the board posed and dark, with no
+ * predator, no drifter and no plankton on it. What a test is about, it adds.
+ */
 async function posed(art: readonly string[]): Promise<Harness> {
   const harness = await createHarness();
-  harness.debug.startDive();
-  harness.debug.beginPlay();
-  harness.debug.setCreatureAI(false);
+  harness.debug.setScreen("playing");
+  harness.debug.clearPredators();
+  harness.debug.clearDrifters();
   pose(harness.debug, art);
-  harness.debug.clearPlankton();
   harness.debug.setBrightness(0);
+  harness.debug.setBrightHold(0);
   return harness;
 }
 
@@ -106,8 +109,7 @@ async function sweep(
 describe("the circle's radius", () => {
   it("runs from its resting radius to its full reach, always wider than the light", async () => {
     const harness = await createHarness();
-    harness.debug.startDive();
-    harness.debug.beginPlay();
+    harness.debug.setScreen("playing");
 
     for (const brightness of [0, 0.25, 0.5, 0.75, 1]) {
       harness.debug.setBrightness(brightness);
@@ -221,6 +223,8 @@ describe("the mask", () => {
     const far = start.tx + 8;
     harness.debug.spawnDrifter(near, start.ty);
     harness.debug.spawnDrifter(far, start.ty);
+    harness.debug.setDrifterMind(0, false);
+    harness.debug.setDrifterMind(1, false);
     await harness.engine.advance(2);
 
     const snapshot = harness.debug.snapshot();
@@ -237,26 +241,26 @@ describe("the mask", () => {
     const harness = await posed(PERCH);
     const start = anchor(stampLayout(PERCH), "F");
     // The Gloamfin carries no light of its own, so what is read here is the
-    // body and nothing else.
+    // body and nothing else, and it is the only creature in the maze.
     const dark = start.tx + 5;
-    harness.debug.setPredatorTile(1, dark, start.ty);
-    harness.debug.setPredatorState(1, "wander");
+    harness.debug.addPredator("gloamfin", dark, start.ty);
+    harness.debug.setPredatorMind(0, false);
     await harness.engine.advance(2);
 
     const away = harness.debug.snapshot();
     const fog = fogPixel(harness);
-    expect(away.predators[1].kind).toBe("gloamfin");
+    expect(away.predators[0].kind).toBe("gloamfin");
     // Inside the circle, past the light: unseen, and undrawn with it.
-    expect(away.predators[1].lit).toBe(false);
+    expect(away.predators[0].lit).toBe(false);
     expect(apart(tilePixel(harness, dark, start.ty), fog)).toBeLessThan(SAME);
 
     // Two tiles out is 64 units, inside the light pocket, with rock nowhere
     // between: the light shows it.
     const near = start.tx + 2;
-    harness.debug.setPredatorTile(1, near, start.ty);
+    harness.debug.setPredatorTile(0, near, start.ty);
     await harness.engine.advance(2);
     const shown = harness.debug.snapshot();
-    expect(shown.predators[1].lit).toBe(true);
+    expect(shown.predators[0].lit).toBe(true);
     // Read against the lit corridor beside it, which carries no body, so what
     // is measured is the Gloamfin and not the light it stands in.
     const empty = tilePixel(harness, near + 1, start.ty);
@@ -272,12 +276,9 @@ describe("the mask", () => {
   it("lets a flare draw the maze it blooms over, beyond the circle", async () => {
     const harness = await posed(PERCH);
     const fixture = stampLayout(PERCH);
-    const start = anchor(fixture, "F");
     const pocket = anchor(fixture, "X");
-    harness.debug.setForagerTile(start.tx, start.ty);
-    harness.debug.setPredatorTile(2, pocket.tx, pocket.ty);
-    harness.debug.setPredatorState(2, "wander");
-    harness.debug.setCreatureAI(true);
+    // One Flarefish, sealed in the perch, and nothing else in the maze.
+    harness.debug.addPredator("flarefish", pocket.tx, pocket.ty);
 
     // Two tiles above the sealed pocket, and the rock two tiles to its left:
     // both inside the flare's 192 and both far beyond the forager's circle.
@@ -306,9 +307,10 @@ describe("the mask", () => {
       SAME,
     );
 
-    const blooming = await harness.until(
-      () => harness.debug.snapshot().predators[2].flaring === true,
-      ticks(FLARE_INTERVAL + FLARE_CHARGE + 1),
+    // The flare's own cadence is seconds of simulation rather than pictures.
+    const blooming = await harness.waitFor(
+      () => harness.debug.snapshot().predators[0].flaring === true,
+      FLARE_INTERVAL + FLARE_CHARGE + 1,
     );
     expect(blooming).toBe(true);
     await harness.engine.advance(2);
@@ -321,9 +323,9 @@ describe("the mask", () => {
     expect(apart(litRock, fog)).toBeGreaterThan(SAME);
     expect(apart(litFloor, litRock)).toBeGreaterThan(SAME);
 
-    const over = await harness.until(
-      () => harness.debug.snapshot().predators[2].flaring === false,
-      ticks(FLARE_BLOOM + 0.2),
+    const over = await harness.waitFor(
+      () => harness.debug.snapshot().predators[0].flaring === false,
+      FLARE_BLOOM + 0.2,
     );
     expect(over).toBe(true);
     // Past this build's own fade of the bloom art, which is a flare effect and

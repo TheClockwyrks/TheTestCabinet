@@ -29,7 +29,7 @@
 // `lanternjaw/light-range`'s. A build that fails either stands this check down
 // rather than being failed twice for one fault.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
@@ -37,7 +37,7 @@ import {
   assertTrue,
 } from "../assert";
 import { BINDINGS, LINGER_TIME } from "../constants";
-import { poseInkStandoff, predatorIndex } from "../fixtures";
+import { poseInkStandoff, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -46,15 +46,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key `specs/movement.md` binds the `b` action — "releases an ink cloud" — to. */
 const INK_KEY = BINDINGS.b[0];
@@ -114,36 +106,27 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("Ink shakes its fix at once", async () => {
+it("Ink shakes its fix at once", async () => {
   await startPlaying(h);
   const stand = await poseInkStandoff(h, { gap: GAP_TILES });
-  const index = predatorIndex(await h.snapshot(), "lanternjaw");
-  if (index === null) {
-    unmetPrecondition(
-      "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
-        "what the roster holds is the progression checks' verdict, not this one's",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  await h.debug.setPredatorTile(index, stand.pred.tx, stand.pred.ty);
-  await h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "lanternjaw", stand.pred, {
+    state: "wander",
+  });
   await parkForager(h, stand.ink);
-  await clearUnderfoot(h);
   await h.debug.setBrightness(BRIGHT_G);
   await h.debug.setInkCooldown(0);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const fixed = await h.until((s) => s.predators[index].state === "chase", {
     maxTicks: FIX_TICKS,
     poll: 1,
   });
-  if (!fixed.hit) {
-    unmetPrecondition(
-      "the Lanternjaw took no fix on a lit forager on a clear line, so there was " +
-        "no fix for ink to break — whether it senses the forager at all is " +
-        "lanternjaw/light-range's verdict, not this one's",
-    );
-  }
+  assertEqual(
+    fixed.hit,
+    true,
+    "the Lanternjaw took a fix on a lit forager on a clear line, which is the " +
+      "fix ink then breaks",
+  );
 
   const broke = await captureReplay(h, "shaken", async () => {
     const before = await h.snapshot();
@@ -152,13 +135,12 @@ check("Ink shakes its fix at once", async () => {
       (s) => s.inkClouds.length > before.inkClouds.length,
       { maxTicks: CLOUD_TICKS, poll: 1 },
     );
-    if (!released.hit) {
-      unmetPrecondition(
-        `pressing ${INK_KEY} released no cloud with ink.ready posed true, so ` +
-          "there was nothing on the line to blind the hunter — whether the key " +
-          "releases ink is controls/ink-key's verdict, not this one's",
-      );
-    }
+    assertEqual(
+      released.hit,
+      true,
+      `pressing ${INK_KEY} with ink.ready posed true released a cloud, which is ` +
+        "what stands on the line and blinds the hunter",
+    );
     const dropped = await h.until(
       (s) => s.predators[index].state === "wander",
       {

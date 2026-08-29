@@ -44,7 +44,7 @@
 // than hanging: the sweep is bounded at the interval, the charge and the bloom
 // with a second's margin, and the check asserts the bloom actually arrived.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   FLARE_BLOOM,
   FLARE_CHARGE,
@@ -55,8 +55,9 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
+  fail,
 } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   centerOf,
@@ -67,17 +68,12 @@ import {
   type Harness,
 } from "../harness";
 import {
-  check,
-  clearUnderfoot,
-  denAll,
   fromForager,
   parkForager,
-  requireKind,
   requireSceneHeld,
   sceneGuard,
-  unmetPrecondition,
 } from "../scene";
-import type { Tile } from "../maze";
+import { Tile } from "../maze";
 import { FOG_MATCH, fromFog, tileColor, windowRadius } from "./circle";
 
 /**
@@ -138,7 +134,7 @@ const STRUCTURE_MIN = FOG_MATCH;
  *
  * `FLARE_INTERVAL` for the timer, `FLARE_CHARGE` for the charge-up, and a second
  * of margin. A build slower than that FAILS here rather than leaving the point
- * undecided; the cadence itself is `flarefish/flare-cadence`'s to grade.
+ * undecided.
  */
 const BLOOM_DEADLINE = ticks(FLARE_INTERVAL + FLARE_CHARGE + 1);
 
@@ -167,7 +163,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("A flare is a second window onto the maze", async () => {
+it("A flare is a second window onto the maze", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART, { at: { tx: 0, ty: 0 } });
   const ring = board.all("R");
@@ -193,13 +189,11 @@ check("A flare is a second window onto the maze", async () => {
     }
   }
 
-  const flarefish = requireKind(h.snapshot(), "flarefish");
-  const quiet = await denAll(h, [flarefish]);
-  await h.debug.setPredatorTile(flarefish, ring[0].tx, ring[0].ty);
-  await h.debug.setPredatorState(flarefish, "wander");
+  const flarefish = await spawnPredator(h, "flarefish", ring[0], {
+    state: "wander",
+  });
   await parkForager(h, board.mark("F"));
-  await clearUnderfoot(h);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
   // The seven seconds of wandering the timer takes are run before the capture
   // opens, so the clip is the bloom rather than the wait for it.
@@ -300,14 +294,14 @@ check("A flare is a second window onto the maze", async () => {
     `the charge-up became a bloom within ${ticks(FLARE_CHARGE + 1)} ticks, ` +
       `which is FLARE_CHARGE (${FLARE_CHARGE} s) and a second's margin`,
   );
+  // Every tile of this room stands within `FLARE_RADIUS` of every other, so a
+  // bloom that lit none of them put its disc somewhere other than where the
+  // snapshot says it is, and there is no lit ground here to read.
   if (seen.target === null) {
-    // Every tile of this room stands within `FLARE_RADIUS` of every other, so
-    // reaching here means the build's disc is somewhere other than where it
-    // says it is — which is `flarefish/flare-radius`'s verdict to give.
-    unmetPrecondition(
-      "no tile of the Flarefish's room lay inside the bloom disc while it " +
-        "burned, so there was no lit ground to read; where the disc reaches " +
-        "is the flarefish points' verdict, not this one's",
+    fail(
+      "a tile of the Flarefish's room inside the bloom disc while it burned, " +
+        `which is the lit ground beyond the forager's circle this point reads`,
+      "no tile of the room lay inside the disc",
     );
   }
 
@@ -347,14 +341,11 @@ check("A flare is a second window onto the maze", async () => {
     seen.wallColor === null ||
     seen.floorColor === null
   ) {
-    // Every tile of this room stands within `FLARE_RADIUS` of every other, so
-    // reaching here means the build's disc is somewhere other than where it
-    // says it is — which is `flarefish/flare-radius`'s verdict to give.
-    unmetPrecondition(
-      "no rock tile of the Flarefish's room and the corridor beneath it both " +
-        "lay inside the bloom disc while it burned, so there was no pair to " +
-        "read the trench from; where the disc reaches is the flarefish " +
-        "points' verdict, not this one's",
+    fail(
+      "a rock tile of the Flarefish's room and the corridor beneath it both " +
+        "inside the bloom disc while it burned, which is the pair the trench " +
+        "is read from",
+      "no such pair lay inside the disc",
     );
   }
   assertGreaterThan(

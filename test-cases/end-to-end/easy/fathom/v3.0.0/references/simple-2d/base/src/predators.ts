@@ -175,6 +175,7 @@ export function createPredator(
     heading: null,
     mode: "den",
     released: false,
+    mind: true,
     speed: 0,
     releaseIn: slot * DEN_RELEASE_GAP,
     fix: null,
@@ -195,37 +196,48 @@ export function createPredator(
 }
 
 /**
- * The predator returned to the den and waiting its slot again, which is what a
- * fresh maze and a lost life both leave behind.
+ * The predator in the den chamber, holding a fix on nothing and drawn nowhere,
+ * which is what `setPredatorState(index, "den")` poses
+ * (`specs/instrumentation.md`).
+ *
+ * It moves the predator nowhere and leaves its `released` flag and its mind as
+ * they stand, so a released predator posed into the chamber swims out through the
+ * gate from there and an unreleased one waits its slot.
  */
-export function housePredator(
-  p: PredatorState,
-  tile: Tile,
-  slot: number,
-): PredatorState {
-  return createPredator(p.kind, tile.tx, tile.ty, slot);
-}
-
-/**
- * The predator held in the den with its release time suspended, which is what
- * the debug surface poses (`specs/instrumentation.md`). It stays unreleased for
- * as long as the scenario runs.
- */
-export function holdInDen(p: PredatorState, tile: Tile | null): PredatorState {
-  const placed =
-    tile === null ? p : { ...p, x: centerX(tile.tx), y: centerY(tile.ty) };
+export function denPose(p: PredatorState): PredatorState {
   return {
-    ...placed,
+    ...p,
     mode: "den",
-    released: false,
-    releaseIn: null,
     heading: null,
     speed: 0,
     fix: null,
     linger: 0,
+    alertIn: 0,
+    markIn: 0,
     searchIn: 0,
     searchPingIn: null,
     flarePhase: null,
+  };
+}
+
+/**
+ * A predator the debug surface added: loose and patrolling on `(tx, ty)`, its
+ * slot behind it and its mind running (`specs/instrumentation.md`).
+ *
+ * It carries no release time, because the staggered schedule runs on the roster a
+ * maze is laid out with rather than on one added mid-scenario.
+ */
+export function addedPredator(
+  kind: PredatorKind,
+  tx: number,
+  ty: number,
+): PredatorState {
+  return {
+    ...createPredator(kind, tx, ty, 0),
+    mode: "wander",
+    released: true,
+    releaseIn: null,
+    speed: wanderSpeed(kind),
   };
 }
 
@@ -306,8 +318,9 @@ function trackLight(
  *
  * A predator waiting its slot holds a den tile and is drawn nowhere. When its
  * release time arrives `released` becomes true and it swims across the chamber
- * and out through the gate, reporting `"den"` until it is out. A suspended
- * release time never arrives, which is what holds a posed predator there.
+ * and out through the gate, reporting `"den"` until it is out. A predator with no
+ * release time at all is one the debug surface added, and it waits here only for
+ * as long as a caller poses it unreleased.
  */
 function stepDen(
   p: PredatorState,

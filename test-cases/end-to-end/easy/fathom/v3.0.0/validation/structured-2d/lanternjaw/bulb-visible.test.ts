@@ -31,13 +31,13 @@
 // `amber/lookalikes`'s; what the body does when the light reaches it is
 // `lanternjaw/additive-reveal`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertNotNull,
 } from "../assert";
-import { poseOccludedPair } from "../fixtures";
+import { poseOccludedPair, spawnPredator } from "../fixtures";
 import {
   captureStill,
   colorAtTile,
@@ -48,16 +48,7 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { brightestWarm, warm } from "./motes";
 import type { Tile } from "../maze";
 
@@ -95,31 +86,20 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Its bulb shows at any distance", async () => {
+it("Its bulb shows at any distance", async () => {
   startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
-  const index = indexOfKind(h.snapshot(), "lanternjaw");
-  if (index < 0) {
-    failPrecondition(
-      "a Lanternjaw on the roster to pose this scenario with",
-      "the progression points",
-      "no lanternjaw in snapshot().predators",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
-  h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "lanternjaw", pair.pred);
   await parkForager(h, pair.forager);
   // The pellet the pose left under the forager is settled and `G` put back to
   // zero, so the light pocket is the narrowest a dive ever carries and the reading
   // is taken over ground nothing has touched.
-  await clearUnderfoot(h);
   // Held exactly where it was posed for the one frame that is read: this point is
   // about what is DRAWN at a reported position, and a hunter that drifted between
   // the snapshot and the sample would be read half a body away from where it said
   // it was.
-  h.debug.setCreatureAI(false);
-  const guard = await sceneGuard(h, quiet);
+  h.debug.setPredatorMind(index, false);
+  const guard = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
   const snapshot = h.snapshot();

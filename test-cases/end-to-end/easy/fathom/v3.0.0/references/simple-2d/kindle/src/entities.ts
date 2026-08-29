@@ -150,10 +150,17 @@ function leaveCenter(body: Body, request: Heading, req: MoveRequest): Heading {
  *
  * The step is walked center by center rather than in one jump, so a body that
  * reaches a junction inside the step decides there and spends what is left of the
- * step on the way it chose.
+ * step on the way it chose. A body standing on a tile closed to it travels
+ * nowhere at all.
  */
 export function moveBody(body: Body, req: MoveRequest): Body {
   let current = body;
+
+  // Travel carries a body only along tiles open to it, so a body a posed layout
+  // has left on a tile closed to it holds that tile and travels nowhere
+  // (`specs/instrumentation.md`).
+  const here = bodyTile(current);
+  if (!req.canEnter(here.tx, here.ty)) return { ...current, heading: null };
 
   // A reversal is honored wherever the body stands, not only at a center.
   if (

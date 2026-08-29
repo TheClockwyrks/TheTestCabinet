@@ -15,22 +15,25 @@
 // is lost, when every slot is already in the past and the whole den spills out at
 // once. `den/stagger` is the case that build gets right.
 //
-// THE CATCH IS A TRIGGER, NOT A SUBJECT, AND IT IS DRIVEN AT ONCE. A Lanternjaw is
-// posed onto the forager's own tile in `chase` and the build's own contact rule
-// takes the life; nothing here writes a life count. The pose is instant on purpose:
-// every moment spent staging a prettier catch is a moment the OTHER hunters' den
-// timers keep running before the clock this item reads has even started.
+// THE CATCH IS A TRIGGER, NOT A SUBJECT, AND IT IS DRIVEN AT ONCE. The roster's
+// own Lanternjaw is moved onto the forager's tile in `chase` and the build's own
+// contact rule takes the life; nothing here writes a life count. The move is
+// instant on purpose: every moment spent staging a prettier catch is a moment the
+// OTHER hunters' den timers keep running before the clock this item reads has even
+// started.
 //
 // AND THE RESUMED ORIGIN IS PINNED THE SAME WAY `den/stagger` pins the first one.
 // The catch drops the dive back into a countdown of a length `specs/ui.md` leaves
-// between `1 s` and `3 s`, so `beginPlay` ends it and the `simTime` straight after
-// is release time `0` of the re-run schedule, exactly.
+// between `1 s` and `3 s`, so `setScreen("playing")` opens live play and the
+// `simTime` straight after is release time `0` of the re-run schedule, exactly.
 //
-// THIS ONE RUNS ON THE BUILD'S OWN MAZE, for the reason `den/stagger` gives:
-// `setMaze` suspends the release schedule, so a posed board has no schedule to
-// read.
+// THE BOARD IS POSED, and `schedule.ts` describes it: a den with its gate and,
+// across solid rock, the corridor the forager stands in. The attempt a catch sets
+// up rests the forager on the board's own start tile, which is in that same
+// corridor, so the re-run schedule is watched with nothing able to interrupt it a
+// second time.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
 import {
@@ -39,20 +42,15 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import {
-  check,
-  indexOfKind,
-  requireSceneHeld,
-  sceneGuard,
-  standDown,
-} from "../scene";
-import {
-  requireReleasedFlag,
   DEN_ORDER_LINE,
   RELEASE_TOLERANCE,
+  assertReleasedFlag,
+  assertRoster,
   dueAt,
   orderLine,
-  parkClearOfDen,
+  poseDenBoard,
   watchReleases,
   watchSeconds,
 } from "./schedule";
@@ -95,109 +93,91 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "returns every predator to the den on a catch and runs the whole staggered schedule again from the moment play resumes",
-  async () => {
-    h.debug.reset({ seed: SEED });
-    h.debug.startDive();
-    h.debug.beginPlay();
-    await parkClearOfDen(h);
+it("returns every predator to the den on a catch and runs the whole staggered schedule again from the moment play resumes", async () => {
+  h.debug.reset({ seed: SEED });
+  const home = await poseDenBoard(h);
+  assertRoster(h.snapshot());
+  h.debug.setScreen("playing");
 
-    const opening = h.snapshot();
-    if (opening.predators.length < DEN_ORDER.length) {
-      standDown(
-        `the depth-1 roster carries ${opening.predators.length} predators, and ` +
-          `specs/predators.md gives it one of each of the three kinds, so there ` +
-          `is no staggered schedule to run again — what the roster holds is the ` +
-          `progression checks' verdict, not this one's`,
-      );
-    }
-    const hunter = indexOfKind(opening, "lanternjaw");
-    if (hunter < 0) {
-      standDown(
-        "the roster carries no Lanternjaw to take the life with, so there is no " +
-          "catch to re-release from — what the roster holds is the progression " +
-          "checks' verdict, not this one's",
-      );
-    }
+  // The roster's own first hunter is the trigger, so nothing joins the board
+  // that the schedule below is not about.
+  const hunter = 0;
 
-    const run = await captureReplay(h, "rerelease", async () => {
-      const before = h.snapshot();
-      // Onto the forager's own tile, fixed on it: the build's own chase-and-contact
-      // code takes the life on its own terms.
-      h.debug.setPredatorTile(hunter, before.forager.tx, before.forager.ty);
-      h.debug.setPredatorState(hunter, "chase");
-      const caught = await h.until((snap) => snap.lives < before.lives, {
-        maxFrames: CATCH_TICKS,
-        poll: 1,
-      });
-      await h.advance(SETTLE_TICKS);
-      const denned = h.snapshot();
-
-      // The respawn puts the forager back on its start tile, which is near the den
-      // it is about to watch empty; park it clear again before the clock starts.
-      await parkClearOfDen(h);
-      // The resumed origin, pinned exactly as the first one is.
-      if (h.snapshot().screen === "countdown") h.debug.beginPlay();
-      const resumed = h.snapshot();
-      const guard = await sceneGuard(h, null);
-      const den = await watchReleases(h, {
-        seconds: watchSeconds(DEN_ORDER.length),
-        count: DEN_ORDER.length,
-      });
-      await h.advance(TAIL_TICKS);
-      return { before, caught, denned, resumed, den, guard };
+  const run = await captureReplay(h, "rerelease", async () => {
+    const before = h.snapshot();
+    // Onto the forager's own tile, fixed on it: the build's own chase-and-contact
+    // code takes the life on its own terms.
+    h.debug.setPredatorTile(hunter, before.forager.tx, before.forager.ty);
+    h.debug.setPredatorState(hunter, "chase");
+    const caught = await h.until((snap) => snap.lives < before.lives, {
+      maxFrames: CATCH_TICKS,
+      poll: 1,
     });
+    await h.advance(SETTLE_TICKS);
+    const denned = h.snapshot();
 
-    // Without a life lost there is no re-release to read, and whether contact costs
-    // one is `scoring/caught-costs-life`'s verdict.
-    if (!run.caught.hit) {
-      standDown(
-        `a Lanternjaw posed onto the forager's own tile did not cost a life ` +
-          `within ${CATCH_TICKS} ticks, so there was no re-release to time — ` +
-          `whether contact costs a life is scoring/caught-costs-life's verdict, ` +
-          `not this one's`,
-      );
-    }
+    // The attempt the catch set up rests the forager on the board's start tile,
+    // in the same corridor it was parked in; it is faced into the rock again so
+    // it holds that tile while the clock runs.
+    await parkForager(h, home);
+    // The resumed origin, pinned exactly as the first one is.
+    h.debug.setScreen("playing");
+    const resumed = h.snapshot();
+    const guard = await sceneGuard(h);
+    const den = await watchReleases(h, {
+      seconds: watchSeconds(DEN_ORDER.length),
+      count: DEN_ORDER.length,
+    });
+    await h.advance(TAIL_TICKS);
+    return { before, caught, denned, resumed, den, guard };
+  });
 
-    requireSceneHeld(h.snapshot(), run.guard);
-    requireReleasedFlag(run.den);
+  // The life the whole item hangs on. Without it there is no re-release to read,
+  // so a build whose contact rule never fires fails here as well as at
+  // `scoring/caught-costs-life`.
+  assertTrue(
+    run.caught.hit,
+    `a Lanternjaw moved onto the forager's own tile cost a life within ` +
+      `${CATCH_TICKS} ticks, which is what puts every hunter back in the den`,
+  );
 
-    // Half one: the catch put every hunter back, unreleased.
-    for (const predator of run.denned.predators) {
-      assertEqual(
-        predator.released,
-        false,
-        `the ${predator.kind}'s \`released\` flag ${SETTLE_TICKS} ticks after ` +
-          `the life was lost`,
-      );
-      assertEqual(
-        predator.state,
-        "den",
-        `the ${predator.kind}'s state ${SETTLE_TICKS} ticks after the life was lost`,
-      );
-    }
-    assertTrue(
-      run.resumed.screen === "playing",
-      "the dive resumed live play after the catch, so the re-run schedule has a " +
-        "moment to run from",
-    );
+  requireSceneHeld(h.snapshot(), run.guard);
+  assertReleasedFlag(run.den);
 
-    // Half two: the whole schedule again, in order and on its slots.
+  // Half one: the catch put every hunter back, unreleased.
+  for (const predator of run.denned.predators) {
     assertEqual(
-      orderLine(run.den.releases.map((release) => release.kind)),
-      DEN_ORDER_LINE,
-      `the order the den emptied in over the ` +
-        `${watchSeconds(DEN_ORDER.length)} s after play resumed`,
+      predator.released,
+      false,
+      `the ${predator.kind}'s \`released\` flag ${SETTLE_TICKS} ticks after ` +
+        `the life was lost`,
     );
-    for (const [slot, release] of run.den.releases.entries()) {
-      assertLessThanOrEqual(
-        Math.abs(release.t - run.resumed.simTime - dueAt(slot)),
-        RELEASE_TOLERANCE,
-        `how far the ${release.kind}'s release sat from the ${dueAt(slot)} s ` +
-          `specs/predators.md gives slot ${slot} at ${DEN_RELEASE_GAP} s a slot, ` +
-          `measured from the moment play resumed`,
-      );
-    }
-  },
-);
+    assertEqual(
+      predator.state,
+      "den",
+      `the ${predator.kind}'s state ${SETTLE_TICKS} ticks after the life was lost`,
+    );
+  }
+  assertTrue(
+    run.resumed.screen === "playing",
+    "the dive resumed live play after the catch, so the re-run schedule has a " +
+      "moment to run from",
+  );
+
+  // Half two: the whole schedule again, in order and on its slots.
+  assertEqual(
+    orderLine(run.den.releases.map((release) => release.kind)),
+    DEN_ORDER_LINE,
+    `the order the den emptied in over the ` +
+      `${watchSeconds(DEN_ORDER.length)} s after play resumed`,
+  );
+  for (const [slot, release] of run.den.releases.entries()) {
+    assertLessThanOrEqual(
+      Math.abs(release.t - run.resumed.simTime - dueAt(slot)),
+      RELEASE_TOLERANCE,
+      `how far the ${release.kind}'s release sat from the ${dueAt(slot)} s ` +
+        `specs/predators.md gives slot ${slot} at ${DEN_RELEASE_GAP} s a slot, ` +
+        `measured from the moment play resumed`,
+    );
+  }
+});

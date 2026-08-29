@@ -61,7 +61,7 @@ import {
   type MazeView,
   type Tile,
 } from "../maze";
-import { denAll, unmetPrecondition } from "../scene";
+import { fail } from "../assert";
 
 /**
  * The seeds the eight structural points measure a layout at.
@@ -112,48 +112,39 @@ export function witness<M extends Measured>(measured: readonly M[]): M {
 }
 
 /**
- * Stand a point down whose layout carries no corridor tile at all.
+ * Fail a point whose layout carries no corridor tile at all.
  *
- * WHY THIS DEFERS. Four of these points count something that must come to zero —
- * `2 x 2` blocks, mirror mismatches, dead ends, unreachable corridor — and every
- * one of those counts is zero on a board of solid rock. A build that laid out no
- * maze would collect four passes it did not earn.
- *
- * The two points that OWN the emptiness never call this: `maze/proportions`
- * measures a density of `0` against a floor of `0.40`, and `maze/den-reachable`
- * finds no chamber for a predator to leave. Both fail, so a build that laid out
- * nothing is graded rather than excused.
- *
- * Whether a build lays out a maze that fills the grid is `maze/proportions`'
- * verdict to give: `specs/maze.md` bounds density at `MAZE_DENSITY_MIN` (`0.40`)
- * of the cells inside the border, and a board with no corridor reads `0`.
+ * WHY EVERY POINT ASKS. Four of these points count something that must come to
+ * zero — `2 x 2` blocks, mirror mismatches, dead ends, unreachable corridor — and
+ * every one of those counts is zero on a board of solid rock. A build that laid
+ * out no maze would otherwise collect four passes it did not earn, so a board
+ * with no corridor fails each of them here rather than passing them vacuously.
  */
 export function requireLaidOut(boards: readonly Board[]): void {
   const bare = boards.find((one) => corridorTiles(one.snapshot).length === 0);
   if (bare === undefined) return;
-  unmetPrecondition(
-    `the maze seed ${bare.seed} laid out carries no corridor tile at all, so ` +
-      "there is no layout here to measure — whether the game lays one out that " +
-      "fills the grid is maze/proportions' verdict, and it does give it",
+  fail(
+    "every seed to lay out a maze of open corridor; specs/maze.md states its " +
+      "rules of the layout the game lays out for each dive",
+    `the maze seed ${bare.seed} laid out carries no corridor tile at all`,
   );
 }
 
 /**
- * Stand a point down whose layout marks no den-interior tile.
+ * Fail a point whose layout marks no den-interior tile.
  *
- * WHY THIS DEFERS. `specs/maze.md` has the chamber "made of den-interior tiles",
- * and both points that ask about the chamber — that it is enclosed, and that its
- * one gate sits on its top edge — have nothing to decide without one. Whether the
- * chamber is there at all is `maze/den-reachable`'s verdict, which asks for the
- * den a released predator comes out of and fails when there is none.
+ * `specs/maze.md` has the chamber "made of den-interior tiles", and both points
+ * that ask about the chamber — that it is enclosed, and that its one gate sits on
+ * its top edge — hold vacuously without one. A layout with no chamber fails them
+ * rather than passing them for having nothing to break.
  */
 export function requireDenChamber(boards: readonly Board[]): void {
   const bare = boards.find((one) => denTiles(one.snapshot).length === 0);
   if (bare === undefined) return;
-  unmetPrecondition(
-    `the maze seed ${bare.seed} laid out marks no den-interior tile, so there ` +
-      "is no chamber here to ask about — whether the layout carries the den a " +
-      "released predator comes out of is maze/den-reachable's verdict",
+  fail(
+    "every seed to lay out a den chamber; specs/maze.md makes it of " +
+      "den-interior tiles with one gate on its top edge",
+    `the maze seed ${bare.seed} laid out marks no den-interior tile`,
   );
 }
 
@@ -253,8 +244,8 @@ function gateApproach(view: MazeView): (Tile & { facing: Dir }) | null {
  * output.
  *
  * The same seed lays out the same maze (`specs/instrumentation.md`), so what is
- * pictured is the board that was measured. Every predator is put away first, so
- * no hunter that wandered into the frame reads as part of the layout.
+ * pictured is the board that was measured. The roster is emptied first, so no
+ * hunter that wandered into the frame reads as part of the layout.
  *
  * Nothing here can change a verdict: it runs after every reading a point takes,
  * it is a no-op outside a run, and a still that cannot be written is reported as
@@ -267,7 +258,7 @@ export async function captureBoard(
 ): Promise<void> {
   try {
     await startPlaying(h, board.seed);
-    await denAll(h);
+    await h.debug.clearPredators();
     const view = await h.snapshot();
     const home = { tx: view.forager.tx, ty: view.forager.ty };
 

@@ -25,7 +25,7 @@
 // the top of the next step rather than inside the call, and both honour the page,
 // so each radius is read two ticks after the brightness that produced it.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertGreaterThan, assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -34,15 +34,9 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { KINDLE_VISION_GAIN, KINDLE_VISION_MIN, windowRadius } from "./circle";
+import { BRIGHT_HOLD } from "../../src/constants";
 
 /** The board: a three-tile corridor the forager is parked on, and nothing else. */
 const ART = ["H.."] as const;
@@ -86,20 +80,19 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The circle grows as you eat", async () => {
+it("The circle grows as you eat", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
-  const quiet = await denAll(h);
   // Parked facing rock with its own pellet eaten, so nothing the forager does can
   // move `G` under the readings.
   await parkForager(h, board.mark("H"));
-  await clearUnderfoot(h);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const readings = await captureReplay(h, "grow", async () => {
     const taken: { g: number; radius: number; vision: number }[] = [];
     for (const g of POSED) {
       h.debug.setBrightness(g);
+      h.debug.setBrightHold(BRIGHT_HOLD);
       await h.advance(SETTLE_TICKS);
       const snapshot = h.snapshot();
       taken.push({

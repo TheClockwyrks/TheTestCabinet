@@ -6,23 +6,24 @@
 // score that "rises by the exact figure above and by nothing else" — so the three
 // readings are one sum, one list, and one count that must not move.
 //
-// THE RUN IS STRIPPED OF ITS PLANKTON. A maze carries a plankton on every corridor
-// tile, so a forager travelling three tiles into a drifter grazes three on the way
-// and the `200` arrives buried under `30`. `setPlankton` takes them off the run —
-// "not eating it, so it scores nothing and clears no maze"
-// (specs/instrumentation.md) — which is also what makes "planktonRemaining is
-// unchanged" a reading rather than an arithmetic accident. The fixture's sealed
-// larder keeps the count above zero, so the empty run cannot clear the maze.
+// THE RUN CARRIES NO PLANKTON. A maze carries a plankton on every corridor tile,
+// so a forager travelling three tiles into a drifter would graze three on the way
+// and the `200` would arrive buried under `30`. `poseStraightRun` poses its board
+// on a world `clearPlankton` emptied, so the run is bare and the `200` stands
+// alone. The pellets this check does lay out are the three in the fixture's SEALED
+// pocket, which the forager can never reach: they are what makes
+// "planktonRemaining is unchanged" a reading rather than an arithmetic accident.
 //
-// THE DRIFTER IS HELD STILL. A drifter wanders the whole maze at
-// `DRIFTER_SPEED`, and one that turns off the posed run before the forager
-// arrives leaves the point failing a build that scores drifters perfectly well.
-// `setCreatureAI(false)` holds it "exactly where it stands" while everything else
-// keeps running, "plankton and drifters are still eaten and still score" included
-// (specs/instrumentation.md), so the forager still travels, the bite is still the
-// game's own, and the only thing removed is the gamble.
+// THE DRIFTER IS HELD STILL, AND IT IS THE ONLY BODY BESIDE THE FORAGER. A drifter
+// wanders the whole maze at `DRIFTER_SPEED`, and one that turns off the posed run
+// before the forager arrives leaves the point failing a build that scores drifters
+// perfectly well. `setDrifterMind(0, false)` holds that one drifter "exactly where
+// it stands" while everything else keeps running, "still eaten by a forager whose
+// tile it shares, and still worth the ordinary bonus" (specs/instrumentation.md),
+// so the forager still travels, the bite is still the game's own, and the only
+// thing removed is the gamble.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SCORE_DRIFTER } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
@@ -34,16 +35,19 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** Tiles of straight corridor posed as the whole board. */
 const RUN = 6;
+
+/**
+ * How many pellets stand in the fixture's sealed pocket, well clear of the run.
+ *
+ * `poseStraightRun`'s `spare` pocket is three tiles of corridor nothing joins to
+ * the run, so a plankton on each of them is one the forager can never reach: the
+ * count they hold is what "planktonRemaining is unchanged" is read against.
+ */
+const POCKET_TILES = 3;
 
 /** How far along that run the drifter waits, in tiles. */
 const DRIFTER_AT = 3;
@@ -71,19 +75,21 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Eating a drifter scores SCORE_DRIFTER", async () => {
+it("Eating a drifter scores SCORE_DRIFTER", async () => {
   await startPlaying(h);
-  const run = await poseStraightRun(h, RUN);
-  for (let step = 0; step < RUN; step += 1) {
-    h.debug.setPlankton(run.start.tx + step, run.start.ty, false);
+  const run = await poseStraightRun(h, RUN, { spare: true });
+  // The sealed pocket sits eight tiles past the end of the run, so these are the
+  // pellets the forager can never reach.
+  const pocket = run.start.tx + RUN + 8;
+  for (let step = 0; step < POCKET_TILES; step += 1) {
+    h.debug.setPlankton(pocket + step, run.start.ty, true);
   }
-  const quiet = await denAll(h);
-  // The drifter waits exactly where it is put, and so does every denned hunter.
-  h.debug.setCreatureAI(false);
   h.debug.spawnDrifter(run.start.tx + DRIFTER_AT, run.start.ty);
+  // The drifter waits exactly where it is put.
+  h.debug.setDrifterMind(0, false);
   // The forager is this point's subject and is meant to travel, so the guard
   // watches everything but where it stands.
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   const bite = await captureReplay(h, "score", async () => {
     const before = h.snapshot();
@@ -99,13 +105,12 @@ check("Eating a drifter scores SCORE_DRIFTER", async () => {
   });
 
   requireSceneHeld(bite.after, watch);
-  if (!bite.hit) {
-    requireSwim(
-      bite.before.forager,
-      bite.after.forager,
-      "reach the drifter waiting on the run ahead of it",
-    );
-  }
+  assertEqual(
+    bite.hit,
+    true,
+    `the forager travelled the ${DRIFTER_AT} tiles to the drifter and ate it ` +
+      "under a held action, inside the budget this check allows",
+  );
 
   assertEqual(
     bite.before.drifters.length,
@@ -121,6 +126,12 @@ check("Eating a drifter scores SCORE_DRIFTER", async () => {
     bite.after.score - bite.before.score,
     SCORE_DRIFTER,
     "the score rise across the bite, on a run stripped of its plankton",
+  );
+  assertEqual(
+    bite.before.planktonRemaining,
+    POCKET_TILES,
+    "the plankton standing in the sealed pocket when the swim began, which the " +
+      "forager can never reach",
   );
   assertEqual(
     bite.after.planktonRemaining,

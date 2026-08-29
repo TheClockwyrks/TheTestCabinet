@@ -333,10 +333,6 @@ function updateFlarefish(p: Predator, dt: number, w: PredatorWorld): void {
  */
 function updateInDen(p: Predator, dt: number, w: PredatorWorld): void {
   if (!p.released) {
-    if (p.heldInDen) {
-      p.dir = null;
-      return;
-    }
     p.denTimer -= dt;
     if (p.denTimer > 0) {
       p.dir = null;
@@ -407,8 +403,8 @@ function wantDir(p: Predator, w: PredatorWorld, canEnter: CanEnter): Heading {
  * its detection alert.
  *
  * Separate from the step below because these are presentation rather than
- * sense. A scenario that turns the creature minds off holds every hunter where
- * it stands, and a mark or an alert already showing still fades out on time.
+ * sense. A predator whose mind is off holds exactly where it stands, and a mark
+ * or an alert already showing still fades out on time.
  */
 export function decayPredatorTimers(p: Predator, dt: number): void {
   if (p.markT > 0) p.markT = Math.max(0, p.markT - dt);

@@ -22,48 +22,43 @@
 // `B` is outside `V` at its widest (`160`) and inside the kindle circle at the
 // same `G` (`320`), so the tile is unlit and still drawn in both.
 //
-// AND NOTHING ELSE IS DRAWING THE HUNTER. `setCreatureAI(false)` holds every
-// creature exactly where it stands and stops it sensing anything
-// (specs/instrumentation.md), so it casts no ping and takes no fix; no pulse is
-// emitted; the Flarefish is denned, so no bloom reaches the tile. The check reads
-// `alert` at the same moment to confirm the detection alert is not what is drawing
-// it.
+// AND NOTHING ELSE IS DRAWING THE HUNTER. It is the only creature on the board,
+// and it is added with `mind: false`, which holds it exactly where it stands and
+// stops it sensing anything (specs/instrumentation.md), so it casts no ping and
+// takes no fix; no pulse is emitted; there is no Flarefish to bloom over the tile.
+// The check reads `alert` at the same moment to confirm the detection alert is not
+// what is drawing it.
 //
 // THE TOLERANCE IS THE SIBLING FOG ITEMS'. This item's own wording fixes no number
 // for "nothing of the body left drawn"; `25` of the `441` an RGB distance can
 // reach is what `fog/unrevealed-black` uses for two tiles being drawn alike, and
 // it is used here for the same question about one tile at two moments.
 
-import { afterEach, beforeEach } from "vitest";
-import { TILE, VISION_GAIN, VISION_MIN } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  BRIGHT_HOLD,
+  TILE,
+  VISION_GAIN,
+  VISION_MIN,
+} from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
+  fail,
 } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
-  DIR_KEY,
   captureReplay,
   centerOf,
   colorDistance,
   createHarness,
   sampleColor,
   startPlaying,
-  ticksFor,
   visibilityAt,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { Tile } from "../maze";
 
 /**
@@ -84,14 +79,6 @@ const SETTLE_TICKS = 2;
 
 /** Ticks the clip holds on the lit hunter before the forager swims off. */
 const LIT_TICKS = 30;
-
-/**
- * How long the swim from `A` to `B` is given, in ticks.
- *
- * Three tiles is `96` logical units, which `FORAGER_SPEED` (`128`) covers in
- * `0.75 s`. Two seconds is a wide margin and still a hard ceiling.
- */
-const SWIM_MAX_TICKS = ticksFor(2);
 
 /** Ticks the clip lingers on the emptied tile before the recording ends. */
 const TAIL_TICKS = 36;
@@ -121,31 +108,19 @@ function tileColor(snapshot: ReturnType<Harness["snapshot"]>, tile: Tile) {
   return sampleColor(h, at.x, at.y);
 }
 
-check("Predator bodies are not remembered", async () => {
+it("Predator bodies are not remembered", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const stand = board.mark("T");
   const near = board.mark("A");
   const far = board.mark("B");
-  const gloamfin = indexOfKind(h.snapshot(), "gloamfin");
-  if (gloamfin < 0) {
-    failPrecondition(
-      "the roster to carry a Gloamfin for this scenario to light and lose",
-      "scoring/depth-scaling",
-      "no gloamfin on the roster",
-    );
-  }
-  // Every other hunter into the den; the Gloamfin is left where `setMaze` put it,
-  // which is the den too, until this scenario brings it out.
-  const quiet = await denAll(h, [gloamfin]);
-  // No plankton, so the remembered tile draws terrain alone and the forager's
-  // brightness is only ever the one this check posed.
-  h.debug.clearPlankton();
-  h.debug.setCreatureAI(false);
+  // The board carries no plankton, so the remembered tile draws terrain alone and
+  // the forager's brightness is only ever the one this check posed.
 
   // Reveal `T` with the forager's own light...
   h.debug.setForagerTile(near.tx, near.ty);
   h.debug.setBrightness(1);
+  h.debug.setBrightHold(BRIGHT_HOLD);
   await h.advance(SETTLE_TICKS);
   const lighting = h.snapshot();
 
@@ -153,57 +128,43 @@ check("Predator bodies are not remembered", async () => {
   // baseline: the tile as it is drawn with nothing standing on it.
   await parkForager(h, far);
   h.debug.setBrightness(1);
+  h.debug.setBrightHold(BRIGHT_HOLD);
   await h.advance(SETTLE_TICKS);
   const empty = h.snapshot();
   const baseline = tileColor(empty, stand);
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  const watch = await sceneGuard(h, { foragerParked: false });
 
-  // The hunter arrives on the tile, in the dark.
-  h.debug.setPredatorTile(gloamfin, stand.tx, stand.ty);
-  h.debug.setPredatorDir(gloamfin, "right");
-  h.debug.setPredatorState(gloamfin, "wander");
+  // The hunter arrives on the tile, in the dark — the only one on the board, and
+  // held there, because this point is about what is DRAWN where it stands.
+  const gloamfin = await spawnPredator(h, "gloamfin", stand, {
+    dir: "right",
+    mind: false,
+  });
   await h.advance(SETTLE_TICKS);
 
   const reading = await captureReplay(h, "forget", async () => {
     // The forager comes back to light it.
     h.debug.setForagerTile(near.tx, near.ty);
     h.debug.setBrightness(1);
+    h.debug.setBrightHold(BRIGHT_HOLD);
     await h.advance(LIT_TICKS);
     const held = h.snapshot();
     const litPixel = tileColor(held, stand);
 
-    // And swims back out of range.
-    h.hold(DIR_KEY.right);
-    const swum = await h.until((s) => s.forager.tx >= far.tx, {
-      maxFrames: SWIM_MAX_TICKS,
-      poll: 1,
-    });
-    h.release(DIR_KEY.right);
+    // And stands back out of range. It is carried there rather than driven: what
+    // this point reads is a tile drawn from two standing places, and whether a
+    // held action carries the forager anywhere is the movement points' subject.
     await parkForager(h, far);
     h.debug.setBrightness(1);
+    h.debug.setBrightHold(BRIGHT_HOLD);
     await h.advance(SETTLE_TICKS);
     const gone = h.snapshot();
     const gonePixel = tileColor(gone, stand);
     await h.advance(TAIL_TICKS);
-    return { held, litPixel, swum, gone, gonePixel };
+    return { held, litPixel, gone, gonePixel };
   });
 
   requireSceneHeld(reading.gone, watch);
-
-  // Whether the forager swims is `controls/*` and `maze-movement/*`'s verdict.
-  if (!reading.swum.hit) {
-    requireSwim(
-      reading.held.forager,
-      reading.gone.forager,
-      "swim out of range of the hunter it had lit",
-    );
-    failPrecondition(
-      `the forager to reach the far end of the corridor within ` +
-        `${SWIM_MAX_TICKS} ticks, so its light leaves the hunter`,
-      "maze-movement/constant-speed",
-      `it ended at (${reading.gone.forager.tx}, ${reading.gone.forager.ty})`,
-    );
-  }
 
   // The fixture's own geometry, from the specification's figures: `A` is inside the
   // light at its widest and `B` is outside it.
@@ -233,18 +194,16 @@ check("Predator bodies are not remembered", async () => {
   // forager swam off. Neither is this point's claim, and a build that misses either
   // is reported by the point that is about it.
   if (visibilityAt(lighting, stand) !== "l") {
-    failPrecondition(
+    fail(
       `the forager's light to reach the tile ${3 * TILE} units away from its near ` +
         "stand, so something is lit there to be forgotten",
-      "brightness/widens-vision",
       `the tile reported "${visibilityAt(lighting, stand)}"`,
     );
   }
   if (visibilityAt(reading.gone, stand) !== "r") {
-    failPrecondition(
+    fail(
       "the tile to stay remembered once the forager had swum off, so the two " +
         "readings are of a remembered tile",
-      "fog/remembered-persists",
       `the tile reported "${visibilityAt(reading.gone, stand)}"`,
     );
   }
@@ -272,10 +231,9 @@ check("Predator bodies are not remembered", async () => {
   // been dropped, and that is the drawing points' verdict rather than this one's.
   const shown = colorDistance(reading.litPixel, baseline);
   if (shown <= ALIKE_MAX) {
-    failPrecondition(
+    fail(
       "the build to draw a body on the tile while the forager's light held the " +
         "hunter, so there is something for the fog to have remembered",
-      "the predator drawing points",
       `${shown.toFixed(1)} of 441 between the lit tile and the empty one`,
     );
   }

@@ -7,9 +7,9 @@
 //
 // THE CONTACT IS REAL. `specs/gameplay.md`: "The forager is in contact with a
 // predator whose center lies on the forager's own tile, whatever that predator's
-// kind and whatever it is doing." So the roster's first hunter is placed on the
-// forager's own tile and posed into `"chase"`, and the build's own contact rule
-// decides the rest. Nothing here poses a life away.
+// kind and whatever it is doing." So the board is emptied of every predator and
+// one hunter is added on the forager's own tile and posed into `"chase"`, and the
+// build's own contact rule decides the rest. Nothing here poses a life away.
 //
 // THE RUN STILL HAS LIVES IN RESERVE, deliberately. A dive opens with
 // `START_LIVES` (`3`), so the catch this reads costs a life and sets the board up
@@ -19,8 +19,9 @@
 // NO SCENE GUARD HERE. A guard's whole job is to notice a life lost
 // mid-measurement; the life lost IS this point's event, so the guard would report
 // the subject as the upset. Everything a guard would have watched is instead
-// posed still: every other hunter is in the den and the forager is parked facing
-// rock.
+// settled by the pose: `clearWorld` takes every predator, drifter and plankton
+// off, so the only body that can reach the forager is the one this check adds,
+// and the forager itself is parked facing rock.
 //
 // THE CUE IS READ BY NAME. The game asks the runtime's cue bus for a cue by name
 // and the bus announces the play (`specs/progression.md`), so what is asserted
@@ -31,7 +32,8 @@
 // WHAT THIS DOES NOT DECIDE. What a catch costs and what it resets, which is
 // `scoring/caught-costs-life`'s; the run ending, which is `scoring/three-lives`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { clearWorld } from "../fixtures";
 import { CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import {
@@ -41,15 +43,22 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { check, clearUnderfoot, denAll, parkForager } from "../scene";
+import { parkForager } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
 /**
- * The roster index the catch is staged with.
+ * The kind the catch is staged with.
  *
- * `specs/gameplay.md` costs a life for contact whatever the predator's kind, and
- * `specs/state.md` fixes index `0` as the first of the release order at every
- * depth, so the roster always holds one.
+ * `specs/gameplay.md` costs a life for contact whatever the predator's kind, so
+ * any of the three serves and this one takes the first.
+ */
+const HUNTER_KIND = "lanternjaw";
+
+/**
+ * Its roster index once it is added.
+ *
+ * `clearWorld` leaves `predators` empty and `addPredator` appends, so the one
+ * hunter this check adds is index `0` (`specs/instrumentation.md`).
  */
 const HUNTER = 0;
 
@@ -87,67 +96,63 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "plays CUES.caught on the tick a predator makes contact, and not before",
-  async () => {
-    await startPlaying(h);
-    // At depth 1 the roster holds one of each kind (specs/predators.md), so
-    // leaving index 0 out leaves exactly that one hunter loose.
-    await denAll(h, [HUNTER]);
-    await parkForager(h);
-    await clearUnderfoot(h);
+it("plays CUES.caught on the tick a predator makes contact, and not before", async () => {
+  await startPlaying(h);
+  // Nothing on the board but the forager, so the only thing that can catch it
+  // is the hunter this check puts on its tile.
+  await clearWorld(h);
+  await parkForager(h);
 
-    const before = h.snapshot();
+  const before = h.snapshot();
 
-    const seen = await captureReplay(h, "caught", async () => {
-      const found = await watchForEvent(
-        h,
-        (s) => s.lives < before.lives || s.screen !== "playing",
-        QUIET_LEAD + CATCH_TICKS,
-        {
-          quietLead: QUIET_LEAD,
-          // The contact itself: a hunter whose center lies on the forager's own
-          // tile (specs/gameplay.md), posed loose so the build's own rule decides.
-          arm: () => {
-            h.debug.setPredatorTile(
-              HUNTER,
-              before.forager.tx,
-              before.forager.ty,
-            );
-            h.debug.setPredatorState(HUNTER, "chase");
-          },
+  const seen = await captureReplay(h, "caught", async () => {
+    const found = await watchForEvent(
+      h,
+      (s) => s.lives < before.lives || s.screen !== "playing",
+      QUIET_LEAD + CATCH_TICKS,
+      {
+        quietLead: QUIET_LEAD,
+        // The contact itself: a hunter whose center lies on the forager's own
+        // tile (specs/gameplay.md), posed loose so the build's own rule decides.
+        arm: () => {
+          h.debug.addPredator(
+            HUNTER_KIND,
+            before.forager.tx,
+            before.forager.ty,
+          );
+          h.debug.setPredatorState(HUNTER, "chase");
         },
-      );
-      // Past the reading, so the clip shows the catch land and the board reset.
-      // Nothing after this line can reach an assertion.
-      await h.advance(TAIL_TICKS);
-      return found;
-    });
+      },
+    );
+    // Past the reading, so the clip shows the catch land and the board reset.
+    // Nothing after this line can reach an assertion.
+    await h.advance(TAIL_TICKS);
+    return found;
+  });
 
-    assertEqual(
-      seen.hit,
-      true,
-      `the ${before.predators[HUNTER].kind} standing on the forager's own tile ` +
-        `made contact inside ${String(CATCH_TICKS)} ticks`,
-    );
-    assertEqual(
-      seen.snapshot.lives,
-      before.lives - 1,
-      "the lives in reserve after the staged contact, so what the cue is read " +
-        "against is a catch (specs/gameplay.md)",
-    );
-    assertEqual(
-      cuesBeforeEvent(seen, CUES.caught),
-      0,
-      `times CUES.caught played over the ${String(seen.at - 1)} ticks before the ` +
-        "contact — a cue is played on the tick its event happens " +
-        "(specs/progression.md)",
-    );
-    assertEqual(
-      cuesOnEvent(seen, CUES.caught),
-      1,
-      "times CUES.caught played on the tick the predator made contact, which is " +
-        "its own tick and at most once on it (specs/progression.md)",
-    );
-  },
-);
+  assertEqual(
+    seen.hit,
+    true,
+    `the ${HUNTER_KIND} standing on the forager's own tile made contact ` +
+      `inside ${String(CATCH_TICKS)} ticks`,
+  );
+  assertEqual(
+    seen.snapshot.lives,
+    before.lives - 1,
+    "the lives in reserve after the staged contact, so what the cue is read " +
+      "against is a catch (specs/gameplay.md)",
+  );
+  assertEqual(
+    cuesBeforeEvent(seen, CUES.caught),
+    0,
+    `times CUES.caught played over the ${String(seen.at - 1)} ticks before the ` +
+      "contact — a cue is played on the tick its event happens " +
+      "(specs/progression.md)",
+  );
+  assertEqual(
+    cuesOnEvent(seen, CUES.caught),
+    1,
+    "times CUES.caught played on the tick the predator made contact, which is " +
+      "its own tick and at most once on it (specs/progression.md)",
+  );
+});

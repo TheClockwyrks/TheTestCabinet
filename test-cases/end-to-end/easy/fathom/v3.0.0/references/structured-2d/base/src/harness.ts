@@ -27,7 +27,7 @@ import {
   type Engine,
   type SurfaceMetrics,
 } from "@test-cabinet/structured-2d";
-import { LAYOUT, STAGE_H, STAGE_W, TICK_DT } from "./constants";
+import { LAYOUT, STAGE_H, STAGE_W, TICK_DT, TICK_HZ } from "./constants";
 import {
   BACKGROUND,
   fathomState,
@@ -38,6 +38,14 @@ import {
 
 /** One frame is one simulation tick, so `advance(n)` runs exactly `n` ticks. */
 export const FRAME_MS = TICK_DT * 1000;
+
+/**
+ * How many whole ticks a frame carries while `waitFor` waits out a cadence the
+ * specification measures in seconds. The same ticks run either way; only the
+ * pictures between them are skipped, and a tenth of a second of granularity is
+ * finer than any window the specification asks a test to land inside.
+ */
+export const WAIT_TICKS_PER_FRAME = 10;
 
 export class KeyEvent extends Event {
   readonly code: string;
@@ -69,6 +77,13 @@ export interface Harness {
   tap(code: string): Promise<void>;
   /** Run frames until `ready` holds, or give up after `limit` of them. */
   until(ready: () => boolean, limit: number): Promise<boolean>;
+  /**
+   * Run until `ready` holds, or until `seconds` of game time have passed, in
+   * frames of many ticks each, so waiting out a long cadence costs a picture
+   * every tenth of a second rather than one for every tick of it. It leaves
+   * one tick a frame behind it, so what follows reads frame by frame again.
+   */
+  waitFor(ready: () => boolean, seconds: number): Promise<boolean>;
   /**
    * Put `perFrame` whole ticks in each frame from here on, so a test that
    * waits out a long cadence runs the same ticks in fewer frames.
@@ -168,6 +183,13 @@ export async function createHarness(): Promise<Harness> {
         await engine.advance(1);
       }
       return ready();
+    },
+    waitFor: async (ready, seconds) => {
+      harness.pace(WAIT_TICKS_PER_FRAME);
+      const frames = Math.ceil((seconds * TICK_HZ) / WAIT_TICKS_PER_FRAME);
+      const reached = await harness.until(ready, frames);
+      harness.pace(1);
+      return reached;
     },
     pixel: (x, y) => {
       const { data } = ctx.getImageData(Math.round(x), Math.round(y), 1, 1);

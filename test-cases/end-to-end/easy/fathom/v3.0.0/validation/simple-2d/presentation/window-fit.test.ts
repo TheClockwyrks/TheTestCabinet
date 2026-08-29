@@ -24,8 +24,8 @@
 // wide enough for a vignette or a gradient the build is free to lay over its
 // stage, far too narrow for a bar carrying anything the game actually drew.
 
-import { afterEach } from "vitest";
-import { STAGE_H, STAGE_W } from "../../src/constants";
+import { afterEach, it } from "vitest";
+import { BRIGHT_HOLD, STAGE_H, STAGE_W } from "../../src/constants";
 import {
   assertCloseTo,
   assertDeepEqual,
@@ -41,11 +41,12 @@ import {
   colorDistance,
   createHarness,
   luminance,
+  poseBrightness,
   startPlaying,
   type Harness,
   type Rgb,
 } from "../harness";
-import { check, parkForager } from "../scene";
+import { parkForager } from "../scene";
 
 /** The windows the fit is read over. */
 const SURFACES = [
@@ -163,7 +164,7 @@ async function poseLitRoom(h: Harness): Promise<{ x: number; y: number }> {
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
   await parkForager(h, home);
-  h.debug.setBrightness(1);
+  await poseBrightness(h, 1, BRIGHT_HOLD);
   await h.advance(SETTLE_TICKS);
   return centerOf(h.snapshot(), home);
 }
@@ -268,88 +269,79 @@ async function readsLetterboxed(
 }
 
 for (const shape of SURFACES) {
-  check(
-    `fits the whole stage into ${shape.name}, centred, on load`,
-    async () => {
-      const { cssWidth, cssHeight, dpr } = shape;
-      const h = await surface({ cssWidth, cssHeight, dpr });
+  it(`fits the whole stage into ${shape.name}, centred, on load`, async () => {
+    const { cssWidth, cssHeight, dpr } = shape;
+    const h = await surface({ cssWidth, cssHeight, dpr });
 
-      // Read before anything has been driven: the fit is right on load.
-      const view = h.engine.viewport();
-      const deviceWidth = Math.round(cssWidth * dpr);
-      const deviceHeight = Math.round(cssHeight * dpr);
-      const uniform = Math.min(cssWidth / STAGE_W, cssHeight / STAGE_H) * dpr;
+    // Read before anything has been driven: the fit is right on load.
+    const view = h.engine.viewport();
+    const deviceWidth = Math.round(cssWidth * dpr);
+    const deviceHeight = Math.round(cssHeight * dpr);
+    const uniform = Math.min(cssWidth / STAGE_W, cssHeight / STAGE_H) * dpr;
 
-      // The logical space the game draws in is the stage, at one uniform scale.
-      assertEqual(view.width, STAGE_W, "the logical stage's width (STAGE_W)");
-      assertEqual(view.height, STAGE_H, "the logical stage's height (STAGE_H)");
-      assertCloseTo(view.scale, uniform, 9, "the one uniform scale");
+    // The logical space the game draws in is the stage, at one uniform scale.
+    assertEqual(view.width, STAGE_W, "the logical stage's width (STAGE_W)");
+    assertEqual(view.height, STAGE_H, "the logical stage's height (STAGE_H)");
+    assertCloseTo(view.scale, uniform, 9, "the one uniform scale");
 
-      // The whole stage is inside the surface, on both axes.
-      assertLessThanOrEqual(
-        STAGE_W * view.scale,
-        deviceWidth + 1e-6,
-        "the fitted stage's width against the backing store's",
-      );
-      assertLessThanOrEqual(
-        STAGE_H * view.scale,
-        deviceHeight + 1e-6,
-        "the fitted stage's height against the backing store's",
-      );
+    // The whole stage is inside the surface, on both axes.
+    assertLessThanOrEqual(
+      STAGE_W * view.scale,
+      deviceWidth + 1e-6,
+      "the fitted stage's width against the backing store's",
+    );
+    assertLessThanOrEqual(
+      STAGE_H * view.scale,
+      deviceHeight + 1e-6,
+      "the fitted stage's height against the backing store's",
+    );
 
-      // And it is centred: the leftover on each axis is split evenly into two bars.
-      assertGreaterThanOrEqual(view.offsetX, 0, "the left bar's width");
-      assertGreaterThanOrEqual(view.offsetY, 0, "the top bar's height");
-      assertCloseTo(
-        view.offsetX * 2 + STAGE_W * view.scale,
-        deviceWidth,
-        6,
-        "the two side bars and the fitted stage against the backing store's width",
-      );
-      assertCloseTo(
-        view.offsetY * 2 + STAGE_H * view.scale,
-        deviceHeight,
-        6,
-        "the two end bars and the fitted stage against the backing store's height",
-      );
+    // And it is centred: the leftover on each axis is split evenly into two bars.
+    assertGreaterThanOrEqual(view.offsetX, 0, "the left bar's width");
+    assertGreaterThanOrEqual(view.offsetY, 0, "the top bar's height");
+    assertCloseTo(
+      view.offsetX * 2 + STAGE_W * view.scale,
+      deviceWidth,
+      6,
+      "the two side bars and the fitted stage against the backing store's width",
+    );
+    assertCloseTo(
+      view.offsetY * 2 + STAGE_H * view.scale,
+      deviceHeight,
+      6,
+      "the two end bars and the fitted stage against the backing store's height",
+    );
 
-      // One axis is filled exactly, so the letterboxing is on the other alone.
-      assertCloseTo(
-        Math.min(view.offsetX, view.offsetY),
-        0,
-        6,
-        "the smaller of the two bars, which a uniform fit leaves at zero",
-      );
+    // One axis is filled exactly, so the letterboxing is on the other alone.
+    assertCloseTo(
+      Math.min(view.offsetX, view.offsetY),
+      0,
+      6,
+      "the smaller of the two bars, which a uniform fit leaves at zero",
+    );
 
-      // Running frames does not move it.
-      await h.advance(2);
-      assertDeepEqual(
-        h.engine.viewport(),
-        view,
-        "the fit after two frames have run",
-      );
-    },
-  );
+    // Running frames does not move it.
+    await h.advance(2);
+    assertDeepEqual(
+      h.engine.viewport(),
+      view,
+      "the fit after two frames have run",
+    );
+  });
 }
 
-check(
-  "draws the stage inside the fit of a wide window, with the bars its background",
-  async () => {
-    // 1600 wide against a 1280-wide stage: an 80 CSS pixel bar on each side. The
-    // off-aspect surface is the one worth looking at — the whole stage fitted
-    // inside it with a bar either side is what this point is about, and none of
-    // it is visible on a surface the size of the stage.
-    const h = await surface({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
-    await readsLetterboxed(h, "fit");
-  },
-);
+it("draws the stage inside the fit of a wide window, with the bars its background", async () => {
+  // 1600 wide against a 1280-wide stage: an 80 CSS pixel bar on each side. The
+  // off-aspect surface is the one worth looking at — the whole stage fitted
+  // inside it with a bar either side is what this point is about, and none of
+  // it is visible on a surface the size of the stage.
+  const h = await surface({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
+  await readsLetterboxed(h, "fit");
+});
 
-check(
-  "draws the stage inside the fit of a tall window, with the bars its background",
-  async () => {
-    // The other axis: 900 tall against a 720-tall stage, so the bars are above
-    // and below and a build that centred on one axis alone is caught here.
-    const h = await surface({ cssWidth: 1280, cssHeight: 900, dpr: 1 });
-    await readsLetterboxed(h, null);
-  },
-);
+it("draws the stage inside the fit of a tall window, with the bars its background", async () => {
+  // The other axis: 900 tall against a 720-tall stage, so the bars are above
+  // and below and a build that centred on one axis alone is caught here.
+  const h = await surface({ cssWidth: 1280, cssHeight: 900, dpr: 1 });
+  await readsLetterboxed(h, null);
+});

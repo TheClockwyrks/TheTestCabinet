@@ -21,11 +21,15 @@ import {
   COUNTDOWN_TIME,
   fillPlankton,
   layoutMaze,
-  poseMaze,
   toTitle,
   type FathomState,
 } from "./game";
-import { harness, type Harness } from "./harness.test-support";
+import {
+  harness,
+  poseBoard,
+  stillCreatures,
+  type Harness,
+} from "./harness.test-support";
 import { Maze } from "./maze";
 import { tileKey } from "./sensing";
 import { board, SEALED_DEN, stamp } from "./board.test-support";
@@ -207,7 +211,7 @@ describe("the forager's travel", () => {
   beforeEach(() => {
     h = harness();
     toPlay(h);
-    poseMaze(h.state, corridorBoard());
+    poseBoard(h.state, corridorBoard());
     h.state.forager.placeOn(10, 8);
   });
 
@@ -247,7 +251,7 @@ describe("grazing", () => {
   beforeEach(() => {
     h = harness();
     toPlay(h);
-    poseMaze(h.state, corridorBoard());
+    poseBoard(h.state, corridorBoard());
     h.state.forager.placeOn(10, 8);
   });
 
@@ -360,7 +364,7 @@ describe("the sonar pulse and the ink", () => {
   beforeEach(() => {
     h = harness();
     toPlay(h);
-    poseMaze(h.state, corridorBoard());
+    poseBoard(h.state, corridorBoard());
     h.state.forager.placeOn(10, 8);
   });
 
@@ -407,7 +411,7 @@ describe("the fog of war", () => {
   beforeEach(() => {
     h = harness();
     toPlay(h);
-    poseMaze(h.state, corridorBoard());
+    poseBoard(h.state, corridorBoard());
     h.state.forager.placeOn(10, 8);
     h.advance(1);
   });
@@ -448,20 +452,31 @@ describe("the den and the release schedule", () => {
     expect(h.state.predators[2].released).toBe(true);
   });
 
-  it("holds every predator in the den while a posed board stands", () => {
-    poseMaze(h.state, corridorBoard());
-    h.advance(ticks(DEN_RELEASE_GAP * 3));
-    for (const p of h.state.predators) {
-      expect(p.released).toBe(false);
-      expect(p.state).toBe("den");
-    }
+  it("runs the schedule over a posed board as it does over its own", () => {
+    poseBoard(h.state, corridorBoard());
+    h.advance(2);
+    expect(h.state.predators.map((p) => p.released)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    h.advance(ticks(DEN_RELEASE_GAP * 2) + 2);
+    expect(h.state.predators.every((p) => p.released)).toBe(true);
+    // The chamber's only way out is a gate onto rock, so each stays in the den.
+    expect(h.state.predators.every((p) => p.state === "den")).toBe(true);
   });
 
-  it("keeps the schedule suspended when a life is lost over a posed board", () => {
-    poseMaze(h.state, corridorBoard());
-    layoutMaze(h.state, false);
+  it("re-arms the schedule when a life is lost", () => {
+    poseBoard(h.state, corridorBoard());
     h.advance(ticks(DEN_RELEASE_GAP * 3));
-    for (const p of h.state.predators) expect(p.released).toBe(false);
+    layoutMaze(h.state, false);
+    expect(h.state.predators.every((p) => !p.released)).toBe(true);
+    h.advance(ticks(DEN_RELEASE_GAP) + 2);
+    expect(h.state.predators.map((p) => p.released)).toEqual([
+      true,
+      true,
+      false,
+    ]);
   });
 
   it("swims a released predator out of the chamber and into the corridors", () => {
@@ -480,8 +495,8 @@ describe("getting caught", () => {
   beforeEach(() => {
     h = harness();
     toPlay(h);
-    poseMaze(h.state, corridorBoard());
-    h.state.creatureAI = false;
+    poseBoard(h.state, corridorBoard());
+    stillCreatures(h.state);
     h.state.forager.placeOn(10, 8);
   });
 
@@ -506,7 +521,7 @@ describe("getting caught", () => {
     expect(h.state.lives).toBe(0);
   });
 
-  it("leaves a predator held in the den unable to make contact", () => {
+  it("leaves a predator in the den unable to make contact", () => {
     h.state.predators[0].placeOn(10, 8);
     h.advance(60);
     expect(h.state.lives).toBe(START_LIVES);
@@ -532,17 +547,19 @@ describe("the bonus drifters", () => {
   });
 
   it("admits one at the gate on its cadence, up to the ceiling", () => {
-    h.state.creatureAI = false;
+    stillCreatures(h.state);
     h.advance(ticks(DRIFTER_INTERVAL) + 1);
     expect(h.state.drifters).toHaveLength(1);
+    stillCreatures(h.state);
     h.advance(ticks(DRIFTER_INTERVAL) + 1);
     expect(h.state.drifters).toHaveLength(DRIFTER_MAX);
+    stillCreatures(h.state);
     h.advance(ticks(DRIFTER_INTERVAL) + 1);
     expect(h.state.drifters).toHaveLength(DRIFTER_MAX);
   });
 
   it("admits none on a board with no den gate", () => {
-    poseMaze(h.state, board([".".repeat(30)], 8, 3));
+    poseBoard(h.state, board([".".repeat(30)], 8, 3));
     h.advance(ticks(DRIFTER_INTERVAL * 2));
     expect(h.state.drifters).toHaveLength(0);
   });
@@ -553,22 +570,21 @@ describe("the creature minds", () => {
   beforeEach(() => {
     h = harness();
     toPlay(h);
-    poseMaze(h.state, corridorBoard());
+    poseBoard(h.state, corridorBoard());
   });
 
   it("holds every creature exactly where it stands when they are off", () => {
     h.state.predators[0].state = "wander";
     h.state.predators[0].released = true;
-    h.state.predators[0].heldInDen = false;
     h.state.predators[0].placeOn(20, 8);
-    h.state.creatureAI = false;
+    stillCreatures(h.state);
     h.advance(ticks(2));
     expect(h.state.predators[0].tile).toEqual({ col: 20, row: 8 });
     expect(h.state.predators[0].state).toBe("wander");
   });
 
   it("leaves everything else running while they are off", () => {
-    h.state.creatureAI = false;
+    stillCreatures(h.state);
     h.state.forager.placeOn(10, 8);
     h.press("a");
     h.hold("right");
@@ -584,7 +600,7 @@ describe("the cues", () => {
   it("plays each cue a tick raises exactly once", () => {
     const h = harness();
     toPlay(h);
-    poseMaze(h.state, corridorBoard());
+    poseBoard(h.state, corridorBoard());
     h.state.forager.placeOn(10, 8);
     const before = h.cues.length;
     h.press("a");
@@ -640,7 +656,7 @@ describe("beginning a dive", () => {
 
   it("replaces a posed fixture with the game's own maze", () => {
     const h = harness();
-    poseMaze(h.state, corridorBoard());
+    poseBoard(h.state, corridorBoard());
     beginDive(h.state);
     expect(h.state.maze.gate).not.toBeNull();
     expect(h.state.maze.corridorTiles().length).toBeGreaterThan(30);

@@ -32,9 +32,10 @@
 // (`gloamfin/chase-cap`), or whether a hunter rounds rock at all
 // (`maze-movement/predators-keep-to-corridors`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
+  assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
   assertTrue,
@@ -46,7 +47,7 @@ import {
   GLOAMFIN_RAMP_TIME,
   TICK_HZ,
 } from "../../src/constants";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -54,17 +55,12 @@ import {
   type Harness,
 } from "../harness";
 import {
-  check,
-  clearUnderfoot,
-  denAll,
   parkForager,
-  requireKind,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  unmetPrecondition,
 } from "../scene";
-import { gloamfinOf, placePredator } from "./pings";
+import { gloamfinOf } from "./pings";
 
 /**
  * The corner: the Gloamfin drops two tiles from `P` onto the junction `J` and
@@ -176,21 +172,18 @@ function turnAt(steps: readonly Step[]): number {
   );
 }
 
-check("Every corner costs it its edge", async () => {
+it("Every corner costs it its edge", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, CORNER);
-  const index = requireKind(await h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
   // The forager first, and parked: a posed chase fixes on "the forager's current
   // tile" (specs/instrumentation.md), and the corner this point is about is the
   // one between the Gloamfin and that tile.
   await parkForager(h, board.mark("F"));
-  await clearUnderfoot(h);
-  await placePredator(h, index, board.mark("P"), {
+  const index = await spawnPredator(h, "gloamfin", board.mark("P"), {
     dir: "down",
     state: "chase",
   });
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const opening = h.snapshot();
   const corner = await captureReplay(h, "corner", async () => {
@@ -217,16 +210,14 @@ check("Every corner costs it its edge", async () => {
   );
 
   const turn = turnAt(corner);
-  if (turn < 0) {
-    unmetPrecondition(
-      "the Gloamfin never turned onto the perpendicular arm of the posed corner, " +
-        "so there was no corner for this point to measure the cost of — " +
-        "specs/predators.md has a hunter holding a fix take the first step of a " +
-        "shortest corridor route to it, which here is down and then right, and " +
-        "whether it rounds rock at all is " +
-        "maze-movement/predators-keep-to-corridors's verdict, not this one's",
-    );
-  }
+  assertGreaterThan(
+    turn,
+    -1,
+    "the Gloamfin turned onto the perpendicular arm of the posed corner, which " +
+      "is the corner this point prices — specs/predators.md has a hunter " +
+      "holding a fix take the first step of a shortest corridor route to it, " +
+      "which here is down and then right",
+  );
 
   // A straight run costs it nothing: everything from the settle to the step
   // before the turn is the approach, and it is all at the cap.
@@ -297,15 +288,12 @@ check("Every corner costs it its edge", async () => {
   // left behind.
   await startPlaying(h);
   const back = await poseMaze(h, REVERSAL);
-  const backIndex = requireKind(await h.snapshot(), "gloamfin");
-  const backQuiet = await denAll(h, [backIndex]);
   await parkForager(h, back.mark("R"));
-  await clearUnderfoot(h);
-  await placePredator(h, backIndex, back.mark("M"), {
+  const backIndex = await spawnPredator(h, "gloamfin", back.mark("M"), {
     dir: "right",
     state: "chase",
   });
-  const backGuard = await sceneGuard(h, backQuiet, { foragerParked: false });
+  const backGuard = await sceneGuard(h, { foragerParked: false });
   // Long enough for the chase to be genuinely running one way.
   await h.advance(OUTBOUND_TICKS);
   const outbound = gloamfinOf(h.snapshot(), backIndex).dir;
@@ -317,15 +305,14 @@ check("Every corner costs it its edge", async () => {
 
   requireSceneHeld(h.snapshot(), backGuard, { what: "the reversal scenario" });
   const turned = reversal.findIndex((step) => step.dir !== outbound);
-  if (turned < 0) {
-    unmetPrecondition(
-      `the Gloamfin never turned around after the fix moved behind it — it kept ` +
-        `heading ${outbound} — so there was no reversal for this point to price; ` +
-        `specs/predators.md has a hunter take the first step of a shortest ` +
-        `corridor route to its fix, and whether it does is ` +
-        `maze-movement/predators-keep-to-corridors's verdict, not this one's`,
-    );
-  }
+  assertGreaterThan(
+    turned,
+    -1,
+    `the Gloamfin turned around after the fix moved behind it, which is the ` +
+      `reversal this point prices — it kept heading ${outbound}, and ` +
+      "specs/predators.md has a hunter take the first step of a shortest " +
+      "corridor route to its fix",
+  );
   const slowest = Math.min(...reversal.slice(turned).map((step) => step.speed));
   assertLessThanOrEqual(
     Math.abs(slowest - GLOAMFIN_CHASE_SPEED),

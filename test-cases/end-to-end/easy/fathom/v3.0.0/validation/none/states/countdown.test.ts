@@ -36,8 +36,8 @@
 // is drawn behind the countdown at all, through the depth readout `specs/ui.md`
 // fixes the wording of.
 
-import { afterEach, beforeEach } from "vitest";
-import { check } from "../scene";
+import { afterEach, beforeEach, it } from "vitest";
+
 import { assertBetween, assertEqual, assertGreaterThan } from "../assert";
 import { HOLD_MAX, HOLD_MIN, TICK_HZ, ticksFor } from "../constants";
 import { captureStill, createHarness, type Harness } from "../harness";
@@ -94,99 +94,96 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "opens the dive on the countdown, holds 1-3 s, and freezes the maze behind it",
-  async () => {
-    await h.debug.reset();
-    const title = await h.snapshot();
-    await h.tap(CONFIRM_KEY); // DIVE, the first item of the title menu.
-    const entered = await h.snapshot();
+it("opens the dive on the countdown, holds 1-3 s, and freezes the maze behind it", async () => {
+  await h.debug.reset();
+  const title = await h.snapshot();
+  await h.tap(CONFIRM_KEY); // DIVE, the first item of the title menu.
+  const entered = await h.snapshot();
 
-    // Two clocks that are plainly mid-run, so "the cooldowns hold still" is a
-    // reading of something rather than of two zeroes.
-    await h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
-    await h.debug.setInkCooldown(POSED_INK_COOLDOWN);
-    const before = await h.snapshot();
+  // Two clocks that are plainly mid-run, so "the cooldowns hold still" is a
+  // reading of something rather than of two zeroes.
+  await h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
+  await h.debug.setInkCooldown(POSED_INK_COOLDOWN);
+  const before = await h.snapshot();
 
-    const ops = await frameOps(h);
-    // Before the assertions, so a failing check still leaves the screen it read.
-    await captureStill(h, "countdown");
+  const ops = await frameOps(h);
+  // Before the assertions, so a failing check still leaves the screen it read.
+  await captureStill(h, "countdown");
 
-    // A movement key held for the whole countdown: on a build that keeps simulating
-    // the forager travels, on a conforming one it cannot.
-    const watch = await watchScreen(h, "countdown", MAX_HOLD_TICKS, MOVE_KEY);
+  // A movement key held for the whole countdown: on a build that keeps simulating
+  // the forager travels, on a conforming one it cannot.
+  const watch = await watchScreen(h, "countdown", MAX_HOLD_TICKS, MOVE_KEY);
 
-    assertEqual(
-      entered.screen,
-      "countdown",
-      "the screen DIVE confirmed from the title menu reaches (specs/ui.md)",
-    );
-    assertDrew(
-      ops,
-      `DEPTH ${String(before.depth)}`,
-      "the HUD's depth readout, drawn behind the countdown because the HUD is " +
-        "drawn whenever a maze is on screen (specs/ui.md)",
-    );
+  assertEqual(
+    entered.screen,
+    "countdown",
+    "the screen DIVE confirmed from the title menu reaches (specs/ui.md)",
+  );
+  assertDrew(
+    ops,
+    `DEPTH ${String(before.depth)}`,
+    "the HUD's depth readout, drawn behind the countdown because the HUD is " +
+      "drawn whenever a maze is on screen (specs/ui.md)",
+  );
 
-    assertEqual(
-      watch.hit,
-      true,
-      `the countdown gives way to live play inside ${String(HOLD_MAX)} s of ` +
-        "simulated time (specs/ui.md)",
-    );
-    assertEqual(
-      watch.after.screen,
-      "playing",
-      "the screen the countdown running out reaches (specs/ui.md)",
-    );
-    assertBetween(
-      watch.after.simTime - title.simTime,
-      HOLD_MIN - TICK_SLACK,
-      HOLD_MAX + TICK_SLACK,
-      "seconds of the simulation's own accumulated time the dive countdown held " +
-        "for (specs/ui.md)",
-    );
+  assertEqual(
+    watch.hit,
+    true,
+    `the countdown gives way to live play inside ${String(HOLD_MAX)} s of ` +
+      "simulated time (specs/ui.md)",
+  );
+  assertEqual(
+    watch.after.screen,
+    "playing",
+    "the screen the countdown running out reaches (specs/ui.md)",
+  );
+  assertBetween(
+    watch.after.simTime - title.simTime,
+    HOLD_MIN - TICK_SLACK,
+    HOLD_MAX + TICK_SLACK,
+    "seconds of the simulation's own accumulated time the dive countdown held " +
+      "for (specs/ui.md)",
+  );
 
-    // The ticks really ran, so nothing below is vacuous.
-    assertGreaterThan(
-      watch.last.simTime - before.simTime,
-      0,
-      "simulated seconds accumulated while the countdown ran, which every tick " +
-        "adds to whatever the screen (specs/state.md)",
-    );
+  // The ticks really ran, so nothing below is vacuous.
+  assertGreaterThan(
+    watch.last.simTime - before.simTime,
+    0,
+    "simulated seconds accumulated while the countdown ran, which every tick " +
+      "adds to whatever the screen (specs/state.md)",
+  );
 
-    assertEqual(
-      watch.last.forager.x,
-      before.forager.x,
-      "the forager's x while the countdown ran with a movement key held, which " +
-        "holds it still (specs/ui.md)",
-    );
-    assertEqual(
-      watch.last.forager.y,
-      before.forager.y,
-      "the forager's y while the countdown ran with a movement key held",
-    );
-    assertEqual(
-      watch.last.sonar.cooldown,
-      before.sonar.cooldown,
-      "the sonar cooldown while the countdown ran, which holds it still " +
-        "(specs/ui.md)",
-    );
-    assertEqual(
-      watch.last.ink.cooldown,
-      before.ink.cooldown,
-      "the ink cooldown while the countdown ran, which holds it still " +
-        "(specs/ui.md)",
-    );
-    assertEqual(
-      watch.last.predators
-        .map((one) => `${String(one.x)},${String(one.y)}`)
-        .join(" "),
-      before.predators
-        .map((one) => `${String(one.x)},${String(one.y)}`)
-        .join(" "),
-      "where the predators stood while the countdown ran, which holds them " +
-        "still (specs/ui.md)",
-    );
-  },
-);
+  assertEqual(
+    watch.last.forager.x,
+    before.forager.x,
+    "the forager's x while the countdown ran with a movement key held, which " +
+      "holds it still (specs/ui.md)",
+  );
+  assertEqual(
+    watch.last.forager.y,
+    before.forager.y,
+    "the forager's y while the countdown ran with a movement key held",
+  );
+  assertEqual(
+    watch.last.sonar.cooldown,
+    before.sonar.cooldown,
+    "the sonar cooldown while the countdown ran, which holds it still " +
+      "(specs/ui.md)",
+  );
+  assertEqual(
+    watch.last.ink.cooldown,
+    before.ink.cooldown,
+    "the ink cooldown while the countdown ran, which holds it still " +
+      "(specs/ui.md)",
+  );
+  assertEqual(
+    watch.last.predators
+      .map((one) => `${String(one.x)},${String(one.y)}`)
+      .join(" "),
+    before.predators
+      .map((one) => `${String(one.x)},${String(one.y)}`)
+      .join(" "),
+    "where the predators stood while the countdown ran, which holds them " +
+      "still (specs/ui.md)",
+  );
+});

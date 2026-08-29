@@ -28,7 +28,7 @@
 //   moment it gives way — with a HARD ceiling, so a build whose screen never
 //   gives way fails on the bound rather than running until the suite times out.
 //
-// It drives nothing the specification does not give it: `reset`, `beginPlay` and
+// It drives nothing the specification does not give it: `reset`, `setScreen` and
 // the predator poses come from `specs/instrumentation.md`, and every key it
 // presses is one `specs/movement.md` binds.
 
@@ -201,12 +201,13 @@ const MAX_ATTEMPTS = 8;
  * Spend every life the dive has, one staged catch at a time, and hand back where
  * that left the game.
  *
- * Each attempt places the roster's first predator on the forager's own tile and
+ * Each attempt places the first predator of the roster the check posed on the
+ * forager's own tile and
  * poses it into `"chase"`, which is contact as `specs/gameplay.md` defines it,
  * then waits on the build's own contact rule to take the life. Between attempts
- * the dive is on the countdown (`specs/progression.md`), so `beginPlay` ends it
- * and the next attempt runs. Nothing here fabricates a death: every one of them
- * goes through the build's own code.
+ * the dive is on the countdown (`specs/progression.md`), so `setScreen("playing")`
+ * opens live play again and the next attempt runs. Nothing here fabricates a
+ * death: every one of them goes through the build's own code.
  *
  * WHICH predator is deliberately the roster's index `0` rather than a named kind:
  * `specs/gameplay.md` costs a life for contact "whatever that predator's kind and
@@ -218,7 +219,7 @@ export async function loseEveryLife(h: Harness): Promise<FathomSnapshot> {
     let snapshot = h.snapshot();
     if (snapshot.screen === "gameover") return snapshot;
     if (snapshot.screen === "countdown") {
-      h.debug.beginPlay();
+      h.debug.setScreen("playing");
       snapshot = h.snapshot();
     }
     if (snapshot.screen !== "playing") return snapshot;

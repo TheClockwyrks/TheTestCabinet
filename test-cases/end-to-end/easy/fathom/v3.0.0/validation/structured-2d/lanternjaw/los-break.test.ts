@@ -25,9 +25,9 @@
 // brightness is `brightness/widens-lanternjaw`'s. Both halves here stand at a
 // fraction of the range so neither turns on either.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan, assertTrue } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -35,17 +35,9 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { FathomSnapshot } from "../surface";
+import { BRIGHT_HOLD } from "../../src/constants";
 
 /**
  * How far apart the pair stands, in tiles, on either reading.
@@ -98,7 +90,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Rock breaks its sense", async () => {
+it("Rock breaks its sense", async () => {
   startPlaying(h);
   // The forager's corridor carries `C`, the clear-line standoff, `GAP_TILES` along
   // it; `P` sits the same number of ROWS below, with the rows between it and the
@@ -112,19 +104,11 @@ check("Rock breaks its sense", async () => {
   const home = board.mark("F");
   const blind = board.mark("P");
   const clear = board.mark("C");
-  const index = indexOfKind(h.snapshot(), "lanternjaw");
-  if (index < 0) {
-    failPrecondition(
-      "a Lanternjaw on the roster to pose this scenario with",
-      "the progression points",
-      "no lanternjaw in snapshot().predators",
-    );
-  }
-  const quiet = await denAll(h, [index]);
+  const index = await spawnPredator(h, "lanternjaw", blind);
   await parkForager(h, home);
-  await clearUnderfoot(h);
   h.debug.setBrightness(POSED_G);
-  const guard = await sceneGuard(h, quiet);
+  h.debug.setBrightHold(BRIGHT_HOLD);
+  const guard = await sceneGuard(h);
 
   const read = await captureReplay(h, "blind", async () => {
     // Behind the band: inside the range, no line, so no fix at any step.
@@ -142,6 +126,7 @@ check("Rock breaks its sense", async () => {
     h.debug.setPredatorState(index, "wander");
     h.debug.setPredatorTile(index, clear.tx, clear.ty);
     h.debug.setBrightness(POSED_G);
+    h.debug.setBrightHold(BRIGHT_HOLD);
     const acquired = await h.until(
       (s) => s.predators[index].state === "chase",
       {

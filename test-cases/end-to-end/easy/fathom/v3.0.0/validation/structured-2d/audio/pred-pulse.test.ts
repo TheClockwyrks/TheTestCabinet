@@ -32,10 +32,10 @@
 // `gloamfin/ping-reveals-nothing`'s; its color, which is
 // `gloamfin/lost-you-orange`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { CUES, GLOAMFIN_PING_INTERVAL } from "../../src/constants";
 import { assertEqual } from "../assert";
-import { poseApart } from "../fixtures";
+import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -43,15 +43,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireKind,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
 /**
@@ -85,54 +77,46 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "plays CUES.predatorPing on the tick a Gloamfin casts its ping, and not before",
-  async () => {
-    startPlaying(h);
-    const rooms = await poseApart(h, APART_TILES);
-    const gloamfin = requireKind(h.snapshot(), "gloamfin");
+it("plays CUES.predatorPing on the tick a Gloamfin casts its ping, and not before", async () => {
+  startPlaying(h);
+  const rooms = await poseApart(h, APART_TILES);
+  await spawnPredator(h, "gloamfin", rooms.far);
+  await parkForager(h, rooms.near);
+  const watch = await sceneGuard(h);
 
-    h.debug.setPredatorTile(gloamfin, rooms.far.tx, rooms.far.ty);
-    h.debug.setPredatorState(gloamfin, "wander");
-    const quiet = await denAll(h, [gloamfin]);
-    await parkForager(h, rooms.near);
-    await clearUnderfoot(h);
-    const watch = await sceneGuard(h, quiet);
-
-    const seen = await captureReplay(h, "pulse", async () => {
-      const found = await watchForEvent(
-        h,
-        (s) => s.pulses.some((pulse) => pulse.source === "gloamfin"),
-        PING_TICKS,
-      );
-      // Past the reading, so the clip shows the ping crossing its ring. Nothing
-      // after this line can reach an assertion.
-      await h.advance(TAIL_TICKS);
-      return found;
-    });
-
-    requireSceneHeld(h.snapshot(), watch);
-
-    assertEqual(
-      seen.hit,
-      true,
-      `the wandering Gloamfin cast one of its own pings inside ${String(PING_TICKS)} ` +
-        `ticks, which is twice its GLOAMFIN_PING_INTERVAL ` +
-        `(${String(GLOAMFIN_PING_INTERVAL)} s) cadence`,
+  const seen = await captureReplay(h, "pulse", async () => {
+    const found = await watchForEvent(
+      h,
+      (s) => s.pulses.some((pulse) => pulse.source === "gloamfin"),
+      PING_TICKS,
     );
-    assertEqual(
-      cuesBeforeEvent(seen, CUES.predatorPing),
-      0,
-      `times CUES.predatorPing played over the ${String(seen.at - 1)} ticks ` +
-        "before the ping — a cue is played on the tick its event happens " +
-        "(specs/progression.md)",
-    );
-    assertEqual(
-      cuesOnEvent(seen, CUES.predatorPing),
-      1,
-      "times CUES.predatorPing played on the tick the Gloamfin's ping entered " +
-        "flight, which is its own tick and at most once on it " +
-        "(specs/progression.md)",
-    );
-  },
-);
+    // Past the reading, so the clip shows the ping crossing its ring. Nothing
+    // after this line can reach an assertion.
+    await h.advance(TAIL_TICKS);
+    return found;
+  });
+
+  requireSceneHeld(h.snapshot(), watch);
+
+  assertEqual(
+    seen.hit,
+    true,
+    `the wandering Gloamfin cast one of its own pings inside ${String(PING_TICKS)} ` +
+      `ticks, which is twice its GLOAMFIN_PING_INTERVAL ` +
+      `(${String(GLOAMFIN_PING_INTERVAL)} s) cadence`,
+  );
+  assertEqual(
+    cuesBeforeEvent(seen, CUES.predatorPing),
+    0,
+    `times CUES.predatorPing played over the ${String(seen.at - 1)} ticks ` +
+      "before the ping — a cue is played on the tick its event happens " +
+      "(specs/progression.md)",
+  );
+  assertEqual(
+    cuesOnEvent(seen, CUES.predatorPing),
+    1,
+    "times CUES.predatorPing played on the tick the Gloamfin's ping entered " +
+      "flight, which is its own tick and at most once on it " +
+      "(specs/progression.md)",
+  );
+});

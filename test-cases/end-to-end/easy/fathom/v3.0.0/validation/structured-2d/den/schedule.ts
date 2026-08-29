@@ -5,9 +5,8 @@
 // moment live play begins". So both need the same three things, and they live
 // here rather than being written twice:
 //
-//   * a parking spot for the forager that is clear of the den, because a forager
-//     caught mid-measurement re-dens every predator and restarts the very
-//     schedule being read;
+//   * the board they run on, which carries a den for the roster and, across
+//     solid rock, a corridor for the forager;
 //   * a watch that dates each predator's release; and
 //   * the tolerance the two items state.
 //
@@ -20,16 +19,47 @@
 // gate charges every gap the difference between two swims: a build releasing
 // exactly `5 s` apart from tiles one and three would report gaps of four and six.
 //
-// THESE TWO CHECKS RUN ON THE BUILD'S OWN MAZE, which is the exception to the
-// posed-fixture rule in `fixtures.ts`. `setMaze` "suspends" the release schedule
-// (`specs/instrumentation.md`), so a posed board is exactly the board on which
-// there is no schedule to read.
+// THE BOARD IS POSED, like every other board in this suite. `setMaze` sets the
+// layout and nothing else (`specs/instrumentation.md`), so a posed fixture runs
+// the release schedule exactly as a laid-out maze does — and `setDepth` puts "the
+// roster ... laid out in the den with every `released` flag false, exactly as a
+// maze at that depth lays it out" onto it. What the pose buys is the one thing
+// these items must not be at the mercy of: the forager stands in a corridor no
+// route joins to the den, so no hunter these items time can reach it and cost a
+// life, which would re-den the roster and restart the very clock being read.
 
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
-import { failPrecondition, parkForager, standDown } from "../scene";
+import { assertEqual, assertLength } from "../assert";
+import { poseMaze } from "../fixtures";
+import { parkForager } from "../scene";
 import type { Harness } from "../harness";
 import type { FathomSnapshot } from "../surface";
 import type { Tile } from "../maze";
+
+/**
+ * THE BOARD BOTH ITEMS RUN ON.
+ *
+ * A three-tile den chamber with its gate above the middle tile and a short pocket
+ * of corridor above that, so a released hunter has somewhere to swim out to — and,
+ * on the top row, a separate corridor for the forager with a full band of rock
+ * between the two. `specs/instrumentation.md` exempts a posed layout from every
+ * rule in `specs/maze.md`, disconnected regions included, and requires the game to
+ * keep running on one.
+ *
+ * The board carries no plankton, so nothing can clear it and no bonus drifter is
+ * admitted (`specs/gameplay.md`), and it carries no creature at all until
+ * `setDepth` lays the depth's own roster into the den.
+ */
+export const DEN_BOARD: readonly string[] = [
+  "F..........",
+  "",
+  "    ...",
+  "     g",
+  "    ddd",
+];
+
+/** The depth both items read the schedule at, whose roster is one of each kind. */
+export const DEN_DEPTH = 1;
 
 /**
  * How far a measured release may sit from the time the schedule gives it, in
@@ -65,76 +95,40 @@ export interface DenWatch {
   last: FathomSnapshot;
 }
 
-/** Every tile of the board carrying `character`, in reading order. */
-function tilesOf(snap: FathomSnapshot, character: string): Tile[] {
-  const found: Tile[] = [];
-  for (let ty = 0; ty < snap.grid.rows; ty += 1) {
-    const row = snap.tiles[ty] ?? "";
-    for (let tx = 0; tx < snap.grid.cols; tx += 1) {
-      if (row[tx] === character) found.push({ tx, ty });
-    }
-  }
-  return found;
+/**
+ * Pose the board, lay the depth's roster into its den, and park the forager in
+ * the corridor across the rock.
+ *
+ * Nothing is playing yet: the caller opens the screen it wants, so `den/stagger`
+ * can watch a countdown first and both items can pin release time `0` to the
+ * moment they choose.
+ */
+export async function poseDenBoard(h: Harness): Promise<Tile> {
+  const board = await poseMaze(h, DEN_BOARD);
+  const home = board.mark("F");
+  await parkForager(h, home);
+  h.debug.setDepth(DEN_DEPTH);
+  h.debug.setBrightness(0);
+  return home;
 }
 
 /**
- * Park the forager as far from the den gate as the build's own maze allows, and
- * eat the pellet it is standing on.
+ * The roster the posed board carries is the one the schedule is written about, or
+ * this check FAILS.
  *
- * THE FORAGER IS A BYSTANDER IN BOTH ITEMS, and an expensive one to lose: contact
- * costs a life, and a life lost "returns every predator to the den unreleased"
- * and runs the whole schedule again (`specs/predators.md`), which is the clock
- * being measured. Distance is what buys the measurement its ten seconds — a
- * released hunter has to cross the maze before it is a problem — and the pellet
- * is eaten so the forager sits at `G = 0`, where the Lanternjaw's reach is its
- * narrowest `LANTERN_RANGE_BASE`.
- *
- * The tile is chosen among those with a rock neighbour, so {@link parkForager}
- * has a wall to face the forager into and it cannot drift off the tile it was
- * put on.
- *
- * THE PELLET IS TAKEN OFF RATHER THAN EATEN. `setPlankton(tx, ty, false)`
- * "is not eating it, so it scores nothing and clears no maze"
- * (`specs/instrumentation.md`) and, unlike eating one, it costs no tick — which
- * matters here because both items date the schedule from an instant, and a tick
- * spent tidying the board is a tick the den's own clock may already be running
- * in.
+ * `setDepth` lays out "the roster specs/predators.md gives for depth `d`", which
+ * at depth 1 is one of each of the three kinds. A build that answers with fewer
+ * has no staggered schedule to read, and a check that decided nothing over it
+ * would leave the point to a person to settle by hand.
  */
-export async function parkClearOfDen(h: Harness): Promise<Tile> {
-  const snap = h.snapshot();
-  const gates = tilesOf(snap, "g");
-  const corridors = tilesOf(snap, ".");
-  if (corridors.length === 0) {
-    standDown(
-      "the build's maze reports no corridor tile at all, so there is nowhere " +
-        "to stand the forager clear of the den — what the board holds is the " +
-        "maze checks' verdict, not this one's",
-    );
-  }
-  const walled = corridors.filter((tile) => {
-    const around = [
-      snap.tiles[tile.ty - 1]?.[tile.tx],
-      snap.tiles[tile.ty + 1]?.[tile.tx],
-      snap.tiles[tile.ty]?.[tile.tx - 1],
-      snap.tiles[tile.ty]?.[tile.tx + 1],
-    ];
-    return around.some((neighbour) => neighbour !== ".");
-  });
-  const candidates = walled.length > 0 ? walled : corridors;
-  const score = (tile: Tile): number =>
-    gates.length === 0
-      ? 0
-      : Math.min(
-          ...gates.map((gate) =>
-            Math.hypot(gate.tx - tile.tx, gate.ty - tile.ty),
-          ),
-        );
-  let best = candidates[0];
-  for (const tile of candidates) if (score(tile) > score(best)) best = tile;
-  await parkForager(h, best);
-  h.debug.setPlankton(best.tx, best.ty, false);
-  h.debug.setBrightness(0);
-  return best;
+export function assertRoster(snapshot: FathomSnapshot): void {
+  assertLength(
+    snapshot.predators,
+    DEN_ORDER.length,
+    `the predators setDepth(${DEN_DEPTH}) laid into the den, which ` +
+      `specs/predators.md gives as one of each of ` +
+      `${DEN_ORDER.length} kinds (${DEN_ORDER_LINE})`,
+  );
 }
 
 /**
@@ -184,24 +178,22 @@ export async function watchReleases(
 }
 
 /**
- * Stand a den point down where the build reports no `released` flag to read the
- * schedule off.
+ * Every predator reports `released` as a boolean, or this check FAILS.
  *
  * specs/state.md requires `released` of every predator and specs/predators.md
  * dates the whole staggered schedule from it, so a roster that does not report it
  * leaves both den points measuring nothing: no release ever arrives, and a den
  * that never opened is indistinguishable from a field that was never there. That
- * the snapshot carries the field at all is `instrumentation/snapshot-shape`'s
- * verdict, which asserts it directly.
+ * is a missing deliverable rather than an undecidable point, so it fails here as
+ * well as at `instrumentation/snapshot-shape`.
  */
-export function requireReleasedFlag(watch: DenWatch): void {
-  if (watch.missingFlag === null) return;
-  failPrecondition(
+export function assertReleasedFlag(watch: DenWatch): void {
+  assertEqual(
+    watch.missingFlag,
+    null,
     "`released` reported as a boolean on every predator, which is what the " +
       "staggered schedule specs/predators.md fixes is dated from; " +
       "specs/state.md requires the field",
-    "instrumentation/snapshot-shape",
-    watch.missingFlag,
   );
 }
 

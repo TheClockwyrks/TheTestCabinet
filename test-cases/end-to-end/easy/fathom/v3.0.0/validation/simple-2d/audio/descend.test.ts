@@ -35,7 +35,7 @@
 // `scoring/cleared-bonus`'s; the interstitial, which is `states/cleared`'s; the
 // descent, which is `scoring/descend-on-clear`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BINDINGS, CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
@@ -46,7 +46,6 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { check, denAll, requireSwim } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
 /** The key `specs/movement.md` binds the `right` action to first. */
@@ -74,62 +73,50 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "plays CUES.descend on the tick the maze is cleared, and not before",
-  async () => {
-    await startPlaying(h);
-    const run = await poseMoveKeyRun(h, "right");
-    await denAll(h);
+it("plays CUES.descend on the tick the maze is cleared, and not before", async () => {
+  await startPlaying(h);
+  const run = await poseMoveKeyRun(h, "right");
 
-    // One mouthful left in the whole maze, one tile ahead of the forager. The
-    // fixture's own sealed larder goes with everything else, deliberately: this
-    // is a point whose subject is the board running out.
-    h.debug.clearPlankton();
-    h.debug.setPlankton(run.start.tx + 1, run.start.ty, true);
-    const before = h.snapshot();
+  // One mouthful in the whole maze, one tile ahead of the forager: this is a
+  // point whose subject is the board running out, so the board it runs out of
+  // is the single pellet posed here.
+  h.debug.setPlankton(run.start.tx + 1, run.start.ty, true);
 
-    const seen = await captureReplay(h, "descend", async () => {
-      h.hold(MOVE_KEY);
-      try {
-        const found = await watchForEvent(
-          h,
-          (s) => s.screen === "cleared",
-          SWIM_TICKS,
-        );
-        // Past the reading, so the clip shows the interstitial. Nothing after
-        // this line can reach an assertion.
-        await h.advance(TAIL_TICKS);
-        return found;
-      } finally {
-        h.release(MOVE_KEY);
-      }
-    });
+  const seen = await captureReplay(h, "descend", async () => {
+    h.hold(MOVE_KEY);
+    try {
+      const found = await watchForEvent(
+        h,
+        (s) => s.screen === "cleared",
+        SWIM_TICKS,
+      );
+      // Past the reading, so the clip shows the interstitial. Nothing after
+      // this line can reach an assertion.
+      await h.advance(TAIL_TICKS);
+      return found;
+    } finally {
+      h.release(MOVE_KEY);
+    }
+  });
 
-    // Whether the forager travels at all is the movement points' verdict.
-    requireSwim(
-      before.forager,
-      seen.snapshot.forager,
-      "reach the maze's last plankton",
-    );
-
-    assertEqual(
-      seen.hit,
-      true,
-      `the forager ate the maze's last plankton and cleared it inside ` +
-        `${String(SWIM_TICKS)} ticks, from tile (${String(run.start.tx)}, ${String(run.start.ty)})`,
-    );
-    assertEqual(
-      cuesBeforeEvent(seen, CUES.descend),
-      0,
-      `times CUES.descend played over the ${String(seen.at - 1)} ticks before ` +
-        "the maze cleared — a cue is played on the tick its event happens " +
-        "(specs/progression.md)",
-    );
-    assertEqual(
-      cuesOnEvent(seen, CUES.descend),
-      1,
-      "times CUES.descend played on the tick the maze cleared, which is its own " +
-        "tick and at most once on it (specs/progression.md)",
-    );
-  },
-);
+  assertEqual(
+    seen.hit,
+    true,
+    `the forager travelled the tile to the maze's last plankton, ate it and ` +
+      `cleared the maze inside ${String(SWIM_TICKS)} ticks, from tile ` +
+      `(${String(run.start.tx)}, ${String(run.start.ty)})`,
+  );
+  assertEqual(
+    cuesBeforeEvent(seen, CUES.descend),
+    0,
+    `times CUES.descend played over the ${String(seen.at - 1)} ticks before ` +
+      "the maze cleared — a cue is played on the tick its event happens " +
+      "(specs/progression.md)",
+  );
+  assertEqual(
+    cuesOnEvent(seen, CUES.descend),
+    1,
+    "times CUES.descend played on the tick the maze cleared, which is its own " +
+      "tick and at most once on it (specs/progression.md)",
+  );
+});

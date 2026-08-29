@@ -24,12 +24,12 @@
 // VISION_GAIN` at `G = 1`. A build carrying the previous maze's fog across fails
 // that on the far side of the board.
 //
-// THE MAZE IS EMPTIED AND ONE PELLET POSED BACK, exactly as
-// `scoring/cleared-bonus` does and for the same reason: `clearPlankton` scores
-// nothing and clears no maze (specs/instrumentation.md), so the bite that clears
-// is the game's own.
+// ONE PELLET IS POSED ONTO AN EMPTY BOARD, exactly as `scoring/cleared-bonus`
+// does and for the same reason: `poseMaze` opens on a board `clearPlankton`
+// emptied, and emptying it that way "scores nothing and clears no maze"
+// (specs/instrumentation.md), so the bite that clears is the game's own.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -38,12 +38,13 @@ import {
   centerOf,
   createHarness,
   DIR_KEY,
+  requireForagerMotion,
   startPlaying,
   ticks,
   type Harness,
 } from "../harness";
-import { check, denAll, fromForager, requireSwim } from "../scene";
-import type { FathomSnapshot } from "../surface";
+import { fromForager } from "../scene";
+import { FathomSnapshot } from "../surface";
 
 /**
  * The board: five tiles of straight corridor, the forager on the first and the
@@ -113,16 +114,14 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Clearing descends to the next depth", async () => {
+it("Clearing descends to the next depth", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const start = board.mark("S");
   const target = board.mark("T");
   h.debug.setForagerTile(start.tx, start.ty);
   h.debug.setForagerDir("right");
-  h.debug.clearPlankton();
   h.debug.setPlankton(target.tx, target.ty, true);
-  await denAll(h);
 
   const dive = await captureReplay(h, "descend", async () => {
     const before = h.snapshot();
@@ -149,9 +148,9 @@ check("Clearing descends to the next depth", async () => {
   });
 
   if (!dive.ate) {
-    requireSwim(
-      dive.before.forager,
-      dive.cleared.forager,
+    requireForagerMotion(
+      dive.before,
+      dive.cleared,
       "reach the maze's last plankton",
     );
   }

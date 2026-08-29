@@ -17,8 +17,7 @@
 // over several freshly seeded layouts, so a generator that opens a room only
 // sometimes is caught.
 
-import { afterEach, beforeEach } from "vitest";
-import { check } from "../scene";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { count2x2Open } from "../maze";
@@ -41,25 +40,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "lays out corridors one tile wide, with no 2x2 block of open corridor",
-  async () => {
-    const boards = freshBoards(h);
-    requireLaidOut(boards);
+it("lays out corridors one tile wide, with no 2x2 block of open corridor", async () => {
+  const boards = freshBoards(h);
+  requireLaidOut(boards);
 
-    const measured = boards.map((board) => {
-      const blocks = count2x2Open(board.snapshot);
-      return { board, blocks, ok: blocks === MAX_OPEN_BLOCKS };
-    });
-    await captureBoard(h, witness(measured).board);
+  const measured = boards.map((board) => {
+    const blocks = count2x2Open(board.snapshot);
+    return { board, blocks, ok: blocks === MAX_OPEN_BLOCKS };
+  });
+  await captureBoard(h, witness(measured).board);
 
-    for (const one of measured) {
-      assertEqual(
-        one.blocks,
-        MAX_OPEN_BLOCKS,
-        `2x2 blocks whose four tiles are all corridor, in the maze laid out from ` +
-          `seed ${one.board.seed}`,
-      );
-    }
-  },
-);
+  for (const one of measured) {
+    assertEqual(
+      one.blocks,
+      MAX_OPEN_BLOCKS,
+      `2x2 blocks whose four tiles are all corridor, in the maze laid out from ` +
+        `seed ${one.board.seed}`,
+    );
+  }
+});

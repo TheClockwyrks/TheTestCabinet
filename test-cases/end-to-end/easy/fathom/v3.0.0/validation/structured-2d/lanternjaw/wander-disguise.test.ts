@@ -25,14 +25,20 @@
 // `lanternjaw/light-range`'s, so a build that never acquires stands this check
 // down rather than failing it twice.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
+  BRIGHT_HOLD,
   DRIFTER_SPEED,
   FORAGER_SPEED,
   PREDATOR_SPEED,
 } from "../../src/constants";
-import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
-import { poseSightLine } from "../fixtures";
+import {
+  assertEqual,
+  assertLessThan,
+  assertLessThanOrEqual,
+  fail,
+} from "../assert";
+import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -41,16 +47,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * How far apart the pair stands, in tiles.
@@ -129,31 +126,22 @@ async function travel(
   return { covered, speed: last.speed, state: last.state };
 }
 
-check("It wanders at the drifter's pace and hunts faster", async () => {
+it("It wanders at the drifter's pace and hunts faster", async () => {
   startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
     tail: TAIL_CORRIDOR,
   });
-  const index = indexOfKind(h.snapshot(), "lanternjaw");
-  if (index < 0) {
-    failPrecondition(
-      "a Lanternjaw on the roster to pose this scenario with",
-      "the progression points",
-      "no lanternjaw in snapshot().predators",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
   // Facing away down the corridor: its drift is the thing being timed, and a drift
   // that closed the gap would shorten the standoff the second half rests on.
-  h.debug.setPredatorDir(index, line.dir);
-  h.debug.setPredatorState(index, "wander");
-  // Parked, its own pellet settled, and `G` left at the zero a dive opens on,
-  // which is what puts the forager outside the hunter's reach for the first half.
+  const index = await spawnPredator(h, "lanternjaw", line.pred, {
+    dir: line.dir,
+  });
+  // Parked on a board carrying no plankton, with `G` left at the zero a dive
+  // opens on, which is what puts the forager outside the hunter's reach for the
+  // first half.
   await parkForager(h, line.forager);
-  await clearUnderfoot(h);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const read = await captureReplay(h, "disguise", async () => {
     const wandered = await travel(h, index, WANDER_TICKS);
@@ -164,15 +152,15 @@ check("It wanders at the drifter's pace and hunts faster", async () => {
     h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
     h.debug.setPredatorState(index, "wander");
     h.debug.setBrightness(1);
+    h.debug.setBrightHold(BRIGHT_HOLD);
     const fixed = await h.until((s) => s.predators[index].state === "chase", {
       maxFrames: FIX_TICKS,
       poll: 1,
     });
     if (!fixed.hit) {
-      failPrecondition(
+      fail(
         "the Lanternjaw to take a fix on a fully lit forager seven tiles away " +
           "on a clear line, so there is a chase to time",
-        "lanternjaw/light-range",
         fixed.snapshot.predators[index].state,
       );
     }

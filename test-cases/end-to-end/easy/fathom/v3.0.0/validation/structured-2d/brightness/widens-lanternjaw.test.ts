@@ -30,25 +30,21 @@
 // from `G` and a build that recomputes it at the top of the next step keeps the
 // formula exactly as much as one that recomputes it inside the operation.
 
-import { afterEach, beforeEach } from "vitest";
-import { LANTERN_RANGE_BASE, LANTERN_RANGE_GAIN } from "../../src/constants";
-import { assertLessThanOrEqual, assertNotEqual } from "../assert";
-import { poseApart } from "../fixtures";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  BRIGHT_HOLD,
+  LANTERN_RANGE_BASE,
+  LANTERN_RANGE_GAIN,
+} from "../../src/constants";
+import { assertLessThanOrEqual, assertNotEqual, fail } from "../assert";
+import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * How far apart the two rooms are posed, in tiles.
@@ -97,23 +93,13 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Brightness widens the Lanternjaw's reach", async () => {
+it("Brightness widens the Lanternjaw's reach", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, ROOMS_APART, { ring: RING_TILES });
-  const lanternjaw = indexOfKind(h.snapshot(), "lanternjaw");
-  if (lanternjaw < 0) {
-    failPrecondition(
-      "the roster to carry a Lanternjaw, whose detection range this point reads",
-      "scoring/depth-scaling",
-      "no lanternjaw on the roster",
-    );
-  }
-  const quiet = await denAll(h, [lanternjaw]);
-  h.debug.setPredatorTile(lanternjaw, rooms.far.tx, rooms.far.ty);
-  h.debug.setPredatorState(lanternjaw, "wander");
+  const lanternjaw = await spawnPredator(h, "lanternjaw", rooms.far);
   await parkForager(h, rooms.near);
   h.debug.clearPlankton();
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
   const sweep = await captureReplay(h, "range", async () => {
     const readings: {
@@ -123,6 +109,7 @@ check("Brightness widens the Lanternjaw's reach", async () => {
     }[] = [];
     for (const g of SAMPLES) {
       h.debug.setBrightness(g);
+      h.debug.setBrightHold(BRIGHT_HOLD);
       await h.advance(READ_BEAT);
       const snapshot = h.snapshot();
       readings.push({
@@ -145,12 +132,11 @@ check("Brightness widens the Lanternjaw's reach", async () => {
   const reported = sweep.readings.map((one) => one.brightness);
   const spanned = Math.max(...reported) - Math.min(...reported);
   if (spanned < BRIGHTNESS_SPAN) {
-    failPrecondition(
+    fail(
       `G to move across the ${SAMPLES[0]} to ${SAMPLES[SAMPLES.length - 1]} ` +
         "this sweep posed it to, so there is a widening to read; " +
         "specs/instrumentation.md has setBrightness pose the value outright " +
         "and arm the hold in full",
-      "brightness/holds-decays",
       `the reported G spanned ${spanned.toFixed(3)}`,
     );
   }

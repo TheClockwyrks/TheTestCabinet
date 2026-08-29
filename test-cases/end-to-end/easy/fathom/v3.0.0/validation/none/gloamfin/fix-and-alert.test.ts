@@ -32,28 +32,21 @@
 // WHAT THIS DOES NOT DECIDE. What a chase then does (`gloamfin/chase-cap`), or
 // what the alert looks like (`alert/gloamfin`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
 import { GLOAMFIN_HEAR, TICK_HZ } from "../constants";
-import { placeForager, placePredator, poseMaze } from "../fixtures";
+import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  denAll,
-  requireKind,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 import { apart, gloamfinOf } from "./pings";
 
 /**
@@ -93,18 +86,18 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("Close hearing takes a fix and fires the alert", async () => {
+it("Close hearing takes a fix and fires the alert", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
-  const index = requireKind(await h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
-  await placePredator(h, index, board.mark("G"), { state: "wander" });
+  const index = await spawnPredator(h, "gloamfin", board.mark("G"), {
+    state: "wander",
+  });
   await placeForager(h, board.mark("F"), "right");
   await h.debug.clearPlankton();
   await h.debug.setBrightness(0);
   // The forager is this point's mover, so the guard watches everything BUT where
   // it stands: a life lost, the dive leaving live play, a denned hunter loose.
-  const guard = await sceneGuard(h, quiet, { foragerParked: false });
+  const guard = await sceneGuard(h, { foragerParked: false });
 
   const opening = await h.snapshot();
   const openingGloamfin = gloamfinOf(opening, index);
@@ -144,13 +137,6 @@ check("Close hearing takes a fix and fires the alert", async () => {
     GLOAMFIN_HEAR,
     `logical units between the two centers at the start, against the ` +
       `GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches`,
-  );
-
-  requireSwim(
-    opening.forager,
-    crossing.read.forager,
-    `swim the ${SEALED_PAIR[0].length - 1} tiles of corridor this scenario laid ` +
-      `out to bring it inside GLOAMFIN_HEAR of the Gloamfin`,
   );
 
   const heard = gloamfinOf(crossing.read, index);

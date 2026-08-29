@@ -27,16 +27,17 @@
 // than that is drawn. The fog it is measured against is sampled from a sealed
 // pocket of this same fixture, so the reading holds whatever palette a build chose.
 //
-// THE DRIFTER IS HELD STILL. `setCreatureAI(false)` holds every creature exactly
-// where it stands and leaves the rest of the simulation running
-// (`specs/instrumentation.md`), so the mote is read where the snapshot says it is
-// and this point turns on the drawing rather than on a wander it does not claim.
+// THE BOARD HOLDS THE DRIFTER AND NOTHING ELSE, and the drifter is held still by
+// `setDrifterMind(index, false)`, which holds it "exactly where it stands" while
+// it is "still drawn" (`specs/instrumentation.md`), so the mote is read where the
+// snapshot says it is and this point turns on the drawing rather than on a wander
+// it does not claim.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import { VISION_GAIN, VISION_MIN } from "../constants";
 import { visibilityAt } from "../maze";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnDrifter } from "../fixtures";
 import {
   MOTE_SEARCH,
   brightestWarmNear,
@@ -48,14 +49,7 @@ import {
   type NearSample,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The board: the forager's corridor, the drifter's berth `FAR_TILES` along it,
@@ -96,68 +90,62 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "draws a drifter's warm mote out in unrevealed fog, far past every light",
-  async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const home = board.mark("F");
-    const berth = board.mark("D");
-    const unlit = board.mark("S");
-    const quiet = await denAll(h);
+it("draws a drifter's warm mote out in unrevealed fog, far past every light", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const home = board.mark("F");
+  const berth = board.mark("D");
+  const unlit = board.mark("S");
 
-    await parkForager(h, home);
-    await clearUnderfoot(h);
-    await h.debug.spawnDrifter(berth.tx, berth.ty);
-    // Held exactly where it was posed, so the mote is read at the position the
-    // snapshot reports and nothing wanders between the two.
-    await h.debug.setCreatureAI(false);
-    const guard = await sceneGuard(h, quiet);
+  await parkForager(h, home);
+  // Held exactly where it was posed, so the mote is read at the position the
+  // snapshot reports and nothing wanders between the two.
+  await spawnDrifter(h, berth, { mind: false });
+  const guard = await sceneGuard(h);
 
-    await h.advance(SETTLE_TICKS);
-    const after = await h.snapshot();
-    const drifter = after.drifters[0];
-    const fog = await tileColor(h, after, unlit);
-    const mote =
-      drifter === undefined
-        ? null
-        : await brightestWarmNear(h, drifter.x, drifter.y);
-    // Before the assertions, so a check that fails still leaves the picture.
-    await captureStill(h, "amber");
+  await h.advance(SETTLE_TICKS);
+  const after = await h.snapshot();
+  const drifter = after.drifters[0];
+  const fog = await tileColor(h, after, unlit);
+  const mote =
+    drifter === undefined
+      ? null
+      : await brightestWarmNear(h, drifter.x, drifter.y);
+  // Before the assertions, so a check that fails still leaves the picture.
+  await captureStill(h, "amber");
 
-    requireSceneHeld(after, guard);
+  requireSceneHeld(after, guard);
 
-    assertEqual(
-      after.drifters.length,
-      1,
-      "the drifters the maze holds after one was spawned far across the board",
-    );
+  assertEqual(
+    after.drifters.length,
+    1,
+    "the drifters the maze holds after one was spawned far across the board",
+  );
 
-    // The fixture's own geometry: the drifter stands past every light the forager
-    // carries at any brightness, on ground nothing has ever revealed.
-    assertGreaterThan(
-      Math.hypot(drifter.x - after.forager.x, drifter.y - after.forager.y),
-      VISION_MAX,
-      `the logical units between the forager and the drifter ${FAR_TILES} tiles ` +
-        `off, which must exceed V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
-    );
-    assertEqual(
-      visibilityAt(after, berth),
-      "u",
-      `the drifter's tile at (${berth.tx}, ${berth.ty}), which no light has touched`,
-    );
+  // The fixture's own geometry: the drifter stands past every light the forager
+  // carries at any brightness, on ground nothing has ever revealed.
+  assertGreaterThan(
+    Math.hypot(drifter.x - after.forager.x, drifter.y - after.forager.y),
+    VISION_MAX,
+    `the logical units between the forager and the drifter ${FAR_TILES} tiles ` +
+      `off, which must exceed V at G = 1 (VISION_MIN + VISION_GAIN = ${VISION_MAX})`,
+  );
+  assertEqual(
+    visibilityAt(after, berth),
+    "u",
+    `the drifter's tile at (${berth.tx}, ${berth.ty}), which no light has touched`,
+  );
 
-    // And the mote itself, against this build's own fog.
-    assertNotNull(
-      mote,
-      `a red-leaning pixel within ${MOTE_SEARCH} units of the drifter's reported ` +
-        "center: the amber lights are drawn at any distance, across unrevealed fog",
-    );
-    assertGreaterThan(
-      colorDistance((mote as NearSample).color, fog),
-      DRAWN_MIN,
-      "the RGB distance out of 441 between the brightest warm pixel at the distant " +
-        "drifter and the unrevealed fog around it",
-    );
-  },
-);
+  // And the mote itself, against this build's own fog.
+  assertNotNull(
+    mote,
+    `a red-leaning pixel within ${MOTE_SEARCH} units of the drifter's reported ` +
+      "center: the amber lights are drawn at any distance, across unrevealed fog",
+  );
+  assertGreaterThan(
+    colorDistance((mote as NearSample).color, fog),
+    DRAWN_MIN,
+    "the RGB distance out of 441 between the brightest warm pixel at the distant " +
+      "drifter and the unrevealed fog around it",
+  );
+});

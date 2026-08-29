@@ -17,13 +17,13 @@
 // mote must read is each check's to state, against a fog sample it took itself.
 
 import {
-  MOTE_RADII,
-  MOTE_SEARCH,
   isWarm,
   luminance,
+  MOTE_RADII,
+  MOTE_SEARCH,
   sampleRing,
 } from "../harness";
-import type { Harness, MoteSample } from "../harness";
+import { Harness, MoteSample } from "../harness";
 
 // "Red-leaning", the item's own test — "its red channel above its blue" — is the
 // harness's `isWarm`, the one predicate every reading of an amber light in the

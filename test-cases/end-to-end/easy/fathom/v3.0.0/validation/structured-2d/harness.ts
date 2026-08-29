@@ -17,9 +17,9 @@
 //
 // WHY THE DEBUG SURFACE RATHER THAN RAW ASSIGNMENT. specs/instrumentation.md
 // fixes its operations, so they mean the same thing in every build: `setMaze`
-// poses a fixture and suspends the den's schedule, `setBrightness` arms the
-// brightness hold in full, `setCreatureAI(false)` holds every creature exactly
-// where it stands. Posing through it is how a scenario is reproducible, and it is
+// sets the layout and nothing else, `clearPredators` empties the roster,
+// `setPredatorMind(index, false)` holds one hunter exactly where it stands.
+// Posing through it is how a scenario is reproducible, and it is
 // the seam the case's specification documents. `surface.ts` is that specification
 // as types, and it is the only description of the surface this harness reads: the
 // build's own module for it is never imported.
@@ -31,7 +31,7 @@
 // checks that reach the game through it. See `readDebugSurface`.
 //
 // HOW THE SURFACE IS DRIVEN. Directly. Each operation is a method that acts on
-// the live game at the moment of the call, so a pose is `h.debug.beginPlay()` and
+// the live game at the moment of the call, so a pose is `h.debug.setScreen(s)` and
 // a reading is `h.debug.snapshot()`, with nothing in between. Fathom runs in ONE
 // world for the whole session and every screen is a value of `screen`, so no pose
 // rides a level transition and a reading taken straight after a pose sees it.
@@ -72,23 +72,8 @@ import { BINDINGS, LAYOUT, STAGE_H, STAGE_W, TICK_HZ } from "../src/constants";
 import { BACKGROUND, game as build } from "../src/game";
 import { assertTruthy, fail } from "./assert";
 import type { FixtureHost } from "./fixtures";
-import {
-  CORRIDOR,
-  DEN,
-  GATE,
-  tileAt,
-  tileCenter,
-  type Dir,
-  type GridFrame,
-  type Tile,
-} from "./maze";
-import {
-  FORAGER_CORRIDORS,
-  PREDATOR_CORRIDORS,
-  type DenRelease,
-  type SceneHost,
-  type Trespass,
-} from "./scene";
+import { tileCenter, type Dir, type GridFrame, type Tile } from "./maze";
+import type { SceneHost } from "./scene";
 import type {
   FathomDebugApi,
   FathomSnapshot,
@@ -301,19 +286,6 @@ export interface Harness extends FixtureHost, SceneHost {
   readonly assetFailures: AssetFailure[];
   /** The event target a dispatched key reaches, which is the player's own. */
   readonly events: EventTarget;
-  /**
-   * Every body found standing on ground movement cannot have carried it to, in
-   * the order they were first seen — see {@link Trespass} and
-   * {@link TRESPASS_POLL}.
-   */
-  readonly trespasses: readonly Trespass[];
-  /**
-   * Every release granted to a hunter still in the den, in the order they were
-   * granted — see {@link DenRelease}. Watched on the same stride, and for the
-   * same reason: a scenario that posed a hunter away cannot tell afterwards that
-   * one was let out.
-   */
-  readonly denReleases: readonly DenRelease[];
 
   /** A fresh read of the game's state through the case's `snapshot`. */
   snapshot(): FathomSnapshot;
@@ -533,94 +505,6 @@ const SURFACE_REQUIREMENT =
  * layout — so one harness serves every build of this case. Everything else the
  * build decided lives inside `src/game.ts`.
  */
-/* -------------------------------------------------------------------------- */
-/* The trespass watch                                                         */
-/* -------------------------------------------------------------------------- */
-//
-// Nearly every scenario in this suite is held together by ROCK: a bystander
-// walled off from its subject, a pair sealed into neighboring cells, a hunter in a
-// sealed ring, a den walled on three sides. specs/movement.md is what entitles a
-// check to lean on that — the forager travels over corridor tiles and nothing
-// else, a predator over those and, while it is in the den, the chamber and its
-// gate — so a build that lets a body cross rock takes every one of those
-// scenarios apart at once. Left unwatched, that arrives as fifty findings against
-// fifty mechanics, none of them the one that broke.
-//
-// So the harness watches for it as it advances, and `scene.ts` turns what it saw
-// into a DECLINE naming `maze-movement/no-wall` or
-// `maze-movement/predators-keep-to-corridors`, the two points that fail for it.
-// The watch has to run DURING a measurement rather than after one, because the
-// evidence does not survive: a hunter that walks through rock, eats the forager
-// and is returned to the den by the life that cost stands on a den tile by the
-// time the check looks.
-//
-// The same watch carries a second reading for the same reason: a hunter in the den
-// that has been GRANTED ITS RELEASE. A scenario puts the rest of the roster away
-// and is entitled to find it there, because a pose that dens a hunter suspends its
-// release time (specs/instrumentation.md), and a build that grants one anyway
-// walks the hunter out through the gate and into the measurement — then loses the
-// evidence to the life it takes, which returns every hunter to the den unreleased.
-// `controls/setmaze-houses-predators` is the point that fails for that one.
-//
-// Both read nothing but the snapshot every check already reads, and neither
-// decides anything on its own.
-
-/**
- * How often the watch looks, in ticks.
- *
- * Six. A tile is `TILE` (`32`) logical units and the fastest thing on the board
- * travels at `GLOAMFIN_CHASE_SPEED` (`160`), so six ticks is at most `8` units —
- * a quarter of a tile. No tile a body stands on can be crossed between two looks.
- */
-export const TRESPASS_POLL = 6;
-
-/**
- * How many distinct entries either watch keeps.
- *
- * A decline names what it saw, and a build that ignores rock produces one of
- * these every few ticks forever. The first handful say everything a reader needs;
- * the watch stops recording past that.
- */
-const TRESPASS_CAP = 8;
-
-/** One body of a snapshot, as the trespass watch reads it. */
-interface StandingBody {
-  tx: number;
-  ty: number;
-  /** How the decline names it. */
-  what: string;
-  /** The point that owns this body keeping to the corridors. */
-  owner: string;
-}
-
-/**
- * The forager and every predator out of the den, with the point that owns each
- * one's confinement.
- *
- * Drifters are left out deliberately: no point in this suite owns a drifter
- * keeping to the corridors, so a trespassing one has to be graded where it lands
- * rather than deferred to nobody.
- */
-function standingBodies(snapshot: FathomSnapshot): StandingBody[] {
-  const bodies: StandingBody[] = [
-    {
-      tx: snapshot.forager.tx,
-      ty: snapshot.forager.ty,
-      what: "the forager",
-      owner: FORAGER_CORRIDORS,
-    },
-  ];
-  for (const predator of snapshot.predators) {
-    bodies.push({
-      tx: predator.tx,
-      ty: predator.ty,
-      what: `the ${predator.kind}`,
-      owner: PREDATOR_CORRIDORS,
-    });
-  }
-  return bodies;
-}
-
 export async function createHarness(
   options: HarnessOptions = {},
 ): Promise<Harness> {
@@ -675,58 +559,6 @@ export async function createHarness(
   const instance = await engine.initialize();
   const debug = readDebugSurface(engine);
 
-  // The trespass watch (see TRESPASS_POLL). It reads through the same snapshot a
-  // check does and never touches the game, and a surface that cannot answer is
-  // swallowed outright: what a missing operation costs is
-  // `instrumentation/surface-present`'s finding, and this watch exists to keep
-  // findings where they belong rather than to add one of its own.
-  const trespasses: Trespass[] = [];
-  const denReleases: DenRelease[] = [];
-  const wasFreed = new Map<number, boolean>();
-  let sinceSample = 0;
-  const noteWatch = (): void => {
-    if (
-      trespasses.length >= TRESPASS_CAP &&
-      denReleases.length >= TRESPASS_CAP
-    ) {
-      return;
-    }
-    let snapshot: FathomSnapshot;
-    try {
-      snapshot = debug.snapshot();
-    } catch {
-      return;
-    }
-
-    for (const body of standingBodies(snapshot)) {
-      if (trespasses.length >= TRESPASS_CAP) break;
-      const at = tileAt(snapshot, body.tx, body.ty);
-      if (at === CORRIDOR || at === DEN || at === GATE) continue;
-      const ground = at === undefined ? "off the board" : `the "${at}" tile`;
-      const where = `${body.what} stood on ${ground} at (${body.tx}, ${body.ty})`;
-      if (trespasses.some((one) => one.where === where)) continue;
-      trespasses.push({ where, owner: body.owner, at: snapshot.simTime });
-    }
-
-    // The den watch reads a TRANSITION rather than a state, so a hunter already
-    // released when the watch opened is not logged over and over: only the look
-    // on which a denned hunter's release first appears is.
-    for (const [index, predator] of snapshot.predators.entries()) {
-      const freed = predator.state === "den" && predator.released === true;
-      const before = wasFreed.get(index);
-      wasFreed.set(index, freed);
-      if (!freed || before === true) continue;
-      if (denReleases.length >= TRESPASS_CAP) continue;
-      denReleases.push({
-        index,
-        where:
-          `the ${predator.kind} reported released while still in the den, at ` +
-          `(${predator.tx}, ${predator.ty})`,
-        at: snapshot.simTime,
-      });
-    }
-  };
-
   const dispatch = (type: "keydown" | "keyup", code: string): void => {
     keys.dispatchEvent(new KeyEvent(type, code));
   };
@@ -749,26 +581,10 @@ export async function createHarness(
     events: keys,
 
     snapshot: () => debug.snapshot(),
-    trespasses,
-    denReleases,
 
     skip: (ticks) => harness.advance(ticks),
 
-    async advance(frames) {
-      // Advanced in stretches no longer than the watch's stride rather than in
-      // one call, so a long wait is sampled throughout. `engine.advance` ticks
-      // back to back with nothing between them, so the stretches are the same
-      // run of ticks the single call would have been.
-      for (let done = 0; done < frames;) {
-        const step = Math.min(TRESPASS_POLL - sinceSample, frames - done);
-        await engine.advance(step);
-        done += step;
-        sinceSample += step;
-        if (sinceSample < TRESPASS_POLL) continue;
-        sinceSample = 0;
-        noteWatch();
-      }
-    },
+    advance: (frames) => engine.advance(frames),
 
     async until(predicate, untilOptions = {}) {
       const maxFrames = untilOptions.maxFrames ?? 600;
@@ -782,12 +598,7 @@ export async function createHarness(
         const step = Math.min(poll, maxFrames - frames);
         await engine.advance(step);
         frames += step;
-        sinceSample += step;
         snapshot = debug.snapshot();
-        if (sinceSample >= TRESPASS_POLL) {
-          sinceSample = 0;
-          noteWatch();
-        }
         if (predicate(snapshot)) return { hit: true, frames, snapshot };
       }
       return { hit: false, frames, snapshot };
@@ -1265,20 +1076,22 @@ export function captureStill(h: Harness, outputId: string): void {
 /**
  * Open a dive and reach live play, through the surface alone.
  *
- * `reset` seeds the generator and returns the game to the title, `startDive` poses
- * the opening of a real dive on the countdown, and `beginPlay` ends that countdown
- * at once so the den's release schedule starts from that moment
- * (specs/instrumentation.md). No menu key is pressed on the way: a build with a
- * broken title menu and working play must fail the menu points and pass the play
- * ones.
+ * `reset` seeds the generator and returns the game to the title on a freshly laid
+ * out maze, and `setScreen("playing")` opens live play — which is where "the
+ * staggered release schedule specs/predators.md fixes takes its origin"
+ * (specs/instrumentation.md). No menu key is pressed on the way and no countdown
+ * is waited out: a build with a broken title menu and working play must fail the
+ * menu points and pass the play ones.
+ *
+ * The two calls are the whole of it, because each poses ONE thing: a scenario
+ * that wants a score, a life count or a depth of its own poses that itself.
  *
  * Nothing is advanced here, so the caller's first tick is the game's first tick of
  * live play — which is what lets a scenario pose its board before anything moves.
  */
 export function startPlaying(h: Harness, seed?: number): FathomSnapshot {
   h.debug.reset(seed === undefined ? undefined : { seed });
-  h.debug.startDive();
-  h.debug.beginPlay();
+  h.debug.setScreen("playing");
   return h.snapshot();
 }
 

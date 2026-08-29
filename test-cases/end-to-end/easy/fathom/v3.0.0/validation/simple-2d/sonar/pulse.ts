@@ -24,10 +24,10 @@
 // `SONAR_COOLDOWN`"), and one that read nothing does not. Each refusal names the
 // point that owns what actually went wrong, and neither is a verdict.
 
-import { BINDINGS } from "../../src/constants";
-import type { FathomSnapshot, PulseSnapshot } from "../surface";
-import { visibilityOf, type Harness } from "../harness";
-import { unmetPrecondition } from "../scene";
+import { BINDINGS, BRIGHT_HOLD } from "../../src/constants";
+import { FathomSnapshot, PulseSnapshot } from "../surface";
+import { poseBrightness, visibilityOf, type Harness } from "../harness";
+import { fail } from "../assert";
 
 /**
  * The key specs/movement.md binds the `a` action — "Emits a sonar pulse" — to.
@@ -101,19 +101,18 @@ export async function castPulse(h: Harness): Promise<Emitted> {
 }
 
 /**
- * Stand the check down when the press did nothing whatever: no pulse, and no
- * cooldown armed.
+ * The press did something: a pulse, or a cooldown armed.
  *
- * That is a build that did not read the key, which is `controls/sonar-key`'s
- * verdict to give.
+ * A press that did neither is a build that did not read the key, and every point
+ * that reaches its subject through a pulse has nothing to read.
  */
 export function requirePress(emitted: Emitted): void {
   if (emitted.pulse !== null || emitted.armed) return;
-  unmetPrecondition(
-    `pressing ${SONAR_KEY} with sonar.ready ` +
-      `${String(emitted.before.sonar.ready)} put no pulse in flight and armed no ` +
-      "cooldown, so nothing about a pulse can be read here; whether the key emits " +
-      "one at all is controls/sonar-key's verdict, not this one's",
+  fail(
+    `pressing ${SONAR_KEY} to put a pulse in flight or arm the sonar cooldown, ` +
+      "which is the pulse this scenario is read through",
+    `neither happened, with sonar.ready reported as ` +
+      String(emitted.before.sonar.ready),
   );
 }
 
@@ -127,10 +126,10 @@ export function requirePress(emitted: Emitted): void {
 export function requireLivePulse(emitted: Emitted): PulseSnapshot {
   requirePress(emitted);
   if (emitted.pulse === null) {
-    unmetPrecondition(
-      `pressing ${SONAR_KEY} armed the sonar cooldown but left no wavefront on ` +
-        "pulses a tick later, so this scenario has no front to follow; a pulse " +
-        "that does not travel is sonar/wavefront's verdict, not this one's",
+    fail(
+      `a wavefront on pulses a tick after ${SONAR_KEY} was pressed, which is ` +
+        "the front this scenario follows",
+      "the press armed the sonar cooldown and left nothing in flight",
     );
   }
   return emitted.pulse;
@@ -172,17 +171,17 @@ const PROBE_TICKS = 4;
  * then taken back to the dark it opened in, and a tile the wide pocket reached
  * and the narrow one no longer does must report `"r"`. A build that answers
  * `"u"` there has lost a tile the light itself revealed, which is
- * `fog/remembered-persists`'s verdict.
+ * this point's own reading rests on.
  *
  * TAKEN AFTER EVERY READING, so a scenario that ran cleanly is untouched by it:
  * the probe moves the brightness and nothing else, and every figure the check
  * asserts is already in hand by the time it runs.
  */
 export async function requireFogMemory(h: Harness): Promise<void> {
-  h.debug.setBrightness(1);
+  await poseBrightness(h, 1, BRIGHT_HOLD);
   await h.advance(PROBE_TICKS);
   const wide = h.snapshot();
-  h.debug.setBrightness(0);
+  await poseBrightness(h, 0, BRIGHT_HOLD);
   await h.advance(PROBE_TICKS);
   const narrow = h.snapshot();
 
@@ -195,13 +194,12 @@ export async function requireFogMemory(h: Harness): Promise<void> {
       const kept = visibilityOf(narrow, tile);
       if (kept === "l") continue;
       if (kept === "r") return;
-      unmetPrecondition(
-        `the tile at (${tx}, ${ty}) reported "${kept}" once the forager's own ` +
-          "light had been widened onto it and taken back, so this build does " +
-          "not keep a tile it has revealed and no reading of what a pulse " +
-          "revealed can survive to be taken; specs/sensing.md remembers a " +
-          "revealed tile for the rest of the maze, and whether it does is " +
-          "fog/remembered-persists's verdict, not this one's",
+      fail(
+        `the tile at (${tx}, ${ty}) to be remembered once the forager's own ` +
+          "light had been widened onto it and taken back — specs/sensing.md " +
+          "remembers a revealed tile for the rest of the maze, and what a pulse " +
+          "revealed is read off that memory",
+        `it reported "${kept}"`,
       );
     }
   }

@@ -20,12 +20,11 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { corridorTiles, floodReachable, tileAt } from "../maze";
-import { check } from "../scene";
-import { captureBoard, freshBoards, requireLaidOut, witness } from "./boards";
+import { captureBoard, freshBoards, assertLaidOut, witness } from "./boards";
 
 let h: Harness;
 
@@ -37,29 +36,26 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "lays out one connected region, reaching every corridor tile from the forager's start",
-  async () => {
-    const boards = await freshBoards(h);
-    requireLaidOut(boards);
+it("lays out one connected region, reaching every corridor tile from the forager's start", async () => {
+  const boards = await freshBoards(h);
+  assertLaidOut(boards);
 
-    const measured = boards.map((board) => {
-      const start = board.snapshot.forager;
-      const total = corridorTiles(board.snapshot).length;
-      const reached = floodReachable(board.snapshot, start.tx, start.ty).size;
-      return { board, start, total, reached, ok: reached === total };
-    });
-    await captureBoard(h, witness(measured).board);
+  const measured = boards.map((board) => {
+    const start = board.snapshot.forager;
+    const total = corridorTiles(board.snapshot).length;
+    const reached = floodReachable(board.snapshot, start.tx, start.ty).size;
+    return { board, start, total, reached, ok: reached === total };
+  });
+  await captureBoard(h, witness(measured).board);
 
-    for (const one of measured) {
-      assertEqual(
-        one.reached,
-        one.total,
-        `corridor tiles reachable over corridor neighbors from the forager's ` +
-          `start tile (${one.start.tx}, ${one.start.ty}), which the layout marks ` +
-          `'${tileAt(one.board.snapshot, one.start.tx, one.start.ty) ?? "off the board"}', ` +
-          `of the ${one.total} the maze laid out from seed ${one.board.seed} carries`,
-      );
-    }
-  },
-);
+  for (const one of measured) {
+    assertEqual(
+      one.reached,
+      one.total,
+      `corridor tiles reachable over corridor neighbors from the forager's ` +
+        `start tile (${one.start.tx}, ${one.start.ty}), which the layout marks ` +
+        `'${tileAt(one.board.snapshot, one.start.tx, one.start.ty) ?? "off the board"}', ` +
+        `of the ${one.total} the maze laid out from seed ${one.board.seed} carries`,
+    );
+  }
+});

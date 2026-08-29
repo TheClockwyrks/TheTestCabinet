@@ -26,13 +26,9 @@
 // which puts that error two orders of magnitude under the tolerances the points
 // state.
 
-import type { Harness } from "../harness";
-import type { Tile } from "../maze";
-import type {
-  FathomSnapshot,
-  PredatorSnapshot,
-  PulseSnapshot,
-} from "../surface";
+import { Harness } from "../harness";
+import { Tile } from "../maze";
+import { FathomSnapshot, PredatorSnapshot, PulseSnapshot } from "../surface";
 
 /**
  * Frames between two samples of a watch, and so the precision of every time it
@@ -147,7 +143,7 @@ export async function sweep(
   }
 }
 
-/** The Gloamfin's own entry in a snapshot, by the index `requireKind` gave. */
+/** The Gloamfin's own entry in a snapshot, by the index it was spawned at. */
 export function gloamfinOf(
   snapshot: FathomSnapshot,
   index: number,
@@ -187,32 +183,4 @@ export function groundBetween(
   b: { x: number; y: number },
 ): number {
   return Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
-}
-
-/** Place one predator on a tile, and face it and state it where asked. */
-export async function placePredator(
-  h: Harness,
-  index: number,
-  tile: Tile,
-  options: {
-    dir?: "up" | "down" | "left" | "right";
-    state?: "den" | "wander" | "chase";
-  } = {},
-): Promise<void> {
-  await h.debug.setPredatorTile(index, tile.tx, tile.ty);
-  if (options.dir !== undefined)
-    await h.debug.setPredatorDir(index, options.dir);
-  if (options.state !== undefined) {
-    await h.debug.setPredatorState(index, options.state);
-  }
-}
-
-/** Place the forager on a tile at rest, and face it `dir` when one is given. */
-export async function placeForager(
-  h: Harness,
-  tile: Tile,
-  dir?: "up" | "down" | "left" | "right",
-): Promise<void> {
-  await h.debug.setForagerTile(tile.tx, tile.ty);
-  if (dir !== undefined) await h.debug.setForagerDir(dir);
 }

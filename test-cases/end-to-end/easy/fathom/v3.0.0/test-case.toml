@@ -531,7 +531,7 @@ validation = { script = "instrumentation/surface-present.test.ts", outputs = [
 [[review.categories.items]]
 id = "snapshot-shape"
 title = "Snapshot reports the full documented shape"
-description = "In live play on a posed board carrying a drifter, a pulse in flight, an ink cloud, and one predator of each kind, the snapshot reports every field specs/state.md lists with its documented type — the screen, depth, score, lives, muted, creatureAI, planktonRemaining, brightness, visionRadius, the sonar and ink pairs, the grid block, tiles, visibility, the forager block, drifters, one predators entry per predator with every per-kind field present or null, pulses, inkClouds and simTime — with tiles and visibility both GRID_ROWS (18) strings of GRID_COLS (36) characters and every tile coordinate agreeing with the position it is derived from."
+description = "In live play on a posed board carrying a drifter, a pulse in flight, an ink cloud, and one predator of each kind, the snapshot reports every field specs/state.md lists with its documented type — version, the screen, depth, score, lives, muted (and autoStep on an engineless build), planktonRemaining, brightness, brightHold, visionRadius, the sonar and ink pairs, the grid block, tiles, plankton and visibility, the forager block, drifters, one predators entry per predator with every per-kind field present or null, pulses, inkClouds and simTime — with tiles, plankton and visibility all GRID_ROWS (18) strings of GRID_COLS (36) characters and every tile coordinate agreeing with the position it is derived from."
 domains = ["navigation", "sensing", "predators", "progression", "presentation"]
 failure_cap = "broken"
 # Automated validation: pose a board exercising every branch of the shape, then
@@ -724,16 +724,16 @@ validation = { script = "controls/advances-in-real-time.test.ts", outputs = [
 ] }
 [[review.categories.items]]
 id = "setmaze-houses-predators"
-title = "setMaze houses the predators it re-dens"
-description = "Posing a layout returns every predator to a den tile with released false and SUSPENDS the release schedule, so watching past the third predator's ordinary due time — DEN_RELEASE_GAP (5 s) times two after live play began, with room to spare — leaves every released flag false. A hunter stopped by rock looks exactly like one that was held, so released is what tells them apart."
+title = "setMaze sets the layout and nothing else"
+description = "The layout is the whole of what setMaze sets: with the score, lives, depth, screen, both cooldowns, the plankton, a drifter, the forager's tile and facing and a roster of three hunters all posed away from the values an opening dive carries, posing a layout over them leaves the tiles the rows it was handed and every one of those readings exactly as it stood — each predator's kind, tile, facing, state and released flag included — and a hunter the new layout closes over holds the tile it stands on, because travel carries a body only along tiles open to it."
 domains = ["navigation", "sensing", "predators", "progression", "presentation"]
 failure_cap = "scuffed"
-# Automated validation: pose a board, open live play, advance well past the third
-# release time, and read every predator's `released` flag — not its position,
-# which rock alone could explain. See
+# Automated validation: pose every value the contract names off its opening
+# value, pose a layout over them, and read the whole snapshot back — the tiles
+# against the rows handed in, and everything else against what it was. See
 # validation/<engine>/controls/setmaze-houses-predators.test.ts.
 validation = { script = "controls/setmaze-houses-predators.test.ts", outputs = [
-  { id = "housed", name = "A posed board, its den holding every predator", kind = "replay" },
+  { id = "housed", name = "A layout posed over a world that keeps its place", kind = "replay" },
 ] }
 
 # --- Maze movement ------------------------------------------------------------

@@ -31,10 +31,10 @@
 // is `flarefish/flare-cadence`'s; what the bloom reveals, which is
 // `flarefish/flare-reveals`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { CUES, FLARE_CHARGE, FLARE_INTERVAL } from "../../src/constants";
 import { assertEqual } from "../assert";
-import { poseApart } from "../fixtures";
+import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -42,15 +42,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireKind,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { requireBurningDisc } from "../flarefish/room";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
@@ -86,55 +78,47 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "plays CUES.flare on the tick a Flarefish's bloom begins, and not on its charge-up",
-  async () => {
-    startPlaying(h);
-    const rooms = await poseApart(h, APART_TILES);
-    const flarefish = requireKind(h.snapshot(), "flarefish");
+it("plays CUES.flare on the tick a Flarefish's bloom begins, and not on its charge-up", async () => {
+  startPlaying(h);
+  const rooms = await poseApart(h, APART_TILES);
+  const flarefish = await spawnPredator(h, "flarefish", rooms.far);
+  await parkForager(h, rooms.near);
+  const watch = await sceneGuard(h);
 
-    h.debug.setPredatorTile(flarefish, rooms.far.tx, rooms.far.ty);
-    h.debug.setPredatorState(flarefish, "wander");
-    const quiet = await denAll(h, [flarefish]);
-    await parkForager(h, rooms.near);
-    await clearUnderfoot(h);
-    const watch = await sceneGuard(h, quiet);
-
-    const seen = await captureReplay(h, "flare", async () => {
-      const found = await watchForEvent(
-        h,
-        (s) => s.predators[flarefish]?.flaring === true,
-        FLARE_TICKS,
-        { mark: (s) => s.predators[flarefish]?.flareCharging === true },
-      );
-      // Past the reading, so the clip shows the bloom burning. Nothing after this
-      // line can reach an assertion.
-      await h.advance(TAIL_TICKS);
-      return found;
-    });
-
-    requireSceneHeld(h.snapshot(), watch);
-    requireBurningDisc(seen.snapshot, flarefish);
-
-    assertEqual(
-      seen.hit,
-      true,
-      `the wandering Flarefish's bloom began inside ${String(FLARE_TICKS)} ticks, ` +
-        `which is its FLARE_INTERVAL (${String(FLARE_INTERVAL)} s) cadence and ` +
-        `its FLARE_CHARGE (${String(FLARE_CHARGE)} s) charge-up with room to spare`,
+  const seen = await captureReplay(h, "flare", async () => {
+    const found = await watchForEvent(
+      h,
+      (s) => s.predators[flarefish]?.flaring === true,
+      FLARE_TICKS,
+      { mark: (s) => s.predators[flarefish]?.flareCharging === true },
     );
-    assertEqual(
-      cuesBeforeEvent(seen, CUES.flare),
-      0,
-      `times CUES.flare played over the ${String(seen.at - 1)} ticks before the ` +
-        `bloom — which include tick ${String(seen.marked)}, where the charge-up ` +
-        "began (specs/progression.md)",
-    );
-    assertEqual(
-      cuesOnEvent(seen, CUES.flare),
-      1,
-      "times CUES.flare played on the tick the Flarefish's bloom began, which is " +
-        "its own tick and at most once on it (specs/progression.md)",
-    );
-  },
-);
+    // Past the reading, so the clip shows the bloom burning. Nothing after this
+    // line can reach an assertion.
+    await h.advance(TAIL_TICKS);
+    return found;
+  });
+
+  requireSceneHeld(h.snapshot(), watch);
+  requireBurningDisc(seen.snapshot, flarefish);
+
+  assertEqual(
+    seen.hit,
+    true,
+    `the wandering Flarefish's bloom began inside ${String(FLARE_TICKS)} ticks, ` +
+      `which is its FLARE_INTERVAL (${String(FLARE_INTERVAL)} s) cadence and ` +
+      `its FLARE_CHARGE (${String(FLARE_CHARGE)} s) charge-up with room to spare`,
+  );
+  assertEqual(
+    cuesBeforeEvent(seen, CUES.flare),
+    0,
+    `times CUES.flare played over the ${String(seen.at - 1)} ticks before the ` +
+      `bloom — which include tick ${String(seen.marked)}, where the charge-up ` +
+      "began (specs/progression.md)",
+  );
+  assertEqual(
+    cuesOnEvent(seen, CUES.flare),
+    1,
+    "times CUES.flare played on the tick the Flarefish's bloom began, which is " +
+      "its own tick and at most once on it (specs/progression.md)",
+  );
+});

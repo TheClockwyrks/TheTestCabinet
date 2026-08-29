@@ -29,7 +29,7 @@
 // nothing and clears no maze (specs/instrumentation.md), so the bite that clears
 // is the game's own.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { placeForager, poseMaze } from "../fixtures";
@@ -37,12 +37,10 @@ import {
   captureReplay,
   centerOf,
   createHarness,
-  DIR_KEY,
   startPlaying,
   ticksFor,
   type Harness,
 } from "../harness";
-import { check, denAll, requireSwim } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /**
@@ -116,7 +114,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Clearing descends to the next depth", async () => {
+it("Clearing descends to the next depth", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const start = board.mark("S");
@@ -124,16 +122,19 @@ check("Clearing descends to the next depth", async () => {
   await placeForager(h, start, "right");
   h.debug.clearPlankton();
   h.debug.setPlankton(target.tx, target.ty, true);
-  await denAll(h);
 
   const dive = await captureReplay(h, "descend", async () => {
     const before = h.snapshot();
-    h.hold(DIR_KEY.right);
+    // The forager is CARRIED onto the maze's last plankton rather than driven
+    // onto it. specs/gameplay.md has it eat "the plankton on its own tile, the
+    // moment its center enters that tile", and setForagerTile "moves the forager
+    // to the center of tile (tx, ty)" — so the eat this point turns on happens
+    // without the movement points' subject taking any part in it.
+    h.debug.setForagerTile(target.tx, target.ty);
     const eaten = await h.until((s) => s.planktonRemaining < 1, {
       maxFrames: BITE_BUDGET,
       poll: 1,
     });
-    h.release(DIR_KEY.right);
     const descended = await h.until((s) => s.depth > before.depth, {
       maxFrames: DESCENT_BUDGET,
       poll: 1,
@@ -150,13 +151,15 @@ check("Clearing descends to the next depth", async () => {
     };
   });
 
-  if (!dive.ate) {
-    requireSwim(
-      dive.before.forager,
-      dive.cleared.forager,
-      "reach the maze's last plankton",
-    );
-  }
+  // The eat itself, which is what clears the maze. Nothing but the forager is on
+  // this board, and the pellet was placed under it, so a build that did not eat
+  // it did not do what specs/gameplay.md has it do.
+  assertEqual(
+    dive.ate,
+    true,
+    `the forager ate the maze's last plankton within ${BITE_BUDGET} ticks of ` +
+      "its center entering that plankton's tile",
+  );
   assertEqual(
     dive.arrived,
     true,

@@ -39,7 +39,7 @@
 // the forager once the run is laid out, so it stays under ordinary player control
 // and answers the held action exactly as it does for a player.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { FORAGER_SPEED, TILE } from "../../src/constants";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
@@ -50,7 +50,7 @@ import {
   TICK_HZ,
   type Harness,
 } from "../harness";
-import { check, denAll, requireSceneHeld, sceneGuard } from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The second key specs/movement.md binds the `right` action to. */
 const KEY = "KeyD";
@@ -91,7 +91,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("KeyD swims the forager right", async () => {
+it("KeyD swims the forager right", async () => {
   startPlaying(h);
   // A seven-tile corridor with the forager resting in the middle of it, facing
   // the rock across the corridor rather than along the run.
@@ -101,11 +101,10 @@ check("KeyD swims the forager right", async () => {
     run.facing,
     "the forager rests facing the rock across the corridor",
   );
-  const quiet = await denAll(h);
   // The forager is this check's SUBJECT, so it is expected to leave the tile it
   // was placed on. What the guard still watches is everything else: a life lost,
   // a screen change, a predator loose on the board.
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   const swim = await captureReplay(h, "move", async () => {
     await h.advance(REST_TICKS);

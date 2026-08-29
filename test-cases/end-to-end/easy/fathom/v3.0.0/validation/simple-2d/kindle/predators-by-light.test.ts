@@ -24,20 +24,22 @@
 // The Gloamfin produces no light of its own, so what is drawn where it stands is
 // exactly what this point is asking about.
 //
-// THE MINDS ARE OFF. `setCreatureAI(false)` holds every creature exactly where it
-// stands "and does not move, however long the scenario runs", leaving the rest of
-// the simulation running (specs/instrumentation.md) — so the hunter is read at the
-// distance it was posed at rather than wherever a chase took it, and the forager's
-// light still falls where it falls.
+// AND IT IS THE ONLY BODY ON THE BOARD. `poseMaze` clears the roster, the drifters
+// and the plankton, this check spawns the one Gloamfin it is about, and
+// `setPredatorMind(index, false)` holds it exactly where it stands "and does not
+// move, however long the scenario runs", leaving the rest of the simulation running
+// (specs/instrumentation.md) — so the hunter is read at the distance it was posed
+// at rather than wherever a chase took it, and the forager's light still falls
+// where it falls.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
 } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -46,15 +48,10 @@ import {
   type Harness,
 } from "../harness";
 import {
-  check,
-  clearUnderfoot,
-  denAll,
   fromForager,
   parkForager,
-  requireKind,
   requireSceneHeld,
   sceneGuard,
-  unmetPrecondition,
 } from "../scene";
 import {
   FOG_MATCH,
@@ -95,7 +92,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Predators are drawn by the light, not the circle", async () => {
+it("Predators are drawn by the light, not the circle", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
@@ -103,16 +100,14 @@ check("Predators are drawn by the light, not the circle", async () => {
   const close = board.mark("N");
   const unlit = board.mark("S");
 
-  const gloamfin = requireKind(h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [gloamfin]);
-  await h.debug.setPredatorTile(gloamfin, band.tx, band.ty);
-  await h.debug.setPredatorState(gloamfin, "wander");
+  // Held where it is posed: this point is about what is DRAWN at a distance, not
+  // about where a hunter goes next.
+  const gloamfin = await spawnPredator(h, "gloamfin", band, {
+    state: "wander",
+    mind: false,
+  });
   await parkForager(h, home);
-  await clearUnderfoot(h);
-  // Held where it was posed: this point is about what is DRAWN at a distance,
-  // not about where a hunter goes next.
-  await h.debug.setCreatureAI(false);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
   const beyondLight = h.snapshot();
@@ -125,24 +120,13 @@ check("Predators are drawn by the light, not the circle", async () => {
   const hunter = beyondLight.predators[gloamfin];
   const gap = fromForager(beyondLight, hunter.x, hunter.y);
   const radius = windowRadius(beyondLight);
-  // The band this point lives in has to exist on this build, or there is
-  // nothing here to decide. Where the two radii themselves are wrong,
-  // `kindle/grows-with-eating` and `brightness/vision-radius` are the points
-  // that fail for it.
-  if (gap >= radius || gap <= beyondLight.visionRadius) {
-    unmetPrecondition(
-      `the hunter posed ${BAND_TILES} tiles off stands ${gap.toFixed(1)} units ` +
-        `from the forager, which is not between the reported V of ` +
-        `${beyondLight.visionRadius.toFixed(1)} and R of ${radius.toFixed(1)}; ` +
-        "whether those radii take their stated values is the brightness and " +
-        "grows-with-eating points' verdict, not this one's",
-    );
-  }
+  // The band this point lives in — outside `V` and inside `R` — has to exist on
+  // this build, which the two assertions below read off the build's own radii.
   assertLessThan(
     gap,
     radius,
-    "the logical units between the forager and the hunter, against the vision " +
-      "circle R it stands inside",
+    `the logical units between the forager and the hunter ${BAND_TILES} tiles ` +
+      "along, against the vision circle R it stands inside",
   );
   assertGreaterThan(
     gap,

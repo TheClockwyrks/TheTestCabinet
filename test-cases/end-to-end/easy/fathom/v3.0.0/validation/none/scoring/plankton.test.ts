@@ -13,19 +13,22 @@
 // it is read the way a player would: the forager backs off the tile and swims onto
 // it again. A pellet still there would score a second time.
 //
-// THE BOARD IS POSED AND STRIPPED TO ONE PELLET ON THE RUN. A maze carries a
+// THE BOARD CARRIES ONE PELLET IN THE FORAGER'S PATH. A laid-out maze carries a
 // plankton on every corridor tile, so a forager swimming four tiles eats four and
-// no single bite can be told from its neighbours. `setPlankton`
-// (`specs/instrumentation.md`) takes the others off the run — which "is not eating
-// it, so it scores nothing and clears no maze" — leaving exactly one pellet in the
-// forager's path, on the tile at the far end of it. The fixture's own sealed
-// larder keeps `planktonRemaining` above zero throughout, so no bite here can
-// clear the maze and descend under the measurement.
+// no single bite can be told from its neighbours. Posing the fixture takes them
+// all off, and `setPlankton` (`specs/instrumentation.md`) puts back exactly one,
+// on the tile at the far end of the run.
+//
+// AND ONE MORE, IN A POCKET NOTHING REACHES. `specs/gameplay.md` clears a maze on
+// the plankton that leaves none behind, so a board holding only the pellet being
+// measured would descend on the very bite this point reads. The second pellet
+// sits in a sealed pocket of the fixture, which keeps `planktonRemaining` above
+// zero and the dive in live play throughout.
 //
 // THE PELLET IS AT A DEAD END, so the forager comes to rest on the very tile it
 // ate from and stays there while the reading is taken.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { ARROW_KEY, SCORE_PLANKTON } from "../constants";
 import { placeForager, poseMaze } from "../fixtures";
@@ -36,19 +39,13 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  denAll,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager resting on the first
  * and the one pellet this point measures on the last, which is a dead end.
  */
-const ART = ["S...T"] as const;
+const ART = ["S...T" + " ".repeat(4) + "K"] as const;
 
 /**
  * How long a single bite may take under a held key, in ticks.
@@ -87,73 +84,69 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "scores SCORE_PLANKTON for a plankton and takes it off the board",
-  async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const start = board.mark("S");
-    const target = board.mark("T");
-    await placeForager(h, start, "right");
-    // Every tile of the run but the target loses its pellet, so the bite the point
-    // measures is the only one the swim can take.
-    for (let tx = start.tx; tx < target.tx; tx += 1) {
-      await h.debug.setPlankton(tx, start.ty, false);
-    }
-    const quiet = await denAll(h);
-    // The forager is this point's subject and is meant to travel, so the guard
-    // watches everything but where it stands.
-    const guard = await sceneGuard(h, quiet, { foragerParked: false });
+it("scores SCORE_PLANKTON for a plankton and takes it off the board", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const start = board.mark("S");
+  const target = board.mark("T");
+  await placeForager(h, start, "right");
+  // One pellet on the run, at its far end, so the bite the point measures is the
+  // only one the swim can take; and one in the sealed pocket, so eating it
+  // cannot leave the maze empty and descend under the measurement.
+  await h.debug.setPlankton(target.tx, target.ty, true);
+  const keep = board.mark("K");
+  await h.debug.setPlankton(keep.tx, keep.ty, true);
+  // The forager is this point's subject and is meant to travel, so the guard
+  // watches everything but where it stands.
+  const guard = await sceneGuard(h, { foragerParked: false });
 
-    const bite = await captureReplay(h, "eat", async () => {
-      const before = await h.snapshot();
-      await h.hold(ARROW_KEY.right);
-      const eaten = await h.until(
-        (s) => s.planktonRemaining < before.planktonRemaining,
-        { maxTicks: BITE_BUDGET, poll: 1 },
-      );
-      const after = eaten.snapshot;
-      // Off the tile and back onto it, under the game's own movement code: a pellet
-      // the build scored but left on the board is eaten a second time here.
-      await h.release(ARROW_KEY.right);
-      await h.hold(ARROW_KEY.left);
-      await h.advance(BACK_TICKS);
-      await h.release(ARROW_KEY.left);
-      await h.hold(ARROW_KEY.right);
-      await h.advance(RETURN_TICKS);
-      await h.release(ARROW_KEY.right);
-      return { before, after, revisited: await h.snapshot(), hit: eaten.hit };
-    });
+  const bite = await captureReplay(h, "eat", async () => {
+    const before = await h.snapshot();
+    await h.hold(ARROW_KEY.right);
+    const eaten = await h.until(
+      (s) => s.planktonRemaining < before.planktonRemaining,
+      { maxTicks: BITE_BUDGET, poll: 1 },
+    );
+    const after = eaten.snapshot;
+    // Off the tile and back onto it, under the game's own movement code: a pellet
+    // the build scored but left on the board is eaten a second time here.
+    await h.release(ARROW_KEY.right);
+    await h.hold(ARROW_KEY.left);
+    await h.advance(BACK_TICKS);
+    await h.release(ARROW_KEY.left);
+    await h.hold(ARROW_KEY.right);
+    await h.advance(RETURN_TICKS);
+    await h.release(ARROW_KEY.right);
+    return { before, after, revisited: await h.snapshot(), hit: eaten.hit };
+  });
 
-    requireSceneHeld(bite.revisited, guard);
-    if (!bite.hit) {
-      requireSwim(
-        bite.before.forager,
-        bite.after.forager,
-        "reach the plankton ahead of it",
-      );
-    }
+  requireSceneHeld(bite.revisited, guard);
+  assertEqual(
+    bite.hit,
+    true,
+    `the forager reached and ate the pellet four tiles along the run within ` +
+      `${BITE_BUDGET} ticks, under a held movement action`,
+  );
 
-    assertEqual(
-      bite.after.score - bite.before.score,
-      SCORE_PLANKTON,
-      `the score rise across the bite taken at tile (${target.tx}, ${target.ty})`,
-    );
-    assertEqual(
-      bite.before.planktonRemaining - bite.after.planktonRemaining,
-      1,
-      "the fall in planktonRemaining across the bite",
-    );
-    assertEqual(
-      bite.revisited.score - bite.after.score,
-      0,
-      `the further score taken by swimming back onto tile ` +
-        `(${target.tx}, ${target.ty}), which holds no plankton once it is eaten`,
-    );
-    assertEqual(
-      bite.revisited.planktonRemaining,
-      bite.after.planktonRemaining,
-      "planktonRemaining after the forager returns to the eaten tile",
-    );
-  },
-);
+  assertEqual(
+    bite.after.score - bite.before.score,
+    SCORE_PLANKTON,
+    `the score rise across the bite taken at tile (${target.tx}, ${target.ty})`,
+  );
+  assertEqual(
+    bite.before.planktonRemaining - bite.after.planktonRemaining,
+    1,
+    "the fall in planktonRemaining across the bite",
+  );
+  assertEqual(
+    bite.revisited.score - bite.after.score,
+    0,
+    `the further score taken by swimming back onto tile ` +
+      `(${target.tx}, ${target.ty}), which holds no plankton once it is eaten`,
+  );
+  assertEqual(
+    bite.revisited.planktonRemaining,
+    bite.after.planktonRemaining,
+    "planktonRemaining after the forager returns to the eaten tile",
+  );
+});

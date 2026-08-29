@@ -46,12 +46,12 @@ field below. It is a pure read that changes nothing.
   score: <number>,
   lives: <number>,
   muted: <boolean>,              // whether the mute toggle is on
-  creatureAI: <boolean>,         // whether the creatures' own minds are running
 {{#if (eq engine.slug "none")}}
   autoStep: <boolean>,           // whether the frame loop advances the simulation
 {{/if}}
   planktonRemaining: <number>,   // plankton left in the current maze
   brightness: <number>,          // G, in [0, 1]
+  brightHold: <number>,          // seconds left on the brightness hold
   visionRadius: <number>,        // V, the line-of-sight light radius, in logical units
 {{#if (eq variant.slug "kindle")}}
   windowRadius: <number>,        // R, the outer vision-circle radius, in logical units
@@ -68,6 +68,7 @@ field below. It is a pure read that changes nothing.
   },
 
   tiles: [ <string>, ... ],      // GRID_ROWS strings of GRID_COLS characters
+  plankton: [ <string>, ... ],   // the same layout, one plankton character per tile
   visibility: [ <string>, ... ], // the same layout, one visibility character per tile
 
   forager: {
@@ -78,7 +79,12 @@ field below. It is a pure read that changes nothing.
   },
 
   drifters: [
-    { x: <number>, y: <number>, tx: <number>, ty: <number>, lit: <boolean> },
+    {
+      x: <number>, y: <number>,
+      tx: <number>, ty: <number>,
+      lit: <boolean>,
+      mind: <boolean>,           // whether its own mind is running
+    },
   ],
 
   predators: [
@@ -89,6 +95,7 @@ field below. It is a pure read that changes nothing.
       dir: "up" | "down" | "left" | "right",
       state: "den" | "wander" | "chase" | "search",
       released: <boolean>,
+      mind: <boolean>,           // whether its own mind is running
       speed: <number>,           // its current speed, in logical units per second
       alert: <boolean>,
       lit: <boolean>,
@@ -154,6 +161,9 @@ shows and how the game moves between them.
 
 - `brightness` is `G`, in `[0, 1]`, the forager's brightness as
   `specs/sensing.md` defines it.
+- `brightHold` is the seconds left on the `BRIGHT_HOLD` (`1.0 s`) hold eating a
+  plankton arms, `0` once it has expired. `G` is steady while it runs and decays
+  on the `specs/sensing.md` curve from the moment it reaches `0`.
 - `visionRadius` is `V`, the radius of the line-of-sight light pocket, in logical
   units. It is derived from `brightness` by the formula in `specs/sensing.md`
   rather than held independently.
@@ -187,6 +197,16 @@ from the left.
 | `g` | The den gate. |
 | `d` | Den interior. |
 
+`plankton` is where the plankton stand this instant, in the same layout.
+
+| Character | The tile |
+| --- | --- |
+| `*` | Holds a plankton. |
+| `-` | Holds none. |
+
+`planktonRemaining` is how many `*` the layer carries. Rock, the den gate and the
+den interior hold none, so those tiles are always `-`.
+
 `visibility` is the per-tile visibility this instant, in the same layout.
 
 | Character | The tile is |
@@ -218,20 +238,22 @@ leaves the list.
 - `lit` is `true` while its body is being drawn this instant, by the forager's
   light or by a flare. Its amber mote is a separate drawing, shown under the
   amber-light rule `specs/sensing.md` fixes, so `lit` answers for the body alone.
+- `mind` is `true` while it runs its own wander, which is how a dive is played.
 
 ## The predators
 
 `predators` lists every predator of the current roster, **in release order**: the
 order `specs/predators.md` fixes for the den, which is the order the roster adds
-them in. The list therefore has one stable index per predator for as long as the
-roster stands, and the debugging surface's predator operations select a predator
-by that index.
+them in. A predator the debugging surface adds goes at the end of the list. The
+list therefore has one stable index per predator for as long as the roster stands,
+and the debugging surface's predator operations select a predator by that index.
 
 - `kind` is which hunter it is.
 - `x` and `y` are its center, in logical units, and `tx` and `ty` the tile it is
   on.
 - `dir` is its facing, always one of the four cardinal directions.
 - `speed` is its current speed, in logical units per second.
+- `mind` is `true` while it runs its own mind, which is how a dive is played.
 - `alert` is `true` only while its detection alert is firing, which is the
   `ALERT_TIME` (`0.5 s`) window after a Gloamfin or a Flarefish acquires a fix.
   It is always `false` for the Lanternjaw, which fires no alert.
@@ -264,9 +286,6 @@ its slot in the staggered schedule `specs/predators.md` fixes, and `true` from t
 moment that slot arrives, before it has crossed the gate and whatever `state`
 says.
 
-A predator posed into the den by the debugging surface has its release time
-suspended, so it stays `released: false` for as long as it is held there.
-
 ## The wavefronts and the ink
 
 `pulses` lists every sonar wavefront in flight, the forager's own pulses and the
@@ -284,21 +303,14 @@ Gloamfin's pings alike.
 `y` it was released at, with its `radius` in logical units and `remaining`, the
 seconds of life it has left. A cloud leaves the list when `remaining` reaches `0`.
 
-## The driven flags
-
-Two flags exist for driving the game from code, and both rest in the value normal
-play uses.
-
-- `creatureAI` is `true` while the predators and the drifters run their own minds,
-  which is how a dive is played. Turning it off holds every creature exactly where
-  it stands and leaves the rest of the simulation running.
 {{#if (eq engine.slug "none")}}
-- `autoStep` is `true` while the frame loop advances the simulation from the wall
-  clock, which is how a build starts and how it is played. Turning it off leaves
-  the game rendering every frame and advancing only when the debugging surface
-  says so.
-{{/if}}
+## The driven flag
 
+`autoStep` is `true` while the frame loop advances the simulation from the wall
+clock, which is how a build starts and how it is played. Turning it off leaves the
+game rendering every frame and advancing only when the debugging surface says so.
+
+{{/if}}
 ## The contract
 
 - Every field above is present from the moment the game has initialized, and none

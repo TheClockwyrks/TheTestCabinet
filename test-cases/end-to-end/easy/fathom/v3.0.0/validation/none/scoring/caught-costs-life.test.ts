@@ -31,9 +31,20 @@
 // NO SCENE GUARD. The guard's first finding is a screen that changed under the
 // measurement, which here is the subject.
 
-import { afterEach, beforeEach } from "vitest";
-import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
-import { ARROW_KEY, INK_COOLDOWN, SONAR_COOLDOWN } from "../constants";
+import { afterEach, beforeEach, it } from "vitest";
+
+import {
+  assertDeepEqual,
+  assertDefined,
+  assertEqual,
+  assertGreaterThan,
+} from "../assert";
+import {
+  ARROW_KEY,
+  BRIGHT_HOLD,
+  INK_COOLDOWN,
+  SONAR_COOLDOWN,
+} from "../constants";
 import {
   captureReplay,
   createHarness,
@@ -42,7 +53,6 @@ import {
   startPlaying,
 } from "../harness";
 import { corridorDirs, corridorTiles, tileCenter, type Tile } from "../maze";
-import { check, denAll, requireSwim, unmetPrecondition } from "../scene";
 
 /**
  * Ticks the forager swims away from its start tile before the catch.
@@ -84,145 +94,137 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "costs one life on contact and sets the maze up for another attempt",
-  async () => {
-    const opened = await startPlaying(h);
-    const startTile: Tile = { tx: opened.forager.tx, ty: opened.forager.ty };
-    if (opened.predators.length === 0) {
-      unmetPrecondition(
-        "the roster carries no predator to make contact with; what a depth's " +
-          "roster holds is scoring/depth-scaling's verdict, not this one's",
-      );
-    }
-    await denAll(h);
+it("costs one life on contact and sets the maze up for another attempt", async () => {
+  const opened = await startPlaying(h);
+  const startTile: Tile = { tx: opened.forager.tx, ty: opened.forager.ty };
+  assertGreaterThan(
+    opened.predators.length,
+    0,
+    "predators on the roster for one of them to make contact with; " +
+      "specs/predators.md puts one of each of the three kinds in the den at " +
+      "depth 1",
+  );
+  // THE ROSTER STAYS ON THE BOARD, because what a catch does to the WHOLE
+  // roster is half of what this point reads. Every hunter but the one that
+  // makes the contact has its own mind turned off instead, which "holds exactly
+  // where it stands... senses nothing, decides nothing, and does not move"
+  // (specs/instrumentation.md) — so the catch below is made by the hunter this
+  // check posed and by nothing else.
+  for (let index = 1; index < opened.predators.length; index += 1) {
+    await h.debug.setPredatorMind(index, false);
+  }
 
-    // Off the start tile, under the game's own movement code.
-    const leaving = corridorDirs(opened, startTile.tx, startTile.ty)[0];
-    if (leaving === undefined) {
-      unmetPrecondition(
-        `the forager's start tile (${startTile.tx}, ${startTile.ty}) has no ` +
-          "corridor neighbour, so it cannot be moved off the tile the reset must " +
-          "bring it back to; the layout is the maze checks' verdict, not this one's",
-      );
-    }
-    const parked = await h.snapshot();
-    await h.hold(ARROW_KEY[leaving]);
-    await h.advance(AWAY_TICKS);
-    await h.release(ARROW_KEY[leaving]);
-    requireSwim(
-      parked.forager,
-      (await h.snapshot()).forager,
-      "leave the start tile the reset has to bring it back to",
-    );
+  // Off the start tile, under the game's own movement code.
+  const leaving = corridorDirs(opened, startTile.tx, startTile.ty)[0];
+  assertDefined(
+    leaving,
+    `a corridor neighbour of the forager's start tile (${startTile.tx}, ` +
+      `${startTile.ty}), so it can be moved off the tile the reset must bring ` +
+      "it back to; specs/maze.md leaves no dead end",
+  );
+  await h.hold(ARROW_KEY[leaving]);
+  await h.advance(AWAY_TICKS);
+  await h.release(ARROW_KEY[leaving]);
 
-    // Every clause the surface can pose is posed away from the value the reset must
-    // restore, so each reading below is a question rather than a formality.
-    await h.debug.setBrightness(1);
-    await h.debug.setSonarCooldown(SONAR_COOLDOWN);
-    await h.debug.setInkCooldown(INK_COOLDOWN);
-    const board = await h.snapshot();
-    const reach = (tile: Tile): number => {
-      const at = tileCenter(board.grid, tile);
-      return Math.hypot(at.x - board.forager.x, at.y - board.forager.y);
-    };
-    const away = corridorTiles(board).reduce(
-      (best, tile) => (reach(tile) > reach(best) ? tile : best),
-      startTile,
-    );
-    await h.debug.spawnDrifter(away.tx, away.ty);
+  // Every clause the surface can pose is posed away from the value the reset must
+  // restore, so each reading below is a question rather than a formality.
+  await h.debug.setBrightness(1);
+  await h.debug.setBrightHold(BRIGHT_HOLD);
+  await h.debug.setSonarCooldown(SONAR_COOLDOWN);
+  await h.debug.setInkCooldown(INK_COOLDOWN);
+  const board = await h.snapshot();
+  const reach = (tile: Tile): number => {
+    const at = tileCenter(board.grid, tile);
+    return Math.hypot(at.x - board.forager.x, at.y - board.forager.y);
+  };
+  const away = corridorTiles(board).reduce(
+    (best, tile) => (reach(tile) > reach(best) ? tile : best),
+    startTile,
+  );
+  await h.debug.spawnDrifter(away.tx, away.ty);
 
-    const caught = await captureReplay(h, "caught", async () => {
-      const before = await h.snapshot();
-      await h.debug.setPredatorTile(0, before.forager.tx, before.forager.ty);
-      await h.debug.setPredatorState(0, "chase");
-      const contact = await h.until((s) => s.lives < before.lives, {
-        maxTicks: CATCH_BUDGET,
-        poll: 1,
-      });
-      await h.advance(SETTLE_TICKS);
-      const after = await h.snapshot();
-      await h.advance(TAIL_TICKS);
-      return { before, hit: contact.hit, after };
+  const caught = await captureReplay(h, "caught", async () => {
+    const before = await h.snapshot();
+    await h.debug.setPredatorTile(0, before.forager.tx, before.forager.ty);
+    await h.debug.setPredatorState(0, "chase");
+    const contact = await h.until((s) => s.lives < before.lives, {
+      maxTicks: CATCH_BUDGET,
+      poll: 1,
     });
+    await h.advance(SETTLE_TICKS);
+    const after = await h.snapshot();
+    await h.advance(TAIL_TICKS);
+    return { before, hit: contact.hit, after };
+  });
 
-    assertGreaterThan(
-      caught.before.drifters.length,
-      0,
-      "the bonus drifters the board carried when the hunter arrived",
-    );
-    assertEqual(
-      caught.hit,
-      true,
-      `a life was lost inside ${CATCH_BUDGET} ticks of a predator standing on ` +
-        `the forager's own tile (${caught.before.forager.tx}, ` +
-        `${caught.before.forager.ty})`,
-    );
+  assertGreaterThan(
+    caught.before.drifters.length,
+    0,
+    "the bonus drifters the board carried when the hunter arrived",
+  );
+  assertEqual(
+    caught.hit,
+    true,
+    `a life was lost inside ${CATCH_BUDGET} ticks of a predator standing on ` +
+      `the forager's own tile (${caught.before.forager.tx}, ` +
+      `${caught.before.forager.ty})`,
+  );
 
-    assertEqual(
-      caught.after.lives,
-      caught.before.lives - 1,
-      "the lives after contact",
-    );
-    assertEqual(
-      caught.after.screen,
-      "countdown",
-      "the screen the next attempt opens on",
-    );
-    assertDeepEqual(
-      { tx: caught.after.forager.tx, ty: caught.after.forager.ty },
-      startTile,
-      "the tile the forager is set up on for another attempt, against the one " +
-        "the dive opened on",
-    );
-    assertEqual(
-      caught.after.forager.moving,
-      false,
-      "the forager is at rest for the next attempt",
-    );
-    assertEqual(
-      caught.after.brightness,
-      0,
-      "the forager's brightness for the next attempt, posed at 1 before the catch",
-    );
-    assertEqual(
-      caught.after.predators.filter((p) => p.state === "den" && !p.released)
-        .length,
-      caught.after.predators.length,
-      "the predators back in the den with released false, of the whole roster",
-    );
-    assertEqual(
-      caught.after.drifters.length,
-      0,
-      "the bonus drifters left on the board",
-    );
-    assertEqual(
-      caught.after.pulses.length,
-      0,
-      "the sonar wavefronts in flight",
-    );
-    assertEqual(caught.after.inkClouds.length, 0, "the ink clouds standing");
-    assertEqual(
-      caught.after.sonar.ready,
-      true,
-      "the sonar pulse is ready again",
-    );
-    assertEqual(caught.after.ink.ready, true, "ink is ready again");
-    assertEqual(
-      caught.after.planktonRemaining,
-      caught.before.planktonRemaining,
-      "planktonRemaining across the catch, since the plankton already eaten stay " +
-        "eaten",
-    );
-    assertEqual(
-      caught.after.score,
-      caught.before.score,
-      "the score across the catch",
-    );
-    assertEqual(
-      caught.after.depth,
-      caught.before.depth,
-      "the depth across the catch",
-    );
-  },
-);
+  assertEqual(
+    caught.after.lives,
+    caught.before.lives - 1,
+    "the lives after contact",
+  );
+  assertEqual(
+    caught.after.screen,
+    "countdown",
+    "the screen the next attempt opens on",
+  );
+  assertDeepEqual(
+    { tx: caught.after.forager.tx, ty: caught.after.forager.ty },
+    startTile,
+    "the tile the forager is set up on for another attempt, against the one " +
+      "the dive opened on",
+  );
+  assertEqual(
+    caught.after.forager.moving,
+    false,
+    "the forager is at rest for the next attempt",
+  );
+  assertEqual(
+    caught.after.brightness,
+    0,
+    "the forager's brightness for the next attempt, posed at 1 before the catch",
+  );
+  assertEqual(
+    caught.after.predators.filter((p) => p.state === "den" && !p.released)
+      .length,
+    caught.after.predators.length,
+    "the predators back in the den with released false, of the whole roster",
+  );
+  assertEqual(
+    caught.after.drifters.length,
+    0,
+    "the bonus drifters left on the board",
+  );
+  assertEqual(caught.after.pulses.length, 0, "the sonar wavefronts in flight");
+  assertEqual(caught.after.inkClouds.length, 0, "the ink clouds standing");
+  assertEqual(caught.after.sonar.ready, true, "the sonar pulse is ready again");
+  assertEqual(caught.after.ink.ready, true, "ink is ready again");
+  assertEqual(
+    caught.after.planktonRemaining,
+    caught.before.planktonRemaining,
+    "planktonRemaining across the catch, since the plankton already eaten stay " +
+      "eaten",
+  );
+  assertEqual(
+    caught.after.score,
+    caught.before.score,
+    "the score across the catch",
+  );
+  assertEqual(
+    caught.after.depth,
+    caught.before.depth,
+    "the depth across the catch",
+  );
+});

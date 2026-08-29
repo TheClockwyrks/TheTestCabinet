@@ -26,7 +26,7 @@
 // THE SCREEN IS READ A BEAT AFTER THE PRESS. A build may take the transition in
 // the tick that delivers the key or at the top of the next, and both conform.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -35,7 +35,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, quietBoard } from "../scene";
+import { parkForager } from "../scene";
 
 /** The second key specs/movement.md binds the `pause` action to. */
 const KEY = "KeyP";
@@ -82,10 +82,10 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("pauses a live dive on KeyP", async () => {
+it("pauses a live dive on KeyP", async () => {
   await startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
-  await quietBoard(h);
+  await parkForager(h);
   await h.debug.setBrightness(LIT);
 
   const live = await h.snapshot();

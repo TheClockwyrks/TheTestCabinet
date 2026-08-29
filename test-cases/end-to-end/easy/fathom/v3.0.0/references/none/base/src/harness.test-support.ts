@@ -10,9 +10,16 @@
 
 import { createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import type { Assets } from "./assets";
-import { TICK_DT } from "./constants";
+import { DRIFTER_INTERVAL, TICK_DT } from "./constants";
 import type { DebugClock } from "./debug";
-import { createFathom, type FathomState } from "./game";
+import {
+  buildRoster,
+  createFathom,
+  denPredators,
+  fillPlankton,
+  poseMaze,
+  type FathomState,
+} from "./game";
 import type { Game, InitApi, TickApi } from "./runtime";
 
 /**
@@ -155,4 +162,35 @@ export function stageContext(): {
       return [d[0], d[1], d[2], d[3]];
     },
   };
+}
+
+/**
+ * Pose a whole board fixture: the layout loaded, a plankton on every corridor
+ * tile, the fog back to unrevealed, the forager at rest on the layout's resting
+ * tile, and the current depth's roster back in the den unreleased.
+ *
+ * The debugging surface has no operation that arranges all of that at once, and
+ * it should not: a caller of `window.__fathom` says each of those things in its
+ * own call and gets nothing it did not ask for. This is scaffolding for the
+ * build's own tests, where the setup is not the thing under test.
+ */
+export function poseBoard(state: FathomState, rows: readonly string[]): void {
+  poseMaze(state, rows);
+  state.fog.reset();
+  fillPlankton(state);
+  state.forager.placeOn(state.maze.start.col, state.maze.start.row);
+  state.desired = null;
+  state.drifters = [];
+  state.waves = [];
+  state.ink.clear();
+  state.effects.clear();
+  state.drifterTimer = DRIFTER_INTERVAL;
+  buildRoster(state);
+  denPredators(state);
+}
+
+/** Turn every creature's mind off, holding each exactly where it stands. */
+export function stillCreatures(state: FathomState): void {
+  for (const p of state.predators) p.mind = false;
+  for (const d of state.drifters) d.mind = false;
 }

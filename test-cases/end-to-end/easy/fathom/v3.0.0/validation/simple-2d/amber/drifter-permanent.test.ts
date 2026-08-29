@@ -14,12 +14,12 @@
 // spans at most one turn; the corner a single right-angle turn cuts is under half
 // a percent of that path, well inside the two percent this point allows.
 //
-// THE BOARD IS EMPTIED OF PLANKTON. specs/gameplay.md admits drifters at the den
-// gate "while plankton remain in the maze", so an empty maze admits none and the
-// drifter followed here is the one that was spawned rather than whichever one the
-// cadence last let in. `clearPlankton` "scores nothing and clears no maze"
-// (specs/instrumentation.md), and the forager is parked, so an empty board cannot
-// end the round either.
+// THE BOARD HOLDS ONE DRIFTER AND NOTHING ELSE. `poseApart` clears the roster,
+// the drifters and the plankton, so no hunter can reach either room and no
+// cadence can admit a second drifter: specs/gameplay.md admits one at the den gate
+// only "while plankton remain in the maze". The drifter followed here is therefore
+// the one this check spawned, and an empty board cannot be cleared either, so the
+// long stretch below cannot end in a descent.
 //
 // THE DRIFTER PATROLS A SEALED RING. `poseApart` puts the forager in its own room
 // and the ring across solid rock, so over half a minute of wandering the drifter
@@ -30,7 +30,7 @@
 // seconds of it — a drifter still drifting, half a minute after it appeared, and
 // then taken — rather than half a minute of the same.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { DRIFTER_INTERVAL, DRIFTER_SPEED, TICK_HZ } from "../../src/constants";
 import {
   assertEqual,
@@ -46,15 +46,8 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
-import type { FathomSnapshot } from "../surface";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
+import { FathomSnapshot } from "../surface";
 
 /** One bonus drifter, as the snapshot reports it. */
 type Drifter = FathomSnapshot["drifters"][number];
@@ -148,17 +141,14 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("A drifter stays until it is eaten", async () => {
+it("A drifter stays until it is eaten", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART, { ring: RING });
   await parkForager(h, rooms.near);
-  await clearUnderfoot(h);
-  // An empty maze admits no drifter at the gate, so the one followed below is
-  // the one spawned here.
-  h.debug.clearPlankton();
-  const quiet = await denAll(h);
+  // The board `poseApart` posed carries no plankton, so the cadence admits no
+  // drifter at the gate and the one followed below is the one spawned here.
   h.debug.spawnDrifter(rooms.far.tx, rooms.far.ty);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
   const opened = h.snapshot();
 
   // The long stretch, off camera.
@@ -214,7 +204,7 @@ check("A drifter stays until it is eaten", async () => {
   // held where it stands and the forager put on its tile, which is the contact
   // specs/gameplay.md defines; what the bite PAYS is amber/drifter-score's.
   const taken = watched.still.drifters[0];
-  h.debug.setCreatureAI(false);
+  h.debug.setDrifterMind(0, false);
   h.debug.setForagerTile(taken.tx, taken.ty);
   await h.advance(EAT_TICKS);
   assertEqual(

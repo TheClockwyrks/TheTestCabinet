@@ -35,7 +35,7 @@
 // the reading asks is only that the two depths agree; what the speed IS belongs to
 // `gloamfin/wander-speed`.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   DEN_ORDER,
   ROSTER_ADD_ORDER,
@@ -45,6 +45,7 @@ import {
 import {
   assertDeepEqual,
   assertEqual,
+  assertGreaterThan,
   assertLessThanOrEqual,
   assertNotNull,
 } from "../assert";
@@ -56,15 +57,8 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireKind,
-  requirePredatorMotion,
-} from "../scene";
-import type { FathomSnapshot, PulseSnapshot } from "../surface";
+import { indexOfKind, parkForager, requirePredatorMotion } from "../scene";
+import { FathomSnapshot, PulseSnapshot } from "../surface";
 
 /** The depths read, which reach one past `ROSTER_CAP_DEPTH` so the cap is tested. */
 const DEPTHS = [1, 2, 3, 4, 5] as const;
@@ -161,22 +155,18 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Depth adds hunters and shortens the pulse", async () => {
+it("Depth adds hunters and shortens the pulse", async () => {
   await startPlaying(h);
   // The forager's own room, and across solid rock a sealed ring for the
   // wanderer, so nothing the speed reading watches can reach the forager and
   // drop out of its patrol.
   const rooms = await poseApart(h, APART, { ring: RING });
   await parkForager(h, rooms.near);
-  await clearUnderfoot(h);
 
   const read = await captureReplay(h, "scale", async () => {
     const depths = [];
     for (const depth of DEPTHS) {
       h.debug.setDepth(depth);
-      // The grown roster's newcomers are held in the sealed den with the rest,
-      // so nothing is loose while the readings are taken.
-      await denAll(h);
       const snapshot = h.snapshot();
       const pulse = await emitPulse(h);
       depths.push({
@@ -190,8 +180,13 @@ check("Depth adds hunters and shortens the pulse", async () => {
     const patrols = [];
     for (const depth of [DEPTHS[0], DEPTHS[DEPTHS.length - 1]]) {
       h.debug.setDepth(depth);
-      await denAll(h);
-      const index = requireKind(h.snapshot(), "gloamfin");
+      const index = indexOfKind(h.snapshot(), "gloamfin");
+      assertGreaterThan(
+        index,
+        -1,
+        `a Gloamfin on the roster setDepth(${depth}) laid out, which is the ` +
+          "wanderer whose speed the two depths are compared on",
+      );
       h.debug.setPredatorTile(index, rooms.far.tx, rooms.far.ty);
       h.debug.setPredatorState(index, "wander");
       const before = h.snapshot();
@@ -225,8 +220,8 @@ check("Depth adds hunters and shortens the pulse", async () => {
     );
   }
 
-  // The wanderer has to have wandered for the speeds to mean anything; whether
-  // a predator moves under its own power is the den and patrol points' verdict.
+  // The wanderer has to have wandered for the two speeds to be a comparison at
+  // all: a pair of zeroes agrees perfectly and says nothing.
   for (const patrol of read.patrols) {
     requirePredatorMotion(
       patrol.before,

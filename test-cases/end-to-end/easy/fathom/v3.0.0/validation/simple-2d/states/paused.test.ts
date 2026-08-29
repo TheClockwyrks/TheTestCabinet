@@ -12,7 +12,7 @@
 // that a running simulation would visibly move, every one of them posed through
 // an operation `specs/instrumentation.md` gives:
 //
-//   * a hunter loose on the board rather than in the den, which patrols;
+//   * a hunter loose on a sealed ring of its own, which patrols;
 //   * a brightness of `POSED_BRIGHTNESS`, which `setBrightness` arms the
 //     `BRIGHT_HOLD` (`1 s`) hold on and which then decays on the ordinary curve;
 //   * two cooldowns plainly mid-run, which run down;
@@ -32,17 +32,19 @@
 // contents — and what the pause overlay looks like, which is the aesthetic
 // rating's.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { placeForager, poseApart, spawnPredator } from "../fixtures";
+
 import { BRIGHT_HOLD, PAUSE_ITEMS } from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureStill,
   createHarness,
+  poseBrightness,
   startPlaying,
   ticks,
   type Harness,
 } from "../harness";
-import { check, denAll } from "../scene";
 import {
   CONFIRM_KEY,
   MOVE_KEY,
@@ -51,8 +53,11 @@ import {
   frameOps,
 } from "./screens";
 
-/** The roster index posed loose, so something on the board would move if it could. */
-const LOOSE = 0;
+/** How far apart the forager's room and the hunter's ring stand, in tiles. */
+const APART_TILES = 12;
+
+/** How much corridor the hunter's ring holds, in tiles. */
+const RING_TILES = 3;
 
 /**
  * The brightness posed before the pause, in `[0, 1]`.
@@ -90,14 +95,17 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("freezes the dive behind its menu, and resumes", async () => {
+it("freezes the dive behind its menu, and resumes", async () => {
   await startPlaying(h);
-  // One hunter loose and patrolling, the rest put away so only the one that is
-  // supposed to hold still is on the board. At depth 1 the roster holds one of
-  // each kind (specs/predators.md), so leaving index 0 out names one hunter.
-  await denAll(h, [LOOSE]);
-  h.debug.setPredatorState(LOOSE, "wander");
-  h.debug.setBrightness(POSED_BRIGHTNESS);
+  // The forager in its own room and, across solid rock, one hunter loose and
+  // patrolling a ring of its own: the only body on the board besides the forager
+  // is the one that is supposed to hold still.
+  const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
+  await placeForager(h, rooms.near, "right");
+  const loose = await spawnPredator(h, "lanternjaw", rooms.far, {
+    state: "wander",
+  });
+  await poseBrightness(h, POSED_BRIGHTNESS, BRIGHT_HOLD);
   h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
   h.debug.setInkCooldown(POSED_INK_COOLDOWN);
 
@@ -173,9 +181,9 @@ check("freezes the dive behind its menu, and resumes", async () => {
     "the ink cooldown across a paused stretch (specs/ui.md)",
   );
   assertEqual(
-    `${String(after.predators[LOOSE].x)},${String(after.predators[LOOSE].y)}`,
-    `${String(before.predators[LOOSE].x)},${String(before.predators[LOOSE].y)}`,
-    `where the loose ${before.predators[LOOSE].kind} stood across a paused ` +
+    `${String(after.predators[loose].x)},${String(after.predators[loose].y)}`,
+    `${String(before.predators[loose].x)},${String(before.predators[loose].y)}`,
+    `where the loose ${before.predators[loose].kind} stood across a paused ` +
       "stretch, behind a maze that is frozen (specs/ui.md)",
   );
 

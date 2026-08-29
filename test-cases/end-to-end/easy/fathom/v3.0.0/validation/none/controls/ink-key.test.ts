@@ -23,7 +23,7 @@
 // step or at the top of the following one, and both conform, so the cloud is read
 // a tick later and the tolerance below is stated against the ticks that have run.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertBetween,
   assertEqual,
@@ -38,7 +38,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, quietBoard, requireSceneHeld, sceneGuard } from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The first key specs/movement.md binds the `b` action to. */
 const KEY = "ShiftLeft";
@@ -99,10 +99,10 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("releases an ink cloud on Shift", async () => {
+it("releases an ink cloud on Shift", async () => {
   await startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
-  await quietBoard(h);
+  await parkForager(h);
   await h.debug.setInkCooldown(0);
   const guard = await sceneGuard(h);
 

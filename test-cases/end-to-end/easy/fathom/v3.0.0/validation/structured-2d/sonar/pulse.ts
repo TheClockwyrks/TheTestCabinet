@@ -21,16 +21,14 @@
 // vanishing inside the tick, is `sonar/wavefront`'s. A press that leaves nothing
 // on `pulses` could be either — so the cooldown is what separates them: a build
 // that read the key ARMS it (specs/sensing.md: "emitting one sets the cooldown to
-// `SONAR_COOLDOWN`"), and one that read nothing does not. `failPrecondition`
-// then states the requirement the build actually missed and names the point whose
-// job it is to report it, and the check declines rather than recording a verdict
-// of its own, so a reviewer reading the run sees one cause rather than seven
-// mechanics.
+// `SONAR_COOLDOWN`"), and one that read nothing does not. The failure then states
+// which of the two happened, so a reviewer reading seven failed points sees the
+// same one cause named in each.
 
 import { BINDINGS } from "../../src/constants";
 import type { FathomSnapshot, PulseSnapshot } from "../surface";
 import { type Harness } from "../harness";
-import { failPrecondition } from "../scene";
+import { fail } from "../assert";
 
 /**
  * The key specs/movement.md binds the `a` action — "Emits a sonar pulse" — to.
@@ -112,11 +110,10 @@ export async function castPulse(h: Harness): Promise<Emitted> {
  */
 export function requirePress(emitted: Emitted): void {
   if (emitted.pulse !== null || emitted.armed) return;
-  failPrecondition(
+  fail(
     `pressing ${SONAR_KEY} in live play to put a wavefront in flight or at least ` +
       "arm the sonar cooldown; specs/movement.md binds the `a` action to it and " +
       "specs/sensing.md has emitting one set the cooldown",
-    "controls/sonar-key",
     `no pulse and sonar.ready ${String(emitted.after.sonar.ready)}`,
   );
 }
@@ -131,11 +128,10 @@ export function requirePress(emitted: Emitted): void {
 export function requireLivePulse(emitted: Emitted): PulseSnapshot {
   requirePress(emitted);
   if (emitted.pulse === null) {
-    failPrecondition(
+    fail(
       "a wavefront on pulses a tick after the press that armed the cooldown; " +
         "specs/sensing.md has the front advance at SONAR_WAVE_SPEED rather than " +
         "cover its whole range at once",
-      "sonar/wavefront",
       "the cooldown armed and pulses empty",
     );
   }

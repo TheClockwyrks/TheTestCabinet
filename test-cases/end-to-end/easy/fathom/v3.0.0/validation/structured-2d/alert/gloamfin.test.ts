@@ -31,10 +31,15 @@
 // `gloamfin/fix-and-alert`'s, so a build whose Gloamfin never acquires stands this
 // check down rather than being failed twice for one fault.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { ALERT_TIME, GLOAMFIN_HEAR } from "../../src/constants";
-import { assertEqual, assertLessThanOrEqual, assertTrue } from "../assert";
-import { poseOccludedPair } from "../fixtures";
+import {
+  assertEqual,
+  assertLessThanOrEqual,
+  assertTrue,
+  fail,
+} from "../assert";
+import { poseOccludedPair, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -44,16 +49,7 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * How far apart the pair stands, in tiles.
@@ -143,26 +139,15 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The Gloamfin fires the alert on a fresh fix", async () => {
+it("The Gloamfin fires the alert on a fresh fix", async () => {
   startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
-  const index = indexOfKind(h.snapshot(), "gloamfin");
-  if (index < 0) {
-    failPrecondition(
-      "a Gloamfin on the roster to pose this scenario with",
-      "the progression points",
-      "no gloamfin in snapshot().predators",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
-  h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "gloamfin", pair.pred);
   await parkForager(h, pair.forager);
   // Its own pellet settled and `G` back to the zero a dive opens on, so the light
   // pocket is the narrowest it ever is and nothing widens it under the
   // measurement.
-  await clearUnderfoot(h);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const posed = h.snapshot();
   const posedGap = Math.hypot(
@@ -179,11 +164,10 @@ check("The Gloamfin fires the alert on a fresh fix", async () => {
       },
     );
     if (!acquired.hit) {
-      failPrecondition(
+      fail(
         `the Gloamfin to take a fix on a forager ${posedGap.toFixed(0)} units ` +
           `away, inside GLOAMFIN_HEAR (${GLOAMFIN_HEAR}), so there is a fresh ` +
           "acquisition for an alert to fire on",
-        "gloamfin/fix-and-alert",
         acquired.snapshot.predators[index].state,
       );
     }
@@ -257,12 +241,11 @@ check("The Gloamfin fires the alert on a fresh fix", async () => {
     // rock — fog/light-line-of-sight's verdict — and the reading below would be
     // of that light rather than of the alert.
     if (sample.visibility !== "u") {
-      failPrecondition(
+      fail(
         "the tile the Gloamfin stands on to be unrevealed while the alert runs, " +
           "so what draws its body is the alert and nothing else; no light, pulse " +
           "or flare of this scenario reaches it, and specs/sensing.md has the " +
           "light travel straight and stop at the rock it lands on",
-        "fog/light-line-of-sight",
         `it reported "${sample.visibility}" ${sample.t.toFixed(2)} s in`,
       );
     }

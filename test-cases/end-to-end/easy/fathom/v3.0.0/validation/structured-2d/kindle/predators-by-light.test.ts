@@ -24,20 +24,22 @@
 // The Gloamfin produces no light of its own, so what is drawn where it stands is
 // exactly what this point is asking about.
 //
-// THE MINDS ARE OFF. `setCreatureAI(false)` holds every creature exactly where it
-// stands "and does not move, however long the scenario runs", leaving the rest of
-// the simulation running (specs/instrumentation.md) — so the hunter is read at the
-// distance it was posed at rather than wherever a chase took it, and the forager's
-// light still falls where it falls.
+// THE ONE HUNTER'S MIND IS OFF. `setPredatorMind(index, false)` holds that
+// predator exactly where it stands, "keeping the tile, facing and `state` it was
+// posed with", and leaves everything else in the game running
+// (specs/instrumentation.md) — so the hunter is read at the distance it was posed
+// at rather than wherever a chase took it, and the forager's light still falls
+// where it falls.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
+  fail,
 } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   brightestNear,
   captureStill,
@@ -48,16 +50,7 @@ import {
   startPlaying,
   visibilityAt,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { FOG_MATCH, windowRadius } from "./circle";
 
 /**
@@ -91,7 +84,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Predators are drawn by the light, not the circle", async () => {
+it("Predators are drawn by the light, not the circle", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
@@ -99,24 +92,11 @@ check("Predators are drawn by the light, not the circle", async () => {
   const close = board.mark("N");
   const unlit = board.mark("S");
 
-  const gloamfin = indexOfKind(h.snapshot(), "gloamfin");
-  if (gloamfin < 0) {
-    failPrecondition(
-      "the depth-1 roster to carry a Gloamfin, which is the hunter this " +
-        "scenario poses (specs/predators.md)",
-      "scoring/depth-scaling",
-      "no Gloamfin on the roster",
-    );
-  }
-  const quiet = await denAll(h, [gloamfin]);
-  h.debug.setPredatorTile(gloamfin, band.tx, band.ty);
-  h.debug.setPredatorState(gloamfin, "wander");
+  // One hunter, held where it was posed: this point is about what is DRAWN at a
+  // distance, not about where a hunter goes next.
+  const gloamfin = await spawnPredator(h, "gloamfin", band, { mind: false });
   await parkForager(h, home);
-  await clearUnderfoot(h);
-  // Held where it was posed: this point is about what is DRAWN at a distance, not
-  // about where a hunter goes next.
-  h.debug.setCreatureAI(false);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
   const beyondLight = h.snapshot();
@@ -135,11 +115,10 @@ check("Predators are drawn by the light, not the circle", async () => {
   // The band this point lives in has to exist on this build, or there is nothing
   // here to decide.
   if (gap >= radius || gap <= beyondLight.visionRadius) {
-    failPrecondition(
+    fail(
       "the two radii to take the values specs/sensing.md gives them, so a hunter " +
         `${BAND_TILES} tiles off stands inside the vision circle R and beyond the ` +
         "light pocket V",
-      "kindle/grows-with-eating and the brightness points",
       `the hunter stood ${gap.toFixed(1)} units off, with V reported as ` +
         `${beyondLight.visionRadius.toFixed(1)} and R as ${radius.toFixed(1)}`,
     );

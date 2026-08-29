@@ -52,7 +52,7 @@
 // metrics and clock are — the host the engine runs on — and without it the build
 // is asked to draw from art no one gave it.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -65,8 +65,8 @@ import {
   TICK_HZ,
   TILE,
 } from "../../src/constants";
-import { assertTrue } from "../assert";
-import { poseMaze } from "../fixtures";
+import { assertTrue, fail } from "../assert";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   callsTo,
   captureStill,
@@ -75,15 +75,7 @@ import {
   type DrawCall,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /* -------------------------------------------------------------------------- */
 /* The seeded sheets                                                          */
@@ -359,43 +351,30 @@ afterEach(() => {
   restoreHost(host);
 });
 
-check("draws every element from its own seeded sheet", async () => {
+it("draws every element from its own seeded sheet", async () => {
   const seeded = await readSeededFrames();
 
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
   await parkForager(h, home);
-  // The pellet under the forager, eaten off camera with `G` put back to the
-  // zero a dive opens on, so the hunters' light ranges stay at their `G = 0`
-  // figures and none of them senses the forager across the rock.
-  await clearUnderfoot(h);
+  // The board carries no plankton, so `G` stays at the zero a dive opens on, the
+  // hunters' light ranges stay at their `G = 0` figures, and none of them senses
+  // the forager across the rock.
 
-  const roster = h.snapshot();
-  const onRoster = (kind: string): number => {
-    const index = indexOfKind(roster, kind);
-    if (index < 0) {
-      failPrecondition(
-        `a ${kind} on the depth-1 roster, which specs/predators.md gives one ` +
-          `of each kind`,
-        "the progression points",
-        `snapshot().predators held ${roster.predators.length} predators`,
-      );
-    }
-    return index;
-  };
-  const lanternjaw = onRoster("lanternjaw");
-  const gloamfin = onRoster("gloamfin");
-  const flarefish = onRoster("flarefish");
-  for (const [index, letter] of [
-    [lanternjaw, "L"],
-    [gloamfin, "G"],
-    [flarefish, "X"],
-  ] as const) {
-    const pocket = board.mark(letter);
-    h.debug.setPredatorTile(index, pocket.tx, pocket.ty);
-    h.debug.setPredatorState(index, "wander");
-  }
+  // One of each hunter and one drifter: the five bodies whose sheets this point
+  // reads, and nothing else on the board. The two hunters whose behavior this
+  // point is not about are posed with their minds off, so they hold the tile
+  // they are put on because nothing is deciding for them rather than because the
+  // rock around them held. The Flarefish keeps its mind: the bloom this scene is
+  // built around is its own cadence running.
+  const lanternjaw = await spawnPredator(h, "lanternjaw", board.mark("L"), {
+    mind: false,
+  });
+  const gloamfin = await spawnPredator(h, "gloamfin", board.mark("G"), {
+    mind: false,
+  });
+  const flarefish = await spawnPredator(h, "flarefish", board.mark("X"));
   const drop = board.mark("D");
   h.debug.spawnDrifter(drop.tx, drop.ty);
   const watch = await sceneGuard(h);
@@ -442,12 +421,11 @@ check("draws every element from its own seeded sheet", async () => {
     [flarefish, "Flarefish"],
   ] as const) {
     if (snap.predators[index]?.lit === true) continue;
-    failPrecondition(
+    fail(
       `the Flarefish's burning bloom to light the ${name} standing inside ` +
         `FLARE_RADIUS (${FLARE_RADIUS}) of it, so there was a body drawn for ` +
         "this point to read a sheet out of; specs/sensing.md lights every tile " +
         "of the disc, rock and floor alike and straight through rock",
-      "flarefish/flare-reveals",
       `the ${name} reported lit ${String(snap.predators[index]?.lit)}`,
     );
   }

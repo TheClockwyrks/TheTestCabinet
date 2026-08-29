@@ -37,7 +37,7 @@
 // resolves each action the game registered (specs/movement.md), so the key
 // dispatched here is the one a player presses.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {
@@ -48,7 +48,7 @@ import {
   travelAlong,
   type Harness,
 } from "../harness";
-import { check, denAll, requireSceneHeld, sceneGuard } from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The second key specs/movement.md binds the `left` action to. */
 const KEY = "KeyA";
@@ -80,14 +80,13 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("KeyA swims the forager left", async () => {
+it("KeyA swims the forager left", async () => {
   await startPlaying(h);
   const run = await poseMoveKeyRun(h, "left");
-  const quiet = await denAll(h);
   // The forager is this check's SUBJECT, so it is expected to leave the tile it
   // was parked on. What the guard still watches is everything else: a life lost,
   // a screen change, a predator loose on the board.
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   const swum = await captureReplay(h, "move", () =>
     driveHeldKey(h, KEY, {

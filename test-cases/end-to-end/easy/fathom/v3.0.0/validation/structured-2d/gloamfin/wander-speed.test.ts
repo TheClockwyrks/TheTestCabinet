@@ -25,10 +25,10 @@
 // what a corner costs (`gloamfin/corners-slow`), or whether a predator keeps to the
 // corridors (`maze-movement/predators-keep-to-corridors`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { PREDATOR_SPEED, TICK_HZ } from "../../src/constants";
-import { poseApart } from "../fixtures";
+import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -36,15 +36,12 @@ import {
   type Harness,
 } from "../harness";
 import {
-  check,
-  denAll,
-  quietBoard,
-  requireKind,
+  parkForager,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
 } from "../scene";
-import { gloamfinOf, groundBetween, placePredator } from "./pings";
+import { gloamfinOf, groundBetween } from "./pings";
 
 /**
  * How far the patrol's ring stands from the forager's own room, in tiles, and how
@@ -136,13 +133,13 @@ async function measure(index: number): Promise<Wander> {
   };
 }
 
-check("It wanders at a steady PREDATOR_SPEED", async () => {
+it("It wanders at a steady PREDATOR_SPEED", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
-  const index = requireKind(h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
-  await placePredator(h, index, rooms.far, { state: "wander" });
-  await quietBoard(h);
+  const index = await spawnPredator(h, "gloamfin", rooms.far, {
+    state: "wander",
+  });
+  await parkForager(h);
   // The patrol this measures happens across the board in the dark, where the
   // forager's light never falls, so a clip of the canvas alone would be a black
   // screen. `specs/instrumentation.md` puts the current state, tile and speed of
@@ -150,7 +147,7 @@ check("It wanders at a steady PREDATOR_SPEED", async () => {
   // toggled by the backtick key, so this leaves the simulation exactly as it was
   // and gives the recording something to show.
   await h.tap("Backquote");
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const opening = h.snapshot();
   await h.advance(SETTLE_TICKS);

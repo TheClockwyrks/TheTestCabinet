@@ -24,31 +24,23 @@
 // sonar pulse must play is `audio/sonar`'s question, and counting every name is
 // what keeps the two points apart.
 //
-// THE BOARD IS HELD STILL FOR THE COUNT. `setCreatureAI(false)` holds every
-// creature exactly where it stands and leaves the rest of the simulation running
-// — cooldowns, wavefronts and the forager's own controls all continue
-// (specs/instrumentation.md) — so the only thing in either window that can raise
-// a cue is the pulse this check emits. A Gloamfin left to its own mind pings on
+// THE BOARD IS EMPTY FOR THE COUNT. A posed fixture carries no predator, no
+// drifter and no plankton (`fixtures.ts`), so the only thing in either window that
+// can raise a cue is the pulse this check emits. A Gloamfin left on the board pings on
 // its own cadence, and a ping in the unmuted window would let a build that never
 // sounded the pulse pass on somebody else's noise.
 
-import { afterEach, beforeEach } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan, fail } from "../assert";
 import { poseStraightRun } from "../fixtures";
+import { BRIGHT_HOLD } from "../../src/constants";
 import {
   captureStill,
   createHarness,
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  failPrecondition,
-  quietBoard,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `mute` action to. */
 const MUTE_KEY = "KeyM";
@@ -122,14 +114,13 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
+it("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
   startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
-  const quiet = await denAll(h);
-  await quietBoard(h);
+  await parkForager(h);
   h.debug.setBrightness(LIT);
-  h.debug.setCreatureAI(false);
-  const watch = await sceneGuard(h, quiet);
+  h.debug.setBrightHold(BRIGHT_HOLD);
+  const watch = await sceneGuard(h);
 
   const opening = h.snapshot();
 
@@ -193,11 +184,10 @@ check("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
   // restore, and "clearing the toggle restores the cues" cannot be read on a cue
   // that was never asked for.
   if (unmutedPlays === 0) {
-    failPrecondition(
+    fail(
       "the unmuted dive asking the bus for a cue on its own sonar pulse, which " +
         "is what specs/progression.md's \"Clearing the toggle restores the cues " +
         'from the next event on" is read on',
-      "audio/sonar",
       `the build announced no cue at all over ${CUE_WINDOW_TICKS} ticks around ` +
         `the pulse`,
     );

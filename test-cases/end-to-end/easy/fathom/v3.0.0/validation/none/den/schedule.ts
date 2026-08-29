@@ -20,13 +20,23 @@
 // gate charges every gap the difference between two swims: a build releasing
 // exactly `5 s` apart from tiles one and three would report gaps of four and six.
 //
-// THESE TWO CHECKS RUN ON THE BUILD'S OWN MAZE, which is the exception to the
-// posed-fixture rule in `fixtures.ts`. `setMaze` "suspends" the release schedule
-// (`specs/instrumentation.md`), so a posed board is exactly the board on which
-// there is no schedule to read.
+// THE WORLD THESE TWO POSE IS THE ROSTER AND NOTHING ELSE. Both items are ABOUT
+// several predators existing at once, so the roster is what {@link poseDenBoard}
+// puts back: a fixture carrying one den chamber and, across solid rock, a room
+// for the forager, with `setDepth` laying the depth's own roster into that
+// chamber unreleased, "exactly as a maze at that depth lays it out"
+// (`specs/instrumentation.md`). Nothing else is on the board — no plankton, no
+// drifters, no fog — so nothing but the schedule can move while it is read.
+//
+// THE FORAGER IS A BYSTANDER AND IT IS THE ONE THING THAT CANNOT BE REMOVED, so
+// the fixture gives it a room of its own. A forager caught mid-measurement
+// re-dens every predator and restarts the very schedule being read, and a room
+// no corridor joins to the den's is what keeps that from happening — a property
+// of the layout the check itself drew, not of a rule it hoped would hold.
 
 import { DEN_ORDER, DEN_RELEASE_GAP } from "../constants";
-import { parkForager, unmetPrecondition } from "../scene";
+import { poseMaze } from "../fixtures";
+import { parkForager } from "../scene";
 import type { FathomSnapshot, Harness } from "../harness";
 import type { Tile } from "../maze";
 
@@ -64,76 +74,50 @@ export interface DenWatch {
   last: FathomSnapshot;
 }
 
-/** Every tile of the board carrying `character`, in reading order. */
-function tilesOf(snap: FathomSnapshot, character: string): Tile[] {
-  const found: Tile[] = [];
-  for (let ty = 0; ty < snap.grid.rows; ty += 1) {
-    const row = snap.tiles[ty] ?? "";
-    for (let tx = 0; tx < snap.grid.cols; tx += 1) {
-      if (row[tx] === character) found.push({ tx, ty });
-    }
-  }
-  return found;
+/**
+ * The board both items are read on: a sealed room for the forager, and across
+ * eight tiles of rock a corridor with a three-tile den chamber under it.
+ *
+ * Six letters do the work. `N` is the forager's tile, at the closed end of its
+ * own room. `g` is the den gate, on the chamber's top edge with corridor above
+ * it, so a released hunter swims up through the gate and out into a hallway that
+ * goes nowhere near the forager.
+ */
+const DEN_ART: readonly string[] = [
+  "N....",
+  "",
+  "                  ..........",
+  "                     g",
+  "                    ddd",
+];
+
+/** Where the fixture put the forager. */
+export interface DenBoard {
+  /** The tile the forager is parked on, in its own sealed room. */
+  forager: Tile;
 }
 
 /**
- * Park the forager as far from the den gate as the build's own maze allows, and
- * eat the pellet it is standing on.
+ * Pose the den board, park the forager in its own room, and lay the depth-`1`
+ * roster into the chamber.
  *
- * THE FORAGER IS A BYSTANDER IN BOTH ITEMS, and an expensive one to lose: contact
- * costs a life, and a life lost "returns every predator to the den unreleased"
- * and runs the whole schedule again (`specs/predators.md`), which is the clock
- * being measured. Distance is what buys the measurement its ten seconds — a
- * released hunter has to cross the maze before it is a problem — and the pellet
- * is eaten so the forager sits at `G = 0`, where the Lanternjaw's reach is its
- * narrowest `LANTERN_RANGE_BASE`.
+ * `setDepth(1)` is what puts the roster there: it "becomes the one
+ * specs/predators.md gives for depth `d`, laid out in the den with every
+ * `released` flag false, exactly as a maze at that depth lays it out"
+ * (`specs/instrumentation.md`). That is the roster whose staggered schedule both
+ * items read, and it is the only thing on the board besides the forager.
  *
- * The tile is chosen among those with a rock neighbour, so {@link parkForager}
- * has a wall to face the forager into and it cannot drift off the tile it was
- * put on.
- *
- * THE PELLET IS TAKEN OFF RATHER THAN EATEN. `setPlankton(tx, ty, false)`
- * "is not eating it, so it scores nothing and clears no maze"
- * (`specs/instrumentation.md`) and, unlike eating one, it costs no tick — which
- * matters here because both items date the schedule from an instant, and a tick
- * spent tidying the board is a tick the den's own clock may already be running
- * in.
+ * The screen is left where the caller put it, because both items pin the
+ * schedule's origin themselves: the schedule starts from the moment `screen`
+ * becomes `"playing"`, so the check that reads it decides when that moment is.
  */
-export async function parkClearOfDen(h: Harness): Promise<Tile> {
-  const snap = await h.snapshot();
-  const gates = tilesOf(snap, "g");
-  const corridors = tilesOf(snap, ".");
-  if (corridors.length === 0) {
-    unmetPrecondition(
-      "the build's maze reports no corridor tile at all, so there is nowhere " +
-        "to stand the forager clear of the den — what the board holds is the " +
-        "maze checks' verdict, not this one's",
-    );
-  }
-  const walled = corridors.filter((tile) => {
-    const around = [
-      snap.tiles[tile.ty - 1]?.[tile.tx],
-      snap.tiles[tile.ty + 1]?.[tile.tx],
-      snap.tiles[tile.ty]?.[tile.tx - 1],
-      snap.tiles[tile.ty]?.[tile.tx + 1],
-    ];
-    return around.some((neighbour) => neighbour !== ".");
-  });
-  const candidates = walled.length > 0 ? walled : corridors;
-  const score = (tile: Tile): number =>
-    gates.length === 0
-      ? 0
-      : Math.min(
-          ...gates.map((gate) =>
-            Math.hypot(gate.tx - tile.tx, gate.ty - tile.ty),
-          ),
-        );
-  let best = candidates[0];
-  for (const tile of candidates) if (score(tile) > score(best)) best = tile;
-  await parkForager(h, best);
-  await h.debug.setPlankton(best.tx, best.ty, false);
+export async function poseDenBoard(h: Harness): Promise<DenBoard> {
+  const posed = await poseMaze(h, DEN_ART);
+  const home = posed.mark("N");
+  await parkForager(h, home);
+  await h.debug.setDepth(1);
   await h.debug.setBrightness(0);
-  return best;
+  return { forager: home };
 }
 
 /**

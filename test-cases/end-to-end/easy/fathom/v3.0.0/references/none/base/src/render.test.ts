@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { board, SEALED_DEN, stamp } from "./board.test-support";
 import { GRID_ORIGIN_X, GRID_ORIGIN_Y, TICK_HZ, TILE } from "./constants";
-import { poseMaze, type FathomState } from "./game";
-import { harness, stageContext, stubAssets } from "./harness.test-support";
+import type { FathomState } from "./game";
+import {
+  harness,
+  poseBoard,
+  stageContext,
+  stubAssets,
+} from "./harness.test-support";
 import { Maze } from "./maze";
 import { render } from "./render";
 import type { Screen } from "./types";
@@ -98,7 +103,7 @@ describe("render", () => {
   it("lights the pocket around the forager and leaves the rest dark", () => {
     const h = harness();
     h.state.screen = "playing";
-    poseMaze(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
+    poseBoard(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
     h.state.forager.placeOn(10, 8);
     h.advance(1);
     const surface = drawn(h.state);
@@ -112,7 +117,7 @@ describe("render", () => {
   it("draws a live sonar wavefront in the corridor it is washing down", () => {
     const h = harness();
     h.state.screen = "playing";
-    poseMaze(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
+    poseBoard(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
     h.state.forager.placeOn(10, 8);
     h.press("a");
     h.advance(Math.round(TICK_HZ * 0.3));
@@ -125,7 +130,7 @@ describe("render", () => {
   it("draws an ink cloud darker than the water it stands in", () => {
     const h = harness();
     h.state.screen = "playing";
-    poseMaze(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
+    poseBoard(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
     h.state.forager.placeOn(10, 8);
     h.advance(1);
     const clear = drawn(h.state).read(...tileCenter(11, 8));
@@ -137,7 +142,7 @@ describe("render", () => {
   it("draws the amber mote of a loose Lanternjaw through the dark", () => {
     const h = harness();
     h.state.screen = "playing";
-    poseMaze(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
+    poseBoard(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
     h.state.forager.placeOn(3, 8);
     h.state.predators[0].state = "wander";
     h.state.predators[0].placeOn(28, 8);
@@ -154,7 +159,7 @@ describe("render", () => {
   it("draws a burning flare's disc at full brightness through rock", () => {
     const h = harness();
     h.state.screen = "playing";
-    poseMaze(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
+    poseBoard(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
     h.state.forager.placeOn(3, 8);
     const flarefish = h.state.predators[2];
     flarefish.state = "wander";
@@ -172,7 +177,7 @@ describe("render", () => {
   it("interpolates a moving body between the two ticks either side of it", () => {
     const h = harness();
     h.state.screen = "playing";
-    poseMaze(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
+    poseBoard(h.state, stamp(board([".".repeat(30)], 8, 3), SEALED_DEN, 1, 16));
     h.state.forager.placeOn(10, 8);
     h.hold("right");
     h.advance(30);

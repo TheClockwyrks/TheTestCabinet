@@ -32,9 +32,10 @@
 // which is `alert/flarefish`'s; and what a chasing Flarefish then does, which is
 // `flarefish/chase-like-lanternjaw`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan } from "../assert";
 import {
+  BRIGHT_HOLD,
   FLARE_RADIUS,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
@@ -43,21 +44,14 @@ import {
   TILE,
 } from "../constants";
 import { tileGap } from "../maze";
-import { poseSightLine, predatorIndex } from "../fixtures";
+import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The brightness both legs are posed at.
@@ -119,112 +113,102 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "takes a fix on the forager's light inside R and none beyond it",
-  async () => {
-    await startPlaying(h);
-    // One straight corridor with clear line of sight along the whole of it, so the
-    // only condition of the sense that changes between the two legs is the range.
-    const line = await poseSightLine(h, FAR_TILES, { lead: 1, tail: 1 });
-    await parkForager(h, line.forager);
-    await h.debug.clearPlankton();
+it("takes a fix on the forager's light inside R and none beyond it", async () => {
+  await startPlaying(h);
+  // One straight corridor with clear line of sight along the whole of it, so the
+  // only condition of the sense that changes between the two legs is the range.
+  const line = await poseSightLine(h, FAR_TILES, { lead: 1, tail: 1 });
+  await parkForager(h, line.forager);
 
-    const opening = await h.snapshot();
-    const index = predatorIndex(opening, "flarefish");
-    if (index === null) {
-      unmetPrecondition(
-        "the roster carries no Flarefish, so there is no light-sense to read — " +
-          "what the roster holds is the progression checks' verdict, not this one's",
-      );
-    }
-    const quiet = await denAll(h, [index]);
-    const guard = await sceneGuard(h, quiet);
+  const index = await spawnPredator(h, "flarefish", line.pred, {
+    dir: line.toForager,
+    state: "wander",
+  });
+  const guard = await sceneGuard(h);
 
-    const read = await captureReplay(h, "light", async () => {
-      // The far stand: fifteen tiles down the corridor, at the brightest the
-      // forager gets.
-      await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-      await h.debug.setPredatorDir(index, line.toForager);
-      await h.debug.setPredatorState(index, "wander");
-      await h.debug.setBrightness(POSED_G);
-      const farOpening = await h.snapshot();
-      const held = await h.until(
-        (snap) => snap.predators[index].state === "chase",
-        { maxTicks: FAR_TICKS, poll: 1 },
-      );
-      const far = await h.snapshot();
+  const read = await captureReplay(h, "light", async () => {
+    // The far stand: fifteen tiles down the corridor, at the brightest the
+    // forager gets.
+    await h.debug.setBrightness(POSED_G);
+    await h.debug.setBrightHold(BRIGHT_HOLD);
+    const farOpening = await h.snapshot();
+    const held = await h.until(
+      (snap) => snap.predators[index].state === "chase",
+      { maxTicks: FAR_TICKS, poll: 1 },
+    );
+    const far = await h.snapshot();
 
-      // The near stand: the same pair, the same brightness, seven tiles apart.
-      await h.debug.setPredatorTile(
-        index,
-        line.forager.tx + NEAR_TILES,
-        line.forager.ty,
-      );
-      await h.debug.setPredatorDir(index, line.toForager);
-      await h.debug.setPredatorState(index, "wander");
-      await h.debug.setBrightness(POSED_G);
-      await h.advance(NEAR_TICKS);
-      const near = await h.snapshot();
-      // The chase it just opened, for the clip. Both readings are already taken.
-      await h.advance(TAIL_TICKS);
-      return { farOpening, held, far, near };
-    });
+    // The near stand: the same pair, the same brightness, seven tiles apart.
+    await h.debug.setPredatorTile(
+      index,
+      line.forager.tx + NEAR_TILES,
+      line.forager.ty,
+    );
+    await h.debug.setPredatorDir(index, line.toForager);
+    await h.debug.setPredatorState(index, "wander");
+    await h.debug.setBrightness(POSED_G);
+    await h.debug.setBrightHold(BRIGHT_HOLD);
+    await h.advance(NEAR_TICKS);
+    const near = await h.snapshot();
+    // The chase it just opened, for the clip. Both readings are already taken.
+    await h.advance(TAIL_TICKS);
+    return { farOpening, held, far, near };
+  });
 
-    requireSceneHeld(await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
-    // The far leg. The gaps are asserted from the board the build reports rather
-    // than from the fixture's own arithmetic, so a build whose grid is not the one
-    // specs/overview.md fixes fails on the reading rather than on a stale number.
-    const farGap = tileGap(read.far.grid, line.forager, {
-      tx: line.pred.tx,
-      ty: line.pred.ty,
-    });
-    assertLessThan(
-      RANGE,
-      farGap,
-      `R at G = ${POSED_G} (${RANGE}), against the ${farGap} units the far stand ` +
-        `put between the two centers`,
-    );
-    assertEqual(
-      read.farOpening.brightness,
-      POSED_G,
-      "the forager's posed brightness, which fixes R for the far stand",
-    );
-    assertEqual(
-      read.held.hit,
-      false,
-      `the Flarefish took a fix over ${FAR_TICKS} ticks standing ${farGap} units ` +
-        `off, beyond the R = ${RANGE} specs/predators/flarefish.md gives it at ` +
-        `G = ${POSED_G} (it can close at most ` +
-        `${((PREDATOR_SPEED * FAR_TICKS) / TICK_HZ).toFixed(0)} units in that window)`,
-    );
-    assertEqual(
-      read.far.predators[index].state,
-      "wander",
-      `the Flarefish's state after ${FAR_TICKS} ticks beyond R`,
-    );
+  // The far leg. The gaps are asserted from the board the build reports rather
+  // than from the fixture's own arithmetic, so a build whose grid is not the one
+  // specs/overview.md fixes fails on the reading rather than on a stale number.
+  const farGap = tileGap(read.far.grid, line.forager, {
+    tx: line.pred.tx,
+    ty: line.pred.ty,
+  });
+  assertLessThan(
+    RANGE,
+    farGap,
+    `R at G = ${POSED_G} (${RANGE}), against the ${farGap} units the far stand ` +
+      `put between the two centers`,
+  );
+  assertEqual(
+    read.farOpening.brightness,
+    POSED_G,
+    "the forager's posed brightness, which fixes R for the far stand",
+  );
+  assertEqual(
+    read.held.hit,
+    false,
+    `the Flarefish took a fix over ${FAR_TICKS} ticks standing ${farGap} units ` +
+      `off, beyond the R = ${RANGE} specs/predators/flarefish.md gives it at ` +
+      `G = ${POSED_G} (it can close at most ` +
+      `${((PREDATOR_SPEED * FAR_TICKS) / TICK_HZ).toFixed(0)} units in that window)`,
+  );
+  assertEqual(
+    read.far.predators[index].state,
+    "wander",
+    `the Flarefish's state after ${FAR_TICKS} ticks beyond R`,
+  );
 
-    // The near leg.
-    const nearGap = NEAR_TILES * TILE;
-    assertLessThan(
-      nearGap,
-      RANGE,
-      `the ${nearGap} units the near stand puts between the two centers, against ` +
-        `R at G = ${POSED_G}`,
-    );
-    assertLessThan(
-      FLARE_RADIUS,
-      nearGap,
-      `FLARE_RADIUS (${FLARE_RADIUS}), against the ${nearGap} units of the near ` +
-        `stand — so the fix below cannot be a bloom's lock`,
-    );
-    assertEqual(
-      read.near.predators[index].state,
-      "chase",
-      `the Flarefish's state ${NEAR_TICKS} ticks after being stood ${nearGap} ` +
-        `units from a forager at G = ${POSED_G}, inside the R = ${RANGE} ` +
-        `specs/predators/flarefish.md gives it, in clear line of sight down one ` +
-        `straight corridor`,
-    );
-  },
-);
+  // The near leg.
+  const nearGap = NEAR_TILES * TILE;
+  assertLessThan(
+    nearGap,
+    RANGE,
+    `the ${nearGap} units the near stand puts between the two centers, against ` +
+      `R at G = ${POSED_G}`,
+  );
+  assertLessThan(
+    FLARE_RADIUS,
+    nearGap,
+    `FLARE_RADIUS (${FLARE_RADIUS}), against the ${nearGap} units of the near ` +
+      `stand — so the fix below cannot be a bloom's lock`,
+  );
+  assertEqual(
+    read.near.predators[index].state,
+    "chase",
+    `the Flarefish's state ${NEAR_TICKS} ticks after being stood ${nearGap} ` +
+      `units from a forager at G = ${POSED_G}, inside the R = ${RANGE} ` +
+      `specs/predators/flarefish.md gives it, in clear line of sight down one ` +
+      `straight corridor`,
+  );
+});

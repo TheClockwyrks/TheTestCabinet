@@ -30,24 +30,17 @@
 // `gloamfin/ping-reveals-nothing`'s; its color, which is
 // `gloamfin/lost-you-orange`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { GLOAMFIN_PING_INTERVAL, ticksFor } from "../constants";
-import { poseApart } from "../fixtures";
+import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  denAll,
-  quietBoard,
-  requireSceneHeld,
-  sceneGuard,
-  requireKind,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { soundsBeforeEvent, soundsOnEvent, watchForEvent } from "./cues";
 
 /**
@@ -81,55 +74,48 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "sounds on the tick a Gloamfin casts its own ping, and not before",
-  async () => {
-    // A real, browser-trusted gesture first: an engineless build owns its own audio
-    // layer and is entitled to open it on the player's first interaction alone
-    // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
-    await h.armAudio();
-    await startPlaying(h);
-    const rooms = await poseApart(h, APART_TILES);
-    const gloamfin = requireKind(await h.snapshot(), "gloamfin");
+it("sounds on the tick a Gloamfin casts its own ping, and not before", async () => {
+  // A real, browser-trusted gesture first: an engineless build owns its own audio
+  // layer and is entitled to open it on the player's first interaction alone
+  // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
+  await h.armAudio();
+  await startPlaying(h);
+  const rooms = await poseApart(h, APART_TILES);
+  await spawnPredator(h, "gloamfin", rooms.far, { state: "wander" });
+  await parkForager(h, rooms.near);
+  const guard = await sceneGuard(h);
 
-    await h.debug.setPredatorTile(gloamfin, rooms.far.tx, rooms.far.ty);
-    await h.debug.setPredatorState(gloamfin, "wander");
-    const quiet = await denAll(h, [gloamfin]);
-    await quietBoard(h, rooms.near);
-    const guard = await sceneGuard(h, quiet);
-
-    const watch = await captureReplay(h, "pulse", async () => {
-      const seen = await watchForEvent(
-        h,
-        (s) => s.pulses.some((pulse) => pulse.source === "gloamfin"),
-        PING_TICKS,
-      );
-      // Past the reading, so the clip shows the ping crossing its ring. Nothing
-      // after this line can reach an assertion.
-      await h.advance(TAIL_TICKS);
-      return seen;
-    });
-
-    requireSceneHeld(await h.snapshot(), guard);
-
-    assertEqual(
-      watch.hit,
-      true,
-      `the wandering Gloamfin cast one of its own pings inside ${String(PING_TICKS)} ` +
-        `ticks, which is twice its GLOAMFIN_PING_INTERVAL (${String(GLOAMFIN_PING_INTERVAL)} s) cadence`,
+  const watch = await captureReplay(h, "pulse", async () => {
+    const seen = await watchForEvent(
+      h,
+      (s) => s.pulses.some((pulse) => pulse.source === "gloamfin"),
+      PING_TICKS,
     );
-    assertEqual(
-      soundsBeforeEvent(watch),
-      0,
-      `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
-        "ping, on a board where nothing else is happening — a cue is played on the " +
-        "tick its event happens (specs/progression.md)",
-    );
-    assertGreaterThanOrEqual(
-      soundsOnEvent(watch),
-      1,
-      "sounds the build emitted on the tick the Gloamfin's ping entered flight, " +
-        "which is the tick CUES.predatorPing is played on (specs/progression.md)",
-    );
-  },
-);
+    // Past the reading, so the clip shows the ping crossing its ring. Nothing
+    // after this line can reach an assertion.
+    await h.advance(TAIL_TICKS);
+    return seen;
+  });
+
+  requireSceneHeld(await h.snapshot(), guard);
+
+  assertEqual(
+    watch.hit,
+    true,
+    `the wandering Gloamfin cast one of its own pings inside ${String(PING_TICKS)} ` +
+      `ticks, which is twice its GLOAMFIN_PING_INTERVAL (${String(GLOAMFIN_PING_INTERVAL)} s) cadence`,
+  );
+  assertEqual(
+    soundsBeforeEvent(watch),
+    0,
+    `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
+      "ping, on a board where nothing else is happening — a cue is played on the " +
+      "tick its event happens (specs/progression.md)",
+  );
+  assertGreaterThanOrEqual(
+    soundsOnEvent(watch),
+    1,
+    "sounds the build emitted on the tick the Gloamfin's ping entered flight, " +
+      "which is the tick CUES.predatorPing is played on (specs/progression.md)",
+  );
+});

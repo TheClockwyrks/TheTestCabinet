@@ -23,28 +23,20 @@
 // `lanternjaw/light-range`'s, so a build whose hunter never takes a fix stands this
 // check down rather than passing it on an absence that means nothing.
 
-import { afterEach, beforeEach } from "vitest";
-import { ALERT_TIME } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { ALERT_TIME, BRIGHT_HOLD } from "../../src/constants";
 import { assertEqual, assertTrue } from "../assert";
-import { poseSightLine } from "../fixtures";
+import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
+  poseBrightness,
   seconds,
   startPlaying,
   ticks,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireKind,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** How far apart the pair stands, in tiles. See the header. */
 const GAP_TILES = 7;
@@ -98,20 +90,18 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The Lanternjaw fires no alert", async () => {
+it("The Lanternjaw fires no alert", async () => {
   await startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
     tail: TAIL_TILES,
   });
-  const index = requireKind(h.snapshot(), "lanternjaw");
-  const quiet = await denAll(h, [index]);
-  await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-  await h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "lanternjaw", line.pred, {
+    state: "wander",
+  });
   await parkForager(h, line.forager);
-  await clearUnderfoot(h);
-  await h.debug.setBrightness(BRIGHT_G);
-  const watch = await sceneGuard(h, quiet);
+  await poseBrightness(h, BRIGHT_G, BRIGHT_HOLD);
+  const watch = await sceneGuard(h);
 
   const read = await captureReplay(h, "none", async () => {
     // Sampled from before the acquisition, so a build that fires on the tick it
@@ -139,14 +129,13 @@ check("The Lanternjaw fires no alert", async () => {
 
   requireSceneHeld(read.end, watch);
 
-  if (!read.fixed.hit) {
-    unmetPrecondition(
-      "the Lanternjaw took no fix on a fully lit forager seven tiles away on a " +
-        "clear line, so there was no acquisition for an alert to have been " +
-        "fired on; whether it senses the forager at all is " +
-        "lanternjaw/light-range's verdict, not this one's",
-    );
-  }
+  assertEqual(
+    read.fixed.hit,
+    true,
+    "the Lanternjaw takes a fix on a fully lit forager seven tiles away on a " +
+      "clear line, which is the acquisition this point reads the absent alert " +
+      "against",
+  );
 
   // The acquisition happened, which is what makes the absence below a reading.
   assertEqual(

@@ -103,20 +103,23 @@ the current instant.
 ## Debugging and automation
 
 The build installs `window.__fathom` as soon as the game has initialized
-(`src/debug.ts`). Every operation is a read or a **pose** of the state: it
-arranges the trench and then the game's own systems — the real sensing, the real
-pathfinding, the real release schedule and the real contact rules — produce
-everything that follows.
+(`src/debug.ts`). Every operation is a read or a **pose** of the state, and each
+pose sets **one thing**: a caller that wants several things arranged makes
+several calls and gets nothing it did not ask for. What a pose sets, the game's
+own systems carry on from — the real sensing, the real pathfinding, the real
+release schedule and the real contact rules produce everything that follows.
 
 ```js
 const f = window.__fathom;
 f.setAutoStep(false); // take the game off the wall clock
 f.reset({ seed: 7 }); // title screen, seeded randomness
-f.startDive(); // open a dive, on the countdown
-f.beginPlay(); // end the countdown now
+f.setScreen("playing"); // straight into live play
+f.clearPredators(); // an empty trench to build the scenario in
 f.setForagerTile(17, 15); // pose the forager
-f.setBrightness(1); // pose the brightness, hold armed
-f.setPredatorState(0, "chase"); // pose the Lanternjaw onto you
+f.setBrightness(1); // pose the brightness
+f.setBrightHold(1); // and hold it steady for a second
+f.addPredator("lanternjaw", 17, 11); // one hunter, loose and patrolling
+f.setPredatorState(0, "chase"); // pose it onto you
 f.advance(120); // run one second of game time
 f.snapshot(); // read the whole observable state
 ```

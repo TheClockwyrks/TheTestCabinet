@@ -24,22 +24,17 @@
 // WHAT THIS DOES NOT DECIDE. What the pulse reveals, which the `sonar/*` points
 // own; the cooldown it starts, which is `sonar/cooldown`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { BINDINGS, ticksFor } from "../constants";
+import { poseStraightRun } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  denAll,
-  quietBoard,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { soundsBeforeEvent, soundsOnEvent, watchForEvent } from "./cues";
 
 /** The key `specs/movement.md` binds the `a` action to: it emits a sonar pulse. */
@@ -69,6 +64,9 @@ const TAIL_TICKS = ticksFor(1);
  */
 const QUIET_LEAD = ticksFor(0.25);
 
+/** Tiles of straight corridor posed as the whole board. */
+const RUN_TILES = 5;
+
 let h: Harness;
 
 beforeEach(async () => {
@@ -79,61 +77,60 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "sounds on the tick the forager emits a sonar pulse, and not before",
-  async () => {
-    // A real, browser-trusted gesture first: an engineless build owns its own audio
-    // layer and is entitled to open it on the player's first interaction alone
-    // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
-    await h.armAudio();
-    await startPlaying(h);
-    const quiet = await denAll(h);
-    await quietBoard(h);
-    await h.debug.setSonarCooldown(0);
-    const guard = await sceneGuard(h, quiet);
+it("sounds on the tick the forager emits a sonar pulse, and not before", async () => {
+  // A real, browser-trusted gesture first: an engineless build owns its own audio
+  // layer and is entitled to open it on the player's first interaction alone
+  // (`specs/progression.md`). The key is bound to nothing, so this changes no state.
+  await h.armAudio();
+  await startPlaying(h);
+  // A bare corridor posed as the whole board: no predator, no drifter and no
+  // plankton, so the ticks before the event are genuinely silent.
+  const run = await poseStraightRun(h, RUN_TILES);
+  await parkForager(h, run.start);
+  await h.debug.setSonarCooldown(0);
+  const guard = await sceneGuard(h);
 
-    const watch = await captureReplay(h, "sonar", async () => {
-      try {
-        const seen = await watchForEvent(
-          h,
-          (s) => s.pulses.some((pulse) => pulse.source === "forager"),
-          QUIET_LEAD + PULSE_TICKS,
-          {
-            quietLead: QUIET_LEAD,
-            arm: async () => {
-              await h.hold(SONAR_KEY);
-            },
+  const watch = await captureReplay(h, "sonar", async () => {
+    try {
+      const seen = await watchForEvent(
+        h,
+        (s) => s.pulses.some((pulse) => pulse.source === "forager"),
+        QUIET_LEAD + PULSE_TICKS,
+        {
+          quietLead: QUIET_LEAD,
+          arm: async () => {
+            await h.hold(SONAR_KEY);
           },
-        );
-        // Held on past the reading, so the clip shows the wavefront flooding the
-        // corridors. Nothing after this line can reach an assertion.
-        await h.advance(TAIL_TICKS);
-        return seen;
-      } finally {
-        await h.release(SONAR_KEY);
-      }
-    });
+        },
+      );
+      // Held on past the reading, so the clip shows the wavefront flooding the
+      // corridors. Nothing after this line can reach an assertion.
+      await h.advance(TAIL_TICKS);
+      return seen;
+    } finally {
+      await h.release(SONAR_KEY);
+    }
+  });
 
-    requireSceneHeld(await h.snapshot(), guard);
+  requireSceneHeld(await h.snapshot(), guard);
 
-    assertEqual(
-      watch.hit,
-      true,
-      `a wavefront the forager cast entered flight inside the ${String(PULSE_TICKS)} ` +
-        "ticks the check holds Space for, with the cooldown posed ready",
-    );
-    assertEqual(
-      soundsBeforeEvent(watch),
-      0,
-      `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
-        "pulse, on a board where nothing else is happening — a cue is played on " +
-        "the tick its event happens (specs/progression.md)",
-    );
-    assertGreaterThanOrEqual(
-      soundsOnEvent(watch),
-      1,
-      "sounds the build emitted on the tick the forager cast its pulse, which is " +
-        "the tick CUES.sonar is played on (specs/progression.md)",
-    );
-  },
-);
+  assertEqual(
+    watch.hit,
+    true,
+    `a wavefront the forager cast entered flight inside the ${String(PULSE_TICKS)} ` +
+      "ticks the check holds Space for, with the cooldown posed ready",
+  );
+  assertEqual(
+    soundsBeforeEvent(watch),
+    0,
+    `sounds the build emitted over the ${String(watch.at - 1)} ticks before the ` +
+      "pulse, on a board where nothing else is happening — a cue is played on " +
+      "the tick its event happens (specs/progression.md)",
+  );
+  assertGreaterThanOrEqual(
+    soundsOnEvent(watch),
+    1,
+    "sounds the build emitted on the tick the forager cast its pulse, which is " +
+      "the tick CUES.sonar is played on (specs/progression.md)",
+  );
+});

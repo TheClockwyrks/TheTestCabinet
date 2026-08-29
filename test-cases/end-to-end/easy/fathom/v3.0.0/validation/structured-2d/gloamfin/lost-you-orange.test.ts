@@ -34,10 +34,15 @@
 // ping reveals (`gloamfin/ping-reveals-nothing`), or how long the search runs
 // before it gives up.
 
-import { afterEach, beforeEach } from "vitest";
-import { assertEqual, assertLessThanOrEqual, assertNotEqual } from "../assert";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertEqual,
+  assertLessThanOrEqual,
+  assertNotEqual,
+  fail,
+} from "../assert";
 import { GLOAMFIN_SEARCH_DELAY, TICK_HZ } from "../../src/constants";
-import { placeForager, poseMaze } from "../fixtures";
+import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -45,16 +50,12 @@ import {
   type Harness,
 } from "../harness";
 import {
-  check,
-  denAll,
-  quietBoard,
-  requireKind,
+  parkForager,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  standDown,
 } from "../scene";
-import { gloamfinOf, pingLog, placePredator, sweep } from "./pings";
+import { gloamfinOf, pingLog, sweep } from "./pings";
 
 /**
  * The fixture: the forager rests on `F`, the Gloamfin chases from `P` four tiles
@@ -94,20 +95,18 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("A lost chase casts one orange ping", async () => {
+it("A lost chase casts one orange ping", async () => {
   startPlaying(h);
   const board = await poseMaze(h, STALE_FIX);
-  const index = requireKind(h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
   // The forager stands on the tile the fix is about to be taken on...
   await placeForager(h, board.mark("F"), "right");
-  await placePredator(h, index, board.mark("P"), {
+  const index = await spawnPredator(h, "gloamfin", board.mark("P"), {
     dir: "left",
     state: "chase",
   });
   // ...and is then moved out of reach, which is what leaves the fix stale.
-  await quietBoard(h, board.mark("R"));
-  const guard = await sceneGuard(h, quiet);
+  await parkForager(h, board.mark("R"));
+  const guard = await sceneGuard(h);
 
   const opening = h.snapshot();
   const log = pingLog(index);
@@ -137,12 +136,12 @@ check("A lost chase casts one orange ping", async () => {
       index,
       "chase the four tiles to the tile its fix named and find it empty",
     );
-    standDown(
-      'the Gloamfin never reported state "search" after reaching the tile its ' +
-        "fix named, so there was no search for the guaranteed ping to fall " +
-        'inside — specs/predators/gloamfin.md takes "chase" to "search" when ' +
-        "it reaches its fixed tile and the forager is not there, and " +
-        "gloamfin/chase-cap is where a chase that never arrives is reported",
+    fail(
+      'the Gloamfin to report state "search" after reaching the tile its fix ' +
+        "named, which is the search the guaranteed ping falls inside: " +
+        'specs/predators/gloamfin.md takes "chase" to "search" when it reaches ' +
+        "its fixed tile and the forager is not there",
+      "it never left its chase",
     );
   }
 

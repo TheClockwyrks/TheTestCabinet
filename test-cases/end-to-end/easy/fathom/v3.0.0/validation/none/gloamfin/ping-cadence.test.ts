@@ -24,7 +24,7 @@
 // (`gloamfin/lost-you-orange`), or what a ping reveals
 // (`gloamfin/ping-reveals-nothing`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
@@ -32,21 +32,14 @@ import {
   assertTrue,
 } from "../assert";
 import { GLOAMFIN_PING_INTERVAL, TICK_HZ } from "../constants";
-import { placePredator, poseApart } from "../fixtures";
+import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  denAll,
-  quietBoard,
-  requireKind,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { castFromOwnTile, gloamfinOf, pingGaps, pingLog, sweep } from "./pings";
 
 /** How far the patrol's sealed ring stands from the forager's room, in tiles. */
@@ -96,20 +89,20 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("It pings on its own cadence", async () => {
+it("It pings on its own cadence", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
-  const index = requireKind(await h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
-  await placePredator(h, index, rooms.far, { state: "wander" });
-  await quietBoard(h);
+  const index = await spawnPredator(h, "gloamfin", rooms.far, {
+    state: "wander",
+  });
+  await parkForager(h);
   // The Gloamfin patrols across the board in the dark, so the canvas alone would
   // record a black screen. The debug overlay is a read-only panel carrying each
   // predator's kind, state, tile and speed, toggled by the backtick key
   // (`specs/instrumentation.md`), so this changes nothing and gives the clip
   // something to show.
   await h.tap("Backquote");
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const log = pingLog(index);
   const states = new Set<string>();

@@ -23,8 +23,8 @@
 // audio is unlocked and whether or not the game is muted, so nothing here has to
 // arm anything.
 
-import type { Harness } from "../harness";
-import type { FathomSnapshot } from "../surface";
+import { Harness } from "../harness";
+import { FathomSnapshot } from "../surface";
 
 /** What one driven frame played. */
 export interface TickCues {

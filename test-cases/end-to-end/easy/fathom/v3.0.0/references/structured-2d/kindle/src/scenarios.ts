@@ -1,10 +1,11 @@
 // Fathom — the fixtures and the arrangements the build's own tests pose.
 //
 // A scenario fixes GEOMETRY and nothing else: what every test then asserts is
-// the figure the specification states, written out in the test itself. Each
-// fixture carries a sealed larder — a short corridor walled off from the rest —
-// so `planktonRemaining` never reaches zero and no amount of grazing clears the
-// maze in the middle of a measurement.
+// the figure the specification states, written out in the test itself. A posed
+// board carries no plankton, so nothing a measurement does can clear the maze
+// under it and the bonus cadence admits nobody while it runs
+// (`specs/gameplay.md`); a test that wants a plankton puts one where it wants
+// it.
 
 import { anchor, stampLayout, type Fixture } from "./fixtures";
 import type { Cell } from "./grid";
@@ -15,10 +16,6 @@ export const HALL: readonly string[] = [
   "###########",
   "#F.......P#",
   "###########",
-  "           ",
-  "   #####   ",
-  "   #...#   ",
-  "   #####   ",
 ];
 
 /**
@@ -31,10 +28,6 @@ export const SPINE: readonly string[] = [
   "#####.#",
   "#F....#",
   "#######",
-  "       ",
-  " ##### ",
-  " #...# ",
-  " ##### ",
 ];
 
 /**
@@ -49,10 +42,6 @@ export const PERCH: readonly string[] = [
   "#####################",
   "###################X#",
   "#####################",
-  "                     ",
-  "   #####             ",
-  "   #...#             ",
-  "   #####             ",
 ];
 
 /** A den chamber with its one gate above it, sealed on the other three sides. */
@@ -62,13 +51,12 @@ export const DEN: readonly string[] = [
   "####g#####",
   "####d#####",
   "##########",
-  "          ",
-  "  #####   ",
-  "  #...#   ",
-  "  #####   ",
 ];
 
-/** Stamp a fixture and pose it, leaving the forager on its named anchor. */
+/**
+ * Stamp a fixture and pose it: the layout, an empty board, and the forager at
+ * rest on its named anchor. What else the scenario holds is the test's to add.
+ */
 export function pose(
   debug: FathomDebugApi,
   art: readonly string[],
@@ -76,6 +64,7 @@ export function pose(
 ): Fixture {
   const fixture = stampLayout(art);
   debug.setMaze(fixture.rows);
+  debug.clearPlankton();
   const start = anchor(fixture, at);
   debug.setForagerTile(start.tx, start.ty);
   return fixture;
@@ -84,4 +73,19 @@ export function pose(
 /** The tile a fixture named. */
 export function at(fixture: Fixture, name: string): Cell {
   return anchor(fixture, name);
+}
+
+/**
+ * Every creature standing in the maze with its own mind running, or with every
+ * one of them off. A creature added later brings its mind on, so a scenario
+ * that wants it still calls this again once the maze holds what it is about.
+ */
+export function minds(debug: FathomDebugApi, running: boolean): void {
+  const snapshot = debug.snapshot();
+  for (let index = 0; index < snapshot.predators.length; index++) {
+    debug.setPredatorMind(index, running);
+  }
+  for (let index = 0; index < snapshot.drifters.length; index++) {
+    debug.setDrifterMind(index, running);
+  }
 }

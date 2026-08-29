@@ -31,13 +31,13 @@
 // `amber/lookalikes`'s; what the body does when the light reaches it is
 // `lanternjaw/additive-reveal`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertNotNull,
 } from "../assert";
-import { poseOccludedPair, predatorIndex } from "../fixtures";
+import { poseOccludedPair, spawnPredator } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -48,15 +48,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { moteProfile } from "./motes";
 import { tileCenter, type Tile, visibilityAt } from "../maze";
 
@@ -95,30 +87,19 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("Its bulb shows at any distance", async () => {
+it("Its bulb shows at any distance", async () => {
   await startPlaying(h);
   const pair = await poseOccludedPair(h, { tiles: GAP_TILES, len: RUN_TILES });
-  const index = predatorIndex(await h.snapshot(), "lanternjaw");
-  if (index === null) {
-    unmetPrecondition(
-      "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
-        "what the roster holds is the progression checks' verdict, not this one's",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  await h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
-  await h.debug.setPredatorState(index, "wander");
-  await parkForager(h, pair.forager);
-  // The pellet the pose left under the forager is settled and `G` put back to
-  // zero, so the light pocket is the narrowest a dive ever carries and the reading
-  // is taken over ground nothing has touched.
-  await clearUnderfoot(h);
   // Held exactly where it was posed for the one frame that is read: this point is
   // about what is DRAWN at a reported position, and a hunter that drifted between
   // the snapshot and the sample would be read half a body away from where it said
   // it was.
-  await h.debug.setCreatureAI(false);
-  const guard = await sceneGuard(h, quiet);
+  const index = await spawnPredator(h, "lanternjaw", pair.pred, {
+    state: "wander",
+    mind: false,
+  });
+  await parkForager(h, pair.forager);
+  const guard = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
   const snapshot = await h.snapshot();

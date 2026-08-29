@@ -24,15 +24,13 @@
 // standing in does not: that line runs down the corridor's own center line
 // through nothing but open tiles (`poseLitWallProbe`).
 //
-// THE BOARD IS OTHERWISE EMPTY. `setMaze` returns every predator to a den and
-// suspends the release schedule, `denAll` keeps them there, and `clearPlankton`
-// takes the plankton off without eating any of it (specs/instrumentation.md:
-// "nothing here is eaten, so it scores nothing and clears no maze"), so the
-// forager's brightness is the one this check posed and no flare or pulse reveals
-// anything.
+// THE BOARD IS OTHERWISE EMPTY. A posed fixture leaves the roster empty, the maze
+// free of drifters and every plankton off the board (`fixtures.ts`), so the
+// forager's brightness is the one this check posed and there is nothing on the
+// board to reveal anything with a flare or a ping.
 
-import { afterEach, beforeEach } from "vitest";
-import { VISION_GAIN, VISION_MIN } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD, VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertLessThan } from "../assert";
 import { poseLitWallProbe } from "../fixtures";
 import {
@@ -43,13 +41,7 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * Tiles of open water between the forager and the rock that closes the corridor.
@@ -76,17 +68,17 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The light reveals the rock it lands on and stops there", async () => {
+it("The light reveals the rock it lands on and stops there", async () => {
   startPlaying(h);
   const probe = await poseLitWallProbe(h, { run: PROBE_RUN });
-  const quiet = await denAll(h);
   await parkForager(h, probe.forager);
   h.debug.clearPlankton();
   // The widest light the game has: `V = VISION_MIN + VISION_GAIN * G`
   // (specs/sensing.md), so both the rock and the tile behind it are in range and
   // only the rock can be what stops the light.
   h.debug.setBrightness(1);
-  const watch = await sceneGuard(h, quiet);
+  h.debug.setBrightHold(BRIGHT_HOLD);
+  const watch = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
   const snapshot = h.snapshot();

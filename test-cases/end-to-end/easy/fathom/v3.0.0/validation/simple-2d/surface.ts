@@ -14,16 +14,17 @@
 // out read-only, so the surface holds no state of its own and nothing on it
 // mutates anything. Every operation is written in the shape of the game's
 // `update`: a POSE takes the current state and returns the next one
-// (`beginPlay(state)`, `setForagerTile(state, tx, ty)`), and a READING takes the
-// current state and returns what it read (`snapshot(state)`). A caller drives a
-// pose through `engine.apply((s) => debug.beginPlay(s))` — the engine stores what
-// the pose returned, and the next frame's `update` receives it — and a reading
-// through `debug.snapshot(engine.state)`. `version` is a plain number.
+// (`setScreen(state, "playing")`, `setForagerTile(state, tx, ty)`), and a READING
+// takes the current state and returns what it read (`snapshot(state)`). A caller
+// drives a pose through `engine.apply((s) => debug.setScreen(s, "playing"))` — the
+// engine stores what the pose returned, and the next frame's `update` receives it
+// — and a reading through `debug.snapshot(engine.state)`. `version` is a plain
+// number.
 //
 // The surface is generic over the build's state type, because this module
 // imports nothing of the build: `harness.ts` binds it to the `FathomState` the
 // build declared, and the `Driver` there is what gives the checks the imperative
-// reading (`h.debug.beginPlay()`, `h.debug.snapshot()`) over the pure shape
+// reading (`h.debug.setScreen("playing")`, `h.debug.snapshot()`) over the pure
 // declared here.
 //
 // The two variants share one surface and differ in a single snapshot field,
@@ -97,6 +98,8 @@ export interface PredatorSnapshot {
   state: PredatorMode;
   /** Whether its turn in the staggered release schedule has come. */
   released: boolean;
+  /** Whether its own mind is running. */
+  mind: boolean;
   /** Its current speed, in logical units per second. */
   speed: number;
   /** True only while its detection alert is firing. */
@@ -123,6 +126,8 @@ export interface DrifterSnapshot {
   y: number;
   tx: number;
   ty: number;
+  /** Whether its own wander is running. */
+  mind: boolean;
   /**
    * True while its body is being drawn this instant, by the forager's light or
    * by a flare.
@@ -177,12 +182,12 @@ export interface FathomSnapshot {
   lives: number;
   /** Whether the mute toggle is currently on. */
   muted: boolean;
-  /** Whether the creatures' own minds are running. */
-  creatureAI: boolean;
   /** Plankton left in the current maze. */
   planktonRemaining: number;
   /** `G`, in `[0, 1]`. */
   brightness: number;
+  /** The seconds left on the `BRIGHT_HOLD` hold, `0` once it has expired. */
+  brightHold: number;
   /** `V`, the line-of-sight light radius, in logical units. */
   visionRadius: number;
   /**
@@ -197,6 +202,8 @@ export interface FathomSnapshot {
   grid: GridSnapshot;
   /** The layout: `grid.rows` strings of `grid.cols` characters, `#.gd`. */
   tiles: string[];
+  /** Where the plankton stand this instant, same layout, `*-`. */
+  plankton: string[];
   /** The per-tile visibility this instant, same layout, `url`. */
   visibility: string[];
   forager: {
@@ -232,15 +239,34 @@ export interface FathomDebugApi<S = unknown> {
   version: number;
   reset(state: DeepReadonly<S>, options?: { seed?: number }): S;
   snapshot(state: DeepReadonly<S>): FathomSnapshot;
-  startDive(state: DeepReadonly<S>): S;
-  beginPlay(state: DeepReadonly<S>): S;
+  setScreen(state: DeepReadonly<S>, s: Screen): S;
+  setScore(state: DeepReadonly<S>, points: number): S;
+  setLives(state: DeepReadonly<S>, n: number): S;
   setDepth(state: DeepReadonly<S>, d: number): S;
   /** `rows` is `GRID_ROWS` strings of `GRID_COLS` characters, in `#.gd`. */
   setMaze(state: DeepReadonly<S>, rows: readonly string[]): S;
+  setPlankton(
+    state: DeepReadonly<S>,
+    tx: number,
+    ty: number,
+    present: boolean,
+  ): S;
+  clearPlankton(state: DeepReadonly<S>): S;
+  clearFog(state: DeepReadonly<S>): S;
   setForagerTile(state: DeepReadonly<S>, tx: number, ty: number): S;
   setForagerDir(state: DeepReadonly<S>, dir: Dir): S;
-  /** Poses `G` in `[0, 1]` and arms the `BRIGHT_HOLD` hold in full. */
+  /** Poses `G` in `[0, 1]`, leaving the hold as it stands. */
   setBrightness(state: DeepReadonly<S>, g: number): S;
+  /** Poses the seconds left on the hold, from `0` to `BRIGHT_HOLD`. */
+  setBrightHold(state: DeepReadonly<S>, seconds: number): S;
+  clearPredators(state: DeepReadonly<S>): S;
+  /** Adds one loose, patrolling predator at the end of the roster. */
+  addPredator(
+    state: DeepReadonly<S>,
+    kind: PredatorKind,
+    tx: number,
+    ty: number,
+  ): S;
   /** `index` selects a predator by its place in `snapshot().predators`. */
   setPredatorTile(
     state: DeepReadonly<S>,
@@ -254,15 +280,15 @@ export interface FathomDebugApi<S = unknown> {
     index: number,
     value: PosedPredatorMode,
   ): S;
-  spawnDrifter(state: DeepReadonly<S>, tx: number, ty: number): S;
-  setCreatureAI(state: DeepReadonly<S>, enabled: boolean): S;
-  setPlankton(
+  setPredatorReleased(
     state: DeepReadonly<S>,
-    tx: number,
-    ty: number,
-    present: boolean,
+    index: number,
+    released: boolean,
   ): S;
-  clearPlankton(state: DeepReadonly<S>): S;
+  setPredatorMind(state: DeepReadonly<S>, index: number, enabled: boolean): S;
+  spawnDrifter(state: DeepReadonly<S>, tx: number, ty: number): S;
+  clearDrifters(state: DeepReadonly<S>): S;
+  setDrifterMind(state: DeepReadonly<S>, index: number, enabled: boolean): S;
   setSonarCooldown(state: DeepReadonly<S>, seconds: number): S;
   setInkCooldown(state: DeepReadonly<S>, seconds: number): S;
 }
@@ -280,20 +306,28 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
-  "startDive",
-  "beginPlay",
+  "setScreen",
+  "setScore",
+  "setLives",
   "setDepth",
   "setMaze",
+  "setPlankton",
+  "clearPlankton",
+  "clearFog",
   "setForagerTile",
   "setForagerDir",
   "setBrightness",
+  "setBrightHold",
+  "clearPredators",
+  "addPredator",
   "setPredatorTile",
   "setPredatorDir",
   "setPredatorState",
+  "setPredatorReleased",
+  "setPredatorMind",
   "spawnDrifter",
-  "setCreatureAI",
-  "setPlankton",
-  "clearPlankton",
+  "clearDrifters",
+  "setDrifterMind",
   "setSonarCooldown",
   "setInkCooldown",
 ] as const;

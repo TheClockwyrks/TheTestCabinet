@@ -152,23 +152,38 @@ the next one, and a caller drives it through `engine.apply`; a **reading** takes
 the state and returns what it read, and a caller hands it `engine.state`:
 
 ```ts
-engine.apply((s) => engine.debug.startDive(s));
-engine.apply((s) => engine.debug.beginPlay(s));
+engine.apply((s) => engine.debug.setScreen(s, "playing"));
 engine.apply((s) => engine.debug.setMaze(s, rows));
+engine.apply((s) => engine.debug.clearPredators(s));
+engine.apply((s) => engine.debug.clearDrifters(s));
+engine.apply((s) => engine.debug.clearPlankton(s));
 engine.apply((s) => engine.debug.setForagerTile(s, 5, 6));
-engine.apply((s) => engine.debug.setPredatorState(s, 1, "chase"));
+engine.apply((s) => engine.debug.addPredator(s, "gloamfin", 10, 6));
+engine.apply((s) => engine.debug.setPredatorState(s, 0, "chase"));
 await engine.advance(120);
 const { predators } = engine.debug.snapshot(engine.state);
 ```
 
-The operations are `reset`, `snapshot`, `startDive`, `beginPlay`, `setDepth`,
-`setMaze`, `setForagerTile`, `setForagerDir`, `setBrightness`, `setPredatorTile`,
-`setPredatorDir`, `setPredatorState`, `spawnDrifter`, `setCreatureAI`,
-`setPlankton`, `clearPlankton`, `setSonarCooldown` and `setInkCooldown`. Every
-one of them is a read or a pose of `FathomState`: they arrange the trench, and
-the game's own sensing, pathfinding, release schedule and contact rules are what
-run from there when the engine advances a frame. A predator is selected by its
-**index** into the snapshot's `predators` list, which is fixed to release order.
+The operations are `reset`, `snapshot`, `setScreen`, `setScore`, `setLives`,
+`setDepth`, `setMaze`, `setPlankton`, `clearPlankton`, `clearFog`,
+`setForagerTile`, `setForagerDir`, `setBrightness`, `setBrightHold`,
+`clearPredators`, `addPredator`, `setPredatorTile`, `setPredatorDir`,
+`setPredatorState`, `setPredatorReleased`, `setPredatorMind`, `spawnDrifter`,
+`clearDrifters`, `setDrifterMind`, `setSonarCooldown` and `setInkCooldown`.
+
+**Each pose sets one thing** and leaves the rest of the trench as it stands, so a
+caller that wants several things arranged makes several calls, in the order it
+wants them, and nothing it did not ask for happens. That is what lets a caller
+stand the game in a world holding only what it is about, as the snippet above
+does: clear the predators, the drifters and the plankton, then add back exactly
+the one hunter under test. The removals are real — a cleared predator is gone
+from the simulation rather than parked out of the way.
+
+Every operation is a read or a pose of `FathomState`: they arrange the trench,
+and the game's own sensing, pathfinding, release schedule and contact rules are
+what run from there when the engine advances a frame. A predator is selected by
+its **index** into the snapshot's `predators` list, which is fixed to release
+order, with an added predator at the end; a drifter by its index into `drifters`.
 
 Everything about _driving a browser game_ rather than about Fathom is the
 engine's. The clock, the exact frames, and the registered actions are driven by

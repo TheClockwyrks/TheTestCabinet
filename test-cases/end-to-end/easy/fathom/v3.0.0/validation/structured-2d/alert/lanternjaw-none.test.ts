@@ -23,10 +23,10 @@
 // `lanternjaw/light-range`'s, so a build whose hunter never takes a fix stands this
 // check down rather than passing it on an absence that means nothing.
 
-import { afterEach, beforeEach } from "vitest";
-import { ALERT_TIME } from "../../src/constants";
-import { assertEqual, assertTrue } from "../assert";
-import { poseSightLine } from "../fixtures";
+import { afterEach, beforeEach, it } from "vitest";
+import { ALERT_TIME, BRIGHT_HOLD } from "../../src/constants";
+import { assertEqual, assertTrue, fail } from "../assert";
+import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -35,16 +35,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** How far apart the pair stands, in tiles. See the header. */
 const GAP_TILES = 7;
@@ -98,27 +89,17 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The Lanternjaw fires no alert", async () => {
+it("The Lanternjaw fires no alert", async () => {
   startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
     tail: TAIL_TILES,
   });
-  const index = indexOfKind(h.snapshot(), "lanternjaw");
-  if (index < 0) {
-    failPrecondition(
-      "a Lanternjaw on the roster to pose this scenario with",
-      "the progression points",
-      "no lanternjaw in snapshot().predators",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-  h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "lanternjaw", line.pred);
   await parkForager(h, line.forager);
-  await clearUnderfoot(h);
   h.debug.setBrightness(BRIGHT_G);
-  const guard = await sceneGuard(h, quiet);
+  h.debug.setBrightHold(BRIGHT_HOLD);
+  const guard = await sceneGuard(h);
 
   const read = await captureReplay(h, "none", async () => {
     // Sampled from before the acquisition, so a build that fires on the tick it
@@ -147,10 +128,9 @@ check("The Lanternjaw fires no alert", async () => {
   requireSceneHeld(read.end, guard);
 
   if (!read.fixed.hit) {
-    failPrecondition(
+    fail(
       "the Lanternjaw to take a fix on a fully lit forager seven tiles away on " +
         "a clear line, so there is an acquisition an alert could have fired on",
-      "lanternjaw/light-range",
       read.fixed.snapshot.predators[index].state,
     );
   }

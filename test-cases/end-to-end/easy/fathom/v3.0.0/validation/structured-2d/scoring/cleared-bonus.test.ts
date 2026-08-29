@@ -21,22 +21,20 @@
 // NO SCENE GUARD. The guard exists to report a scenario that stopped standing, and
 // the first thing it names is a screen that changed under the measurement — which
 // here is the subject. What the guard would otherwise have caught, a hunter
-// reaching the forager, is asserted directly instead: every predator is posed into
-// the sealed den, and the lives are read either side of the bite.
+// reaching the forager, cannot arise: the posed board carries no predator at all,
+// and the lives are read either side of the bite to say so.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SCORE_CLEAR, SCORE_PLANKTON } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { placeForager, poseMaze } from "../fixtures";
 import {
   captureReplay,
   createHarness,
-  DIR_KEY,
   startPlaying,
   ticksFor,
   type Harness,
 } from "../harness";
-import { check, denAll, requireSwim } from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager on the first and the
@@ -78,20 +76,21 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Clearing a maze scores SCORE_CLEAR", async () => {
+it("Clearing a maze scores SCORE_CLEAR", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const start = board.mark("S");
   const target = board.mark("T");
   await placeForager(h, start, "right");
   // One plankton on the whole board, at the far end of the forager's run.
-  h.debug.clearPlankton();
   h.debug.setPlankton(target.tx, target.ty, true);
-  await denAll(h);
 
   const bite = await captureReplay(h, "clear", async () => {
     const before = h.snapshot();
-    h.hold(DIR_KEY.right);
+    // Carried onto the pellet rather than driven onto it: specs/gameplay.md eats
+    // "the plankton on its own tile, the moment its center enters that tile", so
+    // the bonus this point reads owes the movement points nothing.
+    h.debug.setForagerTile(target.tx, target.ty);
     const eaten = await h.until((s) => s.planktonRemaining < 1, {
       maxFrames: BITE_BUDGET,
       poll: 1,
@@ -99,17 +98,15 @@ check("Clearing a maze scores SCORE_CLEAR", async () => {
     await h.advance(SETTLE_TICKS);
     const settled = h.snapshot();
     await h.advance(TAIL_TICKS);
-    h.release(DIR_KEY.right);
     return { before, after: eaten.snapshot, settled, hit: eaten.hit };
   });
 
-  if (!bite.hit) {
-    requireSwim(
-      bite.before.forager,
-      bite.after.forager,
-      "reach the maze's last plankton",
-    );
-  }
+  assertEqual(
+    bite.hit,
+    true,
+    `the forager ate the maze's last plankton within ${BITE_BUDGET} ticks of ` +
+      "its center entering that plankton's tile",
+  );
 
   assertEqual(
     bite.before.planktonRemaining,
@@ -119,7 +116,7 @@ check("Clearing a maze scores SCORE_CLEAR", async () => {
   assertEqual(
     bite.settled.lives,
     bite.before.lives,
-    "the lives across the bite, with every predator posed into the sealed den",
+    "the lives across the bite, on a board carrying no predator at all",
   );
   assertEqual(
     bite.settled.score - bite.before.score,

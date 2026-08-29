@@ -15,17 +15,18 @@
 // all three hunters out of the den at once, and each entry is read the same way
 // the scalars are.
 //
-// THE HUNTERS ARE POSED WHERE THEY CANNOT REACH ANYTHING. Each stands on a
-// single corridor tile boxed in by rock, so a predator that ran its mind for the
-// two ticks this drives could not travel anywhere, and `setCreatureAI(false)`
-// holds every creature exactly where it was posed (specs/instrumentation.md)
-// while the pulse and the ink carry on travelling, which is what this reads.
+// THE HUNTERS ARE POSED WHERE THEY CANNOT REACH ANYTHING. `poseMaze` empties the
+// board and this check adds back one of each kind, each on a single corridor tile
+// boxed in by rock, with its mind off — `setPredatorMind(index, false)` holds it
+// exactly where it was posed (specs/instrumentation.md) — while the pulse and the
+// ink carry on travelling, which is what this reads.
 //
 // THE PULSE AND THE INK COME FROM THE REAL CONTROLS. There is no operation that
 // casts one, and specs/movement.md binds them to `a` (`Space`) and `b`
-// (`ShiftLeft`). A build whose controls do not fire them has a defect that
-// `controls/sonar-key` and `controls/ink-key` own, so this stands down rather
-// than reporting it as a shape fault.
+// (`ShiftLeft`). A build whose controls do not fire them leaves `pulses` and
+// `inkClouds` empty, and an empty list says nothing about the shape of what goes
+// in it, so this point fails on the empty list rather than passing two assertions
+// vacuously.
 //
 // THE TILE COORDINATES ARE HELD AGAINST THE POSITIONS THEY COME FROM.
 // specs/state.md defines `tx`/`ty` as "the tile it is on, the tile whose bounds
@@ -33,7 +34,7 @@
 // from, so for every body on the board the pair is arithmetic on `x`, `y` and the
 // grid block the same snapshot reports.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertBetween,
   assertContains,
@@ -42,29 +43,25 @@ import {
   assertHasProperty,
   assertLength,
   assertNull,
+  fail,
 } from "../assert";
 import {
   BINDINGS,
+  BRIGHT_HOLD,
   GRID_COLS,
   GRID_ORIGIN_X,
   GRID_ORIGIN_Y,
   GRID_ROWS,
   TILE,
 } from "../../src/constants";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureStill,
   createHarness,
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { FATHOM_DEBUG_VERSION, type FathomSnapshot } from "../surface";
 
 /**
@@ -105,8 +102,9 @@ const DIRS = ["up", "down", "left", "right"];
 /** What a predator may be doing. */
 const STATES = ["den", "wander", "chase", "search"];
 
-/** The tile alphabet, and the visibility alphabet, specs/state.md fixes. */
+/** The three per-tile alphabets specs/state.md fixes. */
 const TILE_CHARS = "#.gd";
+const PLANKTON_CHARS = "*-";
 const VISIBILITY_CHARS = "url";
 
 /** Ticks run after the two taps, so both effects are in flight when read. */
@@ -168,29 +166,23 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("reports every documented field, with its documented type", async () => {
+it("reports every documented field, with its documented type", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
   await parkForager(h, home);
 
-  const roster = h.snapshot();
-  assertLength(
-    roster.predators,
-    KINDS.length,
-    "the depth-1 roster, which specs/predators.md gives one of each kind",
-  );
-  for (let index = 0; index < KINDS.length; index += 1) {
-    const pocket = board.mark(POCKETS[index]);
-    h.debug.setPredatorTile(index, pocket.tx, pocket.ty);
-    h.debug.setPredatorState(index, "wander");
+  // One of each kind, each in a boxed pocket of its own and held there, so every
+  // per-kind field of the predator entry has a subject to be read on.
+  for (const [order, kind] of KINDS.entries()) {
+    await spawnPredator(h, kind, board.mark(POCKETS[order]), {
+      state: "wander",
+      mind: false,
+    });
   }
   const drop = board.mark("D");
   h.debug.spawnDrifter(drop.tx, drop.ty);
-  // Every creature holds exactly where it was posed from here on, so the two
-  // ticks below carry the pulse and the ink and nothing else
-  // (specs/instrumentation.md).
-  h.debug.setCreatureAI(false);
+  h.debug.setDrifterMind(0, false);
   const guard = await sceneGuard(h);
 
   h.debug.setSonarCooldown(0);
@@ -206,26 +198,28 @@ check("reports every documented field, with its documented type", async () => {
 
   requireSceneHeld(snap, guard);
 
-  // The scene the shape is read over: a build whose controls never fired the two
-  // effects has a defect the control points own, and this stands aside.
+  // The scene the shape is read over. Every list below has to hold something for
+  // the shape of its entries to be read at all, so a scene that reached none of
+  // them fails here rather than passing three assertions vacuously.
   if (snap.pulses.length === 0) {
-    unmetPrecondition(
-      `no sonar wavefront was in flight after ${SONAR_KEY} was pressed with the ` +
-        `cooldown ready, so the pulses list had nothing in it to read — whether ` +
-        `the sonar control fires is controls/sonar-key's verdict, not this one's`,
+    fail(
+      `a sonar wavefront in flight after ${SONAR_KEY} was pressed with the ` +
+        "cooldown ready, so the pulses list has an entry whose shape can be read",
+      "the pulses list was empty",
     );
   }
   if (snap.inkClouds.length === 0) {
-    unmetPrecondition(
-      `no ink cloud was standing after ${INK_KEY} was pressed with the cooldown ` +
-        `ready, so the inkClouds list had nothing in it to read — whether the ink ` +
-        `control fires is controls/ink-key's verdict, not this one's`,
+    fail(
+      `an ink cloud standing after ${INK_KEY} was pressed with the cooldown ` +
+        "ready, so the inkClouds list has an entry whose shape can be read",
+      "the inkClouds list was empty",
     );
   }
   if (snap.drifters.length === 0) {
-    unmetPrecondition(
-      "spawnDrifter added no drifter, so the drifters list had nothing in it to " +
-        "read — the operation itself is instrumentation/surface-present's verdict",
+    fail(
+      "a drifter on the board after spawnDrifter added one, so the drifters " +
+        "list has an entry whose shape can be read",
+      "the drifters list was empty",
     );
   }
 
@@ -242,10 +236,16 @@ check("reports every documented field, with its documented type", async () => {
   assertNumber(snap, "score", "snapshot().score");
   assertNumber(snap, "lives", "snapshot().lives");
   assertBoolean(snap, "muted", "snapshot().muted");
-  assertBoolean(snap, "creatureAI", "snapshot().creatureAI");
   assertNumber(snap, "planktonRemaining", "snapshot().planktonRemaining");
   assertNumber(snap, "brightness", "snapshot().brightness");
   assertBetween(snap.brightness, 0, 1, "snapshot().brightness, G in [0, 1]");
+  assertNumber(snap, "brightHold", "snapshot().brightHold");
+  assertBetween(
+    snap.brightHold,
+    0,
+    BRIGHT_HOLD,
+    `snapshot().brightHold, the seconds left of the BRIGHT_HOLD (${BRIGHT_HOLD} s) hold`,
+  );
   assertNumber(snap, "visionRadius", "snapshot().visionRadius");
   assertNumber(snap, "simTime", "snapshot().simTime");
 
@@ -271,15 +271,22 @@ check("reports every documented field, with its documented type", async () => {
     "snapshot().grid.originY (GRID_ORIGIN_Y)",
   );
 
-  // ---- The two layouts ------------------------------------------------------
+  // ---- The three layouts ----------------------------------------------------
   assertLength(snap.tiles, GRID_ROWS, "snapshot().tiles, one string per row");
+  assertLength(
+    snap.plankton,
+    GRID_ROWS,
+    "snapshot().plankton, one string per row",
+  );
   assertLength(
     snap.visibility,
     GRID_ROWS,
     "snapshot().visibility, one string per row",
   );
+  let standing = 0;
   for (let ty = 0; ty < GRID_ROWS; ty += 1) {
     assertLength(snap.tiles[ty], GRID_COLS, `snapshot().tiles[${ty}]`);
+    assertLength(snap.plankton[ty], GRID_COLS, `snapshot().plankton[${ty}]`);
     assertLength(
       snap.visibility[ty],
       GRID_COLS,
@@ -292,12 +299,24 @@ check("reports every documented field, with its documented type", async () => {
         `snapshot().tiles[${ty}][${tx}], one of the tile alphabet "${TILE_CHARS}"`,
       );
       assertContains(
+        PLANKTON_CHARS,
+        snap.plankton[ty][tx],
+        `snapshot().plankton[${ty}][${tx}], one of "${PLANKTON_CHARS}"`,
+      );
+      if (snap.plankton[ty][tx] === "*") standing += 1;
+      assertContains(
         VISIBILITY_CHARS,
         snap.visibility[ty][tx],
         `snapshot().visibility[${ty}][${tx}], one of "${VISIBILITY_CHARS}"`,
       );
     }
   }
+  assertEqual(
+    standing,
+    snap.planktonRemaining,
+    "the plankton the layer carries against planktonRemaining, which " +
+      "specs/state.md has count the same `*`",
+  );
 
   // ---- The forager ----------------------------------------------------------
   assertNumber(snap.forager, "x", "snapshot().forager.x");
@@ -322,6 +341,7 @@ check("reports every documented field, with its documented type", async () => {
     assertNumber(drifter, "tx", `${where}.tx`);
     assertNumber(drifter, "ty", `${where}.ty`);
     assertBoolean(drifter, "lit", `${where}.lit`);
+    assertBoolean(drifter, "mind", `${where}.mind`);
     const tile = tileOf(snap.grid, drifter.x, drifter.y);
     assertEqual(
       `${drifter.tx},${drifter.ty}`,
@@ -346,6 +366,7 @@ check("reports every documented field, with its documented type", async () => {
     assertContains(DIRS, predator.dir, `${where}.dir`);
     assertContains(STATES, predator.state, `${where}.state`);
     assertBoolean(predator, "released", `${where}.released`);
+    assertBoolean(predator, "mind", `${where}.mind`);
     assertNumber(predator, "speed", `${where}.speed`);
     assertBoolean(predator, "alert", `${where}.alert`);
     assertBoolean(predator, "lit", `${where}.lit`);

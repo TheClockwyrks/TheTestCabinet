@@ -9,9 +9,19 @@
 //
 // Nothing here poses a brightness. The eat is the forager swimming into the
 // pellet on the next tile of a posed corridor, so what is measured is the curve
-// the build's own eating drives. The corridor is posed with a sealed larder
-// (`fixtures.ts`), which is what keeps a grazing forager from clearing the maze
-// and descending in the middle of a four-second measurement.
+// the build's own eating drives.
+//
+// AND ONE PELLET STANDS ON THE RUN AT A TIME. `poseStraightRun` opens on a board
+// `clearPlankton` emptied, so the only food on the corridor is the pellet this
+// check puts on the tile ahead of the forager. Between the two grazes the forager
+// is faced into the rock across the corridor, which brings it to rest wherever it
+// stands (specs/movement.md), so the four seconds of decay cannot carry it into a
+// second mouthful and re-arm the hold under the measurement.
+//
+// THE FIXTURE'S SEALED POCKET CARRIES THE REST. Eating the plankton that leaves
+// none behind clears the maze (specs/gameplay.md), which would descend and end
+// the measurement on the very tick a curve is being read off, so the pellets the
+// forager can never reach keep `planktonRemaining` above zero throughout.
 //
 // The tolerances are the review item's: `0.01` across the hold, `0.02` across the
 // decay. Both are read against `g0`, the brightness on the tick the pellet went,
@@ -19,7 +29,7 @@
 // `brightness/from-eating` and passes or fails here on the SHAPE of its curve
 // alone.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../../src/constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
@@ -31,18 +41,15 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
-import type { FathomSnapshot } from "../surface";
+import { requireSceneHeld, sceneGuard } from "../scene";
+import { FathomSnapshot } from "../surface";
 import { grazeOne } from "./graze";
 
-/** Tiles of posed corridor: the start pellet, two eaten, and room to spare. */
+/** Tiles of posed corridor: the start tile, two grazes, and room to spare. */
 const RUN_TILES = 6;
+
+/** How many pellets stand in the fixture's sealed pocket, out of the run's reach. */
+const POCKET_TILES = 3;
 
 /** Frames a swim toward the next pellet is given: one tile takes 30 of them. */
 const REACH_TICKS = 90;
@@ -76,20 +83,25 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Brightness holds, then decays", async () => {
+it("Brightness holds, then decays", async () => {
   await startPlaying(h);
-  await poseStraightRun(h, RUN_TILES);
-  const quiet = await denAll(h);
-  // The pellet the pose left under the forager is eaten off camera and `G` put
-  // back to zero, so the eat this check measures has its full headroom: `G`
-  // clamps at 1, and an eat that raised it by almost nothing would say nothing
-  // about the hold or the decay.
-  await clearUnderfoot(h);
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  const run = await poseStraightRun(h, RUN_TILES, { spare: true });
+  // The sealed pocket sits eight tiles past the end of the run.
+  const pocket = run.start.tx + RUN_TILES + 8;
+  for (let step = 0; step < POCKET_TILES; step += 1) {
+    h.debug.setPlankton(pocket + step, run.start.ty, true);
+  }
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   const curve = await captureReplay(h, "decay", async () => {
+    // One pellet, on the tile the forager is about to swim into.
+    const from = h.snapshot().forager;
+    h.debug.setPlankton(from.tx + 1, from.ty, true);
     const eaten = await grazeOne(h, h.snapshot(), { budget: REACH_TICKS });
     const g0 = eaten.brightness;
+    // At rest for the whole of the curve below: faced into the rock across a
+    // corridor one tile wide, which is where a forager with no action held stays.
+    h.debug.setForagerDir("up");
 
     // Across the hold, then across two halvings past it. Every wait is measured
     // from the tick the pellet went, so a slow build is failed rather than
@@ -114,7 +126,8 @@ check("Brightness holds, then decays", async () => {
     // A further pellet, eaten mid-decay: the hold is armed in full again, so
     // `G` is steady from that tick for another whole second.
     const mid = h.snapshot();
-    const again = await grazeOne(h, mid, { budget: REACH_TICKS });
+    h.debug.setPlankton(mid.forager.tx + 1, mid.forager.ty, true);
+    const again = await grazeOne(h, h.snapshot(), { budget: REACH_TICKS });
     const g1 = again.brightness;
     let sinceRearm = 0;
     const rearmed: { t: number; g: number }[] = [];

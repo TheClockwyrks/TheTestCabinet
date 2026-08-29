@@ -33,22 +33,17 @@
 // broken keyboard fails the `controls/move-*` points and is judged here on the
 // clock alone.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
-import { DRIFTER_SPEED } from "../constants";
-import { placeForager, poseMaze } from "../fixtures";
+import { BRIGHT_HOLD, DRIFTER_SPEED } from "../constants";
+import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureStill,
   createHarness,
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  failPrecondition,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The board: a hunter at a dead end, the forager well down the corridor from it,
@@ -60,9 +55,6 @@ import {
  * ends in a catch.
  */
 const BOARD = ["P" + ".".repeat(15) + "F" + ".".repeat(10)];
-
-/** The predator the roster lists first, which specs/state.md fixes as index `0`. */
-const SUBJECT = 0;
 
 /** The key held for the camera. Nothing asserted below reads the forager. */
 const KEY = "ArrowRight";
@@ -119,26 +111,20 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("advances itself in real time, with nothing stepping it", async () => {
+it("advances itself in real time, with nothing stepping it", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, BOARD);
   const den = board.mark("P");
   await placeForager(h, board.mark("F"), "right");
-  // `setMaze` returns every predator to the den and suspends the schedule
-  // (specs/instrumentation.md), so one is posed back out: a denned hunter holds
-  // still whether or not the clock is running, which would leave "nothing moved"
-  // proving nothing. `"wander"` also makes its `released` flag `true`, which is
-  // the "released predator" this point's description names.
-  await h.debug.setPredatorTile(SUBJECT, den.tx, den.ty);
-  await h.debug.setPredatorDir(SUBJECT, "right");
-  await h.debug.setPredatorState(SUBJECT, "wander");
-  // The pellet under the forager, taken off rather than eaten, so nothing about
-  // the opening frame is a score or a brightness event (specs/instrumentation.md
-  // has removing one this way score nothing and clear no maze).
-  const start = board.mark("F");
-  await h.debug.setPlankton(start.tx, start.ty, false);
+  // One hunter, spawned loose and patrolling on the far end of the corridor:
+  // `addPredator` adds it "loose and patrolling", `released` true and its mind
+  // running (specs/instrumentation.md), which is the "released predator" this
+  // point's description names. The board holds nothing else, so a hunter that
+  // does not move is the clock and not a bystander.
+  const subject = await spawnPredator(h, "lanternjaw", den, { dir: "right" });
   await h.debug.setBrightness(LIT);
-  const guard = await sceneGuard(h, null, { foragerParked: false });
+  await h.debug.setBrightHold(BRIGHT_HOLD);
+  const guard = await sceneGuard(h, { foragerParked: false });
 
   await h.advance(PAINT_TICKS);
   const before = await h.snapshot();
@@ -150,33 +136,18 @@ check("advances itself in real time, with nothing stepping it", async () => {
     "the dive is live before the clock is handed back, so there is something " +
       "running to observe",
   );
-  // Whether the snapshot carries `released` at all is
-  // instrumentation/snapshot-shape's verdict, and whether a hunter's turn ever
-  // comes is den/stagger's; this point only needs to know the hunter it is
-  // watching is loose.
-  const releasedFlag = before.predators[SUBJECT]?.released;
-  if (typeof releasedFlag !== "boolean") {
-    failPrecondition(
-      "`released` reported as a boolean on the posed hunter, which is how this " +
-        "scenario knows it is loose rather than held; specs/state.md requires " +
-        "the field of every predator",
-      "instrumentation/snapshot-shape",
-      `released was ${JSON.stringify(releasedFlag)}`,
-    );
-  }
-  if (!releasedFlag) {
-    failPrecondition(
-      'the posed hunter released, which `setPredatorState(index, "wander")` ' +
-        "makes it (specs/instrumentation.md), so there is a hunter loose on " +
-        "this board for a running clock to carry",
-      "den/stagger",
-      "released was false",
-    );
-  }
+  // The hunter this point watches is loose on the board, which is what makes
+  // "it moved" a reading of the clock rather than of the den.
   assertEqual(
-    before.predators[SUBJECT]?.state,
+    before.predators[subject]?.released,
+    true,
+    "the added hunter's released flag, which addPredator sets true because it " +
+      "arrives loose and patrolling (specs/instrumentation.md)",
+  );
+  assertEqual(
+    before.predators[subject]?.state,
     "wander",
-    "the posed hunter is loose on the board rather than held in the den",
+    "the added hunter is loose on the board rather than held in the den",
   );
 
   // The measurement. Nothing here steps the game: the key goes down, the wall
@@ -195,8 +166,8 @@ check("advances itself in real time, with nothing stepping it", async () => {
     `seconds of simulation the build's own frame loop covered over ` +
       `${WINDOW_MS} ms of real time, with nothing stepping it`,
   );
-  const from = before.predators[SUBJECT];
-  const to = after.predators[SUBJECT];
+  const from = before.predators[subject];
+  const to = after.predators[subject];
   assertGreaterThan(
     Math.hypot(to.x - from.x, to.y - from.y),
     TRAVELLED_MIN,

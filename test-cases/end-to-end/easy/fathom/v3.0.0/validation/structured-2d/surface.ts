@@ -14,11 +14,11 @@
 // HOW THE SURFACE IS DRIVEN. Each operation is a method that acts on the running
 // game at the moment of the call, through the same systems play uses: a POSE
 // takes only the arguments its heading names, returns nothing, and arranges the
-// live game (`beginPlay()`, `setForagerTile(tx, ty)`), and a READING takes no
+// live game (`setScreen(s)`, `setForagerTile(tx, ty)`), and a READING takes no
 // arguments and returns plain data read off the game at the instant of the call
 // (`snapshot()`). A caller therefore drives both directly —
-// `engine.debug.beginPlay()`, `engine.debug.snapshot()` — with no wrapper in
-// between. `version` is a plain number.
+// `engine.debug.setScreen("playing")`, `engine.debug.snapshot()` — with no
+// wrapper in between. `version` is a plain number.
 //
 // Fathom runs in ONE world for the whole session and every screen is a value of
 // `screen`, so no pose here rides a level transition: a pose takes effect at the
@@ -105,6 +105,8 @@ export interface DrifterSnapshot {
    * `lit` says whether the jellyfish itself is drawn (specs/state.md).
    */
   lit: boolean;
+  /** True while it runs its own wander, which is how a dive is played. */
+  mind: boolean;
 }
 
 /**
@@ -124,6 +126,8 @@ export interface PredatorSnapshot {
   state: PredatorState;
   /** Whether its turn in the den's staggered schedule has come. */
   released: boolean;
+  /** True while it runs its own mind, which is how a dive is played. */
+  mind: boolean;
   /** Its current speed, in logical units per second. */
   speed: number;
   /** True only during the `ALERT_TIME` window after a fix is acquired. */
@@ -196,11 +200,11 @@ export interface FathomSnapshot {
   score: number;
   lives: number;
   muted: boolean;
-  /** Whether the predators and the drifters run their own minds. */
-  creatureAI: boolean;
   planktonRemaining: number;
   /** `G`, the forager's brightness, in `[0, 1]`. */
   brightness: number;
+  /** The seconds left on the `BRIGHT_HOLD` hold, `0` once it has expired. */
+  brightHold: number;
   /** `V`, the line-of-sight light radius, in logical units. */
   visionRadius: number;
   sonar: SonarSnapshot;
@@ -208,6 +212,8 @@ export interface FathomSnapshot {
   grid: GridFrame;
   /** The layout: `rows` strings of `cols` characters, `#`/`.`/`g`/`d`. */
   tiles: string[];
+  /** The same layout, one plankton character per tile: `*`/`-`. */
+  plankton: string[];
   /** The same layout, one visibility character per tile: `u`/`r`/`l`. */
   visibility: string[];
   forager: ForagerSnapshot;
@@ -242,45 +248,61 @@ export interface FathomDebugApi {
   reset(options?: { seed?: number }): void;
   /** A pure read of the game. */
   snapshot(): FathomSnapshot;
-  /** Poses the opening of a real dive, landing on `"countdown"`. */
-  startDive(): void;
-  /** Ends the dive countdown at once, so `screen` becomes `"playing"`. */
-  beginPlay(): void;
+  /** Sets `screen`, and changes no other field. */
+  setScreen(s: Screen): void;
+  /** Sets the running score to a whole number of at least `0`. */
+  setScore(points: number): void;
+  /** Sets the lives held in reserve, the one being played not among them. */
+  setLives(n: number): void;
   /** Sets the current depth to the whole number `d`, at least `1`. */
   setDepth(d: number): void;
   /**
    * Replaces the maze layout with the fixture given, `rows` strings of `cols`
    * characters in the snapshot's own tile alphabet.
    *
-   * The posed layout is exempt from every rule in specs/maze.md, the board is
-   * left in the state a freshly laid-out maze starts in, every predator is
-   * returned to a den tile with `released` false, and the staggered release
-   * schedule is suspended while the posed board stands.
+   * The posed layout is exempt from every rule in specs/maze.md, and the layout
+   * is the whole of what it sets: the plankton, the fog, the roster, every
+   * body's tile and facing, the cooldowns, the score, the lives, the depth and
+   * the screen are all left exactly as they stand.
    */
   setMaze(rows: readonly string[]): void;
-  /** Moves the forager to the center of an open corridor tile, at rest. */
-  setForagerTile(tx: number, ty: number): void;
-  /** Sets the forager's facing, moving it nowhere. */
-  setForagerDir(dir: Dir): void;
-  /**
-   * Sets `G` to `g`, in `[0, 1]`, and arms the `BRIGHT_HOLD` hold in full, so
-   * the posed value is steady for that full second before it decays.
-   */
-  setBrightness(g: number): void;
-  /** Moves one predator, by its index in `snapshot().predators`, to a tile. */
-  setPredatorTile(index: number, tx: number, ty: number): void;
-  /** Sets one predator's facing. */
-  setPredatorDir(index: number, dir: Dir): void;
-  /** Poses one predator's state, and with it its `released` flag. */
-  setPredatorState(index: number, value: PosablePredatorState): void;
-  /** Adds one bonus drifter at the center of an open corridor tile. */
-  spawnDrifter(tx: number, ty: number): void;
-  /** Turns the predators' and the drifters' own minds on or off. */
-  setCreatureAI(enabled: boolean): void;
   /** Puts a plankton on an open corridor tile, or takes one off. */
   setPlankton(tx: number, ty: number, present: boolean): void;
   /** Takes every plankton off the maze at once, eating none of them. */
   clearPlankton(): void;
+  /** Puts every tile of the maze back to unrevealed. */
+  clearFog(): void;
+  /** Moves the forager to the center of an open corridor tile, at rest. */
+  setForagerTile(tx: number, ty: number): void;
+  /** Sets the forager's facing, moving it nowhere. */
+  setForagerDir(dir: Dir): void;
+  /** Sets `G` to `g`, in `[0, 1]`, leaving the hold exactly as it stands. */
+  setBrightness(g: number): void;
+  /** Sets the seconds left on the brightness hold, from `0` to `BRIGHT_HOLD`. */
+  setBrightHold(seconds: number): void;
+  /** Takes every predator off the board at once, leaving the roster empty. */
+  clearPredators(): void;
+  /**
+   * Adds one predator of `kind` at the center of an open corridor tile, at the
+   * end of the roster, loose and patrolling with its mind running.
+   */
+  addPredator(kind: PredatorKind, tx: number, ty: number): void;
+  /** Moves one predator, by its index in `snapshot().predators`, to a tile. */
+  setPredatorTile(index: number, tx: number, ty: number): void;
+  /** Sets one predator's facing. */
+  setPredatorDir(index: number, dir: Dir): void;
+  /** Poses one predator's state, on the tile it already stands on. */
+  setPredatorState(index: number, value: PosablePredatorState): void;
+  /** Sets one predator's `released` flag, moving it nowhere. */
+  setPredatorReleased(index: number, released: boolean): void;
+  /** Turns one predator's own mind on or off. */
+  setPredatorMind(index: number, enabled: boolean): void;
+  /** Adds one bonus drifter at the center of an open corridor tile. */
+  spawnDrifter(tx: number, ty: number): void;
+  /** Takes every bonus drifter off the maze at once, eating none of them. */
+  clearDrifters(): void;
+  /** Turns one drifter's own mind on or off. */
+  setDrifterMind(index: number, enabled: boolean): void;
   /** Sets the seconds remaining on the sonar pulse's cooldown. */
   setSonarCooldown(seconds: number): void;
   /** Sets the seconds remaining on ink's cooldown. */
@@ -301,20 +323,28 @@ export const READINGS = ["snapshot"] as const;
 export const REQUIRED_OPS = [
   "reset",
   "snapshot",
-  "startDive",
-  "beginPlay",
+  "setScreen",
+  "setScore",
+  "setLives",
   "setDepth",
   "setMaze",
+  "setPlankton",
+  "clearPlankton",
+  "clearFog",
   "setForagerTile",
   "setForagerDir",
   "setBrightness",
+  "setBrightHold",
+  "clearPredators",
+  "addPredator",
   "setPredatorTile",
   "setPredatorDir",
   "setPredatorState",
+  "setPredatorReleased",
+  "setPredatorMind",
   "spawnDrifter",
-  "setCreatureAI",
-  "setPlankton",
-  "clearPlankton",
+  "clearDrifters",
+  "setDrifterMind",
   "setSonarCooldown",
   "setInkCooldown",
 ] as const;

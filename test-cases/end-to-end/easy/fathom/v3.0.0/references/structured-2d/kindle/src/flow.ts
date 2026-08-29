@@ -4,8 +4,8 @@
 // `FathomState` it is handed — the world's one instance — writing the fields it
 // changes in place and leaving the rest alone. Each transition is shared by the
 // menus in `src/controller.ts`, the rules in `src/sim.ts` and the debug surface
-// in `src/debug.ts`, so choosing `DIVE` from the title and posing `startDive`
-// are one code path (`specs/instrumentation.md`).
+// in `src/debug.ts`, so a screen reached from the title menu and the same screen
+// posed from code are one code path (`specs/instrumentation.md`).
 
 import {
   DRIFTER_INTERVAL,
@@ -43,21 +43,21 @@ export function sonarRange(depth: number): number {
   return Math.max(SONAR_RANGE_MIN, SONAR_RANGE_BASE - (depth - 1));
 }
 
-/** Puts every predator back on a den tile. `held` suspends the schedule. */
-export function denPredators(state: FathomState, held: boolean): void {
+/** Puts every predator back on a den tile, unreleased. */
+export function denPredators(state: FathomState): void {
   const slots = denSlots(state.maze);
   state.predators.forEach((predator, index) => {
-    predator.returnToDen(slots[index % slots.length], held);
+    predator.returnToDen(slots[index % slots.length]);
   });
 }
 
 /**
- * Grants the release its turn has come to. A predator held in the den by a pose
- * has no turn, so the schedule passes it by however long the scenario runs.
+ * Grants the release its turn has come to. A predator added outside a roster
+ * carries no slot, so the schedule passes it by however long the run lasts.
  */
 export function applyReleaseSchedule(state: FathomState): void {
   for (const predator of state.predators) {
-    if (predator.released || predator.heldInDen) continue;
+    if (predator.released || predator.releaseAt === null) continue;
     if (state.playTime >= predator.releaseAt) predator.released = true;
   }
 }
@@ -92,7 +92,7 @@ export function resetAttempt(state: FathomState): void {
   state.heldDirs = [];
 
   state.predators = buildRoster(state.depth);
-  denPredators(state, false);
+  denPredators(state);
   state.drifters = [];
   state.pulses = [];
   state.inkClouds = [];
@@ -117,20 +117,25 @@ export function layoutTrench(state: FathomState): void {
 }
 
 /**
- * Poses a fixture over the maze (`specs/instrumentation.md`). The board is left
- * as a freshly laid-out maze starts, every predator is held in the den with its
- * release time suspended, and the forager rests on the fixture's first corridor
- * tile in reading order. What the game is doing — the score, the lives, the
- * depth, the cooldowns and the screen — is left exactly as it stands.
+ * Poses a layout over the maze (`specs/instrumentation.md`). The layout is the
+ * whole of what it sets: the plankton, the fog, the roster, every body, the
+ * cooldowns, the score, the lives, the depth and the screen are all left
+ * exactly as they stand. The plankton the new layout walls into rock go with
+ * the corridor they stood on, because a plankton stands on a corridor tile and
+ * `planktonRemaining` counts the ones that stand.
  */
-export function poseMaze(state: FathomState, rows: readonly string[]): void {
-  const sonarCooldown = state.sonarCooldown;
-  const inkCooldown = state.inkCooldown;
+export function loadLayout(state: FathomState, rows: readonly string[]): void {
   state.maze.load(rows);
-  freshMaze(state);
-  denPredators(state, true);
-  state.sonarCooldown = sonarCooldown;
-  state.inkCooldown = inkCooldown;
+  let remaining = 0;
+  for (let ty = 0; ty < GRID_ROWS; ty++) {
+    for (let tx = 0; tx < GRID_COLS; tx++) {
+      const key = cellIndex(tx, ty);
+      if (!state.plankton[key]) continue;
+      if (state.maze.isCorridor(tx, ty)) remaining += 1;
+      else state.plankton[key] = false;
+    }
+  }
+  state.planktonRemaining = remaining;
 }
 
 /** The dive countdown, held over the maze before control resumes. */
@@ -211,7 +216,6 @@ export function descend(state: FathomState): void {
  */
 export function resetState(state: FathomState, seed: number): void {
   state.rng = new Rng(seed);
-  state.creatureAI = true;
   state.simTime = 0;
   state.accumulator = 0;
   state.countdown = 0;

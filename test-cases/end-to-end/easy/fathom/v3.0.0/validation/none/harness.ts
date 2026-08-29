@@ -68,15 +68,8 @@ import {
   UNBOUND_KEY,
   type Dir,
 } from "./constants";
-import { type FixtureBoard } from "./fixtures";
+import { type FixtureBoard, type FixtureOps } from "./fixtures";
 import { tileCenter, type GridFrame, type Tile } from "./maze";
-import {
-  FORAGER_CORRIDORS,
-  PREDATOR_CORRIDORS,
-  type DenRelease,
-  type SceneOps,
-  type Trespass,
-} from "./scene";
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -108,20 +101,28 @@ export const REQUIRED_OPS = [
   "advance",
   "reset",
   "snapshot",
-  "startDive",
-  "beginPlay",
+  "setScreen",
+  "setScore",
+  "setLives",
   "setDepth",
   "setMaze",
+  "setPlankton",
+  "clearPlankton",
+  "clearFog",
   "setForagerTile",
   "setForagerDir",
   "setBrightness",
+  "setBrightHold",
+  "clearPredators",
+  "addPredator",
   "setPredatorTile",
   "setPredatorDir",
   "setPredatorState",
+  "setPredatorReleased",
+  "setPredatorMind",
   "spawnDrifter",
-  "setCreatureAI",
-  "setPlankton",
-  "clearPlankton",
+  "clearDrifters",
+  "setDrifterMind",
   "setSonarCooldown",
   "setInkCooldown",
 ] as const;
@@ -158,6 +159,8 @@ export interface PredatorSnapshot {
   dir: Dir;
   state: PredatorState;
   released: boolean;
+  /** Whether its own mind is running (`specs/state.md`). */
+  mind: boolean;
   speed: number;
   alert: boolean;
   lit: boolean;
@@ -187,6 +190,8 @@ export interface DrifterSnapshot {
    * `lit` says whether the jellyfish itself is drawn (specs/state.md).
    */
   lit: boolean;
+  /** Whether its own mind is running (`specs/state.md`). */
+  mind: boolean;
 }
 
 /** One sonar wavefront in flight, the forager's own and the Gloamfin's alike. */
@@ -226,10 +231,10 @@ export interface FathomSnapshot extends FixtureBoard {
   score: number;
   lives: number;
   muted: boolean;
-  creatureAI: boolean;
   autoStep: boolean;
   planktonRemaining: number;
   brightness: number;
+  brightHold: number;
   visionRadius: number;
   /** The kindle variant alone: `R`, the outer vision circle's radius. */
   windowRadius?: number;
@@ -243,6 +248,7 @@ export interface FathomSnapshot extends FixtureBoard {
     originY: number;
   };
   tiles: string[];
+  plankton: string[];
   visibility: string[];
   forager: {
     x: number;
@@ -279,25 +285,33 @@ export function windowRadius(snapshot: FathomSnapshot): number {
 }
 
 /** The operations a check poses the game through. Every one crosses into the page. */
-export interface FathomDebugApi extends SceneOps {
+export interface FathomDebugApi extends FixtureOps {
   setAutoStep(enabled: boolean): Promise<void>;
   advance(ticks: number): Promise<void>;
   reset(options?: { seed?: number }): Promise<void>;
   snapshot(): Promise<FathomSnapshot>;
-  startDive(): Promise<void>;
-  beginPlay(): Promise<void>;
+  setScreen(s: Screen): Promise<void>;
+  setScore(points: number): Promise<void>;
+  setLives(n: number): Promise<void>;
   setDepth(d: number): Promise<void>;
   setMaze(rows: readonly string[]): Promise<void>;
+  setPlankton(tx: number, ty: number, present: boolean): Promise<void>;
+  clearPlankton(): Promise<void>;
+  clearFog(): Promise<void>;
   setForagerTile(tx: number, ty: number): Promise<void>;
   setForagerDir(dir: Dir): Promise<void>;
   setBrightness(g: number): Promise<void>;
+  setBrightHold(seconds: number): Promise<void>;
+  clearPredators(): Promise<void>;
+  addPredator(kind: PredatorKind, tx: number, ty: number): Promise<void>;
   setPredatorTile(index: number, tx: number, ty: number): Promise<void>;
   setPredatorDir(index: number, dir: Dir): Promise<void>;
   setPredatorState(index: number, value: PosablePredatorState): Promise<void>;
+  setPredatorReleased(index: number, released: boolean): Promise<void>;
+  setPredatorMind(index: number, enabled: boolean): Promise<void>;
   spawnDrifter(tx: number, ty: number): Promise<void>;
-  setCreatureAI(enabled: boolean): Promise<void>;
-  setPlankton(tx: number, ty: number, present: boolean): Promise<void>;
-  clearPlankton(): Promise<void>;
+  clearDrifters(): Promise<void>;
+  setDrifterMind(index: number, enabled: boolean): Promise<void>;
   setSonarCooldown(seconds: number): Promise<void>;
   setInkCooldown(seconds: number): Promise<void>;
 }
@@ -401,20 +415,6 @@ export interface Harness {
   tick(): number;
   /** The simulated time those ticks covered, in milliseconds. */
   timeMs(): number;
-
-  /**
-   * Every body found standing on ground movement cannot have carried it to, in
-   * the order they were first seen — see {@link Trespass} and
-   * {@link TRESPASS_POLL}.
-   */
-  readonly trespasses: readonly Trespass[];
-  /**
-   * Every release granted to a hunter still in the den, in the order they were
-   * granted — see {@link DenRelease}. Watched on the same stride, and for the
-   * same reason: a scenario that posed a hunter away cannot tell afterwards that
-   * one was let out.
-   */
-  readonly denReleases: readonly DenRelease[];
 
   /** A fresh read of the game's state through the build's `snapshot`. */
   snapshot(): Promise<FathomSnapshot>;
@@ -682,83 +682,6 @@ async function readSurfaceFault(page: Page): Promise<string | null> {
   return null;
 }
 
-/* ---- The trespass watch --------------------------------------------------- */
-//
-// Nearly every scenario in this suite is held together by ROCK: a bystander
-// walled off from its subject, a pair sealed into neighboring cells, a hunter in
-// a sealed ring, a den walled on three sides. `specs/movement.md` is what
-// entitles a check to lean on that — the forager travels over corridor tiles and
-// nothing else, a predator over those and, while it is in the den, the chamber
-// and its gate — so a build that lets a body cross rock takes every one of those
-// scenarios apart at once. Left unwatched, that arrives as fifty findings
-// against fifty mechanics, none of them the one that broke.
-//
-// So the harness watches for it as it advances, and `scene.ts` turns what it saw
-// into a DECLINE naming `maze-movement/no-wall` or
-// `maze-movement/predators-keep-to-corridors`, the two points that fail for it.
-// The watch has to run DURING a measurement rather than after one, because the
-// evidence does not survive: a hunter that walks through rock, eats the forager
-// and is returned to the den by the life that cost stands on a den tile by the
-// time the check looks.
-//
-// The same watch carries a second reading for the same reason: a hunter in the
-// den that has been GRANTED ITS RELEASE. A scenario puts the rest of the roster
-// away and is entitled to find it there, because a pose that dens a hunter
-// suspends its release time (`specs/instrumentation.md`), and a build that
-// grants one anyway walks the hunter out through the gate and into the
-// measurement — then loses the evidence to the life it takes, which returns
-// every hunter to the den unreleased. `controls/setmaze-houses-predators` is the
-// point that fails for that one.
-//
-// SAMPLED INSIDE THE PAGE. Every read this harness takes crosses into the
-// browser, so a sample taken from Node would cost a round trip per look. The
-// tick loop already runs in one evaluation, so the looks run there too and come
-// back with it, and what crosses is a handful of tiles rather than a board.
-
-/**
- * How often the watch looks, in ticks.
- *
- * Six. A tile is `TILE` (`32`) logical units and the fastest thing on the board
- * travels at `GLOAMFIN_CHASE_SPEED` (`160`), so six ticks is at most `8` units —
- * a quarter of a tile. No tile a body stands on can be crossed between two
- * looks.
- */
-export const TRESPASS_POLL = 6;
-
-/**
- * How many distinct entries either watch keeps.
- *
- * A decline names what it saw, and a build that ignores rock produces one of
- * these every few ticks forever. The first handful say everything a reader needs;
- * the watch stops recording past that.
- */
-const TRESPASS_CAP = 8;
-
-/** One body of one look, with the tile character it was standing on. */
-interface WatchedBody {
-  tx: number;
-  ty: number;
-  /** The layout character under it, or `null` off the board. */
-  at: string | null;
-  /** How a decline names it. */
-  what: string;
-  /** The point that owns this body keeping to the corridors. */
-  owner: string;
-  /** The roster index, for a predator; `-1` for the forager. */
-  index: number;
-  /** Its reported state, for a predator; `""` for the forager. */
-  state: string;
-  /** Its reported release flag, for a predator. */
-  released: boolean;
-}
-
-/** One look the page took, as it comes back across. */
-interface WatchSample {
-  /** Accumulated simulation time at the look, in seconds. */
-  t: number;
-  bodies: WatchedBody[];
-}
-
 /* ---- Building one --------------------------------------------------------- */
 
 /**
@@ -849,54 +772,6 @@ export async function createHarness(
   let tickCount = 0;
   let timeMs = 0;
 
-  // The trespass watch (see TRESPASS_POLL). It reads through the same snapshot a
-  // check does and never touches the game, and a look the page could not answer
-  // is swallowed outright: what a missing operation costs is
-  // `instrumentation/surface-present`'s finding, and this watch exists to keep
-  // findings where they belong rather than to add one of its own.
-  const trespasses: Trespass[] = [];
-  const denReleases: DenRelease[] = [];
-  const wasFreed = new Map<number, boolean>();
-  let sinceSample = 0;
-  const noteWatch = (samples: readonly WatchSample[]): void => {
-    for (const sample of samples) {
-      if (
-        trespasses.length >= TRESPASS_CAP &&
-        denReleases.length >= TRESPASS_CAP
-      ) {
-        return;
-      }
-      for (const body of sample.bodies) {
-        if (trespasses.length >= TRESPASS_CAP) break;
-        if (body.at === "." || body.at === "d" || body.at === "g") continue;
-        const ground =
-          body.at === null ? "off the board" : `the "${body.at}" tile`;
-        const where = `${body.what} stood on ${ground} at (${body.tx}, ${body.ty})`;
-        if (trespasses.some((one) => one.where === where)) continue;
-        trespasses.push({ where, owner: body.owner, at: sample.t });
-      }
-
-      // The den watch reads a TRANSITION rather than a state, so a hunter
-      // already released when the watch opened is not logged over and over: only
-      // the look on which a denned hunter's release first appears is.
-      for (const body of sample.bodies) {
-        if (body.index < 0) continue;
-        const freed = body.state === "den" && body.released;
-        const before = wasFreed.get(body.index);
-        wasFreed.set(body.index, freed);
-        if (!freed || before === true) continue;
-        if (denReleases.length >= TRESPASS_CAP) continue;
-        denReleases.push({
-          index: body.index,
-          where:
-            `${body.what} reported released while still in the den, at ` +
-            `(${body.tx}, ${body.ty})`,
-          at: sample.t,
-        });
-      }
-    }
-  };
-
   /**
    * Run `count` ticks as `count` recorded frames, and read the state they left,
    * in one crossing.
@@ -909,7 +784,7 @@ export async function createHarness(
   const drive = async (count: number): Promise<FathomSnapshot> => {
     if (surfaceFault !== null) refuse();
     const result = (await page.evaluate(
-      ([handle, howMany, tickMs, poll, since, foragerOwner, predatorOwner]) => {
+      ([handle, howMany, tickMs]) => {
         const api = (
           window as unknown as Record<
             string,
@@ -924,81 +799,22 @@ export async function createHarness(
         const audio = (
           window as unknown as { __fathomAudio: { started(): number } }
         ).__fathomAudio;
-        const look = (): unknown => {
-          const at = api.snapshot() as {
-            simTime: number;
-            tiles: string[];
-            forager: { tx: number; ty: number };
-            predators: {
-              kind: string;
-              tx: number;
-              ty: number;
-              state: string;
-              released: boolean;
-            }[];
-          };
-          const ground = (tx: number, ty: number): string | null =>
-            at.tiles[ty] === undefined ? null : (at.tiles[ty][tx] ?? null);
-          return {
-            t: at.simTime,
-            bodies: [
-              {
-                tx: at.forager.tx,
-                ty: at.forager.ty,
-                at: ground(at.forager.tx, at.forager.ty),
-                what: "the forager",
-                owner: foragerOwner,
-                index: -1,
-                state: "",
-                released: false,
-              },
-              ...at.predators.map((one, index) => ({
-                tx: one.tx,
-                ty: one.ty,
-                at: ground(one.tx, one.ty),
-                what: `the ${one.kind}`,
-                owner: predatorOwner,
-                index,
-                state: one.state,
-                released: one.released === true,
-              })),
-            ],
-          };
-        };
         const sounds: number[] = [];
-        const samples: unknown[] = [];
-        let ticks = since;
         for (let i = 0; i < howMany; i += 1) {
           const before = audio.started();
           rec.begin();
           api.advance(1);
           rec.end(tickMs);
           sounds.push(audio.started() - before);
-          ticks += 1;
-          if (ticks < poll) continue;
-          ticks = 0;
-          samples.push(look());
         }
-        return { snapshot: api.snapshot(), sounds, samples, since: ticks };
+        return { snapshot: api.snapshot(), sounds };
       },
-      [
-        HANDLE,
-        count,
-        TICK_MS,
-        TRESPASS_POLL,
-        sinceSample,
-        FORAGER_CORRIDORS,
-        PREDATOR_CORRIDORS,
-      ] as const,
+      [HANDLE, count, TICK_MS] as const,
     )) as {
       snapshot: FathomSnapshot;
       sounds: number[];
-      samples: WatchSample[];
-      since: number;
     };
 
-    sinceSample = result.since;
-    noteWatch(result.samples);
     for (const emitted of result.sounds) {
       tickCount += 1;
       timeMs += TICK_MS;
@@ -1020,91 +836,22 @@ export async function createHarness(
    */
   const march = async (count: number): Promise<FathomSnapshot> => {
     if (surfaceFault !== null) refuse();
-    const result = (await page.evaluate(
-      ([handle, howMany, poll, since, foragerOwner, predatorOwner]) => {
+    const snapshot = (await page.evaluate(
+      ([handle, howMany]) => {
         const api = (
           window as unknown as Record<
             string,
             Record<string, (...a: unknown[]) => unknown>
           >
         )[handle];
-        const look = (): unknown => {
-          const at = api.snapshot() as {
-            simTime: number;
-            tiles: string[];
-            forager: { tx: number; ty: number };
-            predators: {
-              kind: string;
-              tx: number;
-              ty: number;
-              state: string;
-              released: boolean;
-            }[];
-          };
-          const ground = (tx: number, ty: number): string | null =>
-            at.tiles[ty] === undefined ? null : (at.tiles[ty][tx] ?? null);
-          return {
-            t: at.simTime,
-            bodies: [
-              {
-                tx: at.forager.tx,
-                ty: at.forager.ty,
-                at: ground(at.forager.tx, at.forager.ty),
-                what: "the forager",
-                owner: foragerOwner,
-                index: -1,
-                state: "",
-                released: false,
-              },
-              ...at.predators.map((one, index) => ({
-                tx: one.tx,
-                ty: one.ty,
-                at: ground(one.tx, one.ty),
-                what: `the ${one.kind}`,
-                owner: predatorOwner,
-                index,
-                state: one.state,
-                released: one.released === true,
-              })),
-            ],
-          };
-        };
-        // Run in stretches no longer than the watch's stride rather than in one
-        // call, so a long march is sampled throughout. `specs/instrumentation.md`
-        // has `advance(n)` run `n` whole ticks immediately and in order, so the
-        // stretches are the same run of ticks the single call would have been.
-        const samples: unknown[] = [];
-        let ticks = since;
-        let done = 0;
-        while (done < howMany) {
-          const step = Math.min(poll - ticks, howMany - done);
-          api.advance(step);
-          done += step;
-          ticks += step;
-          if (ticks < poll) continue;
-          ticks = 0;
-          samples.push(look());
-        }
-        return { snapshot: api.snapshot(), samples, since: ticks };
+        api.advance(howMany);
+        return api.snapshot();
       },
-      [
-        HANDLE,
-        count,
-        TRESPASS_POLL,
-        sinceSample,
-        FORAGER_CORRIDORS,
-        PREDATOR_CORRIDORS,
-      ] as const,
-    )) as {
-      snapshot: FathomSnapshot;
-      samples: WatchSample[];
-      since: number;
-    };
-    sinceSample = result.since;
-    noteWatch(result.samples);
+      [HANDLE, count] as const,
+    )) as FathomSnapshot;
     tickCount += count;
     timeMs += count * TICK_MS;
-    return result.snapshot;
+    return snapshot;
   };
 
   const scanDevice = async (
@@ -1208,8 +955,6 @@ export async function createHarness(
     timeMs: () => timeMs,
 
     snapshot: () => debug.snapshot(),
-    trespasses,
-    denReleases,
 
     advance: async (count) => {
       if (count > 0) await drive(count);
@@ -1390,14 +1135,19 @@ const harnessCues = new WeakMap<Harness, TimedCue[][]>();
 /* ---- Reaching live play --------------------------------------------------- */
 
 /**
- * Reset on a seed, open a dive, and enter live play, through the debug surface
- * alone.
+ * Reset on a seed and enter live play, through the debug surface alone.
  *
- * `startDive` poses the opening of a real dive and `beginPlay` ends the
- * countdown immediately (`specs/instrumentation.md`), so this reaches live play
- * without pressing a menu key: a build with a broken title menu and correct
- * movement must fail the menu points and pass the movement ones. A check that is
- * ABOUT the menus drives them itself and never calls this.
+ * `reset` restores every field to its title-screen value and `setScreen` puts
+ * the game straight into live play (`specs/instrumentation.md`), so this reaches
+ * the board a dive is played on without pressing a menu key: a build with a
+ * broken title menu and correct movement must fail the menu points and pass the
+ * movement ones. A check that is ABOUT the menus drives them itself and never
+ * calls this.
+ *
+ * The board it leaves is the game's OWN: the maze a reset laid out, a plankton
+ * on every corridor tile, and the depth's roster in the den. A check poses the
+ * world it is about on top of that, and {@link poseMaze} is what strips this one
+ * away.
  *
  * An omitted `seed` takes `DEFAULT_SEED` (`1`), which
  * `specs/instrumentation.md` fixes, so a scenario that turns on the board a
@@ -1408,8 +1158,7 @@ export async function startPlaying(
   seed?: number,
 ): Promise<FathomSnapshot> {
   await h.debug.reset(seed === undefined ? undefined : { seed });
-  await h.debug.startDive();
-  await h.debug.beginPlay();
+  await h.debug.setScreen("playing");
   return h.snapshot();
 }
 

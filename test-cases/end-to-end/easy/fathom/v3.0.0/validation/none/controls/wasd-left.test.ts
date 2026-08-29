@@ -40,7 +40,7 @@
 // all, so the whole path from a physical key to a moving forager is the build's
 // own and every step of it is exercised here.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { TICK_HZ, TILE } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
@@ -50,7 +50,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, requireSceneHeld, sceneGuard } from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The second key specs/movement.md binds the `left` action to. */
 const KEY = "KeyA";
@@ -94,14 +94,14 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("swims the forager left while KeyA is held", async () => {
+it("swims the forager left while KeyA is held", async () => {
   await startPlaying(h);
   const run = await poseMoveKeyRun(h, "left");
   // The forager is the SUBJECT here, so it is not held to staying put; what the
   // guard still catches is a life lost or the dive leaving live play under the
   // measurement, either of which would make this a reading of some other
   // situation.
-  const guard = await sceneGuard(h, null, { foragerParked: false });
+  const guard = await sceneGuard(h, { foragerParked: false });
 
   const moved = await captureReplay(h, "move", async () => {
     await h.advance(REST_TICKS);

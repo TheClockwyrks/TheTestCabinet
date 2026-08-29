@@ -29,6 +29,7 @@ import {
   visionRadius,
   windowRadius,
 } from "./readings";
+import { tileKey } from "./sensing";
 import type {
   Dir,
   PredatorKind,
@@ -53,6 +54,7 @@ export interface DrifterSnapshot {
   tx: number;
   ty: number;
   lit: boolean;
+  mind: boolean;
 }
 
 export interface PredatorSnapshot {
@@ -64,6 +66,7 @@ export interface PredatorSnapshot {
   dir: Dir;
   state: PredatorState;
   released: boolean;
+  mind: boolean;
   speed: number;
   alert: boolean;
   lit: boolean;
@@ -98,10 +101,10 @@ export interface FathomSnapshot {
   score: number;
   lives: number;
   muted: boolean;
-  creatureAI: boolean;
   autoStep: boolean;
   planktonRemaining: number;
   brightness: number;
+  brightHold: number;
   visionRadius: number;
   windowRadius: number;
   sonar: { ready: boolean; cooldown: number; range: number };
@@ -114,6 +117,7 @@ export interface FathomSnapshot {
     originY: number;
   };
   tiles: string[];
+  plankton: string[];
   visibility: string[];
   forager: ForagerSnapshot;
   drifters: DrifterSnapshot[];
@@ -121,6 +125,25 @@ export interface FathomSnapshot {
   pulses: PulseSnapshot[];
   inkClouds: InkCloudSnapshot[];
   simTime: number;
+}
+
+/**
+ * Where the plankton stand this instant, one row per grid row in the alphabet
+ * `specs/state.md` fixes: `*` a tile holding one, `-` a tile holding none.
+ *
+ * Rock, the gate and the den chamber hold none, which the game keeps true of the
+ * layer itself rather than masking here.
+ */
+function planktonRows(state: FathomState): string[] {
+  const rows: string[] = [];
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    let line = "";
+    for (let col = 0; col < GRID_COLS; col += 1) {
+      line += state.plankton[tileKey(col, row)] ? "*" : "-";
+    }
+    rows.push(line);
+  }
+  return rows;
 }
 
 /**
@@ -142,10 +165,10 @@ export function snapshot(
     score: state.score,
     lives: state.lives,
     muted: state.muted,
-    creatureAI: state.creatureAI,
     autoStep,
     planktonRemaining: state.planktonRemaining,
     brightness: forager.brightness,
+    brightHold: forager.hold,
     visionRadius: visionRadius(state),
     windowRadius: windowRadius(state),
     sonar: {
@@ -162,6 +185,7 @@ export function snapshot(
       originY: GRID_ORIGIN_Y,
     },
     tiles: state.maze.rows(),
+    plankton: planktonRows(state),
     visibility: state.fog.rows(),
     forager: {
       x: forager.x,
@@ -177,6 +201,7 @@ export function snapshot(
       tx: d.col,
       ty: d.row,
       lit: drifterLit(state, d),
+      mind: d.mind,
     })),
     predators: state.predators.map((p) => {
       const hunts = p.kind === "lanternjaw" || p.kind === "flarefish";
@@ -191,6 +216,7 @@ export function snapshot(
         dir: p.dir ?? p.facing,
         state: p.state,
         released: p.released,
+        mind: p.mind,
         speed: p.speed,
         alert: p.alertT > 0,
         lit: predatorLit(state, p),

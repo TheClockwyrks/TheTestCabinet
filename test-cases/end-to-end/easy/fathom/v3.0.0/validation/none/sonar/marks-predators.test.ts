@@ -22,22 +22,22 @@
 // the rock it lands on. `lit` is therefore `false` before the pulse, which the
 // check confirms, and anything that turns it `true` afterwards is the mark.
 //
-// THE CREATURES' MINDS ARE OFF. `setCreatureAI(false)` "holds every creature
-// exactly where it stands... it senses nothing, decides nothing, and does not
-// move" while "sonar wavefronts and ink clouds still travel and expire"
-// (specs/instrumentation.md). That is what keeps the reading about the mark: a
-// Flarefish left to itself blooms, and a bloom draws its own body, so `lit` would
-// stop being a statement about sonar at all.
+// THE BOARD HOLDS THE TWO HUNTERS THIS POINT MARKS, AND THEIR MINDS ARE OFF.
+// `setPredatorMind(index, false)` holds a hunter "exactly where it stands... it
+// senses nothing, decides nothing, and does not move" while everything else in
+// the game carries on (specs/instrumentation.md). That is what keeps the reading
+// about the mark: a Flarefish left to itself blooms, and a bloom draws its own
+// body, so `lit` would stop being a statement about sonar at all.
 //
 // WHAT THIS DOES NOT DECIDE. The Lanternjaw, which a pulse leaves alone and which
 // `sonar/not-reveal-amber` owns; and what a heard pulse does to a Gloamfin's
 // state, which is `sonar/heard-by-gloamfin`'s — with the minds off nothing here
 // takes a fix.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { SONAR_MARK_TIME, SONAR_WAVE_SPEED, TICK_HZ } from "../constants";
-import { poseSonarSense } from "../fixtures";
+import { poseSonarSense, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -45,15 +45,7 @@ import {
   type PredatorKind,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  requireKind,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { emitPulse, sinceEmit } from "./pulse";
 
 /**
@@ -111,94 +103,89 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "marks a Gloamfin and a Flarefish from the front's arrival and holds each for SONAR_MARK_TIME",
-  async () => {
-    await startPlaying(h);
-    const targets = await poseSonarSense(h, 2);
-    await parkForager(h);
-    await clearUnderfoot(h);
+it("marks a Gloamfin and a Flarefish from the front's arrival and holds each for SONAR_MARK_TIME", async () => {
+  await startPlaying(h);
+  const targets = await poseSonarSense(h, 2);
+  await parkForager(h);
 
-    const posed = await h.snapshot();
-    const gloamfin = requireKind(posed, "gloamfin");
-    const flarefish = requireKind(posed, "flarefish");
-    const quiet = await denAll(h, [gloamfin, flarefish]);
-
-    const subjects: { kind: PredatorKind; index: number; steps: number }[] = [
-      { kind: "gloamfin", index: gloamfin, steps: targets[0].steps },
-      { kind: "flarefish", index: flarefish, steps: targets[1].steps },
-    ];
-    const marks: Mark[] = [];
-    for (const [i, subject] of subjects.entries()) {
-      const tile = targets[i];
-      await h.debug.setPredatorTile(subject.index, tile.tx, tile.ty);
-      await h.debug.setPredatorState(subject.index, "wander");
-      marks.push({ ...subject, litBefore: true, on: null, off: null });
-    }
-    // Held exactly where they were posed, and blind, so `lit` can only be the
-    // mark. See the header.
-    await h.debug.setCreatureAI(false);
-
-    const watch = await sceneGuard(h, quiet);
-
-    await h.advance(SETTLE_TICKS);
-    const before = await h.snapshot();
-    for (const mark of marks) {
-      mark.litBefore = before.predators[mark.index].lit;
-    }
-
-    await captureReplay(h, "mark", async () => {
-      const emitted = await emitPulse(h);
-      for (let tick = 1; tick <= SWEEP_TICKS; tick += 1) {
-        if (tick > 1) await h.advance(1);
-        const snapshot = await h.snapshot();
-        const elapsed = sinceEmit(emitted, snapshot);
-        for (const mark of marks) {
-          const lit = snapshot.predators[mark.index].lit;
-          if (mark.on === null && lit) mark.on = elapsed;
-          if (mark.on !== null && mark.off === null && !lit) mark.off = elapsed;
-        }
-        if (marks.every((mark) => mark.off !== null)) break;
-      }
+  // The two hunters this point marks, each on a tile the pulse floods to and
+  // each with its own mind off, so it holds exactly where it was posed and
+  // `lit` can only be the mark. See the header.
+  const marks: Mark[] = [];
+  for (const [i, kind] of (["gloamfin", "flarefish"] as const).entries()) {
+    const index = await spawnPredator(h, kind, targets[i], {
+      state: "wander",
+      mind: false,
     });
+    marks.push({
+      kind,
+      index,
+      steps: targets[i].steps,
+      litBefore: true,
+      on: null,
+      off: null,
+    });
+  }
 
-    requireSceneHeld(await h.snapshot(), watch);
+  const watch = await sceneGuard(h);
 
-    for (const mark of marks) {
-      const arrival = mark.steps / SONAR_WAVE_SPEED;
-      assertEqual(
-        mark.litBefore,
-        false,
-        `the ${mark.kind}'s lit before any pulse, standing ${mark.steps} corridor ` +
-          "steps out with a band of rock on every line to the forager",
-      );
-      assertEqual(
-        mark.on !== null,
-        true,
-        `the ${mark.kind} was marked within ${SWEEP_TICKS} ticks of the press, ` +
-          `of the ${arrival.toFixed(3)} s a front at SONAR_WAVE_SPEED takes to ` +
-          `reach the tile ${mark.steps} steps out it stands on`,
-      );
-      if (mark.on === null) continue;
-      assertLessThanOrEqual(
-        Math.abs(mark.on - arrival),
-        ARRIVAL_TOLERANCE,
-        `|the ${mark.kind}'s mark beginning - ${arrival.toFixed(3)} s|, the ` +
-          "moment the front reaches the tile it stands on",
-      );
-      assertEqual(
-        mark.off !== null,
-        true,
-        `the ${mark.kind}'s mark ended within ${SWEEP_TICKS} ticks of the press, ` +
-          `of the ${SONAR_MARK_TIME} s SONAR_MARK_TIME allows it`,
-      );
-      if (mark.off === null) continue;
-      assertLessThanOrEqual(
-        Math.abs(mark.off - mark.on - SONAR_MARK_TIME),
-        LENGTH_TOLERANCE,
-        `|the ${mark.kind}'s mark - SONAR_MARK_TIME|, from the tick its lit ` +
-          "turned true to the tick it turned back false",
-      );
+  await h.advance(SETTLE_TICKS);
+  const before = await h.snapshot();
+  for (const mark of marks) {
+    mark.litBefore = before.predators[mark.index].lit;
+  }
+
+  await captureReplay(h, "mark", async () => {
+    const emitted = await emitPulse(h);
+    for (let tick = 1; tick <= SWEEP_TICKS; tick += 1) {
+      if (tick > 1) await h.advance(1);
+      const snapshot = await h.snapshot();
+      const elapsed = sinceEmit(emitted, snapshot);
+      for (const mark of marks) {
+        const lit = snapshot.predators[mark.index].lit;
+        if (mark.on === null && lit) mark.on = elapsed;
+        if (mark.on !== null && mark.off === null && !lit) mark.off = elapsed;
+      }
+      if (marks.every((mark) => mark.off !== null)) break;
     }
-  },
-);
+  });
+
+  requireSceneHeld(await h.snapshot(), watch);
+
+  for (const mark of marks) {
+    const arrival = mark.steps / SONAR_WAVE_SPEED;
+    assertEqual(
+      mark.litBefore,
+      false,
+      `the ${mark.kind}'s lit before any pulse, standing ${mark.steps} corridor ` +
+        "steps out with a band of rock on every line to the forager",
+    );
+    assertEqual(
+      mark.on !== null,
+      true,
+      `the ${mark.kind} was marked within ${SWEEP_TICKS} ticks of the press, ` +
+        `of the ${arrival.toFixed(3)} s a front at SONAR_WAVE_SPEED takes to ` +
+        `reach the tile ${mark.steps} steps out it stands on`,
+    );
+    if (mark.on === null) continue;
+    assertLessThanOrEqual(
+      Math.abs(mark.on - arrival),
+      ARRIVAL_TOLERANCE,
+      `|the ${mark.kind}'s mark beginning - ${arrival.toFixed(3)} s|, the ` +
+        "moment the front reaches the tile it stands on",
+    );
+    assertEqual(
+      mark.off !== null,
+      true,
+      `the ${mark.kind}'s mark ended within ${SWEEP_TICKS} ticks of the press, ` +
+        `of the ${SONAR_MARK_TIME} s SONAR_MARK_TIME allows it`,
+    );
+    if (mark.off === null) continue;
+    assertLessThanOrEqual(
+      Math.abs(mark.off - mark.on - SONAR_MARK_TIME),
+      LENGTH_TOLERANCE,
+      `|the ${mark.kind}'s mark - SONAR_MARK_TIME|, from the tick its lit ` +
+        "turned true to the tick it turned back false",
+    );
+  }
+});

@@ -12,9 +12,9 @@
 // that a running simulation would visibly move, every one of them posed through
 // an operation `specs/instrumentation.md` gives:
 //
-//   * a hunter loose on the board rather than in the den, which patrols;
-//   * a brightness of `POSED_BRIGHTNESS`, which `setBrightness` arms the
-//     `BRIGHT_HOLD` (`1 s`) hold on and which then decays on the ordinary curve;
+//   * a hunter loose on the board, the only one on it, which patrols;
+//   * a brightness of `POSED_BRIGHTNESS` with the `BRIGHT_HOLD` (`1 s`) hold
+//     armed in full beside it, which then decays on the ordinary curve;
 //   * two cooldowns plainly mid-run, which run down;
 //   * a movement key held for the whole stretch, which travels the forager.
 //
@@ -32,9 +32,10 @@
 // contents — and what the pause overlay looks like, which is the aesthetic
 // rating's.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BRIGHT_HOLD, PAUSE_ITEMS } from "../../src/constants";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -42,7 +43,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { check, denAll } from "../scene";
 import {
   CONFIRM_KEY,
   MOVE_KEY,
@@ -50,6 +50,14 @@ import {
   assertDrew,
   frameOps,
 } from "./screens";
+import {} from "../scene";
+
+/**
+ * The board: a straight run for the forager, and across solid rock a ring for the
+ * one hunter to patrol, so nothing it does can reach the forager and end the
+ * measurement.
+ */
+const BOARD = ["F........", "", "P...", "   .", "...."] as const;
 
 /** The roster index posed loose, so something on the board would move if it could. */
 const LOOSE = 0;
@@ -59,7 +67,7 @@ const LOOSE = 0;
  *
  * Mid-range, so a build that let the ordinary decay run would report a plainly
  * different number: `specs/sensing.md` halves `G` every `BRIGHT_HALFLIFE`
- * (`0.9 s`) once the `BRIGHT_HOLD` (`1 s`) hold `setBrightness` arms has expired.
+ * (`0.9 s`) once the `BRIGHT_HOLD` (`1 s`) hold posed beside it has expired.
  */
 const POSED_BRIGHTNESS = 0.5;
 
@@ -90,13 +98,16 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("freezes the dive behind its menu, and resumes", async () => {
+it("freezes the dive behind its menu, and resumes", async () => {
   startPlaying(h);
-  // One hunter loose and patrolling, the rest put away so only the one that is
-  // supposed to hold still is on the board.
-  await denAll(h, [LOOSE]);
-  h.debug.setPredatorState(LOOSE, "wander");
+  const board = await poseMaze(h, BOARD);
+  await placeForager(h, board.mark("F"), "right");
+  // One hunter, loose and patrolling its own ring: the only creature on the
+  // board, and the one that is supposed to hold still behind the menu.
+  await spawnPredator(h, "gloamfin", board.mark("P"));
   h.debug.setBrightness(POSED_BRIGHTNESS);
+  h.debug.setBrightHold(BRIGHT_HOLD);
+  h.debug.setBrightHold(BRIGHT_HOLD);
   h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
   h.debug.setInkCooldown(POSED_INK_COOLDOWN);
 

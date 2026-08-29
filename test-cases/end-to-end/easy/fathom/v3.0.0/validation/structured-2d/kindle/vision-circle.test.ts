@@ -35,11 +35,12 @@
 // tiles and "drawn" for a corridor tile is its mote against the faint floor, read
 // at the tile's center where specs/gameplay.md draws it.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
+  fail,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -51,15 +52,7 @@ import {
   startPlaying,
   visibilityAt,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import {
   FOG_MATCH,
   KINDLE_VISION_MIN,
@@ -105,24 +98,29 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The maze is drawn only inside the circle", async () => {
+it("The maze is drawn only inside the circle", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("H");
   const inside = board.mark("I");
   const outside = board.mark("O");
   const unlit = board.mark("S");
-  const quiet = await denAll(h);
+
+  // A plankton on each of the two tiles that are read, which is what a maze is
+  // laid out with on every corridor tile (specs/gameplay.md), and neither is ever
+  // eaten: the forager rests on its own berths and never on these.
+  h.debug.setPlankton(inside.tx, inside.ty, true);
+  h.debug.setPlankton(outside.tx, outside.ty, true);
 
   // Reveal the corridor by resting the forager along it, far end first, and bring
-  // it home. Each berth's own pellet is eaten off camera and `G` put back to zero,
-  // so no berth widens the circle the next reading is taken under.
+  // it home. The board carries no plankton under any berth and `G` stays at the
+  // zero a dive opens on, so no berth widens the circle the next reading is taken
+  // under.
   for (const berth of [board.mark("F"), board.mark("M"), home]) {
     await parkForager(h, berth);
-    await clearUnderfoot(h);
     await h.advance(SETTLE_TICKS);
   }
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
   await h.advance(SETTLE_TICKS);
 
   const after = h.snapshot();
@@ -138,11 +136,10 @@ check("The maze is drawn only inside the circle", async () => {
   // The fixture straddles the circle this build reports, or this scenario has
   // nothing to say about the mask.
   if (insideAt >= radius || outsideAt <= radius) {
-    failPrecondition(
+    fail(
       `the vision circle to take the ${KINDLE_VISION_MIN} logical units ` +
         "specs/sensing.md gives R at G = 0, so the fixture's samples five and " +
         "eight tiles out straddle it",
-      "kindle/grows-with-eating",
       `R was reported as ${radius.toFixed(1)}, with the samples ` +
         `${insideAt.toFixed(1)} and ${outsideAt.toFixed(1)} units off`,
     );

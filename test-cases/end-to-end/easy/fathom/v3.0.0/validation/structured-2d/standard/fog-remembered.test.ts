@@ -34,9 +34,9 @@
 // (specs/overview.md leaves it so), so the question is whether the two tiles are
 // drawn DIFFERENTLY, not what color either one is.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
-import { assertEqual, assertGreaterThan } from "../assert";
+import { assertEqual, assertGreaterThan, fail } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureStill,
@@ -49,15 +49,7 @@ import {
   type Harness,
   type Rgb,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { FathomSnapshot } from "../surface";
 import type { Tile } from "../maze";
 
@@ -116,7 +108,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The whole explored map stays drawn", async () => {
+it("The whole explored map stays drawn", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("H");
@@ -127,30 +119,33 @@ check("The whole explored map stays drawn", async () => {
   // while it stood there, and terrain rather than a mote, because no plankton sits
   // on rock (specs/gameplay.md).
   const rock: Tile = { tx: home.tx, ty: home.ty - ROCK_OFFSET };
-  const quiet = await denAll(h);
 
-  // Light the pocket at home. The pellet underfoot is eaten off camera and `G`
-  // put back to zero, so the light that reveals `T` is the one a dive opens with
-  // rather than one this arrangement widened.
+  // A plankton on the tile that is read, which is what a maze is laid out with on
+  // every corridor tile (specs/gameplay.md), and a second beside the far berth so
+  // nothing here can be the mouthful that clears the maze. The forager stands on
+  // neither.
+  h.debug.setPlankton(target.tx, target.ty, true);
+  h.debug.setPlankton(berth.tx - 1, berth.ty, true);
+
+  // Light the pocket at home, at the `G` of `0` a dive opens with, so the light
+  // that reveals `T` is the narrowest the game ever carries rather than one this
+  // arrangement widened.
   await parkForager(h, home);
-  await clearUnderfoot(h);
   await h.advance(SETTLE_TICKS);
   const lit = h.snapshot();
   for (const tile of [target, rock]) {
     if (visibilityAt(lit, tile) !== "u") continue;
-    failPrecondition(
+    fail(
       "the forager's own light to reveal the ground beside it — the corridor " +
         `${LIT_TILES} tiles ahead and the rock it lands on — so this point had ` +
         "explored ground to read (specs/sensing.md)",
-      "the fog points",
       `the tile at (${tile.tx}, ${tile.ty}) was still unrevealed`,
     );
   }
 
-  // And rest it at the far end of the corridor, its own pellet eaten there too.
+  // And rest it at the far end of the corridor.
   await parkForager(h, berth);
-  await clearUnderfoot(h);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
   await h.advance(SETTLE_TICKS);
 
   const after = h.snapshot();

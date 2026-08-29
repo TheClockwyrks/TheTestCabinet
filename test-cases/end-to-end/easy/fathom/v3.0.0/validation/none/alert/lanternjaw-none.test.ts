@@ -19,14 +19,19 @@
 // the hunter cannot cross the gap and take a life while the window is being
 // watched.
 //
-// WHAT THIS DOES NOT DECIDE. Whether the Lanternjaw acquires at all is
-// `lanternjaw/light-range`'s, so a build whose hunter never takes a fix stands this
-// check down rather than passing it on an absence that means nothing.
+// THE BOARD HOLDS THE LANTERNJAW AND NOTHING ELSE. `poseSightLine` empties it and
+// this check spawns back the one hunter it is about, so no second predator can
+// wander into the window being watched and no plankton can be eaten under the
+// brightness that earns the fix.
+//
+// AND THE FIX HAS TO HAPPEN. A build whose Lanternjaw never acquires has no
+// acquisition for an alert to have been absent from, so the absence means
+// nothing and the check FAILS rather than passing on it.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertTrue } from "../assert";
-import { ALERT_TIME } from "../constants";
-import { poseSightLine, predatorIndex } from "../fixtures";
+import { ALERT_TIME, BRIGHT_HOLD } from "../constants";
+import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -35,15 +40,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** How far apart the pair stands, in tiles. See the header. */
 const GAP_TILES = 7;
@@ -58,8 +55,8 @@ const BRIGHT_G = 1;
 /**
  * How long the fix is given to be taken, in ticks.
  *
- * A tenth of a second, a hard bound. Whether it is taken at all is
- * `lanternjaw/light-range`'s verdict, so a miss stands this check down.
+ * A tenth of a second, a hard bound: the forager is fully lit and squarely in
+ * reach, so a Lanternjaw that has not acquired inside it has not acquired.
  */
 const FIX_TICKS = ticks(0.1);
 
@@ -97,26 +94,19 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("The Lanternjaw fires no alert", async () => {
+it("The Lanternjaw fires no alert", async () => {
   await startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
     tail: TAIL_TILES,
   });
-  const index = predatorIndex(await h.snapshot(), "lanternjaw");
-  if (index === null) {
-    unmetPrecondition(
-      "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
-        "what the roster holds is the progression checks' verdict, not this one's",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-  await h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "lanternjaw", line.pred, {
+    state: "wander",
+  });
   await parkForager(h, line.forager);
-  await clearUnderfoot(h);
   await h.debug.setBrightness(BRIGHT_G);
-  const guard = await sceneGuard(h, quiet);
+  await h.debug.setBrightHold(BRIGHT_HOLD);
+  const guard = await sceneGuard(h);
 
   const read = await captureReplay(h, "none", async () => {
     // Sampled from before the acquisition, so a build that fires on the tick it
@@ -144,20 +134,12 @@ check("The Lanternjaw fires no alert", async () => {
 
   requireSceneHeld(read.end, guard);
 
-  if (!read.fixed.hit) {
-    unmetPrecondition(
-      "the Lanternjaw took no fix on a fully lit forager seven tiles away on a " +
-        "clear line, so there was no acquisition for an alert to have been fired " +
-        "on — whether it senses the forager at all is lanternjaw/light-range's " +
-        "verdict, not this one's",
-    );
-  }
-
   // The acquisition happened, which is what makes the absence below a reading.
   assertEqual(
     read.seen.some((one) => one.state === "chase"),
     true,
-    "the Lanternjaw is seen holding a fix inside the window that was watched",
+    "the Lanternjaw is seen holding a fix inside the window that was watched, " +
+      "on a fully lit forager seven tiles away on a clear line",
   );
   const fired = read.seen.filter((one) => one.alert);
   assertTrue(

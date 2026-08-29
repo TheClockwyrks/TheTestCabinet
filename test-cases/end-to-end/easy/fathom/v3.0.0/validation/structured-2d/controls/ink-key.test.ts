@@ -24,7 +24,7 @@
 // the cloud is read a tick later and the tolerance below is stated against the
 // ticks that have run.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertBetween,
   assertEqual,
@@ -44,13 +44,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  quietBoard,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The first key specs/movement.md binds the `b` action to. */
 const KEY = "ShiftLeft";
@@ -111,13 +105,12 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("releases an ink cloud on Shift", async () => {
+it("releases an ink cloud on Shift", async () => {
   startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
-  const quiet = await denAll(h);
-  await quietBoard(h);
+  await parkForager(h);
   h.debug.setInkCooldown(0);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
   const read = await captureReplay(h, "ink", async () => {
     await h.advance(REST_TICKS);

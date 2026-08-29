@@ -25,20 +25,19 @@
 // cue, and an unmuted one must. WHICH cue sounded is `audio/sonar`'s question,
 // and under this engine nobody can answer it.
 //
-// THE BOARD IS HELD STILL FOR THE COUNT. `setCreatureAI(false)` holds every
-// creature exactly where it stands and leaves the rest of the simulation running
-// — cooldowns, wavefronts and the forager's own controls all continue
-// (specs/instrumentation.md) — so the only thing in either window that can raise
-// a cue is the pulse this check emits. A Gloamfin left to its own mind pings on
-// its own cadence, and a ping in the unmuted window would let a build that never
+// THE BOARD IS EMPTY FOR THE COUNT. `poseStraightRun` takes every predator,
+// drifter and plankton off it, so the only thing in either window that can raise
+// a cue is the pulse this check emits. A Gloamfin left on the board pings on its
+// own cadence, and a ping in the unmuted window would let a build that never
 // sounded the pulse pass on somebody else's noise.
 //
 // THE AUDIO IS ARMED WITH A REAL GESTURE first. Sound starts only once the player
 // has interacted with the page (specs/progression.md), and the key used carries no
 // binding, so arming changes nothing about the game.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
+import { BRIGHT_HOLD } from "../constants";
 import { poseStraightRun } from "../fixtures";
 import {
   captureStill,
@@ -47,7 +46,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, quietBoard, requireSceneHeld, sceneGuard } from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `mute` action to. */
 const MUTE_KEY = "KeyM";
@@ -97,12 +96,12 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
+it("toggles mute on KeyM, and a muted dive sounds nothing", async () => {
   await startPlaying(h);
-  await poseStraightRun(h, RUN_TILES);
-  await quietBoard(h);
+  const run = await poseStraightRun(h, RUN_TILES);
+  await parkForager(h, run.start);
   await h.debug.setBrightness(LIT);
-  await h.debug.setCreatureAI(false);
+  await h.debug.setBrightHold(BRIGHT_HOLD);
   await h.armAudio();
   const guard = await sceneGuard(h);
 

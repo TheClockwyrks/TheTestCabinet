@@ -50,7 +50,7 @@ import { defineCues } from "./audio";
 import { createDebugApi, type FathomDebugApi } from "./debug";
 import { registerDiagnostics } from "./diagnostics";
 import { bodyTile } from "./entities";
-import { beginDive, openingState, toTitle } from "./flow";
+import { beginDive, enterScreen, openingState, toTitle } from "./flow";
 import {
   backPressed,
   confirmPressed,
@@ -160,11 +160,11 @@ function menuInput(
 function acceptTitle(state: FathomState, index: number): FathomState {
   return index === 0
     ? beginDive(state)
-    : { ...state, screen: "howto", menuIndex: 0 };
+    : enterScreen({ ...state, menuIndex: 0 }, "howto");
 }
 
 function acceptPause(state: FathomState, index: number): FathomState {
-  if (index === 0) return { ...state, screen: "playing" };
+  if (index === 0) return enterScreen(state, "playing");
   if (index === 1) return beginDive(state);
   return toTitle(state);
 }
@@ -220,7 +220,10 @@ function playInput(state: FathomState, api: UpdateApi): InputResult {
   const ink = inkPressed(api);
   const paused = pausePressed(api);
   if (paused)
-    return { state: { ...state, screen: "paused", menuIndex: 0 }, cues: [] };
+    return {
+      state: enterScreen({ ...state, menuIndex: 0 }, "paused"),
+      cues: [],
+    };
 
   const cues: CueName[] = [];
   let next = state;
@@ -283,7 +286,7 @@ function handleInput(
       // title from the game-over menu. The title menu has nowhere to go back to.
       const back = backPressed(api);
       if (back && moved.screen === "paused") {
-        return { state: { ...moved, screen: "playing" }, cues: [] };
+        return { state: enterScreen(moved, "playing"), cues: [] };
       }
       if (back && moved.screen === "gameover") {
         return { state: toTitle(moved), cues: [] };

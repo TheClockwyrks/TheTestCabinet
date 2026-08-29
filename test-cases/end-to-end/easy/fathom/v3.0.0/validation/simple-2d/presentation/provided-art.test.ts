@@ -52,7 +52,7 @@
 // metrics and clock are — the host the engine runs on — and without it the build
 // is asked to draw from art no one gave it.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -65,8 +65,8 @@ import {
   TICK_HZ,
   TILE,
 } from "../../src/constants";
-import { assertTrue } from "../assert";
-import { poseMaze } from "../fixtures";
+import { assertLength, assertTrue } from "../assert";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   callsTo,
   captureStill,
@@ -75,15 +75,7 @@ import {
   type DrawCall,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  parkForager,
-  requireKind,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /* -------------------------------------------------------------------------- */
 /* The seeded sheets                                                          */
@@ -359,31 +351,31 @@ afterEach(() => {
   restoreHost(host);
 });
 
-check("draws every element from its own seeded sheet", async () => {
+it("draws every element from its own seeded sheet", async () => {
   const seeded = await readSeededFrames();
 
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
   await parkForager(h, home);
-  // The pellet under the forager, eaten off camera with `G` put back to the
-  // zero a dive opens on, so the hunters' light ranges stay at their `G = 0`
-  // figures and none of them senses the forager across the rock.
-  await clearUnderfoot(h);
 
-  const roster = h.snapshot();
-  const lanternjaw = requireKind(roster, "lanternjaw");
-  const gloamfin = requireKind(roster, "gloamfin");
-  const flarefish = requireKind(roster, "flarefish");
-  for (const [index, letter] of [
-    [lanternjaw, "L"],
-    [gloamfin, "G"],
-    [flarefish, "X"],
-  ] as const) {
-    const pocket = board.mark(letter);
-    h.debug.setPredatorTile(index, pocket.tx, pocket.ty);
-    h.debug.setPredatorState(index, "wander");
-  }
+  // One of each kind: this point reads a sheet off every creature the case ships
+  // art for, and the board holds nothing else. The two whose behavior this point
+  // is not about are posed with their minds off, so they hold the tile they are
+  // put on because nothing is deciding for them rather than because the rock
+  // around them held. The Flarefish keeps its mind: the bloom this scene is
+  // built around is its own cadence running.
+  const lanternjaw = await spawnPredator(h, "lanternjaw", board.mark("L"), {
+    state: "wander",
+    mind: false,
+  });
+  const gloamfin = await spawnPredator(h, "gloamfin", board.mark("G"), {
+    state: "wander",
+    mind: false,
+  });
+  const flarefish = await spawnPredator(h, "flarefish", board.mark("X"), {
+    state: "wander",
+  });
   const drop = board.mark("D");
   h.debug.spawnDrifter(drop.tx, drop.ty);
   const watch = await sceneGuard(h);
@@ -429,15 +421,16 @@ check("draws every element from its own seeded sheet", async () => {
       ["Flarefish", flarefish],
     ] as const
   ).filter(([, index]) => snap.predators[index]?.lit !== true);
-  if (dark.length > 0) {
-    unmetPrecondition(
-      `the ${dark.map(([name]) => name).join(" and ")} stood inside the ` +
-        `FLARE_RADIUS (${FLARE_RADIUS}) of a burning bloom and still reported ` +
-        "lit false, so no body was drawn for this point to read a sheet off; " +
-        "what a bloom lights is flarefish/flare-reveals's verdict, not this " +
-        "one's",
-    );
-  }
+  assertLength(
+    dark,
+    0,
+    `hunters that stood inside the FLARE_RADIUS (${FLARE_RADIUS}) of a burning ` +
+      "bloom and still reported lit false, so no body was drawn for this point " +
+      "to read a sheet off" +
+      (dark.length > 0
+        ? ` — the ${dark.map(([name]) => name).join(" and ")}`
+        : ""),
+  );
 
   const at = (index: number): { x: number; y: number } => ({
     x: snap.predators[index].x,

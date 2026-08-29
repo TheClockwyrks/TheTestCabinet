@@ -18,12 +18,11 @@
 // rather than of the build. The two tiles are neighbors, so a build that leaked
 // the layout would differ between them in exactly the place this reads.
 //
-// THE CREATURES ARE HELD STILL for the one frame that is drawn. A Flarefish's
-// bloom reveals the full disc of `FLARE_RADIUS` around it, straight through rock
-// (specs/sensing.md), and this point is not about where a hunter happens to be.
-// `setCreatureAI(false)` holds every creature exactly where it stands and leaves
-// the rest of the simulation running (specs/instrumentation.md), so the fog that
-// is read is the fog the forager's own light left.
+// THE BOARD CARRIES NO CREATURE AT ALL. A Flarefish's bloom reveals the full disc
+// of `FLARE_RADIUS` around it, straight through rock (specs/sensing.md), and this
+// point is not about where a hunter happens to be. A posed fixture leaves the
+// roster empty and the maze free of drifters (`fixtures.ts`), so the fog that is
+// read is the fog the forager's own light left.
 //
 // THE PELLET UNDER THE FORAGER IS TAKEN OFF THE BOARD rather than eaten, through
 // `setPlankton`, which specs/instrumentation.md is explicit scores nothing and
@@ -31,7 +30,7 @@
 // widen the light under the reading, and which tick a build eats an underfoot
 // pellet on is not something this point has any business turning on.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import {
   assertEqual,
@@ -50,7 +49,7 @@ import {
   visibilityAt,
   type Harness,
 } from "../harness";
-import { check, parkForager } from "../scene";
+import { parkForager } from "../scene";
 import type { Tile } from "../maze";
 
 /**
@@ -86,7 +85,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Unrevealed maze is flat dark fog", async () => {
+it("Unrevealed maze is flat dark fog", async () => {
   startPlaying(h);
 
   // A four-tile corridor for the forager, ten tiles of solid rock, then a sealed
@@ -98,9 +97,7 @@ check("Unrevealed maze is flat dark fog", async () => {
   const home = board.mark("F");
   await placeForager(h, home);
   await parkForager(h, home);
-  h.debug.setPlankton(home.tx, home.ty, false);
   h.debug.setBrightness(0);
-  h.debug.setCreatureAI(false);
 
   // One tick, so there is a frame on the canvas to read.
   await h.advance(1);

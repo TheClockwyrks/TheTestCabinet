@@ -67,22 +67,40 @@ surface now carries `setMaze`, which replaces the layout with a fixture written
 in the same four characters the snapshot reports, and the checks pose the exact
 board each one is about. A posed fixture is exempt from the maze's own validity
 rules, so a check may pose a single hallway or a dead end without the build
-refusing it, and posing one returns every predator to the den with the release
-schedule suspended, so a posed scenario does not share its corridor with a
-hunter that wandered in. The structural maze points are the exception, because
+refusing it. The layout is the whole of what `setMaze` sets — the roster, the
+plankton, the fog, the bodies, the score and the screen are all left exactly as
+they stand — so a check poses each of those itself and nothing about the pose is
+implicit. The structural maze points are the exception, because
 finding the shape in the build's own board is what those points are.
 
-## A broken rule fails the point that owns it
+## Every point poses a world holding only what it is about, and always answers
 
 A scenario poses a board and then measures one thing on it, and a defect
 elsewhere in the build used to give way underneath every scenario that shared
 the board. One predator swimming through rock failed fourteen points, thirteen
-of which were about something else. Each point now takes a guard when its
-scenario is arranged, and a point whose guard gives way for a reason another
-point owns stands down through an unmet precondition instead of answering. Three
-points own those reasons and fail for them: the forager honouring rock, the
-predators honouring rock, and `setMaze` returning every predator to the den. A
-reviewer reading a red line is therefore reading the rule that broke.
+of which were about something else.
+
+The answer is not to catch the interference and stand aside, because a run
+carries a single score and one number cannot separate a point lost to a failure
+from a point nothing could decide: an undecided point lowers no rating and falls
+to a person to settle by hand, which is the expense the automation exists to
+remove. So no check in this case declines, and there is no unmet-precondition
+path left in any of the three suites.
+
+What makes that honest is how a scenario is posed. Every fixture empties the
+board — `clearPredators`, `clearDrifters`, `clearPlankton`, `clearFog` — and the
+check spawns back exactly what its own requirement concerns, at the tile it
+means, with `setPredatorMind(index, false)` for a body that has to be present but
+inert. Nothing is contained: a bystander is removed rather than walled in or
+parked in a quiet corner, because containment leans on the game's own rules
+holding and a broken build is broken in exactly those rules. Where a check cannot
+pose the world it needs, or the debug surface answers wrongly, the check FAILS,
+because that surface is part of what the case asks for and a buggy surface and
+buggy behavior are one failure from the grade's point of view.
+
+Measured against thirty-five injected defects — one broken rule at a time, under
+all three engines — nothing is left undecided anywhere, and the point that owns
+the broken rule fails in every case.
 
 ## The schedule is read from the schedule
 

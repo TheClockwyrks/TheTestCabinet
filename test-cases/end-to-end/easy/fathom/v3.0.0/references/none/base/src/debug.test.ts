@@ -12,15 +12,25 @@ import {
   GRID_ROWS,
   INK_LIFE,
   INK_RADIUS,
+  LANTERN_RANGE_BASE,
+  SCORE_PLANKTON,
   START_LIVES,
   TICK_HZ,
   TILE,
   VISION_MIN,
 } from "./constants";
 import { createDebugApi, type FathomDebugApi } from "./debug";
+import { COUNTDOWN_TIME } from "./game";
 import { harness, type Harness } from "./harness.test-support";
 import { Maze } from "./maze";
 import { tileKey } from "./sensing";
+import { CLEARED_HOLD } from "./theme";
+import type { Screen } from "./types";
+
+/** Seconds, as whole ticks. */
+function ticks(seconds: number): number {
+  return Math.round(seconds * TICK_HZ);
+}
 
 /** A fixture: one straight corridor, a sealed den, and a sealed larder. */
 function fixture(): string[] {
@@ -35,6 +45,39 @@ function fixture(): string[] {
 describe("the debug surface", () => {
   let h: Harness;
   let api: FathomDebugApi;
+
+  /**
+   * The fixture board, arranged one call at a time.
+   *
+   * The surface has no operation that arranges a whole board, so this says each
+   * thing it wants: the layout, an empty roster, a plankton on every corridor
+   * tile of it, the fog back to unrevealed, and the forager somewhere it may
+   * stand. Every scenario below that wants a hunter puts one back itself, so
+   * nothing hunts a check that is not about hunting.
+   */
+  function poseFixture(): void {
+    api.setMaze(fixture());
+    api.clearPredators();
+    api.clearDrifters();
+    api.clearPlankton();
+    for (const tile of h.state.maze.corridorTiles()) {
+      api.setPlankton(tile.col, tile.row, true);
+    }
+    api.clearFog();
+    api.setForagerTile(3, 8);
+  }
+
+  /** The depth-one roster back on the fixture board, parked in its den. */
+  function denRoster(): void {
+    api.setDepth(1);
+  }
+
+  /** Live play on the fixture board, which most scenarios below open with. */
+  function playOnFixture(): void {
+    api.reset();
+    api.setScreen("playing");
+    poseFixture();
+  }
 
   beforeEach(() => {
     h = harness();
@@ -73,8 +116,7 @@ describe("the debug surface", () => {
 
   describe("reset", () => {
     it("restores every field to its title-screen value", () => {
-      api.startDive();
-      api.beginPlay();
+      api.setScreen("playing");
       api.advance(TICK_HZ);
       api.reset();
       const s = api.snapshot();
@@ -83,8 +125,8 @@ describe("the debug surface", () => {
       expect(s.lives).toBe(START_LIVES);
       expect(s.depth).toBe(1);
       expect(s.brightness).toBe(0);
+      expect(s.brightHold).toBe(0);
       expect(s.simTime).toBe(0);
-      expect(s.creatureAI).toBe(true);
       expect(s.sonar.ready).toBe(true);
       expect(s.ink.ready).toBe(true);
       expect(s.pulses).toHaveLength(0);
@@ -95,7 +137,20 @@ describe("the debug surface", () => {
       expect(s.predators.every((p) => p.state === "den" && !p.released)).toBe(
         true,
       );
+      expect(s.predators.every((p) => p.mind)).toBe(true);
       expect(h.state.menu).toBe(0);
+    });
+
+    it("lays the maze out afresh with a plankton on every corridor tile", () => {
+      api.clearPlankton();
+      api.reset();
+      const s = api.snapshot();
+      expect(s.planktonRemaining).toBe(h.state.maze.corridorTiles().length);
+      for (let ty = 0; ty < GRID_ROWS; ty += 1) {
+        for (let tx = 0; tx < GRID_COLS; tx += 1) {
+          expect(s.plankton[ty][tx]).toBe(s.tiles[ty][tx] === "." ? "*" : "-");
+        }
+      }
     });
 
     it("re-arms manual stepping, leaving the game off the wall clock", () => {
@@ -110,11 +165,17 @@ describe("the debug surface", () => {
       expect(h.state.muted).toBe(true);
     });
 
+    it("restores a creature's mind", () => {
+      api.setScreen("playing");
+      api.setPredatorMind(0, false);
+      api.reset();
+      expect(api.snapshot().predators[0].mind).toBe(true);
+    });
+
     it("reseeds the game's randomness, so a run repeats exactly", () => {
       const run = (): number[] => {
         api.reset({ seed: 7 });
-        api.startDive();
-        api.beginPlay();
+        api.setScreen("playing");
         api.advance(TICK_HZ * 6);
         return api.snapshot().predators.flatMap((p) => [p.tx, p.ty]);
       };
@@ -124,8 +185,7 @@ describe("the debug surface", () => {
     it("takes a different seed to a different run", () => {
       const run = (seed: number): number[] => {
         api.reset({ seed });
-        api.startDive();
-        api.beginPlay();
+        api.setScreen("playing");
         api.advance(TICK_HZ * 8);
         return api.snapshot().predators.flatMap((p) => [p.tx, p.ty]);
       };
@@ -133,38 +193,93 @@ describe("the debug surface", () => {
     });
   });
 
-  describe("startDive and beginPlay", () => {
-    it("opens a dive on the countdown", () => {
-      h.state.score = 500;
-      h.state.depth = 4;
-      api.startDive();
+  describe("setScreen", () => {
+    it("sets the screen and changes nothing else", () => {
+      api.setScore(120);
+      api.setLives(1);
+      api.setDepth(3);
+      const before = api.snapshot();
+      api.setScreen("howto");
       const s = api.snapshot();
-      expect(s.screen).toBe("countdown");
-      expect(s.score).toBe(0);
-      expect(s.depth).toBe(1);
-      expect(s.lives).toBe(START_LIVES);
+      expect(s.screen).toBe("howto");
+      expect(s.score).toBe(120);
+      expect(s.lives).toBe(1);
+      expect(s.depth).toBe(3);
+      expect(s.tiles).toEqual(before.tiles);
+      expect(s.planktonRemaining).toBe(before.planktonRemaining);
     });
 
-    it("leaves the accumulated simulation time as it is", () => {
-      api.advance(60);
-      const before = api.snapshot().simTime;
-      api.startDive();
-      expect(api.snapshot().simTime).toBe(before);
-    });
-
-    it("ends the countdown at once and starts the release schedule", () => {
-      api.startDive();
-      api.beginPlay();
+    it("counts the dive countdown down and gives way to live play", () => {
+      api.setScreen("countdown");
+      api.advance(ticks(COUNTDOWN_TIME) - 2);
+      expect(api.snapshot().screen).toBe("countdown");
+      api.advance(3);
       expect(api.snapshot().screen).toBe("playing");
-      api.advance(1);
-      expect(api.snapshot().predators[0].released).toBe(true);
-      api.advance(TICK_HZ * DEN_RELEASE_GAP);
-      expect(api.snapshot().predators[1].released).toBe(true);
     });
 
-    it("applies on the countdown screen alone", () => {
-      api.beginPlay();
-      expect(api.snapshot().screen).toBe("title");
+    it("takes the release schedule's origin from live play beginning", () => {
+      api.setScreen("playing");
+      expect(api.snapshot().predators[0].released).toBe(true);
+      expect(api.snapshot().predators[1].released).toBe(false);
+      api.advance(ticks(DEN_RELEASE_GAP) + 1);
+      expect(api.snapshot().predators[1].released).toBe(true);
+      expect(api.snapshot().predators[2].released).toBe(false);
+    });
+
+    it("freezes the maze while it is paused", () => {
+      playOnFixture();
+      api.setScreen("paused");
+      h.hold("right");
+      api.advance(TICK_HZ);
+      const s = api.snapshot();
+      expect([s.forager.tx, s.forager.ty]).toEqual([3, 8]);
+      expect(s.simTime).toBeGreaterThan(0);
+    });
+
+    it("descends from the cleared interstitial on its own hold", () => {
+      api.setScreen("cleared");
+      api.advance(ticks(CLEARED_HOLD) + 1);
+      const s = api.snapshot();
+      expect(s.depth).toBe(2);
+      expect(s.screen).toBe("countdown");
+    });
+
+    it("opens a menu screen on its first item", () => {
+      h.state.menu = 2;
+      api.setScreen("gameover");
+      expect(h.state.menu).toBe(0);
+    });
+
+    it("refuses a screen the game does not carry", () => {
+      expect(() => api.setScreen("nowhere" as Screen)).toThrow(RangeError);
+    });
+  });
+
+  describe("setScore and setLives", () => {
+    it("sets the running score, which play carries on from", () => {
+      playOnFixture();
+      api.setScore(250);
+      expect(api.snapshot().score).toBe(250);
+      api.setForagerTile(10, 8);
+      api.advance(1);
+      expect(api.snapshot().score).toBe(250 + SCORE_PLANKTON);
+    });
+
+    it("sets the lives held in reserve, the one being played apart", () => {
+      playOnFixture();
+      api.setLives(0);
+      expect(api.snapshot().lives).toBe(0);
+      api.setForagerTile(20, 8);
+      api.addPredator("gloamfin", 20, 8);
+      api.advance(1);
+      expect(api.snapshot().screen).toBe("gameover");
+    });
+
+    it("refuses a figure below zero, or one that is not whole", () => {
+      expect(() => api.setScore(-1)).toThrow(RangeError);
+      expect(() => api.setScore(1.5)).toThrow(RangeError);
+      expect(() => api.setLives(-1)).toThrow(RangeError);
+      expect(() => api.setLives(1.5)).toThrow(RangeError);
     });
   });
 
@@ -203,26 +318,27 @@ describe("the debug surface", () => {
       expect(api.snapshot().predators).toHaveLength(6);
     });
 
-    it("changes neither the maze nor the screen", () => {
-      api.startDive();
-      const tiles = api.snapshot().tiles;
-      api.setDepth(3);
-      expect(api.snapshot().tiles).toEqual(tiles);
-      expect(api.snapshot().screen).toBe("countdown");
+    it("lays the roster out in the den with every release flag false", () => {
+      api.setScreen("playing");
+      api.advance(TICK_HZ);
+      api.setDepth(2);
+      for (const p of api.snapshot().predators) {
+        expect(p.state).toBe("den");
+        expect(p.released).toBe(false);
+        expect(h.state.maze.isDen(p.tx, p.ty)).toBe(true);
+      }
     });
 
-    it("leaves a posed board's release schedule suspended", () => {
-      api.startDive();
-      api.beginPlay();
-      api.setMaze(fixture());
-      api.setDepth(4);
-      api.advance(TICK_HZ * DEN_RELEASE_GAP * 3);
-      const predators = api.snapshot().predators;
-      expect(predators).toHaveLength(6);
-      for (const p of predators) {
-        expect(p.released).toBe(false);
-        expect(p.state).toBe("den");
-      }
+    it("changes neither the maze, the plankton, the fog nor the screen", () => {
+      api.setScreen("countdown");
+      api.advance(TICK_HZ);
+      const before = api.snapshot();
+      api.setDepth(3);
+      const s = api.snapshot();
+      expect(s.tiles).toEqual(before.tiles);
+      expect(s.plankton).toEqual(before.plankton);
+      expect(s.visibility).toEqual(before.visibility);
+      expect(s.screen).toBe("countdown");
     });
 
     it("refuses a depth below one, or one that is not whole", () => {
@@ -233,8 +349,8 @@ describe("the debug surface", () => {
 
   describe("setMaze", () => {
     beforeEach(() => {
-      api.startDive();
-      api.beginPlay();
+      api.reset();
+      api.setScreen("playing");
     });
 
     it("uses the posed layout exactly as given", () => {
@@ -242,32 +358,9 @@ describe("the debug surface", () => {
       expect(api.snapshot().tiles).toEqual(fixture());
     });
 
-    it("rests the forager on the first corridor tile in reading order", () => {
-      api.setMaze(fixture());
-      const s = api.snapshot();
-      expect([s.forager.tx, s.forager.ty]).toEqual([3, 8]);
-      expect(s.forager.moving).toBe(false);
-    });
-
-    it("puts a plankton on every corridor tile and clears the memory", () => {
-      api.setMaze(fixture());
-      const s = api.snapshot();
-      expect(s.planktonRemaining).toBe(33);
-      expect(s.visibility.join("")).toMatch(/^u+$/);
-    });
-
-    it("returns every predator to a den tile, unreleased and held there", () => {
-      api.setMaze(fixture());
-      api.advance(TICK_HZ * DEN_RELEASE_GAP * 3);
-      for (const p of api.snapshot().predators) {
-        expect(p.state).toBe("den");
-        expect(p.released).toBe(false);
-      }
-    });
-
     it("leaves the score, the lives, the depth and the screen alone", () => {
-      h.state.score = 120;
-      h.state.lives = 1;
+      api.setScore(120);
+      api.setLives(1);
       api.setDepth(3);
       api.setMaze(fixture());
       const s = api.snapshot();
@@ -286,6 +379,51 @@ describe("the debug surface", () => {
       expect(s.ink.cooldown).toBe(4);
     });
 
+    it("leaves the revealed-tile memory as it stands", () => {
+      api.setForagerTile(17, 15);
+      api.advance(1);
+      const before = api.snapshot().visibility;
+      expect(before.join("")).toMatch(/[rl]/);
+      api.setMaze(fixture());
+      expect(api.snapshot().visibility).toEqual(before);
+    });
+
+    it("leaves every body on the tile it stands on", () => {
+      api.setForagerTile(17, 15);
+      const predators = api.snapshot().predators.map((p) => [p.tx, p.ty]);
+      api.setMaze(fixture());
+      const s = api.snapshot();
+      expect([s.forager.tx, s.forager.ty]).toEqual([17, 15]);
+      expect(s.predators.map((p) => [p.tx, p.ty])).toEqual(predators);
+    });
+
+    it("leaves the plankton standing, less what the new rock closed over", () => {
+      const before = api.snapshot();
+      api.setMaze(fixture());
+      const s = api.snapshot();
+      let kept = 0;
+      for (let ty = 0; ty < GRID_ROWS; ty += 1) {
+        for (let tx = 0; tx < GRID_COLS; tx += 1) {
+          const open = s.tiles[ty][tx] === ".";
+          const stood = before.plankton[ty][tx] === "*";
+          expect(s.plankton[ty][tx]).toBe(open && stood ? "*" : "-");
+          if (open && stood) kept += 1;
+        }
+      }
+      expect(s.planktonRemaining).toBe(kept);
+      expect(kept).toBeGreaterThan(0);
+    });
+
+    it("holds a body the layout closed over on the tile it stands on", () => {
+      api.setForagerTile(17, 15);
+      api.setMaze(fixture());
+      h.hold("right");
+      api.advance(TICK_HZ);
+      const s = api.snapshot();
+      expect([s.forager.tx, s.forager.ty]).toEqual([17, 15]);
+      expect(s.forager.moving).toBe(false);
+    });
+
     it("runs on a fixture that breaks every rule of a laid-out maze", () => {
       const dead = board(["....", "#..#"], 5, 5);
       expect(() => api.setMaze(dead)).not.toThrow();
@@ -294,14 +432,26 @@ describe("the debug surface", () => {
       expect(api.snapshot().screen).toBe("playing");
     });
 
-    it("holds a predator out of play on a board with no den", () => {
+    it("holds a denned predator out of play on a board with no den", () => {
       api.setMaze(board([".".repeat(10)], 8, 3));
-      api.advance(TICK_HZ * DEN_RELEASE_GAP * 3);
+      api.advance(ticks(DEN_RELEASE_GAP * 3));
       for (const p of api.snapshot().predators) {
         expect(p.state).toBe("den");
-        expect(p.released).toBe(false);
         expect(p.lit).toBe(false);
       }
+      expect(api.snapshot().lives).toBe(START_LIVES);
+    });
+
+    it("admits no drifter on a board with no den gate", () => {
+      api.setMaze(board([".".repeat(30)], 8, 3));
+      api.advance(ticks(DEN_RELEASE_GAP * 3));
+      expect(api.snapshot().drifters).toHaveLength(0);
+    });
+
+    it("holds until the next reset", () => {
+      api.setMaze(fixture());
+      api.reset();
+      expect(api.snapshot().tiles).not.toEqual(fixture());
     });
 
     it("refuses a layout of the wrong size or alphabet", () => {
@@ -320,12 +470,70 @@ describe("the debug surface", () => {
     });
   });
 
-  describe("posing the forager", () => {
-    beforeEach(() => {
-      api.startDive();
-      api.beginPlay();
-      api.setMaze(fixture());
+  describe("the plankton operations", () => {
+    beforeEach(playOnFixture);
+
+    it("puts a plankton on a tile and takes one off, adjusting the count", () => {
+      const before = api.snapshot().planktonRemaining;
+      api.setPlankton(20, 8, false);
+      expect(api.snapshot().planktonRemaining).toBe(before - 1);
+      expect(api.snapshot().plankton[8][20]).toBe("-");
+      expect(h.state.plankton[tileKey(20, 8)]).toBe(false);
+      api.setPlankton(20, 8, true);
+      expect(api.snapshot().planktonRemaining).toBe(before);
+      expect(api.snapshot().plankton[8][20]).toBe("*");
     });
+
+    it("scores nothing and clears no maze when it takes one off", () => {
+      const score = api.snapshot().score;
+      for (const tile of h.state.maze.corridorTiles()) {
+        api.setPlankton(tile.col, tile.row, false);
+      }
+      api.advance(1);
+      expect(api.snapshot().score).toBe(score);
+      expect(api.snapshot().screen).toBe("playing");
+    });
+
+    it("takes every plankton off at once, leaving the maze in live play", () => {
+      api.clearPlankton();
+      expect(api.snapshot().planktonRemaining).toBe(0);
+      expect(api.snapshot().plankton.join("")).toMatch(/^-+$/);
+      api.advance(TICK_HZ);
+      expect(api.snapshot().screen).toBe("playing");
+    });
+
+    it("admits no drifter while the maze holds no plankton", () => {
+      api.clearPlankton();
+      api.clearDrifters();
+      api.advance(ticks(DEN_RELEASE_GAP * 3));
+      expect(api.snapshot().drifters).toHaveLength(0);
+    });
+
+    it("refuses a tile that is not open corridor", () => {
+      expect(() => api.setPlankton(0, 0, true)).toThrow(RangeError);
+    });
+  });
+
+  describe("clearFog", () => {
+    it("puts every tile back to unrevealed", () => {
+      playOnFixture();
+      api.advance(TICK_HZ);
+      expect(api.snapshot().visibility.join("")).toMatch(/[rl]/);
+      api.clearFog();
+      expect(api.snapshot().visibility.join("")).toMatch(/^u+$/);
+    });
+
+    it("moves nothing", () => {
+      playOnFixture();
+      api.setForagerTile(12, 8);
+      api.clearFog();
+      const s = api.snapshot();
+      expect([s.forager.tx, s.forager.ty]).toEqual([12, 8]);
+    });
+  });
+
+  describe("posing the forager", () => {
+    beforeEach(playOnFixture);
 
     it("moves it to a tile's center and leaves it at rest", () => {
       api.setForagerDir("up");
@@ -359,61 +567,144 @@ describe("the debug surface", () => {
     });
   });
 
-  describe("setBrightness", () => {
+  describe("the brightness operations", () => {
     it("recomputes everything derived from the brightness", () => {
       api.setBrightness(0);
       expect(api.snapshot().visionRadius).toBe(VISION_MIN);
-      expect(api.snapshot().predators[0].detectRange).toBe(128);
+      expect(api.snapshot().predators[0].detectRange).toBe(LANTERN_RANGE_BASE);
       api.setBrightness(1);
       expect(api.snapshot().visionRadius).toBe(160);
       expect(api.snapshot().predators[0].detectRange).toBe(320);
     });
 
-    it("arms the hold in full, so the value it poses is steady", () => {
-      api.startDive();
-      api.beginPlay();
-      api.setMaze(fixture());
+    it("leaves the hold exactly as it stands", () => {
+      api.setBrightHold(0.25);
+      api.setBrightness(0.5);
+      expect(api.snapshot().brightHold).toBe(0.25);
+    });
+
+    it("holds the brightness steady for as long as the hold has left", () => {
+      playOnFixture();
       api.setForagerTile(20, 8);
       api.setPlankton(20, 8, false);
       api.setBrightness(0.5);
-      expect(h.state.forager.hold).toBe(BRIGHT_HOLD);
-      api.advance(Math.round(BRIGHT_HOLD * TICK_HZ) - 2);
+      api.setBrightHold(BRIGHT_HOLD);
+      api.advance(ticks(BRIGHT_HOLD) - 2);
       expect(api.snapshot().brightness).toBeCloseTo(0.5, 6);
       api.advance(TICK_HZ);
       expect(api.snapshot().brightness).toBeLessThan(0.5);
     });
 
-    it("refuses a brightness outside its range", () => {
+    it("decays at once from a brightness posed with no hold left", () => {
+      playOnFixture();
+      api.setForagerTile(20, 8);
+      api.setPlankton(20, 8, false);
+      api.setBrightHold(0);
+      api.setBrightness(0.5);
+      api.advance(1);
+      expect(api.snapshot().brightness).toBeLessThan(0.5);
+    });
+
+    it("runs the hold down as the simulation advances", () => {
+      playOnFixture();
+      api.setForagerTile(20, 8);
+      api.setPlankton(20, 8, false);
+      api.setBrightHold(BRIGHT_HOLD);
+      api.advance(ticks(0.5));
+      expect(api.snapshot().brightHold).toBeCloseTo(BRIGHT_HOLD - 0.5, 6);
+    });
+
+    it("refuses a brightness or a hold outside its range", () => {
       expect(() => api.setBrightness(-0.1)).toThrow(RangeError);
       expect(() => api.setBrightness(1.1)).toThrow(RangeError);
       expect(() => api.setBrightness(Number.NaN)).toThrow(RangeError);
+      expect(() => api.setBrightHold(-0.1)).toThrow(RangeError);
+      expect(() => api.setBrightHold(BRIGHT_HOLD + 0.1)).toThrow(RangeError);
+    });
+  });
+
+  describe("clearPredators and addPredator", () => {
+    beforeEach(playOnFixture);
+
+    it("takes every predator off the board at once", () => {
+      api.clearPredators();
+      expect(api.snapshot().predators).toEqual([]);
+      api.advance(ticks(DEN_RELEASE_GAP * 3));
+      expect(api.snapshot().predators).toEqual([]);
+      expect(api.snapshot().lives).toBe(START_LIVES);
+    });
+
+    it("gives the depth its roster back on the next setDepth", () => {
+      api.clearPredators();
+      api.setDepth(1);
+      expect(api.snapshot().predators).toHaveLength(3);
+    });
+
+    it("adds one loose and patrolling at the end of the roster", () => {
+      api.clearPredators();
+      api.addPredator("flarefish", 20, 8);
+      api.addPredator("gloamfin", 24, 8);
+      const s = api.snapshot();
+      expect(s.predators.map((p) => p.kind)).toEqual(["flarefish", "gloamfin"]);
+      expect(s.predators[0]).toMatchObject({
+        x: Maze.centerX(20),
+        y: Maze.centerY(8),
+        tx: 20,
+        ty: 8,
+        dir: "up",
+        state: "wander",
+        released: true,
+        mind: true,
+      });
+    });
+
+    it("hunts, chases and makes contact exactly as a released one does", () => {
+      api.clearPredators();
+      api.setForagerTile(20, 8);
+      api.setBrightness(1);
+      api.setBrightHold(BRIGHT_HOLD);
+      api.addPredator("lanternjaw", 24, 8);
+      api.advance(ticks(0.5));
+      expect(api.snapshot().predators[0].state).toBe("chase");
+      expect(api.snapshot().predators[0].tx).toBeLessThan(24);
+    });
+
+    it("refuses a kind the game does not carry, or a tile off the corridor", () => {
+      expect(() => api.addPredator("kraken" as "gloamfin", 20, 8)).toThrow(
+        RangeError,
+      );
+      expect(() => api.addPredator("gloamfin", 17, 2)).toThrow(RangeError);
     });
   });
 
   describe("posing a predator", () => {
     beforeEach(() => {
-      api.startDive();
-      api.beginPlay();
-      api.setMaze(fixture());
+      playOnFixture();
+      denRoster();
     });
 
     it("addresses a predator by its index in the snapshot's list", () => {
-      api.setPredatorState(1, "wander");
       api.setPredatorTile(1, 20, 8);
+      api.setPredatorState(1, "wander");
       const s = api.snapshot();
       expect(s.predators[1].kind).toBe("gloamfin");
       expect([s.predators[1].tx, s.predators[1].ty]).toEqual([20, 8]);
       expect(s.predators[0].state).toBe("den");
     });
 
-    it("leaves the facing, the state and the release flag untouched", () => {
+    it("moves one without touching its facing, state, flag or mind", () => {
+      api.setPredatorTile(0, 20, 8);
       api.setPredatorState(0, "wander");
       api.setPredatorDir(0, "left");
-      api.setPredatorTile(0, 20, 8);
+      api.setPredatorReleased(0, false);
+      api.setPredatorMind(0, false);
+      api.setPredatorTile(0, 24, 8);
       const s = api.snapshot();
+      expect([s.predators[0].tx, s.predators[0].ty]).toEqual([24, 8]);
       expect(s.predators[0].dir).toBe("left");
       expect(s.predators[0].state).toBe("wander");
-      expect(s.predators[0].released).toBe(true);
+      expect(s.predators[0].released).toBe(false);
+      expect(s.predators[0].mind).toBe(false);
     });
 
     it("poses a predator loose with no fix", () => {
@@ -421,7 +712,7 @@ describe("the debug surface", () => {
       api.setPredatorState(0, "wander");
       const p = api.snapshot().predators[0];
       expect(p.state).toBe("wander");
-      expect(p.released).toBe(true);
+      expect([p.tx, p.ty]).toEqual([20, 8]);
     });
 
     it("poses a chase, which the predator then pursues on its own", () => {
@@ -434,16 +725,57 @@ describe("the debug surface", () => {
       expect(api.snapshot().predators[1].tx).toBeLessThan(before);
     });
 
-    it("returns a predator to the den and suspends its release time", () => {
-      api.setPredatorTile(0, 20, 8);
-      api.setPredatorState(0, "wander");
+    it("poses a state where the predator stands, moving it nowhere", () => {
+      api.setPredatorTile(0, 17, 2);
       api.setPredatorState(0, "den");
       const p = api.snapshot().predators[0];
       expect(p.state).toBe("den");
-      expect(p.released).toBe(false);
-      expect(h.state.maze.isDen(p.tx, p.ty)).toBe(true);
-      api.advance(TICK_HZ * DEN_RELEASE_GAP * 3);
+      expect([p.tx, p.ty]).toEqual([17, 2]);
+      expect(p.lit).toBe(false);
+    });
+
+    it("leaves the release flag alone when it poses a state", () => {
+      api.setPredatorTile(0, 20, 8);
+      api.setPredatorState(0, "wander");
+      api.setPredatorReleased(0, false);
+      api.setPredatorState(0, "chase");
       expect(api.snapshot().predators[0].released).toBe(false);
+    });
+
+    it("sets the release flag without moving it or changing its state", () => {
+      api.setPredatorTile(0, 20, 8);
+      api.setPredatorState(0, "wander");
+      api.setPredatorReleased(0, false);
+      const s = api.snapshot();
+      expect(s.predators[0].released).toBe(false);
+      expect(s.predators[0].state).toBe("wander");
+      expect([s.predators[0].tx, s.predators[0].ty]).toEqual([20, 8]);
+    });
+
+    it("holds one whose mind is off exactly where it stands", () => {
+      api.setForagerTile(3, 8);
+      api.setPredatorTile(0, 20, 8);
+      api.setPredatorState(0, "wander");
+      api.setPredatorMind(0, false);
+      api.setPredatorTile(1, 24, 8);
+      api.setPredatorState(1, "wander");
+      api.advance(TICK_HZ * 2);
+      const s = api.snapshot();
+      expect([s.predators[0].tx, s.predators[0].ty]).toEqual([20, 8]);
+      expect(s.predators[0].state).toBe("wander");
+      expect(s.predators[0].mind).toBe(false);
+      // Its neighbor's mind is untouched, so that one has patrolled away.
+      expect(s.predators[1].tx).not.toBe(24);
+    });
+
+    it("costs a life on contact with one whose mind is off", () => {
+      api.setPlankton(20, 8, false);
+      api.setPredatorTile(0, 20, 8);
+      api.setPredatorState(0, "wander");
+      api.setPredatorMind(0, false);
+      api.setForagerTile(20, 8);
+      api.advance(1);
+      expect(api.snapshot().lives).toBe(START_LIVES - 1);
     });
 
     it("refuses a tile no predator may stand on", () => {
@@ -459,57 +791,25 @@ describe("the debug surface", () => {
       expect(() => api.setPredatorTile(9, 20, 8)).toThrow(RangeError);
       expect(() => api.setPredatorDir(9, "up")).toThrow(RangeError);
       expect(() => api.setPredatorState(9, "wander")).toThrow(RangeError);
+      expect(() => api.setPredatorReleased(9, true)).toThrow(RangeError);
+      expect(() => api.setPredatorMind(9, false)).toThrow(RangeError);
     });
 
     it("refuses a state that is not posable", () => {
       expect(() => api.setPredatorState(0, "search")).toThrow(RangeError);
     });
-  });
 
-  describe("the plankton operations", () => {
-    beforeEach(() => {
-      api.startDive();
-      api.beginPlay();
-      api.setMaze(fixture());
-    });
-
-    it("puts a plankton on a tile and takes one off, adjusting the count", () => {
-      const before = api.snapshot().planktonRemaining;
-      api.setPlankton(20, 8, false);
-      expect(api.snapshot().planktonRemaining).toBe(before - 1);
-      expect(h.state.plankton[tileKey(20, 8)]).toBe(false);
-      api.setPlankton(20, 8, true);
-      expect(api.snapshot().planktonRemaining).toBe(before);
-    });
-
-    it("scores nothing and clears no maze when it takes one off", () => {
-      const score = api.snapshot().score;
-      for (const tile of h.state.maze.corridorTiles()) {
-        api.setPlankton(tile.col, tile.row, false);
-      }
-      api.advance(1);
-      expect(api.snapshot().score).toBe(score);
-      expect(api.snapshot().screen).toBe("playing");
-    });
-
-    it("takes every plankton off at once, leaving the maze in live play", () => {
-      api.clearPlankton();
-      expect(api.snapshot().planktonRemaining).toBe(0);
-      api.advance(TICK_HZ);
-      expect(api.snapshot().screen).toBe("playing");
-    });
-
-    it("refuses a tile that is not open corridor", () => {
-      expect(() => api.setPlankton(0, 0, true)).toThrow(RangeError);
+    it("refuses a state the predator's own tile does not allow", () => {
+      api.setPredatorTile(0, 20, 8);
+      expect(() => api.setPredatorState(0, "den")).toThrow(RangeError);
+      api.setPredatorTile(0, 17, 2);
+      expect(() => api.setPredatorState(0, "wander")).toThrow(RangeError);
+      expect(() => api.setPredatorState(0, "chase")).toThrow(RangeError);
     });
   });
 
-  describe("spawnDrifter", () => {
-    beforeEach(() => {
-      api.startDive();
-      api.beginPlay();
-      api.setMaze(fixture());
-    });
+  describe("the drifter operations", () => {
+    beforeEach(playOnFixture);
 
     it("adds a drifter at a tile's center, past the ordinary ceiling", () => {
       api.spawnDrifter(10, 8);
@@ -524,6 +824,7 @@ describe("the debug surface", () => {
         ty: 8,
         // Spawned out of the forager's light pocket, so its body is undrawn.
         lit: false,
+        mind: true,
       });
     });
 
@@ -534,34 +835,47 @@ describe("the debug surface", () => {
       expect(api.snapshot().drifters[0].x).not.toBe(Maze.centerX(20));
     });
 
-    it("refuses a tile that is not open corridor", () => {
-      expect(() => api.spawnDrifter(17, 2)).toThrow(RangeError);
+    it("takes every drifter off the maze at once, scoring nothing", () => {
+      api.spawnDrifter(10, 8);
+      api.spawnDrifter(12, 8);
+      const score = api.snapshot().score;
+      api.clearDrifters();
+      expect(api.snapshot().drifters).toEqual([]);
+      expect(api.snapshot().score).toBe(score);
     });
-  });
 
-  describe("setCreatureAI", () => {
-    it("holds every creature where it stands when it is off", () => {
-      api.startDive();
-      api.beginPlay();
-      api.setMaze(fixture());
+    it("holds one whose mind is off exactly where it stands", () => {
       api.setForagerTile(3, 8);
-      api.setPredatorTile(0, 20, 8);
-      api.setPredatorState(0, "wander");
+      api.spawnDrifter(20, 8);
       api.spawnDrifter(24, 8);
-      api.setCreatureAI(false);
-      expect(api.snapshot().creatureAI).toBe(false);
-      api.advance(TICK_HZ * 2);
+      api.setDrifterMind(0, false);
+      api.advance(TICK_HZ);
       const s = api.snapshot();
-      expect([s.predators[0].tx, s.predators[0].ty]).toEqual([20, 8]);
-      expect(s.predators[0].state).toBe("wander");
-      expect([s.drifters[0].tx, s.drifters[0].ty]).toEqual([24, 8]);
+      expect([s.drifters[0].tx, s.drifters[0].ty]).toEqual([20, 8]);
+      expect(s.drifters[0].mind).toBe(false);
+      expect(s.drifters[1].x).not.toBe(Maze.centerX(24));
+    });
+
+    it("still eats one whose mind is off, for the ordinary bonus", () => {
+      api.setForagerTile(20, 8);
+      api.setPlankton(20, 8, false);
+      api.spawnDrifter(20, 8);
+      api.setDrifterMind(0, false);
+      const score = api.snapshot().score;
+      api.advance(1);
+      expect(api.snapshot().drifters).toEqual([]);
+      expect(api.snapshot().score).toBeGreaterThan(score);
+    });
+
+    it("refuses a tile that is not open corridor, or an index it has not", () => {
+      expect(() => api.spawnDrifter(17, 2)).toThrow(RangeError);
+      expect(() => api.setDrifterMind(0, false)).toThrow(RangeError);
     });
   });
 
   describe("the cooldown operations", () => {
     it("poses the sonar cooldown, which then runs down as it ordinarily does", () => {
-      api.startDive();
-      api.beginPlay();
+      api.setScreen("playing");
       api.setSonarCooldown(1);
       expect(api.snapshot().sonar).toMatchObject({ ready: false, cooldown: 1 });
       api.advance(TICK_HZ / 2);
@@ -571,8 +885,7 @@ describe("the debug surface", () => {
     });
 
     it("poses ink's cooldown", () => {
-      api.startDive();
-      api.beginPlay();
+      api.setScreen("playing");
       api.setInkCooldown(2);
       expect(api.snapshot().ink).toMatchObject({ ready: false, cooldown: 2 });
       api.setInkCooldown(0);
@@ -596,12 +909,22 @@ describe("the debug surface", () => {
       });
     });
 
-    it("reports the layout and the visibility in the same shape", () => {
+    it("reports the layout, the plankton and the visibility in one shape", () => {
       const s = api.snapshot();
       expect(s.tiles).toHaveLength(GRID_ROWS);
+      expect(s.plankton).toHaveLength(GRID_ROWS);
       expect(s.visibility).toHaveLength(GRID_ROWS);
       for (const row of s.tiles) expect(row).toMatch(/^[#.gd]{36}$/);
+      for (const row of s.plankton) expect(row).toMatch(/^[*-]{36}$/);
       for (const row of s.visibility) expect(row).toMatch(/^[url]{36}$/);
+    });
+
+    it("counts the plankton the layer carries", () => {
+      playOnFixture();
+      api.setPlankton(20, 8, false);
+      const s = api.snapshot();
+      const carried = s.plankton.join("").split("*").length - 1;
+      expect(s.planktonRemaining).toBe(carried);
     });
 
     it("reports each kind's own fields and nulls the rest", () => {
@@ -623,9 +946,7 @@ describe("the debug surface", () => {
     });
 
     it("reports every wavefront in flight and every ink cloud standing", () => {
-      api.startDive();
-      api.beginPlay();
-      api.setMaze(fixture());
+      playOnFixture();
       api.setForagerTile(10, 8);
       h.press("a");
       h.press("b");
@@ -652,8 +973,7 @@ describe("the debug surface", () => {
     });
 
     it("is a pure read that changes nothing", () => {
-      api.startDive();
-      api.beginPlay();
+      api.setScreen("playing");
       api.advance(30);
       const first = JSON.stringify(api.snapshot());
       api.snapshot();
@@ -661,8 +981,7 @@ describe("the debug surface", () => {
     });
 
     it("serializes to JSON as it stands", () => {
-      api.startDive();
-      api.beginPlay();
+      api.setScreen("playing");
       api.advance(30);
       expect(() => JSON.stringify(api.snapshot())).not.toThrow();
     });

@@ -150,7 +150,7 @@ export async function sweep(
   }
 }
 
-/** The Gloamfin's own entry in a snapshot, by the index {@link requireKind} gave. */
+/** The Gloamfin's own entry in a snapshot, by the index the scenario spawned it at. */
 export function gloamfinOf(
   snap: FathomSnapshot,
   index: number,

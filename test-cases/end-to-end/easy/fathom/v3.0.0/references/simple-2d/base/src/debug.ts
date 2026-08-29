@@ -9,14 +9,24 @@
 // Every operation is written in the shape of `update`, because nothing in this
 // build holds a writable state. A POSE takes the current state and returns the
 // next one, and a caller drives it through the engine, as
-// `engine.apply((s) => engine.debug.beginPlay(s))`. A READING takes the current
-// state and returns what it read, as `debug.snapshot(engine.state)`.
+// `engine.apply((s) => engine.debug.setScreen(s, "playing"))`. A READING takes
+// the current state and returns what it read, as `debug.snapshot(engine.state)`.
 //
-// That split is the point. These calls ARRANGE THE MAZE and never fabricate an
-// outcome: they put the game into a situation, and the game's own sensing,
-// pathfinding, release schedule and contact rules run from there when the engine
-// advances a frame — through the very functions `update` calls. So a scenario
-// driven from code behaves exactly like one played by hand.
+// EACH POSE SETS ONE THING and leaves the rest of the game as it stands, so a
+// caller that wants several things arranged makes several calls, in the order it
+// wants them, and nothing it did not ask for happens. That is what lets a caller
+// stand the game in a world holding only what it is about: clear the predators,
+// clear the drifters, clear the plankton, and add back exactly the one creature
+// under test.
+//
+// The other half of that split is that a pose ARRANGES THE GAME and never
+// fabricates an outcome: it puts the game into a situation, and the game's own
+// sensing, pathfinding, release schedule and contact rules run from there when
+// the engine advances a frame — through the very functions `update` calls. So a
+// scenario driven from code behaves exactly like one played by hand. Every screen
+// here is entered through `src/flow.ts`, every predator posed through
+// `src/predators.ts`, and every drifter built by `src/simulate.ts`, so there is
+// no second path into the game.
 //
 // Everything about DRIVING A BROWSER GAME rather than about Fathom belongs to
 // the engine and is deliberately absent: there is no clock operation (the engine
@@ -28,31 +38,35 @@
 import {
   BRIGHT_HOLD,
   DEFAULT_SEED,
-  DRIFTER_INTERVAL,
   FATHOM_DEBUG_VERSION,
   LINGER_TIME,
+  PREDATOR_KINDS,
+  type PredatorKind,
 } from "./constants";
 import { DIRS, centerX, centerY, tileIndex } from "./grid";
-import {
-  beginDive,
-  beginLivePlay,
-  housePredators,
-  openingState,
-  plantPlankton,
-  restForager,
-} from "./flow";
+import { SCREENS, enterScreen, housePredators, openingState } from "./flow";
 import {
   foragerCanEnter,
+  isDen,
+  isGate,
   layoutProblem,
   loadLayout,
   predatorCanEnter,
 } from "./maze";
+import { addedPredator, chaseSpeedOf, denPose, wanderSpeed } from "./predators";
 import { bodyTile } from "./entities";
-import { chaseSpeedOf, holdInDen, wanderSpeed } from "./predators";
 import { createDrifter } from "./simulate";
 import { emptyGrid } from "./sensing";
 import { snapshotOf, type FathomSnapshot } from "./snapshot";
-import type { Dir, FathomState, MazeState, PredatorState, Tile } from "./state";
+import type {
+  Dir,
+  DrifterState,
+  FathomState,
+  MazeState,
+  PredatorState,
+  Screen,
+  Tile,
+} from "./state";
 import type { DeepReadonly } from "ts-essentials";
 
 /** The states `setPredatorState` poses. `"search"` is reached only by behavior. */
@@ -69,13 +83,22 @@ export interface FathomDebugApi {
     options?: { seed?: number },
   ): FathomState;
   snapshot(state: DeepReadonly<FathomState>): FathomSnapshot;
-  startDive(state: DeepReadonly<FathomState>): FathomState;
-  beginPlay(state: DeepReadonly<FathomState>): FathomState;
+  setScreen(state: DeepReadonly<FathomState>, s: Screen): FathomState;
+  setScore(state: DeepReadonly<FathomState>, points: number): FathomState;
+  setLives(state: DeepReadonly<FathomState>, n: number): FathomState;
   setDepth(state: DeepReadonly<FathomState>, d: number): FathomState;
   setMaze(
     state: DeepReadonly<FathomState>,
     rows: readonly string[],
   ): FathomState;
+  setPlankton(
+    state: DeepReadonly<FathomState>,
+    tx: number,
+    ty: number,
+    present: boolean,
+  ): FathomState;
+  clearPlankton(state: DeepReadonly<FathomState>): FathomState;
+  clearFog(state: DeepReadonly<FathomState>): FathomState;
   setForagerTile(
     state: DeepReadonly<FathomState>,
     tx: number,
@@ -83,6 +106,14 @@ export interface FathomDebugApi {
   ): FathomState;
   setForagerDir(state: DeepReadonly<FathomState>, dir: Dir): FathomState;
   setBrightness(state: DeepReadonly<FathomState>, g: number): FathomState;
+  setBrightHold(state: DeepReadonly<FathomState>, seconds: number): FathomState;
+  clearPredators(state: DeepReadonly<FathomState>): FathomState;
+  addPredator(
+    state: DeepReadonly<FathomState>,
+    kind: PredatorKind,
+    tx: number,
+    ty: number,
+  ): FathomState;
   setPredatorTile(
     state: DeepReadonly<FathomState>,
     index: number,
@@ -99,22 +130,27 @@ export interface FathomDebugApi {
     index: number,
     value: PosedPredatorMode,
   ): FathomState;
+  setPredatorReleased(
+    state: DeepReadonly<FathomState>,
+    index: number,
+    released: boolean,
+  ): FathomState;
+  setPredatorMind(
+    state: DeepReadonly<FathomState>,
+    index: number,
+    enabled: boolean,
+  ): FathomState;
   spawnDrifter(
     state: DeepReadonly<FathomState>,
     tx: number,
     ty: number,
   ): FathomState;
-  setCreatureAI(
+  clearDrifters(state: DeepReadonly<FathomState>): FathomState;
+  setDrifterMind(
     state: DeepReadonly<FathomState>,
+    index: number,
     enabled: boolean,
   ): FathomState;
-  setPlankton(
-    state: DeepReadonly<FathomState>,
-    tx: number,
-    ty: number,
-    present: boolean,
-  ): FathomState;
-  clearPlankton(state: DeepReadonly<FathomState>): FathomState;
   setSonarCooldown(
     state: DeepReadonly<FathomState>,
     seconds: number,
@@ -127,8 +163,9 @@ export interface FathomDebugApi {
 
 // ---- Domains -------------------------------------------------------------
 //
-// An argument outside the domain its operation states is invalid, and the call
-// fails loudly rather than guessing what was meant.
+// An argument outside the domain its operation states is invalid, and so is a
+// call whose subject is not in the condition the operation states. Either fails
+// loudly rather than guessing what was meant.
 
 function requireDir(op: string, dir: Dir): Dir {
   if (!DIRS.includes(dir)) {
@@ -146,6 +183,15 @@ function requireSeconds(op: string, seconds: number): number {
     );
   }
   return seconds;
+}
+
+function requireWhole(op: string, name: string, value: number): number {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new RangeError(
+      `Fathom: ${op} ${name} ${value} — expected a whole number, at least 0`,
+    );
+  }
+  return value;
 }
 
 function requireCorridor(
@@ -175,6 +221,19 @@ function requirePredator(
   return predators[index];
 }
 
+function requireDrifter(
+  op: string,
+  drifters: readonly DrifterState[],
+  index: number,
+): DrifterState {
+  if (!Number.isInteger(index) || index < 0 || index >= drifters.length) {
+    throw new RangeError(
+      `Fathom: ${op} index ${index} — the maze holds ${drifters.length} drifters, indexed from 0`,
+    );
+  }
+  return drifters[index];
+}
+
 /** The predators with the one at `index` replaced. */
 function withPredator(
   predators: readonly PredatorState[],
@@ -184,10 +243,13 @@ function withPredator(
   return predators.map((p, at) => (at === index ? predator : p));
 }
 
-/** A den tile to hold a predator on, or `null` on a layout with no chamber. */
-function denTile(maze: MazeState, index: number): Tile | null {
-  if (maze.denTiles.length === 0) return null;
-  return maze.denTiles[index % maze.denTiles.length];
+/** The drifters with the one at `index` replaced. */
+function withDrifter(
+  drifters: readonly DrifterState[],
+  index: number,
+  drifter: DrifterState,
+): readonly DrifterState[] {
+  return drifters.map((d, at) => (at === index ? drifter : d));
 }
 
 // ---- The surface ---------------------------------------------------------
@@ -219,29 +281,41 @@ export function createDebugApi(): FathomDebugApi {
     },
 
     /**
-     * The opening of a real dive, exactly as choosing `DIVE` from the title menu
-     * poses it. The dive runs from there: the countdown ticks down against the
-     * elapsed time and play begins through the game's own code.
+     * The screen the game is showing, and no other field.
+     *
+     * It enters the screen by the same route the game's own transitions do, so
+     * each screen's own behavior follows: the countdown counts down, the maze is
+     * frozen while paused, and the den's staggered schedule — which runs on live
+     * play alone — takes its origin from the moment `screen` becomes `"playing"`.
      */
-    startDive(state) {
-      return beginDive(state);
+    setScreen(state, s) {
+      if (!SCREENS.includes(s)) {
+        throw new RangeError(
+          `Fathom: setScreen screen ${JSON.stringify(s)} — expected one of ${SCREENS.join(", ")}`,
+        );
+      }
+      return enterScreen(state, s);
+    },
+
+    /** The running score. Play carries on from that figure. */
+    setScore(state, points) {
+      return { ...state, score: requireWhole("setScore", "points", points) };
     },
 
     /**
-     * The dive countdown ended now, so `screen` becomes `"playing"` and the den's
-     * release schedule starts from that moment. It applies on the `"countdown"`
-     * screen alone.
+     * The lives held in reserve. The life being played is not among them, so
+     * `setLives(0)` leaves one attempt running.
      */
-    beginPlay(state) {
-      if (state.screen !== "countdown") return state;
-      return beginLivePlay(state);
+    setLives(state, n) {
+      return { ...state, lives: requireWhole("setLives", "lives", n) };
     },
 
     /**
-     * The depth, from which everything depth scales recomputes: the roster is the
-     * one `specs/predators.md` gives for `d`, back in the den and unreleased, and
-     * the sonar range is the one `specs/progression.md` gives. It changes neither
-     * the maze nor the screen.
+     * The depth, from which what the specification derives from depth follows:
+     * the sonar range is the one `specs/progression.md` gives, and the roster is
+     * the one `specs/predators.md` gives for `d`, laid out in the den with every
+     * `released` flag false, exactly as a maze at that depth lays it out. It
+     * changes neither the maze, the plankton, the fog nor the screen.
      */
     setDepth(state, d) {
       if (!Number.isInteger(d) || d < 1) {
@@ -249,24 +323,15 @@ export function createDebugApi(): FathomDebugApi {
           `Fathom: setDepth depth ${d} — expected a whole number, at least 1`,
         );
       }
-      // A posed board suspends every release time for as long as it stands, and
-      // rebuilding the roster on that same board must not quietly re-arm the
-      // schedule underneath it.
-      const roster = housePredators(state.maze, d);
-      const suspended =
-        state.predators.length > 0 &&
-        state.predators.every((p) => p.releaseIn === null);
       return {
         ...state,
         depth: d,
-        predators: suspended
-          ? roster.map((p, index) => holdInDen(p, denTile(state.maze, index)))
-          : roster,
+        predators: housePredators(state.maze, d),
       };
     },
 
     /**
-     * The maze replaced by a posed fixture, used exactly as given.
+     * The maze layout replaced by a posed fixture, used exactly as given.
      *
      * The fixture is exempt from every rule in `specs/maze.md`, so only the three
      * ways a layout is not a layout are refused: the wrong size, a character
@@ -274,40 +339,57 @@ export function createDebugApi(): FathomDebugApi {
      * maze derives comes back off the new rows — the wrap tunnel, the gate and the
      * den — so a structure the fixture does not have simply takes no part.
      *
-     * The board is left as a freshly laid-out maze starts: full plankton, the fog
-     * back to unrevealed, the forager at rest on the first corridor tile in
-     * reading order, and every predator returned to a den tile with its release
-     * time SUSPENDED, so no release time arrives while the fixture stands. What
-     * the game is doing — the score, the lives, the depth, the cooldowns and the
-     * screen — is left exactly as it is.
+     * THE LAYOUT IS THE WHOLE OF WHAT IT SETS. The plankton, the fog, the roster,
+     * every body's tile and facing, the cooldowns, the score, the lives, the depth
+     * and the screen are left exactly as they stand, so a caller poses each of
+     * those itself. A body the new layout leaves on a tile closed to it holds that
+     * tile and travels nowhere, because `src/entities.ts` carries a body only
+     * along tiles open to it.
      */
     setMaze(state, rows) {
       const problem = layoutProblem(rows);
       if (problem !== null) {
         throw new RangeError(`Fathom: setMaze rows — ${problem}`);
       }
-      const maze = loadLayout(rows);
-      const { plankton, planktonRemaining } = plantPlankton(maze);
+      return { ...state, maze: loadLayout(rows) };
+    },
+
+    /**
+     * A plankton put on an open corridor tile or taken off it, with
+     * `planktonRemaining` adjusted to match. Removing one this way is not eating
+     * it, so it scores nothing and clears no maze.
+     */
+    setPlankton(state, tx, ty, present) {
+      const tile = requireCorridor("setPlankton", state.maze, tx, ty);
+      const index = tileIndex(tile.tx, tile.ty);
+      if (state.plankton[index] === present) return state;
+      const plankton = [...state.plankton];
+      plankton[index] = present;
       return {
         ...state,
-        maze,
         plankton,
-        planktonRemaining,
-        revealed: emptyGrid(),
-        lit: emptyGrid(),
-        forager: restForager(maze.start),
-        heldDirs: [],
-        // A wavefront carries the corridor flood of the board it was cast on, a
-        // drifter stands on a tile that may now be rock, and both belong to the
-        // maze rather than to the dive, so the fixture opens without them.
-        pulses: [],
-        inkClouds: [],
-        drifters: [],
-        drifterIn: DRIFTER_INTERVAL,
-        predators: state.predators.map((p, index) =>
-          holdInDen(p, denTile(maze, index)),
-        ),
+        planktonRemaining: state.planktonRemaining + (present ? 1 : -1),
       };
+    },
+
+    /**
+     * Every plankton off the maze at once. As with `setPlankton` nothing here is
+     * eaten, so it scores nothing and clears no maze: an empty maze the forager
+     * has not just eaten from stays in live play, and with no plankton left the
+     * bonus-drifter cadence admits none.
+     */
+    clearPlankton(state) {
+      return { ...state, plankton: emptyGrid(), planktonRemaining: 0 };
+    },
+
+    /**
+     * Every tile back to unrevealed, so `visibility` reports `u` everywhere until
+     * light, sonar or a flare reaches a tile again. It moves nothing and reveals
+     * nothing, so the lit layer goes with the memory: what is lit this instant is
+     * recomputed from the forager's light when the simulation next advances.
+     */
+    clearFog(state) {
+      return { ...state, revealed: emptyGrid(), lit: emptyGrid() };
     },
 
     /**
@@ -345,11 +427,10 @@ export function createDebugApi(): FathomDebugApi {
      * The brightness `G`, from which the light radius `V` and the Lanternjaw's and
      * Flarefish's detection ranges recompute.
      *
-     * It arms the `BRIGHT_HOLD` brightness hold in full, exactly as eating a
-     * plankton does, so the value it poses is steady for that full second and only
-     * then decays on the ordinary curve. Posing neither a part-spent hold nor a
-     * forager with no hold at all is what makes a measurement taken inside that
-     * window mean the same thing every time.
+     * The hold is left as it stands, so `G` decays from the posed value on the
+     * ordinary curve as soon as whatever hold was running expires. Posing a steady
+     * brightness is this call followed by `setBrightHold(BRIGHT_HOLD)`, which is
+     * the pair eating a plankton arms.
      */
     setBrightness(state, g) {
       if (!Number.isFinite(g) || g < 0 || g > 1) {
@@ -357,13 +438,62 @@ export function createDebugApi(): FathomDebugApi {
           `Fathom: setBrightness brightness ${g} — expected a number in [0, 1]`,
         );
       }
-      return { ...state, brightness: g, brightHold: BRIGHT_HOLD };
+      return { ...state, brightness: g };
+    },
+
+    /**
+     * The seconds left on the brightness hold. While it runs `G` is steady, and at
+     * `0` it decays on the ordinary curve. It changes `G` itself not at all.
+     */
+    setBrightHold(state, seconds) {
+      const held = requireSeconds("setBrightHold", seconds);
+      if (held > BRIGHT_HOLD) {
+        throw new RangeError(
+          `Fathom: setBrightHold seconds ${seconds} — expected at most ${BRIGHT_HOLD}`,
+        );
+      }
+      return { ...state, brightHold: held };
+    },
+
+    /**
+     * Every predator off the board at once.
+     *
+     * The removal catches nobody and scores nothing, and no release schedule runs,
+     * because there is no predator left to run one. The roster stays empty until a
+     * call adds one, or until `reset`, `setDepth`, or a maze laid out by a descent
+     * or a lost life gives the depth its own roster again.
+     */
+    clearPredators(state) {
+      return { ...state, predators: [] };
+    },
+
+    /**
+     * One predator of `kind` added at the end of the roster, at the center of an
+     * open corridor tile.
+     *
+     * It arrives loose and patrolling, released, its mind running and facing up,
+     * whatever roster the current depth gives, and it hunts, senses, chases and
+     * makes contact from there exactly as one released from the den does. It
+     * carries no release time, because the staggered schedule runs on the roster a
+     * maze is laid out with.
+     */
+    addPredator(state, kind, tx, ty) {
+      if (!PREDATOR_KINDS.includes(kind)) {
+        throw new RangeError(
+          `Fathom: addPredator kind ${JSON.stringify(kind)} — expected one of ${PREDATOR_KINDS.join(", ")}`,
+        );
+      }
+      const tile = requireCorridor("addPredator", state.maze, tx, ty);
+      return {
+        ...state,
+        predators: [...state.predators, addedPredator(kind, tile.tx, tile.ty)],
+      };
     },
 
     /**
      * One predator moved to the center of a tile it may stand on: an open corridor
-     * tile, a den tile, or the den gate. Its facing, its state and its `released`
-     * flag are untouched.
+     * tile, a den tile, or the den gate. Its facing, its state, its `released` flag
+     * and its mind are untouched.
      */
     setPredatorTile(state, index, tx, ty) {
       const predator = requirePredator(
@@ -404,16 +534,13 @@ export function createDebugApi(): FathomDebugApi {
     },
 
     /**
-     * One predator's state. After the pose its own mind runs whenever the
-     * simulation advances: it senses, acquires, chases and searches through the
-     * real code.
+     * One predator's state, posed where it already stands.
      *
-     * `"den"` returns it to a den tile, clears `released` and SUSPENDS its release
-     * time, so it stays in the chamber however long the scenario runs; on a board
-     * with no chamber it is held out of play, undrawn, unmoving and unable to make
-     * contact. `"wander"` and `"chase"` set it loose on the tile it stands on with
-     * its slot behind it, the first with no fix and the second fixed on the
-     * forager's current tile.
+     * It moves the predator nowhere and leaves its `released` flag and its mind as
+     * they stand, so `"den"` is posed on a den tile or the den gate and the two
+     * loose states on an open corridor tile. After the call the predator's own mind
+     * runs whenever the simulation advances: it senses, acquires, chases and
+     * searches through the real code.
      */
     setPredatorState(state, index, value) {
       const predator = requirePredator(
@@ -426,20 +553,64 @@ export function createDebugApi(): FathomDebugApi {
           `Fathom: setPredatorState value ${JSON.stringify(value)} — expected "den", "wander" or "chase"`,
         );
       }
+      requireStandingFor(value, state.maze, predator);
       return {
         ...state,
         predators: withPredator(
           state.predators,
           index,
-          posePredator(state, predator, index, value),
+          posePredator(state, predator, value),
         ),
       };
     },
 
     /**
-     * One bonus drifter at the center of an open corridor tile. It then wanders
-     * through the ordinary drifter code and is worth the ordinary bonus when
-     * eaten, whatever the cadence is doing and whatever the ceiling would allow.
+     * One predator's `released` flag, which says whether its turn in the staggered
+     * schedule has come. It moves the predator nowhere and changes its state not at
+     * all.
+     */
+    setPredatorReleased(state, index, released) {
+      const predator = requirePredator(
+        "setPredatorReleased",
+        state.predators,
+        index,
+      );
+      return {
+        ...state,
+        predators: withPredator(state.predators, index, {
+          ...predator,
+          released,
+        }),
+      };
+    },
+
+    /**
+     * One predator's own mind. With it off that predator holds exactly where it
+     * stands, keeping the tile, facing and state it was posed with: it senses
+     * nothing, decides nothing, and does not move. It is still drawn under the rule
+     * its kind and its lighting give, and contact with it still costs a life. Every
+     * other predator, and everything else in the game, carries on untouched.
+     */
+    setPredatorMind(state, index, enabled) {
+      const predator = requirePredator(
+        "setPredatorMind",
+        state.predators,
+        index,
+      );
+      return {
+        ...state,
+        predators: withPredator(state.predators, index, {
+          ...predator,
+          mind: enabled,
+        }),
+      };
+    },
+
+    /**
+     * One bonus drifter added at the end of the list, at the center of an open
+     * corridor tile. It then wanders through the ordinary drifter code and is worth
+     * the ordinary bonus when eaten, whatever the cadence is doing and whatever the
+     * ceiling would allow.
      */
     spawnDrifter(state, tx, ty) {
       const tile = requireCorridor("spawnDrifter", state.maze, tx, ty);
@@ -450,39 +621,29 @@ export function createDebugApi(): FathomDebugApi {
     },
 
     /**
-     * The creatures' own minds, where a creature is every predator and every bonus
-     * drifter. With them off each one holds exactly where it stands and everything
-     * else continues.
+     * Every bonus drifter off the maze at once. None of them is eaten, so nothing
+     * is scored, and the cadence carries on from there and tops the maze back up on
+     * its own schedule while plankton remain.
      */
-    setCreatureAI(state, enabled) {
-      return { ...state, creatureAI: enabled };
+    clearDrifters(state) {
+      return { ...state, drifters: [] };
     },
 
     /**
-     * A plankton put on an open corridor tile or taken off it, with
-     * `planktonRemaining` adjusted to match. Removing one this way is not eating
-     * it, so it scores nothing and clears no maze.
+     * One drifter's own mind. With it off that drifter holds exactly where it
+     * stands and does not move. It is still drawn, still eaten by a forager whose
+     * tile it shares, and still worth the ordinary bonus. Every other drifter, and
+     * everything else in the game, carries on untouched.
      */
-    setPlankton(state, tx, ty, present) {
-      const tile = requireCorridor("setPlankton", state.maze, tx, ty);
-      const index = tileIndex(tile.tx, tile.ty);
-      if (state.plankton[index] === present) return state;
-      const plankton = [...state.plankton];
-      plankton[index] = present;
+    setDrifterMind(state, index, enabled) {
+      const drifter = requireDrifter("setDrifterMind", state.drifters, index);
       return {
         ...state,
-        plankton,
-        planktonRemaining: state.planktonRemaining + (present ? 1 : -1),
+        drifters: withDrifter(state.drifters, index, {
+          ...drifter,
+          mind: enabled,
+        }),
       };
-    },
-
-    /**
-     * Every plankton off the maze at once. As with `setPlankton` nothing here is
-     * eaten, so an empty maze the forager has not just eaten from stays in live
-     * play.
-     */
-    clearPlankton(state) {
-      return { ...state, plankton: emptyGrid(), planktonRemaining: 0 };
     },
 
     /** The seconds left on the sonar pulse's cooldown, which runs down from there. */
@@ -503,22 +664,37 @@ export function createDebugApi(): FathomDebugApi {
   };
 }
 
+/** The tiles each posed state is valid on (`specs/instrumentation.md`). */
+function requireStandingFor(
+  value: PosedPredatorMode,
+  maze: MazeState,
+  predator: PredatorState,
+): void {
+  const at = bodyTile(predator);
+  const inDen = isDen(maze, at.tx, at.ty) || isGate(maze, at.tx, at.ty);
+  if (value === "den" && !inDen) {
+    throw new RangeError(
+      `Fathom: setPredatorState "den" — the predator stands on (${at.tx}, ${at.ty}), which is neither a den tile nor the den gate`,
+    );
+  }
+  if (value !== "den" && !foragerCanEnter(maze, at.tx, at.ty)) {
+    throw new RangeError(
+      `Fathom: setPredatorState ${JSON.stringify(value)} — the predator stands on (${at.tx}, ${at.ty}), which is not an open corridor tile`,
+    );
+  }
+}
+
 /** One predator posed into `value`, with everything that state implies. */
 function posePredator(
   state: DeepReadonly<FathomState>,
   predator: PredatorState,
-  index: number,
   value: PosedPredatorMode,
 ): PredatorState {
-  if (value === "den") {
-    return holdInDen(predator, denTile(state.maze, index));
-  }
+  if (value === "den") return denPose(predator);
 
   const loose: PredatorState = {
     ...predator,
     mode: "wander",
-    released: true,
-    releaseIn: 0,
     fix: null,
     linger: 0,
     // A pose is an arrangement rather than an acquisition, so it fires no alert
@@ -528,6 +704,7 @@ function posePredator(
     searchIn: 0,
     searchPingIn: null,
     flarePhase: null,
+    heading: null,
     speed: wanderSpeed(predator.kind),
   };
   if (value === "wander") return loose;

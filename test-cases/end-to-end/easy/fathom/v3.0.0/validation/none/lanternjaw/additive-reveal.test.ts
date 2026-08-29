@@ -14,11 +14,11 @@
 //
 // AND THE HUNTER IS HELD STILL. 128 units is inside the 320 a Lanternjaw reaches at
 // `G = 1`, so a lit hunter would take a fix and charge, and "found in the same
-// place" would be measuring a moving creature. `setCreatureAI(false)` holds it
-// exactly where it stands and leaves the rest of the simulation running
-// (`specs/instrumentation.md`), so the two frames differ in the light and nothing
-// else. What the hunter does with a fix is `lanternjaw/light-range`'s and
-// `lanternjaw/wander-disguise`'s.
+// place" would be measuring a moving creature. `setPredatorMind(index, false)`
+// holds it exactly where it stands while it is "still drawn under the rule its
+// kind and its lighting give" (`specs/instrumentation.md`), so the two frames
+// differ in the light and nothing else. What the hunter does with a fix is
+// `lanternjaw/light-range`'s and `lanternjaw/wander-disguise`'s.
 //
 // WHAT "CLEAR OF THE MOTE" MEANS, AND WHAT IT CAN SAY. The surroundings are read
 // on a ring further out than the mote's own profile reaches, so the two readings
@@ -46,16 +46,17 @@
 // gets besides is the recorded clip, which shows the body arriving around an
 // unmoved bulb far better than any pixel bound could state it.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
+  assertGreaterThanOrEqual,
   assertLessThan,
   assertLessThanOrEqual,
   assertNotNull,
 } from "../assert";
 import { VISION_GAIN, VISION_MIN } from "../constants";
-import { poseSightLine, predatorIndex } from "../fixtures";
+import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   MOTE_RADII,
   captureReplay,
@@ -69,15 +70,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { moteCenter } from "./motes";
 
 /**
@@ -138,26 +131,18 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("Lighting it leaves the bulb where it was", async () => {
+it("Lighting it leaves the bulb where it was", async () => {
   await startPlaying(h);
   const line = await poseSightLine(h, GAP_TILES, {
     lead: LEAD_TILES,
     tail: TAIL_TILES,
   });
-  const index = predatorIndex(await h.snapshot(), "lanternjaw");
-  if (index === null) {
-    unmetPrecondition(
-      "the roster carries no Lanternjaw, so this scenario has nothing to pose — " +
-        "what the roster holds is the progression checks' verdict, not this one's",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  await h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-  await h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "lanternjaw", line.pred, {
+    state: "wander",
+    mind: false,
+  });
   await parkForager(h, line.forager);
-  await clearUnderfoot(h);
-  await h.debug.setCreatureAI(false);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const read = await captureReplay(h, "reveal", async () => {
     await h.advance(SETTLE_TICKS);
@@ -221,19 +206,16 @@ check("Lighting it leaves the bulb where it was", async () => {
     false,
     "whether the Lanternjaw's body is drawn before the light reaches it",
   );
-  // And the light the BUILD reports has to have reached it, so a build whose
-  // radius does not widen with `G` is reported by the point that owns the radius
-  // rather than by this one: with the pocket still short of the creature the
-  // light never fell on it, and there is no reveal here to read.
-  if (read.shown.visionRadius < read.gap) {
-    unmetPrecondition(
-      `the build's own light radius stood at ${read.shown.visionRadius} at ` +
-        `G = 1 while the Lanternjaw stood ${read.gap.toFixed(1)} units away, so ` +
-        `the light never reached it and there was no reveal to read — the ` +
-        `radius V grows with G is brightness/widens-vision's verdict, not ` +
-        `this one's`,
-    );
-  }
+  // And the light the BUILD reports has to have reached it: with the pocket
+  // still short of the creature the light never fell on it, and there is no
+  // reveal here to read.
+  assertGreaterThanOrEqual(
+    read.shown.visionRadius,
+    read.gap,
+    `the light radius the build reported at G = 1, against the ` +
+      `${read.gap.toFixed(1)} units the Lanternjaw stood away — the light has ` +
+      "to reach it for there to be a reveal at all",
+  );
   assertEqual(
     read.shown.predators[index].lit,
     true,

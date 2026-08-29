@@ -18,8 +18,8 @@
 // the forager "on the first corridor tile in reading order, ... a defined resting
 // place rather than a meaningful one" (specs/instrumentation.md). So the forager's
 // tile at the opening of the dive is taken as the start tile, and the forager is
-// TRAVELLED OFF IT before the catch, so the reading is a real question rather than
-// a forager that never moved.
+// MOVED OFF IT before the catch, so the reading is a real question rather than a
+// forager that never left.
 //
 // EVERY CLAUSE IS POSED AWAY FROM ITS RESET VALUE FIRST, where the surface can
 // pose it: brightness to `1`, both cooldowns part-spent, a bonus drifter on the
@@ -31,27 +31,38 @@
 // NO SCENE GUARD. The guard's first finding is a screen that changed under the
 // measurement, which here is the subject.
 
-import { afterEach, beforeEach } from "vitest";
-import { INK_COOLDOWN, SONAR_COOLDOWN } from "../../src/constants";
-import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD, INK_COOLDOWN, SONAR_COOLDOWN } from "../../src/constants";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  fail,
+} from "../assert";
 import {
   captureReplay,
   centerOf,
   createHarness,
-  DIR_KEY,
   startPlaying,
   ticksFor,
   type Harness,
 } from "../harness";
-import { corridorDirs, corridorTiles, type Tile } from "../maze";
-import { check, denAll, failPrecondition, requireSwim } from "../scene";
+import { corridorDirs, corridorTiles, type Dir, type Tile } from "../maze";
+import {} from "../scene";
+
+/** One step each way, for moving the forager off the tile it opened on. */
+const STEP: Readonly<Record<Dir, { dx: number; dy: number }>> = {
+  up: { dx: 0, dy: -1 },
+  down: { dx: 0, dy: 1 },
+  left: { dx: -1, dy: 0 },
+  right: { dx: 1, dy: 0 },
+};
 
 /**
- * Ticks the forager travels away from its start tile before the catch.
+ * Ticks the forager stands off its start tile before the catch.
  *
- * Half a second at `FORAGER_SPEED` (128 units per second, specs/movement.md) is
- * two tiles, so the forager is unambiguously off the tile it opened on and the
- * reset has somewhere to bring it back from.
+ * Half a second, which is long enough that a build carrying the forager on under
+ * its own heading has settled wherever it was going before the catch is posed.
  */
 const AWAY_TICKS = ticksFor(0.5);
 
@@ -85,43 +96,38 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Contact costs a life and sets the board up again", async () => {
+it("Contact costs a life and sets the board up again", async () => {
   const opened = startPlaying(h);
   const startTile: Tile = { tx: opened.forager.tx, ty: opened.forager.ty };
   if (opened.predators.length === 0) {
-    failPrecondition(
+    fail(
       "the roster to carry a predator for the forager to make contact with; " +
         "specs/predators.md gives depth 1 one of each kind",
-      "scoring/depth-scaling",
       opened.predators.length,
     );
   }
-  await denAll(h);
 
-  // Off the start tile, under the game's own movement code.
+  // Off the start tile, so the reading below is a real question rather than a
+  // forager that never left. It is CARRIED off it rather than driven: what this
+  // point reads is the arrangement a catch sets up, and whether a held action
+  // moves the forager is the movement points' subject.
   const leaving = corridorDirs(opened, startTile.tx, startTile.ty)[0];
   if (leaving === undefined) {
-    failPrecondition(
+    fail(
       `the forager's start tile (${startTile.tx}, ${startTile.ty}) to have a ` +
         "corridor neighbour, so it can be moved off the tile the reset must " +
         "bring it back to; specs/maze.md fixes one connected region of corridor",
-      "the maze points",
       "no corridor neighbour",
     );
   }
-  const parked = h.snapshot();
-  h.hold(DIR_KEY[leaving]);
+  const step = STEP[leaving];
+  h.debug.setForagerTile(startTile.tx + step.dx, startTile.ty + step.dy);
   await h.advance(AWAY_TICKS);
-  h.release(DIR_KEY[leaving]);
-  requireSwim(
-    parked.forager,
-    h.snapshot().forager,
-    "leave the start tile the reset has to bring it back to",
-  );
 
   // Every clause the surface can pose is posed away from the value the reset must
   // restore, so each reading below is a question rather than a formality.
   h.debug.setBrightness(1);
+  h.debug.setBrightHold(BRIGHT_HOLD);
   h.debug.setSonarCooldown(SONAR_COOLDOWN);
   h.debug.setInkCooldown(INK_COOLDOWN);
   const board = h.snapshot();

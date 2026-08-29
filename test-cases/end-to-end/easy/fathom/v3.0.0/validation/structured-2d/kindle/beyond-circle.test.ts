@@ -25,18 +25,20 @@
 // the near reading takes the brightest RED-LEANING one, which is the item's own
 // hue test.
 //
-// THE DRIFTER IS HELD STILL by `setCreatureAI(false)`, which holds every creature
-// exactly where it stands and leaves the rest of the simulation running
+// THE DRIFTER IS HELD STILL by `setDrifterMind(0, false)`, which holds that
+// drifter exactly where it stands and leaves everything else in the game running
 // (specs/instrumentation.md), so it is read where the snapshot says it is and the
-// forager is what moves between the two stations.
+// forager is what moves between the two stations. It is the only creature on the
+// board.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
   assertNotNull,
+  fail,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -52,15 +54,7 @@ import {
   startPlaying,
   visibilityAt,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { FOG_MATCH, windowRadius } from "./circle";
 
 /**
@@ -97,20 +91,18 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The amber lights are clipped to the circle", async () => {
+it("The amber lights are clipped to the circle", async () => {
   startPlaying(h);
   const board = await poseMaze(h, ART);
   const away = board.mark("A");
   const near = board.mark("N");
   const berth = board.mark("D");
   const unlit = board.mark("S");
-  const quiet = await denAll(h);
 
   await parkForager(h, away);
-  await clearUnderfoot(h);
   h.debug.spawnDrifter(berth.tx, berth.ty);
-  h.debug.setCreatureAI(false);
-  const guard = await sceneGuard(h, quiet);
+  h.debug.setDrifterMind(0, false);
+  const guard = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
   const beyond = h.snapshot();
@@ -151,7 +143,6 @@ check("The amber lights are clipped to the circle", async () => {
   // The same drifter, taken inside the circle by moving the forager to the near
   // station — still outside the light pocket, so the circle is what draws it.
   await parkForager(h, near);
-  await clearUnderfoot(h);
   await h.advance(SETTLE_TICKS);
   const inside = h.snapshot();
   const close = inside.drifters[0];
@@ -162,10 +153,9 @@ check("The amber lights are clipped to the circle", async () => {
   const radius = windowRadius(inside);
   if (nearGap >= radius) {
     // The band this half lives in has to exist on this build.
-    failPrecondition(
+    fail(
       `the vision circle to reach past the ${NEAR_TILES} tiles the near station ` +
         "stands from the drifter, which specs/sensing.md's R at G = 0 does",
-      "kindle/grows-with-eating",
       `R was reported as ${radius.toFixed(1)} with the drifter ` +
         `${nearGap.toFixed(1)} units off`,
     );

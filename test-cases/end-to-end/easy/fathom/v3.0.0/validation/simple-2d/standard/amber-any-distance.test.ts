@@ -27,21 +27,23 @@
 // than that is drawn. The fog it is measured against is sampled from a sealed
 // pocket of this same fixture, so the reading holds whatever palette a build chose.
 //
-// THE DRIFTER IS HELD STILL. `setCreatureAI(false)` holds every creature exactly
-// where it stands and leaves the rest of the simulation running
-// (specs/instrumentation.md), so the mote is read where the snapshot says it is
-// and this point turns on the drawing rather than on a wander it does not claim.
+// THE BOARD HOLDS ONE DRIFTER, HELD STILL. `poseMaze` clears the roster, the
+// drifters and the plankton, so the only amber light anywhere is the drifter this
+// check spawns, and `setDrifterMind(0, false)` holds it exactly where it stands
+// while the rest of the simulation runs (specs/instrumentation.md) — so the mote
+// is read where the snapshot says it is and this point turns on the drawing rather
+// than on a wander it does not claim.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { VISION_GAIN, VISION_MIN } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertNotNull } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
-  MOTE_SEARCH,
   brightestWarmNear,
   captureStill,
   colorDistance,
   createHarness,
+  MOTE_SEARCH,
   sampleTile,
   startPlaying,
   visibilityOf,
@@ -49,9 +51,6 @@ import {
   type NearSample,
 } from "../harness";
 import {
-  check,
-  clearUnderfoot,
-  denAll,
   fromForager,
   parkForager,
   requireSceneHeld,
@@ -107,21 +106,19 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("The amber lights show at any distance", async () => {
+it("The amber lights show at any distance", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
   const berth = board.mark("D");
   const unlit = board.mark("S");
-  const quiet = await denAll(h);
 
   await parkForager(h, home);
-  await clearUnderfoot(h);
   await h.debug.spawnDrifter(berth.tx, berth.ty);
   // Held exactly where it was posed, so the mote is read at the position the
   // snapshot reports and nothing wanders between the two.
-  await h.debug.setCreatureAI(false);
-  const watch = await sceneGuard(h, quiet);
+  await h.debug.setDrifterMind(0, false);
+  const watch = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
   const after = h.snapshot();

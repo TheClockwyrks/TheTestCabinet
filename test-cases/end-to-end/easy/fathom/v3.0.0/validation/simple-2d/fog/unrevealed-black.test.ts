@@ -22,7 +22,7 @@
 // review item's own: no brighter than a tenth of full brightness, and the two
 // samples within 25 of the 441 an RGB distance can reach.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseDarkPatch } from "../fixtures";
 import {
@@ -35,13 +35,7 @@ import {
   visibilityOf,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The review item's ceiling: a tenth of full brightness, per channel. */
 const DARK_MAX = 0.1 * 255;
@@ -70,15 +64,10 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Unrevealed maze is flat dark fog", async () => {
+it("Unrevealed maze is flat dark fog", async () => {
   await startPlaying(h);
   const patch = await poseDarkPatch(h, { gap: SEALED_GAP });
-  const quiet = await denAll(h);
-  // The pellet the pose left under the forager is eaten off camera and the
-  // brightness put back to zero, so the light pocket around the forager is the
-  // one a dive opens with rather than one this scenario's setup widened.
-  await clearUnderfoot(h);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
   // One frame, so there is a painted picture to read. The fogged pocket is
   // sealed and eight tiles of rock away, so nothing about this frame reaches it.

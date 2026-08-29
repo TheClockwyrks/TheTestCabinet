@@ -8,8 +8,8 @@
 // worth exactly `510`, and the two halves are read as one sum because they are one
 // event.
 //
-// THE MAZE IS EMPTIED FIRST, DELIBERATELY. `clearPlankton`
-// (specs/instrumentation.md) "takes every plankton off the maze at once", and
+// THE MAZE OPENS EMPTY, DELIBERATELY. `poseMaze` poses its board on a world
+// `clearPlankton` emptied (specs/instrumentation.md), and
 // "nothing here is eaten, so it scores nothing and clears no maze: the maze is
 // cleared by the forager eating a plankton when none remain after it, and an empty
 // maze the forager has not just eaten from stays in live play". One pellet is then
@@ -24,7 +24,7 @@
 // reaching the forager, is asserted directly instead: every predator is posed into
 // the sealed den, and the lives are read either side of the bite.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { SCORE_CLEAR, SCORE_PLANKTON } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -32,11 +32,11 @@ import {
   captureReplay,
   createHarness,
   DIR_KEY,
+  requireForagerMotion,
   startPlaying,
   ticks,
   type Harness,
 } from "../harness";
-import { check, denAll, requireSwim } from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager on the first and the
@@ -78,7 +78,7 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Clearing a maze scores SCORE_CLEAR", async () => {
+it("Clearing a maze scores SCORE_CLEAR", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const start = board.mark("S");
@@ -86,9 +86,7 @@ check("Clearing a maze scores SCORE_CLEAR", async () => {
   h.debug.setForagerTile(start.tx, start.ty);
   h.debug.setForagerDir("right");
   // One plankton on the whole board, at the far end of the forager's run.
-  h.debug.clearPlankton();
   h.debug.setPlankton(target.tx, target.ty, true);
-  await denAll(h);
 
   const bite = await captureReplay(h, "clear", async () => {
     const before = h.snapshot();
@@ -105,9 +103,9 @@ check("Clearing a maze scores SCORE_CLEAR", async () => {
   });
 
   if (!bite.hit) {
-    requireSwim(
-      bite.before.forager,
-      bite.after.forager,
+    requireForagerMotion(
+      bite.before,
+      bite.after,
       "reach the maze's last plankton",
     );
   }

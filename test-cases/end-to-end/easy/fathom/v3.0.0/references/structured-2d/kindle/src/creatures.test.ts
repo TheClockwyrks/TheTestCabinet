@@ -60,7 +60,8 @@ describe("the forager's brightness", () => {
 
   it("holds steady for the whole hold, then halves on its half-life", () => {
     const forager = new Forager();
-    forager.shine(1);
+    forager.brightness = 1;
+    forager.hold = BRIGHT_HOLD;
     const ticks = Math.round(BRIGHT_HOLD / TICK_DT);
     for (let tick = 0; tick < ticks; tick++) forager.advanceLight(TICK_DT);
     expect(forager.brightness).toBe(1);
@@ -69,11 +70,12 @@ describe("the forager's brightness", () => {
     expect(forager.brightness).toBeCloseTo(0.5, 3);
   });
 
-  it("arms the hold in full every time it is posed", () => {
+  it("arms the hold in full every time it eats", () => {
     const forager = new Forager();
-    forager.shine(1);
+    forager.graze();
     for (let tick = 0; tick < 60; tick++) forager.advanceLight(TICK_DT);
-    forager.shine(0.5);
+    expect(forager.hold).toBeLessThan(BRIGHT_HOLD);
+    forager.graze();
     expect(forager.hold).toBe(BRIGHT_HOLD);
   });
 });
@@ -193,10 +195,9 @@ describe("returning a predator to the den", () => {
     predator.alert = 1;
     predator.mark = 1;
     predator.flaring = true;
-    predator.returnToDen({ tx: 17, ty: 8 }, true);
+    predator.returnToDen({ tx: 17, ty: 8 });
     expect(predator.state).toBe("den");
     expect(predator.released).toBe(false);
-    expect(predator.heldInDen).toBe(true);
     expect(predator.fix).toBeNull();
     expect(predator.alert).toBe(0);
     expect(predator.mark).toBe(0);

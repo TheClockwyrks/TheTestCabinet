@@ -42,11 +42,11 @@
 // waits fourteen tiles off, past the bloom's own reach, so the flare cannot lock
 // onto it and cut itself short.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertTrue } from "../assert";
+import { assertLength, assertTrue } from "../assert";
 import {
   FLARE_BLOOM,
   FLARE_CHARGE,
@@ -57,7 +57,7 @@ import {
   TICK_HZ,
   TILE,
 } from "../constants";
-import { placePredator, poseMaze, predatorIndex } from "../fixtures";
+import { poseMaze, spawnDrifter, spawnPredator } from "../fixtures";
 import {
   REPLAY_BACKGROUND,
   captureStill,
@@ -65,14 +65,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /* -------------------------------------------------------------------------- */
 /* The seeded sheets                                                          */
@@ -353,44 +346,38 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("draws every element from its own seeded sheet", async () => {
+it("draws every element from its own seeded sheet", async () => {
   const seeded = await readSeededFrames();
 
   await startPlaying(h);
   const board = await poseMaze(h, ART);
   const home = board.mark("F");
   await parkForager(h, home);
-  // The pellet under the forager, eaten off camera with `G` put back to the zero
-  // a dive opens on, so the hunters' light ranges stay at their `G = 0` figures
-  // and none of them senses the forager across the rock.
-  await clearUnderfoot(h);
 
-  const roster = await h.snapshot();
-  const lanternjaw = predatorIndex(roster, "lanternjaw");
-  const gloamfin = predatorIndex(roster, "gloamfin");
-  const flarefish = predatorIndex(roster, "flarefish");
-  assertTrue(
-    lanternjaw !== null && gloamfin !== null && flarefish !== null,
-    "a depth-1 roster of one Lanternjaw, one Gloamfin and one Flarefish, which " +
-      "specs/predators.md fixes",
-  );
-  await placePredator(h, lanternjaw as number, board.mark("L"), {
+  // One of each hunter: this point reads the sheet every element is drawn from,
+  // so all three kinds have to be on the canvas at once. The two whose behavior
+  // this point is not about are posed with their minds off, so they hold the
+  // tile they are put on because nothing is deciding for them — not because the
+  // rock around them held. The Flarefish keeps its mind, because the bloom this
+  // scene is built around is its own cadence running.
+  const lanternjaw = await spawnPredator(h, "lanternjaw", board.mark("L"), {
+    state: "wander",
+    mind: false,
+  });
+  const gloamfin = await spawnPredator(h, "gloamfin", board.mark("G"), {
+    state: "wander",
+    mind: false,
+  });
+  const flarefish = await spawnPredator(h, "flarefish", board.mark("X"), {
     state: "wander",
   });
-  await placePredator(h, gloamfin as number, board.mark("G"), {
-    state: "wander",
-  });
-  await placePredator(h, flarefish as number, board.mark("X"), {
-    state: "wander",
-  });
-  const drop = board.mark("D");
-  await h.debug.spawnDrifter(drop.tx, drop.ty);
+  await spawnDrifter(h, board.mark("D"));
   const guard = await sceneGuard(h);
 
   // Wait for the bloom on the build's own cadence, off camera, under a hard
   // ceiling. `skipUntil` runs the same real ticks without closing a frame.
   const bloom = await h.skipUntil(
-    (snap) => snap.predators[flarefish as number]?.flaring === true,
+    (snap) => snap.predators[flarefish]?.flaring === true,
     { maxTicks: BLOOM_DEADLINE_TICKS, poll: BLOOM_POLL_TICKS },
   );
   assertTrue(
@@ -402,9 +389,9 @@ check("draws every element from its own seeded sheet", async () => {
   );
 
   // Read in "chase", whose frames no other sheet carries, so on a build that
-  // draws what `specs/assets.md` asks the match below is unambiguous. It is boxed
-  // in by rock, so the pose moves it nowhere.
-  await h.debug.setPredatorState(lanternjaw as number, "chase");
+  // draws what `specs/assets.md` asks the match below is unambiguous. Its mind is
+  // off, so the pose moves it nowhere.
+  await h.debug.setPredatorState(lanternjaw, "chase");
 
   const blits = await blitsOfOneTick(h, seeded);
   const snap = await h.snapshot();
@@ -419,24 +406,21 @@ check("draws every element from its own seeded sheet", async () => {
     y: snap.predators[index].y,
   });
 
-  // THE BLOOM HAS TO HAVE DRAWN THEM, and that is a precondition rather than
-  // this point's verdict. `specs/predators.md` draws a predator's body "only
-  // while it is lit this instant", and the whole scene is lit by the one bloom,
-  // so on a build whose disc lights nothing the hunters are not on the canvas to
-  // be read at all — which says nothing about the sheets they would have been
-  // drawn from. That the bloom lights every tile of its disc is
-  // `flarefish/flare-reveals`'s verdict.
-  const unlit = [lanternjaw as number, gloamfin as number, flarefish as number]
+  // THE BLOOM HAS TO HAVE DRAWN THEM. `specs/predators.md` draws a predator's
+  // body "only while it is lit this instant", and the whole scene is lit by the
+  // one bloom, so a build whose disc lights nothing puts no body on the canvas
+  // and there is no sheet for this point to read.
+  const unlit = [lanternjaw, gloamfin, flarefish]
     .filter((index) => snap.predators[index]?.lit !== true)
     .map((index) => snap.predators[index].kind);
-  if (unlit.length > 0) {
-    unmetPrecondition(
-      `the ${unlit.join(" and ")} stood inside the burning bloom and reported ` +
-        `\`lit\` false, so no body was drawn for this point to read a sheet ` +
-        `off — that a bloom lights every tile of its disc is ` +
-        `flarefish/flare-reveals's verdict, not this one's`,
-    );
-  }
+  assertLength(
+    unlit,
+    0,
+    "hunters standing inside the burning bloom that reported `lit` false — a " +
+      "bloom lights every tile of its disc (specs/predators/flarefish.md), and " +
+      "a drawn body is what this point reads a sheet off" +
+      (unlit.length > 0 ? ` — the ${unlit.join(" and ")}` : ""),
+  );
 
   assertTrue(
     drawnFrom(blits, "glimmerfin", snap.forager).length > 0,
@@ -444,27 +428,27 @@ check("draws every element from its own seeded sheet", async () => {
       `32 x 32 frame of assets/glimmerfin/ (specs/assets.md)`,
   );
   assertTrue(
-    drawnFrom(blits, "lanternjaw", at(lanternjaw as number)).length > 0,
-    `the Lanternjaw, at (${at(lanternjaw as number).x}, ` +
-      `${at(lanternjaw as number).y}), drawn from a 32 x 32 frame of ` +
+    drawnFrom(blits, "lanternjaw", at(lanternjaw)).length > 0,
+    `the Lanternjaw, at (${at(lanternjaw).x}, ` +
+      `${at(lanternjaw).y}), drawn from a 32 x 32 frame of ` +
       `assets/lanternjaw/ (specs/assets.md)`,
   );
   assertTrue(
-    drawnFrom(blits, "gloamfin", at(gloamfin as number)).length > 0,
-    `the Gloamfin, at (${at(gloamfin as number).x}, ` +
-      `${at(gloamfin as number).y}), drawn from a 32 x 32 frame of ` +
+    drawnFrom(blits, "gloamfin", at(gloamfin)).length > 0,
+    `the Gloamfin, at (${at(gloamfin).x}, ` +
+      `${at(gloamfin).y}), drawn from a 32 x 32 frame of ` +
       `assets/gloamfin/ (specs/assets.md)`,
   );
   assertTrue(
-    drawnFrom(blits, "flarefish", at(flarefish as number)).length > 0,
-    `the Flarefish, at (${at(flarefish as number).x}, ` +
-      `${at(flarefish as number).y}), drawn from a 32 x 32 frame of ` +
+    drawnFrom(blits, "flarefish", at(flarefish)).length > 0,
+    `the Flarefish, at (${at(flarefish).x}, ` +
+      `${at(flarefish).y}), drawn from a 32 x 32 frame of ` +
       `assets/flarefish/ (specs/assets.md)`,
   );
   assertTrue(
-    drawnFrom(blits, "flare-bloom", at(flarefish as number)).length > 0,
+    drawnFrom(blits, "flare-bloom", at(flarefish)).length > 0,
     `the burning flare, centered on the Flarefish at ` +
-      `(${at(flarefish as number).x}, ${at(flarefish as number).y}), drawn from ` +
+      `(${at(flarefish).x}, ${at(flarefish).y}), drawn from ` +
       `a 128 x 128 frame of assets/flare-bloom/ (specs/assets.md); its lit ` +
       `radius is FLARE_RADIUS (${FLARE_RADIUS})`,
   );

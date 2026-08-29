@@ -42,6 +42,7 @@
 
 import {
   BINDINGS,
+  BRIGHT_HOLD,
   SONAR_RANGE_BASE,
   SONAR_WAVE_SPEED,
   TICK_HZ,
@@ -56,8 +57,9 @@ import {
   type MazeView,
   type Tile,
 } from "../maze";
-import { denAll, standDown } from "../scene";
 import type { FathomSnapshot } from "../surface";
+import { fail } from "../assert";
+import {} from "../scene";
 
 /**
  * The seeds the eight structural points measure a layout at.
@@ -108,51 +110,45 @@ export function witness<M extends Measured>(measured: readonly M[]): M {
 }
 
 /**
- * Refuse to grade a point whose layout carries no corridor tile at all.
+ * Every layout carries corridor at all, or the point calling this FAILS.
  *
- * Through `scene.ts`'s {@link standDown}, so the check DECLINES, naming the point
- * that owes the verdict rather than recording one of its own.
+ * WHY IT IS ASSERTED RATHER THAN ASSUMED. Four of these points count something
+ * that must come to zero — `2 x 2` blocks, mirror mismatches, dead ends,
+ * unreachable corridor — and every one of those counts is zero on a board of solid
+ * rock. A build that laid out no maze would otherwise collect four passes it did
+ * not earn.
  *
- * WHY THIS DEFERS. Four of these points count something that must come to zero —
- * `2 x 2` blocks, mirror mismatches, dead ends, unreachable corridor — and every
- * one of those counts is zero on a board of solid rock. A build that laid out no
- * maze would collect four passes it did not earn.
- *
- * The two points that OWN the emptiness never call this: `maze/proportions`
- * measures a density of `0` against a floor of `0.40`, and `maze/den-reachable`
- * finds no chamber for a predator to leave. Both fail, so a build that laid out
- * nothing is graded rather than excused.
- *
- * Whether a build lays out a maze that fills the grid is `maze/proportions`'
- * verdict to give: specs/maze.md bounds density at `MAZE_DENSITY_MIN` (`0.40`) of
- * the cells inside the border, and a board with no corridor reads `0`.
+ * specs/maze.md states its rules of the maze the game lays out, and bounds density
+ * at `MAZE_DENSITY_MIN` (`0.40`) of the cells inside the border, so a board with
+ * no corridor breaks the page these points read from and every one of them says
+ * so.
  */
 export function requireLaidOut(boards: readonly Board[]): void {
   const bare = boards.find((one) => corridorTiles(one.snapshot).length === 0);
   if (bare === undefined) return;
-  standDown(
-    `the maze seed ${bare.seed} laid out carries no corridor tile at all, so ` +
-      "there is no layout here to measure — whether the game lays one out that " +
-      "fills the grid is maze/proportions' verdict, and it does give it",
+  fail(
+    "every maze the game lays out to carry corridor at all, which is the layout " +
+      "specs/maze.md states its rules of: it bounds density at MAZE_DENSITY_MIN " +
+      "(0.40) of the cells inside the border",
+    `the maze seed ${bare.seed} laid out carries no corridor tile`,
   );
 }
 
 /**
- * Refuse to grade a point whose layout marks no den-interior tile.
+ * Every layout marks a den-interior tile, or the point calling this FAILS.
  *
- * WHY THIS DEFERS. specs/maze.md has the chamber "made of den-interior tiles",
- * and both points that ask about the chamber — that it is enclosed, and that its
- * one gate sits on its top edge — have nothing to decide without one. Whether the
- * chamber is there at all is `maze/den-reachable`'s verdict, which asks for the
- * den a released predator comes out of and fails when there is none.
+ * specs/maze.md has the chamber "made of den-interior tiles", and both points that
+ * ask about the chamber — that it is enclosed, and that its one gate sits on its
+ * top edge — have nothing to decide without one, so a layout that carries no
+ * chamber fails them as well as `maze/den-reachable`.
  */
 export function requireDenChamber(boards: readonly Board[]): void {
   const bare = boards.find((one) => denTiles(one.snapshot).length === 0);
   if (bare === undefined) return;
-  standDown(
-    `the maze seed ${bare.seed} laid out marks no den-interior tile, so there ` +
-      "is no chamber here to ask about — whether the layout carries the den a " +
-      "released predator comes out of is maze/den-reachable's verdict",
+  fail(
+    "every maze the game lays out to carry the den chamber specs/maze.md gives " +
+      "it, made of den-interior tiles, which is what this point asks about",
+    `the maze seed ${bare.seed} laid out marks no den-interior tile`,
   );
 }
 
@@ -264,7 +260,6 @@ export async function captureBoard(
 ): Promise<void> {
   try {
     startPlaying(h, board.seed);
-    await denAll(h);
     const view = h.snapshot();
     const home = { tx: view.forager.tx, ty: view.forager.ty };
 
@@ -287,6 +282,7 @@ export async function captureBoard(
       h.debug.setForagerDir(outside.facing);
     }
     h.debug.setBrightness(1);
+    h.debug.setBrightHold(BRIGHT_HOLD);
     await h.advance(SETTLE_TICKS);
   } catch (error) {
     // NOTHING ABOUT THE PICTURE MAY REACH A VERDICT. The survey drives real

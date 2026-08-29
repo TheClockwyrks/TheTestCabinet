@@ -1,47 +1,39 @@
-// controls/setmaze-houses-predators — a posed board puts every hunter away, and
-// holds it there.
+// controls/setmaze-houses-predators — a posed layout sets the layout and nothing
+// else, and a body the new rock closes over holds its tile.
 //
-// specs/instrumentation.md fixes both halves of the claim. `setMaze` leaves the
-// board "in the state a freshly laid-out maze starts in", with "every predator
-// returned to a den tile with its `released` flag `false`", and "The staggered
-// release schedule is **suspended** while a posed board stands, so no release time
-// arrives and no predator leaves the den until a later `setPredatorState` poses it
-// out." specs/predators.md fixes the schedule that is being suspended: release
-// times of `0 s`, `DEN_RELEASE_GAP` (`5 s`) and `10 s`, measured from the moment
-// live play begins.
+// specs/instrumentation.md fixes both halves. "The layout is the whole of what it
+// sets. The plankton, the revealed-tile memory, the roster, every body's tile and
+// facing, the cooldowns, the score, the lives, the depth and the screen are all
+// left exactly as they stand, so a caller poses each of those itself." And: "A
+// body the new layout leaves on a tile closed to it holds that tile and travels
+// nowhere, because travel carries a body only along tiles open to it."
 //
-// WHY THIS IS ITS OWN POINT. Most of this suite poses a fixture and then measures
-// something standing on it, and every one of those checks is only as good as this
-// contract. A build that rebuilds the board but leaves its hunters at the
-// coordinates its OWN den used to occupy drops them wherever the fixture put
-// those tiles, which is regularly the corridor the scenario is about. One run went
-// exactly that way: a Lanternjaw stood in the middle of a posed corridor, ate the
-// forager a quarter of a second in, and three unrelated points reported an input
-// bug and a turning bug against a build whose input and turning were fine. The
-// posers now stand a scenario down in that state rather than misattributing it —
-// but standing down is inconclusive, not a finding, so without this point a build
-// could break a required operation and have every consequence quietly set aside.
-// This is the point that fails for it.
+// WHY THIS IS ITS OWN POINT. Every other check in this suite poses a fixture and
+// then puts back exactly the creatures its requirement is about, and every one of
+// those poses is only as good as this contract. A build that quietly re-dens the
+// roster, re-seeds the plankton or restarts the countdown when a layout is posed
+// hands every one of them a board it did not ask for — a hunter in the middle of a
+// corridor a check meant to be empty, a pellet under a forager a check meant to be
+// standing on bare rock. One run went exactly that way: a Lanternjaw stood in the
+// middle of a posed corridor, ate the forager a quarter of a second in, and three
+// unrelated points reported an input bug and a turning bug against a build whose
+// input and turning were fine. This is the point that fails for it.
 //
-// It poses with `housed: false`, so the poser leaves the judgement here instead of
-// raising the precondition every other caller gets.
+// THE ROSTER IS THE SUBJECT, so this is one of the few checks that stands SEVERAL
+// hunters up at once: three of them, on three known tiles, in three different
+// conditions — one released and one not, one facing each way — because a build
+// that resets one field of a predator and preserves the rest passes a check that
+// reads only one.
 //
-// AND THE LAST ASSERTION IS THE ONE A SEALED DEN CANNOT FAKE. Every fixture's den
-// is walled on three sides precisely so a build that runs the schedule anyway
-// cannot reach the scenario — which means "nobody left the den" is partly held up
-// by the geometry rather than by the build. A hunter that tried to leave and was
-// stopped by rock looks exactly like one that was held. `released` is the only
-// thing that tells them apart: the schedule is suspended, so no release time
-// arrives, so nothing is released. A build that re-arms the ordinary schedule
-// reports it there, and would walk its hunters out of any fixture that was not
-// sealed.
+// THEIR MINDS ARE OFF ACROSS THE CALL, so what is read straight after `setMaze` is
+// what the call did rather than what a patrol did in the same tick. The last
+// reading turns one back ON: the hunter the new layout walled in is left to run its
+// own mind for a second of simulation, and holding its tile through that is the
+// second half of the claim.
 
-import { afterEach, beforeEach } from "vitest";
-import { check } from "../scene";
-import { assertEqual, assertGreaterThan, assertLength } from "../assert";
-import { DEN_ORDER, DEN_RELEASE_GAP } from "../../src/constants";
-import { housedTiles } from "../maze";
-import { looseOf, poseMaze } from "../fixtures";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertDeepEqual, assertEqual } from "../assert";
+import { poseMaze, spawnPredator, stampLayout } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -49,38 +41,66 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import type { FathomSnapshot } from "../surface";
+import { parkForager } from "../scene";
+import type { Tile } from "../maze";
 
 /**
- * The fixture: a plain corridor.
- *
- * What it holds does not matter. What matters is the den the poser seals into the
- * bottom two rows of every fixture, which is where the hunters belong once the
- * board is posed.
+ * The board the roster is stood up on: a room for the forager on the top row and,
+ * across solid rock, a seven-tile corridor with the three hunters on `A`, `B` and
+ * `C`.
  */
-const BOARD = ["S......"];
+const BEFORE = ["F......", "", "A..B..C"] as const;
 
 /**
- * How long the den is watched after the board is posed, in seconds.
- *
- * Past the `10 s` the third hunter of a depth-`1` roster would be due at —
- * `DEN_RELEASE_GAP` twice over from the moment live play began — with room to
- * spare, so a build that runs the schedule anyway is caught rather than merely
- * not yet observed.
+ * The board posed over it. It is the same drawing with the three tiles around `B`
+ * turned to rock, so the middle hunter is left standing on a tile the new layout
+ * closed to it while the other two keep open corridor under them. Both arts are
+ * the same size, so both stamp at the same place in the grid and every anchor
+ * keeps its tile.
  */
-const WATCH_SECONDS = 2 * DEN_RELEASE_GAP + 2;
+const AFTER = ["F......", "", "A..###C"] as const;
 
-/** How often the den is sampled, in seconds, so whoever leaves is named. */
-const SAMPLE_SECONDS = 0.25;
+/** The score the run is put on, which the call must leave alone. */
+const POSED_SCORE = 4321;
+
+/** The lives held in reserve, likewise. */
+const POSED_LIVES = 2;
+
+/** The depth, likewise. */
+const POSED_DEPTH = 3;
 
 /**
- * How much of the watch is filmed, in seconds.
+ * How long the walled-in hunter is left to run its own mind, in ticks.
  *
- * The opening two, which is the part worth looking at: a posed board with its den
- * holding. The rest runs outside the capture, which is the same real simulation
- * and costs the clip nothing.
+ * A second, which is three tiles and more of travel at any speed
+ * specs/predators.md fixes for a loose predator: a hunter that means to move has
+ * moved long before this runs out.
  */
-const FILMED_SECONDS = 2;
+const WALLED_WATCH_TICKS = ticksFor(1);
+
+/** One predator, as this point compares it either side of the call. */
+interface Standing {
+  kind: string;
+  tx: number;
+  ty: number;
+  dir: string;
+  state: string;
+  released: boolean;
+  mind: boolean;
+}
+
+/** Every predator of a snapshot, in roster order, as the comparison reads them. */
+function roster(snapshot: ReturnType<Harness["snapshot"]>): Standing[] {
+  return snapshot.predators.map((one) => ({
+    kind: one.kind,
+    tx: one.tx,
+    ty: one.ty,
+    dir: one.dir,
+    state: one.state,
+    released: one.released,
+    mind: one.mind,
+  }));
+}
 
 let h: Harness;
 
@@ -92,93 +112,120 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "re-dens every predator on a posed board and holds it there",
-  async () => {
-    startPlaying(h);
-    await poseMaze(h, BOARD, { housed: false });
+it("poses a layout and leaves the roster and the run exactly as they stand", async () => {
+  startPlaying(h);
+  const board = await poseMaze(h, BEFORE);
+  const home = board.mark("F");
+  const posts: Tile[] = [board.mark("A"), board.mark("B"), board.mark("C")];
+  await parkForager(h, home);
 
-    const posed = h.snapshot();
-    const housed = housedTiles(posed);
-    const loose = looseOf(posed, housed);
+  // The rest of the run, each figure posed away from what a freshly laid-out maze
+  // would carry, so every reading below is a question rather than a formality.
+  // `setDepth` lays out the depth's own roster, so it runs BEFORE the three
+  // hunters this point reads are stood up, and the roster it laid is cleared away
+  // again.
+  h.debug.setScore(POSED_SCORE);
+  h.debug.setLives(POSED_LIVES);
+  h.debug.setDepth(POSED_DEPTH);
+  h.debug.clearPredators();
 
-    // Sampled across the whole watch rather than read once at the end, so a hunter
-    // that left and came back is still named.
-    const escaped = new Map<string, string>();
-    const note = (snapshot: FathomSnapshot): void => {
-      for (const one of looseOf(snapshot, housed)) {
-        if (!escaped.has(one.kind)) escaped.set(one.kind, one.where);
-      }
-    };
+  // Three hunters, each posed differently, and all of them held still so that what
+  // is read after the call is the call's doing.
+  const walled = 1;
+  await spawnPredator(h, "lanternjaw", posts[0], {
+    dir: "left",
+    mind: false,
+  });
+  const unreleased = await spawnPredator(h, "gloamfin", posts[1], {
+    dir: "right",
+    mind: false,
+  });
+  h.debug.setPredatorReleased(unreleased, false);
+  await spawnPredator(h, "flarefish", posts[2], {
+    dir: "down",
+    mind: false,
+  });
 
-    const stride = ticksFor(SAMPLE_SECONDS);
-    const filmed = Math.round(FILMED_SECONDS / SAMPLE_SECONDS);
-    const total = Math.round(WATCH_SECONDS / SAMPLE_SECONDS);
+  const kept = roster(h.snapshot());
 
-    await captureReplay(h, "housed", async () => {
-      for (let taken = 0; taken < filmed; taken += 1) {
-        await h.advance(stride);
-        note(h.snapshot());
-      }
-    });
-    for (let taken = filmed; taken < total; taken += 1) {
-      await h.advance(stride);
-      note(h.snapshot());
-    }
-    const ended = h.snapshot();
+  const pellet: Tile = { tx: posts[0].tx + 1, ty: posts[0].ty };
+  h.debug.setPlankton(pellet.tx, pellet.ty, true);
+  h.debug.spawnDrifter(home.tx, home.ty);
+  h.debug.setDrifterMind(0, false);
+  const before = h.snapshot();
 
-    // The fixture carries a den at all. If this fails the fixture is wrong rather
-    // than the build, and everything below it would be meaningless.
-    assertGreaterThan(
-      housed.size,
-      0,
-      "den and gate tiles in the posed layout, for the hunters to be returned to",
-    );
+  const read = await captureReplay(h, "housed", async () => {
+    const rows = stampLayout(before, AFTER).rows;
+    h.debug.setMaze(rows);
+    const after = h.snapshot();
 
-    assertLength(
-      loose,
-      0,
-      `predators standing outside the posed layout's den the moment it was posed` +
-        (loose.length > 0
-          ? ` — ${loose.map((one) => one.where).join("; ")}`
-          : ""),
-    );
+    // And the walled-in hunter, left to its own mind on a tile the layout closed
+    // over.
+    h.debug.setPredatorMind(walled, true);
+    await h.advance(WALLED_WATCH_TICKS);
+    return { after, ended: h.snapshot() };
+  });
 
-    const left = [...escaped.values()];
-    assertLength(
-      left,
-      0,
-      `predators that left the den over ${WATCH_SECONDS} s of live play, which is ` +
-        `past the ${2 * DEN_RELEASE_GAP} s the third of them would ordinarily be ` +
-        `due at` +
-        (left.length > 0 ? ` — ${left.join("; ")}` : ""),
-    );
+  // The layout really did change, which is what makes every reading below a
+  // reading of a call that did something.
+  assertEqual(
+    read.after.tiles[posts[walled].ty][posts[walled].tx],
+    "#",
+    `the tile the middle hunter stands on, (${posts[walled].tx}, ` +
+      `${posts[walled].ty}), which the posed layout draws as rock`,
+  );
 
-    // The assertion the sealed den cannot fake.
-    const released = ended.predators
-      .filter((one) => one.released === true)
-      .map((one) => one.kind);
-    assertLength(
-      released,
-      0,
-      `predators reporting released after ${WATCH_SECONDS} s on a posed board, ` +
-        `whose release schedule is suspended (the roster releases in ` +
-        `${DEN_ORDER.join(", ")} order)` +
-        (released.length > 0 ? ` — ${released.join(", ")}` : ""),
-    );
+  // The roster: every predator, every field, exactly as it stood.
+  assertDeepEqual(
+    roster(read.after),
+    kept,
+    "the roster after a layout was posed over it, which setMaze leaves exactly " +
+      "as it stands",
+  );
 
-    // And the watch was worth taking: a roster with nothing in it would clear every
-    // assertion above without the build having housed anything.
-    assertGreaterThan(
-      ended.predators.length,
-      0,
-      "predators on the roster the whole watch was about",
-    );
-    assertEqual(
-      ended.screen,
-      "playing",
-      "the dive stayed in live play, so the release schedule this point says is " +
-        "suspended was one that would otherwise have been running",
-    );
-  },
-);
+  // The rest of the run.
+  assertEqual(read.after.score, POSED_SCORE, "the score across setMaze");
+  assertEqual(read.after.lives, POSED_LIVES, "the lives across setMaze");
+  assertEqual(read.after.depth, POSED_DEPTH, "the depth across setMaze");
+  assertEqual(
+    read.after.screen,
+    before.screen,
+    "the screen across setMaze, which the call leaves exactly as it stands",
+  );
+  assertEqual(
+    read.after.plankton[pellet.ty][pellet.tx],
+    "*",
+    `the plankton on (${pellet.tx}, ${pellet.ty}), a tile the new layout leaves ` +
+      "open, which setMaze leaves exactly as it stands",
+  );
+  assertEqual(
+    read.after.planktonRemaining,
+    before.planktonRemaining,
+    "planktonRemaining across setMaze, none of whose plankton the new layout " +
+      "walled in",
+  );
+  assertEqual(
+    read.after.drifters.length,
+    before.drifters.length,
+    "the bonus drifters in the maze across setMaze",
+  );
+  assertEqual(
+    read.after.forager.tx,
+    before.forager.tx,
+    "the forager's column across setMaze",
+  );
+  assertEqual(
+    read.after.forager.ty,
+    before.forager.ty,
+    "the forager's row across setMaze",
+  );
+
+  // The second half: the hunter the new rock closed over travels nowhere.
+  const held = read.ended.predators[walled];
+  assertEqual(
+    `${held.tx}, ${held.ty}`,
+    `${posts[walled].tx}, ${posts[walled].ty}`,
+    `the tile the ${held.kind} stands on after ${WALLED_WATCH_TICKS} ticks of ` +
+      "running its own mind on a tile the posed layout closed to it",
+  );
+});

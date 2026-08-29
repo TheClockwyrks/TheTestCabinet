@@ -22,21 +22,21 @@
 // Eleven tiles (`352`) is past both, and it is the CLOSEST the two ever come,
 // because the Flarefish's hallway is sealed.
 //
-// THE BOARD IS EMPTIED OF PLANKTON. `clearPlankton` "is not eating", so it
-// "scores nothing and clears no maze" (`specs/instrumentation.md`) and an empty
-// maze the forager has not just eaten from stays in live play. Three things
-// follow, and every one of them matters to a check that reads pixels or waits
-// twenty seconds: the forager's `G` stays at the `0` these distances are computed
-// against, no eat can widen the Flarefish's reach mid-watch, and the hallway is
-// bare of the faint motes a remembered tile would otherwise be drawn with.
+// THE ROOM HOLDS THE FLAREFISH AND NOTHING ELSE. `poseMaze` empties the board,
+// so the other two hunters are off the roster rather than shut in a den, and the
+// maze carries no plankton. Three things follow, and every one of them matters to
+// a check that reads pixels or waits twenty seconds: the forager's `G` stays at
+// the `0` these distances are computed against, no eat can widen the Flarefish's
+// reach mid-watch, and the hallway is bare of the faint motes a remembered tile
+// would otherwise be drawn with.
 //
 // THE HALLWAY IS SIX TILES so that one bloom covers all of it: the furthest two
 // of its tiles are five apart (`160`), inside `FLARE_RADIUS`, so after the first
 // bloom every tile of it is in the same visibility state and two samples taken
 // from it are comparable.
 
-import { predatorIndex, poseMaze } from "../fixtures";
-import { denAll, parkForager, type Quiet, unmetPrecondition } from "../scene";
+import { poseMaze, spawnPredator } from "../fixtures";
+import { parkForager } from "../scene";
 import type { Harness } from "../harness";
 import type { Tile } from "../maze";
 
@@ -97,8 +97,6 @@ export interface FlareRoom {
   hall: Tile[];
   /** The Flarefish's index in the snapshot's roster. */
   index: number;
-  /** What was posed into the den, for the scene guard. */
-  quiet: Quiet;
 }
 
 /**
@@ -125,21 +123,12 @@ export async function poseFlareRoom(h: Harness): Promise<FlareRoom> {
   }));
 
   await parkForager(h, home);
-  await h.debug.clearPlankton();
   await h.debug.setBrightness(0);
 
-  const snap = await h.snapshot();
-  const index = predatorIndex(snap, "flarefish");
-  if (index === null) {
-    unmetPrecondition(
-      "the roster carries no Flarefish, so there is no flare to watch — what " +
-        "the roster holds is the progression checks' verdict, not this one's",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  await h.debug.setPredatorTile(index, hall[2].tx, hall[2].ty);
-  await h.debug.setPredatorDir(index, "right");
-  await h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "flarefish", hall[2], {
+    dir: "right",
+    state: "wander",
+  });
 
-  return { forager: home, hall, index, quiet };
+  return { forager: home, hall, index };
 }

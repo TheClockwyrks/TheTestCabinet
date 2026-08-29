@@ -26,7 +26,7 @@
 // moment, which is `sonar/wavefront`'s — that point reads the build's own `front`
 // and this one reads the fog, so a build can fail either alone.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThan, assertLessThanOrEqual } from "../assert";
 import { SONAR_WAVE_SPEED, TICK_DT, TILE } from "../constants";
 import { poseStraightRun } from "../fixtures";
@@ -37,15 +37,7 @@ import {
   startPlaying,
 } from "../harness";
 import { type Tile, visibilityAt } from "../maze";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { emitPulse, sinceEmit } from "./pulse";
 
 /** The corridor, in tiles: the forager's own plus nine steps out. */
@@ -93,94 +85,87 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "reveals a tile 4 corridor steps out before one 8 steps out, each as the front reaches it",
-  async () => {
-    await startPlaying(h);
-    const run = await poseStraightRun(h, RUN_TILES);
-    await parkForager(h, run.start);
-    await clearUnderfoot(h);
-    const quiet = await denAll(h);
-    const watch = await sceneGuard(h, quiet);
+it("reveals a tile 4 corridor steps out before one 8 steps out, each as the front reaches it", async () => {
+  await startPlaying(h);
+  const run = await poseStraightRun(h, RUN_TILES);
+  await parkForager(h, run.start);
+  const watch = await sceneGuard(h);
 
-    const near: Tile = { tx: run.start.tx + NEAR_STEPS, ty: run.start.ty };
-    const far: Tile = { tx: run.start.tx + FAR_STEPS, ty: run.start.ty };
+  const near: Tile = { tx: run.start.tx + NEAR_STEPS, ty: run.start.ty };
+  const far: Tile = { tx: run.start.tx + FAR_STEPS, ty: run.start.ty };
 
-    // The scenario's own ground: at the brightness it parks the forager at, the
-    // light pocket cannot reach either tile, so whatever reveals them is the
-    // pulse. Both halves of that are checked — the radius the build reports, and
-    // the fog it actually has.
-    const posed = await h.snapshot();
-    assertLessThan(
-      posed.visionRadius,
-      NEAR_STEPS * TILE,
-      `V at the brightness this scenario poses, against the ${NEAR_STEPS * TILE} ` +
-        `units to the nearer of the two tiles it reads`,
+  // The scenario's own ground: at the brightness it parks the forager at, the
+  // light pocket cannot reach either tile, so whatever reveals them is the
+  // pulse. Both halves of that are checked — the radius the build reports, and
+  // the fog it actually has.
+  const posed = await h.snapshot();
+  assertLessThan(
+    posed.visionRadius,
+    NEAR_STEPS * TILE,
+    `V at the brightness this scenario poses, against the ${NEAR_STEPS * TILE} ` +
+      `units to the nearer of the two tiles it reads`,
+  );
+  for (const tile of [near, far]) {
+    assertEqual(
+      visibilityAt(posed, tile),
+      "u",
+      `the visibility of the tile at (${tile.tx}, ${tile.ty}) before any pulse ` +
+        "was cast — an unrevealed tile is what makes the pulse's arrival there " +
+        "readable",
     );
-    for (const tile of [near, far]) {
-      if (visibilityAt(posed, tile) !== "u") {
-        unmetPrecondition(
-          `the tile at (${tile.tx}, ${tile.ty}) was already revealed before any ` +
-            `pulse was cast, though it stands ${Math.hypot(tile.tx - run.start.tx, tile.ty - run.start.ty) * TILE} ` +
-            `units from a forager whose light reaches ${posed.visionRadius} — so ` +
-            "there is no arrival for this scenario to time; how far the forager's " +
-            "own light reaches is the fog points' verdict, not this one's",
-        );
+  }
+
+  const flood = await captureReplay(h, "progressive", async () => {
+    const emitted = await emitPulse(h);
+    let arrivedNear: number | null = null;
+    let arrivedFar: number | null = null;
+    for (let tick = 1; tick <= SWEEP_TICKS; tick += 1) {
+      if (tick > 1) await h.advance(1);
+      const snapshot = await h.snapshot();
+      const elapsed = sinceEmit(emitted, snapshot);
+      if (arrivedNear === null && visibilityAt(snapshot, near) !== "u") {
+        arrivedNear = elapsed;
       }
-    }
-
-    const flood = await captureReplay(h, "progressive", async () => {
-      const emitted = await emitPulse(h);
-      let arrivedNear: number | null = null;
-      let arrivedFar: number | null = null;
-      for (let tick = 1; tick <= SWEEP_TICKS; tick += 1) {
-        if (tick > 1) await h.advance(1);
-        const snapshot = await h.snapshot();
-        const elapsed = sinceEmit(emitted, snapshot);
-        if (arrivedNear === null && visibilityAt(snapshot, near) !== "u") {
-          arrivedNear = elapsed;
-        }
-        if (arrivedFar === null && visibilityAt(snapshot, far) !== "u") {
-          arrivedFar = elapsed;
-        }
-        if (arrivedNear !== null && arrivedFar !== null) break;
+      if (arrivedFar === null && visibilityAt(snapshot, far) !== "u") {
+        arrivedFar = elapsed;
       }
-      // Held on a little past the readings, so the clip shows the front running
-      // out rather than stopping the instant the far tile lights.
-      await h.advance(24);
-      return { emitted, arrivedNear, arrivedFar };
-    });
-
-    requireSceneHeld(await h.snapshot(), watch);
-
-    for (const arrival of [
-      { steps: NEAR_STEPS, at: flood.arrivedNear, tile: near },
-      { steps: FAR_STEPS, at: flood.arrivedFar, tile: far },
-    ]) {
-      const expected = arrival.steps / SONAR_WAVE_SPEED;
-      assertEqual(
-        arrival.at !== null,
-        true,
-        `the tile at (${arrival.tile.tx}, ${arrival.tile.ty}), ${arrival.steps} ` +
-          `corridor steps out, was revealed within ${SWEEP_TICKS} ticks of the ` +
-          `press, of the ${expected.toFixed(3)} s a front at SONAR_WAVE_SPEED takes`,
-      );
-      if (arrival.at === null) continue;
-      assertLessThanOrEqual(
-        Math.abs(arrival.at - expected),
-        ARRIVAL_TOLERANCE * expected + ARRIVAL_SLACK,
-        `|arrival - ${expected.toFixed(3)} s| at the tile ${arrival.steps} ` +
-          "corridor steps out, measured from the tick the press ran on",
-      );
+      if (arrivedNear !== null && arrivedFar !== null) break;
     }
+    // Held on a little past the readings, so the clip shows the front running
+    // out rather than stopping the instant the far tile lights.
+    await h.advance(24);
+    return { emitted, arrivedNear, arrivedFar };
+  });
 
-    if (flood.arrivedNear !== null && flood.arrivedFar !== null) {
-      assertLessThan(
-        flood.arrivedNear,
-        flood.arrivedFar,
-        `when the tile ${NEAR_STEPS} steps out was revealed, against the ` +
-          `${flood.arrivedFar.toFixed(3)} s it took the tile ${FAR_STEPS} steps out`,
-      );
-    }
-  },
-);
+  requireSceneHeld(await h.snapshot(), watch);
+
+  for (const arrival of [
+    { steps: NEAR_STEPS, at: flood.arrivedNear, tile: near },
+    { steps: FAR_STEPS, at: flood.arrivedFar, tile: far },
+  ]) {
+    const expected = arrival.steps / SONAR_WAVE_SPEED;
+    assertEqual(
+      arrival.at !== null,
+      true,
+      `the tile at (${arrival.tile.tx}, ${arrival.tile.ty}), ${arrival.steps} ` +
+        `corridor steps out, was revealed within ${SWEEP_TICKS} ticks of the ` +
+        `press, of the ${expected.toFixed(3)} s a front at SONAR_WAVE_SPEED takes`,
+    );
+    if (arrival.at === null) continue;
+    assertLessThanOrEqual(
+      Math.abs(arrival.at - expected),
+      ARRIVAL_TOLERANCE * expected + ARRIVAL_SLACK,
+      `|arrival - ${expected.toFixed(3)} s| at the tile ${arrival.steps} ` +
+        "corridor steps out, measured from the tick the press ran on",
+    );
+  }
+
+  if (flood.arrivedNear !== null && flood.arrivedFar !== null) {
+    assertLessThan(
+      flood.arrivedNear,
+      flood.arrivedFar,
+      `when the tile ${NEAR_STEPS} steps out was revealed, against the ` +
+        `${flood.arrivedFar.toFixed(3)} s it took the tile ${FAR_STEPS} steps out`,
+    );
+  }
+});

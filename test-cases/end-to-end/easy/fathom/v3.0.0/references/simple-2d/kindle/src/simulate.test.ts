@@ -22,14 +22,19 @@ const NO_ART: Sheets = {
   trench: [],
 };
 
-/** Live play on the opening maze, with the board grazed bare and quiet. */
+/**
+ * Live play on the opening maze, holding nothing but the forager: the board
+ * grazed bare, and every predator and drifter off it, so what these checks
+ * measure is the fixed step itself.
+ */
 function live(): FathomState {
   const dive = beginDive(openingState(NO_ART, 1, false));
   return {
     ...dive,
     screen: "playing",
     screenIn: 0,
-    creatureAI: false,
+    predators: [],
+    drifters: [],
     plankton: dive.plankton.map(() => false),
     planktonRemaining: 0,
   };
@@ -109,6 +114,7 @@ describe("the fixed-step core", () => {
     expect(drifter.x).toBe(64 + 4 * 32 + 16);
     expect(drifter.y).toBe(80 + 5 * 32 + 16);
     expect(drifter.heading).toBeNull();
+    expect(drifter.mind).toBe(true);
   });
 
   it("runs exactly TICK_HZ ticks over a second of game time", () => {

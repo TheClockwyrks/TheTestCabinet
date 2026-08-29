@@ -13,8 +13,8 @@
 // an operation `specs/instrumentation.md` gives:
 //
 //   * a hunter loose on the board rather than in the den, which patrols;
-//   * a brightness of `POSED_BRIGHTNESS`, which `setBrightness` arms the
-//     `BRIGHT_HOLD` (`1 s`) hold on and which then decays on the ordinary curve;
+//   * a brightness of `POSED_BRIGHTNESS` under a full `BRIGHT_HOLD` (`1 s`) hold,
+//     which then decays on the ordinary curve;
 //   * two cooldowns plainly mid-run, which run down;
 //   * a movement key held for the whole stretch, which travels the forager.
 //
@@ -32,7 +32,9 @@
 // contents — and what the pause overlay looks like, which is the aesthetic
 // rating's.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { poseApart, spawnPredator } from "../fixtures";
+import { parkForager } from "../scene";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { BRIGHT_HOLD, PAUSE_ITEMS, ticksFor } from "../constants";
 import {
@@ -41,7 +43,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, denAll } from "../scene";
+
 import {
   CONFIRM_KEY,
   MOVE_KEY,
@@ -50,8 +52,14 @@ import {
   frameOps,
 } from "./screens";
 
-/** The roster index posed loose, so something on the board would move if it could. */
+/** The roster index of the one hunter posed loose, on a board emptied of the rest. */
 const LOOSE = 0;
+
+/** How many tiles of corridor the hunter's own ring holds. */
+const RING_TILES = 4;
+
+/** How far that ring stands from the forager's room, in tiles. */
+const APART_TILES = 10;
 
 /**
  * The brightness posed before the pause, in `[0, 1]`.
@@ -89,13 +97,16 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("freezes the dive behind its menu, and resumes", async () => {
+it("freezes the dive behind its menu, and resumes", async () => {
   await startPlaying(h);
-  // One hunter loose and patrolling, the rest put away so only the one that is
-  // supposed to hold still is on the board.
-  await denAll(h, [LOOSE]);
-  await h.debug.setPredatorState(LOOSE, "wander");
+  // The forager's room and, across solid rock, a ring for one hunter to patrol.
+  // The pose empties the board, so the creature whose freezing this reads is the
+  // only one on it.
+  const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
+  await parkForager(h, rooms.near);
+  await spawnPredator(h, "gloamfin", rooms.far, { state: "wander" });
   await h.debug.setBrightness(POSED_BRIGHTNESS);
+  await h.debug.setBrightHold(BRIGHT_HOLD);
   await h.debug.setSonarCooldown(POSED_SONAR_COOLDOWN);
   await h.debug.setInkCooldown(POSED_INK_COOLDOWN);
 

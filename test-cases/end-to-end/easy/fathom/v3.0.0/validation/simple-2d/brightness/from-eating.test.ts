@@ -18,20 +18,21 @@
 // the state a dive opens on (specs/sensing.md: "`0` when the forager has not eaten
 // recently").
 //
-// THE PELLET UNDER THE FORAGER IS SETTLED FIRST. Plankton sit on every corridor
-// tile, so a forager posed anywhere is already standing on one, and it would eat
-// that pellet on the first tick of the drive and start the measurement from
-// `BRIGHT_PER_EAT` rather than from `0`. `clearUnderfoot` lets the forager eat it
-// with the creatures' minds off and puts `G` back to zero.
+// THE PELLETS ARE POSED, AND NOT UNDER THE FORAGER. `poseStraightRun` opens on a
+// board `clearPlankton` emptied, so this check lays a pellet on every tile of the
+// run except the one the forager rests on: a pellet underfoot would be eaten on
+// the first tick of the drive and start the measurement from `BRIGHT_PER_EAT`
+// rather than from `0`.
 //
-// THE BOARD STAYS FULL. The posed fixture carries a sealed larder of plankton the
-// forager can never reach (`fixtures.ts`), so grazing four pellets cannot clear
-// the maze and descend in the middle of the measurement.
+// AND THE BOARD CANNOT RUN OUT. The run carries `RUN_TILES - 1` pellets and the
+// graze takes `EATS` of them, so pellets are left standing throughout: eating the
+// last plankton in a maze clears it (specs/gameplay.md), which would descend and
+// end the measurement.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BRIGHT_PER_EAT } from "../../src/constants";
 import { assertLessThanOrEqual } from "../assert";
-import { poseStraightRun } from "../fixtures";
+import { poseStraightRun, stockPlankton } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -39,14 +40,8 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
-import type { FathomSnapshot } from "../surface";
+import { requireSceneHeld, sceneGuard } from "../scene";
+import { FathomSnapshot } from "../surface";
 import { grazeOne } from "./graze";
 
 /** Tiles of posed corridor: the pellet underfoot, four to graze, and room to spare. */
@@ -60,7 +55,7 @@ const EATS = 4;
  *
  * Pellets sit one tile apart, and `FORAGER_SPEED` (`128`) covers a tile in `30`
  * ticks. One second is a wide margin on that and still a hard ceiling, so a build
- * that never reaches the next pellet is stood down rather than waited for.
+ * that never reaches the next pellet fails rather than being waited for.
  */
 const REACH_MAX_TICKS = ticks(1);
 
@@ -93,15 +88,14 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Eating brightens the forager", async () => {
+it("Eating brightens the forager", async () => {
   await startPlaying(h);
-  await poseStraightRun(h, RUN_TILES);
-  const quiet = await denAll(h);
-  // The pellet the pose left under the forager is eaten off camera and `G` put
-  // back to the zero a dive opens on, so the first eat this point measures is
-  // taken from `0` and has its full headroom.
-  await clearUnderfoot(h);
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  const run = await poseStraightRun(h, RUN_TILES);
+  // The run stocked as a laid-out maze carries it, less the tile the forager
+  // rests on: a pellet under it would be eaten on the first tick and the step
+  // this point measures would start from BRIGHT_PER_EAT rather than from 0.
+  await stockPlankton(h, [run.start]);
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   const graze = await captureReplay(h, "brighten", async () => {
     const start = h.snapshot();

@@ -38,16 +38,11 @@
 // `specs/predators/flarefish.md` has "every predator and drifter inside the disc
 // drawn live", it reports `lit`. Plainly there, then plainly gone.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { FLARE_INTERVAL, TILE } from "../../src/constants";
 import { captureReplay, createHarness, ticks, type Harness } from "../harness";
-import {
-  check,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 import { startPlaying } from "../harness";
 import { BLOOM_MAX, FIRST_FLARE_MAX, FLARE_POLL, poseFlareRoom } from "./room";
 
@@ -113,111 +108,103 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "shows nothing of itself between flares, in what it reports and on the canvas",
-  async () => {
-    await startPlaying(h);
-    const room = await poseFlareRoom(h);
-    const guard = await sceneGuard(h, room.quiet);
+it("shows nothing of itself between flares, in what it reports and on the canvas", async () => {
+  await startPlaying(h);
+  const room = await poseFlareRoom(h);
+  const guard = await sceneGuard(h);
 
-    const bloom = await h.until(
-      (snap) => snap.predators[room.index].flaring === true,
-      { maxFrames: ticks(FIRST_FLARE_MAX), poll: FLARE_POLL },
+  const bloom = await h.until(
+    (snap) => snap.predators[room.index].flaring === true,
+    { maxFrames: ticks(FIRST_FLARE_MAX), poll: FLARE_POLL },
+  );
+  assertEqual(
+    bloom.hit,
+    true,
+    `the Flarefish bloomed within ${FIRST_FLARE_MAX} s of patrolling a sealed ` +
+      "hallway, which is the flare this point watches it come out of",
+  );
+
+  const watched = await captureReplay(h, "notell", async () => {
+    // Plainly there: a beat into its own bloom, inside its own disc.
+    await h.advance(INTO_BLOOM);
+    const burning = h.snapshot();
+
+    // Out the far side of the bloom, and well past its fade.
+    const ended = await h.until(
+      (snap) => snap.predators[room.index].flaring !== true,
+      { maxFrames: ticks(BLOOM_MAX), poll: FLARE_POLL },
     );
-    if (!bloom.hit) {
-      unmetPrecondition(
-        `the Flarefish did not bloom within ${FIRST_FLARE_MAX} s of patrolling a ` +
-          `sealed hallway, so there was no flare to watch it come out of — ` +
-          `whether it flares on its interval is flarefish/flare-cadence's ` +
-          `verdict, not this one's`,
-      );
-    }
+    await h.advance(ticks(AFTER_FADE));
 
-    const watched = await captureReplay(h, "notell", async () => {
-      // Plainly there: a beat into its own bloom, inside its own disc.
-      await h.advance(INTO_BLOOM);
-      const burning = h.snapshot();
+    // Onto a named interior tile of the hallway, so the pair of samples is the
+    // same corridor twice rather than whichever tile a patrol reached.
+    const home = room.hall[SAMPLE_HALL_INDEX];
+    h.debug.setPredatorTile(room.index, home.tx, home.ty);
+    await h.advance(SETTLE_TICKS);
 
-      // Out the far side of the bloom, and well past its fade.
-      const ended = await h.until(
-        (snap) => snap.predators[room.index].flaring !== true,
-        { maxFrames: ticks(BLOOM_MAX), poll: FLARE_POLL },
-      );
-      await h.advance(ticks(AFTER_FADE));
+    const after = h.snapshot();
+    const fish = after.predators[room.index];
+    const atFish = h.pixel(fish.x, fish.y);
+    const control = h.pixel(fish.x + CONTROL_TILES * TILE, fish.y);
+    return { burning, ended, after, atFish, control };
+  });
 
-      // Onto a named interior tile of the hallway, so the pair of samples is the
-      // same corridor twice rather than whichever tile a patrol reached.
-      const home = room.hall[SAMPLE_HALL_INDEX];
-      h.debug.setPredatorTile(room.index, home.tx, home.ty);
-      await h.advance(SETTLE_TICKS);
+  requireSceneHeld(h.snapshot(), guard);
 
-      const after = h.snapshot();
-      const fish = after.predators[room.index];
-      const atFish = h.pixel(fish.x, fish.y);
-      const control = h.pixel(fish.x + CONTROL_TILES * TILE, fish.y);
-      return { burning, ended, after, atFish, control };
-    });
+  // The control: it really was there, and really was drawn, a moment ago.
+  const burning = watched.burning.predators[room.index];
+  assertEqual(
+    burning.flaring,
+    true,
+    `the Flarefish is still blooming ${INTO_BLOOM} ticks in, when the control ` +
+      `reading is taken`,
+  );
+  // The control rests on a bloom that draws the creature standing in it: with
+  // nothing drawn while it burned there is no "before" for the dark reading
+  // below to fall back from.
+  assertEqual(
+    burning.lit,
+    true,
+    `the Flarefish is drawn ${INTO_BLOOM} ticks into its own bloom, which is ` +
+      "the control the dark reading after the bloom is measured against",
+  );
+  assertEqual(
+    watched.ended.hit,
+    true,
+    `the bloom ended within ${BLOOM_MAX} s, so there is a quiet stretch to read`,
+  );
 
-    requireSceneHeld(h.snapshot(), guard);
+  // What it reports, out in the dark between flares.
+  const fish = watched.after.predators[room.index];
+  assertEqual(
+    fish.flaring,
+    false,
+    `the Flarefish's \`flaring\` ${AFTER_FADE} s after its bloom ended`,
+  );
+  assertEqual(
+    fish.flareCharging,
+    false,
+    `the Flarefish's \`flareCharging\` ${AFTER_FADE} s after its bloom ended, ` +
+      `of the ${FLARE_INTERVAL} s FLARE_INTERVAL puts before the next charge-up`,
+  );
+  assertEqual(
+    fish.flareRadius,
+    0,
+    `the Flarefish's \`flareRadius\` ${AFTER_FADE} s after its bloom ended`,
+  );
+  assertEqual(
+    fish.lit,
+    false,
+    `the Flarefish's \`lit\` while it stands eleven tiles from a forager at ` +
+      `G = 0, with no flare, no sonar mark and no alert reaching it`,
+  );
 
-    // The control: it really was there, and really was drawn, a moment ago.
-    const burning = watched.burning.predators[room.index];
-    assertEqual(
-      burning.flaring,
-      true,
-      `the Flarefish is still blooming ${INTO_BLOOM} ticks in, when the control ` +
-        `reading is taken`,
-    );
-    // The control rests on a bloom that draws the creature standing in it, and
-    // what a bloom lights is another point's claim: with nothing drawn while it
-    // burned there is no "before" for the dark reading below to be measured
-    // against, and this scenario decides nothing.
-    if (burning.lit !== true) {
-      unmetPrecondition(
-        `the Flarefish reported lit false ${INTO_BLOOM} ticks into its own ` +
-          "bloom, so nothing was drawn for the reading after the bloom to fall " +
-          "back from; what a bloom lights is flarefish/flare-reveals's verdict, " +
-          "not this one's",
-      );
-    }
-    assertEqual(
-      watched.ended.hit,
-      true,
-      `the bloom ended within ${BLOOM_MAX} s, so there is a quiet stretch to read`,
-    );
-
-    // What it reports, out in the dark between flares.
-    const fish = watched.after.predators[room.index];
-    assertEqual(
-      fish.flaring,
-      false,
-      `the Flarefish's \`flaring\` ${AFTER_FADE} s after its bloom ended`,
-    );
-    assertEqual(
-      fish.flareCharging,
-      false,
-      `the Flarefish's \`flareCharging\` ${AFTER_FADE} s after its bloom ended, ` +
-        `of the ${FLARE_INTERVAL} s FLARE_INTERVAL puts before the next charge-up`,
-    );
-    assertEqual(
-      fish.flareRadius,
-      0,
-      `the Flarefish's \`flareRadius\` ${AFTER_FADE} s after its bloom ended`,
-    );
-    assertEqual(
-      fish.lit,
-      false,
-      `the Flarefish's \`lit\` while it stands eleven tiles from a forager at ` +
-        `G = 0, with no flare, no sonar mark and no alert reaching it`,
-    );
-
-    // And what it leaves on the canvas.
-    assertLessThanOrEqual(
-      distance(watched.atFish, watched.control),
-      ALIKE_MAX_DISTANCE,
-      `the RGB distance, of 441, between the pixel where the Flarefish stands ` +
-        `(${fish.tx}, ${fish.ty}) and the pixel ${CONTROL_TILES} tiles along the ` +
-        `same hallway — no mote, glow or wavefront is left behind`,
-    );
-  },
-);
+  // And what it leaves on the canvas.
+  assertLessThanOrEqual(
+    distance(watched.atFish, watched.control),
+    ALIKE_MAX_DISTANCE,
+    `the RGB distance, of 441, between the pixel where the Flarefish stands ` +
+      `(${fish.tx}, ${fish.ty}) and the pixel ${CONTROL_TILES} tiles along the ` +
+      `same hallway — no mote, glow or wavefront is left behind`,
+  );
+});

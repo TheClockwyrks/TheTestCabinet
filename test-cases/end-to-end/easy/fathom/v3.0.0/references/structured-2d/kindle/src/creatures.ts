@@ -69,12 +69,6 @@ export class Forager implements Body {
     this.hold = BRIGHT_HOLD;
   }
 
-  /** Poses `G` outright, arming the same hold in full. */
-  shine(brightness: number): void {
-    this.brightness = brightness;
-    this.hold = BRIGHT_HOLD;
-  }
-
   /**
    * The hold runs down first, and `G` decays over whatever is left of the
    * step, so the tick a hold expires on is not a tick of steady brightness.
@@ -100,6 +94,9 @@ export class Drifter implements Body {
   facing: Dir = "left";
   speed = DRIFTER_SPEED;
 
+  /** Whether it runs its own wander, which is how a dive is played. */
+  mind = true;
+
   constructor(cell: Cell) {
     this.x = tileCenterX(cell.tx);
     this.y = tileCenterY(cell.ty);
@@ -121,11 +118,14 @@ export class Predator implements Body {
   /** Whether its turn in the staggered schedule has come. */
   released = false;
 
-  /** Its slot, in seconds from the moment live play begins. */
-  readonly releaseAt: number;
+  /**
+   * Its slot, in seconds from the moment live play begins, and `null` for one
+   * added outside a roster, which the staggered schedule therefore passes by.
+   */
+  readonly releaseAt: number | null;
 
-  /** Set while a pose holds it in the den, which suspends its slot outright. */
-  heldInDen = false;
+  /** Whether it runs its own mind, which is how a dive is played. */
+  mind = true;
 
   /** The tile it believes the forager is on. */
   fix: Cell | null = null;
@@ -157,23 +157,21 @@ export class Predator implements Body {
   flareRadius = 0;
   flareFade = 0;
 
-  constructor(kind: PredatorKind, releaseAt: number) {
+  constructor(kind: PredatorKind, releaseAt: number | null) {
     this.kind = kind;
     this.releaseAt = releaseAt;
   }
 
   /**
-   * Puts it back in the den on `cell`, unreleased and with every timer of its
-   * own armed afresh. `held` suspends its release time, which is what a pose
-   * that parks it there does.
+   * Puts it back on a den tile, unreleased and with every timer of its own
+   * armed afresh, which is where a maze laid out at any depth starts it.
    */
-  returnToDen(cell: Cell, held: boolean): void {
+  returnToDen(cell: Cell): void {
     restAt(this, cell);
     this.facing = "up";
     this.speed = PREDATOR_SPEED;
     this.state = "den";
     this.released = false;
-    this.heldInDen = held;
     this.dropFix();
     this.alert = 0;
     this.mark = 0;

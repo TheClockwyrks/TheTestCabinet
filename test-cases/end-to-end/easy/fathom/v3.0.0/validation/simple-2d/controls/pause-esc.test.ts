@@ -26,16 +26,18 @@
 // THE SCREEN IS READ A BEAT AFTER THE PRESS. A build may take the transition in
 // the frame that delivers the key or at the top of the next, and both conform.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
   captureStill,
   createHarness,
+  poseBrightness,
   startPlaying,
   type Harness,
 } from "../harness";
-import { check, clearUnderfoot, denAll, parkForager } from "../scene";
+import { parkForager } from "../scene";
 
 /** The first key specs/movement.md binds the `pause` action to. */
 const KEY = "Escape";
@@ -82,13 +84,11 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("pauses a live dive on Escape", async () => {
+it("pauses a live dive on Escape", async () => {
   await startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
-  await denAll(h);
   await parkForager(h);
-  await clearUnderfoot(h);
-  h.debug.setBrightness(LIT);
+  await poseBrightness(h, LIT, BRIGHT_HOLD);
 
   const live = h.snapshot();
   assertEqual(

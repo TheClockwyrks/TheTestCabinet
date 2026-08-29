@@ -29,7 +29,7 @@
 // nothing and clears no maze (`specs/instrumentation.md`), so the bite that clears
 // is the game's own.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { ARROW_KEY, VISION_GAIN, VISION_MIN } from "../constants";
 import { tileCenter } from "../maze";
@@ -42,7 +42,6 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, denAll, requireSwim } from "../scene";
 
 /**
  * The board: five tiles of straight corridor, the forager on the first and the
@@ -115,99 +114,93 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "descends to a fresh maze one depth deeper once the cleared screen gives way",
-  async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const start = board.mark("S");
-    const target = board.mark("T");
-    await placeForager(h, start, "right");
-    await h.debug.clearPlankton();
-    await h.debug.setPlankton(target.tx, target.ty, true);
-    await denAll(h);
+it("descends to a fresh maze one depth deeper once the cleared screen gives way", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const start = board.mark("S");
+  const target = board.mark("T");
+  await placeForager(h, start, "right");
+  await h.debug.clearPlankton();
+  await h.debug.setPlankton(target.tx, target.ty, true);
 
-    const dive = await captureReplay(h, "descend", async () => {
-      const before = await h.snapshot();
-      await h.hold(ARROW_KEY.right);
-      const eaten = await h.until((s) => s.planktonRemaining < 1, {
-        maxTicks: BITE_BUDGET,
-        poll: 1,
-      });
-      await h.release(ARROW_KEY.right);
-      const descended = await h.until((s) => s.depth > before.depth, {
-        maxTicks: DESCENT_BUDGET,
-        poll: 1,
-      });
-      await h.advance(SETTLE_TICKS);
-      const next = await h.snapshot();
-      await h.advance(TAIL_TICKS);
-      return {
-        before,
-        cleared: eaten.snapshot,
-        ate: eaten.hit,
-        arrived: descended.hit,
-        next,
-      };
+  const dive = await captureReplay(h, "descend", async () => {
+    const before = await h.snapshot();
+    await h.hold(ARROW_KEY.right);
+    const eaten = await h.until((s) => s.planktonRemaining < 1, {
+      maxTicks: BITE_BUDGET,
+      poll: 1,
     });
+    await h.release(ARROW_KEY.right);
+    const descended = await h.until((s) => s.depth > before.depth, {
+      maxTicks: DESCENT_BUDGET,
+      poll: 1,
+    });
+    await h.advance(SETTLE_TICKS);
+    const next = await h.snapshot();
+    await h.advance(TAIL_TICKS);
+    return {
+      before,
+      cleared: eaten.snapshot,
+      ate: eaten.hit,
+      arrived: descended.hit,
+      next,
+    };
+  });
 
-    if (!dive.ate) {
-      requireSwim(
-        dive.before.forager,
-        dive.cleared.forager,
-        "reach the maze's last plankton",
-      );
-    }
-    assertEqual(
-      dive.arrived,
-      true,
-      `the cleared screen gave way to the next maze inside the ` +
-        `${DESCENT_BUDGET} ticks specs/ui.md allows the interstitial`,
-    );
+  assertEqual(
+    dive.ate,
+    true,
+    "the forager reached and ate the maze's last plankton under a held movement " +
+      "action, which is what clears the maze and starts the descent",
+  );
+  assertEqual(
+    dive.arrived,
+    true,
+    `the cleared screen gave way to the next maze inside the ` +
+      `${DESCENT_BUDGET} ticks specs/ui.md allows the interstitial`,
+  );
 
-    assertEqual(
-      dive.next.depth,
-      dive.before.depth + 1,
-      "the depth of the maze the cleared screen gave way to",
-    );
-    assertEqual(
-      dive.next.screen,
-      "countdown",
-      "the screen the next maze opens on",
-    );
-    assertEqual(
-      dive.next.planktonRemaining,
-      corridorTiles(dive.next),
-      "the plankton the next maze opens with, against its own corridor tiles " +
-        "outside the den",
-    );
-    assertEqual(
-      dive.next.drifters.length,
-      0,
-      "the bonus drifters in the next maze",
-    );
-    assertEqual(
-      dive.next.predators.filter((p) => p.state === "den" && !p.released)
-        .length,
-      dive.next.predators.length,
-      "the predators of the next maze that are denned and unreleased, of the " +
-        "whole roster",
-    );
-    assertEqual(
-      dive.next.score,
-      dive.cleared.score,
-      "the score carried across the descent",
-    );
-    assertEqual(
-      dive.next.lives,
-      dive.before.lives,
-      "the lives carried across the descent",
-    );
-    assertLessThanOrEqual(
-      farthestRevealed(dive.next),
-      LIGHT_MAX,
-      "how far from the forager the next maze reports a tile as anything but " +
-        "unrevealed, against the widest the forager's own light reaches",
-    );
-  },
-);
+  assertEqual(
+    dive.next.depth,
+    dive.before.depth + 1,
+    "the depth of the maze the cleared screen gave way to",
+  );
+  assertEqual(
+    dive.next.screen,
+    "countdown",
+    "the screen the next maze opens on",
+  );
+  assertEqual(
+    dive.next.planktonRemaining,
+    corridorTiles(dive.next),
+    "the plankton the next maze opens with, against its own corridor tiles " +
+      "outside the den",
+  );
+  assertEqual(
+    dive.next.drifters.length,
+    0,
+    "the bonus drifters in the next maze",
+  );
+  assertEqual(
+    dive.next.predators.filter((p) => p.state === "den" && !p.released).length,
+    dive.next.predators.length,
+    "the predators of the next maze that are denned and unreleased, of the " +
+      "whole roster",
+  );
+  assertEqual(
+    dive.next.score,
+    dive.cleared.score,
+    "the score carried across the descent",
+  );
+  assertEqual(
+    dive.next.lives,
+    dive.before.lives,
+    "the lives carried across the descent",
+  );
+  assertLessThanOrEqual(
+    farthestRevealed(dive.next),
+    LIGHT_MAX,
+    "how far from the forager the next maze reports a tile as anything but " +
+      "unrevealed, against the widest the forager's own light reaches",
+  );
+});

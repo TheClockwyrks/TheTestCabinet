@@ -39,9 +39,9 @@
 // clock alone.
 
 import { WallClock } from "@test-cabinet/structured-2d";
-import { afterEach, beforeEach } from "vitest";
-import { assertEqual, assertGreaterThan } from "../assert";
-import { DRIFTER_SPEED } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan, fail } from "../assert";
+import { BRIGHT_HOLD, DRIFTER_SPEED } from "../../src/constants";
 import { placeForager, poseMaze } from "../fixtures";
 import {
   captureStill,
@@ -49,12 +49,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  failPrecondition,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The board: a hunter at a dead end, the forager well down the corridor from it,
@@ -127,26 +122,24 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("advances itself in real time, with nothing stepping it", async () => {
+it("advances itself in real time, with nothing stepping it", async () => {
   startPlaying(h);
   const board = await poseMaze(h, BOARD);
   const den = board.mark("P");
   const start = board.mark("F");
   await placeForager(h, start, "right");
-  // `setMaze` returns every predator to the den and suspends the schedule
-  // (specs/instrumentation.md), so one is posed back out: a denned hunter holds
-  // still whether or not the clock is running, which would leave "nothing moved"
-  // proving nothing. `"wander"` also makes its `released` flag `true`, which is
-  // the "released predator" this point's description names.
-  h.debug.setPredatorTile(SUBJECT, den.tx, den.ty);
+  // One hunter on the board, loose and patrolling: a denned hunter holds still
+  // whether or not the clock is running, which would leave "nothing moved"
+  // proving nothing. `addPredator` puts it out "loose and patrolling", with its
+  // `released` flag `true`, which is the "released predator" this point's
+  // description names.
+  h.debug.addPredator("gloamfin", den.tx, den.ty);
   h.debug.setPredatorDir(SUBJECT, "right");
-  h.debug.setPredatorState(SUBJECT, "wander");
-  // The pellet under the forager, taken off rather than eaten, so nothing about
-  // the opening frame is a score or a brightness event (specs/instrumentation.md
-  // has removing one this way score nothing and clear no maze).
-  h.debug.setPlankton(start.tx, start.ty, false);
+  // The board carries no plankton, so nothing about the opening frame is a score
+  // or a brightness event.
   h.debug.setBrightness(LIT);
-  const watch = await sceneGuard(h, null, { foragerParked: false });
+  h.debug.setBrightHold(BRIGHT_HOLD);
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   await h.advance(PAINT_FRAMES);
   const before = h.snapshot();
@@ -164,20 +157,18 @@ check("advances itself in real time, with nothing stepping it", async () => {
   // watching is loose.
   const releasedFlag = before.predators[SUBJECT]?.released;
   if (typeof releasedFlag !== "boolean") {
-    failPrecondition(
+    fail(
       "`released` reported as a boolean on the posed hunter, which is how this " +
         "scenario knows it is loose rather than held; specs/state.md requires " +
         "the field of every predator",
-      "instrumentation/snapshot-shape",
       `released was ${JSON.stringify(releasedFlag)}`,
     );
   }
   if (!releasedFlag) {
-    failPrecondition(
+    fail(
       'the posed hunter released, which `setPredatorState(index, "wander")` ' +
         "makes it (specs/instrumentation.md), so there is a hunter loose on " +
         "this board for a running clock to carry",
-      "den/stagger",
       "released was false",
     );
   }

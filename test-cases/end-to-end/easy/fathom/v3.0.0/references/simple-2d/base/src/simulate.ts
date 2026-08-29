@@ -163,22 +163,13 @@ interface CreatureStep {
 /**
  * Every predator and every drifter after one tick.
  *
- * With the creatures' minds off each one holds exactly where it stands, keeping
- * the tile, facing and state it was posed with, and only the windows that are
- * consequences rather than decisions run down (`specs/instrumentation.md`).
+ * Each creature runs its own mind, and one whose mind is off holds exactly where
+ * it stands, keeping the tile, facing and state it was posed with, while only the
+ * windows that are consequences rather than decisions run down
+ * (`specs/instrumentation.md`). A mind is turned off one creature at a time, so
+ * every other creature carries on untouched.
  */
 function stepCreatures(state: FathomState, dt: number): CreatureStep {
-  if (!state.creatureAI) {
-    return {
-      predators: state.predators.map((p) => coolPredator(p, dt)),
-      drifters: state.drifters,
-      pulses: [],
-      blooms: [],
-      cues: [],
-      rngState: state.rngState,
-    };
-  }
-
   const draws = createDraws(state.rngState);
   const forager = bodyTile(state.forager);
   const world: PredatorWorld = {
@@ -196,6 +187,10 @@ function stepCreatures(state: FathomState, dt: number): CreatureStep {
   const blooms: Bloom[] = [];
   const cues: CueName[] = [];
   state.predators.forEach((p, index) => {
+    if (!p.mind) {
+      predators.push(coolPredator(p, dt));
+      return;
+    }
     const step = stepPredator(p, index, dt, world, draws);
     predators.push(step.predator);
     pulses.push(...step.pulses);
@@ -203,18 +198,19 @@ function stepCreatures(state: FathomState, dt: number): CreatureStep {
     if (step.bloom !== null) blooms.push(step.bloom);
   });
 
-  const drifters = state.drifters.map((d) => ({
-    ...d,
-    ...driftBody(d, state.maze, DRIFTER_SPEED, dt, draws),
-  }));
+  const drifters = state.drifters.map((d) =>
+    d.mind
+      ? { ...d, ...driftBody(d, state.maze, DRIFTER_SPEED, dt, draws) }
+      : d,
+  );
 
   return { predators, drifters, pulses, blooms, cues, rngState: draws.state };
 }
 
 /**
  * The drifters the forager ate this tick, and the score they paid
- * (`specs/gameplay.md`). Eating a drifter is not one of the minds
- * `setCreatureAI(false)` suspends, so it works either way.
+ * (`specs/gameplay.md`). Eating a drifter is the forager's doing rather than the
+ * drifter's, so a drifter whose mind is off is still eaten and still scores.
  */
 function grazeDrifters(state: FathomState): FathomState {
   const tile = bodyTile(state.forager);
@@ -255,9 +251,15 @@ function admitDrifter(state: FathomState, dt: number): FathomState {
   };
 }
 
-/** A bonus drifter at rest on the center of `(tx, ty)`. */
+/** A bonus drifter at rest on the center of `(tx, ty)`, its mind running. */
 export function createDrifter(tx: number, ty: number): DrifterState {
-  return { x: centerX(tx), y: centerY(ty), facing: "down", heading: null };
+  return {
+    x: centerX(tx),
+    y: centerY(ty),
+    facing: "down",
+    heading: null,
+    mind: true,
+  };
 }
 
 // ---- The wavefronts ------------------------------------------------------
@@ -278,11 +280,7 @@ interface PulseStepResult {
  * hands a Gloamfin a fix. A Gloamfin's ping reveals nothing and marks nothing: it
  * carries the sound out, and catches the forager once, when its front arrives.
  */
-function stepPulses(
-  state: FathomState,
-  dt: number,
-  fixesAllowed: boolean,
-): PulseStepResult {
+function stepPulses(state: FathomState, dt: number): PulseStepResult {
   const forager = bodyTile(state.forager);
   let predators = state.predators;
   const revealed = [...state.revealed];
@@ -294,10 +292,10 @@ function stepPulses(
     if (step.crossed.length > 0) {
       if (pulse.source === "forager") {
         revealFlood(state, revealed, step.crossed);
-        predators = markSwept(predators, step.crossed, forager, fixesAllowed);
+        predators = markSwept(predators, step.crossed, forager);
       } else if (!pulse.caughtForager && caught(step.crossed, forager)) {
         pulse = { ...pulse, caughtForager: true };
-        predators = heardBy(predators, pulse.emitter, forager, fixesAllowed);
+        predators = heardBy(predators, pulse.emitter, forager);
       }
     }
     if (!pulseSpent(pulse)) pulses.push(pulse);
@@ -338,14 +336,16 @@ function markSwept(
   predators: readonly PredatorState[],
   crossed: readonly Tile[],
   forager: Tile,
-  fixesAllowed: boolean,
 ): readonly PredatorState[] {
   return predators.map((p) => {
     if (p.mode === "den" || p.kind === "lanternjaw") return p;
     const at = bodyTile(p);
     if (!caught(crossed, at)) return p;
+    // The mark is what the pulse draws on the predator, so it lands whether or
+    // not that predator is deciding anything; the fix is a decision, so a
+    // predator whose mind is off takes none.
     const marked = { ...p, markIn: Math.max(p.markIn, SONAR_MARK_TIME) };
-    if (p.kind !== "gloamfin" || !fixesAllowed) return marked;
+    if (p.kind !== "gloamfin" || !p.mind) return marked;
     return acquireFix(marked, forager.tx, forager.ty);
   });
 }
@@ -355,11 +355,10 @@ function heardBy(
   predators: readonly PredatorState[],
   emitter: number | null,
   forager: Tile,
-  fixesAllowed: boolean,
 ): readonly PredatorState[] {
-  if (emitter === null || !fixesAllowed) return predators;
+  if (emitter === null) return predators;
   return predators.map((p, index) =>
-    index === emitter && p.mode !== "den"
+    index === emitter && p.mode !== "den" && p.mind
       ? acquireFix(p, forager.tx, forager.ty)
       : p,
   );
@@ -465,7 +464,7 @@ function playTick(state: FathomState, dt: number): TickResult {
     pulses: [...next.pulses, ...creatures.pulses],
   };
 
-  const swept = stepPulses(next, dt, next.creatureAI);
+  const swept = stepPulses(next, dt);
   next = {
     ...next,
     pulses: swept.pulses,

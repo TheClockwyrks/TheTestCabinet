@@ -31,7 +31,7 @@
 // items for one fault, so the displacement bound below is deliberately loose: half
 // a tile in the right direction says "it went that way" and nothing more.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThanOrEqual } from "../assert";
 import { TICK_HZ, TILE } from "../constants";
 import { poseMoveKeyRun } from "../fixtures";
@@ -41,7 +41,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, requireSceneHeld, sceneGuard } from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key `specs/movement.md` binds the `right` action to. */
 const KEY = "ArrowRight";
@@ -85,14 +85,14 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("swims the forager right while ArrowRight is held", async () => {
+it("swims the forager right while ArrowRight is held", async () => {
   await startPlaying(h);
   const run = await poseMoveKeyRun(h, "right");
   // The forager is the SUBJECT here, so it is not held to staying put; what the
   // guard still catches is a life lost or the dive leaving live play under the
   // measurement, either of which would make this a reading of some other
   // situation.
-  const guard = await sceneGuard(h, null, { foragerParked: false });
+  const guard = await sceneGuard(h, { foragerParked: false });
 
   const moved = await captureReplay(h, "move", async () => {
     await h.advance(REST_TICKS);

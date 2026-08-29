@@ -14,17 +14,18 @@
 // build that hands the fix out with the press is caught halfway through, still
 // wandering by the page's own account and already chasing by its own.
 //
-// THE OTHER TWO SENSES ARE SHUT OUT, not hoped away.
-// specs/predators/gloamfin.md gives the Gloamfin three ways to be caught, and the
-// other two would both produce a chase this scenario would read as the pulse's
-// doing. CLOSE HEARING reaches `GLOAMFIN_HEAR` (`64`) units, so the sweep checks
-// the gap between the two centres every tick and stands the check DOWN if a
-// wandering Gloamfin ever closes inside it. ITS OWN PING would catch the forager
-// `d / SONAR_WAVE_SPEED` seconds after it is cast, which on this board is the
-// same arithmetic as the pulse being timed — so the sweep stands the check down
-// if a Gloamfin ping is ever in flight, and confirms none is before the press.
-// Both refusals defer rather than fail: how a Gloamfin hears is
-// `gloamfin/*`'s.
+// THE OTHER TWO SENSES ARE SHUT OUT BY THE FIXTURE, and the sweep asserts that
+// they stayed shut out. specs/predators/gloamfin.md gives the Gloamfin three ways
+// to be caught, and the other two would both produce a chase this scenario would
+// read as the pulse's doing. CLOSE HEARING reaches `GLOAMFIN_HEAR` (`64`) units,
+// and the hunter is posed five tiles out facing AWAY, so a conforming wander can
+// only widen that gap; the sweep reads it every tick and FAILS if it ever closes
+// inside, because a fix taken from there is not the one being timed. ITS OWN PING
+// would catch the forager `d / SONAR_WAVE_SPEED` seconds after it is cast, which
+// on this board is the same arithmetic as the pulse being timed — and a hunter
+// spawned a moment earlier carries a whole `GLOAMFIN_PING_INTERVAL` before its
+// first, far longer than this half-second flight, so the sweep FAILS if one is
+// ever in flight.
 //
 // THE HUNTER IS LEFT WANDERING UNDER ITS OWN MIND, which is the only way the fix
 // can be earned rather than posed, and it is posed FACING OUTWARD with four
@@ -38,10 +39,12 @@
 // and the arrival is then bounded by that closing rate rather than by the flight
 // time of a stationary target.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
+  assertGreaterThan,
   assertGreaterThanOrEqual,
+  assertLength,
   assertLessThanOrEqual,
 } from "../assert";
 import {
@@ -51,7 +54,7 @@ import {
   TICK_HZ,
   TILE,
 } from "../constants";
-import { poseSightLine } from "../fixtures";
+import { poseSightLine, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -59,15 +62,10 @@ import {
   startPlaying,
 } from "../harness";
 import {
-  check,
-  clearUnderfoot,
-  denAll,
   parkForager,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
-  unmetPrecondition,
-  requireKind,
 } from "../scene";
 import { emitPulse, gloamfinPulses, sinceEmit } from "./pulse";
 
@@ -147,169 +145,156 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "hands a wandering Gloamfin its fix when the front arrives, not when the pulse is cast",
-  async () => {
-    await startPlaying(h);
-    const line = await poseSightLine(h, GAP_TILES, {
-      lead: 0,
-      tail: TAIL_TILES,
-    });
-    await parkForager(h, line.forager);
-    await clearUnderfoot(h);
+it("hands a wandering Gloamfin its fix when the front arrives, not when the pulse is cast", async () => {
+  await startPlaying(h);
+  const line = await poseSightLine(h, GAP_TILES, {
+    lead: 0,
+    tail: TAIL_TILES,
+  });
+  await parkForager(h, line.forager);
 
-    const posed = await h.snapshot();
-    const gloamfin = requireKind(posed, "gloamfin");
-    const quiet = await denAll(h, [gloamfin]);
-    await h.debug.setPredatorTile(gloamfin, line.pred.tx, line.pred.ty);
-    // Facing away down the corridor, so its patrol opens outward rather than
-    // straight at the forager.
-    await h.debug.setPredatorDir(gloamfin, line.dir);
-    await h.debug.setPredatorState(gloamfin, "wander");
+  // Facing away down the corridor, so its patrol opens outward rather than
+  // straight at the forager.
+  const gloamfin = await spawnPredator(h, "gloamfin", line.pred, {
+    dir: line.dir,
+    state: "wander",
+  });
 
-    const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
-    const heard = await captureReplay(h, "heard", async () => {
-      const settled0 = await h.snapshot();
-      await h.advance(SETTLE_TICKS);
-      const settled = await h.snapshot();
-      // A hunter that never travels has not been shown wandering, and whether a
-      // released predator patrols under its own power is the den and patrol
-      // points' verdict.
-      requirePredatorMotion(
-        settled0,
-        settled,
-        gloamfin,
-        "patrol the corridor it was posed on",
-      );
-      if (settled.predators[gloamfin].state !== "wander") {
-        unmetPrecondition(
-          `the Gloamfin was already ${settled.predators[gloamfin].state} before ` +
-            "any pulse was cast, so there is no turn for this scenario to time; " +
-            "how it takes a fix by its other senses is gloamfin/*'s verdict, not " +
-            "this one's",
-        );
-      }
-      if (gloamfinPulses(settled).length > 0) {
-        unmetPrecondition(
-          "a Gloamfin ping was already in flight when this scenario was about to " +
-            "cast its pulse, and a ping that reaches the forager hands the same " +
-            "fix this point is timing; the ping cadence is gloamfin/ping's " +
-            "verdict, not this one's",
-        );
-      }
-
-      const steps = Math.abs(
-        settled.predators[gloamfin].tx - settled.forager.tx,
-      );
-      const arrival = steps / SONAR_WAVE_SPEED;
-      const closing = steps / CLOSING_SPEED;
-
-      const emitted = await emitPulse(h);
-      const sweepTicks = Math.ceil((closing + LATE_SLACK) * TICK_HZ);
-      let opening: { elapsed: number; state: string } | null = null;
-      let mid: { elapsed: number; state: string } | null = null;
-      let chased: number | null = null;
-      for (let tick = 1; tick <= sweepTicks; tick += 1) {
-        if (tick > 1) await h.advance(1);
-        const snapshot = await h.snapshot();
-        const elapsed = sinceEmit(emitted, snapshot);
-        const hunter = snapshot.predators[gloamfin];
-        const gap = Math.hypot(
-          hunter.x - snapshot.forager.x,
-          hunter.y - snapshot.forager.y,
-        );
-        if (gap <= GLOAMFIN_HEAR) {
-          unmetPrecondition(
-            `the wandering Gloamfin closed to ${gap.toFixed(0)} units of the ` +
-              `forager, inside the GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) its close ` +
-              "hearing reaches, so a fix taken from here need not be the pulse's; " +
-              "close hearing is gloamfin/close-hearing's verdict, not this one's",
-          );
-        }
-        if (gloamfinPulses(snapshot).length > 0) {
-          unmetPrecondition(
-            "the Gloamfin cast a ping of its own while this scenario's pulse was " +
-              "in flight, and a ping that reaches the forager hands the same fix " +
-              "this point is timing; the ping cadence is gloamfin/ping's verdict, " +
-              "not this one's",
-          );
-        }
-        if (opening === null) opening = { elapsed, state: hunter.state };
-        if (mid === null && elapsed >= MID_FRACTION * arrival) {
-          mid = { elapsed, state: hunter.state };
-        }
-        if (chased === null && hunter.state === "chase") chased = elapsed;
-        if (chased !== null) break;
-      }
-      // Held on past the turn, so the clip shows the hunter setting off rather
-      // than stopping on the tick its state changed.
-      await h.advance(60);
-      return { steps, arrival, closing, opening, mid, chased };
-    });
-
-    requireSceneHeld(await h.snapshot(), watch);
-
-    // One tick after the press the sound has gone nowhere, so nothing can have
-    // been heard: this is the half of the claim that says "not at the moment the
-    // pulse was emitted".
+  const heard = await captureReplay(h, "heard", async () => {
+    const settled0 = await h.snapshot();
+    await h.advance(SETTLE_TICKS);
+    const settled = await h.snapshot();
+    // A hunter that never travels has not been shown wandering.
+    requirePredatorMotion(
+      settled0,
+      settled,
+      gloamfin,
+      "patrol the corridor it was posed on",
+    );
     assertEqual(
-      heard.opening?.state,
+      settled.predators[gloamfin].state,
       "wander",
-      `the Gloamfin's state one tick after the press, with the front barely off ` +
-        `the forager's own tile and ${heard.steps} corridor steps still to travel`,
+      "the Gloamfin's state before any pulse was cast, five tiles down a " +
+        "corridor from a dark forager — a hunter already chasing has no turn " +
+        "for this point to time",
+    );
+    assertLength(
+      gloamfinPulses(settled),
+      0,
+      "Gloamfin pings in flight when this scenario was about to cast its " +
+        "pulse — a ping that reaches the forager hands the same fix this point " +
+        "is timing",
     );
 
-    // Half way through the flight the front is several steps short of the
-    // hunter, and the hunter has heard nothing.
-    assertEqual(
-      heard.mid !== null,
-      true,
-      `a reading taken ${MID_FRACTION} of the way through the front's ` +
-        `${heard.arrival.toFixed(3)} s flight`,
-    );
-    if (heard.mid !== null) {
-      assertEqual(
-        heard.mid.state,
-        "wander",
-        `the Gloamfin's state ${heard.mid.elapsed.toFixed(3)} s after the press, ` +
-          `with the front ${(SONAR_WAVE_SPEED * heard.mid.elapsed).toFixed(1)} ` +
-          `steps out of the ${heard.steps} it must travel to reach the hunter`,
-      );
-      // And the mid reading is a fact about the board rather than a tolerance:
-      // even a Gloamfin that swam straight at the forager for the whole of it is
-      // still further out than the front has reached, by this margin.
-      assertGreaterThanOrEqual(
-        heard.steps -
-          (PREDATOR_SPEED * heard.mid.elapsed) / TILE -
-          SONAR_WAVE_SPEED * heard.mid.elapsed,
-        MID_MARGIN_STEPS,
-        "the corridor steps still between the front and the nearest the hunter " +
-          "could have wandered to, at the mid reading",
-      );
-    }
+    const steps = Math.abs(settled.predators[gloamfin].tx - settled.forager.tx);
+    const arrival = steps / SONAR_WAVE_SPEED;
+    const closing = steps / CLOSING_SPEED;
 
-    // And by the time the front gets there, it is chasing.
-    assertEqual(
-      heard.chased !== null,
-      true,
-      `the Gloamfin turned to chase within ${LATE_SLACK} s of the front reaching ` +
-        `it, ${heard.closing.toFixed(3)} s after the press`,
-    );
-    if (heard.chased !== null && heard.mid !== null) {
-      assertGreaterThanOrEqual(
-        heard.chased,
-        heard.mid.elapsed,
-        "when the Gloamfin turned to chase, against the mid-flight reading at " +
-          "which it was still wandering",
+    const emitted = await emitPulse(h);
+    const sweepTicks = Math.ceil((closing + LATE_SLACK) * TICK_HZ);
+    let opening: { elapsed: number; state: string } | null = null;
+    let mid: { elapsed: number; state: string } | null = null;
+    let chased: number | null = null;
+    for (let tick = 1; tick <= sweepTicks; tick += 1) {
+      if (tick > 1) await h.advance(1);
+      const snapshot = await h.snapshot();
+      const elapsed = sinceEmit(emitted, snapshot);
+      const hunter = snapshot.predators[gloamfin];
+      const gap = Math.hypot(
+        hunter.x - snapshot.forager.x,
+        hunter.y - snapshot.forager.y,
       );
-      assertLessThanOrEqual(
-        heard.chased,
-        heard.closing + LATE_SLACK,
-        `when the Gloamfin turned to chase, of the ${heard.closing.toFixed(3)} s ` +
-          "the front takes to close on a hunter wandering away from it down the " +
-          `${heard.steps} corridor steps it was posed at`,
+      assertGreaterThan(
+        gap,
+        GLOAMFIN_HEAR,
+        "the units between the two centres while the front was in flight, " +
+          `against the GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches ` +
+          "— the hunter is posed facing away, so a conforming wander only " +
+          "widens it, and a fix taken from inside is not the pulse's",
       );
+      assertLength(
+        gloamfinPulses(snapshot),
+        0,
+        "Gloamfin pings in flight while this scenario's pulse was travelling " +
+          "— a ping that reaches the forager hands the same fix this point is " +
+          "timing",
+      );
+      if (opening === null) opening = { elapsed, state: hunter.state };
+      if (mid === null && elapsed >= MID_FRACTION * arrival) {
+        mid = { elapsed, state: hunter.state };
+      }
+      if (chased === null && hunter.state === "chase") chased = elapsed;
+      if (chased !== null) break;
     }
-  },
-);
+    // Held on past the turn, so the clip shows the hunter setting off rather
+    // than stopping on the tick its state changed.
+    await h.advance(60);
+    return { steps, arrival, closing, opening, mid, chased };
+  });
+
+  requireSceneHeld(await h.snapshot(), watch);
+
+  // One tick after the press the sound has gone nowhere, so nothing can have
+  // been heard: this is the half of the claim that says "not at the moment the
+  // pulse was emitted".
+  assertEqual(
+    heard.opening?.state,
+    "wander",
+    `the Gloamfin's state one tick after the press, with the front barely off ` +
+      `the forager's own tile and ${heard.steps} corridor steps still to travel`,
+  );
+
+  // Half way through the flight the front is several steps short of the
+  // hunter, and the hunter has heard nothing.
+  assertEqual(
+    heard.mid !== null,
+    true,
+    `a reading taken ${MID_FRACTION} of the way through the front's ` +
+      `${heard.arrival.toFixed(3)} s flight`,
+  );
+  if (heard.mid !== null) {
+    assertEqual(
+      heard.mid.state,
+      "wander",
+      `the Gloamfin's state ${heard.mid.elapsed.toFixed(3)} s after the press, ` +
+        `with the front ${(SONAR_WAVE_SPEED * heard.mid.elapsed).toFixed(1)} ` +
+        `steps out of the ${heard.steps} it must travel to reach the hunter`,
+    );
+    // And the mid reading is a fact about the board rather than a tolerance:
+    // even a Gloamfin that swam straight at the forager for the whole of it is
+    // still further out than the front has reached, by this margin.
+    assertGreaterThanOrEqual(
+      heard.steps -
+        (PREDATOR_SPEED * heard.mid.elapsed) / TILE -
+        SONAR_WAVE_SPEED * heard.mid.elapsed,
+      MID_MARGIN_STEPS,
+      "the corridor steps still between the front and the nearest the hunter " +
+        "could have wandered to, at the mid reading",
+    );
+  }
+
+  // And by the time the front gets there, it is chasing.
+  assertEqual(
+    heard.chased !== null,
+    true,
+    `the Gloamfin turned to chase within ${LATE_SLACK} s of the front reaching ` +
+      `it, ${heard.closing.toFixed(3)} s after the press`,
+  );
+  if (heard.chased !== null && heard.mid !== null) {
+    assertGreaterThanOrEqual(
+      heard.chased,
+      heard.mid.elapsed,
+      "when the Gloamfin turned to chase, against the mid-flight reading at " +
+        "which it was still wandering",
+    );
+    assertLessThanOrEqual(
+      heard.chased,
+      heard.closing + LATE_SLACK,
+      `when the Gloamfin turned to chase, of the ${heard.closing.toFixed(3)} s ` +
+        "the front takes to close on a hunter wandering away from it down the " +
+        `${heard.steps} corridor steps it was posed at`,
+    );
+  }
+});

@@ -26,8 +26,7 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach } from "vitest";
-import { check } from "../scene";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { denCorridorBreaches } from "../maze";
@@ -59,31 +58,28 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "encloses the den chamber, leaving the gate its only opening onto the corridors",
-  async () => {
-    const boards = freshBoards(h);
-    requireLaidOut(boards);
-    requireDenChamber(boards);
+it("encloses the den chamber, leaving the gate its only opening onto the corridors", async () => {
+  const boards = freshBoards(h);
+  requireLaidOut(boards);
+  requireDenChamber(boards);
 
-    const measured = boards.map((board) => {
-      const breaches = denCorridorBreaches(board.snapshot);
-      return { board, breaches, ok: breaches.length === MAX_BREACHES };
-    });
-    await captureBoard(h, witness(measured).board, "den");
+  const measured = boards.map((board) => {
+    const breaches = denCorridorBreaches(board.snapshot);
+    return { board, breaches, ok: breaches.length === MAX_BREACHES };
+  });
+  await captureBoard(h, witness(measured).board, "den");
 
-    for (const one of measured) {
-      const named = one.breaches
-        .slice(0, NAMED)
-        .map((tile) => `(${tile.tx}, ${tile.ty})`)
-        .join(", ");
-      assertEqual(
-        one.breaches.length,
-        MAX_BREACHES,
-        `den-interior tiles with a corridor neighbor in the maze laid out from ` +
-          `seed ${one.board.seed}` +
-          (named === "" ? "" : `, at ${named}`),
-      );
-    }
-  },
-);
+  for (const one of measured) {
+    const named = one.breaches
+      .slice(0, NAMED)
+      .map((tile) => `(${tile.tx}, ${tile.ty})`)
+      .join(", ");
+    assertEqual(
+      one.breaches.length,
+      MAX_BREACHES,
+      `den-interior tiles with a corridor neighbor in the maze laid out from ` +
+        `seed ${one.board.seed}` +
+        (named === "" ? "" : `, at ${named}`),
+    );
+  }
+});

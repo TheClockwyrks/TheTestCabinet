@@ -26,7 +26,7 @@
 // of the following one, and both conform, so the read is taken a few ticks later
 // while the front is still far inside its range.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan, assertNotEqual } from "../assert";
 import { poseStraightRun } from "../fixtures";
 import {
@@ -35,13 +35,7 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  quietBoard,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `a` action to. */
 const KEY = "Space";
@@ -87,13 +81,12 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("emits a forager sonar pulse on Space", async () => {
+it("emits a forager sonar pulse on Space", async () => {
   startPlaying(h);
   await poseStraightRun(h, RUN_TILES);
-  const quiet = await denAll(h);
-  await quietBoard(h);
+  await parkForager(h);
   h.debug.setSonarCooldown(0);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
   const read = await captureReplay(h, "ping", async () => {
     await h.advance(REST_TICKS);

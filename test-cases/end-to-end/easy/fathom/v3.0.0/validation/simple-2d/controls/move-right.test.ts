@@ -19,19 +19,19 @@
 // The key is the FIRST of the `right` action's bindings (specs/movement.md's
 // table). The second, KeyD, is `controls/wasd-right`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertGreaterThan } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {
-  DIR_KEY,
   captureReplay,
   createHarness,
+  DIR_KEY,
   driveHeldKey,
   startPlaying,
   travelAlong,
   type Harness,
 } from "../harness";
-import { check, denAll, requireSceneHeld, sceneGuard } from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * Frames the key is held before the verdict is read.
@@ -60,14 +60,13 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("ArrowRight swims the forager right", async () => {
+it("ArrowRight swims the forager right", async () => {
   await startPlaying(h);
   const run = await poseMoveKeyRun(h, "right");
-  const quiet = await denAll(h);
   // The forager is this check's SUBJECT, so it is expected to leave the tile it
   // was parked on. What the guard still watches is everything else: a life lost,
   // a screen change, a predator loose on the board.
-  const watch = await sceneGuard(h, quiet, { foragerParked: false });
+  const watch = await sceneGuard(h, { foragerParked: false });
 
   const swum = await captureReplay(h, "move", () =>
     driveHeldKey(h, DIR_KEY.right, {

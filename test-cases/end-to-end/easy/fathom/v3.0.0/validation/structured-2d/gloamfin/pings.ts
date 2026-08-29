@@ -26,18 +26,17 @@
 // which puts that error two orders of magnitude under the tolerances the points
 // state.
 //
-// WHERE THE PRECONDITIONS HERE LIVE. Every scenario in this category reaches its
-// subject by moving something — a Gloamfin off its den tile, the forager into
-// earshot — and on a build where that something does not move at all the check has
-// no answer to report. `scene.ts` owns that refusal for the whole suite, in one
-// shape: the check FAILS, and its `Expected:` line names the point whose verdict it
-// actually is. Nothing here declines by skipping. A suite of one check that skipped
-// is recorded as never having run, so a build whose predators never move would
-// collect no verdict at all from these ten points where it should collect ten
-// failures pointing at the den and patrol points.
+// WHERE A HUNTER THAT NEVER MOVES IS REPORTED. Every scenario in this category
+// poses ONE Gloamfin on an otherwise empty board and reads what it does next, so a
+// hunter that covers no ground at all across a whole measurement has not exhibited
+// the behavior being read and nothing else on the board can account for it.
+// `scene.ts` owns that reading for the whole suite, in one shape:
+// {@link assertPredatorTravelled}, which FAILS. Nothing here skips: a check that
+// decided nothing lowers no rating and falls to a person to settle by hand, which
+// is the expense this suite exists to remove.
 
 import type { Harness } from "../harness";
-import type { Dir, Tile } from "../maze";
+import type { Tile } from "../maze";
 import type {
   FathomSnapshot,
   PredatorSnapshot,
@@ -201,20 +200,4 @@ export function groundBetween(
   b: { x: number; y: number },
 ): number {
   return Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
-}
-
-/** Place one predator on a tile, and face it and state it where asked. */
-export async function placePredator(
-  h: Harness,
-  index: number,
-  tile: Tile,
-  options: { dir?: Dir; state?: "den" | "wander" | "chase" } = {},
-): Promise<void> {
-  await h.debug.setPredatorTile(index, tile.tx, tile.ty);
-  if (options.dir !== undefined) {
-    await h.debug.setPredatorDir(index, options.dir);
-  }
-  if (options.state !== undefined) {
-    await h.debug.setPredatorState(index, options.state);
-  }
 }

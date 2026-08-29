@@ -7,16 +7,18 @@
 //
 // Every operation acts on the LIVE game at the moment it is called, reaching the
 // open world through the accessor the instance supplies — `engine.world` at the
-// call — and takes only the parameters its own heading names. A POSE arranges
-// the running game through the same systems play uses and returns nothing; a
-// READING returns plain data built at the call and changes nothing. Nothing is
-// bypassed: a posed maze is laid out by the same code a descent lays one out
-// with, a posed brightness arms the same hold eating arms, and a posed chase
-// takes its fix through the same acquisition a sense takes one through, so a
-// scenario driven from code behaves exactly like one played by hand.
+// call — and takes only the parameters its own heading names. A POSE sets ONE
+// thing through the same systems play uses and returns nothing, leaving the rest
+// of the game exactly as it stands; a READING returns plain data built at the
+// call and changes nothing. Nothing is bypassed: a posed layout is loaded by the
+// same code a descent loads one with, a posed predator hunts through its own
+// mind, and a posed chase takes its fix through the same acquisition a sense
+// takes one through, so a scenario driven from code behaves exactly like one
+// played by hand.
 //
-// An argument outside the domain its operation states fails loudly rather than
-// leaving the game in a state no play could reach.
+// An argument outside the domain its operation states, and a subject not in the
+// condition the operation states, both fail loudly rather than leaving the game
+// in a state no play could reach.
 //
 // The surface holds no state and is inert during normal play: nothing below runs
 // until something calls it.
@@ -24,6 +26,7 @@
 import type { World } from "@test-cabinet/structured-2d";
 import { noCues } from "./audio";
 import {
+  BRIGHT_HOLD,
   DEFAULT_SEED,
   FATHOM_DEBUG_VERSION,
   GLOAMFIN_HEAR,
@@ -34,20 +37,16 @@ import {
   TILE,
   type PredatorKind,
 } from "./constants";
+import { Drifter, Predator, buildRoster } from "./creatures";
+import type { PredatorState } from "./creatures";
 import {
-  Drifter,
-  buildRoster,
-  denSlots,
-  type Predator,
-  type PredatorState,
-} from "./creatures";
-import {
-  beginDive,
-  beginPlay as beginPlayNow,
+  CLEARED_TIME,
+  beginPlay,
   denPredators,
-  poseMaze,
+  loadLayout,
   resetState,
   sonarRange,
+  startCountdown,
 } from "./flow";
 import type { Cell, Dir } from "./grid";
 import { cellIndex, inGrid } from "./grid";
@@ -82,6 +81,7 @@ export interface SnapshotDrifter {
   tx: number;
   ty: number;
   lit: boolean;
+  mind: boolean;
 }
 
 export interface SnapshotPredator {
@@ -93,6 +93,7 @@ export interface SnapshotPredator {
   dir: Dir;
   state: PredatorState;
   released: boolean;
+  mind: boolean;
   speed: number;
   alert: boolean;
   lit: boolean;
@@ -127,14 +128,15 @@ export interface FathomSnapshot {
   score: number;
   lives: number;
   muted: boolean;
-  creatureAI: boolean;
   planktonRemaining: number;
   brightness: number;
+  brightHold: number;
   visionRadius: number;
   sonar: { ready: boolean; cooldown: number; range: number };
   ink: { ready: boolean; cooldown: number };
   grid: SnapshotGrid;
   tiles: string[];
+  plankton: string[];
   visibility: string[];
   forager: SnapshotForager;
   drifters: SnapshotDrifter[];
@@ -154,25 +156,49 @@ export interface FathomDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
   snapshot(): FathomSnapshot;
-  startDive(): void;
-  beginPlay(): void;
+  setScreen(s: Screen): void;
+  setScore(points: number): void;
+  setLives(n: number): void;
   setDepth(d: number): void;
   setMaze(rows: readonly string[]): void;
+  setPlankton(tx: number, ty: number, present: boolean): void;
+  clearPlankton(): void;
+  clearFog(): void;
   setForagerTile(tx: number, ty: number): void;
   setForagerDir(dir: Dir): void;
   setBrightness(g: number): void;
+  setBrightHold(seconds: number): void;
+  clearPredators(): void;
+  addPredator(kind: PredatorKind, tx: number, ty: number): void;
   setPredatorTile(index: number, tx: number, ty: number): void;
   setPredatorDir(index: number, dir: Dir): void;
   setPredatorState(index: number, value: "den" | "wander" | "chase"): void;
+  setPredatorReleased(index: number, released: boolean): void;
+  setPredatorMind(index: number, enabled: boolean): void;
   spawnDrifter(tx: number, ty: number): void;
-  setCreatureAI(enabled: boolean): void;
-  setPlankton(tx: number, ty: number, present: boolean): void;
-  clearPlankton(): void;
+  clearDrifters(): void;
+  setDrifterMind(index: number, enabled: boolean): void;
   setSonarCooldown(seconds: number): void;
   setInkCooldown(seconds: number): void;
 }
 
 const DIR_NAMES: readonly Dir[] = ["up", "down", "left", "right"];
+
+const SCREEN_NAMES: readonly Screen[] = [
+  "title",
+  "howto",
+  "countdown",
+  "playing",
+  "paused",
+  "cleared",
+  "gameover",
+];
+
+const KIND_NAMES: readonly PredatorKind[] = [
+  "lanternjaw",
+  "gloamfin",
+  "flarefish",
+];
 
 function requireDir(value: unknown, where: string): Dir {
   if (typeof value !== "string" || !DIR_NAMES.includes(value as Dir)) {
@@ -183,6 +209,27 @@ function requireDir(value: unknown, where: string): Dir {
   return value as Dir;
 }
 
+function requireScreen(value: unknown, where: string): Screen {
+  if (typeof value !== "string" || !SCREEN_NAMES.includes(value as Screen)) {
+    throw new Error(
+      `${where}: expected one of ${SCREEN_NAMES.join(", ")}, received ${String(value)}`,
+    );
+  }
+  return value as Screen;
+}
+
+function requireKind(value: unknown, where: string): PredatorKind {
+  if (
+    typeof value !== "string" ||
+    !KIND_NAMES.includes(value as PredatorKind)
+  ) {
+    throw new Error(
+      `${where}: expected one of ${KIND_NAMES.join(", ")}, received ${String(value)}`,
+    );
+  }
+  return value as PredatorKind;
+}
+
 function requireSeconds(value: unknown, where: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw new Error(
@@ -190,6 +237,15 @@ function requireSeconds(value: unknown, where: string): number {
     );
   }
   return value;
+}
+
+function requireWhole(value: unknown, least: number, where: string): number {
+  if (!Number.isInteger(value) || (value as number) < least) {
+    throw new Error(
+      `${where}: expected a whole number of at least ${least}, received ${String(value)}`,
+    );
+  }
+  return value as number;
 }
 
 function requireCell(tx: number, ty: number, where: string): Cell {
@@ -230,6 +286,28 @@ function requirePredator(
   return state.predators[index];
 }
 
+function requireDrifter(
+  state: FathomState,
+  index: number,
+  where: string,
+): Drifter {
+  if (!Number.isInteger(index) || index < 0 || index >= state.drifters.length) {
+    throw new Error(
+      `${where}: no drifter at index ${String(index)}; the maze holds ${state.drifters.length}`,
+    );
+  }
+  return state.drifters[index];
+}
+
+/**
+ * A roster the surface has rebuilt leaves every pulse a Gloamfin cast pointing
+ * at a slot that is no longer the fish that cast it, so the emitter is dropped
+ * and the wavefront travels on as the sound it already is.
+ */
+function forgetEmitters(state: FathomState): void {
+  for (const pulse of state.pulses) pulse.emitterIndex = null;
+}
+
 /**
  * Build the surface over an accessor for the open world. It holds nothing:
  * every operation reads the world — and the state it carries — at the moment it
@@ -255,158 +333,68 @@ export function createDebugApi(world: () => World): FathomDebugApi {
       return snapshotOf(read());
     },
 
-    /** The opening of a real dive, exactly as choosing `DIVE` does. */
-    startDive() {
-      beginDive(read());
+    /**
+     * The screen alone. The game carries on under its own rules from there, so
+     * each screen's own behavior follows: a countdown counts down, a cleared
+     * interstitial runs out into the descent, and live play starts the release
+     * schedule's clock at the moment it opens.
+     */
+    setScreen(s) {
+      const state = read();
+      const screen = requireScreen(s, "setScreen(s)");
+      // Whichever screen was showing, its own timer goes with it, so only the
+      // timer the new screen runs on is left standing.
+      state.countdown = 0;
+      state.clearedTimer = 0;
+      if (screen === "countdown") {
+        startCountdown(state);
+        return;
+      }
+      if (screen === "playing") {
+        beginPlay(state);
+        return;
+      }
+      state.screen = screen;
+      state.menuIndex = 0;
+      if (screen === "cleared") state.clearedTimer = CLEARED_TIME;
     },
 
-    /** The countdown ended now, on the countdown screen alone. */
-    beginPlay() {
-      const state = read();
-      if (state.screen !== "countdown") return;
-      beginPlayNow(state);
+    /** The running score, which play carries on from. */
+    setScore(points) {
+      read().score = requireWhole(points, 0, "setScore(points)");
+    },
+
+    /** The lives held in reserve, the one being played not among them. */
+    setLives(n) {
+      read().lives = requireWhole(n, 0, "setLives(n)");
     },
 
     /**
-     * The depth everything depth scales recomputes from. The roster is the one
-     * that depth holds, back in the den on the ordinary schedule, and the maze
-     * and the screen are left as they are.
+     * The depth, and with it what the specification derives from depth: the
+     * sonar's range, and the roster laid out in the den unreleased. The maze,
+     * the plankton, the fog and the screen are left as they are.
      */
     setDepth(d) {
-      if (!Number.isInteger(d) || d < 1) {
-        throw new Error(
-          `setDepth(d): expected a whole number of at least 1, received ${String(d)}`,
-        );
-      }
       const state = read();
-      state.depth = d;
-      state.predators = buildRoster(d);
-      denPredators(state, false);
-      state.pulses = [];
+      state.depth = requireWhole(d, 1, "setDepth(d)");
+      state.predators = buildRoster(state.depth);
+      denPredators(state);
+      forgetEmitters(state);
     },
 
     /**
      * A fixture posed over the maze, used exactly as given and exempt from
-     * every rule in `specs/maze.md`. The board is left as a freshly laid-out
-     * maze starts, the release schedule is suspended while it stands, and what
-     * the game is doing is left alone.
+     * every rule in `specs/maze.md`. The layout is the whole of what it sets:
+     * everything else on the board is left exactly as it stands, and the light
+     * is recast over the new rock because the pocket is read off the layout.
      */
     setMaze(rows) {
       if (!Array.isArray(rows)) {
         throw new Error("setMaze(rows): expected an array of row strings");
       }
-      poseMaze(read(), rows);
-    },
-
-    /** The forager at rest on the center of an open corridor tile. */
-    setForagerTile(tx, ty) {
       const state = read();
-      const cell = requireCorridor(state, tx, ty, "setForagerTile(tx, ty)");
-      restAt(state.forager, cell);
-      state.desired = null;
-      state.heldDirs = [];
+      loadLayout(state, rows);
       refreshLight(state);
-    },
-
-    /** The forager's facing, which moves it nowhere. */
-    setForagerDir(dir) {
-      const state = read();
-      state.forager.facing = requireDir(dir, "setForagerDir(dir)");
-      state.forager.heading = null;
-      state.desired = null;
-      state.heldDirs = [];
-    },
-
-    /**
-     * `G` posed outright, arming the brightness hold in full exactly as eating
-     * does, so the value is steady for that whole second. `V` and the light
-     * detection ranges recompute from it.
-     */
-    setBrightness(g) {
-      if (typeof g !== "number" || !Number.isFinite(g) || g < 0 || g > 1) {
-        throw new Error(
-          `setBrightness(g): expected a number in [0, 1], received ${String(g)}`,
-        );
-      }
-      const state = read();
-      state.forager.shine(g);
-      refreshLight(state);
-    },
-
-    /** One predator moved to the center of a tile it may stand on. */
-    setPredatorTile(index, tx, ty) {
-      const where = "setPredatorTile(index, tx, ty)";
-      const state = read();
-      const predator = requirePredator(state, index, where);
-      const cell = requireCell(tx, ty, where);
-      if (!state.maze.openToPredator(cell.tx, cell.ty)) {
-        throw new Error(
-          `${where}: (${tx}, ${ty}) is neither corridor, den nor gate`,
-        );
-      }
-      const heading = predator.heading;
-      restAt(predator, cell);
-      predator.heading = heading;
-    },
-
-    /** One predator's facing. */
-    setPredatorDir(index, dir) {
-      const where = "setPredatorDir(index, dir)";
-      const state = read();
-      requirePredator(state, index, where).facing = requireDir(dir, where);
-    },
-
-    /**
-     * One predator's state. `"den"` returns it to a den tile with its release
-     * time suspended; `"wander"` and `"chase"` leave it loose on the tile it
-     * stands on with its turn behind it. A chase takes its fix through the same
-     * acquisition a sense takes one through, and fires no alert of its own,
-     * because a pose is an arrangement rather than a detection.
-     */
-    setPredatorState(index, value) {
-      const where = "setPredatorState(index, value)";
-      const state = read();
-      const predator = requirePredator(state, index, where);
-      if (value === "den") {
-        const slots = denSlots(state.maze);
-        predator.returnToDen(slots[index % slots.length], true);
-        return;
-      }
-      if (value === "wander") {
-        predator.dropFix();
-        predator.state = "wander";
-        predator.released = true;
-        predator.heldInDen = false;
-        predator.alert = 0;
-        return;
-      }
-      if (value === "chase") {
-        predator.state = "wander";
-        predator.released = true;
-        predator.heldInDen = false;
-        acquireFix(
-          predator,
-          trenchFor(state, noCues()),
-          bodyCell(state.forager),
-        );
-        predator.alert = 0;
-        return;
-      }
-      throw new Error(
-        `${where}: expected one of den, wander, chase, received ${String(value)}`,
-      );
-    },
-
-    /** One bonus drifter, which then wanders through the ordinary code. */
-    spawnDrifter(tx, ty) {
-      const state = read();
-      const cell = requireCorridor(state, tx, ty, "spawnDrifter(tx, ty)");
-      state.drifters.push(new Drifter(cell));
-    },
-
-    /** The creatures' own minds, on or off. */
-    setCreatureAI(enabled) {
-      read().creatureAI = enabled === true;
     },
 
     /** A plankton put on a tile or taken off it, which is not eating it. */
@@ -433,6 +421,192 @@ export function createDebugApi(world: () => World): FathomDebugApi {
       state.planktonRemaining = 0;
     },
 
+    /** Every tile back to unrevealed, which reveals nothing of its own. */
+    clearFog() {
+      read().fog.reset();
+    },
+
+    /** The forager at rest on the center of an open corridor tile. */
+    setForagerTile(tx, ty) {
+      const state = read();
+      const cell = requireCorridor(state, tx, ty, "setForagerTile(tx, ty)");
+      restAt(state.forager, cell);
+      state.desired = null;
+      state.heldDirs = [];
+      refreshLight(state);
+    },
+
+    /** The forager's facing, which moves it nowhere. */
+    setForagerDir(dir) {
+      const state = read();
+      state.forager.facing = requireDir(dir, "setForagerDir(dir)");
+      state.forager.heading = null;
+      state.desired = null;
+      state.heldDirs = [];
+    },
+
+    /**
+     * `G` alone. `V` and the light detection ranges recompute from it, and the
+     * hold is left as it stands, so `G` decays from here on the ordinary curve
+     * as soon as whatever hold was running expires.
+     */
+    setBrightness(g) {
+      if (typeof g !== "number" || !Number.isFinite(g) || g < 0 || g > 1) {
+        throw new Error(
+          `setBrightness(g): expected a number in [0, 1], received ${String(g)}`,
+        );
+      }
+      const state = read();
+      state.forager.brightness = g;
+      refreshLight(state);
+    },
+
+    /** The seconds left on the brightness hold, which changes `G` not at all. */
+    setBrightHold(seconds) {
+      const where = "setBrightHold(seconds)";
+      const held = requireSeconds(seconds, where);
+      if (held > BRIGHT_HOLD) {
+        throw new Error(
+          `${where}: expected at most ${BRIGHT_HOLD}, received ${String(seconds)}`,
+        );
+      }
+      read().forager.hold = held;
+    },
+
+    /** Every predator off the board at once, leaving the roster empty. */
+    clearPredators() {
+      const state = read();
+      state.predators = [];
+      forgetEmitters(state);
+    },
+
+    /**
+     * One predator added at the end of the roster, loose and patrolling on the
+     * tile it is placed on. It carries no release time, because the staggered
+     * schedule runs on the roster a maze is laid out with.
+     */
+    addPredator(kind, tx, ty) {
+      const where = "addPredator(kind, tx, ty)";
+      const state = read();
+      const which = requireKind(kind, where);
+      const cell = requireCorridor(state, tx, ty, where);
+      const predator = new Predator(which, null);
+      restAt(predator, cell);
+      predator.facing = "up";
+      predator.state = "wander";
+      predator.released = true;
+      state.predators.push(predator);
+    },
+
+    /** One predator moved to the center of a tile it may stand on. */
+    setPredatorTile(index, tx, ty) {
+      const where = "setPredatorTile(index, tx, ty)";
+      const state = read();
+      const predator = requirePredator(state, index, where);
+      const cell = requireCell(tx, ty, where);
+      if (!state.maze.openToPredator(cell.tx, cell.ty)) {
+        throw new Error(
+          `${where}: (${tx}, ${ty}) is neither corridor, den nor gate`,
+        );
+      }
+      const heading = predator.heading;
+      restAt(predator, cell);
+      predator.heading = heading;
+    },
+
+    /** One predator's facing. */
+    setPredatorDir(index, dir) {
+      const where = "setPredatorDir(index, dir)";
+      const state = read();
+      requirePredator(state, index, where).facing = requireDir(dir, where);
+    },
+
+    /**
+     * One predator's state, on the tile it already stands on: `"den"` inside
+     * the den chamber, `"wander"` and `"chase"` out in the corridors. It moves
+     * the predator nowhere and leaves its release flag as it stands. A posed
+     * chase takes its fix through the same acquisition a sense takes one
+     * through, and fires no alert of its own, because a pose is an arrangement
+     * rather than a detection.
+     */
+    setPredatorState(index, value) {
+      const where = "setPredatorState(index, value)";
+      const state = read();
+      const predator = requirePredator(state, index, where);
+      const cell = bodyCell(predator);
+      const denned =
+        state.maze.isDen(cell.tx, cell.ty) ||
+        state.maze.isGate(cell.tx, cell.ty);
+
+      if (value === "den") {
+        if (!denned) {
+          throw new Error(
+            `${where}: predator ${index} stands on (${cell.tx}, ${cell.ty}), which is neither a den tile nor the gate`,
+          );
+        }
+        predator.state = "den";
+        predator.dropFix();
+        predator.alert = 0;
+        return;
+      }
+
+      if (value !== "wander" && value !== "chase") {
+        throw new Error(
+          `${where}: expected one of den, wander, chase, received ${String(value)}`,
+        );
+      }
+      if (!state.maze.isCorridor(cell.tx, cell.ty)) {
+        throw new Error(
+          `${where}: predator ${index} stands on (${cell.tx}, ${cell.ty}), which is not an open corridor tile`,
+        );
+      }
+
+      predator.state = "wander";
+      predator.dropFix();
+      predator.alert = 0;
+      if (value === "chase") {
+        acquireFix(
+          predator,
+          trenchFor(state, noCues()),
+          bodyCell(state.forager),
+        );
+        predator.alert = 0;
+      }
+    },
+
+    /** Whether one predator's turn in the staggered schedule has come. */
+    setPredatorReleased(index, released) {
+      const where = "setPredatorReleased(index, released)";
+      const state = read();
+      requirePredator(state, index, where).released = released === true;
+    },
+
+    /** One predator's own mind, on or off. */
+    setPredatorMind(index, enabled) {
+      const where = "setPredatorMind(index, enabled)";
+      const state = read();
+      requirePredator(state, index, where).mind = enabled === true;
+    },
+
+    /** One bonus drifter, which then wanders through the ordinary code. */
+    spawnDrifter(tx, ty) {
+      const state = read();
+      const cell = requireCorridor(state, tx, ty, "spawnDrifter(tx, ty)");
+      state.drifters.push(new Drifter(cell));
+    },
+
+    /** Every bonus drifter off the maze at once, none of them eaten. */
+    clearDrifters() {
+      read().drifters = [];
+    },
+
+    /** One drifter's own mind, on or off. */
+    setDrifterMind(index, enabled) {
+      const where = "setDrifterMind(index, enabled)";
+      const state = read();
+      requireDrifter(state, index, where).mind = enabled === true;
+    },
+
     /** The seconds left on the sonar pulse's cooldown. */
     setSonarCooldown(seconds) {
       read().sonarCooldown = requireSeconds(
@@ -448,6 +622,19 @@ export function createDebugApi(world: () => World): FathomDebugApi {
   };
 }
 
+/** The plankton layer, as the snapshot's `plankton` reports it. */
+function planktonRows(state: FathomState): string[] {
+  const rows: string[] = [];
+  for (let ty = 0; ty < GRID_ROWS; ty++) {
+    let row = "";
+    for (let tx = 0; tx < GRID_COLS; tx++) {
+      row += state.plankton[cellIndex(tx, ty)] ? "*" : "-";
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
 /** The snapshot `specs/state.md` defines, built at the call. */
 export function snapshotOf(state: FathomState): FathomSnapshot {
   const forager = state.forager;
@@ -460,9 +647,9 @@ export function snapshotOf(state: FathomState): FathomSnapshot {
     score: state.score,
     lives: state.lives,
     muted: state.muted,
-    creatureAI: state.creatureAI,
     planktonRemaining: state.planktonRemaining,
     brightness: forager.brightness,
+    brightHold: forager.hold,
     visionRadius: forager.visionRadius,
     sonar: {
       ready: state.sonarCooldown <= 0,
@@ -478,6 +665,7 @@ export function snapshotOf(state: FathomState): FathomSnapshot {
       originY: GRID_ORIGIN_Y,
     },
     tiles: state.maze.toRows(),
+    plankton: planktonRows(state),
     visibility: state.fog.toRows(),
     forager: {
       x: forager.x,
@@ -495,6 +683,7 @@ export function snapshotOf(state: FathomState): FathomSnapshot {
         tx: cell.tx,
         ty: cell.ty,
         lit: drifterDrawn(state, drifter),
+        mind: drifter.mind,
       };
     }),
     predators: state.predators.map((predator) => {
@@ -512,6 +701,7 @@ export function snapshotOf(state: FathomState): FathomSnapshot {
         dir: predator.facing,
         state: predator.state,
         released: predator.released,
+        mind: predator.mind,
         speed: predator.speed,
         alert: predator.alert > 0,
         lit: predatorDrawn(state, predator),

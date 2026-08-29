@@ -28,15 +28,16 @@
 // `lanternjaw/dim-shakes`'s and `lanternjaw/ink-shakes`'s; how fast it then
 // travels is `lanternjaw/wander-disguise`'s.
 
-import { afterEach, beforeEach } from "vitest";
-import { TILE } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD, TILE } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
   assertTrue,
+  fail,
 } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -44,16 +45,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { FathomSnapshot } from "../surface";
 import type { Tile } from "../maze";
 
@@ -128,26 +120,24 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("It senses the forager's light within R", async () => {
+it("It senses the forager's light within R", async () => {
   startPlaying(h);
   const board = await poseMaze(h, [`F${".".repeat(RUN_TILES - 1)}`]);
   const home = board.mark("F");
-  const index = indexOfKind(h.snapshot(), "lanternjaw");
-  if (index < 0) {
-    failPrecondition(
-      "a Lanternjaw on the roster to pose this scenario with",
-      "the progression points",
-      "no lanternjaw in snapshot().predators",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  // Parked facing the rock across the corridor and its own pellet settled, so the
-  // standoffs below are the distances the fixture states and `G` is the one the
-  // check poses rather than one a mouthful widened.
+  // Parked facing the rock across the corridor on a board carrying no plankton,
+  // so the standoffs below are the distances the fixture states and `G` is the
+  // one the check poses rather than one a mouthful widened. The hunter is stood
+  // at the far end for now; both standoffs are measured off the range it reports
+  // and posed below.
   await parkForager(h, home);
-  await clearUnderfoot(h);
   h.debug.setBrightness(POSED_G);
-  const guard = await sceneGuard(h, quiet);
+  h.debug.setBrightHold(BRIGHT_HOLD);
+  h.debug.setBrightHold(BRIGHT_HOLD);
+  const index = await spawnPredator(h, "lanternjaw", {
+    tx: home.tx + RUN_TILES - 1,
+    ty: home.ty,
+  });
+  const guard = await sceneGuard(h);
 
   // The build's own reported range, which is what both standoffs are measured
   // from.
@@ -157,10 +147,9 @@ check("It senses the forager's light within R", async () => {
     !Number.isFinite(reported) ||
     reported <= 0
   ) {
-    failPrecondition(
+    fail(
       "the Lanternjaw to report detectRange as a range in logical units, so " +
         "there is a boundary to stand either side of",
-      "brightness/widens-lanternjaw",
       reported,
     );
   }
@@ -170,10 +159,9 @@ check("It senses the forager's light within R", async () => {
   );
   const outsideTiles = Math.ceil((reported * OUTSIDE_FACTOR) / TILE);
   if (outsideTiles > RUN_TILES - 1) {
-    failPrecondition(
+    fail(
       `a detectRange this fixture's ${RUN_TILES - 1} tiles of corridor can hold ` +
         "a standoff beyond",
-      "brightness/widens-lanternjaw",
       `${reported} units, which would need ${outsideTiles} tiles`,
     );
   }
@@ -199,6 +187,7 @@ check("It senses the forager's light within R", async () => {
     h.debug.setPredatorState(index, "wander");
     h.debug.setPredatorTile(index, outside.tx, outside.ty);
     h.debug.setBrightness(POSED_G);
+    h.debug.setBrightHold(BRIGHT_HOLD);
     const seen: string[] = [];
     for (let spent = 0; spent < DENY_TICKS; spent += DENY_POLL) {
       await h.advance(DENY_POLL);

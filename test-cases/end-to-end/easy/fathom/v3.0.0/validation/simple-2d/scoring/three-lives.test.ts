@@ -11,9 +11,9 @@
 // is the contact condition specs/gameplay.md states, so nothing here waits on a
 // chase closing a gap — that is `gloamfin/*`'s to grade.
 //
-// THE COUNTDOWN BETWEEN LIVES IS ENDED RATHER THAN WAITED OUT. `beginPlay` "ends
-// the dive countdown immediately instead of waiting it out"
-// (specs/instrumentation.md). How long the countdown holds, and that it gives way
+// THE COUNTDOWN BETWEEN LIVES IS ENDED RATHER THAN WAITED OUT.
+// `setScreen("playing")` sets the screen and lets the game carry on under its own
+// rules from there (specs/instrumentation.md). How long the countdown holds, and that it gives way
 // on its own, is `states/countdown`'s verdict; this point asks only that live play
 // is reachable again after each catch, which it reads as the screen being
 // `"playing"` once that operation has run. A dive that has already ended by then
@@ -23,9 +23,9 @@
 // ONLY THE LAST CATCH IS RECORDED. The clip this point ships is the run ending, so
 // the three lives before it are spent outside the capture.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { START_LIVES } from "../../src/constants";
-import { assertEqual } from "../assert";
+import { assertEqual, assertGreaterThan } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -33,8 +33,7 @@ import {
   ticks,
   type Harness,
 } from "../harness";
-import { check, denAll, unmetPrecondition } from "../scene";
-import type { FathomSnapshot } from "../surface";
+import { FathomSnapshot } from "../surface";
 
 /**
  * How long a catch may take once the hunter stands on the forager's tile.
@@ -71,7 +70,7 @@ interface Catch {
  * the roster on the forager, and let the game resolve the contact.
  */
 async function takeALife(h: Harness): Promise<Catch> {
-  if (h.snapshot().screen === "countdown") h.debug.beginPlay();
+  if (h.snapshot().screen === "countdown") h.debug.setScreen("playing");
   const before = h.snapshot();
   if (before.screen !== "playing") {
     // Deliberately NOT a precondition. Which catch the run ends on is exactly
@@ -100,15 +99,14 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Three lives, then game over", async () => {
+it("Three lives, then game over", async () => {
   const opened = await startPlaying(h);
-  if (opened.predators.length === 0) {
-    unmetPrecondition(
-      "the roster carries no predator to make contact with; what a depth's " +
-        "roster holds is scoring/depth-scaling's verdict, not this one's",
-    );
-  }
-  await denAll(h);
+  assertGreaterThan(
+    opened.predators.length,
+    0,
+    "predators the dive opened with, one of which is posed onto the forager " +
+      "for each of the catches this point counts",
+  );
 
   // The three lives held in reserve, spent off camera.
   const spent: Catch[] = [];

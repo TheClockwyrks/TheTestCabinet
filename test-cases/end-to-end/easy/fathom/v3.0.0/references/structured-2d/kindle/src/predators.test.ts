@@ -141,7 +141,7 @@ describe("the Lanternjaw", () => {
 
   it("hunts at the predator pace once its light sense holds", () => {
     const { scene: trench, predator } = scene(["P.....F"], "lanternjaw");
-    trench.forager.shine(1);
+    trench.forager.brightness = 1;
     step(predator, trench, TICK_DT);
     expect(predator.state).toBe("chase");
     expect(predator.speed).toBe(PREDATOR_SPEED);
@@ -150,7 +150,7 @@ describe("the Lanternjaw", () => {
 
   it("fires no detection alert", () => {
     const { scene: trench, predator } = scene(["P.....F"], "lanternjaw");
-    trench.forager.shine(1);
+    trench.forager.brightness = 1;
     step(predator, trench, 0.2);
     expect(trench.alerts).toEqual([]);
     expect(predator.alert).toBe(0);
@@ -168,7 +168,7 @@ describe("the Lanternjaw", () => {
 
   it("drops a fix at once when ink blinds it", () => {
     const { scene: trench, predator } = scene(["P.....F"], "lanternjaw");
-    trench.forager.shine(1);
+    trench.forager.brightness = 1;
     step(predator, trench, TICK_DT);
     expect(predator.state).toBe("chase");
     inkOverForager(trench);
@@ -366,7 +366,7 @@ describe("the den and the schedule", () => {
     restAt(forager, anchor(board, "F"));
     const predator = new Predator("gloamfin", 0);
     const den = maze.denTiles[0];
-    predator.returnToDen(den, false);
+    predator.returnToDen(den);
     const trench: Scene = {
       board,
       maze,

@@ -52,43 +52,56 @@
 // build's OWN reported grid, so a build whose maze is not `36 x 18` still gets
 // its fixture stamped somewhere valid rather than a layout of the wrong size.
 //
-// FOUR RULES EVERY FIXTURE OBEYS, each of them paid for by a run that was lost
-// without it.
+// THE WORLD A FIXTURE POSES HOLDS ONLY WHAT THE CHECK IS ABOUT. {@link poseMaze}
+// lays the art down as the whole maze and then EMPTIES the board: every predator
+// off the roster, every drifter off the maze, every plankton off the layout, and
+// the fog back to unrevealed. A check then spawns back exactly the creature its
+// requirement concerns, on a tile it names, and puts a plankton where it wants
+// one.
 //
-//   1. A SEALED LARDER. Plankton sit on every corridor tile
-//      (`specs/gameplay.md`), and eating the last one clears the maze, descends,
-//      re-dens every predator and ends the scenario mid-measurement. A fixture
-//      is a handful of tiles, so a forager that keeps traveling empties it in a
-//      couple of seconds — and whether it does is not a check's to decide,
-//      because `specs/movement.md` lets a forager carry on to the next center.
-//      Pellets it cannot reach settle it outright: `planktonRemaining` never
-//      reaches `0`, whatever the forager does.
-//   2. A SEALED DEN. `setMaze` returns every predator to a den tile, so a
-//      fixture without one asks each build what "back to the den" means when
-//      there is no den, and they answer differently. The fixture carries a real
-//      chamber, walled on three sides with its gate above it, so even a build
-//      that runs the release schedule anyway — which `setMaze` says it must not
-//      — gets no further than the gate, and never into the scenario.
-//   3. THE FORAGER IS PLACED EXPLICITLY. `setMaze` rests it on "the first
-//      corridor tile in reading order", which `specs/instrumentation.md` is
-//      explicit is "a defined resting place rather than a meaningful one". Every
-//      poser below then puts it on a named anchor of its own fixture, and so
-//      must any scenario that poses art of its own.
-//   4. THE HOUSING IS CHECKED, NARROWLY. See {@link requireHoused}.
+// REMOVAL RATHER THAN CONTAINMENT, which is the whole reason the surface carries
+// `clearPredators`, `clearDrifters` and `clearPlankton`. A hunter parked in a
+// walled ring, a den sealed on three sides, a larder of pellets nothing can
+// reach: every one of those leans on the game's own rules holding — that rock is
+// solid, that a denned hunter stays denned, that an unreachable pellet is never
+// eaten — and those rules are exactly what a broken build gets wrong. A build
+// that lets a body cross rock takes fifty scenarios apart at once and each of
+// them reports the wreckage under its own heading. A board with nothing on it
+// cannot come apart, because there is nothing left to escape.
+//
+// WHAT EMPTYING SETTLES, point by point.
+//
+//   - THE MAZE CANNOT CLEAR. `specs/gameplay.md` clears a maze when the forager
+//     eats a plankton with none left after it, so a board carrying none is
+//     never cleared however far the forager travels, and the descent that would
+//     end a scenario mid-measurement cannot happen.
+//   - NO DRIFTER ARRIVES. The bonus cadence admits a drifter only while plankton
+//     remain (`specs/gameplay.md`), so an emptied board stays drifter-free
+//     without a single rule being suspended.
+//   - NOTHING IS EATEN UNDERFOOT. A forager placed on a bare tile eats nothing,
+//     so the brightness a check poses is the brightness it measures.
+//   - NO HUNTER IS RELEASED. The staggered schedule runs on the roster
+//     (`specs/predators.md`), and an empty roster runs none.
+//   - THE FOG IS FRESH. `setMaze` leaves the revealed-tile memory exactly as it
+//     stands (`specs/instrumentation.md`), so the fixture clears it rather than
+//     measuring what the previous board had lit.
+//
+// THE FORAGER IS PLACED EXPLICITLY. `setMaze` moves nothing, so the forager
+// stands wherever it stood on the board before — which the new layout may have
+// closed over. Every poser below puts it on a named anchor of its own fixture,
+// and so must any scenario that poses art of its own.
 
+import { fail } from "./assert";
 import {
   CORRIDOR,
   DEN,
   GATE,
   ROCK,
-  housedTiles,
-  tileKey,
   walledDir,
   type Dir,
   type MazeView,
   type Tile,
 } from "./maze";
-import { unmetPrecondition } from "./scene";
 
 /** A value a driver may answer with directly or through a promise. */
 export type Awaitable<T> = T | Promise<T>;
@@ -112,6 +125,16 @@ export interface PredatorView {
   ty: number;
   state: string;
   released: boolean;
+  mind: boolean;
+}
+
+/** One bonus drifter, as much of it as a poser reads (`specs/state.md`). */
+export interface DrifterView {
+  x: number;
+  y: number;
+  tx: number;
+  ty: number;
+  mind: boolean;
 }
 
 /**
@@ -125,6 +148,7 @@ export interface FixtureBoard extends MazeView {
   screen: string;
   forager: ForagerView;
   predators: readonly PredatorView[];
+  drifters: readonly DrifterView[];
 }
 
 /** The three states `setPredatorState` poses (`specs/instrumentation.md`). */
@@ -133,12 +157,21 @@ export type PosedPredatorState = "den" | "wander" | "chase";
 /** The operations a fixture drives, exactly as `specs/instrumentation.md` fixes them. */
 export interface FixtureOps {
   setMaze(rows: readonly string[]): Awaitable<void>;
-  beginPlay(): Awaitable<void>;
+  clearPredators(): Awaitable<void>;
+  clearDrifters(): Awaitable<void>;
+  clearPlankton(): Awaitable<void>;
+  clearFog(): Awaitable<void>;
+  setPlankton(tx: number, ty: number, present: boolean): Awaitable<void>;
   setForagerTile(tx: number, ty: number): Awaitable<void>;
   setForagerDir(dir: Dir): Awaitable<void>;
+  addPredator(kind: string, tx: number, ty: number): Awaitable<void>;
   setPredatorTile(index: number, tx: number, ty: number): Awaitable<void>;
   setPredatorDir(index: number, dir: Dir): Awaitable<void>;
   setPredatorState(index: number, value: PosedPredatorState): Awaitable<void>;
+  setPredatorReleased(index: number, released: boolean): Awaitable<void>;
+  setPredatorMind(index: number, enabled: boolean): Awaitable<void>;
+  spawnDrifter(tx: number, ty: number): Awaitable<void>;
+  setDrifterMind(index: number, enabled: boolean): Awaitable<void>;
 }
 
 /** What a poser needs of a harness: the surface, and a read of the board. */
@@ -150,9 +183,6 @@ export interface FixtureHost {
 /* -------------------------------------------------------------------------- */
 /* Stamping a fixture                                                         */
 /* -------------------------------------------------------------------------- */
-
-/** How many tiles of unreachable corridor the sealed larder holds. */
-export const LARDER_TILES = 3;
 
 /** Where the art was stamped, and what each of its letters labels. */
 export interface Stamped {
@@ -175,22 +205,6 @@ export interface Posed extends Stamped {
 export interface StampOptions {
   /** The top-left tile to stamp the art at. It is centred when this is omitted. */
   at?: Tile;
-  /**
-   * Add the sealed larder and the sealed den in the bottom two rows. On by
-   * default, and switched off only by a fixture that needs those rows for itself
-   * and keeps the board unclearable and its predators housed some other way.
-   */
-  larder?: boolean;
-}
-
-export interface PoseOptions extends StampOptions {
-  /**
-   * Refuse to grade a scenario `setMaze` left a predator loose in.
-   *
-   * On by default. `controls/setmaze-houses-predators` is the point that OWNS
-   * that claim, so it poses with `housed: false` and asserts the housing itself.
-   */
-  housed?: boolean;
 }
 
 /**
@@ -210,15 +224,15 @@ export function stampLayout(
   const top = options.at ? options.at.ty : Math.floor((rows - height) / 2);
   const left = options.at ? options.at.tx : Math.floor((cols - width) / 2);
   if (top < 0 || left < 0 || top + height > rows || left + width > cols) {
-    // The fixture is stamped into the grid the BUILD reports, so one that does
-    // not fit is a statement about that grid rather than about the subject of
-    // this check. `specs/overview.md` fixes the grid at 36 x 18 and
-    // `instrumentation/snapshot-shape` is the point that reads it back.
-    unmetPrecondition(
-      `a ${width}x${height} fixture does not fit this build's ${cols}x${rows} ` +
-        `grid at (${left}, ${top}) — the grid specs/overview.md fixes, ` +
-        `GRID_COLS (36) by GRID_ROWS (18), would hold it; see ` +
-        `instrumentation/snapshot-shape`,
+    // The fixture is stamped into the grid the BUILD reports, and
+    // `specs/overview.md` fixes that grid at GRID_COLS (36) by GRID_ROWS (18),
+    // which holds every fixture this suite draws. A grid that cannot hold one is
+    // a grid of the wrong size, so the check that reached for it fails here.
+    fail(
+      `a grid that holds this check's ${width}x${height} fixture at ` +
+        `(${left}, ${top}); specs/overview.md fixes the grid at GRID_COLS (36) ` +
+        `by GRID_ROWS (18)`,
+      `${cols}x${rows}`,
     );
   }
 
@@ -246,8 +260,6 @@ export function stampLayout(
     }
   }
 
-  if (options.larder ?? true) stampLarderAndDen(cells, cols, rows);
-
   const stamped = cells.map((line) => line.join(""));
   const pierced = stamped.findIndex(
     (line) => line[0] !== ROCK && line[line.length - 1] !== ROCK,
@@ -261,153 +273,34 @@ export function stampLayout(
   return { rows: stamped, marks, at: { tx: left, ty: top } };
 }
 
-/**
- * THE SEALED LARDER AND THE SEALED DEN, in the bottom two rows of every fixture.
- *
- * THE LARDER is a short run of corridor the forager can never reach. A maze is
- * laid out with a plankton on every corridor tile and eating the one that leaves
- * none behind CLEARS the maze (`specs/gameplay.md`), which descends, lays out a
- * fresh board, re-dens every predator and ends the scenario. Pellets the forager
- * cannot reach settle it outright: `planktonRemaining` never reaches `0`, so no
- * amount of grazing can clear the maze, whatever the forager does. It costs the
- * scenario nothing, because the tiles are sealed off from everything else.
- *
- * THE DEN is a three-tile chamber with its gate above the middle tile and rock
- * on the gate's other three sides. Every board a build lays out has one
- * (`specs/maze.md`), and `setMaze` returns every predator to a den tile — so a
- * fixture without one asks each build what "back to the den" means when there is
- * no den. Giving the fixture a real den takes the question away: there is
- * somewhere to put them, and it is nowhere near the scenario. Sealed means
- * SEALED: even a build that runs the release schedule anyway, which `setMaze`
- * says it must not, gets no further than the gate tile.
- *
- * The two sit at opposite ends of those rows, so the larder is no more reachable
- * from the den than from the fixture.
- */
-function stampLarderAndDen(
-  cells: string[][],
-  cols: number,
-  rows: number,
-): void {
-  const last = rows - 1;
-  const above = rows - 2;
-  const used = (line: string[]): boolean => line.some((cell) => cell !== ROCK);
-  if (used(cells[last]) || used(cells[above])) {
-    throw new Error(
-      "stampLayout: the fixture reaches the bottom two rows, which the larder " +
-        "and the den need; pass { larder: false } and keep the board " +
-        "unclearable and its predators housed another way",
-    );
-  }
-  for (let tx = 1; tx <= Math.min(LARDER_TILES, cols - 2); tx += 1) {
-    cells[last][tx] = CORRIDOR;
-  }
-  const gate = cols - 3;
-  cells[above][gate] = GATE;
-  for (let tx = gate - 1; tx <= gate + 1; tx += 1) cells[last][tx] = DEN;
-}
-
 /* -------------------------------------------------------------------------- */
 /* Posing one                                                                 */
 /* -------------------------------------------------------------------------- */
 
-/** One predator standing outside the den, and the kind of tile it stands on. */
-export interface LoosePredator extends Tile {
-  kind: string;
-  /** `"open corridor"`, `"rock"`, or `"off the board"`. */
-  ground: string;
-  /** The phrase both the decline and the point that owns the claim report. */
-  where: string;
-}
-
-/** Every predator of `board` standing outside `housed`, in roster order. */
-export function looseOf(
-  board: FixtureBoard,
-  housed: ReadonlySet<string>,
-): LoosePredator[] {
-  return board.predators
-    .filter((predator) => !housed.has(tileKey(predator)))
-    .map((predator) => {
-      const at = board.tiles[predator.ty]?.[predator.tx];
-      const ground =
-        at === CORRIDOR
-          ? "open corridor"
-          : at === undefined
-            ? "off the board"
-            : "rock";
-      return {
-        kind: predator.kind,
-        tx: predator.tx,
-        ty: predator.ty,
-        ground,
-        where: `the ${predator.kind} at (${predator.tx}, ${predator.ty}), on ${ground}`,
-      };
-    });
-}
-
 /**
- * Refuse to grade a posed scenario whose predators `setMaze` did not put away —
- * and refuse NARROWLY.
+ * Empty the board of everything but the forager, leaving the layout as it stands.
  *
- * `specs/instrumentation.md` is explicit about what the operation does with
- * them: the board is left in the state a freshly laid-out maze starts in, with
- * every predator returned to a den tile and its `released` flag `false`. A
- * fixture from {@link stampLayout} always carries a real den for them to be
- * returned TO, so on such a layout every predator's tile is a den or gate tile;
- * there is nowhere else it is entitled to be. A build that rebuilds the board
- * but leaves its hunters wherever its own den used to be drops them onto
- * whatever the fixture put at those coordinates, which is frequently the
- * corridor the scenario is about. One run went exactly that way: a Lanternjaw
- * stood in the middle of a posed corridor, the forager swam into it a quarter of
- * a second in, and the point reported "holding ArrowUp gives the forager an
- * upward heading — expected up, actual left", `left` being the facing it
- * respawns on. Three points blamed input and turning for an unmet `setMaze`
- * contract, and nothing named `setMaze`.
- *
- * ONLY A PREDATOR THAT CAN GET ANYWHERE STOPS THE SCENARIO. A build that misses
- * the fixture's den misses it by whatever offset its own den sat at, and the
- * tile it lands on is as often rock as corridor. Movement is confined to the
- * tiles open to a body and rock is solid to every body (`specs/movement.md`), so
- * a hunter embedded in rock cannot reach the forager, the subject, or anything
- * else: the scenario around it is the one the check meant to pose, and refusing
- * to grade it would throw a real measurement away over bookkeeping. A hunter on
- * OPEN CORRIDOR is the one that can travel into the scene, and it is the only
- * one that stops the scenario.
- *
- * The full contract, rock included, is graded by
- * `controls/setmaze-houses-predators`, which poses with `housed: false` and
- * asserts the housing itself. This is the narrower question of whether THIS
- * scenario can still be read, so it DECLINES, naming that point as the one that
- * owns the verdict. A layout with no den at all is not checked:
- * `specs/instrumentation.md` holds such a predator out of play rather than
- * fixing a tile for it.
+ * What {@link poseMaze} does after it has set the layout, and what the handful of
+ * points that read the game's OWN maze — the wrap tunnel, the structural rules,
+ * the descent — call directly. Every predator off the roster, every drifter off
+ * the maze, every plankton off the layout, and the fog back to unrevealed.
  */
-export function requireHoused(board: FixtureBoard): void {
-  const housed = housedTiles(board);
-  if (housed.size === 0) return;
-  const loose = looseOf(board, housed).filter(
-    (one) => one.ground === "open corridor",
-  );
-  if (loose.length === 0) return;
-  unmetPrecondition(
-    `setMaze left a predator loose in the posed fixture — ` +
-      `${loose.map((one) => one.where).join("; ")}. ` +
-      `specs/instrumentation.md has the operation return every predator to a ` +
-      `den tile, and this fixture carries one; a hunter standing in open ` +
-      `corridor can reach the forager and end the scenario, so what happens ` +
-      `next is not this check's verdict — see ` +
-      `controls/setmaze-houses-predators`,
-  );
+export async function clearWorld(h: FixtureHost): Promise<void> {
+  await h.debug.clearPredators();
+  await h.debug.clearDrifters();
+  await h.debug.clearPlankton();
+  await h.debug.clearFog();
 }
 
 /**
- * Pose a fixture as the whole maze, and hand back its anchors.
+ * Pose a fixture as the whole maze on an EMPTIED board, and hand back its
+ * anchors.
  *
- * `setMaze` leaves the dive on a fresh board — a plankton on every corridor
- * tile, the fog back to unrevealed, every predator returned to the den with
- * `released` false and the release schedule suspended — so a caller poses the
- * forager and the predators it wants afterwards, exactly as it would on a
- * generated maze.
+ * `setMaze` sets the layout and nothing else (`specs/instrumentation.md`), so
+ * everything the previous board carried is still standing after it: the roster,
+ * the drifters, the plankton and the revealed-tile memory. This takes all four
+ * away, leaving a world holding the forager alone. A caller then places the
+ * forager and spawns back exactly the creatures its requirement concerns.
  *
  * Every `pose*` helper below is built on this one, and a scenario whose shape
  * none of them draws calls it directly with art of its own.
@@ -415,21 +308,12 @@ export function requireHoused(board: FixtureBoard): void {
 export async function poseMaze(
   h: FixtureHost,
   art: readonly string[],
-  options: PoseOptions = {},
+  options: StampOptions = {},
 ): Promise<Posed> {
   const before = await h.snapshot();
   const stamped = stampLayout(before, art, options);
   await h.debug.setMaze(stamped.rows);
-
-  // `specs/instrumentation.md` leaves the screen exactly as it was, so a build
-  // in live play is still in live play here and this is a no-op. A build that
-  // read the new board as a new maze and opened a countdown is put back into
-  // play rather than having that reading reported against fifty unrelated
-  // points; the screen `setMaze` leaves is nobody's subject below, and
-  // `controls/setmaze-*` is where that contract is graded.
-  if ((await h.snapshot()).screen === "countdown") await h.debug.beginPlay();
-
-  if (options.housed !== false) requireHoused(await h.snapshot());
+  await clearWorld(h);
 
   return {
     ...stamped,
@@ -477,6 +361,95 @@ export async function placePredator(
   if (options.state !== undefined) {
     await h.debug.setPredatorState(index, options.state);
   }
+}
+
+/** How a scenario asks for one hunter of its own. */
+export interface SpawnOptions {
+  /** The facing to give it. Left at the `"up"` a new predator arrives on when omitted. */
+  dir?: Dir;
+  /** The state to put it in. Left at the `"wander"` it arrives on when omitted. */
+  state?: PosedPredatorState;
+  /** Pass `false` to hold it inert: present and solid, deciding nothing. */
+  mind?: boolean;
+}
+
+/**
+ * Add one hunter of `kind` to an emptied roster and hand back its index.
+ *
+ * `addPredator` puts it at the end of `predators` loose, released, minded and
+ * facing `"up"` (`specs/instrumentation.md`), so a check that spawned nothing
+ * else gets index `0`, the second `1`, and so on. Reading the roster back rather
+ * than counting is what keeps that true of a build whose `addPredator` answers
+ * differently: the index this returns is the one the snapshot actually holds.
+ *
+ * `mind: false` is how a scenario keeps a hunter that must be PRESENT but must
+ * not act — the second body a sonar mark or a flare is read against, the
+ * neighbour a mind-off check leaves hunting. It holds where it stands, senses
+ * nothing and decides nothing, while contact with it still costs a life.
+ */
+export async function spawnPredator(
+  h: FixtureHost,
+  kind: string,
+  tile: Tile,
+  options: SpawnOptions = {},
+): Promise<number> {
+  await h.debug.addPredator(kind, tile.tx, tile.ty);
+  const index = (await h.snapshot()).predators.length - 1;
+  if (options.dir !== undefined)
+    await h.debug.setPredatorDir(index, options.dir);
+  if (options.state !== undefined) {
+    await h.debug.setPredatorState(index, options.state);
+  }
+  if (options.mind === false) await h.debug.setPredatorMind(index, false);
+  return index;
+}
+
+/**
+ * Add one bonus drifter and hand back its index, on the same reading.
+ *
+ * `mind: false` holds it where it stands: still drawn, still eaten by a forager
+ * whose tile it shares, and still worth the ordinary bonus
+ * (`specs/instrumentation.md`).
+ */
+export async function spawnDrifter(
+  h: FixtureHost,
+  tile: Tile,
+  options: { mind?: boolean } = {},
+): Promise<number> {
+  await h.debug.spawnDrifter(tile.tx, tile.ty);
+  const index = (await h.snapshot()).drifters.length - 1;
+  if (options.mind === false) await h.debug.setDrifterMind(index, false);
+  return index;
+}
+
+/**
+ * Put a plankton on every open corridor tile of the board, as a laid-out maze
+ * carries one (`specs/gameplay.md`).
+ *
+ * For the handful of checks whose subject IS the grazing — what a pellet is
+ * worth, what the light does when one is eaten, what clearing pays. Everything
+ * else runs on the bare board {@link poseMaze} leaves, where nothing is eaten by
+ * accident and the maze can never clear.
+ *
+ * `except` names tiles to leave bare, which is how a check keeps the tile it
+ * parks the forager on from being a pellet the first tick eats.
+ */
+export async function stockPlankton(
+  h: FixtureHost,
+  except: readonly Tile[] = [],
+): Promise<number> {
+  const board = await h.snapshot();
+  const skip = new Set(except.map((tile) => `${tile.tx},${tile.ty}`));
+  let placed = 0;
+  for (let ty = 0; ty < board.tiles.length; ty += 1) {
+    for (let tx = 0; tx < board.tiles[ty].length; tx += 1) {
+      if (board.tiles[ty][tx] !== CORRIDOR) continue;
+      if (skip.has(`${tx},${ty}`)) continue;
+      await h.debug.setPlankton(tx, ty, true);
+      placed += 1;
+    }
+  }
+  return placed;
 }
 
 /**

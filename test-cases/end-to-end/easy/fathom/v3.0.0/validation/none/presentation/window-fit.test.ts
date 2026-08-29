@@ -34,7 +34,7 @@
 // build meets each as a fresh page — which is also the state the requirement is
 // about: the fit is right on load, before any input.
 
-import { afterEach } from "vitest";
+import { afterEach, it } from "vitest";
 import {
   assertCloseTo,
   assertEqual,
@@ -54,7 +54,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, parkForager } from "../scene";
+import { parkForager } from "../scene";
 
 /** The windows the fit is read over. */
 const SURFACES = [
@@ -374,7 +374,7 @@ async function readsLetterboxed(
 // own window shape and a name that carries that shape, and `it.each` hands a
 // case its data alone.
 for (const shape of SURFACES) {
-  check(`fits the whole stage into ${shape.name}, centered`, async () => {
+  it(`fits the whole stage into ${shape.name}, centered`, async () => {
     const { cssWidth, cssHeight, dpr } = shape;
     const h = await surface({ cssWidth, cssHeight, dpr });
 
@@ -438,24 +438,18 @@ for (const shape of SURFACES) {
   });
 }
 
-check(
-  "draws the stage inside the fit of a wide window, with the bars its background",
-  async () => {
-    // 1600 wide against a 1280-wide stage: an 80 CSS pixel bar on each side. The
-    // off-aspect surface is the one worth looking at — the whole stage fitted
-    // inside it with a bar either side is what this point is about, and none of it
-    // is visible on a surface the size of the stage.
-    const h = await surface({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
-    await readsLetterboxed(h, "fit");
-  },
-);
+it("draws the stage inside the fit of a wide window, with the bars its background", async () => {
+  // 1600 wide against a 1280-wide stage: an 80 CSS pixel bar on each side. The
+  // off-aspect surface is the one worth looking at — the whole stage fitted
+  // inside it with a bar either side is what this point is about, and none of it
+  // is visible on a surface the size of the stage.
+  const h = await surface({ cssWidth: 1600, cssHeight: 720, dpr: 1 });
+  await readsLetterboxed(h, "fit");
+});
 
-check(
-  "draws the stage inside the fit of a tall window, with the bars its background",
-  async () => {
-    // The other axis: 900 tall against a 720-tall stage, so the bars are above and
-    // below and a build that centred on one axis alone is caught here.
-    const h = await surface({ cssWidth: 1280, cssHeight: 900, dpr: 1 });
-    await readsLetterboxed(h, null);
-  },
-);
+it("draws the stage inside the fit of a tall window, with the bars its background", async () => {
+  // The other axis: 900 tall against a 720-tall stage, so the bars are above and
+  // below and a build that centred on one axis alone is caught here.
+  const h = await surface({ cssWidth: 1280, cssHeight: 900, dpr: 1 });
+  await readsLetterboxed(h, null);
+});

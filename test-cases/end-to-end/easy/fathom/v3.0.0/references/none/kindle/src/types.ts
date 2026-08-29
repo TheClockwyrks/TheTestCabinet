@@ -29,8 +29,26 @@ export type Screen =
   | "cleared"
   | "gameover";
 
+/** The seven screens, in the order `specs/state.md` lists them. */
+export const SCREENS: readonly Screen[] = [
+  "title",
+  "howto",
+  "countdown",
+  "playing",
+  "paused",
+  "cleared",
+  "gameover",
+];
+
 /** Which hunter a predator is. */
 export type PredatorKind = "lanternjaw" | "gloamfin" | "flarefish";
+
+/** The three kinds, as the debugging surface names them. */
+export const PREDATOR_KINDS: readonly PredatorKind[] = [
+  "lanternjaw",
+  "gloamfin",
+  "flarefish",
+];
 
 /** Where a predator is and what it is doing. */
 export type PredatorState = "den" | "wander" | "chase" | "search";

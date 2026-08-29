@@ -32,16 +32,15 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { denTiles, gateTiles, tileAt } from "../maze";
-import { check } from "../scene";
 import {
   captureBoard,
   freshBoards,
-  requireDenChamber,
-  requireLaidOut,
+  assertDenChamber,
+  assertLaidOut,
   witness,
 } from "./boards";
 
@@ -69,55 +68,52 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "gives the den exactly one gate, on the top edge of its chamber",
-  async () => {
-    const boards = await freshBoards(h);
-    requireLaidOut(boards);
-    requireDenChamber(boards);
+it("gives the den exactly one gate, on the top edge of its chamber", async () => {
+  const boards = await freshBoards(h);
+  assertLaidOut(boards);
+  assertDenChamber(boards);
 
-    const measured = boards.map((board) => {
-      const gates = gateTiles(board.snapshot);
-      const gate = gates[0];
-      const alone = gates.length === GATES;
-      const below = alone ? tileAt(board.snapshot, gate.tx, gate.ty + 1) : null;
-      const above = alone
-        ? denTiles(board.snapshot).filter((tile) => tile.ty < gate.ty)
-        : [];
-      return {
-        board,
-        gates,
-        below,
-        above,
-        ok: alone && below === "d" && above.length === MAX_ABOVE,
-      };
-    });
-    await captureBoard(h, witness(measured).board, "den");
+  const measured = boards.map((board) => {
+    const gates = gateTiles(board.snapshot);
+    const gate = gates[0];
+    const alone = gates.length === GATES;
+    const below = alone ? tileAt(board.snapshot, gate.tx, gate.ty + 1) : null;
+    const above = alone
+      ? denTiles(board.snapshot).filter((tile) => tile.ty < gate.ty)
+      : [];
+    return {
+      board,
+      gates,
+      below,
+      above,
+      ok: alone && below === "d" && above.length === MAX_ABOVE,
+    };
+  });
+  await captureBoard(h, witness(measured).board, "den");
 
-    for (const one of measured) {
-      const seed = `the maze laid out from seed ${one.board.seed}`;
-      const where =
-        one.gates.map((tile) => `(${tile.tx}, ${tile.ty})`).join(", ") ||
-        "nowhere";
-      assertEqual(
-        one.gates.length,
-        GATES,
-        `den-gate ('g') tiles in ${seed}, at ${where}`,
-      );
-      // Reached only when the assertion above found exactly one gate.
-      const gate = one.gates[0];
-      assertEqual(
-        one.below,
-        "d",
-        `the tile directly below the gate at (${gate.tx}, ${gate.ty}) in ${seed}, ` +
-          `which a gate on the chamber's top edge opens onto`,
-      );
-      assertEqual(
-        one.above.length,
-        MAX_ABOVE,
-        `den-interior tiles above the gate's row ${gate.ty} in ${seed}, which a ` +
-          `gate on the chamber's top edge leaves none of`,
-      );
-    }
-  },
-);
+  for (const one of measured) {
+    const seed = `the maze laid out from seed ${one.board.seed}`;
+    const where =
+      one.gates.map((tile) => `(${tile.tx}, ${tile.ty})`).join(", ") ||
+      "nowhere";
+    assertEqual(
+      one.gates.length,
+      GATES,
+      `den-gate ('g') tiles in ${seed}, at ${where}`,
+    );
+    // Reached only when the assertion above found exactly one gate.
+    const gate = one.gates[0];
+    assertEqual(
+      one.below,
+      "d",
+      `the tile directly below the gate at (${gate.tx}, ${gate.ty}) in ${seed}, ` +
+        `which a gate on the chamber's top edge opens onto`,
+    );
+    assertEqual(
+      one.above.length,
+      MAX_ABOVE,
+      `den-interior tiles above the gate's row ${gate.ty} in ${seed}, which a ` +
+        `gate on the chamber's top edge leaves none of`,
+    );
+  }
+});

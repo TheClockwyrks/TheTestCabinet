@@ -32,29 +32,22 @@
 // WHAT THIS DOES NOT DECIDE. What a chase then does (`gloamfin/chase-cap`), or
 // what the alert looks like (`alert/gloamfin`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
 import { GLOAMFIN_HEAR, TICK_HZ } from "../../src/constants";
-import { placeForager, poseMaze } from "../fixtures";
+import { placeForager, poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  requireKind,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
-import { apart, gloamfinOf, placePredator } from "./pings";
+import { requireSceneHeld, sceneGuard } from "../scene";
+import { apart, gloamfinOf } from "./pings";
 
 /**
  * The fixture: the forager's corridor, and the Gloamfin walled into the tile
@@ -93,24 +86,29 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Close hearing takes a fix and fires the alert", async () => {
+it("Close hearing takes a fix and fires the alert", async () => {
   startPlaying(h);
   const board = await poseMaze(h, SEALED_PAIR);
-  const index = requireKind(h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
-  await placePredator(h, index, board.mark("G"), { state: "wander" });
+  const index = await spawnPredator(h, "gloamfin", board.mark("G"), {
+    state: "wander",
+  });
   await placeForager(h, board.mark("F"), "right");
   await h.debug.clearPlankton();
   await h.debug.setBrightness(0);
   // The forager is this point's mover, so the guard watches everything BUT where
   // it stands: a life lost, the dive leaving live play, a denned hunter loose.
-  const guard = await sceneGuard(h, quiet, { foragerParked: false });
+  const guard = await sceneGuard(h, { foragerParked: false });
 
   const opening = h.snapshot();
   const openingGloamfin = gloamfinOf(opening, index);
 
   const crossing = await captureReplay(h, "fix", async () => {
-    h.hold("ArrowRight");
+    // Carried to the far end of the corridor, inside GLOAMFIN_HEAR of the hunter
+    // through the rock between them: the acquisition is the hunter's own doing,
+    // and whether a held action carries the forager anywhere is the movement
+    // points' subject rather than this one's.
+    const close = board.mark("A");
+    h.debug.setForagerTile(close.tx, close.ty);
     const closed = await h.until(
       (snap) => apart(snap.forager, gloamfinOf(snap, index)) <= GLOAMFIN_HEAR,
       { maxFrames: SWIM_BUDGET, poll: 1 },
@@ -120,7 +118,6 @@ check("Close hearing takes a fix and fires the alert", async () => {
     // Held on past the reading purely so the clip carries a readable moment of
     // the acquisition. The state the check reads is already taken.
     await h.advance(TAIL_TICKS);
-    h.release("ArrowRight");
     return { closed, read };
   });
 
@@ -146,11 +143,12 @@ check("Close hearing takes a fix and fires the alert", async () => {
       `GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) close hearing reaches`,
   );
 
-  requireSwim(
-    opening.forager,
-    crossing.read.forager,
-    `swim the ${SEALED_PAIR[0].length - 1} tiles of corridor this scenario laid ` +
-      `out to bring it inside GLOAMFIN_HEAR of the Gloamfin`,
+  assertEqual(
+    crossing.closed.hit,
+    true,
+    `the forager stood inside GLOAMFIN_HEAR (${GLOAMFIN_HEAR}) of the Gloamfin ` +
+      `within ${SWIM_BUDGET} ticks of being placed at the near end of the ` +
+      "corridor this scenario laid out",
   );
 
   const heard = gloamfinOf(crossing.read, index);

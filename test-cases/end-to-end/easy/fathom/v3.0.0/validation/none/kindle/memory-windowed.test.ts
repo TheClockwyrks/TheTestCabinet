@@ -38,11 +38,12 @@
 // (`specs/instrumentation.md`), and the distances are read against the `R` the
 // build reports at the moment of each reading.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
+  assertNotEqual,
 } from "../assert";
 import { poseMaze } from "../fixtures";
 import {
@@ -54,15 +55,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { type Tile, visibilityAt } from "../maze";
 import { FOG_MATCH, tileFromForager } from "./circle";
 
@@ -114,157 +107,154 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "keeps a tile remembered while the circle hides it, and draws it again on the way back",
-  async () => {
-    await startPlaying(h);
-    const board = await poseMaze(h, ART);
-    const watched = board.mark("T");
-    const unseen = board.mark("U");
-    const unlit = board.mark("S");
-    const near = board.mark("H");
-    const away = board.mark("A");
-    const quiet = await denAll(h);
+it("keeps a tile remembered while the circle hides it, and draws it again on the way back", async () => {
+  await startPlaying(h);
+  const board = await poseMaze(h, ART);
+  const watched = board.mark("T");
+  const unseen = board.mark("U");
+  const unlit = board.mark("S");
+  const near = board.mark("H");
+  const away = board.mark("A");
 
-    /** Rest the forager at a berth, put `G` back to zero, and let it draw. */
-    const restAt = async (tile: Tile): Promise<void> => {
-      await parkForager(h, tile);
-      await clearUnderfoot(h);
-      await h.advance(SETTLE_TICKS);
-    };
+  // A plankton on the watched tile, which the forager never rests on:
+  // `specs/sensing.md` draws a revealed corridor tile as open water "and any
+  // plankton on it as a faint mote", so it carries what a tile of a laid-out
+  // maze carries.
+  await h.debug.setPlankton(watched.tx, watched.ty, true);
 
-    // Reveal the watched tile from the berth beside it, then take up the near
-    // station the readings are taken from.
-    await restAt(board.mark("M"));
-    if (visibilityAt(await h.snapshot(), watched) === "u") {
-      // Whether the forager's light reveals the ground around it is
-      // `fog/light-line-of-sight`'s verdict; with nothing revealed there is no
-      // remembered tile for this point to hide and bring back.
-      unmetPrecondition(
-        "the forager's light left the neighbouring corridor tile unrevealed, so " +
-          "this scenario has no explored ground to hide — whether the light " +
-          "reveals at all is the fog checks' verdict, not this one's",
-      );
-    }
+  /** Rest the forager at a berth and let it draw. */
+  const restAt = async (tile: Tile): Promise<void> => {
+    await parkForager(h, tile);
+    await h.advance(SETTLE_TICKS);
+  };
+
+  // Reveal the watched tile from the berth beside it, then take up the near
+  // station the readings are taken from.
+  await restAt(board.mark("M"));
+  assertNotEqual(
+    visibilityAt(await h.snapshot(), watched),
+    "u",
+    "the visibility of the corridor tile beside the berth, which the forager's " +
+      "light has to have revealed for there to be explored ground to hide",
+  );
+  await restAt(near);
+  const guard = await sceneGuard(h);
+
+  const seen = await captureReplay(h, "memory", async () => {
+    await h.advance(DWELL_TICKS);
+    const atFirst = await h.snapshot();
+    const drawn = await tileColor(h, atFirst, watched);
+    const fog = await tileColor(h, atFirst, unlit);
+
+    // Beyond the circle.
+    await restAt(away);
+    await h.advance(DWELL_TICKS);
+    const beyond = await h.snapshot();
+    const hidden = await tileColor(h, beyond, watched);
+    const neverLit = await tileColor(h, beyond, unseen);
+
+    // And back inside it.
     await restAt(near);
-    const guard = await sceneGuard(h, quiet);
+    await h.advance(DWELL_TICKS);
+    const back = await h.snapshot();
+    const redrawn = await tileColor(h, back, watched);
 
-    const seen = await captureReplay(h, "memory", async () => {
-      await h.advance(DWELL_TICKS);
-      const atFirst = await h.snapshot();
-      const drawn = await tileColor(h, atFirst, watched);
-      const fog = await tileColor(h, atFirst, unlit);
+    return { atFirst, drawn, fog, beyond, hidden, neverLit, back, redrawn };
+  });
 
-      // Beyond the circle.
-      await restAt(away);
-      await h.advance(DWELL_TICKS);
-      const beyond = await h.snapshot();
-      const hidden = await tileColor(h, beyond, watched);
-      const neverLit = await tileColor(h, beyond, unseen);
+  requireSceneHeld(await h.snapshot(), guard);
 
-      // And back inside it.
-      await restAt(near);
-      await h.advance(DWELL_TICKS);
-      const back = await h.snapshot();
-      const redrawn = await tileColor(h, back, watched);
+  // The fixture's own geometry at each station, against the circle the build
+  // reports there.
+  const first = tileFromForager(seen.atFirst, watched);
+  assertGreaterThan(
+    first,
+    seen.atFirst.visionRadius,
+    `the logical units between the near station and the watched tile ` +
+      `(${NEAR_TILES} tiles), which must exceed the light pocket V so the circle ` +
+      "rather than the light is what draws it",
+  );
+  assertGreaterThan(
+    windowRadius(seen.atFirst),
+    first,
+    `the vision circle R against the ${first.toFixed(0)} units to the watched ` +
+      "tile from the near station, which stands inside it",
+  );
+  const far = tileFromForager(seen.beyond, watched);
+  assertGreaterThan(
+    far,
+    windowRadius(seen.beyond),
+    `the ${AWAY_TILES} tiles from the away station to the watched tile, against ` +
+      "the vision circle R reported there",
+  );
 
-      return { atFirst, drawn, fog, beyond, hidden, neverLit, back, redrawn };
-    });
+  // 1. Drawn, inside the circle.
+  assertEqual(
+    visibilityAt(seen.atFirst, watched),
+    "r",
+    `the watched tile at (${watched.tx}, ${watched.ty}) from the near station`,
+  );
+  assertGreaterThan(
+    colorDistance(seen.drawn, seen.fog),
+    DRAWN_MIN,
+    "the RGB distance out of 441 between the watched tile inside the circle and " +
+      "unrevealed fog",
+  );
 
-    requireSceneHeld(await h.snapshot(), guard);
+  // 2. Hidden, not forgotten.
+  assertEqual(
+    visibilityAt(seen.beyond, watched),
+    "r",
+    `the watched tile at (${watched.tx}, ${watched.ty}) once the forager stands ` +
+      "beyond the circle: the circle is a mask and forgets nothing",
+  );
+  assertLessThanOrEqual(
+    colorDistance(seen.hidden, seen.fog),
+    FOG_MATCH,
+    "the RGB distance out of 441 between the watched tile beyond the circle and " +
+      "unrevealed fog, which it is painted with while it is out there",
+  );
 
-    // The fixture's own geometry at each station, against the circle the build
-    // reports there.
-    const first = tileFromForager(seen.atFirst, watched);
-    assertGreaterThan(
-      first,
-      seen.atFirst.visionRadius,
-      `the logical units between the near station and the watched tile ` +
-        `(${NEAR_TILES} tiles), which must exceed the light pocket V so the circle ` +
-        "rather than the light is what draws it",
-    );
-    assertGreaterThan(
-      windowRadius(seen.atFirst),
-      first,
-      `the vision circle R against the ${first.toFixed(0)} units to the watched ` +
-        "tile from the near station, which stands inside it",
-    );
-    const far = tileFromForager(seen.beyond, watched);
-    assertGreaterThan(
-      far,
-      windowRadius(seen.beyond),
-      `the ${AWAY_TILES} tiles from the away station to the watched tile, against ` +
-        "the vision circle R reported there",
-    );
+  // 4. And the tile the light never reached, inside the circle all the while.
+  const reach = tileFromForager(seen.beyond, unseen);
+  assertGreaterThan(
+    reach,
+    seen.beyond.visionRadius,
+    `the ${UNSEEN_TILES} tiles from the away station to the never-lit tile, ` +
+      "against the light pocket V reported there, which must fall short of it",
+  );
+  assertGreaterThan(
+    windowRadius(seen.beyond),
+    reach,
+    `the vision circle R at the away station against the ${reach.toFixed(0)} ` +
+      "units to the never-lit tile, which stands inside it",
+  );
+  assertEqual(
+    visibilityAt(seen.beyond, unseen),
+    "u",
+    `the tile at (${unseen.tx}, ${unseen.ty}), which no light, pulse or flare ` +
+      "has reached and which the circle covers: the circle reveals no tile and " +
+      "remembers no tile (`specs/sensing.md`)",
+  );
+  assertLessThanOrEqual(
+    colorDistance(seen.neverLit, seen.fog),
+    FOG_MATCH,
+    "the RGB distance out of 441 between that never-lit tile inside the circle " +
+      "and unrevealed fog, which is what ground the light has not reached is " +
+      "painted with",
+  );
 
-    // 1. Drawn, inside the circle.
-    assertEqual(
-      visibilityAt(seen.atFirst, watched),
-      "r",
-      `the watched tile at (${watched.tx}, ${watched.ty}) from the near station`,
-    );
-    assertGreaterThan(
-      colorDistance(seen.drawn, seen.fog),
-      DRAWN_MIN,
-      "the RGB distance out of 441 between the watched tile inside the circle and " +
-        "unrevealed fog",
-    );
-
-    // 2. Hidden, not forgotten.
-    assertEqual(
-      visibilityAt(seen.beyond, watched),
-      "r",
-      `the watched tile at (${watched.tx}, ${watched.ty}) once the forager stands ` +
-        "beyond the circle: the circle is a mask and forgets nothing",
-    );
-    assertLessThanOrEqual(
-      colorDistance(seen.hidden, seen.fog),
-      FOG_MATCH,
-      "the RGB distance out of 441 between the watched tile beyond the circle and " +
-        "unrevealed fog, which it is painted with while it is out there",
-    );
-
-    // 4. And the tile the light never reached, inside the circle all the while.
-    const reach = tileFromForager(seen.beyond, unseen);
-    assertGreaterThan(
-      reach,
-      seen.beyond.visionRadius,
-      `the ${UNSEEN_TILES} tiles from the away station to the never-lit tile, ` +
-        "against the light pocket V reported there, which must fall short of it",
-    );
-    assertGreaterThan(
-      windowRadius(seen.beyond),
-      reach,
-      `the vision circle R at the away station against the ${reach.toFixed(0)} ` +
-        "units to the never-lit tile, which stands inside it",
-    );
-    assertEqual(
-      visibilityAt(seen.beyond, unseen),
-      "u",
-      `the tile at (${unseen.tx}, ${unseen.ty}), which no light, pulse or flare ` +
-        "has reached and which the circle covers: the circle reveals no tile and " +
-        "remembers no tile (`specs/sensing.md`)",
-    );
-    assertLessThanOrEqual(
-      colorDistance(seen.neverLit, seen.fog),
-      FOG_MATCH,
-      "the RGB distance out of 441 between that never-lit tile inside the circle " +
-        "and unrevealed fog, which is what ground the light has not reached is " +
-        "painted with",
-    );
-
-    // 3. Drawn again, and drawn the same.
-    assertGreaterThan(
-      colorDistance(seen.redrawn, seen.fog),
-      DRAWN_MIN,
-      "the RGB distance out of 441 between the watched tile once the forager is " +
-        "back inside the circle and unrevealed fog",
-    );
-    assertLessThanOrEqual(
-      colorDistance(seen.redrawn, seen.drawn),
-      FOG_MATCH,
-      "the RGB distance out of 441 between the watched tile as it is redrawn and " +
-        "as it was drawn before it was hidden, with any uneaten plankton still on it",
-    );
-  },
-);
+  // 3. Drawn again, and drawn the same.
+  assertGreaterThan(
+    colorDistance(seen.redrawn, seen.fog),
+    DRAWN_MIN,
+    "the RGB distance out of 441 between the watched tile once the forager is " +
+      "back inside the circle and unrevealed fog",
+  );
+  assertLessThanOrEqual(
+    colorDistance(seen.redrawn, seen.drawn),
+    FOG_MATCH,
+    "the RGB distance out of 441 between the watched tile as it is redrawn and " +
+      "as it was drawn before it was hidden, with any uneaten plankton still on it",
+  );
+});

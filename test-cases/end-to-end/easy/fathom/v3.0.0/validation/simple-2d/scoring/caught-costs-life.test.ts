@@ -31,26 +31,27 @@
 // NO SCENE GUARD. The guard's first finding is a screen that changed under the
 // measurement, which here is the subject.
 
-import { afterEach, beforeEach } from "vitest";
-import { INK_COOLDOWN, SONAR_COOLDOWN } from "../../src/constants";
-import { assertDeepEqual, assertEqual, assertGreaterThan } from "../assert";
+import { afterEach, beforeEach, it } from "vitest";
+import { BRIGHT_HOLD, INK_COOLDOWN, SONAR_COOLDOWN } from "../../src/constants";
+import {
+  assertDeepEqual,
+  assertEqual,
+  assertGreaterThan,
+  fail,
+} from "../assert";
 import {
   captureReplay,
   centerOf,
   createHarness,
   DIR_KEY,
+  poseBrightness,
+  requireForagerMotion,
   startPlaying,
   ticks,
   type Harness,
 } from "../harness";
 import { corridorDirs, corridorTiles, type Tile } from "../maze";
-import {
-  check,
-  denAll,
-  fromForager,
-  requireSwim,
-  unmetPrecondition,
-} from "../scene";
+import { fromForager } from "../scene";
 
 /**
  * Ticks the forager travels away from its start tile before the catch.
@@ -91,42 +92,42 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Contact costs a life and sets the board up again", async () => {
+it("Contact costs a life and sets the board up again", async () => {
   const opened = await startPlaying(h);
   const startTile: Tile = {
     tx: opened.forager.tx,
     ty: opened.forager.ty,
   };
-  if (opened.predators.length === 0) {
-    unmetPrecondition(
-      "the roster carries no predator to make contact with; what a depth's " +
-        "roster holds is scoring/depth-scaling's verdict, not this one's",
-    );
-  }
-  await denAll(h);
+  assertGreaterThan(
+    opened.predators.length,
+    0,
+    "predators the dive opened with, one of which is posed onto the forager to " +
+      "make the contact this point prices",
+  );
 
   // Off the start tile, under the game's own movement code.
   const leaving = corridorDirs(opened, startTile.tx, startTile.ty)[0];
   if (leaving === undefined) {
-    unmetPrecondition(
-      `the forager's start tile (${startTile.tx}, ${startTile.ty}) has no ` +
-        "corridor neighbour to travel to, so it cannot be moved off the tile " +
-        "the reset must bring it back to; the layout is the maze points' verdict",
+    fail(
+      `a corridor neighbour of the forager's start tile (${startTile.tx}, ` +
+        `${startTile.ty}) to travel to, so the forager can be moved off the ` +
+        "tile the reset must bring it back to",
+      "the start tile has no open neighbour at all",
     );
   }
   const parked = h.snapshot();
   h.hold(DIR_KEY[leaving]);
   await h.advance(AWAY_TICKS);
   h.release(DIR_KEY[leaving]);
-  requireSwim(
-    parked.forager,
-    h.snapshot().forager,
+  requireForagerMotion(
+    parked,
+    h.snapshot(),
     "leave the start tile the reset has to bring it back to",
   );
 
   // Every clause the surface can pose is posed away from the value the reset
   // must restore, so each reading below is a question rather than a formality.
-  h.debug.setBrightness(1);
+  await poseBrightness(h, 1, BRIGHT_HOLD);
   h.debug.setSonarCooldown(SONAR_COOLDOWN);
   h.debug.setInkCooldown(INK_COOLDOWN);
   const board = h.snapshot();

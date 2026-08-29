@@ -161,6 +161,15 @@ export function advanceBody(
   intent: Intent,
   open: TileTest,
 ): void {
+  // A body the layout has closed over holds the tile it stands on: travel
+  // carries a body only along tiles open to it, so there is no step out of a
+  // tile that is not one (`specs/movement.md`, `specs/instrumentation.md`).
+  const standing = bodyCell(body);
+  if (!open(standing.tx, standing.ty)) {
+    body.heading = null;
+    return;
+  }
+
   const wanted = intent();
 
   if (wanted === null) {

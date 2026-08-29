@@ -30,7 +30,7 @@
 // seconds of it — a drifter still drifting, half a minute after it appeared, and
 // then taken — rather than half a minute of the same.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { DRIFTER_INTERVAL, DRIFTER_SPEED } from "../../src/constants";
 import {
   assertEqual,
@@ -47,14 +47,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /** One bonus drifter, as the snapshot reports it. */
@@ -149,17 +142,15 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("A drifter stays until it is eaten", async () => {
+it("A drifter stays until it is eaten", async () => {
   startPlaying(h);
   const rooms = await poseApart(h, APART, { ring: RING });
   await parkForager(h, rooms.near);
-  await clearUnderfoot(h);
   // An empty maze admits no drifter at the gate, so the one followed below is
   // the one spawned here.
   h.debug.clearPlankton();
-  const quiet = await denAll(h);
   h.debug.spawnDrifter(rooms.far.tx, rooms.far.ty);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
   const opened = h.snapshot();
 
   // The long stretch, off camera.
@@ -215,7 +206,7 @@ check("A drifter stays until it is eaten", async () => {
   // held where it stands and the forager put on its tile, which is the contact
   // specs/gameplay.md defines; what the bite PAYS is amber/drifter-score's.
   const taken = watched.still.drifters[0];
-  h.debug.setCreatureAI(false);
+  h.debug.setDrifterMind(0, false);
   h.debug.setForagerTile(taken.tx, taken.ty);
   await h.advance(EAT_TICKS);
   assertEqual(

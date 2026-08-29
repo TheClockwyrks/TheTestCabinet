@@ -7,18 +7,18 @@
 // routes `PLAY AGAIN` confirmed to `"countdown"` — where "the score returns to
 // `0`, the lives to `START_LIVES` (`3`), and the depth to `1`".
 //
-// THE RUN IS SPENT THROUGH THE BUILD'S OWN CONTACT RULE. Each attempt puts the
-// roster's first hunter on the forager's own tile and poses it into `"chase"`,
-// which is contact as `specs/gameplay.md` defines it, and then waits for the
-// build to take the life. Nothing here poses a life away or poses the screen.
+// THE RUN IS SPENT THROUGH THE BUILD'S OWN CONTACT RULE. The board carries ONE
+// hunter, and each attempt puts it on the forager's own tile and poses it into
+// `"chase"`, which is contact as `specs/gameplay.md` defines it, and then waits
+// for the build to take the life. Nothing here poses a life away or poses the
+// screen.
 //
 // THE RUN IS GIVEN A SCORE WORTH READING. A dive that never eats anything
 // finishes on `0`, and `0` appears in almost any run of text a screen draws, so
-// the reading would pass on nothing. So the forager takes its opening mouthful
-// and one bonus drifter posed on its own tile first, which puts the run on a
-// three-figure score the screen has to carry. The creatures' minds are off across
-// those two ticks (`specs/instrumentation.md`: with them off "plankton and
-// drifters are still eaten and still score"), so nothing wanders into the reading.
+// the reading would pass on nothing. So one plankton and one bonus drifter are put
+// under the forager first and eaten through the build's own rules, which puts the
+// run on a three-figure score the screen has to carry. The board holds nothing
+// else, so nothing wanders into the reading.
 //
 // WHAT IS ASSERTED OF THE COPY, AND WHAT IS NOT. `specs/ui.md` fixes the two menu
 // items word for word, so those are matched as words. It fixes only that the
@@ -30,8 +30,7 @@
 // ends the run, which is `scoring/three-lives`'; what a plankton or a drifter
 // scores, which is `scoring/plankton`'s and `amber/drifter-score`'s.
 
-import { afterEach, beforeEach } from "vitest";
-import { check } from "../scene";
+import { afterEach, beforeEach, it } from "vitest";
 import { GAMEOVER_ITEMS, START_LIVES } from "../../src/constants";
 import {
   assertEqual,
@@ -52,8 +51,16 @@ import {
   frameOps,
   loseEveryLife,
 } from "./screens";
+import { poseMaze, spawnPredator } from "../fixtures";
+import { parkForager } from "../scene";
 
-/** Frames spent taking the opening mouthful and the posed drifter, one each. */
+/**
+ * THE BOARD. A room for the forager, and a pocket across the rock for the one
+ * hunter every staged catch below uses.
+ */
+const BOARD = ["F....", "", "P...."];
+
+/** Frames spent taking the posed mouthful and the posed drifter, one each. */
 const EAT_TICKS = 1;
 
 let h: Harness;
@@ -66,19 +73,34 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("ends the run on game over, reports it, and plays again", async () => {
+it("ends the run on game over, reports it, and plays again", async () => {
   startPlaying(h);
 
-  // A score worth reading off the screen, taken through the build's own
-  // scoring: the plankton the forager opens on, and one bonus drifter posed
-  // under it.
-  h.debug.setCreatureAI(false);
+  // A board with nothing on it but the forager, one plankton and one drifter —
+  // and one hunter, added last, which is the one every staged catch below uses.
+  const board = await poseMaze(h, BOARD);
+  const home = board.mark("F");
+  await parkForager(h, home);
+
+  // A score worth reading off the screen, taken through the build's own scoring:
+  // one plankton eaten and one bonus drifter, both put under the forager, which
+  // is the contact specs/gameplay.md eats on.
+  // Both stand on the tile AHEAD of the forager and its center is then moved into
+  // that tile, which is the entry specs/gameplay.md eats on; a spare stands one
+  // further on and is never eaten, so the mouthful below is not the one that
+  // leaves none behind and clears the maze.
+  const bite = { tx: home.tx + 1, ty: home.ty };
+  h.debug.setPlankton(home.tx + 2, home.ty, true);
+  h.debug.setPlankton(bite.tx, bite.ty, true);
+  h.debug.setForagerTile(bite.tx, bite.ty);
   await h.advance(EAT_TICKS);
-  const standing = h.snapshot().forager;
-  h.debug.spawnDrifter(standing.tx, standing.ty);
+  h.debug.spawnDrifter(bite.tx, bite.ty);
   await h.advance(EAT_TICKS);
-  h.debug.setCreatureAI(true);
   const scored = h.snapshot();
+
+  // The hunter every attempt below stages its catch with, added after the score
+  // is banked so nothing can take a life early.
+  await spawnPredator(h, "lanternjaw", board.mark("P"));
 
   const over = await loseEveryLife(h);
   const ops = await frameOps(h);

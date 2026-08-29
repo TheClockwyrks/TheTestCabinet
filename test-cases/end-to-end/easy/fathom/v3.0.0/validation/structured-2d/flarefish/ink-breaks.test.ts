@@ -39,15 +39,17 @@
 // `ink/cloud`'s; and what breaks a fix that is not ink, which is
 // `flarefish/chase-like-lanternjaw`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThan,
   assertLessThanOrEqual,
+  fail,
 } from "../assert";
 import {
   BINDINGS,
+  BRIGHT_HOLD,
   INK_RADIUS,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
@@ -56,22 +58,14 @@ import {
   TICK_HZ,
   TILE,
 } from "../../src/constants";
-import { poseInkStandoff } from "../fixtures";
+import { poseInkStandoff, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  standDown,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { startPlaying } from "../harness";
 
 /** The key `specs/movement.md` binds the `b` action, which releases ink, to. */
@@ -138,121 +132,109 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "drops the Flarefish's fix the moment ink lands, and it takes no new one while the cloud blinds it",
-  async () => {
-    await startPlaying(h);
-    const line = await poseInkStandoff(h, { gap: GAP_TILES, clearTiles: 3 });
-    await parkForager(h, line.ink);
-    h.debug.clearPlankton();
+it("drops the Flarefish's fix the moment ink lands, and it takes no new one while the cloud blinds it", async () => {
+  await startPlaying(h);
+  const line = await poseInkStandoff(h, { gap: GAP_TILES, clearTiles: 3 });
+  await parkForager(h, line.ink);
+  h.debug.clearPlankton();
 
-    const opening = h.snapshot();
-    const index = indexOfKind(opening, "flarefish");
-    if (index < 0) {
-      standDown(
-        "the roster carries no Flarefish, so there is no fix for ink to break — " +
-          "what the roster holds is the progression checks' verdict, not this one's",
-      );
-    }
-    const quiet = await denAll(h, [index]);
-    h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-    h.debug.setPredatorDir(index, "left");
-    h.debug.setPredatorState(index, "wander");
-    h.debug.setBrightness(POSED_G);
-    const guard = await sceneGuard(h, quiet);
+  const index = await spawnPredator(h, "flarefish", line.pred, {
+    dir: "left",
+  });
+  h.debug.setBrightness(POSED_G);
+  h.debug.setBrightHold(BRIGHT_HOLD);
+  const guard = await sceneGuard(h);
 
-    const run = await captureReplay(h, "ink", async () => {
-      // The fix, earned through the build's own light-sense rather than posed.
-      await h.advance(ACQUIRE_TICKS);
-      const fixed = h.snapshot();
+  const run = await captureReplay(h, "ink", async () => {
+    // The fix, earned through the build's own light-sense rather than posed.
+    await h.advance(ACQUIRE_TICKS);
+    const fixed = h.snapshot();
 
-      // The cloud, released where the forager stands and squarely on the line.
-      h.debug.setInkCooldown(0);
-      await h.tap(INK_KEY);
-      const inked = h.snapshot();
+    // The cloud, released where the forager stands and squarely on the line.
+    h.debug.setInkCooldown(0);
+    await h.tap(INK_KEY);
+    const inked = h.snapshot();
 
-      const broke = await h.until(
-        (snap) => snap.predators[index].state === "wander",
-        { maxFrames: ticksFor(BREAK_MAX), poll: 1 },
-      );
-      // And then the harder half: a whole blinded window with no new fix in it.
-      const refixed = await h.until(
-        (snap) => snap.predators[index].state !== "wander",
-        { maxFrames: ticksFor(BLIND_WATCH), poll: 1 },
-      );
-      const ended = h.snapshot();
-      await h.advance(TAIL_TICKS);
-      return { fixed, inked, broke, refixed, ended };
-    });
-
-    requireSceneHeld(h.snapshot(), guard);
-
-    // The premise: it was chasing, and there was a cloud.
-    if (run.fixed.predators[index].state !== "chase") {
-      standDown(
-        `the Flarefish did not fix on a forager standing ${GAP_TILES * TILE} ` +
-          `units away at G = ${POSED_G}, inside the R = ${RANGE} ` +
-          `specs/predators/flarefish.md gives it, so there was no fix for ink to ` +
-          `break — whether its light-sense holds inside R is ` +
-          `flarefish/light-sense's verdict, not this one's`,
-      );
-    }
-    if (run.inked.inkClouds.length === 0) {
-      standDown(
-        `pressing ${INK_KEY} with the cooldown at 0 released no cloud, so there ` +
-          `was no ink to break the fix — whether the control releases one is ` +
-          `controls/ink-key's verdict, not this one's`,
-      );
-    }
-
-    // At once, and nowhere near the linger a fix lost any other way is allowed.
-    assertEqual(
-      run.broke.hit,
-      true,
-      `the Flarefish returned to wander within ${BREAK_MAX} s of the cloud ` +
-        `appearing, which specs/predators/flarefish.md gives it with no linger`,
+    const broke = await h.until(
+      (snap) => snap.predators[index].state === "wander",
+      { maxFrames: ticksFor(BREAK_MAX), poll: 1 },
     );
-    assertLessThanOrEqual(
-      run.broke.snapshot.simTime - run.inked.simTime,
-      BREAK_MAX,
-      `the seconds between the cloud appearing and the fix dropping, against the ` +
-        `LINGER_TIME (${LINGER_TIME} s) a fix lost any other way holds for`,
+    // And then the harder half: a whole blinded window with no new fix in it.
+    const refixed = await h.until(
+      (snap) => snap.predators[index].state !== "wander",
+      { maxFrames: ticksFor(BLIND_WATCH), poll: 1 },
     );
+    const ended = h.snapshot();
+    await h.advance(TAIL_TICKS);
+    return { fixed, inked, broke, refixed, ended };
+  });
 
-    // And no new fix while it is blind.
-    assertEqual(
-      run.refixed.hit,
-      false,
-      `the Flarefish took a fresh fix during the ${BLIND_WATCH} s the cloud ` +
-        `blinded it — the cloud is centered on the forager, so the segment ` +
-        `between the two ends at the cloud's own center and never leaves the ` +
-        `INK_RADIUS (${INK_RADIUS}) specs/sensing.md blinds inside of`,
-    );
+  requireSceneHeld(h.snapshot(), guard);
 
-    // The reading that stops the last one passing for the wrong reason: the forager
-    // never left the range the Flarefish would otherwise have sensed it at.
-    const endGap = Math.hypot(
-      run.ended.predators[index].x - run.ended.forager.x,
-      run.ended.predators[index].y - run.ended.forager.y,
+  // The premise: it was chasing, and there was a cloud.
+  if (run.fixed.predators[index].state !== "chase") {
+    fail(
+      `the Flarefish to fix on a forager standing ${GAP_TILES * TILE} units ` +
+        `away at G = ${POSED_G}, inside the R = ${RANGE} ` +
+        "specs/predators/flarefish.md gives it, which is the fix ink breaks",
+      run.fixed.predators[index].state,
     );
-    const endRange =
-      LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * run.ended.brightness;
-    assertLessThan(
-      endGap,
-      endRange,
-      `the units between the two centers at the end of the blinded window, ` +
-        `against the R = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G the ` +
-        `build's own reported brightness (${run.ended.brightness.toFixed(3)}) ` +
-        `gives — so a wandering Flarefish here is one the ink blinded, not one ` +
-        `that lost the forager to distance`,
+  }
+  if (run.inked.inkClouds.length === 0) {
+    fail(
+      `pressing ${INK_KEY} with the cooldown at 0 to release the cloud whose ` +
+        "breaking of the fix is what this point measures",
+      "no cloud on the board",
     );
-    assertGreaterThan(
-      endGap,
-      TILE,
-      `the units between the two centers at the end of the window, against the ` +
-        `${TILE}-unit tile contact is decided on — it can close at most ` +
-        `${((PREDATOR_SPEED * (ticksFor(BLIND_WATCH) + TAIL_TICKS)) / TICK_HZ).toFixed(0)} ` +
-        `units across it and the tail after it`,
-    );
-  },
-);
+  }
+
+  // At once, and nowhere near the linger a fix lost any other way is allowed.
+  assertEqual(
+    run.broke.hit,
+    true,
+    `the Flarefish returned to wander within ${BREAK_MAX} s of the cloud ` +
+      `appearing, which specs/predators/flarefish.md gives it with no linger`,
+  );
+  assertLessThanOrEqual(
+    run.broke.snapshot.simTime - run.inked.simTime,
+    BREAK_MAX,
+    `the seconds between the cloud appearing and the fix dropping, against the ` +
+      `LINGER_TIME (${LINGER_TIME} s) a fix lost any other way holds for`,
+  );
+
+  // And no new fix while it is blind.
+  assertEqual(
+    run.refixed.hit,
+    false,
+    `the Flarefish took a fresh fix during the ${BLIND_WATCH} s the cloud ` +
+      `blinded it — the cloud is centered on the forager, so the segment ` +
+      `between the two ends at the cloud's own center and never leaves the ` +
+      `INK_RADIUS (${INK_RADIUS}) specs/sensing.md blinds inside of`,
+  );
+
+  // The reading that stops the last one passing for the wrong reason: the forager
+  // never left the range the Flarefish would otherwise have sensed it at.
+  const endGap = Math.hypot(
+    run.ended.predators[index].x - run.ended.forager.x,
+    run.ended.predators[index].y - run.ended.forager.y,
+  );
+  const endRange =
+    LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * run.ended.brightness;
+  assertLessThan(
+    endGap,
+    endRange,
+    `the units between the two centers at the end of the blinded window, ` +
+      `against the R = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G the ` +
+      `build's own reported brightness (${run.ended.brightness.toFixed(3)}) ` +
+      `gives — so a wandering Flarefish here is one the ink blinded, not one ` +
+      `that lost the forager to distance`,
+  );
+  assertGreaterThan(
+    endGap,
+    TILE,
+    `the units between the two centers at the end of the window, against the ` +
+      `${TILE}-unit tile contact is decided on — it can close at most ` +
+      `${((PREDATOR_SPEED * (ticksFor(BLIND_WATCH) + TAIL_TICKS)) / TICK_HZ).toFixed(0)} ` +
+      `units across it and the tail after it`,
+  );
+});

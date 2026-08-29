@@ -30,6 +30,7 @@ import { InkField } from "./ink";
 import { Maze } from "./maze";
 import {
   armPingTimers,
+  decayPredatorTimers,
   FLARE_FADE,
   isBlooming,
   isCharging,
@@ -106,10 +107,14 @@ function scene(
     showAlert: (predator) => alerts.push(predator),
     playCue: (cue) => cues.push(cue),
   };
+  // Each predator on its own mind, exactly as `src/game.ts` steps them.
   const step = (ticks: number): void => {
     for (let i = 0; i < ticks; i++) {
       ink.update(TICK_DT);
-      for (const p of predators) updatePredator(p, TICK_DT, world);
+      for (const p of predators) {
+        if (p.mind) updatePredator(p, TICK_DT, world);
+        else decayPredatorTimers(p, TICK_DT);
+      }
     }
   };
   return {
@@ -220,7 +225,7 @@ describe("the den and the release schedule", () => {
     expect(releasedAt[2]).toBeCloseTo(2 * DEN_RELEASE_GAP, 1);
   });
 
-  it("suspends the schedule for a predator held in the den", () => {
+  it("leaves a predator whose mind is off waiting in the den", () => {
     const s = scene(denBoard, { col: 9, row: 5 }, [
       {
         kind: "gloamfin",
@@ -231,7 +236,7 @@ describe("the den and the release schedule", () => {
       },
     ]);
     const p = s.predators[0];
-    p.heldInDen = true;
+    p.mind = false;
     s.seconds(30);
     expect(p.released).toBe(false);
     expect(p.state).toBe("den");

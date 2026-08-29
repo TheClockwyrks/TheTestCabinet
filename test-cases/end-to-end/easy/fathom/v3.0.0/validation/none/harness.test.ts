@@ -25,6 +25,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, beforeEach, expect, it } from "vitest";
+
 import { STAGE_H, STAGE_W, TICK_MS } from "./constants";
 import {
   captureReplay,

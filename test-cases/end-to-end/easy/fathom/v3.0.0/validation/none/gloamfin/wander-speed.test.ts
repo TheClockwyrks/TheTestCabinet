@@ -25,10 +25,10 @@
 // what a corner costs (`gloamfin/corners-slow`), or whether a predator keeps to the
 // corridors (`maze-movement/predators-keep-to-corridors`).
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { PREDATOR_SPEED, TICK_HZ } from "../constants";
-import { placePredator, poseApart } from "../fixtures";
+import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -36,10 +36,7 @@ import {
   startPlaying,
 } from "../harness";
 import {
-  check,
-  denAll,
-  quietBoard,
-  requireKind,
+  parkForager,
   requirePredatorMotion,
   requireSceneHeld,
   sceneGuard,
@@ -136,13 +133,13 @@ async function measure(index: number): Promise<Wander> {
   };
 }
 
-check("It wanders at a steady PREDATOR_SPEED", async () => {
+it("It wanders at a steady PREDATOR_SPEED", async () => {
   await startPlaying(h);
   const rooms = await poseApart(h, APART_TILES, { ring: RING_TILES });
-  const index = requireKind(await h.snapshot(), "gloamfin");
-  const quiet = await denAll(h, [index]);
-  await placePredator(h, index, rooms.far, { state: "wander" });
-  await quietBoard(h);
+  const index = await spawnPredator(h, "gloamfin", rooms.far, {
+    state: "wander",
+  });
+  await parkForager(h);
   // The patrol this measures happens across the board in the dark, where the
   // forager's light never falls, so a clip of the canvas alone would be a black
   // screen. `specs/instrumentation.md` puts the current state, tile and speed of
@@ -150,7 +147,7 @@ check("It wanders at a steady PREDATOR_SPEED", async () => {
   // toggled by the backtick key, so this leaves the simulation exactly as it was
   // and gives the recording something to show.
   await h.tap("Backquote");
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const opening = await h.snapshot();
   await h.advance(SETTLE_TICKS);

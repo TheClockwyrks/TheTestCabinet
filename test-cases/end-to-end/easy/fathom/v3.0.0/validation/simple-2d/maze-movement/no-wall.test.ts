@@ -26,7 +26,7 @@
 // forager EVER standing on the rock tile, and a pair of readings taken at either
 // end of the window would miss one that slipped through and came back.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { TILE } from "../../src/constants";
 import { assertEqual, assertLessThanOrEqual } from "../assert";
 import { poseMaze } from "../fixtures";
@@ -35,23 +35,16 @@ import {
   centerOf,
   createHarness,
   DIR_KEY,
+  requireForagerMotion,
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  FORAGER_CORRIDORS,
-  check,
-  denAll,
-  fromForager,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
+import { fromForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The dead end: the forager starts on `S` and the corridor stops at `W`, with
- * rock beyond it and rock on both flanks. The fixture carries the sealed larder,
- * so grazing the four tiles clears nothing.
+ * rock beyond it and rock on both flanks. The board carries no plankton, so the
+ * four tiles are bare and nothing about the swim can clear the maze.
  */
 const DEAD_END = ["S...W"];
 
@@ -87,17 +80,16 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("stops the forager against rock rather than letting it in", async () => {
+it("stops the forager against rock rather than letting it in", async () => {
   await startPlaying(h);
   const board = await poseMaze(h, DEAD_END);
   const start = board.mark("S");
   const last = board.mark("W");
   await h.debug.setForagerTile(start.tx, start.ty);
   await h.debug.setForagerDir(INTO);
-  const quiet = await denAll(h);
   // The forager is the SUBJECT, so it is not held to staying put; the guard still
   // catches a life lost, a predator loose, or the dive leaving live play.
-  const guard = await sceneGuard(h, quiet, { foragerParked: false });
+  const guard = await sceneGuard(h, { foragerParked: false });
 
   const face = centerOf(h.snapshot(), last);
   /** The rock tile the held direction points into. */
@@ -122,13 +114,13 @@ check("stops the forager against rock rather than letting it in", async () => {
     return { resting, trespass, reach, settled };
   });
 
-  requireSceneHeld(h.snapshot(), guard, { owns: [FORAGER_CORRIDORS] });
+  requireSceneHeld(h.snapshot(), guard);
 
   // A forager that never got under way was never offered the rock; whether a
   // held action moves it at all is `controls/move-*`'s verdict.
-  requireSwim(
-    drive.resting.forager,
-    drive.settled.forager,
+  requireForagerMotion(
+    drive.resting,
+    drive.settled,
     "swim the corridor up to the rock that closes it",
   );
 

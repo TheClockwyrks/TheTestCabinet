@@ -27,15 +27,16 @@
 // `lanternjaw/light-range`'s. A build that fails either stands this check down
 // rather than being failed twice for one fault.
 
-import { afterEach, beforeEach } from "vitest";
-import { BINDINGS, LINGER_TIME } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { BINDINGS, BRIGHT_HOLD, LINGER_TIME } from "../../src/constants";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
   assertTrue,
+  fail,
 } from "../assert";
-import { poseInkStandoff } from "../fixtures";
+import { poseInkStandoff, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -44,16 +45,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The key specs/movement.md binds the `b` action — "releases an ink cloud" — to. */
 const INK_KEY = BINDINGS.b[0];
@@ -113,35 +105,24 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Ink shakes its fix at once", async () => {
+it("Ink shakes its fix at once", async () => {
   startPlaying(h);
   const stand = await poseInkStandoff(h, { gap: GAP_TILES });
-  const index = indexOfKind(h.snapshot(), "lanternjaw");
-  if (index < 0) {
-    failPrecondition(
-      "a Lanternjaw on the roster to pose this scenario with",
-      "the progression points",
-      "no lanternjaw in snapshot().predators",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  h.debug.setPredatorTile(index, stand.pred.tx, stand.pred.ty);
-  h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "lanternjaw", stand.pred);
   await parkForager(h, stand.ink);
-  await clearUnderfoot(h);
   h.debug.setBrightness(BRIGHT_G);
+  h.debug.setBrightHold(BRIGHT_HOLD);
   h.debug.setInkCooldown(0);
-  const guard = await sceneGuard(h, quiet);
+  const guard = await sceneGuard(h);
 
   const fixed = await h.until((s) => s.predators[index].state === "chase", {
     maxFrames: FIX_TICKS,
     poll: 1,
   });
   if (!fixed.hit) {
-    failPrecondition(
+    fail(
       "the Lanternjaw to take a fix on a lit forager on a clear line, so there " +
         "is a fix for ink to break",
-      "lanternjaw/light-range",
       fixed.snapshot.predators[index].state,
     );
   }
@@ -154,10 +135,9 @@ check("Ink shakes its fix at once", async () => {
       { maxFrames: CLOUD_TICKS, poll: 1 },
     );
     if (!released.hit) {
-      failPrecondition(
+      fail(
         `pressing ${INK_KEY} with ink.ready posed true to release a cloud, so ` +
           "there is something on the line to blind the hunter",
-        "controls/ink-key",
         `${released.snapshot.inkClouds.length} clouds in flight`,
       );
     }

@@ -16,9 +16,10 @@
 // finishes on `0`, and `0` appears in almost any run of text a screen draws, so
 // the reading would pass on nothing. So the forager takes its opening mouthful
 // and one bonus drifter posed on its own tile first, which puts the run on a
-// three-figure score the screen has to carry. The creatures' minds are off across
-// those two ticks (`specs/instrumentation.md`: with them off "plankton and
-// drifters are still eaten and still score"), so nothing wanders into the reading.
+// three-figure score the screen has to carry. That drifter's mind is off
+// (`specs/instrumentation.md`: with it off a drifter is "still eaten by a forager
+// whose tile it shares, and still worth the ordinary bonus"), so it is eaten where
+// it was put rather than wherever one tick of wander carried it.
 //
 // WHAT IS ASSERTED OF THE COPY, AND WHAT IS NOT. `specs/ui.md` fixes the two menu
 // items word for word, so those are matched as words. It fixes only that the
@@ -34,7 +35,7 @@
 // life still reaches game over, and the item that owns the count is the one that
 // should say so.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { GAMEOVER_ITEMS, START_LIVES } from "../../src/constants";
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
 import {
@@ -43,7 +44,6 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import { check } from "../scene";
 import {
   CONFIRM_KEY,
   assertDrew,
@@ -65,18 +65,17 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("ends the run on game over, reports it, and plays again", async () => {
+it("ends the run on game over, reports it, and plays again", async () => {
   await startPlaying(h);
 
   // A score worth reading off the screen, taken through the build's own
   // scoring: the plankton the forager opens on, and one bonus drifter posed
   // under it.
-  h.debug.setCreatureAI(false);
   await h.advance(EAT_TICKS);
   const standing = h.snapshot().forager;
   h.debug.spawnDrifter(standing.tx, standing.ty);
+  h.debug.setDrifterMind(0, false);
   await h.advance(EAT_TICKS);
-  h.debug.setCreatureAI(true);
   const scored = h.snapshot();
 
   const over = await loseEveryLife(h);

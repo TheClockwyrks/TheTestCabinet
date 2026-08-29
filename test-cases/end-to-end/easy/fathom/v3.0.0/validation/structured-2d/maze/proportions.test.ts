@@ -33,8 +33,7 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach } from "vitest";
-import { check } from "../scene";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   MAZE_DENSITY_MAX,
   MAZE_DENSITY_MIN,
@@ -65,53 +64,50 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "lays out a maze whose openness, corridor run and density are all in range",
-  async () => {
-    const boards = freshBoards(h);
+it("lays out a maze whose openness, corridor run and density are all in range", async () => {
+  const boards = freshBoards(h);
 
-    const measured = boards.map((board) => {
-      const open = openness(board.snapshot);
-      const run = meanCorridorRun(board.snapshot);
-      const fill = density(board.snapshot);
-      return {
-        board,
-        open,
-        run,
-        fill,
-        ok:
-          open >= MAZE_OPENNESS_MIN &&
-          open <= MAZE_OPENNESS_MAX &&
-          run >= MAZE_MAZING_MIN &&
-          run <= MAZE_MAZING_MAX &&
-          fill >= MAZE_DENSITY_MIN &&
-          fill <= MAZE_DENSITY_MAX,
-      };
-    });
-    await captureBoard(h, witness(measured).board);
+  const measured = boards.map((board) => {
+    const open = openness(board.snapshot);
+    const run = meanCorridorRun(board.snapshot);
+    const fill = density(board.snapshot);
+    return {
+      board,
+      open,
+      run,
+      fill,
+      ok:
+        open >= MAZE_OPENNESS_MIN &&
+        open <= MAZE_OPENNESS_MAX &&
+        run >= MAZE_MAZING_MIN &&
+        run <= MAZE_MAZING_MAX &&
+        fill >= MAZE_DENSITY_MIN &&
+        fill <= MAZE_DENSITY_MAX,
+    };
+  });
+  await captureBoard(h, witness(measured).board);
 
-    for (const one of measured) {
-      const seed = `the maze laid out from seed ${one.board.seed}`;
-      assertBetween(
-        one.open,
-        MAZE_OPENNESS_MIN,
-        MAZE_OPENNESS_MAX,
-        `openness, the mean corridor neighbors per corridor tile, in ${seed}`,
-      );
-      assertBetween(
-        one.run,
-        MAZE_MAZING_MIN,
-        MAZE_MAZING_MAX,
-        `the mean corridor-run length, in tiles, in ${seed}`,
-      );
-      assertBetween(
-        one.fill,
-        MAZE_DENSITY_MIN,
-        MAZE_DENSITY_MAX,
-        `density, corridor tiles over the ` +
-          `${(one.board.snapshot.grid.cols - 2) * (one.board.snapshot.grid.rows - 2)} ` +
-          `cells inside the border, in ${seed}`,
-      );
-    }
-  },
-);
+  for (const one of measured) {
+    const seed = `the maze laid out from seed ${one.board.seed}`;
+    assertBetween(
+      one.open,
+      MAZE_OPENNESS_MIN,
+      MAZE_OPENNESS_MAX,
+      `openness, the mean corridor neighbors per corridor tile, in ${seed}`,
+    );
+    assertBetween(
+      one.run,
+      MAZE_MAZING_MIN,
+      MAZE_MAZING_MAX,
+      `the mean corridor-run length, in tiles, in ${seed}`,
+    );
+    assertBetween(
+      one.fill,
+      MAZE_DENSITY_MIN,
+      MAZE_DENSITY_MAX,
+      `density, corridor tiles over the ` +
+        `${(one.board.snapshot.grid.cols - 2) * (one.board.snapshot.grid.rows - 2)} ` +
+        `cells inside the border, in ${seed}`,
+    );
+  }
+});

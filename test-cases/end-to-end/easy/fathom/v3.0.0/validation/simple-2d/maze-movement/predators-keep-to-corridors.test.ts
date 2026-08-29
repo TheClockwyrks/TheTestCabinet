@@ -18,11 +18,12 @@
 // in. So this asks both: route around the obstacle, and stand still when there is
 // nowhere to route to.
 //
-// WHY THIS POINT EXISTS AT ALL. Every posed fixture in this suite keeps a scenario
-// apart with rock — a bystander walled off from its subject, a pair sealed into
-// neighboring cells, a hunter in a sealed ring — and all of it rests on a predator
-// not crossing rock. This point OWNS that claim, so the checks that merely stand
-// on it can raise a precondition and step aside.
+// WHY THIS POINT EXISTS AT ALL. Every posed fixture in this suite draws the shape
+// its check is about out of rock — a straight run, a corner, a pair of corridors
+// with a band between them — and all of it rests on a predator not crossing rock.
+// This point is where that claim is decided; a build that breaks it fails here
+// and skews whatever the other points measured, which is why it is decided at
+// all.
 //
 // THE GLOAMFIN CARRIES IT because the rule under test is the shared one every
 // predator obeys and the Gloamfin needs no light managed to hold a fix
@@ -33,35 +34,26 @@
 // written about.
 //
 //
-// AND IT DOES NOT STAND DOWN ON A HUNTER THAT NEVER MOVED. Most checks in this
-// suite defer to this one when a predator covers no ground, because a hunter that
-// cannot travel has not exhibited whatever they were reading. This point is where
-// that deferral lands: a hunter holding a fix that presses into the rock between
-// it and the fixed tile and stops there is exactly the fault named above, and a
-// precondition here would turn the fault it owns into a check that decided
-// nothing.
+// AND A HUNTER THAT NEVER MOVED IS NOT A REASON TO STOP READING. Elsewhere a
+// hunter that covers no ground has not exhibited what was being read and the point
+// fails on it. Here it is the subject: a hunter holding a fix that presses into
+// the rock between it and the fixed tile and stops there is keeping to the
+// corridors, which is exactly what this point asks of it.
 // THE BOXED HALF RUNS OFF-CAMERA. The picture worth keeping is the hunter taking
 // the long way round; a second of a predator correctly doing nothing is not. Its
 // verdict is no weaker for it — the same real simulation runs either way.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual, assertNull } from "../assert";
-import { poseMaze } from "../fixtures";
+import { poseMaze, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  parkForager,
-  requireKind,
-  sceneGuard,
-  sceneHeld,
-} from "../scene";
-import type { FathomSnapshot } from "../surface";
+import { parkForager, sceneGuard, sceneHeld } from "../scene";
+import { FathomSnapshot } from "../surface";
 
 /**
  * THE OBSTACLE. Two corridors with a rock spine between them, joined at their
@@ -148,107 +140,101 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "keeps a hunter to the corridors, rounding a spine and staying put when boxed in",
-  async () => {
-    const roster = await startPlaying(h);
-    // Which kinds a roster carries is `scoring/depth-scaling`'s verdict; with no
-    // Gloamfin there is no scenario to pose, so this check stands down.
-    const gloamfin = requireKind(roster, "gloamfin");
+it("keeps a hunter to the corridors, rounding a spine and staying put when boxed in", async () => {
+  await startPlaying(h);
 
-    // ---- Boxed in, off-camera ------------------------------------------------
-    const box = await poseMaze(h, BOXED);
-    const boxed = box.mark("B");
-    await parkForager(h, box.mark("F"));
-    const boxQuiet = await denAll(h, [gloamfin]);
-    h.debug.setPredatorTile(gloamfin, boxed.tx, boxed.ty);
-    h.debug.setPredatorState(gloamfin, "chase");
-    const boxGuard = await sceneGuard(h, boxQuiet);
-    const boxHome = standing(h.snapshot(), gloamfin).where;
+  // ---- Boxed in, off-camera ------------------------------------------------
+  const box = await poseMaze(h, BOXED);
+  const boxed = box.mark("B");
+  await parkForager(h, box.mark("F"));
+  const gloamfin = await spawnPredator(h, "gloamfin", boxed, {
+    state: "chase",
+  });
+  const boxGuard = await sceneGuard(h);
+  const boxHome = standing(h.snapshot(), gloamfin).where;
 
-    const boxTrespass: string[] = [];
-    const boxStrayed: string[] = [];
-    for (let spent = 0; spent < BOX_WATCH_TICKS; spent += SAMPLE_TICKS) {
+  const boxTrespass: string[] = [];
+  const boxStrayed: string[] = [];
+  for (let spent = 0; spent < BOX_WATCH_TICKS; spent += SAMPLE_TICKS) {
+    await h.advance(SAMPLE_TICKS);
+    const snap = h.snapshot();
+    const at = standing(snap, gloamfin);
+    if (at.where !== boxHome) note(boxStrayed, at.where);
+    if (at.kind !== ".") {
+      note(boxTrespass, `${at.where} is "${at.kind}"`);
+      // Stop the moment the rule is broken. A hunter loose in the rock four
+      // tiles from the forager reaches it inside this window, and the verdict
+      // this point owes is "it stood on rock", not "a life was lost".
+      break;
+    }
+  }
+  const boxBroke = sceneHeld(h.snapshot(), boxGuard);
+
+  // ---- Rounding the spine, on camera ---------------------------------------
+  const board = await poseMaze(h, SPINE);
+  const start = board.mark("P");
+  const fix = board.mark("F");
+  await parkForager(h, fix);
+  const spineGloamfin = await spawnPredator(h, "gloamfin", start, {
+    state: "chase",
+  });
+  const guard = await sceneGuard(h);
+  const opening = h.snapshot();
+
+  const route = await captureReplay(h, "route", async () => {
+    const trespass: string[] = [];
+    let rounded = false;
+    let last: FathomSnapshot = opening;
+    for (let spent = 0; spent < ROUTE_WATCH_TICKS; spent += SAMPLE_TICKS) {
       await h.advance(SAMPLE_TICKS);
-      const snap = h.snapshot();
-      const at = standing(snap, gloamfin);
-      if (at.where !== boxHome) note(boxStrayed, at.where);
+      last = h.snapshot();
+      const at = standing(last, spineGloamfin);
       if (at.kind !== ".") {
-        note(boxTrespass, `${at.where} is "${at.kind}"`);
-        // Stop the moment the rule is broken. A hunter loose in the rock four
-        // tiles from the forager reaches it inside this window, and the verdict
-        // this point owes is "it stood on rock", not "a life was lost".
+        note(trespass, `${at.where} is "${at.kind}"`);
+        // Stop the moment the rule is broken, well short of the forager, so the
+        // verdict is "it stood on rock" rather than a life lost downstream of it.
+        break;
+      }
+      if (last.predators[spineGloamfin].ty === fix.ty) {
+        rounded = true;
         break;
       }
     }
-    const boxBroke = sceneHeld(h.snapshot(), boxGuard);
+    // Taken before the tail, so nothing recorded purely for the clip can reach
+    // the verdict.
+    const broke = sceneHeld(last, guard);
+    await h.advance(ROUTE_TAIL_TICKS);
+    return { trespass, rounded, broke, last };
+  });
 
-    // ---- Rounding the spine, on camera ---------------------------------------
-    const board = await poseMaze(h, SPINE);
-    const start = board.mark("P");
-    const fix = board.mark("F");
-    await parkForager(h, fix);
-    const quiet = await denAll(h, [gloamfin]);
-    h.debug.setPredatorTile(gloamfin, start.tx, start.ty);
-    h.debug.setPredatorState(gloamfin, "chase");
-    const guard = await sceneGuard(h, quiet);
-    const opening = h.snapshot();
+  assertNull(route.broke, "the spine scenario held to the end");
+  assertNull(boxBroke, "the boxed-in scenario held to the end");
 
-    const route = await captureReplay(h, "route", async () => {
-      const trespass: string[] = [];
-      let rounded = false;
-      let last: FathomSnapshot = opening;
-      for (let spent = 0; spent < ROUTE_WATCH_TICKS; spent += SAMPLE_TICKS) {
-        await h.advance(SAMPLE_TICKS);
-        last = h.snapshot();
-        const at = standing(last, gloamfin);
-        if (at.kind !== ".") {
-          note(trespass, `${at.where} is "${at.kind}"`);
-          // Stop the moment the rule is broken, well short of the forager, so the
-          // verdict is "it stood on rock" rather than a life lost downstream of it.
-          break;
-        }
-        if (last.predators[gloamfin].ty === fix.ty) {
-          rounded = true;
-          break;
-        }
-      }
-      // Taken before the tail, so nothing recorded purely for the clip can reach
-      // the verdict.
-      const broke = sceneHeld(last, guard);
-      await h.advance(ROUTE_TAIL_TICKS);
-      return { trespass, rounded, broke, last };
-    });
+  assertEqual(
+    boxTrespass.join("; "),
+    "",
+    `tiles the Gloamfin stood on that are not corridor over ` +
+      `${BOX_WATCH_TICKS} ticks boxed into (${boxed.tx}, ${boxed.ty}), a tile ` +
+      "with no open neighbor",
+  );
+  assertEqual(
+    boxStrayed.join("; "),
+    "",
+    `tiles the Gloamfin left ${boxHome} for over ${BOX_WATCH_TICKS} ticks, ` +
+      "having nowhere legal to go",
+  );
 
-    assertNull(route.broke, "the spine scenario held to the end");
-    assertNull(boxBroke, "the boxed-in scenario held to the end");
-
-    assertEqual(
-      boxTrespass.join("; "),
-      "",
-      `tiles the gloamfin stood on that are not corridor over ` +
-        `${BOX_WATCH_TICKS} ticks boxed into (${boxed.tx}, ${boxed.ty}), a tile ` +
-        "with no open neighbor",
-    );
-    assertEqual(
-      boxStrayed.join("; "),
-      "",
-      `tiles the gloamfin left ${boxHome} for over ${BOX_WATCH_TICKS} ticks, ` +
-        "having nowhere legal to go",
-    );
-
-    assertEqual(
-      route.trespass.join("; "),
-      "",
-      "tiles the gloamfin stood on that are not corridor while chasing a fix " +
-        `across the spine from (${start.tx}, ${start.ty})`,
-    );
-    assertEqual(
-      route.rounded,
-      true,
-      `the gloamfin reached the corridor its fix (${fix.tx}, ${fix.ty}) is on ` +
-        `within ${ROUTE_WATCH_TICKS} ticks, rather than pressing into the rock ` +
-        "between them",
-    );
-  },
-);
+  assertEqual(
+    route.trespass.join("; "),
+    "",
+    "tiles the Gloamfin stood on that are not corridor while chasing a fix " +
+      `across the spine from (${start.tx}, ${start.ty})`,
+  );
+  assertEqual(
+    route.rounded,
+    true,
+    `the Gloamfin reached the corridor its fix (${fix.tx}, ${fix.ty}) is on ` +
+      `within ${ROUTE_WATCH_TICKS} ticks, rather than pressing into the rock ` +
+      "between them",
+  );
+});

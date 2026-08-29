@@ -84,6 +84,8 @@ export interface DrifterState {
   readonly y: number;
   readonly facing: Dir;
   readonly heading: Heading;
+  /** Whether it runs its own wander (`specs/instrumentation.md`). */
+  readonly mind: boolean;
 }
 
 /** What a predator is doing (`specs/state.md`). */
@@ -103,11 +105,15 @@ export interface PredatorState {
   readonly mode: PredatorMode;
   /** Whether its turn in the den's staggered schedule has come. */
   readonly released: boolean;
+  /** Whether it runs its own mind (`specs/instrumentation.md`). */
+  readonly mind: boolean;
   /** Its current speed, in logical units per second. */
   readonly speed: number;
   /**
-   * The seconds left until its release time, or `null` while the schedule is
-   * suspended for it — which is what holding it in the den poses.
+   * The seconds left until its release time, or `null` for a predator that has
+   * none: the staggered schedule runs on the roster a maze is laid out with, so a
+   * predator the debug surface adds carries no release time
+   * (`specs/instrumentation.md`).
    */
   readonly releaseIn: number | null;
   /** The tile it believes the forager is on, or `null` while it holds no fix. */
@@ -198,7 +204,6 @@ export interface FathomState {
   readonly score: number;
   readonly lives: number;
   readonly muted: boolean;
-  readonly creatureAI: boolean;
   /** Accumulated simulation time, in seconds, on every screen. */
   readonly simTime: number;
   /**

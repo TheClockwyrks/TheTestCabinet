@@ -13,15 +13,15 @@
 // past the eat; a build that arms only a partial hold the second time fails the
 // last stretch.
 //
-// THE FIRST HOLD IS POSED, THE SECOND IS EARNED. `setBrightness(g)` "also arms the
-// `BRIGHT_HOLD` brightness hold, exactly as eating a plankton does, so the value it
-// poses is steady for that full second" (`specs/instrumentation.md`) — it is the
-// documented way to put a full hold on the clock, and it is not the same thing as
-// posing a result: what is measured afterwards is the build's own timer and its own
-// decay. Posing it is also what keeps this point honest. Reached by eating, the
-// whole curve would rest on `G` having risen at all, and a build whose eating
-// raises nothing would decay from zero and pass every bound here vacuously — while
-// `brightness/from-eating` is the point that actually owns that fault.
+// THE FIRST HOLD IS POSED, THE SECOND IS EARNED. `specs/instrumentation.md` gives
+// the pair outright: "posing a steady brightness is `setBrightness` followed by
+// `setBrightHold(BRIGHT_HOLD)`, which is the pair eating a plankton arms". That is
+// not the same thing as posing a result — what is measured afterwards is the
+// build's own timer and its own decay — and it is what keeps this point honest.
+// Reached by eating, the whole curve would rest on `G` having risen at all, and a
+// build whose eating raises nothing would decay from zero and pass every bound
+// here vacuously, while `brightness/from-eating` is the point that owns that
+// fault.
 //
 // The RE-ARM is the one claim a pose cannot make, because it is about what EATING
 // does to a hold already running down. So the second half swims the forager into
@@ -32,14 +32,14 @@
 // the clamp at `1`, so the re-armed hold is read on a value the build chose rather
 // than on a ceiling. That the clamp exists at all is `brightness/from-eating`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
 } from "../assert";
 import { ARROW_KEY, BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../constants";
-import { poseStraightRun } from "../fixtures";
+import { poseStraightRun, stockPlankton } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -48,14 +48,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  parkForager,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /** The brightness the first hold is posed at. See the header for why not `1`. */
 const POSED_G = 0.8;
@@ -98,8 +91,8 @@ const DECAY_TOLERANCE = 0.02;
  *
  * Six is more than the forager can cross in the whole scenario, so the eat that
  * re-arms the hold is a real approach into a pellet rather than a scramble at the
- * end of a run — and the fixture's sealed larder means grazing it could not clear
- * the maze in any case.
+ * end of a run — and with a plankton on every tile but the one the forager rests
+ * on, grazing it could not empty the board and clear the maze.
  */
 const RUN_TILES = 6;
 
@@ -130,116 +123,105 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "holds brightness for BRIGHT_HOLD, halves it every BRIGHT_HALFLIFE, and re-arms the hold on a further plankton",
-  async () => {
-    await startPlaying(h);
-    const run = await poseStraightRun(h, RUN_TILES);
-    // Parked facing rock and its own pellet eaten, so the posed hold below is read
-    // on a forager that is neither swimming into the next plankton nor standing on
-    // one: an eat mid-measurement would re-arm the very hold being measured.
-    await parkForager(h, run.start);
-    await clearUnderfoot(h);
-    // The forager is a bystander for the first half and the subject for the second,
-    // where it is meant to swim into the next plankton — so the guard is not held to
-    // where it parked. What it still catches is a life lost or the dive leaving live
-    // play, either of which would reset brightness under the measurement.
-    const guard = await sceneGuard(h, null, { foragerParked: false });
+it("holds brightness for BRIGHT_HOLD, halves it every BRIGHT_HALFLIFE, and re-arms the hold on a further plankton", async () => {
+  await startPlaying(h);
+  const run = await poseStraightRun(h, RUN_TILES);
+  // Parked facing rock on a bare tile, so the posed hold below is read on a
+  // forager that is neither swimming into the next plankton nor standing on one:
+  // an eat mid-measurement would re-arm the very hold being measured.
+  await stockPlankton(h, [run.start]);
+  await parkForager(h, run.start);
+  // The forager is a bystander for the first half and the subject for the second,
+  // where it is meant to swim into the next plankton — so the guard is not held to
+  // where it parked. What it still catches is a life lost or the dive leaving live
+  // play, either of which would reset brightness under the measurement.
+  const guard = await sceneGuard(h, { foragerParked: false });
 
-    const curve = await captureReplay(h, "decay", async () => {
-      await h.debug.setBrightness(POSED_G);
+  const curve = await captureReplay(h, "decay", async () => {
+    await h.debug.setBrightness(POSED_G);
+    await h.debug.setBrightHold(BRIGHT_HOLD);
 
-      // The hold.
-      const hold: { at: number; g: number }[] = [];
-      let stood = 0;
-      for (const at of HOLD_SAMPLES) {
-        await h.advance(at - stood);
-        stood = at;
-        hold.push({ at, g: (await h.snapshot()).brightness });
-      }
-
-      // The decay, sampled at each of the first two halflives past the hold's end.
-      const decay: { elapsed: number; g: number }[] = [];
-      for (const halflives of [1, 2]) {
-        const at = HOLD_TICKS + halflives * HALFLIFE_TICKS;
-        await h.advance(at - stood);
-        stood = at;
-        decay.push({
-          elapsed: seconds(halflives * HALFLIFE_TICKS),
-          g: (await h.snapshot()).brightness,
-        });
-      }
-
-      // And the re-arm, earned by swimming into the next plankton along.
-      const before = await h.snapshot();
-      await h.debug.setForagerDir(run.dir);
-      const key = ARROW_KEY[run.dir];
-      await h.hold(key);
-      const eaten = await h.until(
-        (s) => s.planktonRemaining < before.planktonRemaining,
-        { maxTicks: EAT_TICKS, poll: 1 },
-      );
-      await h.release(key);
-      // One tick past the eat before `G` is read. `specs/sensing.md` fixes what an
-      // eat adds and what the hold does, and leaves the order of the two inside a
-      // tick to the build: a build that raises `G` after it arms the hold reports
-      // the old value for exactly that one tick, and both orders honour the page.
-      await h.advance(1);
-      const armed = (await h.snapshot()).brightness;
-      // Parked again, so nothing else is eaten inside the window being read.
-      await parkForager(h);
-      await h.advance(REARM_TICKS);
-      const stillHeld = (await h.snapshot()).brightness;
-
-      return { hold, decay, before, eaten, armed, stillHeld };
-    });
-
-    requireSceneHeld(await h.snapshot(), guard);
-
-    // The hold: steady for the whole second.
-    for (const sample of curve.hold) {
-      assertLessThanOrEqual(
-        Math.abs(sample.g - POSED_G),
-        HOLD_TOLERANCE,
-        `|G - ${POSED_G}| ${sample.at} ticks into the ${BRIGHT_HOLD} s hold`,
-      );
+    // The hold.
+    const hold: { at: number; g: number }[] = [];
+    let stood = 0;
+    for (const at of HOLD_SAMPLES) {
+      await h.advance(at - stood);
+      stood = at;
+      hold.push({ at, g: (await h.snapshot()).brightness });
     }
 
-    // The decay: halved at each halflife past it.
-    for (const sample of curve.decay) {
-      assertLessThanOrEqual(
-        Math.abs(sample.g - halved(POSED_G, sample.elapsed)),
-        DECAY_TOLERANCE,
-        `|G - ${halved(POSED_G, sample.elapsed).toFixed(4)}| after ` +
-          `${sample.elapsed.toFixed(2)} s of decay`,
-      );
+    // The decay, sampled at each of the first two halflives past the hold's end.
+    const decay: { elapsed: number; g: number }[] = [];
+    for (const halflives of [1, 2]) {
+      const at = HOLD_TICKS + halflives * HALFLIFE_TICKS;
+      await h.advance(at - stood);
+      stood = at;
+      decay.push({
+        elapsed: seconds(halflives * HALFLIFE_TICKS),
+        g: (await h.snapshot()).brightness,
+      });
     }
 
-    // The re-arm. The eat has to have happened for there to be a hold to read, and
-    // whether the forager can swim into a plankton at all belongs to the movement
-    // checks rather than to this one.
-    if (!curve.eaten.hit) {
-      requireSwim(
-        curve.before.forager,
-        curve.eaten.snapshot.forager,
-        "reach the plankton ahead of it",
-      );
-    }
-    assertEqual(
-      curve.eaten.hit,
-      true,
-      "the forager ate a further plankton mid-decay",
+    // And the re-arm, earned by swimming into the next plankton along.
+    const before = await h.snapshot();
+    await h.debug.setForagerDir(run.dir);
+    const key = ARROW_KEY[run.dir];
+    await h.hold(key);
+    const eaten = await h.until(
+      (s) => s.planktonRemaining < before.planktonRemaining,
+      { maxTicks: EAT_TICKS, poll: 1 },
     );
-    assertGreaterThan(
-      curve.armed,
-      curve.decay[curve.decay.length - 1].g,
-      "G after the further plankton, against the value it had decayed to",
-    );
+    await h.release(key);
+    // One tick past the eat before `G` is read. `specs/sensing.md` fixes what an
+    // eat adds and what the hold does, and leaves the order of the two inside a
+    // tick to the build: a build that raises `G` after it arms the hold reports
+    // the old value for exactly that one tick, and both orders honour the page.
+    await h.advance(1);
+    const armed = (await h.snapshot()).brightness;
+    // Parked again, so nothing else is eaten inside the window being read.
+    await parkForager(h);
+    await h.advance(REARM_TICKS);
+    const stillHeld = (await h.snapshot()).brightness;
+
+    return { hold, decay, before, eaten, armed, stillHeld };
+  });
+
+  requireSceneHeld(await h.snapshot(), guard);
+
+  // The hold: steady for the whole second.
+  for (const sample of curve.hold) {
     assertLessThanOrEqual(
-      Math.abs(curve.stillHeld - curve.armed),
+      Math.abs(sample.g - POSED_G),
       HOLD_TOLERANCE,
-      `|G - ${curve.armed.toFixed(4)}| ${REARM_TICKS} ticks into the hold the ` +
-        `further plankton armed, of the ${HOLD_TICKS} ticks BRIGHT_HOLD runs`,
+      `|G - ${POSED_G}| ${sample.at} ticks into the ${BRIGHT_HOLD} s hold`,
     );
-  },
-);
+  }
+
+  // The decay: halved at each halflife past it.
+  for (const sample of curve.decay) {
+    assertLessThanOrEqual(
+      Math.abs(sample.g - halved(POSED_G, sample.elapsed)),
+      DECAY_TOLERANCE,
+      `|G - ${halved(POSED_G, sample.elapsed).toFixed(4)}| after ` +
+        `${sample.elapsed.toFixed(2)} s of decay`,
+    );
+  }
+
+  // The re-arm. The eat has to have happened for there to be a hold to read.
+  assertEqual(
+    curve.eaten.hit,
+    true,
+    "the forager ate a further plankton mid-decay",
+  );
+  assertGreaterThan(
+    curve.armed,
+    curve.decay[curve.decay.length - 1].g,
+    "G after the further plankton, against the value it had decayed to",
+  );
+  assertLessThanOrEqual(
+    Math.abs(curve.stillHeld - curve.armed),
+    HOLD_TOLERANCE,
+    `|G - ${curve.armed.toFixed(4)}| ${REARM_TICKS} ticks into the hold the ` +
+      `further plankton armed, of the ${HOLD_TICKS} ticks BRIGHT_HOLD runs`,
+  );
+});

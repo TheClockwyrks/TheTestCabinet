@@ -11,8 +11,8 @@
 // is the contact condition specs/gameplay.md states, so nothing here waits on a
 // chase closing a gap — that is `gloamfin/*`'s to grade.
 //
-// THE COUNTDOWN BETWEEN LIVES IS ENDED RATHER THAN WAITED OUT. `beginPlay` "ends
-// the dive countdown immediately instead of waiting it out"
+// THE COUNTDOWN BETWEEN LIVES IS ENDED RATHER THAN WAITED OUT.
+// `setScreen("playing")` puts the game straight into live play
 // (specs/instrumentation.md). How long the countdown holds, and that it gives way
 // on its own, is `states/countdown`'s verdict; this point asks only that live play
 // is reachable again after each catch, which it reads as the screen being
@@ -23,9 +23,9 @@
 // ONLY THE LAST CATCH IS RECORDED. The clip this point ships is the run ending, so
 // the three lives before it are spent outside the capture.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { START_LIVES } from "../../src/constants";
-import { assertEqual } from "../assert";
+import { assertEqual, fail } from "../assert";
 import {
   captureReplay,
   createHarness,
@@ -33,7 +33,6 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import { check, denAll, failPrecondition } from "../scene";
 import type { FathomSnapshot } from "../surface";
 
 /**
@@ -71,7 +70,7 @@ interface Catch {
  * the roster on the forager, and let the game resolve the contact.
  */
 async function takeALife(h: Harness): Promise<Catch> {
-  if (h.snapshot().screen === "countdown") h.debug.beginPlay();
+  if (h.snapshot().screen === "countdown") h.debug.setScreen("playing");
   const before = h.snapshot();
   if (before.screen !== "playing") {
     // Deliberately NOT a precondition. Which catch the run ends on is exactly
@@ -100,17 +99,15 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Three lives, then game over", async () => {
+it("Three lives, then game over", async () => {
   const opened = startPlaying(h);
   if (opened.predators.length === 0) {
-    failPrecondition(
+    fail(
       "the roster to carry a predator for the forager to make contact with; " +
         "specs/predators.md gives depth 1 one of each kind",
-      "scoring/depth-scaling",
       opened.predators.length,
     );
   }
-  await denAll(h);
 
   // The three lives held in reserve, spent off camera.
   const spent: Catch[] = [];

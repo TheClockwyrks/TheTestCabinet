@@ -15,8 +15,8 @@
 // that went hunting for a run would measure the board it landed in. `setMaze`
 // stamps the same fourteen-tile corridor under every build
 // (`specs/instrumentation.md` exempts a posed fixture from `specs/maze.md`), and
-// the fixture carries the sealed larder, so no amount of grazing along it can
-// clear the maze mid-measurement.
+// the pose leaves the board bare of plankton, so no amount of swimming along it
+// can clear the maze mid-measurement.
 //
 // AND IT IS READ ON BOTH AXES, because "wherever it is in the maze" is the other
 // half of the same sentence. A build that integrates its travel per axis, or that
@@ -32,7 +32,7 @@
 // past the far end of the measured span, so nothing here turns and nothing runs
 // into rock.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertLessThanOrEqual } from "../assert";
 import { ARROW_KEY, FORAGER_SPEED, TICK_HZ } from "../constants";
 import { poseStraightRun } from "../fixtures";
@@ -44,13 +44,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  denAll,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 
 /** The corridor the run is measured on, in tiles. */
 const RUN_TILES = 14;
@@ -70,7 +64,7 @@ const RUNS = [
  * travel rather than over its own handover. A quarter of a second is far longer
  * than any such handover; a forager that has not started by then has not
  * travelled under a held action, which `controls/move-right` decides, and this
- * check stands down through {@link requireSwim} rather than answering.
+ * check fails on the measurement below rather than waiting.
  */
 const LAUNCH_TICKS = TICK_HZ / 4;
 
@@ -157,15 +151,9 @@ async function drive(key: string): Promise<Drive> {
 
 /** Hold every stretch of one run to FORAGER_SPEED, and the whole run with it. */
 function judge(run: Drive, where: string): void {
-  // Whether a held action moves the forager at all is `controls/move-*`'s
-  // verdict; with no travel there is no speed to measure, so this stands down
-  // rather than reporting a speed of zero as a speed fault.
+  // Travel is what a speed is measured over, so a forager that covered no
+  // ground has not shown the behavior this point grades and the check fails.
   const last = run.marks[SEGMENTS - 1];
-  requireSwim(
-    run.resting.forager,
-    last.forager,
-    `swim ${where}, the ${RUN_TILES}-tile corridor this check measures`,
-  );
 
   const span = SEGMENTS * SEGMENT_TICKS;
   assertLessThanOrEqual(
@@ -198,31 +186,27 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "swims a straight corridor at FORAGER_SPEED, with no ramp and no drift",
-  async () => {
-    await startPlaying(h);
+it("swims a straight corridor at FORAGER_SPEED, with no ramp and no drift", async () => {
+  await startPlaying(h);
 
-    for (const [index, run] of RUNS.entries()) {
-      const posed = await poseStraightRun(h, RUN_TILES, { dir: run.dir });
-      const quiet = await denAll(h);
-      // The forager is the SUBJECT, so it is not held to staying put. What the
-      // guard still catches is a life lost, a predator loose, or the dive leaving
-      // live play — any of which would make this a reading of some other situation.
-      const guard = await sceneGuard(h, quiet, { foragerParked: false });
+  for (const [index, run] of RUNS.entries()) {
+    const posed = await poseStraightRun(h, RUN_TILES, { dir: run.dir });
+    // The forager is the SUBJECT, so it is not held to staying put. What the
+    // guard still catches is a life lost, a predator loose, or the dive leaving
+    // live play — any of which would make this a reading of some other situation.
+    const guard = await sceneGuard(h, { foragerParked: false });
 
-      // The clip is the first run; the second is the same reading on the other
-      // axis and needs no picture of its own.
-      const held =
-        index === 0
-          ? await captureReplay(h, "run", () => drive(run.key))
-          : await drive(run.key);
+    // The clip is the first run; the second is the same reading on the other
+    // axis and needs no picture of its own.
+    const held =
+      index === 0
+        ? await captureReplay(h, "run", () => drive(run.key))
+        : await drive(run.key);
 
-      requireSceneHeld(await h.snapshot(), guard);
-      judge(
-        held,
-        `${run.label} from tile (${posed.start.tx}, ${posed.start.ty})`,
-      );
-    }
-  },
-);
+    requireSceneHeld(await h.snapshot(), guard);
+    judge(
+      held,
+      `${run.label} from tile (${posed.start.tx}, ${posed.start.ty})`,
+    );
+  }
+});

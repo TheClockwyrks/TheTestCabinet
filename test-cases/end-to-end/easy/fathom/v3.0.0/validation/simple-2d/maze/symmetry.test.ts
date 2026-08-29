@@ -11,7 +11,7 @@
 // build is free to differ between them across the axis. And it fixes the axis by
 // the grid's own width, so the mirror of column `c` is read off the frame the
 // build reports rather than off a hard `35 - c` — a board of the wrong size is
-// the grid point's verdict, not this one's.
+// the grid point's to report.
 //
 // THE DEN IS EXEMPT, AND THAT IS THE WHOLE REASON THE RULE HAS AN EXEMPTION: the
 // chamber's one gate sits on one side of the axis and has no partner on the
@@ -20,12 +20,11 @@
 // THE BOARD IS THE BUILD'S OWN, over several freshly seeded layouts, because
 // finding the property in a board a build invented IS the check.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { assertEqual } from "../assert";
 import { createHarness, type Harness } from "../harness";
 import { symmetryMismatches } from "../maze";
-import { check } from "../scene";
-import { captureBoard, freshBoards, requireLaidOut, witness } from "./boards";
+import { captureBoard, freshBoards, assertLaidOut, witness } from "./boards";
 
 /**
  * How many cells may disagree with their mirror about being rock.
@@ -46,25 +45,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "lays out a maze that mirrors about the axis between columns 17 and 18",
-  async () => {
-    const boards = await freshBoards(h);
-    requireLaidOut(boards);
+it("lays out a maze that mirrors about the axis between columns 17 and 18", async () => {
+  const boards = await freshBoards(h);
+  assertLaidOut(boards);
 
-    const measured = boards.map((board) => {
-      const mismatches = symmetryMismatches(board.snapshot);
-      return { board, mismatches, ok: mismatches === MAX_MISMATCHES };
-    });
-    await captureBoard(h, witness(measured).board);
+  const measured = boards.map((board) => {
+    const mismatches = symmetryMismatches(board.snapshot);
+    return { board, mismatches, ok: mismatches === MAX_MISMATCHES };
+  });
+  await captureBoard(h, witness(measured).board);
 
-    for (const one of measured) {
-      assertEqual(
-        one.mismatches,
-        MAX_MISMATCHES,
-        `cells that disagree with their mirror about being rock, den interior and ` +
-          `den gate exempt, in the maze laid out from seed ${one.board.seed}`,
-      );
-    }
-  },
-);
+  for (const one of measured) {
+    assertEqual(
+      one.mismatches,
+      MAX_MISMATCHES,
+      `cells that disagree with their mirror about being rock, den interior and ` +
+        `den gate exempt, in the maze laid out from seed ${one.board.seed}`,
+    );
+  }
+});

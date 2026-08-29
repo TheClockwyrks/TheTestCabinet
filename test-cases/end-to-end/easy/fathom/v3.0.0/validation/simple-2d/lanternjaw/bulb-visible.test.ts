@@ -31,13 +31,13 @@
 // `amber/lookalikes`'s; what the body does when the light reaches it is
 // `lanternjaw/additive-reveal`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
   assertEqual,
   assertGreaterThanOrEqual,
   assertNotNull,
 } from "../assert";
-import { poseOccludedPair } from "../fixtures";
+import { poseOccludedPair, spawnPredator } from "../fixtures";
 import {
   captureStill,
   createHarness,
@@ -48,17 +48,9 @@ import {
   visibilityOf,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  parkForager,
-  requireKind,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { brightestWarm, warm } from "./motes";
-import type { Tile } from "../maze";
+import { Tile } from "../maze";
 
 /** How far apart the pair stands, in tiles. See the header. */
 const GAP_TILES = 5;
@@ -94,27 +86,22 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Its bulb shows at any distance", async () => {
+it("Its bulb shows at any distance", async () => {
   await startPlaying(h);
   const pair = await poseOccludedPair(h, {
     tiles: GAP_TILES,
     len: RUN_TILES,
   });
-  const index = requireKind(h.snapshot(), "lanternjaw");
-  const quiet = await denAll(h, [index]);
-  await h.debug.setPredatorTile(index, pair.pred.tx, pair.pred.ty);
-  await h.debug.setPredatorState(index, "wander");
+  // Held exactly where it is posed for the one frame that is read: this point is
+  // about what is DRAWN at a reported position, and a hunter that drifted between
+  // the snapshot and the sample would be read half a body away from where it said
+  // it was.
+  const index = await spawnPredator(h, "lanternjaw", pair.pred, {
+    state: "wander",
+    mind: false,
+  });
   await parkForager(h, pair.forager);
-  // The pellet the pose left under the forager is settled and `G` put back to
-  // zero, so the light pocket is the narrowest a dive ever carries and the
-  // reading is taken over ground nothing has touched.
-  await clearUnderfoot(h);
-  // Held exactly where it was posed for the one frame that is read: this point
-  // is about what is DRAWN at a reported position, and a hunter that drifted
-  // between the snapshot and the sample would be read half a body away from
-  // where it said it was.
-  await h.debug.setCreatureAI(false);
-  const watch = await sceneGuard(h, quiet);
+  const watch = await sceneGuard(h);
 
   await h.advance(SETTLE_TICKS);
   const snapshot = h.snapshot();

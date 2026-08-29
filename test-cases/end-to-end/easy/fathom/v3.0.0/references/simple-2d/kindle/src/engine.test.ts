@@ -60,6 +60,7 @@ import {
   TICK_HZ,
   TILE,
   VISION_MIN,
+  type PredatorKind,
 } from "./constants";
 import { COUNTDOWN_TIME } from "./flow";
 import {
@@ -218,31 +219,43 @@ function board(inner: readonly string[], top: number): string[] {
 const HALL = `#${".".repeat(30)}${"#".repeat(5)}`;
 const HALL_ROW = 6;
 
-/** Take the game to live play on `rows`, with the countdown behind it. */
-function poseBoard(rows: readonly string[]): void {
-  h.pose((s) => h.debug.startDive(s));
-  h.pose((s) => h.debug.beginPlay(s));
-  h.pose((s) => h.debug.setMaze(s, rows));
+/** A hall with a den chamber under it, its single gate on the row between. */
+function denBoard(): string[] {
+  const rows: string[] = [];
+  for (let ty = 0; ty < GRID_ROWS; ty++) rows.push("#".repeat(GRID_COLS));
+  rows[HALL_ROW] = HALL;
+  rows[HALL_ROW + 1] = `${"#".repeat(17)}g${"#".repeat(GRID_COLS - 18)}`;
+  rows[HALL_ROW + 2] = `${"#".repeat(15)}dddddd${"#".repeat(GRID_COLS - 21)}`;
+  return rows;
 }
 
 /**
- * The same, with the board grazed bare first, so the forager's brightness and
- * the score stay where a check put them. An emptied maze the forager has not
- * just eaten from stays in live play, so this clears nothing.
+ * Live play on `rows`, in a world holding nothing but the forager at rest on
+ * `(tx, ty)`.
+ *
+ * Every predator and every drifter is taken off the board, the plankton is
+ * cleared and the fog is put back to unrevealed, so a check adds back exactly
+ * what its requirement is about and nothing it did not ask for can move. Each
+ * pose sets one thing, so the arrangement is spelled out here rather than
+ * bundled into one operation.
  */
-function poseQuietBoard(rows: readonly string[]): void {
-  poseBoard(rows);
+function poseBoard(rows: readonly string[], tx: number, ty: number): void {
+  h.pose((s) => h.debug.setScreen(s, "playing"));
+  h.pose((s) => h.debug.setMaze(s, rows));
+  h.pose((s) => h.debug.clearPredators(s));
+  h.pose((s) => h.debug.clearDrifters(s));
   h.pose((s) => h.debug.clearPlankton(s));
+  h.pose((s) => h.debug.clearFog(s));
+  h.pose((s) => h.debug.setForagerTile(s, tx, ty));
 }
 
-/** The center of tile `(tx, ty)`, in logical units. */
-function center(tx: number, ty: number): [number, number] {
-  return [64 + tx * TILE + TILE / 2, 80 + ty * TILE + TILE / 2];
-}
-
-/** How bright a pixel reads, on the same 0-255 scale its channels are on. */
-function luminance([r, g, b]: readonly number[]): number {
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+/** A plankton on every corridor tile of `rows`, as a fresh maze opens with. */
+function stockPlankton(rows: readonly string[]): void {
+  rows.forEach((row, ty) => {
+    [...row].forEach((tile, tx) => {
+      if (tile === ".") h.pose((s) => h.debug.setPlankton(s, tx, ty, true));
+    });
+  });
 }
 
 /**
@@ -287,6 +300,16 @@ function endBloom(index: number): void {
   }));
 }
 
+/** The center of tile `(tx, ty)`, in logical units. */
+function center(tx: number, ty: number): [number, number] {
+  return [64 + tx * TILE + TILE / 2, 80 + ty * TILE + TILE / 2];
+}
+
+/** How bright a pixel reads, on the same 0-255 scale its channels are on. */
+function luminance([r, g, b]: readonly number[]): number {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 // ---- The build's own wiring ---------------------------------------------
 
 describe("the wiring the engine expects", () => {
@@ -297,7 +320,12 @@ describe("the wiring the engine expects", () => {
     expect(snapshot.screen).toBe("title");
     expect(snapshot.lives).toBe(START_LIVES);
     expect(snapshot.depth).toBe(1);
-    expect(snapshot.creatureAI).toBe(true);
+    expect(snapshot.brightHold).toBe(0);
+    // Every creature opens with its own mind running.
+    expect(snapshot.predators.every((p) => p.mind)).toBe(true);
+    // The plankton layer and the count it carries are the same fact.
+    const stocked = snapshot.plankton.join("").split("*").length - 1;
+    expect(stocked).toBe(snapshot.planktonRemaining);
   });
 
   it("asks its loader for every frame of every seeded sheet", () => {
@@ -314,8 +342,8 @@ describe("the wiring the engine expects", () => {
   });
 
   it("plays a named cue for each of the events that raise one", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    stockPlankton(board([HALL], HALL_ROW));
     h.tap("Space");
     await h.advance(0.05);
     h.tap("ShiftLeft");
@@ -331,7 +359,7 @@ describe("the wiring the engine expects", () => {
     await h.advance(TICK_MS / 1000);
     expect(h.snapshot().muted).toBe(true);
     // A muted cue still reports itself, at no gain.
-    poseBoard(board([HALL], HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.tap("Space");
     await h.advance(0.05);
     const sonar = h.cues.filter((play) => play.cue === CUES.sonar);
@@ -366,8 +394,7 @@ describe("the screens", () => {
   });
 
   it("pauses live play over a frozen maze and resumes where it left off", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.hold("ArrowRight");
     await h.advance(0.5);
     const moving = h.snapshot().forager.x;
@@ -388,7 +415,11 @@ describe("the screens", () => {
   });
 
   it("holds the den shut for the whole countdown", async () => {
-    h.pose((s) => h.debug.startDive(s));
+    // A dive as it opens: the depth-1 roster in the den, and the countdown
+    // running. The schedule is timed from live play alone, so it counts against
+    // nothing here.
+    h.pose((s) => h.debug.reset(s));
+    h.pose((s) => h.debug.setScreen(s, "countdown"));
     await h.advance(COUNTDOWN_TIME * 0.9);
     const waiting = h.snapshot();
     expect(waiting.screen).toBe("countdown");
@@ -402,8 +433,7 @@ describe("the screens", () => {
 
 describe("the forager", () => {
   it("travels at FORAGER_SPEED while a movement action is held", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     const [x0] = center(5, HALL_ROW);
     h.hold("ArrowRight");
     await h.advance(1);
@@ -424,8 +454,7 @@ describe("the forager", () => {
     for (let ty = HALL_ROW - 3; ty < HALL_ROW; ty++) {
       rows[ty] = `${rows[ty].slice(0, 10)}.${rows[ty].slice(11)}`;
     }
-    poseBoard(rows);
-    h.pose((s) => h.debug.setForagerTile(s, 6, HALL_ROW));
+    poseBoard(rows, 6, HALL_ROW);
     h.hold("ArrowRight");
     await h.advance(0.5);
     h.release("ArrowRight");
@@ -438,9 +467,7 @@ describe("the forager", () => {
   });
 
   it("eats a plankton on its own tile, brightens, and scores", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.clearPlankton(s));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.pose((s) => h.debug.setPlankton(s, 6, HALL_ROW, true));
     // A second plankton the forager never reaches, so eating the first is a
     // mouthful rather than the one that clears the maze.
@@ -461,8 +488,7 @@ describe("the forager", () => {
 
   it("crosses the wrap tunnel as one ordinary step", async () => {
     // A row pierced at both borders is the tunnel a posed layout reports.
-    poseBoard(board([".".repeat(GRID_COLS)], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 0, HALL_ROW));
+    poseBoard(board([".".repeat(GRID_COLS)], HALL_ROW), 0, HALL_ROW);
     const [left] = center(0, HALL_ROW);
     const [right] = center(GRID_COLS - 1, HALL_ROW);
     h.hold("ArrowLeft");
@@ -480,8 +506,7 @@ describe("the forager", () => {
 
 describe("sensing the dark", () => {
   it("lights a pocket of the maze around the forager and remembers it", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.pose((s) => h.debug.setBrightness(s, 0));
     await h.advance(0.05);
     const near = h.snapshot();
@@ -500,8 +525,7 @@ describe("sensing the dark", () => {
   });
 
   it("floods the corridors with a sonar wavefront at the stated speed", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.tap("Space");
     await h.advance(0.05);
     const cast = h.snapshot();
@@ -526,45 +550,46 @@ describe("sensing the dark", () => {
   });
 
   it("marks a Gloamfin the front reaches and hands it a fix", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 1, 10, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorState(s, 1, "wander"));
-    expect(h.snapshot().predators[1].kind).toBe("gloamfin");
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 10, HALL_ROW));
+    expect(h.snapshot().predators[0].kind).toBe("gloamfin");
+    expect(h.snapshot().predators[0].state).toBe("wander");
     h.tap("Space");
 
     // The Gloamfin patrols while the front travels, so the window is watched
     // rather than one tick of it sampled. It stays well inside the pulse's
     // range wherever its patrol takes it in that time.
-    let acquired = false;
     let alerted = false;
     let marked = false;
+    let chaseSpeed = 0;
     for (let i = 0; i < 24; i++) {
       await h.advance(0.05);
-      const p = h.snapshot().predators[1];
-      acquired ||= p.state === "chase";
+      const p = h.snapshot().predators[0];
       alerted ||= p.alert;
       marked ||= p.lit;
+      if (p.state === "chase") {
+        chaseSpeed = p.speed;
+        break;
+      }
     }
-    expect(acquired).toBe(true);
+    expect(chaseSpeed).toBeCloseTo(GLOAMFIN_CHASE_SPEED, 0);
     expect(alerted).toBe(true);
     expect(marked).toBe(true);
-    expect(h.snapshot().predators[1].speed).toBeCloseTo(
-      GLOAMFIN_CHASE_SPEED,
-      0,
-    );
 
-    // The mark and the alert both run out on their own windows.
+    // The mark and the alert are consequences rather than decisions, so they run
+    // out on their own windows with the hunter held exactly where it stands.
+    h.pose((s) => h.debug.setPredatorMind(s, 0, false));
     await h.advance(SONAR_MARK_TIME + ALERT_TIME);
-    expect(h.snapshot().predators[1].alert).toBe(false);
+    expect(h.snapshot().predators[0].alert).toBe(false);
   });
 
-  it("blinds a Lanternjaw with ink and leaves the Gloamfin unmoved", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+  it("blinds a Lanternjaw with ink", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    // A brightness the hold keeps steady, which is the pair eating a plankton
+    // arms, so the Lanternjaw's sense of the light does not fade under it.
     h.pose((s) => h.debug.setBrightness(s, 1));
-    h.pose((s) => h.debug.setPredatorTile(s, 0, 9, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorState(s, 0, "wander"));
+    h.pose((s) => h.debug.setBrightHold(s, BRIGHT_HOLD));
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 9, HALL_ROW));
     await h.advance(0.05);
     expect(h.snapshot().predators[0].state).toBe("chase");
 
@@ -584,17 +609,20 @@ describe("sensing the dark", () => {
 
 describe("the predators", () => {
   it("releases the den on the staggered schedule, from the moment play begins", async () => {
-    h.pose((s) => h.debug.startDive(s));
+    // A dive as it opens: the depth-1 roster in the den, waiting its slots.
+    h.pose((s) => h.debug.reset(s));
+    h.pose((s) => h.debug.setScreen(s, "countdown"));
+    await h.advance(COUNTDOWN_TIME * 0.9);
     expect(h.snapshot().predators.map((p) => p.released)).toEqual([
       false,
       false,
       false,
     ]);
 
-    // Release time `0` is the moment `screen` becomes `"playing"`, so the first
-    // slot has already arrived when the countdown gives way and the Lanternjaw
-    // reports `released` from there rather than a tick later.
-    h.pose((s) => h.debug.beginPlay(s));
+    // The schedule runs on live play alone, so its origin is the moment `screen`
+    // becomes `"playing"` and the countdown counted against nothing.
+    h.pose((s) => h.debug.setScreen(s, "playing"));
+    await h.advance(TICK_MS / 1000);
     expect(h.snapshot().predators[0].released).toBe(true);
     expect(h.snapshot().predators[1].released).toBe(false);
     expect(h.snapshot().predators[0].state).toBe("den");
@@ -607,21 +635,31 @@ describe("the predators", () => {
     expect(h.snapshot().predators[2].released).toBe(true);
   });
 
-  it("holds a posed den predator out of play however long the scenario runs", async () => {
-    poseBoard(board([HALL], HALL_ROW));
+  it("holds a den predator out of play on a layout with no den chamber", async () => {
+    // A predator standing in the den chamber, and then a layout that has no
+    // chamber at all posed under it. `setMaze` sets the layout and nothing else,
+    // so the predator keeps the tile it stands on, which is now rock.
+    poseBoard(denBoard(), 1, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 5, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorTile(s, 0, 17, HALL_ROW + 2));
+    h.pose((s) => h.debug.setPredatorState(s, 0, "den"));
+    h.pose((s) => h.debug.setMaze(s, board([HALL], HALL_ROW)));
+
+    const before = h.snapshot().predators[0];
+    expect(before.released).toBe(true);
     await h.advance(DEN_RELEASE_GAP * 3);
-    const held = h.snapshot();
-    // A posed board suspends every release time, and this fixture has no den at
-    // all, so nothing can reach the corridor even if the schedule ran anyway.
-    expect(held.predators.every((p) => !p.released)).toBe(true);
-    expect(held.predators.every((p) => p.state === "den")).toBe(true);
-    expect(held.predators.every((p) => !p.lit)).toBe(true);
+    const held = h.snapshot().predators[0];
+    expect(held.state).toBe("den");
+    expect(held.tx).toBe(before.tx);
+    expect(held.ty).toBe(before.ty);
+    expect(held.lit).toBe(false);
+    // Undrawn and out of play, it cannot cost a life, whatever tile it holds.
+    expect(h.snapshot().lives).toBe(START_LIVES);
   });
 
   it("costs a life on contact and sets the maze up for another attempt", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 10, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 0, 14, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 10, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 14, HALL_ROW));
     h.pose((s) => h.debug.setPredatorState(s, 0, "chase"));
     const before = h.snapshot();
     expect(before.lives).toBe(START_LIVES);
@@ -642,9 +680,8 @@ describe("the predators", () => {
     const top = `#${".".repeat(6)}${"#".repeat(29)}`;
     const wall = `${"#".repeat(6)}.${"#".repeat(29)}`;
     const bottom = `#${".".repeat(6)}${"#".repeat(29)}`;
-    poseQuietBoard(board([top, wall, bottom], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 1, HALL_ROW + 2));
-    h.pose((s) => h.debug.setPredatorTile(s, 0, 1, HALL_ROW));
+    poseBoard(board([top, wall, bottom], HALL_ROW), 1, HALL_ROW + 2);
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 1, HALL_ROW));
     h.pose((s) => h.debug.setPredatorState(s, 0, "chase"));
 
     const visited = new Set<string>();
@@ -668,10 +705,8 @@ describe("the predators", () => {
   it("stays on a tile with no open neighbor", async () => {
     const top = `#${".".repeat(6)}${"#".repeat(29)}`;
     const boxed = `${"#".repeat(20)}.${"#".repeat(15)}`;
-    poseQuietBoard(board([top, boxed], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 1, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 0, 20, HALL_ROW + 1));
-    h.pose((s) => h.debug.setPredatorState(s, 0, "wander"));
+    poseBoard(board([top, boxed], HALL_ROW), 1, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 20, HALL_ROW + 1));
     const before = h.snapshot().predators[0];
     await h.advance(3);
     const after = h.snapshot().predators[0];
@@ -679,25 +714,90 @@ describe("the predators", () => {
     expect(after.ty).toBe(before.ty);
   });
 
-  it("holds every creature exactly where it stands with the minds off", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 1, 12, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorState(s, 1, "wander"));
-    h.pose((s) => h.debug.spawnDrifter(s, 20, HALL_ROW));
-    h.pose((s) => h.debug.setCreatureAI(s, false));
+  it("holds one predator where it stands and leaves the rest hunting", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 12, HALL_ROW));
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 25, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorMind(s, 0, false));
 
     const before = h.snapshot();
+    expect(before.predators[0].mind).toBe(false);
+    expect(before.predators[1].mind).toBe(true);
     await h.advance(3);
     const after = h.snapshot();
-    expect(after.creatureAI).toBe(false);
-    expect(after.predators[1].tx).toBe(before.predators[1].tx);
-    expect(after.predators[1].state).toBe("wander");
-    expect(after.drifters[0].x).toBe(before.drifters[0].x);
+    expect(after.predators[0].mind).toBe(false);
+    expect(after.predators[0].x).toBe(before.predators[0].x);
+    expect(after.predators[0].dir).toBe(before.predators[0].dir);
+    expect(after.predators[0].state).toBe("wander");
+    // The predator beside it, with its mind on, carries on patrolling.
+    expect(after.predators[1].x).not.toBe(before.predators[1].x);
     // Everything else continues: the cooldowns still run down.
     h.pose((s) => h.debug.setSonarCooldown(s, 1));
     await h.advance(0.5);
     expect(h.snapshot().sonar.cooldown).toBeCloseTo(0.5, 2);
+  });
+
+  it("holds one drifter where it stands and leaves the rest wandering", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.spawnDrifter(s, 20, HALL_ROW));
+    h.pose((s) => h.debug.spawnDrifter(s, 28, HALL_ROW));
+    h.pose((s) => h.debug.setDrifterMind(s, 0, false));
+
+    const before = h.snapshot();
+    expect(before.drifters[0].mind).toBe(false);
+    expect(before.drifters[1].mind).toBe(true);
+    await h.advance(3);
+    const after = h.snapshot();
+    expect(after.drifters[0].x).toBe(before.drifters[0].x);
+    expect(after.drifters[0].y).toBe(before.drifters[0].y);
+    expect(after.drifters[1].x).not.toBe(before.drifters[1].x);
+  });
+
+  it("takes every predator off the board and adds back only what is asked for", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    expect(h.snapshot().predators).toEqual([]);
+
+    h.pose((s) => h.debug.addPredator(s, "flarefish", 20, HALL_ROW));
+    const roster = h.snapshot().predators;
+    expect(roster.length).toBe(1);
+    expect(roster[0].kind).toBe("flarefish");
+    expect(roster[0].state).toBe("wander");
+    expect(roster[0].released).toBe(true);
+    expect(roster[0].mind).toBe(true);
+    expect(roster[0].dir).toBe("up");
+    expect(roster[0].tx).toBe(20);
+
+    // A second one goes at the end of the list, so an index is stable.
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 24, HALL_ROW));
+    expect(h.snapshot().predators.map((p) => p.kind)).toEqual([
+      "flarefish",
+      "gloamfin",
+    ]);
+
+    // With an empty roster no release schedule runs, because there is nobody
+    // left to run one.
+    h.pose((s) => h.debug.clearPredators(s));
+    await h.advance(DEN_RELEASE_GAP * 3);
+    expect(h.snapshot().predators).toEqual([]);
+  });
+
+  it("poses the released flag without moving the predator or its state", () => {
+    poseBoard(denBoard(), 1, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 5, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorTile(s, 0, 17, HALL_ROW + 2));
+    h.pose((s) => h.debug.setPredatorState(s, 0, "den"));
+    const before = h.snapshot().predators[0];
+
+    h.pose((s) => h.debug.setPredatorReleased(s, 0, false));
+    const waiting = h.snapshot().predators[0];
+    expect(waiting.released).toBe(false);
+    expect(waiting.state).toBe("den");
+    expect(waiting.tx).toBe(before.tx);
+    expect(waiting.ty).toBe(before.ty);
+
+    h.pose((s) => h.debug.setPredatorReleased(s, 0, true));
+    expect(h.snapshot().predators[0].released).toBe(true);
+    expect(h.snapshot().predators[0].state).toBe("den");
   });
 });
 
@@ -705,11 +805,10 @@ describe("the predators", () => {
 
 describe("the run", () => {
   it("scores a bonus drifter the forager swims onto", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.clearPlankton(s));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.pose((s) => h.debug.spawnDrifter(s, 8, HALL_ROW));
-    h.pose((s) => h.debug.setCreatureAI(s, false));
+    // Held where it was put, so the forager meets it rather than chasing it.
+    h.pose((s) => h.debug.setDrifterMind(s, 0, false));
     h.hold("ArrowRight");
     await h.advance(1);
     const eaten = h.snapshot();
@@ -718,9 +817,7 @@ describe("the run", () => {
   });
 
   it("clears the maze on the last plankton and descends a depth", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.clearPlankton(s));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     // An emptied maze the forager has not just eaten from stays in live play.
     await h.advance(0.5);
     expect(h.snapshot().screen).toBe("playing");
@@ -743,10 +840,9 @@ describe("the run", () => {
   });
 
   it("ends the run when contact costs the last life", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => ({ ...s, lives: 0 }));
-    h.pose((s) => h.debug.setForagerTile(s, 10, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 0, 12, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 10, HALL_ROW);
+    h.pose((s) => h.debug.setLives(s, 0));
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 12, HALL_ROW));
     h.pose((s) => h.debug.setPredatorState(s, 0, "chase"));
     await h.advance(3);
     const over = h.snapshot();
@@ -757,8 +853,7 @@ describe("the run", () => {
   it("reaches the same state from the same seed and the same calls", async () => {
     const run = async (): Promise<FathomSnapshot> => {
       h.pose((s) => h.debug.reset(s, { seed: 4242 }));
-      h.pose((s) => h.debug.startDive(s));
-      h.pose((s) => h.debug.beginPlay(s));
+      h.pose((s) => h.debug.setScreen(s, "playing"));
       h.hold("ArrowRight");
       await h.advance(6);
       h.release("ArrowRight");
@@ -775,8 +870,7 @@ describe("the run", () => {
 describe("the rendering", () => {
   it("draws an unrevealed tile as flat darkness", async () => {
     h.pose((s) => h.debug.reset(s, { seed: 9 }));
-    h.pose((s) => h.debug.startDive(s));
-    h.pose((s) => h.debug.beginPlay(s));
+    h.pose((s) => h.debug.setScreen(s, "playing"));
     await h.advance(0.25);
     const shown = h.snapshot();
 
@@ -792,8 +886,7 @@ describe("the rendering", () => {
   });
 
   it("tells rock from open water where the maze is revealed", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     await h.advance(0.25);
     const floor = luminance(h.pixel(...center(6, HALL_ROW)));
     const rock = luminance(h.pixel(...center(6, HALL_ROW - 1)));
@@ -802,8 +895,7 @@ describe("the rendering", () => {
   });
 
   it("draws the forager, and the HUD outside the fog", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     await h.advance(0.25);
     const forager = h.pixel(...center(5, HALL_ROW));
     expect(luminance(forager)).toBeGreaterThan(60);
@@ -817,8 +909,7 @@ describe("the rendering", () => {
   });
 
   it("draws an ink cloud darker than the water it stands in", async () => {
-    poseBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     await h.advance(0.25);
     const before = luminance(h.pixel(...center(7, HALL_ROW)));
     h.tap("ShiftLeft");
@@ -828,10 +919,11 @@ describe("the rendering", () => {
   });
 
   it("draws every screen without touching the state", async () => {
-    // A grazed board with the creatures held, so the only thing that could move
-    // the score or the lives is the render itself.
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setCreatureAI(s, false));
+    // A grazed board with nothing on it but the forager, so the only thing that
+    // could move the score or the lives is the render itself. Each screen is
+    // entered fresh, so the two timed ones still have their own time to run and
+    // a frame draws them rather than giving way to what follows them.
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     const screens: FathomState["screen"][] = [
       "title",
       "howto",
@@ -842,9 +934,7 @@ describe("the rendering", () => {
       "gameover",
     ];
     for (const screen of screens) {
-      // The two timed screens are posed with their own time still to run, so a
-      // frame draws them rather than giving way to what follows them.
-      h.pose((s) => ({ ...s, screen, screenIn: 3 }));
+      h.pose((s) => h.debug.setScreen(s, screen));
       const before = h.snapshot();
       await h.engine.advance(1);
       const after = h.snapshot();
@@ -852,6 +942,217 @@ describe("the rendering", () => {
       expect(after.score).toBe(before.score);
       expect(after.lives).toBe(before.lives);
     }
+  });
+});
+
+// ---- The surface's domains ----------------------------------------------
+
+describe("the surface refuses an argument outside its domain", () => {
+  it("names what it expected", () => {
+    const s = h.state;
+    expect(() => h.debug.setDepth(s, 0)).toThrow(/at least 1/);
+    expect(() => h.debug.setBrightness(s, 2)).toThrow(/\[0, 1\]/);
+    expect(() => h.debug.setBrightHold(s, BRIGHT_HOLD * 2)).toThrow(/at most/);
+    expect(() => h.debug.setSonarCooldown(s, -1)).toThrow(/at least 0/);
+    expect(() => h.debug.setInkCooldown(s, Number.NaN)).toThrow(/at least 0/);
+    expect(() => h.debug.setScore(s, -1)).toThrow(/whole number/);
+    expect(() => h.debug.setLives(s, 1.5)).toThrow(/whole number/);
+    expect(() =>
+      h.debug.setScreen(s, "diving" as FathomState["screen"]),
+    ).toThrow(/expected one of/);
+    expect(() => h.debug.addPredator(s, "shark" as PredatorKind, 1, 1)).toThrow(
+      /expected one of/,
+    );
+    expect(() => h.debug.setPredatorTile(s, 99, 1, 1)).toThrow(/roster holds/);
+    expect(() => h.debug.setPredatorMind(s, 99, false)).toThrow(/roster holds/);
+    expect(() => h.debug.setDrifterMind(s, 0, false)).toThrow(
+      /maze holds 0 drifters/,
+    );
+    expect(() => h.debug.setMaze(s, ["##"])).toThrow(/expected 18 rows/);
+    expect(() =>
+      h.debug.setMaze(s, Array<string>(18).fill("x".repeat(36))),
+    ).toThrow(/unknown tile character/);
+    expect(() =>
+      h.debug.setMaze(
+        s,
+        Array<string>(18).fill(`${"d".repeat(2)}${"#".repeat(34)}`),
+      ),
+    ).toThrow(/exactly one gate/);
+  });
+
+  it("refuses a tile the body it moves may not stand on", () => {
+    h.pose((s) => h.debug.setMaze(s, board([HALL], HALL_ROW)));
+    const s = h.state;
+    expect(() => h.debug.setForagerTile(s, 0, 0)).toThrow(/open corridor tile/);
+    expect(() => h.debug.spawnDrifter(s, 0, 0)).toThrow(/open corridor tile/);
+    expect(() => h.debug.setPlankton(s, 0, 0, true)).toThrow(
+      /open corridor tile/,
+    );
+    expect(() => h.debug.setPredatorTile(s, 0, 0, 0)).toThrow(/den gate/);
+  });
+
+  it("refuses a state the predator is not standing where it can be posed in", () => {
+    poseBoard(denBoard(), 1, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 5, HALL_ROW));
+    // Loose in the corridor, so the den is not a state it stands in.
+    expect(() => h.debug.setPredatorState(h.state, 0, "den")).toThrow(
+      /neither a den tile nor the den gate/,
+    );
+
+    h.pose((s) => h.debug.setPredatorTile(s, 0, 17, HALL_ROW + 2));
+    expect(() => h.debug.setPredatorState(h.state, 0, "wander")).toThrow(
+      /not an open corridor tile/,
+    );
+  });
+});
+
+// ---- The hunters' own senses --------------------------------------------
+
+describe("each hunter hunts by its own sense", () => {
+  it("gives the Gloamfin a fix when its own ping's front reaches the forager", async () => {
+    // One Gloamfin on an otherwise empty board, so nothing else can ping.
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 11, HALL_ROW));
+
+    let pinged = false;
+    let acquired = false;
+    for (let i = 0; i < 160; i++) {
+      // The Gloamfin patrols, and where it patrols to is its own business, so
+      // the scenario keeps it six tiles off — past its close hearing and well
+      // inside the range of a ping — by posing its tile and nothing else.
+      h.pose((s) => h.debug.setPredatorTile(s, 0, 11, HALL_ROW));
+      await h.advance(0.05);
+      const shown = h.snapshot();
+      pinged ||= shown.pulses.some((pulse) => pulse.source === "gloamfin");
+      if (shown.predators[0].state === "chase") {
+        acquired = true;
+        // The fix cannot have come from close hearing at six tiles.
+        expect(pinged).toBe(true);
+        expect(shown.predators[0].hearingLock).toBe(false);
+        expect(shown.predators[0].alert).toBe(true);
+        break;
+      }
+    }
+    expect(pinged).toBe(true);
+    expect(acquired).toBe(true);
+    expect(h.cues.map((play) => play.cue)).toContain(CUES.predatorPing);
+  });
+
+  it("takes the Gloamfin to a search when it reaches an empty fixed tile", async () => {
+    poseBoard(board([HALL], HALL_ROW), 20, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 24, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorState(s, 0, "chase"));
+    // The forager leaves the tile the fix names before the hunter arrives.
+    h.pose((s) => h.debug.setForagerTile(s, 3, HALL_ROW));
+
+    let searched = false;
+    for (let i = 0; i < 60; i++) {
+      await h.advance(0.05);
+      searched ||= h.snapshot().predators[0].state === "search";
+      if (searched) break;
+    }
+    expect(searched).toBe(true);
+  });
+
+  it("charges and blooms on the Flarefish's own timer", async () => {
+    // A pocket sealed off from the hall by one course of rock: the Flarefish
+    // cannot move out of it and cannot see past the rock, and the forager is
+    // parked far enough away that nothing it does reaches him.
+    const pocket = `${"#".repeat(10)}.${"#".repeat(25)}`;
+    poseBoard(
+      board([HALL, "#".repeat(GRID_COLS), pocket], HALL_ROW),
+      28,
+      HALL_ROW,
+    );
+    h.pose((s) => h.debug.addPredator(s, "flarefish", 10, HALL_ROW + 2));
+
+    let charged = 0;
+    let bloomed = 0;
+    let radius = 0;
+    for (let i = 0; i < 220; i++) {
+      await h.advance(0.05);
+      const p = h.snapshot().predators[0];
+      if (p.flareCharging === true) charged++;
+      if (p.flaring === true) {
+        bloomed++;
+        radius = p.flareRadius ?? 0;
+      }
+    }
+    // The charge-up runs for FLARE_CHARGE and the bloom for FLARE_BLOOM, so a
+    // window of eleven seconds holds one whole flare with room to spare.
+    expect(charged).toBeGreaterThan(0);
+    expect(bloomed).toBeGreaterThan(0);
+    expect(bloomed).toBeGreaterThan(charged);
+    expect(radius).toBe(FLARE_RADIUS);
+    expect(h.cues.map((play) => play.cue)).toContain(CUES.flare);
+
+    // Outside a flare it reports nothing at all, and it never chased.
+    const after = h.snapshot().predators[0];
+    expect(after.state).toBe("wander");
+    expect(after.flaring).toBe(false);
+    expect(after.flareRadius).toBe(0);
+  });
+
+  it("locks on through rock when its bloom reaches the forager", async () => {
+    const pocket = `${"#".repeat(10)}.${"#".repeat(25)}`;
+    // Two tiles apart with rock between: inside the bloom's reach, and outside
+    // the light sense, which the rock blocks.
+    poseBoard(
+      board([HALL, "#".repeat(GRID_COLS), pocket], HALL_ROW),
+      10,
+      HALL_ROW,
+    );
+    h.pose((s) => h.debug.addPredator(s, "flarefish", 10, HALL_ROW + 2));
+    expect(h.snapshot().predators[0].state).toBe("wander");
+
+    let locked = false;
+    let alerted = false;
+    for (let i = 0; i < 220; i++) {
+      await h.advance(0.05);
+      const p = h.snapshot().predators[0];
+      alerted ||= p.alert;
+      if (p.state === "chase") {
+        locked = true;
+        break;
+      }
+    }
+    expect(locked).toBe(true);
+    expect(alerted).toBe(true);
+    // The bloom ends the moment it locks on, and its light is over with it.
+    const after = h.snapshot().predators[0];
+    expect(after.flaring).toBe(false);
+    expect(after.flareRadius).toBe(0);
+  });
+
+  it("keeps the Lanternjaw's bulb showing while its body stays dark", async () => {
+    poseBoard(board([HALL], HALL_ROW), 3, HALL_ROW);
+    h.pose((s) => h.debug.setBrightness(s, 0));
+    // Five tiles out: well past the light pocket, on a tile the fog has never
+    // revealed, and still inside the vision circle the bulb is clipped to. It is
+    // held there, so it is the drawing rather than a patrol that is measured.
+    h.pose((s) => h.debug.addPredator(s, "lanternjaw", 8, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorMind(s, 0, false));
+    await h.advance(0.25);
+
+    const shown = h.snapshot();
+    expect(shown.predators[0].kind).toBe("lanternjaw");
+    expect(shown.predators[0].lit).toBe(false);
+    expect(shown.visibility[HALL_ROW][8]).toBe("u");
+    // The amber bulb is drawn across the fog all the same.
+    const [bx, by] = center(8, HALL_ROW);
+    expect(luminance(h.pixel(bx, by))).toBeGreaterThan(80);
+  });
+
+  it("draws a predator's body where the forager's light falls on it", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 7, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorMind(s, 0, false));
+    await h.advance(0.25);
+    const shown = h.snapshot();
+    expect(shown.predators[0].lit).toBe(true);
+    expect(
+      luminance(h.pixel(shown.predators[0].x, shown.predators[0].y)),
+    ).toBeGreaterThan(luminance(h.pixel(...center(9, HALL_ROW))));
   });
 });
 
@@ -864,10 +1165,8 @@ describe("the vision circle", () => {
    * circle is remembered without anything having been eaten.
    */
   async function floodedHall(tx: number): Promise<void> {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, tx, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), tx, HALL_ROW);
     h.pose((s) => h.debug.setBrightness(s, 0));
-    h.pose((s) => h.debug.setCreatureAI(s, false));
     h.tap("Space");
     // The front stands 14 steps out a second, so this carries it past its
     // 9-step range and leaves nothing of the pulse drawn.
@@ -875,10 +1174,11 @@ describe("the vision circle", () => {
   }
 
   it("reports a radius wider than the light's at every brightness", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 15, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 15, HALL_ROW);
     for (const g of [0, 0.25, 0.5, 0.75, 1]) {
+      // The brightness and its hold together, so `G` is steady across the read.
       h.pose((s) => h.debug.setBrightness(s, g));
+      h.pose((s) => h.debug.setBrightHold(s, BRIGHT_HOLD));
       await h.advance(0.05);
       const shown = h.snapshot();
       expect(shown.brightness).toBeCloseTo(g, 6);
@@ -933,6 +1233,7 @@ describe("the vision circle", () => {
     ).toBeLessThanOrEqual(SAME_FOG);
 
     h.pose((s) => h.debug.setBrightness(s, 1));
+    h.pose((s) => h.debug.setBrightHold(s, BRIGHT_HOLD));
     await h.advance(0.05);
     expect(h.snapshot().windowRadius).toBe(
       KINDLE_VISION_MIN + KINDLE_VISION_GAIN,
@@ -944,11 +1245,9 @@ describe("the vision circle", () => {
   });
 
   it("hides remembered ground without forgetting it", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 15, HALL_ROW);
     h.pose((s) => h.debug.setPlankton(s, 22, HALL_ROW, true));
-    h.pose((s) => h.debug.setForagerTile(s, 15, HALL_ROW));
     h.pose((s) => h.debug.setBrightness(s, 0));
-    h.pose((s) => h.debug.setCreatureAI(s, false));
     h.tap("Space");
     await h.advance(1.2);
 
@@ -971,41 +1270,37 @@ describe("the vision circle", () => {
   });
 
   it("leaves the predators to the light rather than to itself", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.pose((s) => h.debug.setBrightness(s, 0));
-    h.pose((s) => h.debug.setCreatureAI(s, false));
     // Five tiles out: inside the 192 the circle reaches, beyond the 96 the
-    // light does.
-    h.pose((s) => h.debug.setPredatorTile(s, 1, 10, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorState(s, 1, "wander"));
+    // light does. Held there, so the drawing is what is measured.
+    h.pose((s) => h.debug.addPredator(s, "gloamfin", 10, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorMind(s, 0, false));
     await h.advance(0.25);
 
     const dark = h.snapshot();
     const fog = h.pixel(...center(25, HALL_ROW));
-    expect(dark.predators[1].kind).toBe("gloamfin");
-    expect(dark.predators[1].lit).toBe(false);
+    expect(dark.predators[0].lit).toBe(false);
     expect(
-      rgbDistance(h.pixel(dark.predators[1].x, dark.predators[1].y), fog),
+      rgbDistance(h.pixel(dark.predators[0].x, dark.predators[0].y), fog),
     ).toBeLessThanOrEqual(SAME_FOG);
 
     // Two tiles out, inside the light, the same hunter is drawn.
-    h.pose((s) => h.debug.setPredatorTile(s, 1, 7, HALL_ROW));
+    h.pose((s) => h.debug.setPredatorTile(s, 0, 7, HALL_ROW));
     await h.advance(0.25);
     const shown = h.snapshot();
-    expect(shown.predators[1].lit).toBe(true);
+    expect(shown.predators[0].lit).toBe(true);
     expect(
-      rgbDistance(h.pixel(shown.predators[1].x, shown.predators[1].y), fog),
+      rgbDistance(h.pixel(shown.predators[0].x, shown.predators[0].y), fog),
     ).toBeGreaterThan(SAME_FOG);
   });
 
   it("clips the amber lights to itself", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.pose((s) => h.debug.setBrightness(s, 0));
-    h.pose((s) => h.debug.setCreatureAI(s, false));
-    // Seven tiles out, beyond the 192 the circle stands at.
+    // Seven tiles out, beyond the 192 the circle stands at, and held there.
     h.pose((s) => h.debug.spawnDrifter(s, 12, HALL_ROW));
+    h.pose((s) => h.debug.setDrifterMind(s, 0, false));
     await h.advance(0.25);
 
     const far = h.snapshot().drifters[0];
@@ -1032,21 +1327,16 @@ describe("the vision circle", () => {
   });
 
   it("lets a flare draw the maze beyond it, and takes it back after", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.pose((s) => h.debug.setBrightness(s, 0));
-    h.pose((s) => h.debug.setPredatorState(s, 0, "den"));
-    h.pose((s) => h.debug.setPredatorState(s, 1, "den"));
     // Fifteen tiles from the forager: far outside its circle, and far enough
     // that the bloom cannot reach it and lock on.
-    h.pose((s) => h.debug.setPredatorTile(s, 2, 20, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorState(s, 2, "wander"));
-    poseBloom(2);
+    h.pose((s) => h.debug.addPredator(s, "flarefish", 20, HALL_ROW));
+    poseBloom(0);
     await h.advance(1 / TICK_HZ);
 
     const burning = h.snapshot();
-    expect(burning.predators[2].kind).toBe("flarefish");
-    expect(burning.predators[2].flaring).toBe(true);
+    expect(burning.predators[0].flaring).toBe(true);
     // Two tiles from the Flarefish either way, and so at the same reach of its
     // bloom: one open water, one rock. Both are twelve tiles or more from the
     // forager, well beyond the 192 its own circle stands at.
@@ -1063,10 +1353,10 @@ describe("the vision circle", () => {
       SAME_FOG,
     );
 
-    endBloom(2);
+    endBloom(0);
     await h.advance(1 / TICK_HZ);
     const over = h.snapshot();
-    expect(over.predators[2].flaring).toBe(false);
+    expect(over.predators[0].flaring).toBe(false);
     // The disc goes with the bloom, and what it lit stays remembered.
     expect(over.visibility[HALL_ROW][17]).toBe("r");
     expect(over.visibility[HALL_ROW - 3][20]).toBe("r");
@@ -1075,207 +1365,11 @@ describe("the vision circle", () => {
   });
 });
 
-// ---- The surface's domains ----------------------------------------------
-
-describe("the surface refuses an argument outside its domain", () => {
-  it("names what it expected", () => {
-    const s = h.state;
-    expect(() => h.debug.setDepth(s, 0)).toThrow(/at least 1/);
-    expect(() => h.debug.setBrightness(s, 2)).toThrow(/\[0, 1\]/);
-    expect(() => h.debug.setSonarCooldown(s, -1)).toThrow(/at least 0/);
-    expect(() => h.debug.setInkCooldown(s, Number.NaN)).toThrow(/at least 0/);
-    expect(() => h.debug.setPredatorTile(s, 99, 1, 1)).toThrow(/roster holds/);
-    expect(() => h.debug.setMaze(s, ["##"])).toThrow(/expected 18 rows/);
-    expect(() =>
-      h.debug.setMaze(s, Array<string>(18).fill("x".repeat(36))),
-    ).toThrow(/unknown tile character/);
-    expect(() =>
-      h.debug.setMaze(
-        s,
-        Array<string>(18).fill(`${"d".repeat(2)}${"#".repeat(34)}`),
-      ),
-    ).toThrow(/exactly one gate/);
-  });
-
-  it("refuses a tile the body it moves may not stand on", () => {
-    h.pose((s) => h.debug.setMaze(s, board([HALL], HALL_ROW)));
-    const s = h.state;
-    expect(() => h.debug.setForagerTile(s, 0, 0)).toThrow(/open corridor tile/);
-    expect(() => h.debug.spawnDrifter(s, 0, 0)).toThrow(/open corridor tile/);
-    expect(() => h.debug.setPlankton(s, 0, 0, true)).toThrow(
-      /open corridor tile/,
-    );
-    expect(() => h.debug.setPredatorTile(s, 0, 0, 0)).toThrow(/den gate/);
-  });
-});
-
-// ---- The hunters' own senses --------------------------------------------
-
-describe("each hunter hunts by its own sense", () => {
-  it("gives the Gloamfin a fix when its own ping's front reaches the forager", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 1, 11, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorState(s, 1, "wander"));
-    // Its two neighbors are held out of the way for the length of the window.
-    h.pose((s) => h.debug.setPredatorState(s, 0, "den"));
-    h.pose((s) => h.debug.setPredatorState(s, 2, "den"));
-
-    let pinged = false;
-    let acquired = false;
-    for (let i = 0; i < 160; i++) {
-      // The Gloamfin patrols, and where it patrols to is its own business, so
-      // the scenario keeps it six tiles off — past its close hearing and well
-      // inside the range of a ping — by posing its tile and nothing else.
-      h.pose((s) => h.debug.setPredatorTile(s, 1, 11, HALL_ROW));
-      await h.advance(0.05);
-      const shown = h.snapshot();
-      pinged ||= shown.pulses.some((pulse) => pulse.source === "gloamfin");
-      if (shown.predators[1].state === "chase") {
-        acquired = true;
-        // The fix cannot have come from close hearing at six tiles.
-        expect(pinged).toBe(true);
-        expect(shown.predators[1].hearingLock).toBe(false);
-        expect(shown.predators[1].alert).toBe(true);
-        break;
-      }
-    }
-    expect(pinged).toBe(true);
-    expect(acquired).toBe(true);
-    expect(h.cues.map((play) => play.cue)).toContain(CUES.predatorPing);
-  });
-
-  it("takes the Gloamfin to a search when it reaches an empty fixed tile", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 20, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 1, 24, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorState(s, 1, "chase"));
-    h.pose((s) => h.debug.setPredatorState(s, 0, "den"));
-    h.pose((s) => h.debug.setPredatorState(s, 2, "den"));
-    // The forager leaves the tile the fix names before the hunter arrives.
-    h.pose((s) => h.debug.setForagerTile(s, 3, HALL_ROW));
-
-    let searched = false;
-    for (let i = 0; i < 60; i++) {
-      await h.advance(0.05);
-      searched ||= h.snapshot().predators[1].state === "search";
-      if (searched) break;
-    }
-    expect(searched).toBe(true);
-  });
-
-  it("charges and blooms on the Flarefish's own timer", async () => {
-    // A pocket sealed off from the hall by one course of rock: the Flarefish
-    // cannot move out of it and cannot see past the rock, and the forager is
-    // parked far enough away that nothing it does reaches him.
-    const pocket = `${"#".repeat(10)}.${"#".repeat(25)}`;
-    poseQuietBoard(board([HALL, "#".repeat(GRID_COLS), pocket], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 28, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 2, 10, HALL_ROW + 2));
-    h.pose((s) => h.debug.setPredatorState(s, 2, "wander"));
-    h.pose((s) => h.debug.setPredatorState(s, 0, "den"));
-    h.pose((s) => h.debug.setPredatorState(s, 1, "den"));
-    expect(h.snapshot().predators[2].kind).toBe("flarefish");
-
-    let charged = 0;
-    let bloomed = 0;
-    let radius = 0;
-    for (let i = 0; i < 220; i++) {
-      await h.advance(0.05);
-      const p = h.snapshot().predators[2];
-      if (p.flareCharging === true) charged++;
-      if (p.flaring === true) {
-        bloomed++;
-        radius = p.flareRadius ?? 0;
-      }
-    }
-    // The charge-up runs for FLARE_CHARGE and the bloom for FLARE_BLOOM, so a
-    // window of eleven seconds holds one whole flare with room to spare.
-    expect(charged).toBeGreaterThan(0);
-    expect(bloomed).toBeGreaterThan(0);
-    expect(bloomed).toBeGreaterThan(charged);
-    expect(radius).toBe(FLARE_RADIUS);
-    expect(h.cues.map((play) => play.cue)).toContain(CUES.flare);
-
-    // Outside a flare it reports nothing at all, and it never chased.
-    const after = h.snapshot().predators[2];
-    expect(after.state).toBe("wander");
-    expect(after.flaring).toBe(false);
-    expect(after.flareRadius).toBe(0);
-  });
-
-  it("locks on through rock when its bloom reaches the forager", async () => {
-    const pocket = `${"#".repeat(10)}.${"#".repeat(25)}`;
-    poseQuietBoard(board([HALL, "#".repeat(GRID_COLS), pocket], HALL_ROW));
-    // Two tiles apart with rock between: inside the bloom's reach, and outside
-    // the light sense, which the rock blocks.
-    h.pose((s) => h.debug.setForagerTile(s, 10, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 2, 10, HALL_ROW + 2));
-    h.pose((s) => h.debug.setPredatorState(s, 2, "wander"));
-    h.pose((s) => h.debug.setPredatorState(s, 0, "den"));
-    h.pose((s) => h.debug.setPredatorState(s, 1, "den"));
-    expect(h.snapshot().predators[2].state).toBe("wander");
-
-    let locked = false;
-    let alerted = false;
-    for (let i = 0; i < 220; i++) {
-      await h.advance(0.05);
-      const p = h.snapshot().predators[2];
-      alerted ||= p.alert;
-      if (p.state === "chase") {
-        locked = true;
-        break;
-      }
-    }
-    expect(locked).toBe(true);
-    expect(alerted).toBe(true);
-    // The bloom ends the moment it locks on, and its light is over with it.
-    const after = h.snapshot().predators[2];
-    expect(after.flaring).toBe(false);
-    expect(after.flareRadius).toBe(0);
-  });
-
-  it("keeps the Lanternjaw's bulb showing while its body stays dark", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 3, HALL_ROW));
-    h.pose((s) => h.debug.setBrightness(s, 0));
-    // Five tiles out: well past the light pocket, on a tile the fog has never
-    // revealed, and still inside the vision circle the bulb is clipped to.
-    h.pose((s) => h.debug.setPredatorTile(s, 0, 8, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorState(s, 0, "wander"));
-    h.pose((s) => h.debug.setCreatureAI(s, false));
-    await h.advance(0.25);
-
-    const shown = h.snapshot();
-    expect(shown.predators[0].kind).toBe("lanternjaw");
-    expect(shown.predators[0].lit).toBe(false);
-    expect(shown.visibility[HALL_ROW][8]).toBe("u");
-    // The amber bulb is drawn across the fog all the same.
-    const [bx, by] = center(8, HALL_ROW);
-    expect(luminance(h.pixel(bx, by))).toBeGreaterThan(80);
-  });
-
-  it("draws a predator's body where the forager's light falls on it", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorTile(s, 1, 7, HALL_ROW));
-    h.pose((s) => h.debug.setPredatorState(s, 1, "wander"));
-    h.pose((s) => h.debug.setCreatureAI(s, false));
-    await h.advance(0.25);
-    const shown = h.snapshot();
-    expect(shown.predators[1].lit).toBe(true);
-    expect(
-      luminance(h.pixel(shown.predators[1].x, shown.predators[1].y)),
-    ).toBeGreaterThan(luminance(h.pixel(...center(9, HALL_ROW))));
-  });
-});
-
 // ---- The rest of the surface --------------------------------------------
 
 describe("the rest of the surface", () => {
   it("turns the forager without moving it", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     const before = h.snapshot().forager;
     h.pose((s) => h.debug.setForagerDir(s, "left"));
     const turned = h.snapshot().forager;
@@ -1307,14 +1401,23 @@ describe("the rest of the surface", () => {
     );
   });
 
-  it("keeps a posed board's suspension across a change of depth", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
+  it("gives a change of depth its own roster and leaves the board alone", () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    stockPlankton(board([HALL], HALL_ROW));
+    const before = h.snapshot();
+
     h.pose((s) => h.debug.setDepth(s, 3));
     const deeper = h.snapshot();
     expect(deeper.predators.length).toBe(5);
-    await h.advance(DEN_RELEASE_GAP * 2);
-    // No release time arrives while the fixture stands, whatever the roster is.
-    expect(h.snapshot().predators.every((p) => !p.released)).toBe(true);
+    expect(
+      deeper.predators.every((p) => p.state === "den" && !p.released),
+    ).toBe(true);
+    // The maze, the plankton, the fog and the screen are all left as they stand.
+    expect(deeper.tiles).toEqual(before.tiles);
+    expect(deeper.plankton).toEqual(before.plankton);
+    expect(deeper.planktonRemaining).toBe(before.planktonRemaining);
+    expect(deeper.visibility).toEqual(before.visibility);
+    expect(deeper.screen).toBe(before.screen);
   });
 
   it("admits a bonus drifter at the den gate while plankton remain", async () => {
@@ -1325,23 +1428,21 @@ describe("the rest of the surface", () => {
     rows[6] = `#${".".repeat(30)}${"#".repeat(5)}`;
     rows[7] = `${"#".repeat(17)}g${"#".repeat(18)}`;
     rows[8] = `${"#".repeat(15)}dddddd${"#".repeat(15)}`;
-    poseBoard(rows);
-    h.pose((s) => h.debug.setForagerTile(s, 1, 6));
+    poseBoard(rows, 1, 6);
+    stockPlankton(rows);
     expect(h.snapshot().drifters.length).toBe(0);
-    // Every predator is held in the chamber, so nothing but the cadence moves.
-    expect(h.snapshot().predators.every((p) => p.state === "den")).toBe(true);
 
     await h.advance(26);
     const admitted = h.snapshot();
     expect(admitted.drifters.length).toBe(1);
-    expect(admitted.predators.every((p) => !p.released)).toBe(true);
+    expect(admitted.drifters[0].mind).toBe(true);
     // Twenty-six seconds of simulation with the whole grid drawn on every tick
     // runs to a few seconds of wall clock, which is close enough to the default
     // ceiling to fail on a busy machine. The bound is here to stop a hang.
   }, 30_000);
 
   it("poses a cooldown that then runs down on the ordinary curve", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     h.pose((s) => h.debug.setSonarCooldown(s, 0.5));
     h.pose((s) => h.debug.setInkCooldown(s, 0.25));
     expect(h.snapshot().sonar.ready).toBe(false);
@@ -1354,20 +1455,114 @@ describe("the rest of the surface", () => {
   });
 
   it("takes plankton off the board without scoring or clearing it", async () => {
-    poseBoard(board([HALL], HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    stockPlankton(board([HALL], HALL_ROW));
     const before = h.snapshot();
     expect(before.planktonRemaining).toBeGreaterThan(0);
+    // The layer and the count report the same fact.
+    expect(before.plankton[HALL_ROW][8]).toBe("*");
+
     h.pose((s) => h.debug.clearPlankton(s));
     await h.advance(0.5);
     const bare = h.snapshot();
     expect(bare.planktonRemaining).toBe(0);
+    expect(bare.plankton.join("")).not.toContain("*");
     expect(bare.score).toBe(before.score);
     expect(bare.screen).toBe("playing");
+
+    // One put back on a named tile, and taken off again.
+    h.pose((s) => h.debug.setPlankton(s, 25, HALL_ROW, true));
+    expect(h.snapshot().plankton[HALL_ROW][25]).toBe("*");
+    expect(h.snapshot().planktonRemaining).toBe(1);
+    h.pose((s) => h.debug.setPlankton(s, 25, HALL_ROW, false));
+    expect(h.snapshot().planktonRemaining).toBe(0);
+  });
+
+  it("poses the score and the lives play then carries on from", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.setScore(s, 400));
+    h.pose((s) => h.debug.setLives(s, 1));
+    expect(h.snapshot().score).toBe(400);
+    expect(h.snapshot().lives).toBe(1);
+
+    // Play carries on from that figure: the next plankton eaten adds to it.
+    h.pose((s) => h.debug.setPlankton(s, 6, HALL_ROW, true));
+    h.pose((s) => h.debug.setPlankton(s, 25, HALL_ROW, true));
+    h.hold("ArrowRight");
+    await h.advance(0.3);
+    expect(h.snapshot().score).toBe(400 + SCORE_PLANKTON);
+  });
+
+  it("poses the brightness and its hold as two separate things", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    // The brightness alone: the hold stands where it was, spent, so `G` decays
+    // from the posed value at once.
+    h.pose((s) => h.debug.setBrightness(s, 1));
+    expect(h.snapshot().brightness).toBe(1);
+    expect(h.snapshot().brightHold).toBe(0);
+    await h.advance(0.5);
+    expect(h.snapshot().brightness).toBeLessThan(1);
+
+    // The pair eating a plankton arms: steady for the whole hold, then decaying.
+    h.pose((s) => h.debug.setBrightness(s, 1));
+    h.pose((s) => h.debug.setBrightHold(s, BRIGHT_HOLD));
+    await h.advance(BRIGHT_HOLD / 2);
+    expect(h.snapshot().brightness).toBe(1);
+    expect(h.snapshot().brightHold).toBeCloseTo(BRIGHT_HOLD / 2, 2);
+    await h.advance(BRIGHT_HOLD);
+    expect(h.snapshot().brightness).toBeLessThan(1);
+  });
+
+  it("puts the fog back to unrevealed without moving anything", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    await h.advance(0.25);
+    const lit = h.snapshot();
+    expect(lit.visibility.join("")).toContain("l");
+
+    h.pose((s) => h.debug.clearFog(s));
+    const dark = h.snapshot();
+    expect(dark.visibility.join("")).not.toContain("l");
+    expect(dark.visibility.join("")).not.toContain("r");
+    expect(dark.forager.x).toBe(lit.forager.x);
+    expect(dark.forager.y).toBe(lit.forager.y);
+
+    // The light falls again as soon as the simulation advances.
+    await h.advance(0.05);
+    expect(h.snapshot().visibility.join("")).toContain("l");
+  });
+
+  it("takes every drifter off the maze without scoring", async () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.spawnDrifter(s, 20, HALL_ROW));
+    h.pose((s) => h.debug.spawnDrifter(s, 25, HALL_ROW));
+    const before = h.snapshot();
+    expect(before.drifters.length).toBe(2);
+
+    h.pose((s) => h.debug.clearDrifters(s));
+    await h.advance(0.5);
+    const bare = h.snapshot();
+    expect(bare.drifters).toEqual([]);
+    expect(bare.score).toBe(before.score);
+  });
+
+  it("sets the screen and nothing else", () => {
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
+    h.pose((s) => h.debug.setScore(s, 700));
+    const before = h.snapshot();
+
+    h.pose((s) => h.debug.setScreen(s, "paused"));
+    const paused = h.snapshot();
+    expect(paused.screen).toBe("paused");
+    expect(paused.score).toBe(before.score);
+    expect(paused.lives).toBe(before.lives);
+    expect(paused.depth).toBe(before.depth);
+    expect(paused.tiles).toEqual(before.tiles);
+    expect(paused.plankton).toEqual(before.plankton);
+    expect(paused.forager).toEqual(before.forager);
   });
 
   it("reads its diagnostic sources without disturbing the simulation", async () => {
-    poseQuietBoard(board([HALL], HALL_ROW));
-    h.pose((s) => h.debug.setForagerTile(s, 5, HALL_ROW));
+    poseBoard(board([HALL], HALL_ROW), 5, HALL_ROW);
     // The engine owns the overlay and its key; showing it is what calls the
     // sources the game registered.
     h.tap("Backquote");

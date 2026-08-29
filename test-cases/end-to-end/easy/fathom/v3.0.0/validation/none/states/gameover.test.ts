@@ -30,7 +30,9 @@
 // ends the run, which is `scoring/three-lives`'; what a plankton or a drifter
 // scores, which is `scoring/plankton`'s and `amber/drifter-score`'s.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
+import { spawnDrifter } from "../fixtures";
+
 import { assertEqual, assertGreaterThan, assertMatches } from "../assert";
 import { GAMEOVER_ITEMS, START_LIVES } from "../constants";
 import {
@@ -39,7 +41,7 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check } from "../scene";
+
 import {
   CONFIRM_KEY,
   assertDrew,
@@ -61,17 +63,17 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check("ends the run on game over, reports it, and plays again", async () => {
+it("ends the run on game over, reports it, and plays again", async () => {
   await startPlaying(h);
 
   // A score worth reading off the screen, taken through the build's own scoring:
-  // the plankton the forager opens on, and one bonus drifter posed under it.
-  await h.debug.setCreatureAI(false);
+  // the plankton the forager opens on, and one bonus drifter posed under it. The
+  // drifter is spawned with its mind off so it is eaten where it was put rather
+  // than drifting off the forager's tile first.
   await h.advance(EAT_TICKS);
   const standing = (await h.snapshot()).forager;
-  await h.debug.spawnDrifter(standing.tx, standing.ty);
+  await spawnDrifter(h, { tx: standing.tx, ty: standing.ty }, { mind: false });
   await h.advance(EAT_TICKS);
-  await h.debug.setCreatureAI(true);
   const scored = await h.snapshot();
 
   const over = await loseEveryLife(h);

@@ -31,8 +31,9 @@
 // `lanternjaw/light-range`'s — a build that never takes one stands this check down
 // rather than failing it twice.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import {
+  BRIGHT_HOLD,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
   LINGER_TIME,
@@ -41,8 +42,9 @@ import {
   assertEqual,
   assertGreaterThan,
   assertLessThanOrEqual,
+  fail,
 } from "../assert";
-import { poseDimStandoff } from "../fixtures";
+import { poseDimStandoff, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
@@ -51,16 +53,7 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  failPrecondition,
-  indexOfKind,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 import { tileGap } from "../maze";
 
 /** The brightness the fix is earned at, which `setBrightness` holds steady. */
@@ -111,27 +104,17 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("Dimming shakes its fix", async () => {
+it("Dimming shakes its fix", async () => {
   startPlaying(h);
   const line = await poseDimStandoff(h);
-  const index = indexOfKind(h.snapshot(), "lanternjaw");
-  if (index < 0) {
-    failPrecondition(
-      "a Lanternjaw on the roster to pose this scenario with",
-      "the progression points",
-      "no lanternjaw in snapshot().predators",
-    );
-  }
-  const quiet = await denAll(h, [index]);
-  h.debug.setPredatorTile(index, line.pred.tx, line.pred.ty);
-  h.debug.setPredatorState(index, "wander");
+  const index = await spawnPredator(h, "lanternjaw", line.pred);
   await parkForager(h, line.fix);
-  await clearUnderfoot(h);
   h.debug.setBrightness(BRIGHT_G);
+  h.debug.setBrightHold(BRIGHT_HOLD);
   // The forager is meant to slip down the corridor, so the guard is not held to
   // where it was parked; what it still catches is a life lost, the dive leaving
   // live play, or another predator loose on the board.
-  const guard = await sceneGuard(h, quiet, { foragerParked: false });
+  const guard = await sceneGuard(h, { foragerParked: false });
 
   const grid = h.snapshot().grid;
   const slipFromFix = tileGap(grid, line.slip, line.fix);
@@ -142,11 +125,10 @@ check("Dimming shakes its fix", async () => {
     poll: 1,
   });
   if (!fixed.hit) {
-    failPrecondition(
+    fail(
       "the Lanternjaw to take a fix on a forager " +
         `${tileGap(grid, line.pred, line.fix).toFixed(0)} units away on a clear ` +
         `line at G ${BRIGHT_G}, so there is a fix to shake`,
-      "lanternjaw/light-range",
       fixed.snapshot.predators[index].state,
     );
   }

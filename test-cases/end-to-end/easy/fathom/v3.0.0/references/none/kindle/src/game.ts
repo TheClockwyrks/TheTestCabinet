@@ -97,8 +97,6 @@ export interface FathomState {
   lives: number;
   /** The game's readable copy of the runtime's mute bit. */
   muted: boolean;
-  /** Whether the predators and the drifters run their own minds. */
-  creatureAI: boolean;
   /** Accumulated simulation time, in seconds, across every screen. */
   simTime: number;
 
@@ -134,14 +132,6 @@ export interface FathomState {
   desired: Heading;
 
   /**
-   * Whether the layout standing is a posed fixture rather than one the game laid
-   * out. The den's release schedule is suspended for as long as one stands, so
-   * this outlives any single predator: a roster rebuilt over a fixture is
-   * suspended too, and a lost life over one does not start the schedule again.
-   */
-  posedBoard: boolean;
-
-  /**
    * The cues the tick in progress has raised, played once each as it ends. A
    * set, so a tick on which two creatures raise the same cue plays it once.
    */
@@ -161,7 +151,6 @@ export function createState(assets: Assets): FathomState {
     score: 0,
     lives: START_LIVES,
     muted: false,
-    creatureAI: true,
     simTime: 0,
     maze,
     fog: new Fog(),
@@ -180,7 +169,6 @@ export function createState(assets: Assets): FathomState {
     clearedTimer: 0,
     drifterTimer: DRIFTER_INTERVAL,
     desired: null,
-    posedBoard: false,
     cues: new Set<CueName>(),
   };
   layoutMaze(state, true);
@@ -225,6 +213,28 @@ export function fillPlankton(state: FathomState): void {
 }
 
 /**
+ * Restore the plankton layer's one invariant: a plankton stands on an open
+ * corridor tile and nowhere else, which `specs/state.md` fixes by reporting rock,
+ * the gate and the den chamber as holding none.
+ *
+ * A layout replaced under a standing board is the only thing that can break it —
+ * a plankton the new rock closed over — so this runs there and the count is
+ * taken again from what is left.
+ */
+export function pruneBuriedPlankton(state: FathomState): void {
+  let remaining = 0;
+  for (let row = 0; row < GRID_ROWS; row += 1) {
+    for (let col = 0; col < GRID_COLS; col += 1) {
+      const key = tileKey(col, row);
+      if (!state.plankton[key]) continue;
+      if (state.maze.isCorridor(col, row)) remaining += 1;
+      else state.plankton[key] = false;
+    }
+  }
+  state.planktonRemaining = remaining;
+}
+
+/**
  * Build the roster the current depth holds, parked on the den's slots in
  * release order.
  *
@@ -244,10 +254,6 @@ export function buildRoster(state: FathomState): void {
 /**
  * Return every predator to a den tile and re-arm the staggered schedule, which
  * runs again from the moment live play resumes.
- *
- * Over a posed fixture there is no schedule to re-arm: `specs/instrumentation.md`
- * suspends it for as long as the fixture stands, so the hunters go back to the
- * den held rather than waiting a release time that never arrives.
  */
 export function denPredators(state: FathomState): void {
   const slots = state.maze.denSlots();
@@ -257,15 +263,21 @@ export function denPredators(state: FathomState): void {
       p.placeOn(slot.col, slot.row);
     }
     restPredator(p);
+    p.released = false;
     p.denTimer = p.releaseAt;
-    p.heldInDen = state.posedBoard;
   });
 }
 
-/** Clear every hunt a predator was in the middle of, leaving it in the den. */
-function restPredator(p: Predator): void {
+/**
+ * Clear every hunt a predator is in the middle of and re-arm the timers its kind
+ * runs on, leaving it with no fix, no alert and no beat of a flare playing.
+ *
+ * It says nothing about where the predator stands, what its `state` is, or
+ * whether its turn has come; each caller settles those itself.
+ */
+export function restPredator(p: Predator): void {
   p.state = "den";
-  p.released = false;
+  p.dir = null;
   p.fix = null;
   p.linger = 0;
   p.alertT = 0;
@@ -283,49 +295,25 @@ function restPredator(p: Predator): void {
 }
 
 /**
- * Hold one predator in the den with its release time suspended, so no release
- * time arrives for it however long the scenario runs.
- */
-export function holdInDen(state: FathomState, p: Predator): void {
-  const slots = state.maze.denSlots();
-  if (slots.length > 0) {
-    const index = Math.max(state.predators.indexOf(p), 0);
-    const slot = slots[index % slots.length];
-    p.placeOn(slot.col, slot.row);
-  }
-  restPredator(p);
-  p.heldInDen = true;
-}
-
-/**
- * Replace the layout with a posed fixture and leave the board as a freshly
- * laid-out maze starts: a plankton on every corridor tile, the fog fully
- * unrevealed, and every predator back in a den tile with its release time
- * suspended.
+ * Replace the layout with a posed fixture, and change nothing else.
+ *
+ * The layout is the whole of what this sets. The plankton, the revealed-tile
+ * memory, the roster, every body's tile and facing, the cooldowns, the score,
+ * the lives, the depth and the screen are all left exactly as they stand, so a
+ * caller poses each of those itself.
  *
  * The fixture is used exactly as given and is exempt from every rule of
  * `specs/maze.md`. What it does not have simply takes no part: with no gate the
- * drifter cadence has nowhere to admit a drifter from, and a predator returned
- * to a den that is not there is held out of play.
+ * drifter cadence has nowhere to admit a drifter from, and on a layout with no
+ * den chamber a predator whose `state` is `"den"` is held out of play.
  *
- * What the game is DOING is left alone. The score, the lives, the depth, the
- * cooldowns and the screen are the dive's rather than the board's, so a call
- * made during live play leaves the game in live play.
+ * The one thing that follows from the layout itself is the plankton layer's
+ * invariant: a plankton the new rock has closed over is no longer on an open
+ * corridor tile, so it is off the board and out of the count.
  */
 export function poseMaze(state: FathomState, rows: readonly string[]): void {
   state.maze.load(rows);
-  state.posedBoard = true;
-  state.fog.reset();
-  fillPlankton(state);
-  state.forager.placeOn(state.maze.start.col, state.maze.start.row);
-  state.desired = null;
-  state.drifters = [];
-  state.waves = [];
-  state.ink.clear();
-  state.effects.clear();
-  state.drifterTimer = DRIFTER_INTERVAL;
-  buildRoster(state);
-  for (const p of state.predators) holdInDen(state, p);
+  pruneBuriedPlankton(state);
 }
 
 // ---- The flow between screens ----------------------------------------------
@@ -341,7 +329,6 @@ export const COUNTDOWN_TIME = COUNTDOWN_NUMBERS * COUNTDOWN_STEP;
  */
 function loadOwnMaze(state: FathomState): void {
   state.maze.load(SHIPPED_LAYOUT, SHIPPED_START);
-  state.posedBoard = false;
 }
 
 /** Open a fresh dive, which `DIVE`, `RESTART` and `PLAY AGAIN` all do alike. */
@@ -364,16 +351,40 @@ function toCountdown(state: FathomState): void {
  * Live play beginning, which is where the den's staggered schedule is timed
  * from (`specs/predators.md`). Release time `0` is this moment, so the first
  * predator's slot has already arrived when the screen turns over and it reports
- * `released` from here rather than a tick later. A predator the debugging
- * surface holds in the den has no release time at all and the schedule passes
- * it by.
+ * `released` from here rather than a tick later.
+ *
+ * Every way into live play comes through here: the countdown running out,
+ * `RESUME` on the pause menu, and the debugging surface posing the screen. What
+ * a predator has already waited out is its own, so resuming a paused dive does
+ * not put the schedule back to the beginning.
  */
-export function beginLivePlay(state: FathomState): void {
+export function enterPlay(state: FathomState): void {
   state.screen = "playing";
   state.countdown = 0;
   for (const p of state.predators) {
-    if (p.released || p.heldInDen) continue;
+    if (p.released) continue;
     if (p.denTimer <= 0) p.released = true;
+  }
+}
+
+/**
+ * Pose the screen, which the debugging surface's `setScreen` does and nothing
+ * else. It sets `screen` and refreshes the timer or the menu index that screen
+ * is meaningless without, so the game carries on under its own rules from there.
+ */
+export function poseScreen(state: FathomState, screen: Screen): void {
+  switch (screen) {
+    case "countdown":
+      toCountdown(state);
+      return;
+    case "playing":
+      enterPlay(state);
+      return;
+    case "cleared":
+      toCleared(state);
+      return;
+    default:
+      openMenu(state, screen);
   }
 }
 
@@ -409,6 +420,11 @@ function loseLife(state: FathomState): void {
 function clearMaze(state: FathomState): void {
   state.score += SCORE_CLEAR;
   raiseCue(state, "descend");
+  toCleared(state);
+}
+
+/** Hold on the interstitial until it gives way to the next maze down. */
+function toCleared(state: FathomState): void {
   state.screen = "cleared";
   state.clearedTimer = CLEARED_HOLD;
 }
@@ -466,13 +482,11 @@ function readControls(state: FathomState, api: TickApi): void {
         api,
         PAUSE_ITEMS.length,
         (index) => {
-          if (index === 0) state.screen = "playing";
+          if (index === 0) enterPlay(state);
           else if (index === 1) beginDive(state);
           else toTitle(state);
         },
-        () => {
-          state.screen = "playing";
-        },
+        () => enterPlay(state),
       );
       return;
     case "gameover":
@@ -630,7 +644,7 @@ export function tick(state: FathomState, api: TickApi, dt: number): void {
       // The light the forager casts still falls on the maze around it while the
       // countdown holds; nothing else moves.
       lightTheDark(state);
-      if (state.countdown <= 0) beginLivePlay(state);
+      if (state.countdown <= 0) enterPlay(state);
       break;
     case "cleared":
       state.clearedTimer = Math.max(0, state.clearedTimer - dt);
@@ -738,35 +752,33 @@ function grazeTile(state: FathomState): boolean {
 }
 
 /**
- * Every hunter's own step.
+ * Every hunter's own step, each taken or not on its own mind.
  *
- * With the creature minds off each one holds exactly where it stands, but the
- * windows its body is drawn for — its sonar mark and its detection alert — are
- * presentation rather than sense, so they keep running down either way.
+ * A hunter whose mind is off holds exactly where it stands, but the windows its
+ * body is drawn for — its sonar mark and its detection alert — are presentation
+ * rather than sense, so they keep running down either way.
  */
 function stepPredators(state: FathomState, dt: number): void {
-  if (!state.creatureAI) {
-    for (const p of state.predators) decayPredatorTimers(p, dt);
-    return;
-  }
   const world = predatorWorld(state);
-  for (const p of state.predators) updatePredator(p, dt, world);
+  for (const p of state.predators) {
+    if (p.mind) updatePredator(p, dt, world);
+    else decayPredatorTimers(p, dt);
+  }
 }
 
 /** The bonus drifters: their wander, and the cadence that admits them. */
 function stepDrifters(state: FathomState, dt: number): void {
-  if (state.creatureAI) {
-    const canEnter = (c: number, r: number): boolean =>
-      state.maze.isCorridor(c, r);
-    for (const d of state.drifters) {
-      advance(
-        d,
-        dt,
-        state.maze,
-        () => wanderDir(d, state.maze, state.rng, canEnter),
-        canEnter,
-      );
-    }
+  const canEnter = (c: number, r: number): boolean =>
+    state.maze.isCorridor(c, r);
+  for (const d of state.drifters) {
+    if (!d.mind) continue;
+    advance(
+      d,
+      dt,
+      state.maze,
+      () => wanderDir(d, state.maze, state.rng, canEnter),
+      canEnter,
+    );
   }
 
   // The timer runs only while the maze has room, so a freed slot refills after a
@@ -834,7 +846,7 @@ function senseWithWave(state: FathomState, wave: SonarWave): void {
       if (p.kind !== "lanternjaw") {
         p.markT = Math.max(p.markT, SONAR_MARK_TIME);
       }
-      if (p.kind === "gloamfin" && state.creatureAI) {
+      if (p.kind === "gloamfin" && p.mind) {
         acquire(p, world, state.forager.tile);
       }
     });
@@ -846,7 +858,7 @@ function senseWithWave(state: FathomState, wave: SonarWave): void {
   if (emitter === undefined || emitter.state === "den") return;
   if (!wave.reached(state.forager.col, state.forager.row)) return;
   wave.caughtForager = true;
-  if (state.creatureAI) acquire(emitter, world, state.forager.tile);
+  if (emitter.mind) acquire(emitter, world, state.forager.tile);
 }
 
 /**

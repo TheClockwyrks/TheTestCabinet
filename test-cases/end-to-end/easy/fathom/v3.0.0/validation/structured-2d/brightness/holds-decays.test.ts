@@ -19,19 +19,18 @@
 // larder, so `planktonRemaining` never reaches zero however much of the run the
 // forager grazes, and the maze cannot clear and descend mid-window.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { BRIGHT_HALFLIFE, BRIGHT_HOLD } from "../../src/constants";
-import { assertLessThanOrEqual } from "../assert";
+import { assertLessThanOrEqual, fail } from "../assert";
 import { poseStraightRun } from "../fixtures";
+import type { Tile } from "../maze";
 import {
   captureReplay,
   createHarness,
-  DIR_KEY,
   startPlaying,
   ticksFor,
   type Harness,
 } from "../harness";
-import { check, clearUnderfoot, failPrecondition } from "../scene";
 
 /** The hold and the halflife, in whole simulation ticks. */
 const HOLD_TICKS = ticksFor(BRIGHT_HOLD);
@@ -79,49 +78,56 @@ afterEach(() => {
 });
 
 /**
- * Travel the forager into the next pellet, and report `G` on the tick it went.
+ * Plant one pellet on `tile`, stand the forager on it, and report `G` on the tick
+ * the pellet went.
  *
- * The sweep polls every tick, because the moment is what is read: a coarser sweep
- * could step over two pellets at once — they sit one tile, thirty ticks, apart at
- * `FORAGER_SPEED` — and report one eat as two.
+ * The sweep polls every tick, because the MOMENT is what is read: everything below
+ * is dated from the tick the eat landed on.
+ *
+ * The forager is carried onto the pellet rather than driven onto it.
+ * `specs/gameplay.md` has it eat "the plankton on its own tile, the moment its
+ * center enters that tile", and `setForagerTile` moves it to that center, so what
+ * this point reads is what EATING does to `G` without leaning on the movement
+ * points' subject at all.
  */
-async function eatOne(harness: Harness): Promise<{ g: number; ticks: number }> {
+async function eatOne(
+  harness: Harness,
+  tile: Tile,
+): Promise<{ g: number; ticks: number }> {
   const before = harness.snapshot();
-  harness.hold(DIR_KEY.right);
+  harness.debug.setPlankton(tile.tx, tile.ty, true);
+  harness.debug.setForagerTile(tile.tx, tile.ty);
   const eaten = await harness.until(
-    (s) => s.planktonRemaining < before.planktonRemaining,
+    (s) => s.planktonRemaining < before.planktonRemaining + 1,
     { maxFrames: EAT_BUDGET, poll: 1 },
   );
-  harness.release(DIR_KEY.right);
   if (!eaten.hit) {
-    const after = harness.snapshot().forager;
-    const moved = Math.hypot(
-      after.x - before.forager.x,
-      after.y - before.forager.y,
-    );
-    failPrecondition(
-      "the forager to travel into the plankton on the next tile under a held " +
-        "movement action, so this point could read the brightness that eating " +
-        "arms (specs/gameplay.md, specs/movement.md)",
-      "the controls and maze-movement points",
-      `${moved.toFixed(1)} units moved, no plankton eaten in ${EAT_BUDGET} ticks`,
+    fail(
+      "the forager to eat the plankton its center was stood on, so this point " +
+        "could read the brightness that eating arms (specs/gameplay.md, " +
+        "specs/sensing.md)",
+      `no plankton eaten in ${EAT_BUDGET} ticks`,
     );
   }
   return { g: eaten.snapshot.brightness, ticks: eaten.frames };
 }
 
-check("Brightness holds, then decays", async () => {
+it("Brightness holds, then decays", async () => {
   startPlaying(h);
-  // Eight tiles of corridor: the tile the forager rests on, the pellet this point
-  // measures, and room for the second eat mid-decay with tiles to spare.
-  await poseStraightRun(h, 8);
-  // The pellet under the forager is eaten off camera and `G` put back to `0`, so
-  // the eat this point measures has its full headroom rather than landing on a
-  // `G` already part way to the `1` it clamps at.
-  await clearUnderfoot(h);
+  // Eight tiles of corridor: the tile the forager rests on, the two pellets this
+  // point measures an eat of, and the spare that is never eaten, so no mouthful
+  // here is the one that leaves none behind and clears the maze
+  // (specs/gameplay.md).
+  const run = await poseStraightRun(h, 8);
+  const firstTile: Tile = { tx: run.start.tx + 1, ty: run.start.ty };
+  const secondTile: Tile = { tx: run.start.tx + 2, ty: run.start.ty };
+  h.debug.setPlankton(run.start.tx + 7, run.start.ty, true);
+  // The board opens with `G` at the `0` a dive opens on, so the eat this point
+  // measures has its full headroom rather than landing on a `G` already part way
+  // to the `1` it clamps at.
 
   const measured = await captureReplay(h, "decay", async () => {
-    const first = await eatOne(h);
+    const first = await eatOne(h, firstTile);
 
     // The hold: `G` unchanged from the tick the pellet went to the end of the
     // window.
@@ -143,7 +149,7 @@ check("Brightness holds, then decays", async () => {
     }
 
     // And a further pellet eaten mid-decay, which arms the hold in full again.
-    const second = await eatOne(h);
+    const second = await eatOne(h, secondTile);
     const rearmed: { at: number; g: number }[] = [];
     ticks = 0;
     for (const at of HOLD_READS) {
@@ -156,10 +162,9 @@ check("Brightness holds, then decays", async () => {
   });
 
   if (measured.first.g <= 0) {
-    failPrecondition(
+    fail(
       "eating a plankton to raise G above 0, so there is a brightness to hold " +
         "and decay (specs/sensing.md adds BRIGHT_PER_EAT per plankton)",
-      "brightness/from-eating",
       measured.first.g,
     );
   }

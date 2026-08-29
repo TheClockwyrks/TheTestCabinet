@@ -85,8 +85,6 @@ export class FathomState extends GameState {
   lives = START_LIVES;
   /** The game's readable copy of the runtime's mute bit. */
   muted = false;
-  /** Whether the predators and the drifters run their own minds. */
-  creatureAI = true;
 
   /** The standing layout, which `setMaze` replaces with a fixture. */
   maze = new Maze(TRENCH, TRENCH_START);

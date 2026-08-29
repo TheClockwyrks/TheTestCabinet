@@ -11,9 +11,9 @@
 // is the contact condition `specs/gameplay.md` states, so nothing here waits on a
 // chase closing a gap — that is `gloamfin/*`'s to grade.
 //
-// THE COUNTDOWN BETWEEN LIVES IS ENDED RATHER THAN WAITED OUT. `beginPlay` "ends
-// the dive countdown immediately instead of waiting it out"
-// (`specs/instrumentation.md`). How long the countdown holds, and that it gives
+// THE COUNTDOWN BETWEEN LIVES IS ENDED RATHER THAN WAITED OUT, by posing the
+// screen straight to `"playing"` (`specs/instrumentation.md`). How long the
+// countdown holds, and that it gives
 // way on its own, is `states/countdown`'s verdict; this check asks only that live
 // play is reachable again after each catch, which it reads as the screen being
 // `"playing"` once that operation has run. A dive that has already ended by then
@@ -24,8 +24,8 @@
 // the three lives before it are spent through `skip`, which runs the same real
 // ticks and closes no frame.
 
-import { afterEach, beforeEach } from "vitest";
-import { assertEqual } from "../assert";
+import { afterEach, beforeEach, it } from "vitest";
+import { assertEqual, assertGreaterThan } from "../assert";
 import { START_LIVES } from "../constants";
 import {
   captureReplay,
@@ -35,7 +35,6 @@ import {
   type Harness,
   startPlaying,
 } from "../harness";
-import { check, denAll, unmetPrecondition } from "../scene";
 
 /**
  * How long a catch may take once the hunter stands on the forager's tile.
@@ -76,7 +75,9 @@ interface Catch {
  * worth a reviewer's frames.
  */
 async function takeALife(h: Harness, filmed: boolean): Promise<Catch> {
-  if ((await h.snapshot()).screen === "countdown") await h.debug.beginPlay();
+  if ((await h.snapshot()).screen === "countdown") {
+    await h.debug.setScreen("playing");
+  }
   const before = await h.snapshot();
   if (before.screen !== "playing") {
     // Deliberately NOT a precondition. Which catch the run ends on is exactly
@@ -108,82 +109,85 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "holds three lives in reserve and ends the run on the fourth catch",
-  async () => {
-    const opened = await startPlaying(h);
-    if (opened.predators.length === 0) {
-      unmetPrecondition(
-        "the roster carries no predator to make contact with; what a depth's " +
-          "roster holds is scoring/depth-scaling's verdict, not this one's",
-      );
-    }
-    await denAll(h);
+it("holds three lives in reserve and ends the run on the fourth catch", async () => {
+  const opened = await startPlaying(h);
+  assertGreaterThan(
+    opened.predators.length,
+    0,
+    "predators on the roster for one of them to make contact with; " +
+      "specs/predators.md puts one of each of the three kinds in the den at " +
+      "depth 1",
+  );
+  // Every hunter but the one that takes each life holds where it stands, its
+  // own mind off (specs/instrumentation.md), so each catch is the one this
+  // check staged. The roster itself stays, because a life lost re-dens it.
+  for (let index = 1; index < opened.predators.length; index += 1) {
+    await h.debug.setPredatorMind(index, false);
+  }
 
-    // The three lives held in reserve, spent off camera.
-    const spent: Catch[] = [];
-    for (let life = 0; life < START_LIVES; life += 1) {
-      spent.push(await takeALife(h, false));
-    }
-    // And the catch taken with none left, which is the clip.
-    const last = await captureReplay(h, "over", async () => {
-      const taken = await takeALife(h, true);
-      await h.advance(TAIL_TICKS);
-      return taken;
-    });
+  // The three lives held in reserve, spent off camera.
+  const spent: Catch[] = [];
+  for (let life = 0; life < START_LIVES; life += 1) {
+    spent.push(await takeALife(h, false));
+  }
+  // And the catch taken with none left, which is the clip.
+  const last = await captureReplay(h, "over", async () => {
+    const taken = await takeALife(h, true);
+    await h.advance(TAIL_TICKS);
+    return taken;
+  });
 
+  assertEqual(
+    opened.lives,
+    START_LIVES,
+    "the lives a dive opens with, held in reserve",
+  );
+
+  for (const [index, taken] of spent.entries()) {
     assertEqual(
-      opened.lives,
-      START_LIVES,
-      "the lives a dive opens with, held in reserve",
-    );
-
-    for (const [index, taken] of spent.entries()) {
-      assertEqual(
-        taken.resumed,
-        true,
-        `play resumed for catch ${index + 1} of ${START_LIVES}, which found the ` +
-          `dive on ${taken.before.screen}`,
-      );
-      assertEqual(
-        taken.hit,
-        true,
-        `catch ${index + 1} of ${START_LIVES} landed inside ${CATCH_BUDGET} ` +
-          "ticks of a predator standing on the forager's own tile",
-      );
-      assertEqual(
-        taken.after.lives,
-        START_LIVES - index - 1,
-        `the lives in reserve after catch ${index + 1}`,
-      );
-      assertEqual(
-        taken.after.screen,
-        "countdown",
-        `the screen after catch ${index + 1}, with a life still in reserve`,
-      );
-    }
-
-    assertEqual(
-      last.resumed,
+      taken.resumed,
       true,
-      `play resumed for the last catch, which found the dive on ` +
-        `${last.before.screen}`,
+      `play resumed for catch ${index + 1} of ${START_LIVES}, which found the ` +
+        `dive on ${taken.before.screen}`,
     );
     assertEqual(
-      last.before.lives,
-      0,
-      "the lives in reserve when the last catch was taken",
-    );
-    assertEqual(
-      last.hit,
+      taken.hit,
       true,
-      `the last catch landed inside ${CATCH_BUDGET} ticks of a predator standing ` +
-        "on the forager's own tile",
+      `catch ${index + 1} of ${START_LIVES} landed inside ${CATCH_BUDGET} ` +
+        "ticks of a predator standing on the forager's own tile",
     );
     assertEqual(
-      last.after.screen,
-      "gameover",
-      "the screen after the catch taken with no life in reserve",
+      taken.after.lives,
+      START_LIVES - index - 1,
+      `the lives in reserve after catch ${index + 1}`,
     );
-  },
-);
+    assertEqual(
+      taken.after.screen,
+      "countdown",
+      `the screen after catch ${index + 1}, with a life still in reserve`,
+    );
+  }
+
+  assertEqual(
+    last.resumed,
+    true,
+    `play resumed for the last catch, which found the dive on ` +
+      `${last.before.screen}`,
+  );
+  assertEqual(
+    last.before.lives,
+    0,
+    "the lives in reserve when the last catch was taken",
+  );
+  assertEqual(
+    last.hit,
+    true,
+    `the last catch landed inside ${CATCH_BUDGET} ticks of a predator standing ` +
+      "on the forager's own tile",
+  );
+  assertEqual(
+    last.after.screen,
+    "gameover",
+    "the screen after the catch taken with no life in reserve",
+  );
+});

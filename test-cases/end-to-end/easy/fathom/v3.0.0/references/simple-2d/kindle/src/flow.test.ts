@@ -59,7 +59,7 @@ describe("the opening state", () => {
     expect(state.depth).toBe(1);
     expect(state.brightness).toBe(0);
     expect(state.simTime).toBe(0);
-    expect(state.creatureAI).toBe(true);
+    expect(state.brightHold).toBe(0);
     expect(state.sonarCooldown).toBe(0);
     expect(state.inkCooldown).toBe(0);
     expect(state.pulses).toEqual([]);
@@ -88,6 +88,8 @@ describe("the opening state", () => {
     ]);
     expect(state.predators.every((p) => p.mode === "den")).toBe(true);
     expect(state.predators.every((p) => !p.released)).toBe(true);
+    // Every creature opens with its own mind running.
+    expect(state.predators.every((p) => p.mind)).toBe(true);
     // The release times are the staggered schedule, one slot each.
     expect(state.predators.map((p) => p.releaseIn)).toEqual([0, 5, 10]);
   });

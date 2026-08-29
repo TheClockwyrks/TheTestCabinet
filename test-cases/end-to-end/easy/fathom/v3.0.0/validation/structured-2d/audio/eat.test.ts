@@ -26,8 +26,8 @@
 // WHAT THIS DOES NOT DECIDE. What eating scores, which is `scoring/plankton`'s;
 // what it does to brightness, which is `brightness/from-eating`'s.
 
-import { afterEach, beforeEach } from "vitest";
-import { BINDINGS, CUES } from "../../src/constants";
+import { afterEach, beforeEach, it } from "vitest";
+import { CUES } from "../../src/constants";
 import { assertEqual } from "../assert";
 import { poseMoveKeyRun } from "../fixtures";
 import {
@@ -37,24 +37,14 @@ import {
   ticksFor,
   type Harness,
 } from "../harness";
-import {
-  check,
-  clearUnderfoot,
-  denAll,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-} from "../scene";
+import { requireSceneHeld, sceneGuard } from "../scene";
 import { cuesBeforeEvent, cuesOnEvent, watchForEvent } from "./cues";
 
-/** The key `specs/movement.md` binds the `right` action to first. */
-const MOVE_KEY = BINDINGS.right[0];
-
 /**
- * The frames the forager is given to swim into the next plankton.
+ * The frames the forager is given to eat the plankton it stands on.
  *
- * At `FORAGER_SPEED` (`128`) a tile is `0.25 s` and the forager's center enters
- * the next tile half a tile in, so a conforming build eats inside `0.13 s`. Half
+ * specs/gameplay.md eats it "the moment its center enters that tile", so a
+ * conforming build eats on the tick after the pose. Half
  * a second is a hard ceiling four times that, so a build that is merely slow
  * fails here rather than leaving the point inconclusive.
  */
@@ -73,63 +63,60 @@ afterEach(() => {
   h?.dispose();
 });
 
-check(
-  "plays CUES.eat on the tick the forager eats a plankton, and not before",
-  async () => {
-    startPlaying(h);
-    const run = await poseMoveKeyRun(h, "right");
-    const quiet = await denAll(h);
-    // The pellet the pose left under the forager is eaten here, off the watch, so
-    // the eat this check reads is the one it swims into.
-    await clearUnderfoot(h);
-    // The forager is this check's own subject, so it is not held to staying put;
-    // what the guard still catches is a life lost or the dive leaving live play.
-    const watch = await sceneGuard(h, quiet, { foragerParked: false });
-    const before = h.snapshot();
+it("plays CUES.eat on the tick the forager eats a plankton, and not before", async () => {
+  startPlaying(h);
+  const run = await poseMoveKeyRun(h, "right");
+  // Two pellets on an otherwise bare board: the one the forager is stood on, and
+  // a spare so that eating it is not the mouthful that leaves none behind and
+  // clears the maze (specs/gameplay.md). The forager is CARRIED onto its pellet
+  // rather than driven onto it — specs/gameplay.md eats "the moment its center
+  // enters that tile" — so the cue this point reads owes the movement points
+  // nothing.
+  // On the tile ahead rather than under the forager, so the pose really is its
+  // center ENTERING the pellet's tile — which is the condition
+  // specs/gameplay.md eats on, and the one a build that decides eating on entry
+  // alone honours too.
+  const bite = { tx: run.start.tx + 1, ty: run.start.ty };
+  h.debug.setPlankton(run.start.tx + run.ahead, run.start.ty, true);
+  // The forager is moved by this check, so it is not held to staying put; what
+  // the guard still catches is a life lost or the dive leaving live play.
+  const watch = await sceneGuard(h, { foragerParked: false });
+  const before = h.snapshot();
 
-    const seen = await captureReplay(h, "eat", async () => {
-      h.hold(MOVE_KEY);
-      try {
-        const found = await watchForEvent(
-          h,
-          (s) => s.planktonRemaining < before.planktonRemaining,
-          EAT_TICKS,
-        );
-        // Held on past the reading, so the clip shows a forager grazing rather
-        // than a single step. Nothing after this line can reach an assertion.
-        await h.advance(TAIL_TICKS);
-        return found;
-      } finally {
-        h.release(MOVE_KEY);
-      }
-    });
+  const seen = await captureReplay(h, "eat", async () => {
+    h.debug.setPlankton(bite.tx, bite.ty, true);
+    h.debug.setForagerTile(bite.tx, bite.ty);
+    const found = await watchForEvent(
+      h,
+      (s) => s.planktonRemaining < before.planktonRemaining + 1,
+      EAT_TICKS,
+    );
+    // Held on past the reading, so the clip runs on rather than cutting on a
+    // single step. Nothing after this line can reach an assertion.
+    await h.advance(TAIL_TICKS);
+    return found;
+  });
 
-    // Whether the forager travels at all is the movement points' verdict.
-    requireSwim(
-      before.forager,
-      seen.snapshot.forager,
-      "swim into a plankton and eat it",
-    );
-    requireSceneHeld(h.snapshot(), watch);
+  requireSceneHeld(h.snapshot(), watch);
 
-    assertEqual(
-      seen.hit,
-      true,
-      `the forager ate a plankton inside the ${String(EAT_TICKS)} ticks the ` +
-        `check holds the key for, from tile (${String(run.start.tx)}, ${String(run.start.ty)})`,
-    );
-    assertEqual(
-      cuesBeforeEvent(seen, CUES.eat),
-      0,
-      `times CUES.eat played over the ${String(seen.at - 1)} ticks before the ` +
-        "eat — a cue is played on the tick its event happens " +
-        "(specs/progression.md)",
-    );
-    assertEqual(
-      cuesOnEvent(seen, CUES.eat),
-      1,
-      "times CUES.eat played on the tick the forager ate the plankton, which is " +
-        "its own tick and at most once on it (specs/progression.md)",
-    );
-  },
-);
+  assertEqual(
+    seen.hit,
+    true,
+    `the forager ate the plankton its center was moved into inside ` +
+      `${String(EAT_TICKS)} ticks, on tile (${String(run.start.tx + 1)}, ` +
+      `${String(run.start.ty)})`,
+  );
+  assertEqual(
+    cuesBeforeEvent(seen, CUES.eat),
+    0,
+    `times CUES.eat played over the ${String(seen.at - 1)} ticks before the ` +
+      "eat — a cue is played on the tick its event happens " +
+      "(specs/progression.md)",
+  );
+  assertEqual(
+    cuesOnEvent(seen, CUES.eat),
+    1,
+    "times CUES.eat played on the tick the forager ate the plankton, which is " +
+      "its own tick and at most once on it (specs/progression.md)",
+  );
+});

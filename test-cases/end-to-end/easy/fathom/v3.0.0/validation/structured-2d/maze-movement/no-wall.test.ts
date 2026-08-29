@@ -26,9 +26,13 @@
 // forager EVER standing on the rock tile, and a pair of readings taken at either
 // end of the window would miss one that slipped through and came back.
 
-import { afterEach, beforeEach } from "vitest";
+import { afterEach, beforeEach, it } from "vitest";
 import { TILE } from "../../src/constants";
-import { assertEqual, assertLessThanOrEqual } from "../assert";
+import {
+  assertEqual,
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+} from "../assert";
 import { poseMaze } from "../fixtures";
 import {
   captureReplay,
@@ -38,19 +42,12 @@ import {
   startPlaying,
   type Harness,
 } from "../harness";
-import {
-  check,
-  denAll,
-  requireSceneHeld,
-  requireSwim,
-  sceneGuard,
-  FORAGER_CORRIDORS,
-} from "../scene";
+import { MOTION_EPS, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * The dead end: the forager starts on `S` and the corridor stops at `W`, with
- * rock beyond it and rock on both flanks. The fixture carries the sealed larder,
- * so grazing the four tiles clears nothing.
+ * rock beyond it and rock on both flanks. The posed board carries no plankton, so
+ * nothing the forager does along it can clear the maze.
  */
 const DEAD_END = ["S...W"];
 
@@ -86,17 +83,16 @@ afterEach(() => {
   h?.dispose();
 });
 
-check("stops the forager against rock rather than letting it in", async () => {
+it("stops the forager against rock rather than letting it in", async () => {
   startPlaying(h);
   const board = await poseMaze(h, DEAD_END);
   const start = board.mark("S");
   const last = board.mark("W");
   await h.debug.setForagerTile(start.tx, start.ty);
   await h.debug.setForagerDir(INTO);
-  const quiet = await denAll(h);
   // The forager is the SUBJECT, so it is not held to staying put; the guard still
   // catches a life lost, a predator loose, or the dive leaving live play.
-  const guard = await sceneGuard(h, quiet, { foragerParked: false });
+  const guard = await sceneGuard(h, { foragerParked: false });
 
   const face = centerOf(h.snapshot(), last);
   /** The rock tile the held direction points into. */
@@ -121,18 +117,21 @@ check("stops the forager against rock rather than letting it in", async () => {
     return { resting, trespass, reach, settled };
   });
 
-  // The rock this point is ABOUT. Every other bystander in this suite declines
-  // when a body crosses rock and names this point; this is the point, so a
-  // forager found standing in it is the finding rather than a reason to stand
-  // down. A hunter that crossed rock is still somebody else's.
-  requireSceneHeld(h.snapshot(), guard, { owns: [FORAGER_CORRIDORS] });
+  // The scene held: nothing else is on the board, so a life lost, a screen left
+  // or a forager somewhere it was never carried is this point's own finding.
+  requireSceneHeld(h.snapshot(), guard);
 
-  // A forager that never got under way was never offered the rock; whether a
-  // held action moves it at all is `controls/move-*`'s verdict.
-  requireSwim(
-    drive.resting.forager,
-    drive.settled.forager,
-    "swim the corridor up to the rock that closes it",
+  // The travel this point is about. Nothing else is on the board to have
+  // stopped it, so a forager that covered no ground did not do what
+  // specs/movement.md has it do while a movement action is held.
+  assertGreaterThanOrEqual(
+    Math.hypot(
+      drive.settled.forager.x - drive.resting.forager.x,
+      drive.settled.forager.y - drive.resting.forager.y,
+    ),
+    MOTION_EPS,
+    "the logical units the forager travelled, which it had to to " +
+      "swim the corridor up to the rock that closes it",
   );
 
   assertEqual(

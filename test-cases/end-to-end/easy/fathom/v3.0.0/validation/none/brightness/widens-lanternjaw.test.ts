@@ -38,27 +38,28 @@
 // the brightness hold, which `brightness/holds-decays` owns; a build that let it
 // slip would otherwise fail here too, for a range that is right about the
 // brightness the build actually had. What this check keeps for itself is that the
-// samples SPAN the dial: if the reported `G` never moved, there was no curve to
-// read and the check stands down.
+// samples SPAN the dial: a reported `G` that never moved is a curve nobody drove,
+// and the check fails on it.
 
-import { afterEach, beforeEach } from "vitest";
-import { assertLessThanOrEqual, assertNotEqual } from "../assert";
-import { LANTERN_RANGE_BASE, LANTERN_RANGE_GAIN } from "../constants";
-import { placePredator, poseApart, predatorIndex } from "../fixtures";
+import { afterEach, beforeEach, it } from "vitest";
+import {
+  assertGreaterThanOrEqual,
+  assertLessThanOrEqual,
+  assertNotEqual,
+} from "../assert";
+import {
+  BRIGHT_HOLD,
+  LANTERN_RANGE_BASE,
+  LANTERN_RANGE_GAIN,
+} from "../constants";
+import { poseApart, spawnPredator } from "../fixtures";
 import {
   captureReplay,
   createHarness,
   type Harness,
   startPlaying,
 } from "../harness";
-import {
-  check,
-  denAll,
-  parkForager,
-  requireSceneHeld,
-  sceneGuard,
-  unmetPrecondition,
-} from "../scene";
+import { parkForager, requireSceneHeld, sceneGuard } from "../scene";
 
 /**
  * How far apart the two rooms are posed, in tiles.
@@ -104,72 +105,60 @@ afterEach(async () => {
   await h.dispose();
 });
 
-check(
-  "reports detectRange as LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G",
-  async () => {
-    await startPlaying(h);
-    const rooms = await poseApart(h, ROOMS_APART, { ring: RING_TILES });
-    const lanternjaw = predatorIndex(await h.snapshot(), "lanternjaw");
-    if (lanternjaw === null) {
-      unmetPrecondition(
-        "the roster carries no lanternjaw, whose detection range this point reads — " +
-          "what the roster holds is the progression checks' verdict, not this one's",
-      );
+it("reports detectRange as LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G", async () => {
+  await startPlaying(h);
+  const rooms = await poseApart(h, ROOMS_APART, { ring: RING_TILES });
+  const lanternjaw = await spawnPredator(h, "lanternjaw", rooms.far, {
+    state: "wander",
+  });
+  await parkForager(h, rooms.near);
+  const guard = await sceneGuard(h);
+
+  const sweep = await captureReplay(h, "range", async () => {
+    const readings: { g: number; range: number | null }[] = [];
+    for (const posed of SAMPLES) {
+      await h.debug.setBrightness(posed);
+      await h.debug.setBrightHold(BRIGHT_HOLD);
+      await h.advance(READ_BEAT);
+      const snap = await h.snapshot();
+      readings.push({
+        g: snap.brightness,
+        range: snap.predators[lanternjaw]?.detectRange ?? null,
+      });
+      // Held on screen so the clip runs at this brightness; the reading above is
+      // already taken, so nothing here can reach an assertion.
+      await h.advance(FILM_TICKS);
     }
-    const quiet = await denAll(h, [lanternjaw]);
-    await placePredator(h, lanternjaw, rooms.far, { state: "wander" });
-    await parkForager(h, rooms.near);
-    await h.debug.clearPlankton();
-    const guard = await sceneGuard(h, quiet);
+    return { readings, end: await h.snapshot() };
+  });
 
-    const sweep = await captureReplay(h, "range", async () => {
-      const readings: { g: number; range: number | null }[] = [];
-      for (const posed of SAMPLES) {
-        await h.debug.setBrightness(posed);
-        await h.advance(READ_BEAT);
-        const snap = await h.snapshot();
-        readings.push({
-          g: snap.brightness,
-          range: snap.predators[lanternjaw]?.detectRange ?? null,
-        });
-        // Held on screen so the clip runs at this brightness; the reading above is
-        // already taken, so nothing here can reach an assertion.
-        await h.advance(FILM_TICKS);
-      }
-      return { readings, end: await h.snapshot() };
-    });
+  requireSceneHeld(sweep.end, guard);
 
-    requireSceneHeld(sweep.end, guard);
+  // The dial really moved. Without this the readings could all be one G and a
+  // build with a flat range would pass on a curve nobody drove.
+  const reported = sweep.readings.map((reading) => reading.g);
+  const span = Math.max(...reported) - Math.min(...reported);
+  assertGreaterThanOrEqual(
+    span,
+    SPAN_MIN,
+    "the span of the brightnesses the build reported back across the sweep, " +
+      "which setBrightness poses and setBrightHold holds steady " +
+      "(specs/instrumentation.md) — a flat span is a curve nobody drove",
+  );
 
-    // The dial really moved. Without this the readings could all be one G and a
-    // build with a flat range would pass on a curve nobody drove.
-    const reported = sweep.readings.map((reading) => reading.g);
-    const span = Math.max(...reported) - Math.min(...reported);
-    if (span < SPAN_MIN) {
-      unmetPrecondition(
-        `the brightnesses the build reported across the sweep spanned ` +
-          `${span.toFixed(3)}, of the ${SPAN_MIN} this check needs to read a ` +
-          `curve at all — setBrightness poses G and arms its hold ` +
-          `(specs/instrumentation.md), and whether it does is ` +
-          `instrumentation/surface-present's verdict and ` +
-          `brightness/holds-decays', not this one's`,
-      );
-    }
-
-    for (const reading of sweep.readings) {
-      assertNotEqual(
-        reading.range,
-        null,
-        `the Lanternjaw's detectRange at G = ${reading.g}, which specs/state.md has ` +
-          `it report as a number`,
-      );
-      const expected = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * reading.g;
-      assertLessThanOrEqual(
-        Math.abs((reading.range ?? Number.NaN) - expected),
-        RANGE_TOLERANCE,
-        `detectRange at G = ${reading.g}, against ` +
-          `LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G (${expected})`,
-      );
-    }
-  },
-);
+  for (const reading of sweep.readings) {
+    assertNotEqual(
+      reading.range,
+      null,
+      `the Lanternjaw's detectRange at G = ${reading.g}, which specs/state.md has ` +
+        `it report as a number`,
+    );
+    const expected = LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * reading.g;
+    assertLessThanOrEqual(
+      Math.abs((reading.range ?? Number.NaN) - expected),
+      RANGE_TOLERANCE,
+      `detectRange at G = ${reading.g}, against ` +
+        `LANTERN_RANGE_BASE + LANTERN_RANGE_GAIN * G (${expected})`,
+    );
+  }
+});

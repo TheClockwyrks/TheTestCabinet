@@ -182,7 +182,7 @@ function stepPlay(state: FathomState, dt: number, cues: CueBag): void {
 
   for (const predator of state.predators) {
     decayPredatorTimers(predator, dt);
-    if (state.creatureAI) updatePredator(predator, dt, trench);
+    if (predator.mind) updatePredator(predator, dt, trench);
   }
 
   stepDrifters(state, dt, cues);
@@ -225,22 +225,16 @@ function stepInk(state: FathomState, dt: number): void {
 }
 
 function stepDrifters(state: FathomState, dt: number, cues: CueBag): void {
-  if (state.creatureAI) {
-    for (const drifter of state.drifters) {
-      advanceBody(
-        drifter,
-        dt,
-        state.maze,
-        () =>
-          wanderIntent(
-            drifter,
-            state.maze,
-            state.rng,
-            state.maze.openToForager,
-          ),
-        state.maze.openToForager,
-      );
-    }
+  for (const drifter of state.drifters) {
+    if (!drifter.mind) continue;
+    advanceBody(
+      drifter,
+      dt,
+      state.maze,
+      () =>
+        wanderIntent(drifter, state.maze, state.rng, state.maze.openToForager),
+      state.maze.openToForager,
+    );
   }
 
   const here = bodyCell(state.forager);
@@ -290,8 +284,8 @@ function stepPulses(state: FathomState, dt: number, trench: Trench): void {
           ? undefined
           : state.predators[pulse.emitterIndex];
       // Taking the fix is the Gloamfin's own decision, so a scenario that has
-      // turned the creatures' minds off gets the wavefront without it.
-      if (state.creatureAI && emitter && emitter.state !== "den") {
+      // turned its mind off gets the wavefront without it.
+      if (emitter && emitter.mind && emitter.state !== "den") {
         acquireFix(emitter, trench, here);
       }
       continue;
@@ -308,7 +302,7 @@ function stepPulses(state: FathomState, dt: number, trench: Trench): void {
       // Lanternjaw and never resolves which glimmer is which.
       if (predator.kind === "lanternjaw") continue;
       predator.mark = SONAR_MARK_TIME;
-      if (predator.kind === "gloamfin" && state.creatureAI) {
+      if (predator.kind === "gloamfin" && predator.mind) {
         acquireFix(predator, trench, here);
       }
     }
